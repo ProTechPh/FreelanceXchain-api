@@ -112,3 +112,197 @@ export type {
   SearchServiceError,
   SearchServiceResult,
 } from './search-service.js';
+
+export {
+  submitProposal,
+  getProposalById,
+  getProposalsByProject,
+  getProposalsByFreelancer,
+  acceptProposal,
+  rejectProposal,
+  withdrawProposal,
+} from './proposal-service.js';
+
+export type {
+  CreateProposalInput,
+  ProposalServiceError,
+  ProposalServiceResult,
+  ProposalWithNotification,
+  AcceptProposalResult,
+  RejectProposalResult,
+} from './proposal-service.js';
+
+export {
+  getContractById,
+  getUserContracts,
+  getContractsByFreelancer,
+  getContractsByEmployer,
+  getContractsByProject,
+  updateContractStatus,
+  setEscrowAddress,
+  getContractByProposalId,
+} from './contract-service.js';
+
+export type {
+  ContractServiceError,
+  ContractServiceResult,
+} from './contract-service.js';
+
+export {
+  createNotification,
+  createNotifications,
+  getNotificationById,
+  getNotificationsByUser,
+  getAllNotificationsByUser,
+  getUnreadNotificationsByUser,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  getUnreadCount,
+  notifyProposalReceived,
+  notifyProposalAccepted,
+  notifyProposalRejected,
+  notifyMilestoneSubmitted,
+  notifyMilestoneApproved,
+  notifyPaymentReleased,
+  notifyDisputeCreated,
+  notifyDisputeResolved,
+  notifyRatingReceived,
+} from './notification-service.js';
+
+export type {
+  CreateNotificationInput,
+  NotificationServiceError,
+  NotificationServiceResult,
+} from './notification-service.js';
+
+// Blockchain client exports
+export {
+  serializeTransaction,
+  deserializeTransaction,
+  serializePaymentTransaction,
+  deserializePaymentTransaction,
+  generateWalletAddress,
+  signTransaction,
+  submitTransaction,
+  getTransaction,
+  getTransactionByHash,
+  pollTransactionStatus,
+  confirmTransaction,
+  failTransaction,
+  clearTransactions,
+  getBlockchainConfig,
+  isBlockchainAvailable,
+} from './blockchain-client.js';
+
+export type {
+  Transaction,
+  TransactionInput,
+  TransactionReceipt,
+  TransactionStatus,
+  TransactionType,
+  TransactionPollResult,
+  SerializedTransaction,
+  PaymentTransaction,
+  SerializedPaymentTransaction,
+  BlockchainConfig,
+  EscrowParams,
+  EscrowMilestone,
+  EscrowDeployment,
+} from './blockchain-types.js';
+
+// Escrow contract exports
+export {
+  deployEscrow,
+  depositToEscrow,
+  releaseMilestone,
+  refundMilestone,
+  getEscrowBalance,
+  getEscrowState,
+  getMilestoneStatus,
+  areAllMilestonesReleased,
+  clearEscrows,
+  getEscrowByContractId,
+} from './escrow-contract.js';
+
+// Payment service exports
+export {
+  requestMilestoneCompletion,
+  approveMilestone,
+  disputeMilestone,
+  getContractPaymentStatus,
+  isContractComplete,
+  getDisputeById,
+  getDisputesByContract,
+  clearDisputes,
+  initializeContractEscrow,
+} from './payment-service.js';
+
+export type {
+  PaymentServiceError,
+  PaymentServiceResult,
+  MilestoneCompletionResult,
+  MilestoneApprovalResult,
+  MilestoneDisputeResult,
+  ContractPaymentStatus,
+} from './payment-service.js';
+
+// Reputation contract exports
+export {
+  submitRatingToBlockchain,
+  getRatingsFromBlockchain,
+  getRatingsGivenByUser,
+  getRatingById,
+  getRatingsByContract,
+  computeAggregateScore,
+  getAggregateScoreFromBlockchain,
+  hasUserRatedForContract,
+  clearBlockchainRatings,
+  getReputationContractAddress,
+  serializeBlockchainRating,
+  deserializeBlockchainRating,
+} from './reputation-contract.js';
+
+export type {
+  BlockchainRating,
+  SerializedBlockchainRating,
+  RatingSubmissionParams,
+} from './reputation-contract.js';
+
+// Reputation service exports
+export {
+  submitRating,
+  getReputation,
+  getWorkHistory,
+  getContractRatings,
+  canUserRate,
+  serializeReputationRecord,
+  deserializeReputationRecord,
+} from './reputation-service.js';
+
+export type {
+  RatingInput,
+  ReputationScore,
+  WorkHistoryEntry,
+  ReputationServiceError,
+  ReputationServiceResult,
+  RatingResult,
+} from './reputation-service.js';
+
+// Dispute service exports
+export {
+  createDispute,
+  submitEvidence,
+  resolveDispute,
+  getDisputeById as getDisputeByIdFromService,
+  getDisputesByContract as getDisputesByContractFromService,
+  getOpenDisputes,
+  getDisputesByInitiator,
+} from './dispute-service.js';
+
+export type {
+  DisputeServiceError,
+  DisputeServiceResult,
+  CreateDisputeInput,
+  SubmitEvidenceInput,
+  ResolveDisputeInput,
+} from './dispute-service.js';

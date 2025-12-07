@@ -10,6 +10,7 @@ import {
   listProjectsBySkills,
   listProjectsByBudgetRange,
 } from '../services/project-service.js';
+import { getProposalsByProject } from '../services/proposal-service.js';
 
 const router = Router();
 
@@ -547,6 +548,81 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), async (r
     if (result.error.code === 'PROJECT_LOCKED') statusCode = 409;
     
     res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/projects/{id}/proposals:
+ *   get:
+ *     summary: List proposals for project
+ *     description: Retrieves all proposals for a specific project (employer only)
+ *     tags:
+ *       - Projects
+ *       - Proposals
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Project ID
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of results per page
+ *       - in: query
+ *         name: continuationToken
+ *         schema:
+ *           type: string
+ *         description: Token for pagination
+ *     responses:
+ *       200:
+ *         description: Proposals retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Proposal'
+ *                 hasMore:
+ *                   type: boolean
+ *                 continuationToken:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Project not found
+ */
+router.get('/:id/proposals', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+  const projectId = req.params['id'] ?? '';
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
+  const continuationToken = req.query['continuationToken'] as string | undefined;
+
+  const options: { maxItemCount: number; continuationToken?: string } = { maxItemCount: limit };
+  if (continuationToken) {
+    options.continuationToken = continuationToken;
+  }
+
+  const result = await getProposalsByProject(projectId, options);
+
+  if (!result.success) {
+    res.status(404).json({
       error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,

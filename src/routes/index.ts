@@ -8,6 +8,12 @@ import employerRoutes from './employer-routes.js';
 import projectRoutes from './project-routes.js';
 import searchRoutes from './search-routes.js';
 import matchingRoutes from './matching-routes.js';
+import proposalRoutes from './proposal-routes.js';
+import contractRoutes from './contract-routes.js';
+import notificationRoutes from './notification-routes.js';
+import paymentRoutes from './payment-routes.js';
+import reputationRoutes from './reputation-routes.js';
+import disputeRoutes from './dispute-routes.js';
 
 const router = Router();
 
@@ -58,5 +64,23 @@ router.use('/search', searchRoutes);
 
 // Matching routes (AI-powered recommendations)
 router.use('/matching', matchingRoutes);
+
+// Proposal routes
+router.use('/proposals', proposalRoutes);
+
+// Contract routes
+router.use('/contracts', contractRoutes);
+
+// Notification routes
+router.use('/notifications', notificationRoutes);
+
+// Payment routes
+router.use('/payments', paymentRoutes);
+
+// Reputation routes
+router.use('/reputation', reputationRoutes);
+
+// Dispute routes
+router.use('/disputes', disputeRoutes);
 
 export default router;
