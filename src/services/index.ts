@@ -306,3 +306,87 @@ export type {
   SubmitEvidenceInput,
   ResolveDisputeInput,
 } from './dispute-service.js';
+
+// Web3 client exports (real Ethereum integration)
+export {
+  isWeb3Available,
+  getProvider,
+  getWallet,
+  getWalletInfo,
+  getBalance,
+  sendTransaction as sendWeb3Transaction,
+  getTransactionByHash as getWeb3TransactionByHash,
+  waitForTransaction,
+  getGasPrice,
+  getBlockNumber,
+  estimateGas,
+  formatEther,
+  parseEther,
+  isValidAddress,
+  getChecksumAddress,
+  signMessage,
+  verifyMessage,
+  getNetworkInfo,
+  isCorrectNetwork,
+  resetWeb3Client,
+  deployContract,
+  getContract,
+  getContractWithSigner,
+} from './web3-client.js';
+
+export type {
+  Web3Config,
+  Web3TransactionResult,
+  WalletInfo,
+} from './web3-client.js';
+
+// AI client exports
+export {
+  isAIAvailable,
+  generateContent,
+  analyzeSkillMatch,
+  extractSkills,
+  keywordMatchSkills,
+  keywordExtractSkills,
+  isAIError,
+  serializeAIRequest,
+  deserializeAIRequest,
+  serializeAIResponse,
+  deserializeAIResponse,
+} from './ai-client.js';
+
+export type {
+  AIRequest,
+  AIResponse,
+  AIError,
+  SkillMatchRequest,
+  SkillMatchResult,
+  SkillExtractionRequest,
+  ExtractedSkill,
+  SkillInfo,
+  SerializableAIRequest,
+  SerializableAIResponse,
+} from './ai-types.js';
+
+// Matching service exports
+export {
+  getProjectRecommendations,
+  getFreelancerRecommendations,
+  extractSkillsFromText,
+  analyzeSkillGaps,
+  calculateMatchScore,
+  sortRecommendationsByScore,
+  sortFreelancerRecommendationsByCombinedScore,
+  isMatchingError,
+} from './matching-service.js';
+
+export type {
+  MatchingServiceError,
+  MatchingServiceResult,
+} from './matching-service.js';
+
+export type {
+  ProjectRecommendation,
+  FreelancerRecommendation,
+  SkillGapAnalysis,
+} from './ai-types.js';

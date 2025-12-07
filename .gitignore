@@ -31,3 +31,12 @@ coverage/
 tmp/
 temp/
 .kiro/
+
+# Hardhat / Blockchain
+artifacts/
+cache/
+typechain-types/
+deployment.json
+
+# Ganache
+.ganache/
