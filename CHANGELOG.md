@@ -104,6 +104,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.0] - 2025-12-07
+
+### Added
+
+#### Docker Deployment
+- Multi-stage Dockerfile for optimized production builds
+- Docker image published to Docker Hub (`jericko134/freelancexchain-api`)
+- `.dockerignore` for efficient image builds
+
+#### Azure Container Apps Deployment
+- Deployed to Azure Container Apps in Japan West region
+- Production URL: `https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io`
+- Environment variables configured for production
+- Auto-scaling with consumption-based pricing
+
+### Changed
+- Updated Swagger configuration to support production server URL
+- Modified tsconfig to preserve JSDoc comments for Swagger in production
+- Swagger now dynamically switches between development and production servers
+
+### Technical Notes
+
+#### Deployment Challenges Encountered
+1. **Azure App Service Issues**: Initial deployment to Azure App Service faced multiple challenges:
+   - TypeScript compilation issues during remote build
+   - `tsc` not found errors due to dev dependencies being omitted
+   - WSL/bash not available on Windows for build hooks
+   
+2. **Solution**: Switched to Docker-based deployment:
+   - Multi-stage build compiles TypeScript in builder stage
+   - Production stage only includes compiled JS and production dependencies
+   - Deployed to Azure Container Apps instead of App Service
+
+3. **Region Limitations**: 
+   - Malaysia West doesn't support Azure Container Apps
+   - Deployed to Japan West as nearest supported region
+
+#### Docker Build Process
+```dockerfile
+# Builder stage - compiles TypeScript
+FROM node:20-alpine AS builder
+# ... installs all deps, runs tsc
+
+# Production stage - minimal image
+FROM node:20-alpine AS production
+# ... only production deps + compiled dist
+```
+
+---
+
 ## [Unreleased]
 
 ### Planned Features
@@ -128,4 +178,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 1.1.0 | 2025-12-07 | Docker deployment, Azure Container Apps |
 | 1.0.0 | 2025-12-07 | Initial release with full feature set |

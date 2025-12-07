@@ -12,12 +12,19 @@ const options: swaggerJsdoc.Options = {
         name: 'API Support',
       },
     },
-    servers: [
-      {
-        url: `http://localhost:${config.server.port}`,
-        description: 'Development server',
-      },
-    ],
+    servers: config.server.nodeEnv === 'production' 
+      ? [
+          {
+            url: 'https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io',
+            description: 'Production server',
+          },
+        ]
+      : [
+          {
+            url: `http://localhost:${config.server.port}`,
+            description: 'Development server',
+          },
+        ],
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -224,7 +231,9 @@ const options: swaggerJsdoc.Options = {
       },
     },
   },
-  apis: ['./src/routes/**/*.ts'],
+  apis: process.env['NODE_ENV'] === 'production' 
+    ? ['./dist/routes/**/*.js'] 
+    : ['./src/routes/**/*.ts'],
 };
 
 export const swaggerSpec = swaggerJsdoc(options);

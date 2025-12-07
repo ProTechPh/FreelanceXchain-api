@@ -405,7 +405,7 @@ type NotificationType =
 
 ```json
 {
-  "@nomicfoundation/hardhat-ethers": "^4.0.3",
+  "@nomicfoundation/hardhat-ethers": "^3.0.8",
   "@nomicfoundation/hardhat-toolbox": "^5.0.0",
   "ethers": "^6.16.0",
   "hardhat": "^2.22.0",
@@ -434,3 +434,50 @@ type NotificationType =
 | LLM_API_URL | No | - | Gemini API URL |
 | BLOCKCHAIN_RPC_URL | No | - | Ethereum RPC |
 | BLOCKCHAIN_PRIVATE_KEY | No | - | Deployer key |
+
+---
+
+## Docker Specifications
+
+### Multi-Stage Dockerfile
+
+```dockerfile
+# Build stage - compiles TypeScript
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci
+COPY tsconfig.json ./
+COPY src ./src
+RUN npm run build
+
+# Production stage - minimal image
+FROM node:20-alpine AS production
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY --from=builder /app/dist ./dist
+ENV NODE_ENV=production PORT=3000
+EXPOSE 3000
+CMD ["node", "dist/index.js"]
+```
+
+### Image Details
+
+| Property | Value |
+|----------|-------|
+| Base Image | node:20-alpine |
+| Image Size | ~150MB (production) |
+| Port | 3000 |
+| Registry | Docker Hub |
+| Image Name | jericko134/freelancexchain-api |
+
+### Deployment Platform
+
+| Property | Value |
+|----------|-------|
+| Platform | Azure Container Apps |
+| Region | Japan West |
+| Scaling | Consumption-based (0-10 replicas) |
+| Resources | 0.5 CPU, 1GB RAM |
+| URL | https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io |

@@ -63,16 +63,23 @@ This platform addresses key challenges in the gig economy:
 └── dist/                     # Compiled TypeScript
 ```
 
+## Live Demo
+
+**Production API:** https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io
+
+**Swagger Docs:** https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io/api-docs
+
 ## Installation
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 18+ (20 recommended)
 - npm or yarn
 - Azure Cosmos DB account
 - Ethereum wallet (for blockchain features)
 - LLM API key (for AI features)
+- Docker (for containerized deployment)
 
-### Setup
+### Local Development Setup
 
 1. **Clone and install dependencies**
 ```bash
@@ -102,6 +109,60 @@ npm run build
 npm start
 # Or for development with hot reload:
 npm run dev
+```
+
+### Docker Deployment
+
+1. **Build Docker image**
+```bash
+docker build -t your-username/freelancexchain-api:latest .
+```
+
+2. **Run locally with Docker**
+```bash
+docker run -p 3000:3000 --env-file .env your-username/freelancexchain-api:latest
+```
+
+3. **Push to Docker Hub**
+```bash
+docker login
+docker push your-username/freelancexchain-api:latest
+```
+
+### Azure Container Apps Deployment
+
+1. **Create Container Apps Environment**
+```bash
+az containerapp env create \
+  --name freelancexchain-env \
+  --resource-group your-resource-group \
+  --location japanwest
+```
+
+2. **Deploy Container App**
+```bash
+az containerapp create \
+  --name freelancexchain-api \
+  --resource-group your-resource-group \
+  --environment freelancexchain-env \
+  --image your-username/freelancexchain-api:latest \
+  --target-port 3000 \
+  --ingress external \
+  --env-vars \
+    NODE_ENV=production \
+    PORT=3000 \
+    COSMOS_ENDPOINT="your-cosmos-endpoint" \
+    COSMOS_KEY="your-cosmos-key" \
+    COSMOS_DATABASE="freelance-marketplace" \
+    JWT_SECRET="your-jwt-secret"
+```
+
+3. **Update deployment**
+```bash
+az containerapp update \
+  --name freelancexchain-api \
+  --resource-group your-resource-group \
+  --image your-username/freelancexchain-api:latest
 ```
 
 ## Environment Variables

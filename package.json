@@ -38,7 +38,7 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-ethers": "^4.0.3",
+    "@nomicfoundation/hardhat-ethers": "^3.0.8",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@types/bcrypt": "^5.0.2",
     "@types/cors": "^2.8.17",

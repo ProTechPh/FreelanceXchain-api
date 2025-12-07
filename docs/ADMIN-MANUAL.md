@@ -110,16 +110,51 @@ pm2 save
 pm2 startup
 ```
 
-**Docker Deployment:**
-```dockerfile
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY dist ./dist
-EXPOSE 3000
-CMD ["node", "dist/index.js"]
+**Docker Deployment (Recommended):**
+
+The project includes a multi-stage Dockerfile for optimized production builds:
+
+```bash
+# Build and run locally
+docker build -t freelancexchain-api:latest .
+docker run -p 3000:3000 --env-file .env freelancexchain-api:latest
+
+# Push to Docker Hub
+docker login
+docker push your-username/freelancexchain-api:latest
 ```
+
+**Azure Container Apps Deployment:**
+
+```bash
+# Create environment
+az containerapp env create \
+  --name freelancexchain-env \
+  --resource-group your-rg \
+  --location japanwest
+
+# Deploy container
+az containerapp create \
+  --name freelancexchain-api \
+  --resource-group your-rg \
+  --environment freelancexchain-env \
+  --image your-username/freelancexchain-api:latest \
+  --target-port 3000 \
+  --ingress external \
+  --env-vars NODE_ENV=production PORT=3000 \
+    COSMOS_ENDPOINT="..." COSMOS_KEY="..." \
+    JWT_SECRET="..."
+
+# Update deployment
+az containerapp update \
+  --name freelancexchain-api \
+  --resource-group your-rg \
+  --image your-username/freelancexchain-api:latest
+```
+
+**Production URL:** https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io
+
+**Note:** Azure Container Apps is not available in Malaysia West. Use Japan West or Southeast Asia as alternatives.
 
 ---
 
