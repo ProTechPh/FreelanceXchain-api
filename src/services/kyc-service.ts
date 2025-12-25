@@ -15,6 +15,16 @@ import {
   KycTier,
 } from '../models/kyc.js';
 import { generateId } from '../utils/id.js';
+import {
+  submitKycToBlockchain,
+  approveKycOnBlockchain,
+  rejectKycOnBlockchain,
+  isWalletVerified,
+  getKycFromBlockchain,
+  BlockchainKycVerification,
+  BlockchainKycTier,
+} from './kyc-contract.js';
+import { generateWalletAddress } from './blockchain-client.js';
 
 export type KycError = {
   code: string;
@@ -22,6 +32,11 @@ export type KycError = {
 };
 
 export type KycResult<T> = T | KycError;
+
+// Extended KYC result with blockchain info
+export type KycWithBlockchain = KycVerification & {
+  blockchainVerification?: BlockchainKycVerification;
+};
 
 export function isKycError(result: KycResult<unknown>): result is KycError {
   return typeof result === 'object' && result !== null && 'code' in result;
@@ -148,7 +163,30 @@ export async function submitKyc(userId: string, input: KycSubmissionInput): Prom
     return updated ?? { code: 'UPDATE_FAILED', message: 'Failed to update KYC' };
   }
 
-  return kycRepository.createKyc(kyc);
+  const created = await kycRepository.createKyc(kyc);
+
+  // Submit to blockchain if user has wallet address
+  if (user.wallet_address) {
+    try {
+      await submitKycToBlockchain({
+        userId,
+        walletAddress: user.wallet_address,
+        kycData: {
+          firstName: input.firstName,
+          lastName: input.lastName,
+          dateOfBirth: input.dateOfBirth,
+          nationality: input.nationality,
+          documentType: input.document.type,
+          documentNumber: input.document.documentNumber,
+        },
+      });
+    } catch (error) {
+      // Log but don't fail - blockchain submission is secondary
+      console.error('Failed to submit KYC to blockchain:', error);
+    }
+  }
+
+  return created;
 }
 
 
@@ -305,6 +343,11 @@ export async function reviewKyc(
     return { code: 'REJECTION_REASON_REQUIRED', message: 'Rejection reason is required' };
   }
 
+  // Get user to check wallet address
+  const user = await userRepository.getUserById(kyc.userId);
+  const reviewerUser = await userRepository.getUserById(reviewerId);
+  const verifierAddress = reviewerUser?.wallet_address ?? generateWalletAddress();
+
   const now = new Date().toISOString();
   const updates: Partial<KycVerification> = {
     status: input.status,
@@ -320,6 +363,19 @@ export async function reviewKyc(
   if (input.status === 'rejected') {
     updates.rejectionReason = input.rejectionReason;
     updates.rejectionCode = input.rejectionCode;
+
+    // Update blockchain if user has wallet
+    if (user?.wallet_address) {
+      try {
+        await rejectKycOnBlockchain(
+          user.wallet_address,
+          input.rejectionReason ?? 'Verification rejected',
+          verifierAddress
+        );
+      } catch (error) {
+        console.error('Failed to reject KYC on blockchain:', error);
+      }
+    }
   }
 
   if (input.status === 'approved') {
@@ -327,6 +383,23 @@ export async function reviewKyc(
     const expiresAt = new Date();
     expiresAt.setFullYear(expiresAt.getFullYear() + 1);
     updates.expiresAt = expiresAt.toISOString();
+
+    // Update blockchain if user has wallet
+    if (user?.wallet_address) {
+      try {
+        const blockchainTier: BlockchainKycTier = kyc.tier as BlockchainKycTier;
+        await approveKycOnBlockchain(
+          {
+            walletAddress: user.wallet_address,
+            tier: blockchainTier,
+            validityDays: 365,
+          },
+          verifierAddress
+        );
+      } catch (error) {
+        console.error('Failed to approve KYC on blockchain:', error);
+      }
+    }
   }
 
   const updated = await kycRepository.updateKyc(kycId, kyc.userId, updates);
@@ -392,4 +465,82 @@ export function isKycComplete(kyc: KycVerification | null): boolean {
   const hasFaceMatch = kyc.faceMatchStatus === 'matched';
   
   return hasDocuments && hasLiveness && hasFaceMatch;
+}
+
+/**
+ * Check if a wallet address is verified on blockchain
+ */
+export async function checkWalletVerification(walletAddress: string): Promise<{
+  isVerified: boolean;
+  tier: BlockchainKycTier;
+  expiresAt: number | null;
+}> {
+  return isWalletVerified(walletAddress);
+}
+
+/**
+ * Get KYC status with blockchain verification info
+ */
+export async function getKycStatusWithBlockchain(userId: string): Promise<KycResult<KycWithBlockchain | null>> {
+  const kyc = await kycRepository.getKycByUserId(userId);
+  if (!kyc) return null;
+
+  const user = await userRepository.getUserById(userId);
+  if (!user?.wallet_address) return kyc;
+
+  const blockchainVerification = await getKycFromBlockchain(user.wallet_address);
+  
+  if (!blockchainVerification) return kyc;
+  
+  return {
+    ...kyc,
+    blockchainVerification,
+  };
+}
+
+/**
+ * Verify that off-chain KYC matches on-chain record
+ */
+export async function verifyKycIntegrity(userId: string): Promise<{
+  isValid: boolean;
+  offChainStatus: KycStatus | null;
+  onChainStatus: string | null;
+  mismatch: boolean;
+}> {
+  const kyc = await kycRepository.getKycByUserId(userId);
+  const user = await userRepository.getUserById(userId);
+
+  if (!kyc || !user?.wallet_address) {
+    return {
+      isValid: false,
+      offChainStatus: kyc?.status ?? null,
+      onChainStatus: null,
+      mismatch: false,
+    };
+  }
+
+  const blockchainKyc = await getKycFromBlockchain(user.wallet_address);
+  
+  if (!blockchainKyc) {
+    return {
+      isValid: kyc.status !== 'approved', // Valid if not approved (no blockchain record expected)
+      offChainStatus: kyc.status,
+      onChainStatus: null,
+      mismatch: kyc.status === 'approved', // Mismatch if approved but no blockchain record
+    };
+  }
+
+  // Check if statuses match
+  const statusMatch = 
+    (kyc.status === 'approved' && blockchainKyc.status === 'approved') ||
+    (kyc.status === 'rejected' && blockchainKyc.status === 'rejected') ||
+    (kyc.status === 'submitted' && blockchainKyc.status === 'pending') ||
+    (kyc.status === 'under_review' && blockchainKyc.status === 'pending');
+
+  return {
+    isValid: statusMatch,
+    offChainStatus: kyc.status,
+    onChainStatus: blockchainKyc.status,
+    mismatch: !statusMatch,
+  };
 }

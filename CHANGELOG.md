@@ -5,6 +5,53 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2025-12-25
+
+### Added
+
+#### Blockchain KYC Verification
+- `contracts/KYCVerification.sol` - Smart contract for on-chain KYC status
+- `src/services/kyc-contract.ts` - Blockchain KYC service interface
+- Hybrid KYC system: sensitive data in Supabase, verification status on blockchain
+- On-chain verification proof with data hash (privacy-compliant)
+- Automatic blockchain submission on KYC approval/rejection
+- Wallet verification status checking
+- KYC integrity verification (off-chain vs on-chain)
+
+#### Contract Agreements on Blockchain
+- `contracts/ContractAgreement.sol` - Smart contract for agreement signatures
+- `src/services/agreement-contract.ts` - Agreement blockchain service
+- Immutable proof that both parties agreed to terms
+- Terms hash stored on-chain (not actual terms)
+- Dual signature tracking (employer + freelancer)
+- Agreement status lifecycle (pending → signed → completed)
+
+#### Milestone Registry on Blockchain
+- `contracts/MilestoneRegistry.sol` - Smart contract for work history
+- `src/services/milestone-registry.ts` - Milestone registry service
+- Verifiable work completion records
+- Freelancer portfolio/stats on-chain
+- Work deliverables hash for proof
+- Completed milestones count and earnings tracking
+
+#### Dispute Resolution on Blockchain
+- `contracts/DisputeResolution.sol` - Smart contract for dispute outcomes
+- `src/services/dispute-registry.ts` - Dispute registry service
+- Transparent arbitration records
+- Evidence hash storage
+- Win/loss statistics per user
+- Immutable resolution reasoning
+
+#### KYC Blockchain Features
+- Submit KYC verification hash to blockchain
+- Approve/reject KYC with on-chain record
+- Check wallet verification status
+- Verify KYC data integrity
+- Time-based verification expiry (1 year)
+- Tier-based verification levels (basic, standard, enhanced)
+
+---
+
 ## [2.0.0] - 2025-12-25
 
 ### Changed
