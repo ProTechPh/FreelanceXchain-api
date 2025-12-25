@@ -42,6 +42,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Win/loss statistics per user
 - Immutable resolution reasoning
 
+#### Blockchain Integration in Services
+- `proposal-service.ts` - Auto-creates blockchain agreement when proposal accepted
+- `payment-service.ts` - Records milestone submissions and approvals on blockchain
+- `dispute-service.ts` - Records disputes and resolutions on blockchain
+- Seamless integration - blockchain operations are secondary (won't block main flow)
+- All blockchain operations wrapped in try-catch for resilience
+
 #### KYC Blockchain Features
 - Submit KYC verification hash to blockchain
 - Approve/reject KYC with on-chain record

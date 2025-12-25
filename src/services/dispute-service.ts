@@ -8,6 +8,7 @@ import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import { disputeRepository, DisputeEntity, EvidenceEntity, DisputeResolutionEntity } from '../repositories/dispute-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity, mapProjectFromEntity, mapMilestoneFromEntity } from '../utils/entity-mapper.js';
 import { generateId } from '../utils/id.js';
 import {
@@ -19,6 +20,12 @@ import {
   refundMilestone as refundEscrowMilestone,
   getEscrowByContractId,
 } from './escrow-contract.js';
+import {
+  createDisputeOnBlockchain,
+  updateDisputeEvidence,
+  resolveDisputeOnBlockchain,
+} from './dispute-registry.js';
+import { disputeAgreement } from './agreement-contract.js';
 
 export type DisputeServiceError = {
   code: string;
@@ -140,6 +147,30 @@ export async function createDispute(
   const createdDisputeEntity = await disputeRepository.createDispute(disputeEntity);
   const createdDispute = mapDisputeFromEntity(createdDisputeEntity);
 
+  // Record dispute on blockchain
+  try {
+    const initiator = await userRepository.getUserById(initiatorId);
+    const freelancer = await userRepository.getUserById(contract.freelancerId);
+    const employer = await userRepository.getUserById(contract.employerId);
+
+    if (initiator?.wallet_address && freelancer?.wallet_address && employer?.wallet_address) {
+      await createDisputeOnBlockchain({
+        disputeId: createdDispute.id,
+        contractId,
+        milestoneId,
+        initiatorWallet: initiator.wallet_address,
+        freelancerWallet: freelancer.wallet_address,
+        employerWallet: employer.wallet_address,
+        amount: milestone.amount,
+      });
+
+      // Mark agreement as disputed on blockchain
+      await disputeAgreement(contractId, initiator.wallet_address);
+    }
+  } catch (error) {
+    console.error('Failed to record dispute on blockchain:', error);
+  }
+
   // Update milestone status to disputed
   milestoneEntity.status = 'disputed';
   await projectRepository.updateProject(project.id, {
@@ -246,6 +277,17 @@ export async function submitEvidence(
     };
   }
 
+  // Update evidence hash on blockchain
+  try {
+    const submitter = await userRepository.getUserById(submitterId);
+    if (submitter?.wallet_address) {
+      const evidenceData = JSON.stringify(updatedEvidence);
+      await updateDisputeEvidence(disputeId, evidenceData, submitter.wallet_address);
+    }
+  } catch (error) {
+    console.error('Failed to update evidence on blockchain:', error);
+  }
+
   return { success: true, data: mapDisputeFromEntity(updatedDisputeEntity) };
 }
 
@@ -348,7 +390,6 @@ export async function resolveDispute(
     await contractRepository.updateContract(disputeEntity.contract_id, { status: 'active' });
   }
 
-  // Update dispute with resolution
   const updatedDisputeEntity = await disputeRepository.updateDispute(
     disputeId,
     {
@@ -365,6 +406,21 @@ export async function resolveDispute(
   }
 
   const updatedDispute = mapDisputeFromEntity(updatedDisputeEntity);
+
+  // Record resolution on blockchain
+  try {
+    const resolver = await userRepository.getUserById(resolvedBy);
+    if (resolver?.wallet_address) {
+      await resolveDisputeOnBlockchain({
+        disputeId,
+        outcome: decision,
+        reasoning,
+        arbiterWallet: resolver.wallet_address,
+      });
+    }
+  } catch (error) {
+    console.error('Failed to record dispute resolution on blockchain:', error);
+  }
 
   // Send notifications to both parties
   await notifyDisputeResolved(

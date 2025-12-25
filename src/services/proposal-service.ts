@@ -3,8 +3,10 @@ import { Contract, mapContractFromEntity, mapProjectFromEntity } from '../utils/
 import { proposalRepository, ProposalEntity } from '../repositories/proposal-repository.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
+import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
 
 export type CreateProposalInput = {
   projectId: string;
@@ -234,6 +236,35 @@ export async function acceptProposal(
 
   const createdContractEntity = await contractRepository.createContract(contractEntity);
   const createdContract = mapContractFromEntity(createdContractEntity);
+
+  // Create agreement on blockchain
+  try {
+    const employer = await userRepository.getUserById(project.employerId);
+    const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
+    
+    if (employer?.wallet_address && freelancer?.wallet_address) {
+      // Create agreement on blockchain (employer signs on creation)
+      await createAgreementOnBlockchain({
+        contractId: createdContract.id,
+        employerWallet: employer.wallet_address,
+        freelancerWallet: freelancer.wallet_address,
+        totalAmount: project.budget,
+        milestoneCount: project.milestones.length,
+        terms: {
+          projectTitle: project.title,
+          description: project.description ?? '',
+          milestones: project.milestones.map(m => ({ title: m.title, amount: m.amount })),
+          deadline: project.deadline ?? '',
+        },
+      });
+
+      // Freelancer auto-signs since they accepted the proposal
+      await signAgreement(createdContract.id, freelancer.wallet_address);
+    }
+  } catch (error) {
+    console.error('Failed to create blockchain agreement:', error);
+    // Continue - blockchain is secondary
+  }
 
   // Update project status to in_progress
   await projectRepository.updateProject(project.id, {

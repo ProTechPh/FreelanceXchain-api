@@ -7,6 +7,7 @@
 import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { generateId } from '../utils/id.js';
 import {
   deployEscrow,
@@ -21,6 +22,11 @@ import {
   notifyDisputeCreated,
 } from './notification-service.js';
 import { EscrowMilestone } from './blockchain-types.js';
+import {
+  submitMilestoneToRegistry,
+  approveMilestoneOnRegistry,
+} from './milestone-registry.js';
+import { completeAgreement } from './agreement-contract.js';
 
 export type PaymentServiceError = {
   code: string;
@@ -146,6 +152,26 @@ export async function requestMilestoneCompletion(
     milestones: projectEntity.milestones,
   });
 
+  // Submit milestone to blockchain registry
+  try {
+    const freelancer = await userRepository.getUserById(freelancerId);
+    const employer = await userRepository.getUserById(contract.employerId);
+    
+    if (freelancer?.wallet_address && employer?.wallet_address) {
+      await submitMilestoneToRegistry({
+        milestoneId,
+        contractId,
+        freelancerWallet: freelancer.wallet_address,
+        employerWallet: employer.wallet_address,
+        amount: milestone.amount,
+        title: milestone.title,
+        deliverables: `Milestone "${milestone.title}" submitted for review`,
+      });
+    }
+  } catch (error) {
+    console.error('Failed to submit milestone to blockchain registry:', error);
+  }
+
   // Send notification to employer
   await notifyMilestoneSubmitted(
     contract.employerId,
@@ -258,6 +284,16 @@ export async function approveMilestone(
     milestones: projectEntity.milestones,
   });
 
+  // Approve milestone on blockchain registry
+  try {
+    const employer = await userRepository.getUserById(employerId);
+    if (employer?.wallet_address) {
+      await approveMilestoneOnRegistry(milestoneId, employer.wallet_address);
+    }
+  } catch (error) {
+    console.error('Failed to approve milestone on blockchain registry:', error);
+  }
+
   // Check if all milestones are approved
   const allApproved = projectEntity.milestones.every(m => m.status === 'approved');
   let contractCompleted = false;
@@ -271,6 +307,16 @@ export async function approveMilestone(
     await projectRepository.updateProject(project.id, {
       status: 'completed',
     });
+
+    // Complete agreement on blockchain
+    try {
+      const employer = await userRepository.getUserById(employerId);
+      if (employer?.wallet_address) {
+        await completeAgreement(contractId, employer.wallet_address);
+      }
+    } catch (error) {
+      console.error('Failed to complete agreement on blockchain:', error);
+    }
   }
 
   // Send notifications
