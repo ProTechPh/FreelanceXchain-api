@@ -56,6 +56,7 @@ export type ResolveDisputeInput = {
   decision: 'freelancer_favor' | 'employer_favor' | 'split';
   reasoning: string;
   resolvedBy: string;
+  resolverRole: 'admin'; // Only admins can resolve disputes
 };
 
 
@@ -299,7 +300,15 @@ export async function submitEvidence(
 export async function resolveDispute(
   input: ResolveDisputeInput
 ): Promise<DisputeServiceResult<Dispute>> {
-  const { disputeId, decision, reasoning, resolvedBy } = input;
+  const { disputeId, decision, reasoning, resolvedBy, resolverRole } = input;
+
+  // Verify resolver is admin (defense in depth - route should also check)
+  if (resolverRole !== 'admin') {
+    return {
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Only administrators can resolve disputes' },
+    };
+  }
 
   // Find dispute
   const disputeEntity = await disputeRepository.findDisputeById(disputeId);

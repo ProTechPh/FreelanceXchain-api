@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { register, login, refreshTokens, isAuthError } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
+import { authRateLimiter } from '../middleware/rate-limiter.js';
 
 const router = Router();
 
@@ -142,7 +143,7 @@ function validateRole(role: unknown): role is UserRole {
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/register', async (req: Request, res: Response) => {
+router.post('/register', authRateLimiter, async (req: Request, res: Response) => {
   const { email, password, role, walletAddress } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -226,7 +227,7 @@ router.post('/register', async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/login', async (req: Request, res: Response) => {
+router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

@@ -30,18 +30,21 @@ export const config = {
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
   },
   supabase: {
-    url: getEnvVar('SUPABASE_URL', ''),
-    anonKey: getEnvVar('SUPABASE_ANON_KEY', ''),
+    url: getEnvVar('SUPABASE_URL'),
+    anonKey: getEnvVar('SUPABASE_ANON_KEY'),
     serviceRoleKey: getEnvVarOptional('SUPABASE_SERVICE_ROLE_KEY'),
   },
   jwt: {
-    secret: getEnvVar('JWT_SECRET', 'development-secret-key-min-32-chars'),
-    expiresIn: getEnvVar('JWT_EXPIRES_IN', '1h'),
-    refreshExpiresIn: getEnvVar('JWT_REFRESH_EXPIRES_IN', '7d'),
+    // In production, JWT_SECRET must be set - no default allowed
+    secret: process.env['NODE_ENV'] === 'production' 
+      ? getEnvVar('JWT_SECRET') 
+      : getEnvVar('JWT_SECRET'),
+    expiresIn: getEnvVar('JWT_EXPIRES_IN'),
+    refreshExpiresIn: getEnvVar('JWT_REFRESH_EXPIRES_IN'),
   },
   llm: {
     apiKey: getEnvVarOptional('LLM_API_KEY'),
-    apiUrl: getEnvVar('LLM_API_URL', 'https://generativelanguage.googleapis.com/v1beta'),
+    apiUrl: getEnvVar('LLM_API_URL'),
   },
   blockchain: {
     rpcUrl: getEnvVarOptional('BLOCKCHAIN_RPC_URL'),

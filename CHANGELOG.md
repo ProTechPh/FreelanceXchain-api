@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2025-12-25
+
+### Security Fixes
+- JWT secret now required in production (no default value allowed)
+- Added rate limiting middleware for auth endpoints (10 attempts per 15 minutes)
+- Fixed project proposals endpoint - now verifies employer owns the project
+- Added defense-in-depth for dispute resolution - service layer also verifies admin role
+- Created reusable rate limiter middleware with presets for auth, API, and sensitive operations
+
+### Added
+- `src/middleware/rate-limiter.ts` - Rate limiting middleware with configurable windows
+
+---
+
 ## [2.2.0] - 2025-12-25
 
 ### Added
@@ -260,6 +274,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 2.2.1 | 2025-12-25 | Security fixes and rate limiting |
 | 2.2.0 | 2025-12-25 | Added reviews, messages, and payments tables |
 | 2.1.0 | 2025-12-25 | Blockchain integration and AI features |
 | 2.0.0 | 2025-12-25 | Migrated to Supabase |

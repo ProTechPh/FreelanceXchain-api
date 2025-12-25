@@ -610,9 +610,39 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), async (r
  */
 router.get('/:id/proposals', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
+  const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
   const continuationToken = req.query['continuationToken'] as string | undefined;
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Verify employer owns this project
+  const projectResult = await getProjectById(projectId);
+  if (!projectResult.success) {
+    res.status(404).json({
+      error: { code: projectResult.error.code, message: projectResult.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (projectResult.data.employer_id !== userId) {
+    res.status(403).json({
+      error: { code: 'FORBIDDEN', message: 'You can only view proposals for your own projects' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
 
   const options: { maxItemCount: number; continuationToken?: string } = { maxItemCount: limit };
   if (continuationToken) {
