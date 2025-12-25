@@ -10,7 +10,8 @@ export type NotificationType =
   | 'payment_released'
   | 'dispute_created'
   | 'dispute_resolved'
-  | 'rating_received';
+  | 'rating_received'
+  | 'message';
 
 export type NotificationEntity = {
   id: string;

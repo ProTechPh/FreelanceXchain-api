@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2025-12-25
+
+### Added
+
+#### Reviews System
+- `reviews` table for storing ratings and feedback
+- `src/repositories/review-repository.ts` - Review data access
+- `src/services/review-service.ts` - Review business logic
+- Submit reviews after contract completion
+- Average rating calculation per user
+- Duplicate review prevention (one review per contract per user)
+- Automatic notification on new review
+
+#### Messaging System
+- `messages` table for contract-based communication
+- `src/repositories/message-repository.ts` - Message data access
+- `src/services/message-service.ts` - Messaging business logic
+- Send messages within contract context
+- Unread message count tracking
+- Mark messages as read
+- Conversation summary with latest message
+
+#### Payment Transaction History
+- `payments` table for transaction audit trail
+- `src/repositories/payment-repository.ts` - Payment data access
+- `src/services/transaction-service.ts` - Transaction recording
+- Record escrow deposits, milestone releases, refunds, dispute resolutions
+- Track payment status (pending, processing, completed, failed, refunded)
+- Transaction hash storage for blockchain payments
+- User earnings and spending summaries
+
+---
+
 ## [2.1.0] - 2025-12-25
 
 ### Added
@@ -48,6 +81,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `dispute-service.ts` - Records disputes and resolutions on blockchain
 - Seamless integration - blockchain operations are secondary (won't block main flow)
 - All blockchain operations wrapped in try-catch for resilience
+
+#### AI Assistant Features
+- `src/services/ai-assistant.ts` - New AI-powered assistant service
+- **Proposal Writer** - Generates personalized cover letters for freelancers
+  - Analyzes project requirements and freelancer skills
+  - Suggests appropriate rate and duration
+  - Highlights key selling points
+  - Supports different tones (professional, friendly, confident)
+- **Project Description Generator** - Helps employers write better project posts
+  - Creates clear, detailed descriptions
+  - Suggests milestone breakdown with percentages
+  - Provides tips for attracting better proposals
+- **Dispute Analysis** - AI-assisted dispute resolution
+  - Summarizes dispute objectively
+  - Lists points supporting each party
+  - Suggests fair resolution with confidence score
+  - Provides detailed reasoning
 
 #### KYC Blockchain Features
 - Submit KYC verification hash to blockchain
@@ -210,5 +260,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 2.2.0 | 2025-12-25 | Added reviews, messages, and payments tables |
+| 2.1.0 | 2025-12-25 | Blockchain integration and AI features |
 | 2.0.0 | 2025-12-25 | Migrated to Supabase |
 | 1.0.0 | 2025-12-07 | Initial release with full feature set |

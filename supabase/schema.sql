@@ -157,6 +157,47 @@ CREATE TABLE IF NOT EXISTS kyc_verifications (
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Reviews table (for ratings and feedback)
+CREATE TABLE IF NOT EXISTS reviews (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id UUID REFERENCES contracts(id) ON DELETE CASCADE,
+  reviewer_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  reviewee_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+  comment TEXT,
+  reviewer_role VARCHAR(20) NOT NULL CHECK (reviewer_role IN ('freelancer', 'employer')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(contract_id, reviewer_id)
+);
+
+-- Messages table (for communication between parties)
+CREATE TABLE IF NOT EXISTS messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id UUID REFERENCES contracts(id) ON DELETE CASCADE,
+  sender_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Payments table (transaction history)
+CREATE TABLE IF NOT EXISTS payments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  contract_id UUID REFERENCES contracts(id) ON DELETE CASCADE,
+  milestone_id VARCHAR(255),
+  payer_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  payee_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  amount DECIMAL(12, 2) NOT NULL,
+  currency VARCHAR(10) DEFAULT 'ETH',
+  tx_hash VARCHAR(255),
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed', 'refunded')),
+  payment_type VARCHAR(20) NOT NULL CHECK (payment_type IN ('escrow_deposit', 'milestone_release', 'refund', 'dispute_resolution')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_freelancer_profiles_user_id ON freelancer_profiles(user_id);
@@ -172,6 +213,13 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_kyc_user_id ON kyc_verifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_skills_category_id ON skills(category_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_contract_id ON reviews(contract_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_reviewee_id ON reviews(reviewee_id);
+CREATE INDEX IF NOT EXISTS idx_messages_contract_id ON messages(contract_id);
+CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
+CREATE INDEX IF NOT EXISTS idx_payments_contract_id ON payments(contract_id);
+CREATE INDEX IF NOT EXISTS idx_payments_payer_id ON payments(payer_id);
+CREATE INDEX IF NOT EXISTS idx_payments_payee_id ON payments(payee_id);
 
 -- Enable Row Level Security (RLS) on all tables
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -185,6 +233,9 @@ ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE kyc_verifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE skills ENABLE ROW LEVEL SECURITY;
 ALTER TABLE skill_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 
 -- Create policies for public read access (adjust as needed for your security requirements)
 CREATE POLICY "Allow public read on skill_categories" ON skill_categories FOR SELECT USING (true);
@@ -203,3 +254,6 @@ CREATE POLICY "Service role full access notifications" ON notifications FOR ALL 
 CREATE POLICY "Service role full access kyc_verifications" ON kyc_verifications FOR ALL USING (true);
 CREATE POLICY "Service role full access skills" ON skills FOR ALL USING (true);
 CREATE POLICY "Service role full access skill_categories" ON skill_categories FOR ALL USING (true);
+CREATE POLICY "Service role full access reviews" ON reviews FOR ALL USING (true);
+CREATE POLICY "Service role full access messages" ON messages FOR ALL USING (true);
+CREATE POLICY "Service role full access payments" ON payments FOR ALL USING (true);

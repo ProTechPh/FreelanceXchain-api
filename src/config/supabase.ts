@@ -15,6 +15,9 @@ export const TABLES = {
   SKILL_CATEGORIES: 'skill_categories',
   NOTIFICATIONS: 'notifications',
   KYC_VERIFICATIONS: 'kyc_verifications',
+  REVIEWS: 'reviews',
+  MESSAGES: 'messages',
+  PAYMENTS: 'payments',
 } as const;
 
 export type TableName = typeof TABLES[keyof typeof TABLES];
