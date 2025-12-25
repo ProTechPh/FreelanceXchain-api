@@ -1,34 +1,50 @@
 import { BaseRepository } from './base-repository.js';
-import { COLLECTIONS } from '../config/database.js';
-import { User } from '../models/user.js';
+import { TABLES } from '../config/supabase.js';
 
-export class UserRepository extends BaseRepository<User> {
+export type UserEntity = {
+  id: string;
+  email: string;
+  password_hash: string;
+  role: 'freelancer' | 'employer' | 'admin';
+  wallet_address: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export class UserRepository extends BaseRepository<UserEntity> {
   constructor() {
-    super(COLLECTIONS.USERS);
+    super(TABLES.USERS);
   }
 
-  async createUser(user: User): Promise<User> {
-    return this.create(user, user.id);
+  async createUser(user: Omit<UserEntity, 'created_at' | 'updated_at'>): Promise<UserEntity> {
+    return this.create(user);
   }
 
-  async getUserById(id: string): Promise<User | null> {
-    return this.getById(id, id);
+  async getUserById(id: string): Promise<UserEntity | null> {
+    return this.getById(id);
   }
 
-  async getUserByEmail(email: string): Promise<User | null> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.email = @email',
-      parameters: [{ name: '@email', value: email.toLowerCase() }],
-    };
-    return this.findOne(querySpec);
+  async getUserByEmail(email: string): Promise<UserEntity | null> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .ilike('email', email.toLowerCase())
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return null;
+      throw new Error(`Failed to get user by email: ${error.message}`);
+    }
+    return data as UserEntity;
   }
 
-  async updateUser(id: string, updates: Partial<User>): Promise<User | null> {
-    return this.update(id, id, updates);
+  async updateUser(id: string, updates: Partial<UserEntity>): Promise<UserEntity | null> {
+    return this.update(id, updates);
   }
 
   async deleteUser(id: string): Promise<boolean> {
-    return this.delete(id, id);
+    return this.delete(id);
   }
 
   async emailExists(email: string): Promise<boolean> {

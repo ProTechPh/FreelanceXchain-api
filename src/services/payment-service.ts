@@ -4,9 +4,7 @@
  * Requirements: 6.2, 6.3, 6.4, 6.5
  */
 
-import { Contract } from '../models/contract.js';
-import { Project, MilestoneStatus } from '../models/project.js';
-import { Dispute } from '../models/dispute.js';
+import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { generateId } from '../utils/id.js';
@@ -85,13 +83,14 @@ export async function requestMilestoneCompletion(
   freelancerId: string
 ): Promise<PaymentServiceResult<MilestoneCompletionResult>> {
   // Get contract
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
     };
   }
+  const contract = mapContractFromEntity(contractEntity);
 
   // Verify freelancer owns this contract
   if (contract.freelancerId !== freelancerId) {
@@ -102,17 +101,19 @@ export async function requestMilestoneCompletion(
   }
 
   // Get project to access milestones
-  const project = await projectRepository.findProjectById(contract.projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
+  const project = mapProjectFromEntity(projectEntity);
 
   // Find milestone
+  const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
   const milestone = project.milestones.find(m => m.id === milestoneId);
-  if (!milestone) {
+  if (!milestone || milestoneIndex === -1) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Milestone not found' },
@@ -135,11 +136,14 @@ export async function requestMilestoneCompletion(
   }
 
   // Update milestone status to submitted
-  milestone.status = 'submitted';
+  const milestoneToUpdate = projectEntity.milestones[milestoneIndex];
+  if (milestoneToUpdate) {
+    milestoneToUpdate.status = 'submitted';
+  }
 
   // Update project in database
-  await projectRepository.updateProject(project.id, project.employerId, {
-    milestones: project.milestones,
+  await projectRepository.updateProject(project.id, {
+    milestones: projectEntity.milestones,
   });
 
   // Send notification to employer
@@ -174,13 +178,14 @@ export async function approveMilestone(
   employerId: string
 ): Promise<PaymentServiceResult<MilestoneApprovalResult>> {
   // Get contract
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
     };
   }
+  const contract = mapContractFromEntity(contractEntity);
 
   // Verify employer owns this contract
   if (contract.employerId !== employerId) {
@@ -191,17 +196,19 @@ export async function approveMilestone(
   }
 
   // Get project to access milestones
-  const project = await projectRepository.findProjectById(contract.projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
+  const project = mapProjectFromEntity(projectEntity);
 
   // Find milestone
+  const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
   const milestone = project.milestones.find(m => m.id === milestoneId);
-  if (!milestone) {
+  if (!milestone || milestoneIndex === -1) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Milestone not found' },
@@ -241,15 +248,18 @@ export async function approveMilestone(
   }
 
   // Update milestone status to approved
-  milestone.status = 'approved';
+  const milestoneToApprove = projectEntity.milestones[milestoneIndex];
+  if (milestoneToApprove) {
+    milestoneToApprove.status = 'approved';
+  }
 
   // Update project in database
-  await projectRepository.updateProject(project.id, project.employerId, {
-    milestones: project.milestones,
+  await projectRepository.updateProject(project.id, {
+    milestones: projectEntity.milestones,
   });
 
   // Check if all milestones are approved
-  const allApproved = project.milestones.every(m => m.status === 'approved');
+  const allApproved = projectEntity.milestones.every(m => m.status === 'approved');
   let contractCompleted = false;
 
   if (allApproved) {
@@ -258,7 +268,7 @@ export async function approveMilestone(
     contractCompleted = true;
 
     // Update project status to completed
-    await projectRepository.updateProject(project.id, project.employerId, {
+    await projectRepository.updateProject(project.id, {
       status: 'completed',
     });
   }
@@ -308,13 +318,14 @@ export async function disputeMilestone(
   reason: string
 ): Promise<PaymentServiceResult<MilestoneDisputeResult>> {
   // Get contract
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
     };
   }
+  const contract = mapContractFromEntity(contractEntity);
 
   // Verify initiator is part of this contract
   if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
@@ -325,17 +336,19 @@ export async function disputeMilestone(
   }
 
   // Get project to access milestones
-  const project = await projectRepository.findProjectById(contract.projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
+  const project = mapProjectFromEntity(projectEntity);
 
   // Find milestone
+  const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
   const milestone = project.milestones.find(m => m.id === milestoneId);
-  if (!milestone) {
+  if (!milestone || milestoneIndex === -1) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Milestone not found' },
@@ -375,11 +388,14 @@ export async function disputeMilestone(
   disputeStore.set(disputeId, dispute);
 
   // Update milestone status to disputed
-  milestone.status = 'disputed';
+  const milestoneToDispute = projectEntity.milestones[milestoneIndex];
+  if (milestoneToDispute) {
+    milestoneToDispute.status = 'disputed';
+  }
 
   // Update project in database
-  await projectRepository.updateProject(project.id, project.employerId, {
-    milestones: project.milestones,
+  await projectRepository.updateProject(project.id, {
+    milestones: projectEntity.milestones,
   });
 
   // Update contract status to disputed
@@ -427,13 +443,14 @@ export async function getContractPaymentStatus(
   userId: string
 ): Promise<PaymentServiceResult<ContractPaymentStatus>> {
   // Get contract
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
     };
   }
+  const contract = mapContractFromEntity(contractEntity);
 
   // Verify user is part of this contract
   if (contract.employerId !== userId && contract.freelancerId !== userId) {
@@ -444,13 +461,14 @@ export async function getContractPaymentStatus(
   }
 
   // Get project to access milestones
-  const project = await projectRepository.findProjectById(contract.projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
+  const project = mapProjectFromEntity(projectEntity);
 
   // Calculate amounts
   const totalAmount = project.budget;
@@ -483,17 +501,17 @@ export async function getContractPaymentStatus(
  * Requirements: 6.5
  */
 export async function isContractComplete(contractId: string): Promise<boolean> {
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
     return false;
   }
 
-  const project = await projectRepository.findProjectById(contract.projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
+  if (!projectEntity) {
     return false;
   }
 
-  return project.milestones.every(m => m.status === 'approved');
+  return projectEntity.milestones.every(m => m.status === 'approved');
 }
 
 /**
@@ -559,7 +577,7 @@ export async function initializeContractEscrow(
 
     // Update contract with escrow address
     await contractRepository.updateContract(contract.id, {
-      escrowAddress: deployment.escrowAddress,
+      escrow_address: deployment.escrowAddress,
     });
 
     return {

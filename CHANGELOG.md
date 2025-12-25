@@ -5,6 +5,34 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2025-12-25
+
+### Changed
+
+#### Database Migration
+- Migrated from Azure Cosmos DB to Supabase (PostgreSQL)
+- Updated all repositories to use Supabase client
+- Converted document-based schema to relational tables
+- Added entity mapper utilities for type conversion
+
+#### Configuration
+- Replaced Cosmos DB environment variables with Supabase
+- Updated database configuration module
+- Simplified connection handling
+
+### Added
+- `supabase/schema.sql` - Complete PostgreSQL schema
+- `src/config/supabase.ts` - Supabase client configuration
+- `src/utils/entity-mapper.ts` - Entity type conversion utilities
+- Row Level Security (RLS) policies for all tables
+
+### Removed
+- Azure Cosmos DB dependency (`@azure/cosmos`)
+- Azure deployment configuration files
+- Azure-specific documentation
+
+---
+
 ## [1.0.0] - 2025-12-07
 
 ### Added
@@ -68,7 +96,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Search & Discovery
 - Project search with filters (skills, budget, status)
 - Freelancer search with filters (skills, rate, availability)
-- Pagination with continuation tokens
+- Pagination support
 
 #### Documentation
 - Swagger/OpenAPI documentation at /api-docs
@@ -80,7 +108,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Backend Stack
 - Node.js with Express.js
 - TypeScript for type safety
-- Azure Cosmos DB for data storage
+- Supabase (PostgreSQL) for data storage
 - JWT for authentication
 
 #### Blockchain Stack
@@ -101,56 +129,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CORS configuration
 - Smart contract access modifiers
 - Reentrancy guards
-
----
-
-## [1.1.0] - 2025-12-07
-
-### Added
-
-#### Docker Deployment
-- Multi-stage Dockerfile for optimized production builds
-- Docker image published to Docker Hub (`jericko134/freelancexchain-api`)
-- `.dockerignore` for efficient image builds
-
-#### Azure Container Apps Deployment
-- Deployed to Azure Container Apps in Japan West region
-- Production URL: `https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io`
-- Environment variables configured for production
-- Auto-scaling with consumption-based pricing
-
-### Changed
-- Updated Swagger configuration to support production server URL
-- Modified tsconfig to preserve JSDoc comments for Swagger in production
-- Swagger now dynamically switches between development and production servers
-
-### Technical Notes
-
-#### Deployment Challenges Encountered
-1. **Azure App Service Issues**: Initial deployment to Azure App Service faced multiple challenges:
-   - TypeScript compilation issues during remote build
-   - `tsc` not found errors due to dev dependencies being omitted
-   - WSL/bash not available on Windows for build hooks
-   
-2. **Solution**: Switched to Docker-based deployment:
-   - Multi-stage build compiles TypeScript in builder stage
-   - Production stage only includes compiled JS and production dependencies
-   - Deployed to Azure Container Apps instead of App Service
-
-3. **Region Limitations**: 
-   - Malaysia West doesn't support Azure Container Apps
-   - Deployed to Japan West as nearest supported region
-
-#### Docker Build Process
-```dockerfile
-# Builder stage - compiles TypeScript
-FROM node:20-alpine AS builder
-# ... installs all deps, runs tsc
-
-# Production stage - minimal image
-FROM node:20-alpine AS production
-# ... only production deps + compiled dist
-```
 
 ---
 
@@ -178,5 +156,5 @@ FROM node:20-alpine AS production
 
 | Version | Date | Description |
 |---------|------|-------------|
-| 1.1.0 | 2025-12-07 | Docker deployment, Azure Container Apps |
+| 2.0.0 | 2025-12-25 | Migrated to Supabase |
 | 1.0.0 | 2025-12-07 | Initial release with full feature set |

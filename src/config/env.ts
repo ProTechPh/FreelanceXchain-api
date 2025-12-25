@@ -29,10 +29,10 @@ export const config = {
     port: getEnvVarNumber('PORT', 3000),
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
   },
-  cosmos: {
-    endpoint: getEnvVar('COSMOS_ENDPOINT', ''),
-    key: getEnvVar('COSMOS_KEY', ''),
-    database: getEnvVar('COSMOS_DATABASE', 'freelance-marketplace'),
+  supabase: {
+    url: getEnvVar('SUPABASE_URL', ''),
+    anonKey: getEnvVar('SUPABASE_ANON_KEY', ''),
+    serviceRoleKey: getEnvVarOptional('SUPABASE_SERVICE_ROLE_KEY'),
   },
   jwt: {
     secret: getEnvVar('JWT_SECRET', 'development-secret-key-min-32-chars'),

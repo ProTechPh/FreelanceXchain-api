@@ -20,7 +20,7 @@ This platform addresses key challenges in the gig economy:
 | Layer | Technology |
 |-------|------------|
 | Backend | Node.js, Express, TypeScript |
-| Database | Azure Cosmos DB |
+| Database | Supabase (PostgreSQL) |
 | Blockchain | Ethereum (Solidity), Hardhat, Ethers.js |
 | AI/ML | LLM API |
 | Documentation | Swagger/OpenAPI |
@@ -59,25 +59,20 @@ This platform addresses key challenges in the gig economy:
 │   ├── routes/               # API route handlers
 │   ├── services/             # Business logic
 │   └── utils/                # Utility functions
+├── supabase/                 # Supabase schema and migrations
 ├── artifacts/                # Compiled contracts
 └── dist/                     # Compiled TypeScript
 ```
-
-## Live Demo
-
-**Production API:** https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io
-
-**Swagger Docs:** https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io/api-docs
 
 ## Installation
 
 ### Prerequisites
 - Node.js 18+ (20 recommended)
 - npm or yarn
-- Azure Cosmos DB account
+- Supabase account (https://supabase.com)
 - Ethereum wallet (for blockchain features)
 - LLM API key (for AI features)
-- Docker (for containerized deployment)
+- Docker (optional, for containerized deployment)
 
 ### Local Development Setup
 
@@ -94,17 +89,22 @@ cp .env.example .env
 # Edit .env with your credentials
 ```
 
-3. **Compile smart contracts**
+3. **Set up Supabase database**
+- Create a new project at https://supabase.com
+- Run the SQL schema from `supabase/schema.sql` in the SQL Editor
+- Copy your project URL and anon key to `.env`
+
+4. **Compile smart contracts**
 ```bash
 npm run compile
 ```
 
-4. **Build TypeScript**
+5. **Build TypeScript**
 ```bash
 npm run build
 ```
 
-5. **Start the server**
+6. **Start the server**
 ```bash
 npm start
 # Or for development with hot reload:
@@ -115,54 +115,12 @@ npm run dev
 
 1. **Build Docker image**
 ```bash
-docker build -t your-username/freelancexchain-api:latest .
+docker build -t freelancexchain-api:latest .
 ```
 
 2. **Run locally with Docker**
 ```bash
-docker run -p 3000:3000 --env-file .env your-username/freelancexchain-api:latest
-```
-
-3. **Push to Docker Hub**
-```bash
-docker login
-docker push your-username/freelancexchain-api:latest
-```
-
-### Azure Container Apps Deployment
-
-1. **Create Container Apps Environment**
-```bash
-az containerapp env create \
-  --name freelancexchain-env \
-  --resource-group your-resource-group \
-  --location japanwest
-```
-
-2. **Deploy Container App**
-```bash
-az containerapp create \
-  --name freelancexchain-api \
-  --resource-group your-resource-group \
-  --environment freelancexchain-env \
-  --image your-username/freelancexchain-api:latest \
-  --target-port 3000 \
-  --ingress external \
-  --env-vars \
-    NODE_ENV=production \
-    PORT=3000 \
-    COSMOS_ENDPOINT="your-cosmos-endpoint" \
-    COSMOS_KEY="your-cosmos-key" \
-    COSMOS_DATABASE="freelance-marketplace" \
-    JWT_SECRET="your-jwt-secret"
-```
-
-3. **Update deployment**
-```bash
-az containerapp update \
-  --name freelancexchain-api \
-  --resource-group your-resource-group \
-  --image your-username/freelancexchain-api:latest
+docker run -p 3000:3000 --env-file .env freelancexchain-api:latest
 ```
 
 ## Environment Variables
@@ -171,9 +129,9 @@ az containerapp update \
 |----------|-------------|
 | `PORT` | Server port (default: 3000) |
 | `NODE_ENV` | Environment (development/production) |
-| `COSMOS_ENDPOINT` | Azure Cosmos DB endpoint URL |
-| `COSMOS_KEY` | Azure Cosmos DB primary key |
-| `COSMOS_DATABASE` | Database name |
+| `SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_ANON_KEY` | Supabase anonymous key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (optional) |
 | `JWT_SECRET` | Secret for JWT signing (min 32 chars) |
 | `JWT_EXPIRES_IN` | Access token expiry (e.g., 1h) |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token expiry (e.g., 7d) |
@@ -265,13 +223,13 @@ npm run test:watch
 
 | Document | Description |
 |----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | System architecture diagrams and component relationships |
+| [Architecture](docs/ARCHITECTURE.md) | System architecture diagrams |
 | [API Documentation](docs/API-DOCUMENTATION.md) | Complete API endpoint reference |
 | [User Manual](docs/USER-MANUAL.md) | Guide for freelancers and employers |
-| [Admin Manual](docs/ADMIN-MANUAL.md) | System administration and deployment guide |
-| [Technical Specs](docs/TECHNICAL-SPECS.md) | Technical specifications and data models |
+| [Admin Manual](docs/ADMIN-MANUAL.md) | System administration guide |
+| [Technical Specs](docs/TECHNICAL-SPECS.md) | Technical specifications |
 | [Testing](docs/TESTING.md) | Test cases and results |
-| [Changelog](CHANGELOG.md) | Version history and updates |
+| [Changelog](CHANGELOG.md) | Version history |
 
 ## License
 

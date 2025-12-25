@@ -1,6 +1,4 @@
-import { Project, Milestone, ProjectStatus, MilestoneStatus } from '../models/project.js';
-import { SkillReference } from '../models/freelancer-profile.js';
-import { projectRepository } from '../repositories/project-repository.js';
+import { projectRepository, ProjectEntity, MilestoneEntity, ProjectStatus, MilestoneStatus } from '../repositories/project-repository.js';
 import { proposalRepository } from '../repositories/proposal-repository.js';
 import { skillRepository } from '../repositories/skill-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
@@ -30,7 +28,7 @@ export type AddMilestoneInput = {
   dueDate: string;
 };
 
-export type ProjectWithProposalCount = Project & {
+export type ProjectWithProposalCount = ProjectEntity & {
   proposalCount: number;
 };
 
@@ -44,10 +42,9 @@ export type ProjectServiceResult<T> =
   | { success: true; data: T }
   | { success: false; error: ProjectServiceError };
 
+type SkillRef = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
 
-// Validation helpers
-
-function validateMilestoneBudget(milestones: Milestone[], totalBudget: number): { valid: boolean; message?: string } {
+function validateMilestoneBudget(milestones: MilestoneEntity[], totalBudget: number): { valid: boolean; message?: string } {
   const milestoneSum = milestones.reduce((sum, m) => sum + m.amount, 0);
   if (milestoneSum !== totalBudget) {
     return {
@@ -62,35 +59,33 @@ async function validateSkills(skillIds: string[]): Promise<{ valid: boolean; inv
   const invalidIds: string[] = [];
   for (const skillId of skillIds) {
     const skill = await skillRepository.findSkillById(skillId);
-    if (!skill || !skill.isActive) {
+    if (!skill || !skill.is_active) {
       invalidIds.push(skillId);
     }
   }
   return { valid: invalidIds.length === 0, invalidIds };
 }
 
-async function buildSkillReferences(skillIds: string[]): Promise<SkillReference[]> {
-  const skillRefs: SkillReference[] = [];
+async function buildSkillReferences(skillIds: string[]): Promise<SkillRef[]> {
+  const skillRefs: SkillRef[] = [];
   for (const skillId of skillIds) {
     const skill = await skillRepository.findSkillById(skillId);
-    if (skill && skill.isActive) {
+    if (skill && skill.is_active) {
       skillRefs.push({
-        skillId: skill.id,
-        skillName: skill.name,
-        categoryId: skill.categoryId,
-        yearsOfExperience: 0,
+        skill_id: skill.id,
+        skill_name: skill.name,
+        category_id: skill.category_id,
+        years_of_experience: 0,
       });
     }
   }
   return skillRefs;
 }
 
-// Project Operations
-
 export async function createProject(
   employerId: string,
   input: CreateProjectInput
-): Promise<ProjectServiceResult<Project>> {
+): Promise<ProjectServiceResult<ProjectEntity>> {
   const skillIds = input.requiredSkills.map(s => s.skillId);
   const skillValidation = await validateSkills(skillIds);
   
@@ -107,26 +102,23 @@ export async function createProject(
 
   const skillRefs = await buildSkillReferences(skillIds);
 
-  const project: Project = {
+  const projectInput = {
     id: generateId(),
-    employerId,
+    employer_id: employerId,
     title: input.title,
     description: input.description,
-    requiredSkills: skillRefs,
+    required_skills: skillRefs,
     budget: input.budget,
     deadline: input.deadline,
-    status: 'open',
+    status: 'open' as ProjectStatus,
     milestones: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
 
-  const created = await projectRepository.createProject(project);
+  const created = await projectRepository.createProject(projectInput);
   return { success: true, data: created };
 }
 
-
-export async function getProjectById(projectId: string): Promise<ProjectServiceResult<Project>> {
+export async function getProjectById(projectId: string): Promise<ProjectServiceResult<ProjectEntity>> {
   const project = await projectRepository.findProjectById(projectId);
   if (!project) {
     return {
@@ -141,16 +133,15 @@ export async function updateProject(
   projectId: string,
   employerId: string,
   input: UpdateProjectInput
-): Promise<ProjectServiceResult<Project>> {
-  const existingProject = await projectRepository.getProjectById(projectId, employerId);
-  if (!existingProject) {
+): Promise<ProjectServiceResult<ProjectEntity>> {
+  const existingProject = await projectRepository.getProjectById(projectId);
+  if (!existingProject || existingProject.employer_id !== employerId) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
 
-  // Check if project has accepted proposals (lock check)
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
     return {
@@ -159,7 +150,7 @@ export async function updateProject(
     };
   }
 
-  let skillRefs = existingProject.requiredSkills;
+  let skillRefs = existingProject.required_skills;
   if (input.requiredSkills) {
     const skillIds = input.requiredSkills.map(s => s.skillId);
     const skillValidation = await validateSkills(skillIds);
@@ -177,7 +168,6 @@ export async function updateProject(
     skillRefs = await buildSkillReferences(skillIds);
   }
 
-  // If budget is being updated and milestones exist, validate milestone sum
   const newBudget = input.budget ?? existingProject.budget;
   if (existingProject.milestones.length > 0) {
     const budgetValidation = validateMilestoneBudget(existingProject.milestones, newBudget);
@@ -189,16 +179,16 @@ export async function updateProject(
     }
   }
 
-  const updates: Partial<Project> = {
+  const updates: Partial<ProjectEntity> = {
     ...(input.title && { title: input.title }),
     ...(input.description && { description: input.description }),
-    ...(input.requiredSkills && { requiredSkills: skillRefs }),
+    ...(input.requiredSkills && { required_skills: skillRefs }),
     ...(input.budget !== undefined && { budget: input.budget }),
     ...(input.deadline && { deadline: input.deadline }),
     ...(input.status && { status: input.status }),
   };
 
-  const updated = await projectRepository.updateProject(projectId, employerId, updates);
+  const updated = await projectRepository.updateProject(projectId, updates);
   if (!updated) {
     return {
       success: false,
@@ -209,21 +199,19 @@ export async function updateProject(
   return { success: true, data: updated };
 }
 
-
 export async function addMilestones(
   projectId: string,
   employerId: string,
   milestones: AddMilestoneInput[]
-): Promise<ProjectServiceResult<Project>> {
-  const existingProject = await projectRepository.getProjectById(projectId, employerId);
-  if (!existingProject) {
+): Promise<ProjectServiceResult<ProjectEntity>> {
+  const existingProject = await projectRepository.getProjectById(projectId);
+  if (!existingProject || existingProject.employer_id !== employerId) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
 
-  // Check if project has accepted proposals (lock check)
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
     return {
@@ -232,18 +220,17 @@ export async function addMilestones(
     };
   }
 
-  const newMilestones: Milestone[] = milestones.map(m => ({
+  const newMilestones: MilestoneEntity[] = milestones.map(m => ({
     id: generateId(),
     title: m.title,
     description: m.description,
     amount: m.amount,
-    dueDate: m.dueDate,
+    due_date: m.dueDate,
     status: 'pending' as MilestoneStatus,
   }));
 
   const allMilestones = [...existingProject.milestones, ...newMilestones];
   
-  // Validate milestone budget sum
   const budgetValidation = validateMilestoneBudget(allMilestones, existingProject.budget);
   if (!budgetValidation.valid) {
     return {
@@ -252,10 +239,7 @@ export async function addMilestones(
     };
   }
 
-  const updated = await projectRepository.updateProject(projectId, employerId, {
-    milestones: allMilestones,
-  });
-
+  const updated = await projectRepository.updateProject(projectId, { milestones: allMilestones });
   if (!updated) {
     return {
       success: false,
@@ -270,16 +254,15 @@ export async function setMilestones(
   projectId: string,
   employerId: string,
   milestones: AddMilestoneInput[]
-): Promise<ProjectServiceResult<Project>> {
-  const existingProject = await projectRepository.getProjectById(projectId, employerId);
-  if (!existingProject) {
+): Promise<ProjectServiceResult<ProjectEntity>> {
+  const existingProject = await projectRepository.getProjectById(projectId);
+  if (!existingProject || existingProject.employer_id !== employerId) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
 
-  // Check if project has accepted proposals (lock check)
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
     return {
@@ -288,16 +271,15 @@ export async function setMilestones(
     };
   }
 
-  const newMilestones: Milestone[] = milestones.map(m => ({
+  const newMilestones: MilestoneEntity[] = milestones.map(m => ({
     id: generateId(),
     title: m.title,
     description: m.description,
     amount: m.amount,
-    dueDate: m.dueDate,
+    due_date: m.dueDate,
     status: 'pending' as MilestoneStatus,
   }));
 
-  // Validate milestone budget sum
   const budgetValidation = validateMilestoneBudget(newMilestones, existingProject.budget);
   if (!budgetValidation.valid) {
     return {
@@ -306,10 +288,7 @@ export async function setMilestones(
     };
   }
 
-  const updated = await projectRepository.updateProject(projectId, employerId, {
-    milestones: newMilestones,
-  });
-
+  const updated = await projectRepository.updateProject(projectId, { milestones: newMilestones });
   if (!updated) {
     return {
       success: false,
@@ -319,7 +298,6 @@ export async function setMilestones(
 
   return { success: true, data: updated };
 }
-
 
 export async function listProjectsByEmployer(
   employerId: string,
@@ -334,19 +312,19 @@ export async function listProjectsByEmployer(
     })
   );
 
-  const paginatedResult: PaginatedResult<ProjectWithProposalCount> = {
-    items: projectsWithCounts,
-    hasMore: result.hasMore,
+  return { 
+    success: true, 
+    data: {
+      items: projectsWithCounts,
+      hasMore: result.hasMore,
+      total: result.total,
+    }
   };
-  if (result.continuationToken) {
-    paginatedResult.continuationToken = result.continuationToken;
-  }
-  return { success: true, data: paginatedResult };
 }
 
 export async function listOpenProjects(
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<Project>>> {
+): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getAllOpenProjects(options);
   return { success: true, data: result };
 }
@@ -354,7 +332,7 @@ export async function listOpenProjects(
 export async function listProjectsByStatus(
   status: ProjectStatus,
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<Project>>> {
+): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByStatus(status, options);
   return { success: true, data: result };
 }
@@ -362,7 +340,7 @@ export async function listProjectsByStatus(
 export async function searchProjects(
   keyword: string,
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<Project>>> {
+): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.searchProjects(keyword, options);
   return { success: true, data: result };
 }
@@ -370,7 +348,7 @@ export async function searchProjects(
 export async function listProjectsBySkills(
   skillIds: string[],
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<Project>>> {
+): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsBySkills(skillIds, options);
   return { success: true, data: result };
 }
@@ -379,7 +357,7 @@ export async function listProjectsByBudgetRange(
   minBudget: number,
   maxBudget: number,
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<Project>>> {
+): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, options);
   return { success: true, data: result };
 }
@@ -388,15 +366,14 @@ export async function deleteProject(
   projectId: string,
   employerId: string
 ): Promise<ProjectServiceResult<boolean>> {
-  const existingProject = await projectRepository.getProjectById(projectId, employerId);
-  if (!existingProject) {
+  const existingProject = await projectRepository.getProjectById(projectId);
+  if (!existingProject || existingProject.employer_id !== employerId) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
 
-  // Check if project has accepted proposals (lock check)
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
     return {
@@ -405,6 +382,6 @@ export async function deleteProject(
     };
   }
 
-  const deleted = await projectRepository.deleteProject(projectId, employerId);
+  const deleted = await projectRepository.deleteProject(projectId);
   return { success: true, data: deleted };
 }

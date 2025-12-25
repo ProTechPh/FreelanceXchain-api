@@ -1,79 +1,134 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
-import { COLLECTIONS } from '../config/database.js';
-import { Dispute, DisputeStatus } from '../models/dispute.js';
+import { TABLES } from '../config/supabase.js';
 
-export class DisputeRepository extends BaseRepository<Dispute> {
+export type DisputeStatus = 'open' | 'under_review' | 'resolved';
+
+export type EvidenceEntity = {
+  id: string;
+  submitter_id: string;
+  type: 'text' | 'file' | 'link';
+  content: string;
+  submitted_at: string;
+};
+
+export type DisputeResolutionEntity = {
+  decision: 'freelancer_favor' | 'employer_favor' | 'split';
+  reasoning: string;
+  resolved_by: string;
+  resolved_at: string;
+};
+
+export type DisputeEntity = {
+  id: string;
+  contract_id: string;
+  milestone_id: string;
+  initiator_id: string;
+  reason: string;
+  evidence: EvidenceEntity[];
+  status: DisputeStatus;
+  resolution: DisputeResolutionEntity | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export class DisputeRepository extends BaseRepository<DisputeEntity> {
   constructor() {
-    super(COLLECTIONS.DISPUTES);
+    super(TABLES.DISPUTES);
   }
 
-  async createDispute(dispute: Dispute): Promise<Dispute> {
-    return this.create(dispute, dispute.contractId);
+  async createDispute(dispute: Omit<DisputeEntity, 'created_at' | 'updated_at'>): Promise<DisputeEntity> {
+    return this.create(dispute);
   }
 
-  async getDisputeById(id: string, contractId: string): Promise<Dispute | null> {
-    return this.getById(id, contractId);
+  async getDisputeById(id: string): Promise<DisputeEntity | null> {
+    return this.getById(id);
   }
 
-  async updateDispute(id: string, contractId: string, updates: Partial<Dispute>): Promise<Dispute | null> {
-    return this.update(id, contractId, updates);
+  async updateDispute(id: string, updates: Partial<DisputeEntity>): Promise<DisputeEntity | null> {
+    return this.update(id, updates);
   }
 
-  async findDisputeById(id: string): Promise<Dispute | null> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.id = @id',
-      parameters: [{ name: '@id', value: id }],
+  async findDisputeById(id: string): Promise<DisputeEntity | null> {
+    return this.getById(id);
+  }
+
+  async getDisputesByContract(contractId: string, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('contract_id', contractId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get disputes by contract: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as DisputeEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.findOne(querySpec);
   }
 
-  async getDisputesByContract(contractId: string, options?: QueryOptions): Promise<PaginatedResult<Dispute>> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.contractId = @contractId ORDER BY c.createdAt DESC',
-      parameters: [{ name: '@contractId', value: contractId }],
-    };
-    return this.query(querySpec, options);
+  async getAllDisputesByContract(contractId: string): Promise<DisputeEntity[]> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .eq('contract_id', contractId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw new Error(`Failed to get all disputes by contract: ${error.message}`);
+    return (data ?? []) as DisputeEntity[];
   }
 
-  async getAllDisputesByContract(contractId: string): Promise<Dispute[]> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.contractId = @contractId ORDER BY c.createdAt DESC',
-      parameters: [{ name: '@contractId', value: contractId }],
-    };
-    return this.queryAll(querySpec);
+  async getDisputeByMilestone(milestoneId: string): Promise<DisputeEntity | null> {
+    return this.findOne('milestone_id', milestoneId);
   }
 
-  async getDisputeByMilestone(milestoneId: string): Promise<Dispute | null> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.milestoneId = @milestoneId',
-      parameters: [{ name: '@milestoneId', value: milestoneId }],
+  async getDisputesByStatus(status: DisputeStatus, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('status', status)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get disputes by status: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as DisputeEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.findOne(querySpec);
   }
 
+  async getDisputesByInitiator(initiatorId: string, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
 
-  async getDisputesByStatus(status: DisputeStatus, options?: QueryOptions): Promise<PaginatedResult<Dispute>> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.status = @status ORDER BY c.createdAt DESC',
-      parameters: [{ name: '@status', value: status }],
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('initiator_id', initiatorId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get disputes by initiator: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as DisputeEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.query(querySpec, options);
-  }
-
-  async getDisputesByInitiator(initiatorId: string, options?: QueryOptions): Promise<PaginatedResult<Dispute>> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.initiatorId = @initiatorId ORDER BY c.createdAt DESC',
-      parameters: [{ name: '@initiatorId', value: initiatorId }],
-    };
-    return this.query(querySpec, options);
-  }
-
-  async getOpenDisputes(options?: QueryOptions): Promise<PaginatedResult<Dispute>> {
-    const querySpec = {
-      query: "SELECT * FROM c WHERE c.status = 'open' OR c.status = 'under_review' ORDER BY c.createdAt DESC",
-      parameters: [],
-    };
-    return this.query(querySpec, options);
   }
 }
 

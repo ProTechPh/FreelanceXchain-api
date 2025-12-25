@@ -15,7 +15,7 @@ This guide covers system administration, deployment, and maintenance of the Bloc
 - 10GB disk space
 
 ### External Services
-- Azure Cosmos DB account
+- Supabase account (PostgreSQL database)
 - Ethereum RPC endpoint (Infura, Alchemy, or self-hosted)
 - Google Gemini API key (for AI features)
 
@@ -36,10 +36,10 @@ Create `.env` file with required variables:
 PORT=3000
 NODE_ENV=production
 
-# Database
-COSMOS_ENDPOINT=https://your-account.documents.azure.com:443/
-COSMOS_KEY=your-primary-key
-COSMOS_DATABASE=freelance-marketplace
+# Database (Supabase)
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_ANON_KEY=your-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 
 # Authentication
 JWT_SECRET=your-secure-secret-minimum-32-characters
@@ -57,24 +57,32 @@ BLOCKCHAIN_PRIVATE_KEY=deployer-wallet-private-key
 
 ### 2. Database Setup
 
-Azure Cosmos DB collections are created automatically on first run. Recommended configuration:
+Run the SQL schema in your Supabase project:
 
-**Partition Keys:**
-| Collection | Partition Key |
-|------------|---------------|
-| users | /id |
-| projects | /employerId |
-| proposals | /projectId |
-| contracts | /id |
-| disputes | /contractId |
-| notifications | /userId |
-| skills | /categoryId |
-| skill_categories | /id |
+```bash
+# Apply schema from supabase/schema.sql
+psql -h your-project.supabase.co -U postgres -d postgres -f supabase/schema.sql
+```
 
-**Indexing Policy:**
-- Include all properties for flexibility
-- Add composite indexes for common queries
-- Exclude large text fields from indexing if not searched
+**Tables:**
+| Table | Description |
+|-------|-------------|
+| users | User accounts and authentication |
+| freelancer_profiles | Freelancer profile data |
+| employer_profiles | Employer profile data |
+| projects | Project listings |
+| proposals | Freelancer proposals |
+| contracts | Active contracts |
+| disputes | Dispute records |
+| notifications | User notifications |
+| skills | Skill definitions |
+| skill_categories | Skill category taxonomy |
+| kyc_verifications | KYC verification records |
+
+**Row Level Security (RLS):**
+- Enable RLS on all tables
+- Configure policies for user-specific data access
+- Admin role bypasses RLS for management tasks
 
 ### 3. Smart Contract Deployment
 
@@ -91,7 +99,7 @@ npm run deploy:escrow
 1. Update `BLOCKCHAIN_RPC_URL` to mainnet endpoint
 2. Ensure deployer wallet has sufficient ETH for gas
 3. Run deployment scripts
-4. Save contract addresses to `deployment.json`
+4. Save contract addresses
 
 ### 4. Application Deployment
 
@@ -123,38 +131,6 @@ docker run -p 3000:3000 --env-file .env freelancexchain-api:latest
 docker login
 docker push your-username/freelancexchain-api:latest
 ```
-
-**Azure Container Apps Deployment:**
-
-```bash
-# Create environment
-az containerapp env create \
-  --name freelancexchain-env \
-  --resource-group your-rg \
-  --location japanwest
-
-# Deploy container
-az containerapp create \
-  --name freelancexchain-api \
-  --resource-group your-rg \
-  --environment freelancexchain-env \
-  --image your-username/freelancexchain-api:latest \
-  --target-port 3000 \
-  --ingress external \
-  --env-vars NODE_ENV=production PORT=3000 \
-    COSMOS_ENDPOINT="..." COSMOS_KEY="..." \
-    JWT_SECRET="..."
-
-# Update deployment
-az containerapp update \
-  --name freelancexchain-api \
-  --resource-group your-rg \
-  --image your-username/freelancexchain-api:latest
-```
-
-**Production URL:** https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io
-
-**Note:** Azure Container Apps is not available in Malaysia West. Use Japan West or Southeast Asia as alternatives.
 
 ---
 
@@ -230,8 +206,8 @@ GET /api/health
 ```
 
 **Database Connection:**
-- Monitor Cosmos DB metrics in Azure Portal
-- Check RU consumption and throttling
+- Monitor Supabase dashboard for connection metrics
+- Check query performance in Supabase logs
 
 **Blockchain Connection:**
 - Verify RPC endpoint availability
@@ -259,16 +235,16 @@ Application logs include:
 - AI matching response times
 
 **Optimization Tips:**
-- Enable Cosmos DB indexing for frequently queried fields
+- Create indexes for frequently queried columns
 - Implement caching for skill taxonomy (rarely changes)
 - Use pagination for large result sets
-- Monitor and adjust RU allocation based on usage
+- Monitor and optimize slow queries
 
 ### Backup & Recovery
 
 **Database Backup:**
-- Enable Azure Cosmos DB continuous backup
-- Configure point-in-time restore
+- Supabase provides automatic daily backups
+- Enable Point-in-Time Recovery (PITR) for Pro plans
 - Export critical data periodically
 
 **Smart Contract Data:**
@@ -289,10 +265,10 @@ Application logs include:
 - [ ] Input validation on all endpoints
 
 ### Database Security
-- [ ] Cosmos DB firewall configured
-- [ ] Connection strings rotated regularly
-- [ ] Minimal permissions for application identity
-- [ ] Audit logging enabled
+- [ ] Row Level Security (RLS) enabled on all tables
+- [ ] Service role key kept secure (server-side only)
+- [ ] Anon key used only for public operations
+- [ ] Database passwords rotated regularly
 
 ### Blockchain Security
 - [ ] Private keys stored securely (not in code)
@@ -313,9 +289,9 @@ Application logs include:
 ### Common Issues
 
 **Database Connection Failed:**
-- Verify COSMOS_ENDPOINT and COSMOS_KEY
-- Check firewall rules in Azure Portal
-- Ensure database exists
+- Verify SUPABASE_URL and keys
+- Check if project is paused (free tier)
+- Ensure database is accessible
 
 **Blockchain Transaction Failed:**
 - Check wallet balance for gas
@@ -336,7 +312,7 @@ Application logs include:
 
 | Code | Meaning | Action |
 |------|---------|--------|
-| `COSMOS_CONNECTION_ERROR` | Database unreachable | Check connection string and firewall |
+| `DATABASE_ERROR` | Database query failed | Check connection and query |
 | `BLOCKCHAIN_RPC_ERROR` | RPC endpoint failed | Verify endpoint URL and API key |
 | `INSUFFICIENT_GAS` | Not enough ETH for transaction | Fund deployer wallet |
 | `CONTRACT_REVERT` | Smart contract rejected transaction | Check contract state and parameters |
@@ -349,12 +325,12 @@ Application logs include:
 ### Horizontal Scaling
 - Application is stateless, can run multiple instances
 - Use load balancer for distribution
-- Cosmos DB handles concurrent connections
+- Supabase handles concurrent connections
 
 ### Database Scaling
-- Increase RU allocation for higher throughput
-- Consider partitioning strategy for large datasets
-- Enable autoscale for variable workloads
+- Upgrade Supabase plan for more connections
+- Add read replicas for heavy read workloads
+- Optimize queries with proper indexes
 
 ### Blockchain Scaling
 - Consider Layer 2 solutions for high transaction volume

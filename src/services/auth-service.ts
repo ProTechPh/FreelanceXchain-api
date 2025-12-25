@@ -1,7 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { User } from '../models/user.js';
-import { userRepository } from '../repositories/user-repository.js';
+import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
 import { generateId } from '../utils/id.js';
 import {
@@ -38,15 +37,14 @@ function generateRefreshToken(payload: Omit<TokenPayload, 'type'>): string {
   );
 }
 
-
-function createAuthResult(user: User, accessToken: string, refreshToken: string): AuthResult {
+function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): AuthResult {
   return {
     user: {
       id: user.id,
       email: user.email,
       role: user.role,
-      walletAddress: user.walletAddress,
-      createdAt: user.createdAt,
+      walletAddress: user.wallet_address,
+      createdAt: user.created_at,
     },
     accessToken,
     refreshToken,
@@ -69,18 +67,15 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
   const passwordHash = await hashPassword(input.password);
 
   // Create user
-  const now = new Date().toISOString();
-  const user: User = {
+  const userInput = {
     id: generateId(),
     email: normalizedEmail,
-    passwordHash,
+    password_hash: passwordHash,
     role: input.role,
-    walletAddress: input.walletAddress ?? '',
-    createdAt: now,
-    updatedAt: now,
+    wallet_address: input.walletAddress ?? '',
   };
 
-  const createdUser = await userRepository.createUser(user);
+  const createdUser = await userRepository.createUser(userInput);
 
   // Generate tokens
   const tokenPayload = {
@@ -93,7 +88,6 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
 
   return createAuthResult(createdUser, accessToken, refreshToken);
 }
-
 
 export async function login(input: LoginInput): Promise<AuthResult | AuthError> {
   const normalizedEmail = input.email.toLowerCase().trim();
@@ -108,7 +102,7 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
   }
 
   // Verify password
-  const isValidPassword = await verifyPassword(input.password, user.passwordHash);
+  const isValidPassword = await verifyPassword(input.password, user.password_hash);
   if (!isValidPassword) {
     return {
       code: 'INVALID_CREDENTIALS',

@@ -17,3 +17,23 @@ export type {
   SkillTaxonomy 
 } from './skill.js';
 export type { Notification, NotificationType } from './notification.js';
+export type {
+  KycStatus,
+  DocumentType,
+  LivenessCheckStatus,
+  LivenessCheck,
+  LivenessChallenge,
+  KycDocument,
+  MrzData,
+  OcrExtractedData,
+  InternationalAddress,
+  KycVerification,
+  KycTier,
+  KycRejectionCode,
+  KycSubmissionInput,
+  LivenessSessionInput,
+  LivenessVerificationInput,
+  FaceMatchInput,
+  KycReviewInput,
+  SupportedCountry,
+} from './kyc.js';

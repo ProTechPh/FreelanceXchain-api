@@ -21,8 +21,8 @@ The Blockchain-Based Freelance Marketplace is a decentralized platform combining
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| Primary Database | Azure Cosmos DB | Document storage, global distribution |
-| Partition Strategy | Per-entity | Optimized for common queries |
+| Primary Database | Supabase (PostgreSQL) | Relational storage, real-time subscriptions |
+| ORM/Client | @supabase/supabase-js | Database operations |
 
 ### Blockchain
 
@@ -367,9 +367,9 @@ type NotificationType =
 ## Performance Specifications
 
 ### Database
-- Cosmos DB RU allocation: 400-4000 (autoscale recommended)
-- Partition keys optimized for query patterns
+- Supabase PostgreSQL with connection pooling
 - Indexes on frequently queried fields
+- JSONB columns for flexible data structures
 
 ### API
 - Response time target: < 200ms (p95)
@@ -389,7 +389,7 @@ type NotificationType =
 
 ```json
 {
-  "@azure/cosmos": "^4.2.0",
+  "@supabase/supabase-js": "^2.89.0",
   "bcrypt": "^5.1.1",
   "cors": "^2.8.5",
   "dotenv": "^16.4.5",
@@ -424,9 +424,9 @@ type NotificationType =
 |----------|----------|---------|-------------|
 | PORT | No | 3000 | Server port |
 | NODE_ENV | No | development | Environment |
-| COSMOS_ENDPOINT | Yes | - | Cosmos DB URL |
-| COSMOS_KEY | Yes | - | Cosmos DB key |
-| COSMOS_DATABASE | Yes | - | Database name |
+| SUPABASE_URL | Yes | - | Supabase project URL |
+| SUPABASE_ANON_KEY | Yes | - | Supabase anon key |
+| SUPABASE_SERVICE_ROLE_KEY | No | - | Supabase service role key |
 | JWT_SECRET | Yes | - | JWT signing secret |
 | JWT_EXPIRES_IN | No | 1h | Access token expiry |
 | JWT_REFRESH_EXPIRES_IN | No | 7d | Refresh token expiry |
@@ -470,14 +470,12 @@ CMD ["node", "dist/index.js"]
 | Image Size | ~150MB (production) |
 | Port | 3000 |
 | Registry | Docker Hub |
-| Image Name | jericko134/freelancexchain-api |
+| Image Name | freelancexchain-api |
 
 ### Deployment Platform
 
 | Property | Value |
 |----------|-------|
-| Platform | Azure Container Apps |
-| Region | Japan West |
-| Scaling | Consumption-based (0-10 replicas) |
-| Resources | 0.5 CPU, 1GB RAM |
-| URL | https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io |
+| Platform | Docker / Any cloud provider |
+| Scaling | Configurable |
+| Resources | 0.5 CPU, 1GB RAM (minimum) |

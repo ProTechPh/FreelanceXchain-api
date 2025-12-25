@@ -1,49 +1,55 @@
 import { BaseRepository } from './base-repository.js';
-import { COLLECTIONS } from '../config/database.js';
-import { EmployerProfile } from '../models/employer-profile.js';
+import { TABLES } from '../config/supabase.js';
 
-export class EmployerProfileRepository extends BaseRepository<EmployerProfile> {
+export type EmployerProfileEntity = {
+  id: string;
+  user_id: string;
+  company_name: string;
+  description: string;
+  industry: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export class EmployerProfileRepository extends BaseRepository<EmployerProfileEntity> {
   constructor() {
-    super(COLLECTIONS.EMPLOYER_PROFILES);
+    super(TABLES.EMPLOYER_PROFILES);
   }
 
-  async createProfile(profile: EmployerProfile): Promise<EmployerProfile> {
-    return this.create(profile, profile.userId);
+  async createProfile(profile: Omit<EmployerProfileEntity, 'created_at' | 'updated_at'>): Promise<EmployerProfileEntity> {
+    return this.create(profile);
   }
 
-  async getProfileById(id: string, userId: string): Promise<EmployerProfile | null> {
-    return this.getById(id, userId);
+  async getProfileById(id: string): Promise<EmployerProfileEntity | null> {
+    return this.getById(id);
   }
 
-  async getProfileByUserId(userId: string): Promise<EmployerProfile | null> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.userId = @userId',
-      parameters: [{ name: '@userId', value: userId }],
-    };
-    return this.findOne(querySpec);
+  async getProfileByUserId(userId: string): Promise<EmployerProfileEntity | null> {
+    return this.findOne('user_id', userId);
   }
 
-  async updateProfile(id: string, userId: string, updates: Partial<EmployerProfile>): Promise<EmployerProfile | null> {
-    return this.update(id, userId, updates);
+  async updateProfile(id: string, updates: Partial<EmployerProfileEntity>): Promise<EmployerProfileEntity | null> {
+    return this.update(id, updates);
   }
 
-  async deleteProfile(id: string, userId: string): Promise<boolean> {
-    return this.delete(id, userId);
+  async deleteProfile(id: string): Promise<boolean> {
+    return this.delete(id);
   }
 
-  async getAllProfiles(): Promise<EmployerProfile[]> {
-    const querySpec = {
-      query: 'SELECT * FROM c ORDER BY c.createdAt DESC',
-    };
-    return this.queryAll(querySpec);
+  async getAllProfiles(): Promise<EmployerProfileEntity[]> {
+    return this.queryAll('created_at', false);
   }
 
-  async getProfilesByIndustry(industry: string): Promise<EmployerProfile[]> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.industry = @industry ORDER BY c.createdAt DESC',
-      parameters: [{ name: '@industry', value: industry }],
-    };
-    return this.queryAll(querySpec);
+  async getProfilesByIndustry(industry: string): Promise<EmployerProfileEntity[]> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .eq('industry', industry)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw new Error(`Failed to get profiles by industry: ${error.message}`);
+    return (data ?? []) as EmployerProfileEntity[];
   }
 }
 

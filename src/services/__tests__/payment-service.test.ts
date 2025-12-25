@@ -98,7 +98,7 @@ beforeEach(() => {
     return updated;
   });
 
-  // Mock notification repository to avoid Cosmos DB calls
+  // Mock notification repository to avoid database calls
   jest.spyOn(notificationRepository, 'createNotification').mockImplementation(async (notification) => {
     return notification;
   });
