@@ -13,6 +13,43 @@ import {
 
 const SALT_ROUNDS = 10;
 
+// Password strength requirements
+const PASSWORD_MIN_LENGTH = 8;
+
+export type PasswordValidationResult = {
+  valid: boolean;
+  errors: string[];
+};
+
+/**
+ * Validates password strength
+ * Requirements: min 8 chars, uppercase, lowercase, number, special char
+ */
+export function validatePasswordStrength(password: string): PasswordValidationResult {
+  const errors: string[] = [];
+
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    errors.push(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
+  }
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter');
+  }
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter');
+  }
+  if (!/\d/.test(password)) {
+    errors.push('Password must contain at least one number');
+  }
+  if (!/[@$!%*?&]/.test(password)) {
+    errors.push('Password must contain at least one special character (@$!%*?&)');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
+
 function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS);
 }
@@ -32,7 +69,7 @@ function generateAccessToken(payload: Omit<TokenPayload, 'type'>): string {
 function generateRefreshToken(payload: Omit<TokenPayload, 'type'>): string {
   return jwt.sign(
     { ...payload, type: 'refresh' },
-    config.jwt.secret,
+    config.jwt.refreshSecret, // Use separate secret for refresh tokens
     { expiresIn: config.jwt.refreshExpiresIn } as SignOptions
   );
 }
@@ -122,9 +159,10 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
   return createAuthResult(user, accessToken, refreshToken);
 }
 
-export function validateToken(token: string): TokenPayload | AuthError {
+export function validateToken(token: string, tokenType: 'access' | 'refresh' = 'access'): TokenPayload | AuthError {
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as TokenPayload;
+    const secret = tokenType === 'refresh' ? config.jwt.refreshSecret : config.jwt.secret;
+    const decoded = jwt.verify(token, secret) as TokenPayload;
     return decoded;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
@@ -141,8 +179,8 @@ export function validateToken(token: string): TokenPayload | AuthError {
 }
 
 export async function refreshTokens(refreshToken: string): Promise<AuthResult | AuthError> {
-  const payload = validateToken(refreshToken);
-  
+  const payload = validateToken(refreshToken, 'refresh');
+
   if ('code' in payload) {
     return payload;
   }

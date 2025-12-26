@@ -337,14 +337,34 @@ type NotificationType =
 
 ## Security Specifications
 
+### HTTP Security Headers (Helmet.js)
+
+| Header | Value | Purpose |
+|--------|-------|--------|
+| Content-Security-Policy | Restrictive policy | Prevent XSS attacks |
+| X-Frame-Options | DENY | Prevent clickjacking |
+| X-Content-Type-Options | nosniff | Prevent MIME sniffing |
+| Strict-Transport-Security | max-age=31536000 | Force HTTPS |
+| Referrer-Policy | strict-origin-when-cross-origin | Control referrer info |
+| X-Powered-By | (removed) | Hide server technology |
+
+### CORS Configuration
+
+| Setting | Development | Production |
+|---------|-------------|------------|
+| Allowed Origins | localhost:3000,3001 | Via `CORS_ORIGIN` env var |
+| Methods | GET, POST, PUT, PATCH, DELETE, OPTIONS | Same |
+| Headers | Content-Type, Authorization, X-Request-ID | Same |
+| Credentials | true | true |
+
 ### Authentication Flow
 
 ```
 1. User registers/logs in
 2. Server validates credentials
 3. Server generates JWT tokens:
-   - Access Token: { userId, role, exp: 1h }
-   - Refresh Token: { userId, exp: 7d }
+   - Access Token: { userId, role, exp: 1h } - signed with JWT_SECRET
+   - Refresh Token: { userId, exp: 7d } - signed with JWT_REFRESH_SECRET
 4. Client stores tokens securely
 5. Client sends Access Token in Authorization header
 6. Server validates token on each request
@@ -353,8 +373,20 @@ type NotificationType =
 
 ### Password Requirements
 - Minimum 8 characters
+- At least one uppercase letter (A-Z)
+- At least one lowercase letter (a-z)
+- At least one number (0-9)
+- At least one special character (@$!%*?&)
 - Hashed with bcrypt (10 salt rounds)
 - Never stored in plain text
+
+### Rate Limiting
+
+| Endpoint Type | Limit | Window |
+|---------------|-------|--------|
+| Authentication (/login, /register, /refresh) | 10 requests | 15 minutes |
+| Standard API | 100 requests | 1 minute |
+| Sensitive Operations | 5 requests | 1 hour |
 
 ### Smart Contract Security
 - Reentrancy guards on all payment functions
@@ -427,9 +459,11 @@ type NotificationType =
 | SUPABASE_URL | Yes | - | Supabase project URL |
 | SUPABASE_ANON_KEY | Yes | - | Supabase anon key |
 | SUPABASE_SERVICE_ROLE_KEY | No | - | Supabase service role key |
-| JWT_SECRET | Yes | - | JWT signing secret |
+| JWT_SECRET | Yes | - | JWT signing secret (access tokens) |
+| JWT_REFRESH_SECRET | Yes (prod) | JWT_SECRET | Separate secret for refresh tokens |
 | JWT_EXPIRES_IN | No | 1h | Access token expiry |
 | JWT_REFRESH_EXPIRES_IN | No | 7d | Refresh token expiry |
+| CORS_ORIGIN | No | localhost:3000,3001 | Comma-separated allowed origins |
 | LLM_API_KEY | No | - | Gemini API key |
 | LLM_API_URL | No | - | Gemini API URL |
 | BLOCKCHAIN_RPC_URL | No | - | Ethereum RPC |

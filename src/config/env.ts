@@ -36,9 +36,14 @@ export const config = {
   },
   jwt: {
     // In production, JWT_SECRET must be set - no default allowed
-    secret: process.env['NODE_ENV'] === 'production' 
-      ? getEnvVar('JWT_SECRET') 
+    secret: process.env['NODE_ENV'] === 'production'
+      ? getEnvVar('JWT_SECRET')
       : getEnvVar('JWT_SECRET'),
+    // Separate secret for refresh tokens (defaults to main secret if not set)
+    refreshSecret: getEnvVarOptional('JWT_REFRESH_SECRET') ??
+      (process.env['NODE_ENV'] === 'production'
+        ? getEnvVar('JWT_REFRESH_SECRET')
+        : getEnvVar('JWT_SECRET')),
     expiresIn: getEnvVar('JWT_EXPIRES_IN'),
     refreshExpiresIn: getEnvVar('JWT_REFRESH_EXPIRES_IN'),
   },

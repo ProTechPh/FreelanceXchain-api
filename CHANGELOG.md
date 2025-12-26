@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2025-12-26
+
+### Security Enhancements
+
+#### Security Headers (Helmet.js)
+- Added Helmet.js middleware for comprehensive HTTP security headers
+- Content Security Policy (CSP) configuration
+- X-Frame-Options for clickjacking prevention
+- X-Content-Type-Options for MIME sniffing prevention
+- HSTS (HTTP Strict Transport Security) enabled
+- Referrer-Policy configured
+
+#### CORS Improvements
+- Replaced wildcard `*` origin with explicit origin validation
+- Added `CORS_ORIGIN` environment variable for configuration
+- Development mode allows localhost by default
+- Production mode strictly enforces allowed origins
+
+#### JWT Token Security
+- Added separate `JWT_REFRESH_SECRET` for refresh tokens
+- Access and refresh tokens now use different signing secrets
+- `validateToken()` function accepts token type parameter
+
+#### Password Strength Validation
+- Minimum 8 characters required
+- At least one uppercase letter required
+- At least one lowercase letter required
+- At least one number required
+- At least one special character (`@$!%*?&`) required
+- Exported `validatePasswordStrength()` function
+
+#### Rate Limiting Enhancements
+- Added rate limiting to `/api/auth/refresh` endpoint
+- 10 requests per 15 minutes
+
+#### Request Tracing
+- Added request ID middleware
+- Auto-generates UUID if `X-Request-ID` header not provided
+- Improves request tracing and debugging
+
+#### HTTPS Enforcement
+- Added HTTPS redirect middleware for production
+- Supports `X-Forwarded-Proto` header for reverse proxies
+
+### Added
+- `src/middleware/security-middleware.ts` - New security middleware module
+- `helmet` npm package dependency
+
+### Changed
+- `src/app.ts` - Integrated security middleware stack
+- `src/config/env.ts` - Added `JWT_REFRESH_SECRET` configuration
+- `src/services/auth-service.ts` - Password validation, separate token secrets
+- `src/routes/auth-routes.ts` - Password strength validation, refresh rate limiting
+- `.env.example` - Added `JWT_REFRESH_SECRET` and `CORS_ORIGIN` examples
+
+---
+
 ## [2.2.1] - 2025-12-25
 
 ### Security Fixes
@@ -274,6 +331,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 2.3.0 | 2025-12-26 | Security audit: Helmet.js, CORS, JWT, password validation |
 | 2.2.1 | 2025-12-25 | Security fixes and rate limiting |
 | 2.2.0 | 2025-12-25 | Added reviews, messages, and payments tables |
 | 2.1.0 | 2025-12-25 | Blockchain integration and AI features |

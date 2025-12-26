@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { register, login, refreshTokens, isAuthError } from '../services/auth-service.js';
+import { register, login, refreshTokens, isAuthError, validatePasswordStrength } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter } from '../middleware/rate-limiter.js';
@@ -100,10 +100,6 @@ function validateEmail(email: unknown): email is string {
   return typeof email === 'string' && email.includes('@') && email.length >= 5;
 }
 
-function validatePassword(password: unknown): password is string {
-  return typeof password === 'string' && password.length >= 8;
-}
-
 function validateRole(role: unknown): role is UserRole {
   return role === 'freelancer' || role === 'employer';
 }
@@ -149,13 +145,23 @@ router.post('/register', authRateLimiter, async (req: Request, res: Response) =>
 
   // Validate input
   const errors: { field: string; message: string }[] = [];
-  
+
   if (!validateEmail(email)) {
     errors.push({ field: 'email', message: 'Valid email is required' });
   }
-  if (!validatePassword(password)) {
-    errors.push({ field: 'password', message: 'Password must be at least 8 characters' });
+
+  // Password strength validation
+  if (typeof password === 'string') {
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.valid) {
+      passwordValidation.errors.forEach(err => {
+        errors.push({ field: 'password', message: err });
+      });
+    }
+  } else {
+    errors.push({ field: 'password', message: 'Password is required' });
   }
+
   if (!validateRole(role)) {
     errors.push({ field: 'role', message: 'Role must be freelancer or employer' });
   }
@@ -233,7 +239,7 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
 
   // Validate input
   const errors: { field: string; message: string }[] = [];
-  
+
   if (!validateEmail(email)) {
     errors.push({ field: 'email', message: 'Valid email is required' });
   }
@@ -307,7 +313,7 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/refresh', async (req: Request, res: Response) => {
+router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => {
   const { refreshToken } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
