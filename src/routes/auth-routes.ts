@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { register, login, refreshTokens, isAuthError, validatePasswordStrength } from '../services/auth-service.js';
+import { register, login, refreshTokens, isAuthError, validatePasswordStrength, loginWithSupabase, getOAuthUrl, exchangeCodeForSession } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter } from '../middleware/rate-limiter.js';
@@ -345,6 +345,163 @@ router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => 
     return;
   }
 
+  res.status(200).json(result);
+});
+
+/**
+ * @swagger
+ * /api/auth/oauth-login:
+ *   post:
+ *     summary: Login with Supabase OAuth
+ *     description: Authenticates a user using a Supabase access token calling our backend to sync user and get app tokens
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - accessToken
+ *             properties:
+ *               accessToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResult'
+ *       401:
+ *         description: Invalid or expired token
+ */
+/**
+ * @swagger
+ * /api/auth/oauth/{provider}:
+ *   get:
+ *     summary: Initiate OAuth flow
+ *     description: Redirects to Supabase OAuth provider
+ *     tags:
+ *       - Authentication
+ *     parameters:
+ *       - in: path
+ *         name: provider
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [google, github, azure, linkedin]
+ *     responses:
+ *       302:
+ *         description: Redirect to provider
+ */
+router.get('/oauth/:provider', async (req: Request, res: Response) => {
+  const { provider } = req.params as { provider: string };
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  try {
+    // Basic validation of provider
+    if (!['google', 'github', 'azure', 'linkedin'].includes(provider)) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid provider',
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const url = await getOAuthUrl(provider as any);
+    res.redirect(url);
+  } catch (error) {
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to initiate OAuth flow',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
+});
+
+/**
+ * @swagger
+ * /api/auth/callback:
+ *   get:
+ *     summary: OAuth callback handler
+ *     description: Handling the redirect from Supabase, exchanging code for tokens
+ *     tags:
+ *       - Authentication
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Login successful, returns tokens
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResult'
+ */
+router.get('/callback', async (req: Request, res: Response) => {
+  const { code } = req.query;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!code || typeof code !== 'string') {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Authorization code is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // 1. Exchange code for Supabase Session
+  const sessionResult = await exchangeCodeForSession(code);
+
+  if (isAuthError(sessionResult as any)) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_EXCHANGE_FAILED',
+        message: (sessionResult as any).message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // 2. Login/Sync with our backend using the Supabase Access Token
+  // We type cast because we know exchangeCodeForSession returns { accessToken } on success
+  const accessToken = (sessionResult as { accessToken: string }).accessToken;
+  const result = await loginWithSupabase(accessToken);
+
+  if (isAuthError(result)) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_INVALID_TOKEN',
+        message: result.message || 'Invalid token',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Return the tokens directly. 
+  // In a real browser app, we might redirect to a frontend page with tokens in URL hash 
+  // or set HttpOnly cookies. Since the user asked for backend only, returning JSON is appropriate 
+  // for testing via Postman/Curl or if the "frontend" is just a CLI or mobile app.
   res.status(200).json(result);
 });
 

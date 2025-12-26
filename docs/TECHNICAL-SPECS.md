@@ -58,6 +58,7 @@ The Blockchain-Based Freelance Marketplace is a decentralized platform combining
 Base URL: /api
 Content-Type: application/json
 Authentication: Bearer Token (JWT)
+OAuth: GET /api/auth/oauth/:provider | GET /api/auth/callback
 ```
 
 ### Rate Limits (Recommended)
@@ -369,6 +370,17 @@ type NotificationType =
 5. Client sends Access Token in Authorization header
 6. Server validates token on each request
 7. Client uses Refresh Token to get new Access Token
+
+### OAuth Flow (Backend-Only)
+```
+1. Client requests GET /api/auth/oauth/:provider (google, github, etc.)
+2. Server validates provider and redirects to Supabase OAuth URL
+3. User logs in with provider
+4. Supabase redirects to /api/auth/callback with code
+5. Server exchanges code for Supabase session
+6. Server syncs user to local database
+7. Server issues application JWTs (access + refresh)
+8. Server returns tokens as JSON (for mobile/API clients) or sets cookies (optional)
 ```
 
 ### Password Requirements

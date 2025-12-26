@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2025-12-26
+
+### Added
+
+#### OAuth Integration
+- **Provider Support**: Integrated Google, GitHub, LinkedIn, and Microsoft authentication via Supabase.
+- **New Endpoints**:
+  - `GET /api/auth/oauth/:provider`: Initiates OAuth flow by redirecting to Supabase.
+  - `GET /api/auth/callback`: Handles OAuth callbacks, syncs user data, and issues application JWTs.
+- **Service Layer**:
+  - `getOAuthUrl(provider)`: Generates auth URL with `skipBrowserRedirect` to keep control on backend.
+  - `exchangeCodeForSession(code)`: Swaps authorization code for Supabase session.
+  - `loginWithSupabase(accessToken)`: Syncs Supabase user to local `users` table and issues app tokens.
+
+### Changed
+
+#### Authentication Flow
+- Refactored `auth-service.ts` to handle OAuth tokens directly.
+- Updated CSP in `security-middleware.ts` to allow specific CDN and supabase connections (maintained for potential future use).
+
+### Fixed
+
+#### Testing
+- Fixed TypeScript errors in `auth-routes.ts` related to request parameter typing.
+- Refactored `auth-service.oauth.test.ts` to use `jest.unstable_mockModule` for robust Native ESM mocking.
+- Achieved 100% pass rate on new OAuth unit tests.
+
+---
+
 ## [2.3.1] - 2025-12-26
 
 ### Fixed
@@ -363,6 +392,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 2.4.0 | 2025-12-26 | Backend-Only OAuth Implementation (Google, GitHub, etc.) |
 | 2.3.1 | 2025-12-26 | Test infrastructure fixes - 100% pass rate |
 | 2.3.0 | 2025-12-26 | Security audit: Helmet.js, CORS, JWT, password validation |
 | 2.2.1 | 2025-12-25 | Security fixes and rate limiting |

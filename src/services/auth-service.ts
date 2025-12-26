@@ -10,6 +10,8 @@ import {
   AuthResult,
   AuthError,
 } from './auth-types.js';
+import { getSupabaseClient } from '../config/supabase.js';
+import { Provider } from '@supabase/supabase-js';
 
 const SALT_ROUNDS = 10;
 
@@ -211,6 +213,91 @@ export async function refreshTokens(refreshToken: string): Promise<AuthResult | 
   const newRefreshToken = generateRefreshToken(tokenPayload);
 
   return createAuthResult(user, newAccessToken, newRefreshToken);
+}
+
+export async function loginWithSupabase(accessToken: string): Promise<AuthResult | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Verify user with Supabase
+  const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(accessToken);
+
+  if (error || !supabaseUser || !supabaseUser.email) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid Supabase token',
+    };
+  }
+
+  const normalizedEmail = supabaseUser.email.toLowerCase().trim();
+
+  // Check if user exists in our DB
+  let user = await userRepository.getUserByEmail(normalizedEmail);
+
+  if (!user) {
+    // Create new user if not exists
+    // We'll set a random password hash since they use OAuth
+    // and default role to freelancer (user can update later)
+    const randomPassword = Math.random().toString(36).slice(-8);
+    const passwordHash = await hashPassword(randomPassword);
+
+    // Check if there's user_metadata for role
+    const roleCandidate = supabaseUser.user_metadata?.role;
+    const role = (roleCandidate === 'employer' || roleCandidate === 'freelancer')
+      ? roleCandidate
+      : 'freelancer';
+
+    const userInput = {
+      id: generateId(),
+      email: normalizedEmail,
+      password_hash: passwordHash,
+      role: role,
+      wallet_address: '',
+    };
+
+    user = await userRepository.createUser(userInput);
+  }
+
+  // Generate our own JWTs
+  const tokenPayload = {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  };
+  const appAccessToken = generateAccessToken(tokenPayload);
+  const refreshToken = generateRefreshToken(tokenPayload);
+
+  return createAuthResult(user, appAccessToken, refreshToken);
+}
+
+export async function getOAuthUrl(provider: Provider): Promise<string> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: 'http://localhost:3000/api/auth/callback',
+      skipBrowserRedirect: true,
+    },
+  });
+
+  if (error) {
+    throw new Error(`Failed to get OAuth URL: ${error.message}`);
+  }
+
+  return data.url;
+}
+
+export async function exchangeCodeForSession(code: string): Promise<{ accessToken: string } | AuthError> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error || !data.session) {
+    return {
+      code: 'AUTH_EXCHANGE_FAILED',
+      message: error?.message || 'Failed to exchange code for session',
+    };
+  }
+
+  return { accessToken: data.session.access_token };
 }
 
 export function isAuthError(result: AuthResult | AuthError): result is AuthError {

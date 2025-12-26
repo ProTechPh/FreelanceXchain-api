@@ -32,6 +32,15 @@ export type AuthResult = {
 };
 
 export type AuthError = {
-  code: 'DUPLICATE_EMAIL' | 'INVALID_CREDENTIALS' | 'TOKEN_EXPIRED' | 'INVALID_TOKEN';
+  code:
+  | 'DUPLICATE_EMAIL'
+  | 'INVALID_CREDENTIALS'
+  | 'TOKEN_EXPIRED'
+  | 'INVALID_TOKEN'
+  | 'AUTH_EXCHANGE_FAILED'
+  | 'AUTH_INVALID_TOKEN'
+  | 'AUTH_INVALID_CREDENTIALS'
+  | 'VALIDATION_ERROR'
+  | 'INTERNAL_ERROR';
   message: string;
 };

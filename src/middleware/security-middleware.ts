@@ -16,10 +16,11 @@ export const securityHeaders = helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"], // Allow inline for Swagger UI
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"], // Allow inline for Swagger UI & Supabase
+            scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers
             styleSrc: ["'self'", "'unsafe-inline'"],
             imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'"],
+            connectSrc: ["'self'", "https://nfcfgxfpidfvcpkyjgih.supabase.co"], // Allow connection to Supabase
             fontSrc: ["'self'"],
             objectSrc: ["'none'"],
             frameSrc: ["'none'"],
