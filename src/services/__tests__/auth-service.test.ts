@@ -3,11 +3,12 @@ import fc from 'fast-check';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { config } from '../../config/env.js';
-import { User, UserRole } from '../../models/user.js';
+import { UserEntity } from '../../repositories/user-repository.js';
+import { UserRole } from '../../models/user.js';
 import { RegisterInput, LoginInput, AuthResult, AuthError } from '../auth-types.js';
 
-// In-memory user store for testing
-let userStore: Map<string, User> = new Map();
+// In-memory user store for testing - uses entity type with snake_case
+let userStore: Map<string, UserEntity> = new Map();
 
 // Mock the user repository before importing auth-service
 jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
@@ -18,9 +19,11 @@ jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
       }
       return false;
     }),
-    createUser: jest.fn(async (user: User) => {
-      userStore.set(user.id, user);
-      return user;
+    createUser: jest.fn(async (user: Omit<UserEntity, 'created_at' | 'updated_at'>) => {
+      const now = new Date().toISOString();
+      const entity: UserEntity = { ...user, created_at: now, updated_at: now };
+      userStore.set(user.id, entity);
+      return entity;
     }),
     getUserByEmail: jest.fn(async (email: string) => {
       for (const user of userStore.values()) {
@@ -33,6 +36,7 @@ jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
     }),
   },
   UserRepository: jest.fn(),
+  UserEntity: {} as UserEntity,
 }));
 
 // Import after mocking
@@ -121,10 +125,10 @@ describe('Auth Service - Registration Properties', () => {
             expect(storedUser?.role).toBe(registrationData.role);
 
             // Verify password was hashed (not stored in plain text)
-            expect(storedUser?.passwordHash).not.toBe(registrationData.password);
+            expect(storedUser?.password_hash).not.toBe(registrationData.password);
             const passwordValid = await bcrypt.compare(
               registrationData.password,
-              storedUser?.passwordHash ?? ''
+              storedUser?.password_hash ?? ''
             );
             expect(passwordValid).toBe(true);
           }

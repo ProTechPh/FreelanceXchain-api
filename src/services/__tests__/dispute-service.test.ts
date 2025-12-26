@@ -1,44 +1,42 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { Dispute } from '../../models/dispute.js';
-import { Contract } from '../../models/contract.js';
-import { Project, Milestone, MilestoneStatus } from '../../models/project.js';
+import { DisputeEntity, EvidenceEntity } from '../../repositories/dispute-repository.js';
+import { ContractEntity } from '../../repositories/contract-repository.js';
+import { ProjectEntity, MilestoneEntity, MilestoneStatus } from '../../repositories/project-repository.js';
 import { Notification, NotificationType } from '../../models/notification.js';
 import { generateId } from '../../utils/id.js';
 
-// In-memory stores for testing
-let disputeStore: Map<string, Dispute> = new Map();
-let contractStore: Map<string, Contract> = new Map();
-let projectStore: Map<string, Project> = new Map();
+// In-memory stores for testing - using entity types
+let disputeStore: Map<string, DisputeEntity> = new Map();
+let contractStore: Map<string, ContractEntity> = new Map();
+let projectStore: Map<string, ProjectEntity> = new Map();
 let notificationStore: Map<string, Notification> = new Map();
 
 // Mock the repositories before importing dispute-service
 jest.unstable_mockModule('../../repositories/dispute-repository.js', () => ({
   disputeRepository: {
-    createDispute: jest.fn(async (dispute: Dispute) => {
-      disputeStore.set(dispute.id, dispute);
-      return dispute;
+    createDispute: jest.fn(async (dispute: Omit<DisputeEntity, 'created_at' | 'updated_at'>) => {
+      const now = new Date().toISOString();
+      const entity: DisputeEntity = { ...dispute, created_at: now, updated_at: now };
+      disputeStore.set(entity.id, entity);
+      return entity;
     }),
     findDisputeById: jest.fn(async (id: string) => {
       return disputeStore.get(id) ?? null;
     }),
-    getDisputeById: jest.fn(async (id: string, contractId: string) => {
-      const dispute = disputeStore.get(id);
-      if (dispute && dispute.contractId === contractId) {
-        return dispute;
-      }
-      return null;
+    getDisputeById: jest.fn(async (id: string) => {
+      return disputeStore.get(id) ?? null;
     }),
-    updateDispute: jest.fn(async (id: string, _contractId: string, updates: Partial<Dispute>) => {
+    updateDispute: jest.fn(async (id: string, updates: Partial<DisputeEntity>) => {
       const dispute = disputeStore.get(id);
       if (!dispute) return null;
-      const updated = { ...dispute, ...updates, updatedAt: new Date().toISOString() };
+      const updated: DisputeEntity = { ...dispute, ...updates, updated_at: new Date().toISOString() };
       disputeStore.set(id, updated);
       return updated;
     }),
     getDisputeByMilestone: jest.fn(async (milestoneId: string) => {
       for (const dispute of disputeStore.values()) {
-        if (dispute.milestoneId === milestoneId) {
+        if (dispute.milestone_id === milestoneId) {
           return dispute;
         }
       }
@@ -46,23 +44,25 @@ jest.unstable_mockModule('../../repositories/dispute-repository.js', () => ({
     }),
     getAllDisputesByContract: jest.fn(async (contractId: string) => {
       return Array.from(disputeStore.values())
-        .filter(d => d.contractId === contractId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        .filter(d => d.contract_id === contractId)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }),
     getOpenDisputes: jest.fn(async () => {
       const items = Array.from(disputeStore.values())
         .filter(d => d.status === 'open' || d.status === 'under_review')
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return { items, hasMore: false };
     }),
     getDisputesByInitiator: jest.fn(async (initiatorId: string) => {
       const items = Array.from(disputeStore.values())
-        .filter(d => d.initiatorId === initiatorId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        .filter(d => d.initiator_id === initiatorId)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return { items, hasMore: false };
     }),
   },
   DisputeRepository: jest.fn(),
+  DisputeEntity: {} as DisputeEntity,
+  EvidenceEntity: {} as EvidenceEntity,
 }));
 
 jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
@@ -70,15 +70,16 @@ jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
     getContractById: jest.fn(async (id: string) => {
       return contractStore.get(id) ?? null;
     }),
-    updateContract: jest.fn(async (id: string, updates: Partial<Contract>) => {
+    updateContract: jest.fn(async (id: string, updates: Partial<ContractEntity>) => {
       const contract = contractStore.get(id);
       if (!contract) return null;
-      const updated = { ...contract, ...updates, updatedAt: new Date().toISOString() };
+      const updated: ContractEntity = { ...contract, ...updates, updated_at: new Date().toISOString() };
       contractStore.set(id, updated);
       return updated;
     }),
   },
   ContractRepository: jest.fn(),
+  ContractEntity: {} as ContractEntity,
 }));
 
 jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
@@ -86,15 +87,16 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
     findProjectById: jest.fn(async (id: string) => {
       return projectStore.get(id) ?? null;
     }),
-    updateProject: jest.fn(async (id: string, _employerId: string, updates: Partial<Project>) => {
+    updateProject: jest.fn(async (id: string, updates: Partial<ProjectEntity>) => {
       const project = projectStore.get(id);
       if (!project) return null;
-      const updated = { ...project, ...updates, updatedAt: new Date().toISOString() };
+      const updated: ProjectEntity = { ...project, ...updates, updated_at: new Date().toISOString() };
       projectStore.set(id, updated);
       return updated;
     }),
   },
   ProjectRepository: jest.fn(),
+  ProjectEntity: {} as ProjectEntity,
 }));
 
 jest.unstable_mockModule('../notification-service.js', () => ({
@@ -166,6 +168,27 @@ jest.unstable_mockModule('../escrow-contract.js', () => ({
   })),
 }));
 
+// Mock user-repository for submitEvidence
+jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
+  userRepository: {
+    getUserById: jest.fn(async (id: string) => ({
+      id,
+      email: `user-${id}@test.com`,
+      role: 'freelancer',
+      wallet_address: '0x' + 'f'.repeat(40),
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })),
+  },
+  UserRepository: jest.fn(),
+}));
+
+// Mock agreement-contract for blockchain interactions
+jest.unstable_mockModule('../agreement-contract.js', () => ({
+  disputeAgreement: jest.fn(async () => ({})),
+  updateDisputeEvidence: jest.fn(async () => ({})),
+}));
+
 // Import after mocking
 const {
   createDispute,
@@ -179,18 +202,19 @@ function createTestContract(
   projectId: string,
   freelancerId: string,
   employerId: string
-): Contract {
-  const contract: Contract = {
+): ContractEntity {
+  const now = new Date().toISOString();
+  const contract: ContractEntity = {
     id,
-    projectId,
-    proposalId: generateId(),
-    freelancerId,
-    employerId,
-    escrowAddress: '0x' + 'a'.repeat(40),
-    totalAmount: 10000,
+    project_id: projectId,
+    proposal_id: generateId(),
+    freelancer_id: freelancerId,
+    employer_id: employerId,
+    escrow_address: '0x' + 'a'.repeat(40),
+    total_amount: 10000,
     status: 'active',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: now,
+    updated_at: now,
   };
   contractStore.set(id, contract);
   return contract;
@@ -199,35 +223,38 @@ function createTestContract(
 function createTestProject(
   id: string,
   employerId: string,
-  milestones: Milestone[]
-): Project {
-  const project: Project = {
+  milestones: MilestoneEntity[]
+): ProjectEntity {
+  const now = new Date().toISOString();
+  const project: ProjectEntity = {
     id,
-    employerId,
+    employer_id: employerId,
     title: 'Test Project',
     description: 'Test project description',
-    requiredSkills: [],
+    required_skills: [],
     budget: 10000,
     deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     status: 'in_progress',
     milestones,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: now,
+    updated_at: now,
   };
   projectStore.set(id, project);
   return project;
 }
 
+// MilestoneStatus is imported from project-repository.ts
+
 function createTestMilestone(
   id: string,
   status: MilestoneStatus = 'submitted'
-): Milestone {
+): MilestoneEntity {
   return {
     id,
     title: `Milestone ${id}`,
     description: 'Test milestone',
     amount: 2500,
-    dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+    due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
     status,
   };
 }
@@ -310,8 +337,8 @@ describe('Dispute Service - Property Tests', () => {
             // Verify dispute exists in store
             expect(disputeStore.has(dispute.id)).toBe(true);
             const stored = disputeStore.get(dispute.id);
-            expect(stored?.milestoneId).toBe(milestoneId);
-            expect(stored?.initiatorId).toBe(initiatorId);
+            expect(stored?.milestone_id).toBe(milestoneId);
+            expect(stored?.initiator_id).toBe(initiatorId);
             expect(stored?.reason).toBe(reason);
           }
         }
@@ -365,7 +392,7 @@ describe('Dispute Service - Property Tests', () => {
 
             // Verify notifications were created for both parties
             const notifications = Array.from(notificationStore.values());
-            
+
             // Should have exactly 2 notifications (one for each party)
             expect(notifications.length).toBe(2);
 

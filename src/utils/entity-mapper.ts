@@ -144,8 +144,8 @@ export function mapFreelancerProfileFromEntity(entity: FreelancerProfileEntity):
     userId: entity.user_id,
     bio: entity.bio,
     hourlyRate: entity.hourly_rate,
-    skills: entity.skills.map(mapSkillRefFromEntity),
-    experience: entity.experience.map((e: ExpEntity) => ({
+    skills: (entity.skills || []).map(mapSkillRefFromEntity),
+    experience: (entity.experience || []).map((e: ExpEntity) => ({
       id: e.id,
       title: e.title,
       company: e.company,
@@ -226,11 +226,11 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
     employerId: entity.employer_id,
     title: entity.title,
     description: entity.description,
-    requiredSkills: entity.required_skills.map(mapSkillRefFromEntity),
+    requiredSkills: (entity.required_skills || []).map(mapSkillRefFromEntity),
     budget: entity.budget,
     deadline: entity.deadline,
     status: entity.status,
-    milestones: entity.milestones.map(mapMilestoneFromEntity),
+    milestones: (entity.milestones || []).map(mapMilestoneFromEntity),
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };
@@ -344,7 +344,7 @@ export function mapDisputeFromEntity(entity: DisputeEntity): Dispute {
     milestoneId: entity.milestone_id,
     initiatorId: entity.initiator_id,
     reason: entity.reason,
-    evidence: entity.evidence.map(mapEvidenceFromEntity),
+    evidence: (entity.evidence || []).map(mapEvidenceFromEntity),
     status: entity.status,
     resolution: entity.resolution ? {
       decision: entity.resolution.decision,

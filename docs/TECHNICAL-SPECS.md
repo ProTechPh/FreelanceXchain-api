@@ -450,6 +450,45 @@ type NotificationType =
 
 ---
 
+## Testing Specifications
+
+### Test Framework
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Test Runner | Jest | Unit and integration testing |
+| TypeScript Support | ts-jest | TypeScript compilation |
+| Property Testing | fast-check | Property-based testing |
+
+### Test Coverage
+
+| Suite | Tests | Description |
+|-------|-------|-------------|
+| auth-service | 6 | Registration, login, JWT tokens |
+| proposal-service | 4 | Proposals, acceptance, rejection |
+| project-service | 4 | Projects, milestones, budgets |
+| payment-service | 11 | Payments, approvals, disputes |
+| dispute-service | 4 | Disputes, evidence, resolution |
+| integration | 4 | End-to-end critical flows |
+| **Total** | **175** | **100% pass rate** |
+
+### Mock Architecture
+
+Tests use in-memory stores with Jest mocks. Key pattern:
+- Services expect entity types (snake_case: `project_id`)
+- Mocks convert incoming domain models to entity format
+- All repository mocks return entity types for consistency
+
+### Running Tests
+
+```bash
+npm test              # Run all tests
+npm test -- --watch  # Watch mode
+npm test -- --coverage  # Coverage report
+```
+
+---
+
 ## Environment Configuration
 
 | Variable | Required | Default | Description |

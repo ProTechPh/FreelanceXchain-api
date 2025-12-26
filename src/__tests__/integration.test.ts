@@ -36,6 +36,19 @@ jest.unstable_mockModule('../repositories/user-repository.js', () => ({
       return user;
     }),
     findUserById: jest.fn(async (id: string) => userStore.get(id) ?? null),
+    getUserById: jest.fn(async (id: string) => {
+      const user = userStore.get(id);
+      if (!user) return null;
+      // Return entity format
+      return {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        wallet_address: user.walletAddress || ('0x' + 'a'.repeat(40)),
+        created_at: user.createdAt,
+        updated_at: user.updatedAt,
+      };
+    }),
     findUserByEmail: jest.fn(async (email: string) => {
       for (const user of userStore.values()) {
         if (user.email.toLowerCase() === email.toLowerCase()) return user;
@@ -61,18 +74,68 @@ jest.unstable_mockModule('../repositories/user-repository.js', () => ({
 
 jest.unstable_mockModule('../repositories/freelancer-profile-repository.js', () => ({
   freelancerProfileRepository: {
-    createProfile: jest.fn(async (profile: FreelancerProfile) => {
-      freelancerProfileStore.set(profile.userId, profile);
-      return profile;
+    createProfile: jest.fn(async (profile: any) => {
+      // Convert to entity format if needed
+      const entity = {
+        id: profile.id,
+        user_id: profile.user_id || profile.userId,
+        bio: profile.bio,
+        hourly_rate: profile.hourly_rate ?? profile.hourlyRate,
+        skills: profile.skills ?? [],
+        experience: profile.experience ?? [],
+        availability: profile.availability ?? 'available',
+        created_at: profile.created_at ?? new Date().toISOString(),
+        updated_at: profile.updated_at ?? new Date().toISOString(),
+      };
+      freelancerProfileStore.set(entity.user_id, entity as any);
+      return entity;
     }),
-    findProfileByUserId: jest.fn(async (userId: string) => freelancerProfileStore.get(userId) ?? null),
-    getProfileByUserId: jest.fn(async (userId: string) => freelancerProfileStore.get(userId) ?? null),
-    updateProfile: jest.fn(async (id: string, userId: string, updates: Partial<FreelancerProfile>) => {
+    findProfileByUserId: jest.fn(async (userId: string) => {
       const profile = freelancerProfileStore.get(userId);
-      if (!profile || profile.id !== id) return null;
-      const updated = { ...profile, ...updates, updatedAt: new Date().toISOString() };
-      freelancerProfileStore.set(userId, updated);
-      return updated;
+      if (!profile) return null;
+      // Return entity format
+      return {
+        id: profile.id,
+        user_id: (profile as any).user_id || profile.userId,
+        bio: profile.bio,
+        hourly_rate: (profile as any).hourly_rate ?? profile.hourlyRate,
+        skills: profile.skills ?? [],
+        experience: profile.experience ?? [],
+        availability: profile.availability,
+        created_at: (profile as any).created_at ?? profile.createdAt,
+        updated_at: (profile as any).updated_at ?? profile.updatedAt,
+      };
+    }),
+    getProfileByUserId: jest.fn(async (userId: string) => {
+      const profile = freelancerProfileStore.get(userId);
+      if (!profile) return null;
+      // Return entity format
+      return {
+        id: profile.id,
+        user_id: (profile as any).user_id || profile.userId,
+        bio: profile.bio,
+        hourly_rate: (profile as any).hourly_rate ?? profile.hourlyRate,
+        skills: profile.skills ?? [],
+        experience: profile.experience ?? [],
+        availability: profile.availability,
+        created_at: (profile as any).created_at ?? profile.createdAt,
+        updated_at: (profile as any).updated_at ?? profile.updatedAt,
+      };
+    }),
+    updateProfile: jest.fn(async (id: string, updates: any) => {
+      // Find by id in all profiles
+      for (const [userId, profile] of freelancerProfileStore.entries()) {
+        if (profile.id === id) {
+          const updated = {
+            ...profile,
+            ...updates,
+            updated_at: new Date().toISOString(),
+          };
+          freelancerProfileStore.set(userId, updated as any);
+          return updated;
+        }
+      }
+      return null;
     }),
   },
   FreelancerProfileRepository: jest.fn(),
@@ -99,25 +162,86 @@ jest.unstable_mockModule('../repositories/employer-profile-repository.js', () =>
 
 jest.unstable_mockModule('../repositories/project-repository.js', () => ({
   projectRepository: {
-    createProject: jest.fn(async (project: Project) => {
-      projectStore.set(project.id, project);
-      return project;
+    createProject: jest.fn(async (project: any) => {
+      // Convert to entity format if needed
+      const entity = {
+        id: project.id,
+        employer_id: project.employer_id || project.employerId,
+        title: project.title,
+        description: project.description,
+        required_skills: project.required_skills || project.requiredSkills || [],
+        budget: project.budget,
+        deadline: project.deadline,
+        status: project.status || 'open',
+        milestones: project.milestones ?? [],
+        created_at: project.created_at ?? new Date().toISOString(),
+        updated_at: project.updated_at ?? new Date().toISOString(),
+      };
+      projectStore.set(entity.id, entity as any);
+      return entity;
     }),
-    findProjectById: jest.fn(async (id: string) => projectStore.get(id) ?? null),
-    getProjectById: jest.fn(async (id: string, employerId: string) => {
-      const project = projectStore.get(id);
-      if (project && project.employerId === employerId) return project;
-      return null;
-    }),
-    updateProject: jest.fn(async (id: string, _employerId: string, updates: Partial<Project>) => {
+    findProjectById: jest.fn(async (id: string) => {
       const project = projectStore.get(id);
       if (!project) return null;
-      const updated = { ...project, ...updates, updatedAt: new Date().toISOString() };
-      projectStore.set(id, updated);
+      // Return entity format
+      return {
+        id: project.id,
+        employer_id: (project as any).employer_id || project.employerId,
+        title: project.title,
+        description: project.description,
+        required_skills: (project as any).required_skills || project.requiredSkills || [],
+        budget: project.budget,
+        deadline: project.deadline,
+        status: project.status,
+        milestones: project.milestones ?? [],
+        created_at: (project as any).created_at ?? project.createdAt,
+        updated_at: (project as any).updated_at ?? project.updatedAt,
+      };
+    }),
+    getProjectById: jest.fn(async (id: string, _employerId?: string) => {
+      const project = projectStore.get(id);
+      if (!project) return null;
+      return {
+        id: project.id,
+        employer_id: (project as any).employer_id || project.employerId,
+        title: project.title,
+        description: project.description,
+        required_skills: (project as any).required_skills || project.requiredSkills || [],
+        budget: project.budget,
+        deadline: project.deadline,
+        status: project.status,
+        milestones: project.milestones ?? [],
+        created_at: (project as any).created_at ?? project.createdAt,
+        updated_at: (project as any).updated_at ?? project.updatedAt,
+      };
+    }),
+    updateProject: jest.fn(async (id: string, updates: any) => {
+      const project = projectStore.get(id);
+      if (!project) return null;
+      const updated = {
+        ...project,
+        ...updates,
+        updated_at: new Date().toISOString(),
+      };
+      projectStore.set(id, updated as any);
       return updated;
     }),
     getProjectsByEmployer: jest.fn(async (employerId: string) => {
-      const items = Array.from(projectStore.values()).filter(p => p.employerId === employerId);
+      const items = Array.from(projectStore.values())
+        .filter(p => (p as any).employer_id === employerId || p.employerId === employerId)
+        .map(p => ({
+          id: p.id,
+          employer_id: (p as any).employer_id || p.employerId,
+          title: p.title,
+          description: p.description,
+          required_skills: (p as any).required_skills || p.requiredSkills || [],
+          budget: p.budget,
+          deadline: p.deadline,
+          status: p.status,
+          milestones: p.milestones ?? [],
+          created_at: (p as any).created_at ?? p.createdAt,
+          updated_at: (p as any).updated_at ?? p.updatedAt,
+        }));
       return { items, hasMore: false };
     }),
     countProposalsByProject: jest.fn(async (projectId: string) => {
@@ -134,36 +258,99 @@ jest.unstable_mockModule('../repositories/project-repository.js', () => ({
 
 jest.unstable_mockModule('../repositories/proposal-repository.js', () => ({
   proposalRepository: {
-    createProposal: jest.fn(async (proposal: Proposal) => {
-      proposalStore.set(proposal.id, proposal);
-      return proposal;
+    createProposal: jest.fn(async (proposal: any) => {
+      // Convert to entity format
+      const entity = {
+        id: proposal.id,
+        project_id: proposal.project_id || proposal.projectId,
+        freelancer_id: proposal.freelancer_id || proposal.freelancerId,
+        cover_letter: proposal.cover_letter || proposal.coverLetter,
+        proposed_rate: proposal.proposed_rate ?? proposal.proposedRate,
+        estimated_duration: proposal.estimated_duration || proposal.estimatedDuration,
+        status: proposal.status || 'pending',
+        created_at: proposal.created_at ?? new Date().toISOString(),
+        updated_at: proposal.updated_at ?? new Date().toISOString(),
+      };
+      proposalStore.set(entity.id, entity as any);
+      return entity;
     }),
-    findProposalById: jest.fn(async (id: string) => proposalStore.get(id) ?? null),
+    findProposalById: jest.fn(async (id: string) => {
+      const proposal = proposalStore.get(id);
+      if (!proposal) return null;
+      // Return entity format
+      return {
+        id: proposal.id,
+        project_id: (proposal as any).project_id || proposal.projectId,
+        freelancer_id: (proposal as any).freelancer_id || proposal.freelancerId,
+        cover_letter: (proposal as any).cover_letter || proposal.coverLetter,
+        proposed_rate: (proposal as any).proposed_rate ?? proposal.proposedRate,
+        estimated_duration: (proposal as any).estimated_duration || proposal.estimatedDuration,
+        status: proposal.status,
+        created_at: (proposal as any).created_at ?? proposal.createdAt,
+        updated_at: (proposal as any).updated_at ?? proposal.updatedAt,
+      };
+    }),
     getExistingProposal: jest.fn(async (projectId: string, freelancerId: string) => {
       for (const proposal of proposalStore.values()) {
-        if (proposal.projectId === projectId && proposal.freelancerId === freelancerId) {
-          return proposal;
+        const propProjectId = (proposal as any).project_id || proposal.projectId;
+        const propFreelancerId = (proposal as any).freelancer_id || proposal.freelancerId;
+        if (propProjectId === projectId && propFreelancerId === freelancerId) {
+          return {
+            id: proposal.id,
+            project_id: propProjectId,
+            freelancer_id: propFreelancerId,
+            cover_letter: (proposal as any).cover_letter || proposal.coverLetter,
+            proposed_rate: (proposal as any).proposed_rate ?? proposal.proposedRate,
+            estimated_duration: (proposal as any).estimated_duration || proposal.estimatedDuration,
+            status: proposal.status,
+            created_at: (proposal as any).created_at ?? proposal.createdAt,
+            updated_at: (proposal as any).updated_at ?? proposal.updatedAt,
+          };
         }
       }
       return null;
     }),
-    updateProposal: jest.fn(async (id: string, _projectId: string, updates: Partial<Proposal>) => {
+    updateProposal: jest.fn(async (id: string, updates: any) => {
       const proposal = proposalStore.get(id);
       if (!proposal) return null;
-      const updated = { ...proposal, ...updates, updatedAt: new Date().toISOString() };
-      proposalStore.set(id, updated);
+      const updated = { ...proposal, ...updates, updated_at: new Date().toISOString() };
+      proposalStore.set(id, updated as any);
       return updated;
     }),
     getProposalsByProject: jest.fn(async (projectId: string) => {
-      const items = Array.from(proposalStore.values()).filter(p => p.projectId === projectId);
+      const items = Array.from(proposalStore.values())
+        .filter(p => ((p as any).project_id || p.projectId) === projectId)
+        .map(p => ({
+          id: p.id,
+          project_id: (p as any).project_id || p.projectId,
+          freelancer_id: (p as any).freelancer_id || p.freelancerId,
+          cover_letter: (p as any).cover_letter || p.coverLetter,
+          proposed_rate: (p as any).proposed_rate ?? p.proposedRate,
+          estimated_duration: (p as any).estimated_duration || p.estimatedDuration,
+          status: p.status,
+          created_at: (p as any).created_at ?? p.createdAt,
+          updated_at: (p as any).updated_at ?? p.updatedAt,
+        }));
       return { items, hasMore: false };
     }),
     getProposalsByFreelancer: jest.fn(async (freelancerId: string) => {
-      return Array.from(proposalStore.values()).filter(p => p.freelancerId === freelancerId);
+      return Array.from(proposalStore.values())
+        .filter(p => ((p as any).freelancer_id || p.freelancerId) === freelancerId)
+        .map(p => ({
+          id: p.id,
+          project_id: (p as any).project_id || p.projectId,
+          freelancer_id: (p as any).freelancer_id || p.freelancerId,
+          cover_letter: (p as any).cover_letter || p.coverLetter,
+          proposed_rate: (p as any).proposed_rate ?? p.proposedRate,
+          estimated_duration: (p as any).estimated_duration || p.estimatedDuration,
+          status: p.status,
+          created_at: (p as any).created_at ?? p.createdAt,
+          updated_at: (p as any).updated_at ?? p.updatedAt,
+        }));
     }),
     hasAcceptedProposal: jest.fn(async (projectId: string) => {
       return Array.from(proposalStore.values()).some(
-        p => p.projectId === projectId && p.status === 'accepted'
+        p => ((p as any).project_id || p.projectId) === projectId && p.status === 'accepted'
       );
     }),
   },
@@ -172,30 +359,87 @@ jest.unstable_mockModule('../repositories/proposal-repository.js', () => ({
 
 jest.unstable_mockModule('../repositories/contract-repository.js', () => ({
   contractRepository: {
-    createContract: jest.fn(async (contract: Contract) => {
-      contractStore.set(contract.id, contract);
+    createContract: jest.fn(async (contract: any) => {
+      // Store as-is since it's already in entity format
+      contractStore.set(contract.id, contract as any);
       return contract;
     }),
-    getContractById: jest.fn(async (id: string) => contractStore.get(id) ?? null),
+    getContractById: jest.fn(async (id: string) => {
+      const contract = contractStore.get(id);
+      if (!contract) return null;
+      // Return entity format
+      return {
+        id: contract.id,
+        project_id: (contract as any).project_id || contract.projectId,
+        proposal_id: (contract as any).proposal_id || contract.proposalId,
+        freelancer_id: (contract as any).freelancer_id || contract.freelancerId,
+        employer_id: (contract as any).employer_id || contract.employerId,
+        escrow_address: (contract as any).escrow_address || contract.escrowAddress || '',
+        total_amount: (contract as any).total_amount ?? contract.totalAmount,
+        status: contract.status,
+        created_at: (contract as any).created_at ?? contract.createdAt,
+        updated_at: (contract as any).updated_at ?? contract.updatedAt,
+      };
+    }),
     findContractByProposalId: jest.fn(async (proposalId: string) => {
       for (const contract of contractStore.values()) {
-        if (contract.proposalId === proposalId) return contract;
+        const propId = (contract as any).proposal_id || contract.proposalId;
+        if (propId === proposalId) {
+          return {
+            id: contract.id,
+            project_id: (contract as any).project_id || contract.projectId,
+            proposal_id: propId,
+            freelancer_id: (contract as any).freelancer_id || contract.freelancerId,
+            employer_id: (contract as any).employer_id || contract.employerId,
+            escrow_address: (contract as any).escrow_address || contract.escrowAddress || '',
+            total_amount: (contract as any).total_amount ?? contract.totalAmount,
+            status: contract.status,
+            created_at: (contract as any).created_at ?? contract.createdAt,
+            updated_at: (contract as any).updated_at ?? contract.updatedAt,
+          };
+        }
       }
       return null;
     }),
-    updateContract: jest.fn(async (id: string, updates: Partial<Contract>) => {
+    updateContract: jest.fn(async (id: string, updates: any) => {
       const contract = contractStore.get(id);
       if (!contract) return null;
-      const updated = { ...contract, ...updates, updatedAt: new Date().toISOString() };
-      contractStore.set(id, updated);
+      const updated = { ...contract, ...updates, updated_at: new Date().toISOString() };
+      contractStore.set(id, updated as any);
       return updated;
     }),
     getContractsByFreelancer: jest.fn(async (freelancerId: string) => {
-      const items = Array.from(contractStore.values()).filter(c => c.freelancerId === freelancerId);
+      const items = Array.from(contractStore.values())
+        .filter(c => ((c as any).freelancer_id || c.freelancerId) === freelancerId)
+        .map(c => ({
+          id: c.id,
+          project_id: (c as any).project_id || c.projectId,
+          proposal_id: (c as any).proposal_id || c.proposalId,
+          freelancer_id: (c as any).freelancer_id || c.freelancerId,
+          employer_id: (c as any).employer_id || c.employerId,
+          escrow_address: (c as any).escrow_address || c.escrowAddress || '',
+          total_amount: (c as any).total_amount ?? c.totalAmount,
+          status: c.status,
+          created_at: (c as any).created_at ?? c.createdAt,
+          updated_at: (c as any).updated_at ?? c.updatedAt,
+        }));
       return { items, hasMore: false };
     }),
     getContractsByEmployer: jest.fn(async (employerId: string) => {
-      const items = Array.from(contractStore.values()).filter(c => c.employerId === employerId);
+      const items = Array.from(contractStore.values())
+        .filter(c => ((c as any).employer_id || c.employerId) === employerId)
+        .map(c => ({
+          id: c.id,
+          project_id: (c as any).project_id || c.projectId,
+          proposal_id: (c as any).proposal_id || c.proposalId,
+          freelancer_id: (c as any).freelancer_id || c.freelancerId,
+          employer_id: (c as any).employer_id || c.employerId,
+          escrow_address: (c as any).escrow_address || c.escrowAddress || '',
+          total_amount: (c as any).total_amount ?? c.totalAmount,
+          status: c.status,
+          created_at: (c as any).created_at ?? c.createdAt,
+          updated_at: (c as any).updated_at ?? c.updatedAt,
+        }));
       return { items, hasMore: false };
     }),
   },
@@ -205,33 +449,101 @@ jest.unstable_mockModule('../repositories/contract-repository.js', () => ({
 
 jest.unstable_mockModule('../repositories/dispute-repository.js', () => ({
   disputeRepository: {
-    createDispute: jest.fn(async (dispute: Dispute) => {
-      disputeStore.set(dispute.id, dispute);
-      return dispute;
+    createDispute: jest.fn(async (dispute: any) => {
+      // Convert to entity format
+      const entity = {
+        id: dispute.id,
+        contract_id: dispute.contract_id || dispute.contractId,
+        milestone_id: dispute.milestone_id || dispute.milestoneId,
+        initiator_id: dispute.initiator_id || dispute.initiatorId,
+        reason: dispute.reason,
+        status: dispute.status || 'open',
+        evidence: dispute.evidence ?? [],
+        resolution: dispute.resolution ?? null,
+        created_at: dispute.created_at ?? new Date().toISOString(),
+        updated_at: dispute.updated_at ?? new Date().toISOString(),
+      };
+      disputeStore.set(entity.id, entity as any);
+      return entity;
     }),
-    findDisputeById: jest.fn(async (id: string) => disputeStore.get(id) ?? null),
-    getDisputeById: jest.fn(async (id: string, contractId: string) => {
-      const dispute = disputeStore.get(id);
-      if (dispute && dispute.contractId === contractId) return dispute;
-      return null;
-    }),
-    updateDispute: jest.fn(async (id: string, _contractId: string, updates: Partial<Dispute>) => {
+    findDisputeById: jest.fn(async (id: string) => {
       const dispute = disputeStore.get(id);
       if (!dispute) return null;
-      const updated = { ...dispute, ...updates, updatedAt: new Date().toISOString() };
-      disputeStore.set(id, updated);
+      // Return entity format
+      return {
+        id: dispute.id,
+        contract_id: (dispute as any).contract_id || dispute.contractId,
+        milestone_id: (dispute as any).milestone_id || dispute.milestoneId,
+        initiator_id: (dispute as any).initiator_id || dispute.initiatorId,
+        reason: dispute.reason,
+        status: dispute.status,
+        evidence: dispute.evidence ?? [],
+        resolution: dispute.resolution ?? null,
+        created_at: (dispute as any).created_at ?? dispute.createdAt,
+        updated_at: (dispute as any).updated_at ?? dispute.updatedAt,
+      };
+    }),
+    getDisputeById: jest.fn(async (id: string, contractId?: string) => {
+      const dispute = disputeStore.get(id);
+      if (!dispute) return null;
+      const dispContractId = (dispute as any).contract_id || dispute.contractId;
+      if (contractId && dispContractId !== contractId) return null;
+      return {
+        id: dispute.id,
+        contract_id: dispContractId,
+        milestone_id: (dispute as any).milestone_id || dispute.milestoneId,
+        initiator_id: (dispute as any).initiator_id || dispute.initiatorId,
+        reason: dispute.reason,
+        status: dispute.status,
+        evidence: dispute.evidence ?? [],
+        resolution: dispute.resolution ?? null,
+        created_at: (dispute as any).created_at ?? dispute.createdAt,
+        updated_at: (dispute as any).updated_at ?? dispute.updatedAt,
+      };
+    }),
+    updateDispute: jest.fn(async (id: string, updates: any) => {
+      const dispute = disputeStore.get(id);
+      if (!dispute) return null;
+      const updated = { ...dispute, ...updates, updated_at: new Date().toISOString() };
+      disputeStore.set(id, updated as any);
       return updated;
     }),
     getDisputeByMilestone: jest.fn(async (milestoneId: string) => {
       for (const dispute of disputeStore.values()) {
-        if (dispute.milestoneId === milestoneId) return dispute;
+        const dispMilestoneId = (dispute as any).milestone_id || dispute.milestoneId;
+        if (dispMilestoneId === milestoneId) {
+          return {
+            id: dispute.id,
+            contract_id: (dispute as any).contract_id || dispute.contractId,
+            milestone_id: dispMilestoneId,
+            initiator_id: (dispute as any).initiator_id || dispute.initiatorId,
+            reason: dispute.reason,
+            status: dispute.status,
+            evidence: dispute.evidence ?? [],
+            resolution: dispute.resolution ?? null,
+            created_at: (dispute as any).created_at ?? dispute.createdAt,
+            updated_at: (dispute as any).updated_at ?? dispute.updatedAt,
+          };
+        }
       }
       return null;
     }),
     getAllDisputesByContract: jest.fn(async (contractId: string) => {
       return Array.from(disputeStore.values())
-        .filter(d => d.contractId === contractId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        .filter(d => ((d as any).contract_id || d.contractId) === contractId)
+        .map(d => ({
+          id: d.id,
+          contract_id: (d as any).contract_id || d.contractId,
+          milestone_id: (d as any).milestone_id || d.milestoneId,
+          initiator_id: (d as any).initiator_id || d.initiatorId,
+          reason: d.reason,
+          status: d.status,
+          evidence: d.evidence ?? [],
+          resolution: d.resolution ?? null,
+          created_at: (d as any).created_at ?? d.createdAt,
+          updated_at: (d as any).updated_at ?? d.updatedAt,
+        }))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }),
   },
   DisputeRepository: jest.fn(),
@@ -263,17 +575,50 @@ jest.unstable_mockModule('../repositories/notification-repository.js', () => ({
 
 jest.unstable_mockModule('../repositories/skill-repository.js', () => ({
   skillRepository: {
-    createSkill: jest.fn(async (skill: Skill) => {
+    createSkill: jest.fn(async (skill: any) => {
       skillStore.set(skill.id, skill);
       return skill;
     }),
-    findSkillById: jest.fn(async (id: string) => skillStore.get(id) ?? null),
+    findSkillById: jest.fn(async (id: string) => {
+      const skill = skillStore.get(id);
+      if (!skill) return null;
+      // Return entity type with snake_case
+      return {
+        id: skill.id,
+        category_id: skill.categoryId,
+        name: skill.name,
+        description: skill.description,
+        is_active: skill.isActive,
+        created_at: skill.createdAt,
+        updated_at: skill.updatedAt,
+      };
+    }),
     getActiveSkills: jest.fn(async () => {
-      const items = Array.from(skillStore.values()).filter(s => s.isActive);
-      return { items, hasMore: false };
+      const items = Array.from(skillStore.values())
+        .filter(s => s.isActive)
+        .map(skill => ({
+          id: skill.id,
+          category_id: skill.categoryId,
+          name: skill.name,
+          description: skill.description,
+          is_active: skill.isActive,
+          created_at: skill.createdAt,
+          updated_at: skill.updatedAt,
+        }));
+      return items;
     }),
     getSkillsByIds: jest.fn(async (ids: string[]) => {
-      return ids.map(id => skillStore.get(id)).filter((s): s is Skill => s !== undefined);
+      return ids.map(id => skillStore.get(id))
+        .filter((s): s is Skill => s !== undefined)
+        .map(skill => ({
+          id: skill.id,
+          category_id: skill.categoryId,
+          name: skill.name,
+          description: skill.description,
+          is_active: skill.isActive,
+          created_at: skill.createdAt,
+          updated_at: skill.updatedAt,
+        }));
     }),
   },
   SkillRepository: jest.fn(),
@@ -281,14 +626,47 @@ jest.unstable_mockModule('../repositories/skill-repository.js', () => ({
 
 jest.unstable_mockModule('../repositories/skill-category-repository.js', () => ({
   skillCategoryRepository: {
-    createCategory: jest.fn(async (category: SkillCategory) => {
+    createCategory: jest.fn(async (category: any) => {
       skillCategoryStore.set(category.id, category);
       return category;
     }),
-    findCategoryById: jest.fn(async (id: string) => skillCategoryStore.get(id) ?? null),
+    findCategoryById: jest.fn(async (id: string) => {
+      const category = skillCategoryStore.get(id);
+      if (!category) return null;
+      // Return entity type with snake_case
+      return {
+        id: category.id,
+        name: category.name,
+        description: category.description,
+        is_active: category.isActive,
+        created_at: category.createdAt,
+        updated_at: category.updatedAt,
+      };
+    }),
+    getCategoryById: jest.fn(async (id: string) => {
+      const category = skillCategoryStore.get(id);
+      if (!category) return null;
+      return {
+        id: category.id,
+        name: category.name,
+        description: category.description,
+        is_active: category.isActive,
+        created_at: category.createdAt,
+        updated_at: category.updatedAt,
+      };
+    }),
     getActiveCategories: jest.fn(async () => {
-      const items = Array.from(skillCategoryStore.values()).filter(c => c.isActive);
-      return { items, hasMore: false };
+      const items = Array.from(skillCategoryStore.values())
+        .filter(c => c.isActive)
+        .map(category => ({
+          id: category.id,
+          name: category.name,
+          description: category.description,
+          is_active: category.isActive,
+          created_at: category.createdAt,
+          updated_at: category.updatedAt,
+        }));
+      return items;
     }),
   },
   SkillCategoryRepository: jest.fn(),
@@ -336,6 +714,20 @@ jest.unstable_mockModule('../services/escrow-contract.js', () => ({
 jest.unstable_mockModule('../services/blockchain-client.js', () => ({
   clearTransactions: jest.fn(),
   generateWalletAddress: jest.fn(() => '0x' + 'e'.repeat(40)),
+  confirmTransaction: jest.fn(async () => ({
+    id: 'tx-1',
+    status: 'confirmed',
+    hash: '0x' + 'f'.repeat(64),
+    blockNumber: 12345,
+  })),
+  submitTransaction: jest.fn(async () => ({
+    id: 'tx-1',
+    status: 'pending',
+    hash: '0x' + 'f'.repeat(64),
+  })),
+  getTransaction: jest.fn(async () => null),
+  serializeTransaction: jest.fn(tx => tx),
+  deserializeTransaction: jest.fn(tx => tx),
 }));
 
 // Import services after mocking
@@ -474,7 +866,7 @@ describe('Integration Tests - Critical Flows', () => {
       expect(projectResult.success).toBe(true);
       if (!projectResult.success) return;
       const project = projectResult.data;
-      expect(project.employerId).toBe(employerId);
+      expect((project as any).employer_id || (project as any).employerId).toBe(employerId);
       expect(project.status).toBe('open');
 
       // Step 6: Add milestones to project
@@ -832,6 +1224,7 @@ describe('Integration Tests - Critical Flows', () => {
         decision: 'freelancer_favor',
         reasoning: 'After reviewing the evidence, the freelancer has met all requirements as specified in the original project description.',
         resolvedBy: adminId,
+        resolverRole: 'admin',
       });
 
       expect(resolveResult.success).toBe(true);
@@ -931,6 +1324,7 @@ describe('Integration Tests - Critical Flows', () => {
         decision: 'employer_favor',
         reasoning: 'The freelancer failed to deliver any work for this milestone.',
         resolvedBy: adminId,
+        resolverRole: 'admin',
       });
 
       expect(resolveResult.success).toBe(true);

@@ -1,61 +1,53 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { Notification, NotificationType } from '../../models/notification.js';
+import { NotificationEntity, NotificationType } from '../../repositories/notification-repository.js';
 import { generateId } from '../../utils/id.js';
 
 // In-memory store for testing
-let notificationStore: Map<string, Notification & { updatedAt: string }> = new Map();
+let notificationStore: Map<string, NotificationEntity> = new Map();
 
 // Mock the notification repository before importing notification-service
 jest.unstable_mockModule('../../repositories/notification-repository.js', () => ({
   notificationRepository: {
-    createNotification: jest.fn(async (notification: Notification) => {
-      const entity = { ...notification, updatedAt: notification.createdAt };
+    createNotification: jest.fn(async (notification: Omit<NotificationEntity, 'created_at' | 'updated_at'>) => {
+      const now = new Date().toISOString();
+      const entity: NotificationEntity = { ...notification, created_at: now, updated_at: now };
       notificationStore.set(notification.id, entity);
-      return notification;
+      return entity;
     }),
-    getNotificationById: jest.fn(async (id: string, userId: string) => {
-      const notification = notificationStore.get(id);
-      if (notification && notification.userId === userId) {
-        const { updatedAt: _updatedAt, ...result } = notification;
-        return result;
-      }
-      return null;
+    getNotificationById: jest.fn(async (id: string) => {
+      return notificationStore.get(id) ?? null;
     }),
     getNotificationsByUser: jest.fn(async (userId: string) => {
       const notifications = Array.from(notificationStore.values())
-        .filter(n => n.userId === userId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .map(({ updatedAt: _updatedAt, ...n }) => n);
+        .filter(n => n.user_id === userId)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       return { items: notifications, hasMore: false };
     }),
     getAllNotificationsByUser: jest.fn(async (userId: string) => {
       return Array.from(notificationStore.values())
-        .filter(n => n.userId === userId)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .map(({ updatedAt: _updatedAt, ...n }) => n);
+        .filter(n => n.user_id === userId)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }),
     getUnreadNotificationsByUser: jest.fn(async (userId: string) => {
       return Array.from(notificationStore.values())
-        .filter(n => n.userId === userId && !n.isRead)
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-        .map(({ updatedAt: _updatedAt, ...n }) => n);
+        .filter(n => n.user_id === userId && !n.is_read)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }),
-    markAsRead: jest.fn(async (id: string, userId: string) => {
+    markAsRead: jest.fn(async (id: string) => {
       const notification = notificationStore.get(id);
-      if (notification && notification.userId === userId) {
-        const updated = { ...notification, isRead: true, updatedAt: new Date().toISOString() };
+      if (notification) {
+        const updated: NotificationEntity = { ...notification, is_read: true, updated_at: new Date().toISOString() };
         notificationStore.set(id, updated);
-        const { updatedAt: _updatedAt, ...result } = updated;
-        return result;
+        return updated;
       }
       return null;
     }),
     markAllAsRead: jest.fn(async (userId: string) => {
       let count = 0;
       for (const [id, notification] of notificationStore.entries()) {
-        if (notification.userId === userId && !notification.isRead) {
-          notificationStore.set(id, { ...notification, isRead: true, updatedAt: new Date().toISOString() });
+        if (notification.user_id === userId && !notification.is_read) {
+          notificationStore.set(id, { ...notification, is_read: true, updated_at: new Date().toISOString() });
           count++;
         }
       }
@@ -63,10 +55,12 @@ jest.unstable_mockModule('../../repositories/notification-repository.js', () => 
     }),
     getUnreadCount: jest.fn(async (userId: string) => {
       return Array.from(notificationStore.values())
-        .filter(n => n.userId === userId && !n.isRead).length;
+        .filter(n => n.user_id === userId && !n.is_read).length;
     }),
   },
   NotificationRepository: jest.fn(),
+  NotificationEntity: {} as NotificationEntity,
+  NotificationType: 'proposal_received' as NotificationType,
 }));
 
 // Import after mocking
@@ -115,18 +109,20 @@ function createTestNotification(
   type: NotificationType,
   createdAt: Date,
   isRead: boolean = false
-): Notification {
-  const notification: Notification = {
+): NotificationEntity {
+  const now = createdAt.toISOString();
+  const notification: NotificationEntity = {
     id: generateId(),
-    userId,
+    user_id: userId,
     type,
     title: `Test ${type}`,
     message: `Test message for ${type}`,
     data: {},
-    isRead,
-    createdAt: createdAt.toISOString(),
+    is_read: isRead,
+    created_at: now,
+    updated_at: now,
   };
-  notificationStore.set(notification.id, { ...notification, updatedAt: notification.createdAt });
+  notificationStore.set(notification.id, notification);
   return notification;
 }
 
@@ -177,7 +173,7 @@ describe('Notification Service - Property Tests', () => {
 
             // Verify stored notification matches
             const stored = notificationStore.get(result.data.id);
-            expect(stored?.userId).toBe(userId);
+            expect(stored?.user_id).toBe(userId);
             expect(stored?.type).toBe(type);
           }
         }
@@ -287,7 +283,7 @@ describe('Notification Service - Property Tests', () => {
 
           // Create notifications with different timestamps
           const baseTime = Date.now();
-          const createdNotifications: Notification[] = [];
+          const createdNotifications: NotificationEntity[] = [];
 
           for (let i = 0; i < count; i++) {
             // Create notifications with timestamps spread out by 1 second each
@@ -389,9 +385,9 @@ describe('Notification Service - Property Tests', () => {
             expect(markReadResult.data.id).toBe(notificationId);
             expect(markReadResult.data.userId).toBe(userId);
 
-            // Verify the stored notification also shows isRead as true
+            // Verify the stored notification also shows is_read as true
             const stored = notificationStore.get(notificationId);
-            expect(stored?.isRead).toBe(true);
+            expect(stored?.is_read).toBe(true);
           }
         }
       ),
@@ -425,7 +421,7 @@ describe('Notification Service - Property Tests', () => {
 
           // Verify all are initially unread
           const unreadBefore = Array.from(notificationStore.values())
-            .filter(n => n.userId === userId && !n.isRead);
+            .filter(n => n.user_id === userId && !n.is_read);
           expect(unreadBefore.length).toBe(count);
 
           // Mark all as read
@@ -439,15 +435,15 @@ describe('Notification Service - Property Tests', () => {
 
             // Verify all notifications in store are now read
             const allNotifications = Array.from(notificationStore.values())
-              .filter(n => n.userId === userId);
-            
+              .filter(n => n.user_id === userId);
+
             for (const notification of allNotifications) {
-              expect(notification.isRead).toBe(true);
+              expect(notification.is_read).toBe(true);
             }
 
             // Verify no unread notifications remain
             const unreadAfter = Array.from(notificationStore.values())
-              .filter(n => n.userId === userId && !n.isRead);
+              .filter(n => n.user_id === userId && !n.is_read);
             expect(unreadAfter.length).toBe(0);
           }
         }

@@ -1,12 +1,12 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { Contract } from '../../models/contract.js';
-import { Project } from '../../models/project.js';
+import { ContractEntity } from '../../repositories/contract-repository.js';
+import { ProjectEntity } from '../../repositories/project-repository.js';
 import { BlockchainRating } from '../reputation-contract.js';
 
-// In-memory stores for testing
-let contractStore: Map<string, Contract> = new Map();
-let projectStore: Map<string, Project> = new Map();
+// In-memory stores for testing - using entity types
+let contractStore: Map<string, ContractEntity> = new Map();
+let projectStore: Map<string, ProjectEntity> = new Map();
 
 // Mock the repositories before importing services
 jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
@@ -15,9 +15,9 @@ jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
       return contractStore.get(id) ?? null;
     }),
     getUserContracts: jest.fn(async (userId: string) => {
-      const contracts: Contract[] = [];
+      const contracts: ContractEntity[] = [];
       for (const contract of contractStore.values()) {
-        if (contract.freelancerId === userId || contract.employerId === userId) {
+        if (contract.freelancer_id === userId || contract.employer_id === userId) {
           contracts.push(contract);
         }
       }
@@ -25,6 +25,7 @@ jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
     }),
   },
   ContractRepository: jest.fn(),
+  ContractEntity: {} as ContractEntity,
 }));
 
 jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
@@ -34,6 +35,7 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
     }),
   },
   ProjectRepository: jest.fn(),
+  ProjectEntity: {} as ProjectEntity,
 }));
 
 // Mock notification service
@@ -69,18 +71,19 @@ const invalidRatingArbitrary = () =>
     fc.double({ min: 1.1, max: 4.9 }) // Non-integer values
   );
 
-const validContractArbitrary = () =>
+// Generates contract entities with snake_case properties
+const validContractEntityArbitrary = () =>
   fc.record({
     id: fc.uuid(),
-    projectId: fc.uuid(),
-    proposalId: fc.uuid(),
-    freelancerId: fc.uuid(),
-    employerId: fc.uuid(),
-    escrowAddress: fc.hexaString({ minLength: 40, maxLength: 40 }).map(s => '0x' + s),
-    totalAmount: fc.integer({ min: 100, max: 100000 }),
+    project_id: fc.uuid(),
+    proposal_id: fc.uuid(),
+    freelancer_id: fc.uuid(),
+    employer_id: fc.uuid(),
+    escrow_address: fc.hexaString({ minLength: 40, maxLength: 40 }).map(s => '0x' + s),
+    total_amount: fc.integer({ min: 100, max: 100000 }),
     status: fc.constant('completed' as const),
-    createdAt: fc.date().map(d => d.toISOString()),
-    updatedAt: fc.date().map(d => d.toISOString()),
+    created_at: fc.date().map(d => d.toISOString()),
+    updated_at: fc.date().map(d => d.toISOString()),
   });
 
 
@@ -121,7 +124,7 @@ describe('Reputation Service - Property Tests', () => {
     it('should accept ratings between 1 and 5 inclusive', async () => {
       await fc.assert(
         fc.asyncProperty(
-          validContractArbitrary(),
+          validContractEntityArbitrary(),
           validRatingArbitrary(),
           async (contractData, rating) => {
             // Clear stores
@@ -130,30 +133,31 @@ describe('Reputation Service - Property Tests', () => {
             clearBlockchainRatings();
 
             // Set up contract
-            const contract: Contract = contractData;
+            const contract: ContractEntity = contractData;
             contractStore.set(contract.id, contract);
 
             // Set up project
-            const project: Project = {
-              id: contract.projectId,
-              employerId: contract.employerId,
+            const now = new Date().toISOString();
+            const project: ProjectEntity = {
+              id: contract.project_id,
+              employer_id: contract.employer_id,
               title: 'Test Project',
               description: 'Test Description',
-              requiredSkills: [],
+              required_skills: [],
               budget: 1000,
-              deadline: new Date().toISOString(),
+              deadline: now,
               status: 'completed',
               milestones: [],
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
+              created_at: now,
+              updated_at: now,
             };
             projectStore.set(project.id, project);
 
             // Submit rating from employer to freelancer
             const result = await submitRating({
               contractId: contract.id,
-              raterId: contract.employerId,
-              rateeId: contract.freelancerId,
+              raterId: contract.employer_id,
+              rateeId: contract.freelancer_id,
               rating,
             });
 
@@ -173,7 +177,7 @@ describe('Reputation Service - Property Tests', () => {
     it('should reject ratings outside 1-5 range', async () => {
       await fc.assert(
         fc.asyncProperty(
-          validContractArbitrary(),
+          validContractEntityArbitrary(),
           invalidRatingArbitrary(),
           async (contractData, invalidRating) => {
             // Clear stores
@@ -182,14 +186,14 @@ describe('Reputation Service - Property Tests', () => {
             clearBlockchainRatings();
 
             // Set up contract
-            const contract: Contract = contractData;
+            const contract: ContractEntity = contractData;
             contractStore.set(contract.id, contract);
 
             // Submit invalid rating
             const result = await submitRating({
               contractId: contract.id,
-              raterId: contract.employerId,
-              rateeId: contract.freelancerId,
+              raterId: contract.employer_id,
+              rateeId: contract.freelancer_id,
               rating: invalidRating,
             });
 

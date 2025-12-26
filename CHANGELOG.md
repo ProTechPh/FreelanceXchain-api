@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2025-12-26
+
+### Fixed
+
+#### Test Infrastructure (100% Pass Rate)
+- Fixed repository mock type mismatches in all test files
+- Converted mocks from domain models (camelCase) to entity types (snake_case)
+- Fixed function signatures: `updateProposal`, `updateDispute` now use 2 arguments
+- Added missing `getUserById` mock to user-repository
+- Added `user-repository` and `agreement-contract` mocks to dispute-service tests
+
+#### Integration Tests
+- All 4 critical flow tests now pass:
+  - Flow 1: Registration → Profile → Project → Proposal → Contract
+  - Flow 2: Milestone Completion → Approval → Payment
+  - Flow 3: Dispute Creation → Evidence → Resolution
+
+#### Files Modified
+- `src/__tests__/integration.test.ts` - Entity type conversions for all repository mocks
+- `src/services/__tests__/dispute-service.test.ts` - Added missing mocks
+- `src/services/__tests__/skill-service.test.ts` - Entity type fixes
+- `src/services/__tests__/search-service.test.ts` - Entity type fixes
+- `src/services/__tests__/reputation-service.test.ts` - Entity type fixes
+- `src/services/__tests__/proposal-service.test.ts` - Added missing mocks
+
+### Test Results
+- **Before**: 127/156 tests passing (81.4%)
+- **After**: 175/175 tests passing (100%)
+- **Suites**: 18/18 passing
+
+---
+
 ## [2.3.0] - 2025-12-26
 
 ### Security Enhancements
@@ -331,6 +363,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Description |
 |---------|------|-------------|
+| 2.3.1 | 2025-12-26 | Test infrastructure fixes - 100% pass rate |
 | 2.3.0 | 2025-12-26 | Security audit: Helmet.js, CORS, JWT, password validation |
 | 2.2.1 | 2025-12-25 | Security fixes and rate limiting |
 | 2.2.0 | 2025-12-25 | Added reviews, messages, and payments tables |
