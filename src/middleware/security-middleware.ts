@@ -5,13 +5,17 @@
 
 import { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
+
+// Workaround for TypeScript/Helmet import issue in NodeNext
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const helmetMiddleware = (helmet as any).default || helmet;
 import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Helmet middleware for security headers
  * Configures various HTTP headers to protect against common vulnerabilities
  */
-export const securityHeaders = helmet({
+export const securityHeaders = helmetMiddleware({
     // Content Security Policy
     contentSecurityPolicy: {
         directives: {
