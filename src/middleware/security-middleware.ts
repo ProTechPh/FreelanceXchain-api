@@ -4,10 +4,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const helmet = require('helmet') as (options?: Parameters<typeof import('helmet').default>[0]) => ReturnType<typeof import('helmet').default>;
+import helmet from 'helmet';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
