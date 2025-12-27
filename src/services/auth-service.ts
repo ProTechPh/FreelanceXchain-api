@@ -260,7 +260,9 @@ export async function getOAuthUrl(provider: Provider): Promise<string> {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: 'http://localhost:3000/api/auth/callback',
+      redirectTo: config.server.nodeEnv === 'production'
+        ? 'https://freelancexchain-api.vercel.app/api/auth/callback'
+        : `http://localhost:${config.server.port}/api/auth/callback`,
       skipBrowserRedirect: true,
     },
   });

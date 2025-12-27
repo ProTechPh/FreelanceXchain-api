@@ -23,7 +23,7 @@ const pendingTransactions = new Map<string, { confirmAt: number }>();
 
 // Default configuration
 const defaultConfig: BlockchainConfig = {
-  rpcUrl: config.blockchain.rpcUrl ?? 'http://localhost:8545',
+  rpcUrl: config.blockchain.rpcUrl ?? '',
   privateKey: config.blockchain.privateKey ?? '',
   chainId: 1,
 };
@@ -101,7 +101,7 @@ export function deserializePaymentTransaction(json: SerializedPaymentTransaction
  * Generate a mock transaction hash
  */
 function generateTransactionHash(): string {
-  return '0x' + Array.from({ length: 64 }, () => 
+  return '0x' + Array.from({ length: 64 }, () =>
     Math.floor(Math.random() * 16).toString(16)
   ).join('');
 }
@@ -110,7 +110,7 @@ function generateTransactionHash(): string {
  * Generate a mock wallet address
  */
 export function generateWalletAddress(): string {
-  return '0x' + Array.from({ length: 40 }, () => 
+  return '0x' + Array.from({ length: 40 }, () =>
     Math.floor(Math.random() * 16).toString(16)
   ).join('');
 }
