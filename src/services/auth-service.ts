@@ -260,8 +260,9 @@ export async function getOAuthUrl(provider: Provider): Promise<string> {
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
-      redirectTo: config.server.nodeEnv === 'production'
-        ? 'https://freelancexchain-api.vercel.app/api/auth/callback'
+      // Use PUBLIC_URL env var if set (for Docker/Production), otherwise fallback to localhost
+      redirectTo: process.env.PUBLIC_URL
+        ? `${process.env.PUBLIC_URL}/api/auth/callback`
         : `http://localhost:${config.server.port}/api/auth/callback`,
       skipBrowserRedirect: true,
     },

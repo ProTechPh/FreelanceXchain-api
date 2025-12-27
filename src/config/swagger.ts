@@ -232,7 +232,7 @@ const options: swaggerJsdoc.Options = {
     },
   },
   apis: process.env['NODE_ENV'] === 'production'
-    ? [] // Disable scanning in production to avoid crashing serverless functions where file paths differ
+    ? ['./dist/routes/**/*.js']
     : ['./src/routes/**/*.ts'],
 };
 
