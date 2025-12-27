@@ -4,11 +4,11 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import * as helmetModule from 'helmet';
+import { createRequire } from 'module';
 
-// Handle both ESM default export and CJS module.exports patterns
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const helmet = ((helmetModule as unknown as { default?: unknown }).default ?? helmetModule) as typeof helmetModule.default;
+const require = createRequire(import.meta.url);
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const helmet = require('helmet') as (options?: Parameters<typeof import('helmet').default>[0]) => ReturnType<typeof import('helmet').default>;
 import { v4 as uuidv4 } from 'uuid';
 
 /**
