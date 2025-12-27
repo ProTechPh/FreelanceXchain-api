@@ -12,19 +12,19 @@ const options: swaggerJsdoc.Options = {
         name: 'API Support',
       },
     },
-    servers: config.server.nodeEnv === 'production' 
+    servers: config.server.nodeEnv === 'production'
       ? [
-          {
-            url: `http://localhost:${config.server.port}`,
-            description: 'Production server',
-          },
-        ]
+        {
+          url: `http://localhost:${config.server.port}`,
+          description: 'Production server',
+        },
+      ]
       : [
-          {
-            url: `http://localhost:${config.server.port}`,
-            description: 'Development server',
-          },
-        ],
+        {
+          url: `http://localhost:${config.server.port}`,
+          description: 'Development server',
+        },
+      ],
     components: {
       securitySchemes: {
         bearerAuth: {
@@ -231,8 +231,8 @@ const options: swaggerJsdoc.Options = {
       },
     },
   },
-  apis: process.env['NODE_ENV'] === 'production' 
-    ? ['./dist/routes/**/*.js'] 
+  apis: process.env['NODE_ENV'] === 'production'
+    ? [] // Disable scanning in production to avoid crashing serverless functions where file paths differ
     : ['./src/routes/**/*.ts'],
 };
 
