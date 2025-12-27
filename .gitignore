@@ -40,3 +40,4 @@ deployment.json
 
 # Ganache
 .ganache/
+/.agent
