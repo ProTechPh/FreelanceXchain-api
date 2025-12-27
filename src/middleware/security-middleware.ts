@@ -4,7 +4,11 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import helmet from 'helmet';
+import * as helmetModule from 'helmet';
+
+// Handle both ESM default export and CJS module.exports patterns
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const helmet = ((helmetModule as unknown as { default?: unknown }).default ?? helmetModule) as typeof helmetModule.default;
 import { v4 as uuidv4 } from 'uuid';
 
 /**
