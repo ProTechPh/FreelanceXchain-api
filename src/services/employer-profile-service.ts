@@ -1,5 +1,5 @@
-import { EmployerProfile } from '../models/employer-profile.js';
-import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
+import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-mapper.js';
+import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
 import { generateId } from '../utils/id.js';
 
 export type CreateEmployerProfileInput = {
@@ -37,31 +37,29 @@ export async function createEmployerProfile(
     };
   }
 
-  const profile: EmployerProfile = {
+  const profileEntity: Omit<EmployerProfileEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
-    userId,
-    companyName: input.companyName,
+    user_id: userId,
+    company_name: input.companyName,
     description: input.description,
     industry: input.industry,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
 
-  const created = await employerProfileRepository.createProfile(profile);
-  return { success: true, data: created };
+  const createdEntity = await employerProfileRepository.createProfile(profileEntity);
+  return { success: true, data: mapEmployerProfileFromEntity(createdEntity) };
 }
 
 export async function getEmployerProfileByUserId(
   userId: string
 ): Promise<EmployerProfileServiceResult<EmployerProfile>> {
-  const profile = await employerProfileRepository.getProfileByUserId(userId);
-  if (!profile) {
+  const profileEntity = await employerProfileRepository.getProfileByUserId(userId);
+  if (!profileEntity) {
     return {
       success: false,
       error: { code: 'PROFILE_NOT_FOUND', message: 'Employer profile not found' },
     };
   }
-  return { success: true, data: profile };
+  return { success: true, data: mapEmployerProfileFromEntity(profileEntity) };
 }
 
 export async function updateEmployerProfile(
@@ -76,13 +74,18 @@ export async function updateEmployerProfile(
     };
   }
 
-  const updated = await employerProfileRepository.updateProfile(existingProfile.id, userId, input);
-  if (!updated) {
+  const updates: Partial<EmployerProfileEntity> = {};
+  if (input.companyName !== undefined) updates.company_name = input.companyName;
+  if (input.description !== undefined) updates.description = input.description;
+  if (input.industry !== undefined) updates.industry = input.industry;
+
+  const updatedEntity = await employerProfileRepository.updateProfile(existingProfile.id, updates);
+  if (!updatedEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to update profile' },
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapEmployerProfileFromEntity(updatedEntity) };
 }

@@ -11,3 +11,4 @@ export { ProposalRepository, proposalRepository } from './proposal-repository.js
 export { ContractRepository, contractRepository } from './contract-repository.js';
 export { NotificationRepository, notificationRepository } from './notification-repository.js';
 export { DisputeRepository, disputeRepository } from './dispute-repository.js';
+export { KycRepository, kycRepository } from './kyc-repository.js';

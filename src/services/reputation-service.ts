@@ -17,6 +17,7 @@ import {
 } from './reputation-contract.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
+import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
 
 // Rating input type
@@ -87,8 +88,8 @@ export async function submitRating(
   }
 
   // Verify contract exists
-  const contract = await contractRepository.getContractById(input.contractId);
-  if (!contract) {
+  const contractEntity = await contractRepository.getContractById(input.contractId);
+  if (!contractEntity) {
     return {
       success: false,
       error: {
@@ -97,6 +98,7 @@ export async function submitRating(
       },
     };
   }
+  const contract = mapContractFromEntity(contractEntity);
 
   // Verify rater is part of the contract
   if (contract.freelancerId !== input.raterId && contract.employerId !== input.raterId) {
@@ -157,8 +159,8 @@ export async function submitRating(
   });
 
   // Get project title for notification
-  const project = await projectRepository.getProjectById(contract.projectId, contract.employerId);
-  const projectTitle = project?.title ?? 'Unknown Project';
+  const projectEntity = await projectRepository.getProjectById(contract.projectId);
+  const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
   // Notify the ratee
   await notifyRatingReceived(
@@ -220,21 +222,23 @@ export async function getWorkHistory(
 ): Promise<ReputationServiceResult<WorkHistoryEntry[]>> {
   // Get all contracts for the user
   const contractsResult = await contractRepository.getUserContracts(userId);
-  const contracts = contractsResult.items;
+  const contractEntities = contractsResult.items;
 
   // Filter to completed contracts only
-  const completedContracts = contracts.filter(c => c.status === 'completed');
+  const completedContracts = contractEntities.filter(c => c.status === 'completed');
 
   const workHistory: WorkHistoryEntry[] = [];
 
-  for (const contract of completedContracts) {
+  for (const contractEntity of completedContracts) {
+    const contract = mapContractFromEntity(contractEntity);
+    
     // Determine user's role in the contract
     const role: 'freelancer' | 'employer' = 
       contract.freelancerId === userId ? 'freelancer' : 'employer';
 
     // Get project details
-    const project = await projectRepository.getProjectById(contract.projectId, contract.employerId);
-    const projectTitle = project?.title ?? 'Unknown Project';
+    const projectEntity = await projectRepository.getProjectById(contract.projectId);
+    const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
     // Get ratings for this contract
     const contractRatings = await getRatingsByContract(contract.id);
@@ -303,13 +307,14 @@ export async function canUserRate(
   contractId: string
 ): Promise<ReputationServiceResult<{ canRate: boolean; reason?: string }>> {
   // Verify contract exists
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
     return {
       success: true,
       data: { canRate: false, reason: 'Contract not found' },
     };
   }
+  const contract = mapContractFromEntity(contractEntity);
 
   // Verify rater is part of the contract
   if (contract.freelancerId !== raterId && contract.employerId !== raterId) {

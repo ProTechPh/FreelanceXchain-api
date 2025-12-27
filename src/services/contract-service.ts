@@ -1,5 +1,5 @@
-import { Contract, ContractStatus } from '../models/contract.js';
-import { contractRepository } from '../repositories/contract-repository.js';
+import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
+import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 
 export type ContractServiceError = {
@@ -12,68 +12,68 @@ export type ContractServiceResult<T> =
   | { success: true; data: T }
   | { success: false; error: ContractServiceError };
 
-// Get contract by ID
+function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): PaginatedResult<Contract> {
+  return {
+    items: result.items.map(mapContractFromEntity),
+    hasMore: result.hasMore,
+    total: result.total,
+  };
+}
+
 export async function getContractById(contractId: string): Promise<ContractServiceResult<Contract>> {
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const entity = await contractRepository.getContractById(contractId);
+  if (!entity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
     };
   }
-  return { success: true, data: contract };
+  return { success: true, data: mapContractFromEntity(entity) };
 }
 
-// Get contracts for a user (both as freelancer and employer)
 export async function getUserContracts(
   userId: string,
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getUserContracts(userId, options);
-  return { success: true, data: result };
+  return { success: true, data: mapPaginatedContracts(result) };
 }
 
-// Get contracts by freelancer
 export async function getContractsByFreelancer(
   freelancerId: string,
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getContractsByFreelancer(freelancerId, options);
-  return { success: true, data: result };
+  return { success: true, data: mapPaginatedContracts(result) };
 }
 
-// Get contracts by employer
 export async function getContractsByEmployer(
   employerId: string,
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getContractsByEmployer(employerId, options);
-  return { success: true, data: result };
+  return { success: true, data: mapPaginatedContracts(result) };
 }
 
-
-// Get contracts by project
 export async function getContractsByProject(
   projectId: string
 ): Promise<ContractServiceResult<Contract[]>> {
-  const contracts = await contractRepository.getContractsByProject(projectId);
-  return { success: true, data: contracts };
+  const entities = await contractRepository.getContractsByProject(projectId);
+  return { success: true, data: entities.map(mapContractFromEntity) };
 }
 
-// Update contract status
 export async function updateContractStatus(
   contractId: string,
   status: ContractStatus
 ): Promise<ContractServiceResult<Contract>> {
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const entity = await contractRepository.getContractById(contractId);
+  if (!entity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
     };
   }
 
-  // Validate status transitions
   const validTransitions: Record<ContractStatus, ContractStatus[]> = {
     active: ['completed', 'disputed', 'cancelled'],
     disputed: ['active', 'completed', 'cancelled'],
@@ -81,12 +81,12 @@ export async function updateContractStatus(
     cancelled: [],
   };
 
-  if (!validTransitions[contract.status].includes(status)) {
+  if (!validTransitions[entity.status].includes(status)) {
     return {
       success: false,
       error: {
         code: 'INVALID_STATUS_TRANSITION',
-        message: `Cannot transition from "${contract.status}" to "${status}"`,
+        message: `Cannot transition from "${entity.status}" to "${status}"`,
       },
     };
   }
@@ -99,23 +99,22 @@ export async function updateContractStatus(
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapContractFromEntity(updated) };
 }
 
-// Set escrow address for a contract
 export async function setEscrowAddress(
   contractId: string,
   escrowAddress: string
 ): Promise<ContractServiceResult<Contract>> {
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) {
+  const entity = await contractRepository.getContractById(contractId);
+  if (!entity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
     };
   }
 
-  const updated = await contractRepository.updateContract(contractId, { escrowAddress });
+  const updated = await contractRepository.updateContract(contractId, { escrow_address: escrowAddress });
   if (!updated) {
     return {
       success: false,
@@ -123,19 +122,18 @@ export async function setEscrowAddress(
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapContractFromEntity(updated) };
 }
 
-// Get contract by proposal ID
 export async function getContractByProposalId(
   proposalId: string
 ): Promise<ContractServiceResult<Contract>> {
-  const contract = await contractRepository.findContractByProposalId(proposalId);
-  if (!contract) {
+  const entity = await contractRepository.findContractByProposalId(proposalId);
+  if (!entity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found for this proposal' },
     };
   }
-  return { success: true, data: contract };
+  return { success: true, data: mapContractFromEntity(entity) };
 }

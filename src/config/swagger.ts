@@ -15,7 +15,7 @@ const options: swaggerJsdoc.Options = {
     servers: config.server.nodeEnv === 'production' 
       ? [
           {
-            url: 'https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io',
+            url: `http://localhost:${config.server.port}`,
             description: 'Production server',
           },
         ]

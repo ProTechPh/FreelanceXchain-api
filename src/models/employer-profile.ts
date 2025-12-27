@@ -1,9 +1,2 @@
-export type EmployerProfile = {
-  id: string;
-  userId: string;
-  companyName: string;
-  description: string;
-  industry: string;
-  createdAt: string;
-  updatedAt: string;
-};
+// Re-export types from entity-mapper for backward compatibility
+export type { EmployerProfile } from '../utils/entity-mapper.js';

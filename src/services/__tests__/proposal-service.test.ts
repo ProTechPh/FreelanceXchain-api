@@ -1,19 +1,19 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { Proposal } from '../../models/proposal.js';
-import { Contract } from '../../models/contract.js';
-import { Project, ProjectStatus } from '../../models/project.js';
+import { ProposalEntity } from '../../repositories/proposal-repository.js';
+import { ContractEntity } from '../../repositories/contract-repository.js';
+import { ProjectEntity, ProjectStatus } from '../../repositories/project-repository.js';
 import { generateId } from '../../utils/id.js';
 
 // In-memory stores for testing
-let proposalStore: Map<string, Proposal> = new Map();
-let contractStore: Map<string, Contract> = new Map();
-let projectStore: Map<string, Project> = new Map();
+let proposalStore: Map<string, ProposalEntity> = new Map();
+let contractStore: Map<string, ContractEntity> = new Map();
+let projectStore: Map<string, ProjectEntity> = new Map();
 
 // Mock the repositories before importing proposal-service
 jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
   proposalRepository: {
-    createProposal: jest.fn(async (proposal: Proposal) => {
+    createProposal: jest.fn(async (proposal: ProposalEntity) => {
       proposalStore.set(proposal.id, proposal);
       return proposal;
     }),
@@ -22,25 +22,25 @@ jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
     }),
     getExistingProposal: jest.fn(async (projectId: string, freelancerId: string) => {
       for (const proposal of proposalStore.values()) {
-        if (proposal.projectId === projectId && proposal.freelancerId === freelancerId) {
+        if (proposal.project_id === projectId && proposal.freelancer_id === freelancerId) {
           return proposal;
         }
       }
       return null;
     }),
-    updateProposal: jest.fn(async (id: string, _projectId: string, updates: Partial<Proposal>) => {
+    updateProposal: jest.fn(async (id: string, updates: Partial<ProposalEntity>) => {
       const existing = proposalStore.get(id);
       if (!existing) return null;
-      const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+      const updated = { ...existing, ...updates, updated_at: new Date().toISOString() };
       proposalStore.set(id, updated);
       return updated;
     }),
     getProposalsByProject: jest.fn(async (projectId: string) => {
-      const proposals = Array.from(proposalStore.values()).filter(p => p.projectId === projectId);
+      const proposals = Array.from(proposalStore.values()).filter(p => p.project_id === projectId);
       return { items: proposals, hasMore: false };
     }),
     getProposalsByFreelancer: jest.fn(async (freelancerId: string) => {
-      return Array.from(proposalStore.values()).filter(p => p.freelancerId === freelancerId);
+      return Array.from(proposalStore.values()).filter(p => p.freelancer_id === freelancerId);
     }),
   },
   ProposalRepository: jest.fn(),
@@ -49,7 +49,7 @@ jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
 
 jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
   contractRepository: {
-    createContract: jest.fn(async (contract: Contract) => {
+    createContract: jest.fn(async (contract: ContractEntity) => {
       contractStore.set(contract.id, contract);
       return contract;
     }),
@@ -58,7 +58,7 @@ jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
     }),
     findContractByProposalId: jest.fn(async (proposalId: string) => {
       for (const contract of contractStore.values()) {
-        if (contract.proposalId === proposalId) return contract;
+        if (contract.proposal_id === proposalId) return contract;
       }
       return null;
     }),
@@ -71,15 +71,42 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
     findProjectById: jest.fn(async (id: string) => {
       return projectStore.get(id) ?? null;
     }),
-    updateProject: jest.fn(async (id: string, _employerId: string, updates: Partial<Project>) => {
+    updateProject: jest.fn(async (id: string, updates: Partial<ProjectEntity>) => {
       const existing = projectStore.get(id);
       if (!existing) return null;
-      const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+      const updated = { ...existing, ...updates, updated_at: new Date().toISOString() };
       projectStore.set(id, updated);
       return updated;
     }),
   },
   ProjectRepository: jest.fn(),
+}));
+
+jest.unstable_mockModule('../../repositories/notification-repository.js', () => ({
+  notificationRepository: {
+    createNotification: jest.fn(async (notification: Record<string, unknown>) => {
+      const now = new Date().toISOString();
+      return { ...notification, created_at: now, updated_at: now };
+    }),
+  },
+  NotificationRepository: jest.fn(),
+}));
+
+// Mock user repository for acceptProposal
+jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
+  userRepository: {
+    getUserById: jest.fn(async () => ({
+      id: 'user-1',
+      wallet_address: '0x' + 'a'.repeat(40),
+    })),
+  },
+  UserRepository: jest.fn(),
+}));
+
+// Mock agreement contract for acceptProposal
+jest.unstable_mockModule('../agreement-contract.js', () => ({
+  createAgreementOnBlockchain: jest.fn(async () => ({ transactionHash: '0x123' })),
+  signAgreement: jest.fn(async () => ({ transactionHash: '0x456' })),
 }));
 
 // Import after mocking
@@ -97,19 +124,19 @@ const validEstimatedDurationArbitrary = () =>
 
 
 // Helper to create a test project
-function createTestProject(employerId: string, status: ProjectStatus = 'open'): Project {
-  const project: Project = {
+function createTestProject(employerId: string, status: ProjectStatus = 'open'): ProjectEntity {
+  const project: ProjectEntity = {
     id: generateId(),
-    employerId,
+    employer_id: employerId,
     title: 'Test Project',
     description: 'A test project description',
-    requiredSkills: [],
+    required_skills: [],
     budget: 5000,
     deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     status,
     milestones: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
   projectStore.set(project.id, project);
   return project;

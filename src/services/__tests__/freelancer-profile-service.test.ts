@@ -1,35 +1,38 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { FreelancerProfile } from '../../models/freelancer-profile.js';
-import { Skill } from '../../models/skill.js';
+import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository.js';
+import { SkillEntity } from '../../repositories/skill-repository.js';
 import { generateId } from '../../utils/id.js';
 
-// In-memory stores for testing
-let profileStore: Map<string, FreelancerProfile> = new Map();
-let skillStore: Map<string, Skill> = new Map();
+// In-memory stores for testing - using entity types with snake_case
+let profileStore: Map<string, FreelancerProfileEntity> = new Map();
+let skillStore: Map<string, SkillEntity> = new Map();
 
 // Mock the freelancer profile repository
 jest.unstable_mockModule('../../repositories/freelancer-profile-repository.js', () => ({
   freelancerProfileRepository: {
     getProfileByUserId: jest.fn(async (userId: string) => {
       for (const profile of profileStore.values()) {
-        if (profile.userId === userId) return profile;
+        if (profile.user_id === userId) return profile;
       }
       return null;
     }),
-    createProfile: jest.fn(async (profile: FreelancerProfile) => {
-      profileStore.set(profile.id, profile);
-      return profile;
+    createProfile: jest.fn(async (profile: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'>) => {
+      const now = new Date().toISOString();
+      const entity: FreelancerProfileEntity = { ...profile, created_at: now, updated_at: now };
+      profileStore.set(profile.id, entity);
+      return entity;
     }),
-    updateProfile: jest.fn(async (id: string, userId: string, updates: Partial<FreelancerProfile>) => {
+    updateProfile: jest.fn(async (id: string, updates: Partial<FreelancerProfileEntity>) => {
       const existing = profileStore.get(id);
-      if (!existing || existing.userId !== userId) return null;
-      const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+      if (!existing) return null;
+      const updated: FreelancerProfileEntity = { ...existing, ...updates, updated_at: new Date().toISOString() };
       profileStore.set(id, updated);
       return updated;
     }),
   },
   FreelancerProfileRepository: jest.fn(),
+  FreelancerProfileEntity: {} as FreelancerProfileEntity,
 }));
 
 // Mock the skill repository
@@ -38,8 +41,12 @@ jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
     findSkillById: jest.fn(async (id: string) => {
       return skillStore.get(id) ?? null;
     }),
+    getSkillById: jest.fn(async (id: string) => {
+      return skillStore.get(id) ?? null;
+    }),
   },
   SkillRepository: jest.fn(),
+  SkillEntity: {} as SkillEntity,
 }));
 
 
@@ -53,15 +60,16 @@ const {
 } = await import('../freelancer-profile-service.js');
 
 // Helper to create test skills in the store
-function createTestSkill(overrides: Partial<Skill> = {}): Skill {
-  const skill: Skill = {
+function createTestSkill(overrides: Partial<SkillEntity> = {}): SkillEntity {
+  const now = new Date().toISOString();
+  const skill: SkillEntity = {
     id: generateId(),
-    categoryId: 'cat-1',
+    category_id: 'cat-1',
     name: 'Test Skill',
     description: 'A test skill',
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    is_active: true,
+    created_at: now,
+    updated_at: now,
     ...overrides,
   };
   skillStore.set(skill.id, skill);
@@ -241,7 +249,7 @@ describe('Freelancer Profile Service - Skill Taxonomy Properties', () => {
           skillStore.clear();
 
           // Create test skills
-          const testSkills: Skill[] = [];
+          const testSkills: SkillEntity[] = [];
           for (let i = 0; i < skillCount; i++) {
             testSkills.push(createTestSkill({ name: `Skill ${i}` }));
           }
@@ -325,7 +333,7 @@ describe('Freelancer Profile Service - Skill Taxonomy Properties', () => {
           skillStore.clear();
 
           // Create an inactive skill
-          const inactiveSkill = createTestSkill({ isActive: false, name: 'Deprecated Skill' });
+          const inactiveSkill = createTestSkill({ is_active: false, name: 'Deprecated Skill' });
 
           // Create profile
           const createResult = await createProfile(userId, profileInput);

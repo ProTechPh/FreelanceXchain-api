@@ -1,5 +1,5 @@
-import { Notification, NotificationType } from '../models/notification.js';
-import { notificationRepository } from '../repositories/notification-repository.js';
+import { Notification, NotificationType, mapNotificationFromEntity } from '../utils/entity-mapper.js';
+import { notificationRepository, NotificationEntity } from '../repositories/notification-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
 
@@ -25,19 +25,18 @@ export type NotificationServiceResult<T> =
 export async function createNotification(
   input: CreateNotificationInput
 ): Promise<NotificationServiceResult<Notification>> {
-  const notification: Notification = {
+  const notificationEntity: Omit<NotificationEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
-    userId: input.userId,
+    user_id: input.userId,
     type: input.type,
     title: input.title,
     message: input.message,
     data: input.data ?? {},
-    isRead: false,
-    createdAt: new Date().toISOString(),
+    is_read: false,
   };
 
-  const created = await notificationRepository.createNotification(notification);
-  return { success: true, data: created };
+  const createdEntity = await notificationRepository.createNotification(notificationEntity);
+  return { success: true, data: mapNotificationFromEntity(createdEntity) };
 }
 
 // Create multiple notifications at once
@@ -47,18 +46,17 @@ export async function createNotifications(
   const notifications: Notification[] = [];
 
   for (const input of inputs) {
-    const notification: Notification = {
+    const notificationEntity: Omit<NotificationEntity, 'created_at' | 'updated_at'> = {
       id: generateId(),
-      userId: input.userId,
+      user_id: input.userId,
       type: input.type,
       title: input.title,
       message: input.message,
       data: input.data ?? {},
-      isRead: false,
-      createdAt: new Date().toISOString(),
+      is_read: false,
     };
-    const created = await notificationRepository.createNotification(notification);
-    notifications.push(created);
+    const createdEntity = await notificationRepository.createNotification(notificationEntity);
+    notifications.push(mapNotificationFromEntity(createdEntity));
   }
 
   return { success: true, data: notifications };
@@ -67,16 +65,16 @@ export async function createNotifications(
 // Get notification by ID
 export async function getNotificationById(
   notificationId: string,
-  userId: string
+  _userId: string
 ): Promise<NotificationServiceResult<Notification>> {
-  const notification = await notificationRepository.getNotificationById(notificationId, userId);
-  if (!notification) {
+  const notificationEntity = await notificationRepository.getNotificationById(notificationId);
+  if (!notificationEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Notification not found' },
     };
   }
-  return { success: true, data: notification };
+  return { success: true, data: mapNotificationFromEntity(notificationEntity) };
 }
 
 // Get notifications for a user with pagination
@@ -85,15 +83,22 @@ export async function getNotificationsByUser(
   options?: QueryOptions
 ): Promise<NotificationServiceResult<PaginatedResult<Notification>>> {
   const result = await notificationRepository.getNotificationsByUser(userId, options);
-  return { success: true, data: result };
+  return { 
+    success: true, 
+    data: {
+      items: result.items.map(mapNotificationFromEntity),
+      hasMore: result.hasMore,
+      total: result.total,
+    }
+  };
 }
 
 // Get all notifications for a user (sorted by creation time descending)
 export async function getAllNotificationsByUser(
   userId: string
 ): Promise<NotificationServiceResult<Notification[]>> {
-  const notifications = await notificationRepository.getAllNotificationsByUser(userId);
-  return { success: true, data: notifications };
+  const notificationEntities = await notificationRepository.getAllNotificationsByUser(userId);
+  return { success: true, data: notificationEntities.map(mapNotificationFromEntity) };
 }
 
 
@@ -101,8 +106,8 @@ export async function getAllNotificationsByUser(
 export async function getUnreadNotificationsByUser(
   userId: string
 ): Promise<NotificationServiceResult<Notification[]>> {
-  const notifications = await notificationRepository.getUnreadNotificationsByUser(userId);
-  return { success: true, data: notifications };
+  const notificationEntities = await notificationRepository.getUnreadNotificationsByUser(userId);
+  return { success: true, data: notificationEntities.map(mapNotificationFromEntity) };
 }
 
 // Mark a notification as read
@@ -110,8 +115,8 @@ export async function markNotificationAsRead(
   notificationId: string,
   userId: string
 ): Promise<NotificationServiceResult<Notification>> {
-  const notification = await notificationRepository.getNotificationById(notificationId, userId);
-  if (!notification) {
+  const notificationEntity = await notificationRepository.getNotificationById(notificationId);
+  if (!notificationEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Notification not found' },
@@ -119,22 +124,22 @@ export async function markNotificationAsRead(
   }
 
   // Verify the notification belongs to the user
-  if (notification.userId !== userId) {
+  if (notificationEntity.user_id !== userId) {
     return {
       success: false,
       error: { code: 'UNAUTHORIZED', message: 'You are not authorized to update this notification' },
     };
   }
 
-  const updated = await notificationRepository.markAsRead(notificationId, userId);
-  if (!updated) {
+  const updatedEntity = await notificationRepository.markAsRead(notificationId);
+  if (!updatedEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to mark notification as read' },
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapNotificationFromEntity(updatedEntity) };
 }
 
 // Mark all notifications as read for a user

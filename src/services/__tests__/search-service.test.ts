@@ -1,23 +1,24 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { Project } from '../../models/project.js';
-import { FreelancerProfile, SkillReference } from '../../models/freelancer-profile.js';
+import { ProjectEntity } from '../../repositories/project-repository.js';
+import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository.js';
+import { QueryOptions } from '../../repositories/base-repository.js';
 import { generateId } from '../../utils/id.js';
 
-// In-memory stores for testing
-let projectStore: Map<string, Project> = new Map();
-let freelancerStore: Map<string, FreelancerProfile> = new Map();
+// In-memory stores for testing - using entity types
+let projectStore: Map<string, ProjectEntity> = new Map();
+let freelancerStore: Map<string, FreelancerProfileEntity> = new Map();
 
 // Mock the repositories before importing search-service
 jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
   projectRepository: {
-    getAllOpenProjects: jest.fn(async (options?: { maxItemCount?: number }) => {
+    getAllOpenProjects: jest.fn(async (options?: QueryOptions) => {
       const items = Array.from(projectStore.values()).filter(p => p.status === 'open');
-      const pageSize = options?.maxItemCount ?? 100;
+      const pageSize = options?.limit ?? 100;
       const pagedItems = items.slice(0, pageSize);
       return { items: pagedItems, hasMore: items.length > pageSize };
     }),
-    searchProjects: jest.fn(async (keyword: string, options?: { maxItemCount?: number }) => {
+    searchProjects: jest.fn(async (keyword: string, options?: QueryOptions) => {
       const lowerKeyword = keyword.toLowerCase();
       const items = Array.from(projectStore.values()).filter(
         p => p.status === 'open' && (
@@ -25,108 +26,115 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
           p.description.toLowerCase().includes(lowerKeyword)
         )
       );
-      const pageSize = options?.maxItemCount ?? 100;
+      const pageSize = options?.limit ?? 100;
       const pagedItems = items.slice(0, pageSize);
       return { items: pagedItems, hasMore: items.length > pageSize };
     }),
-    getProjectsBySkills: jest.fn(async (skillIds: string[], options?: { maxItemCount?: number }) => {
+    getProjectsBySkills: jest.fn(async (skillIds: string[], options?: QueryOptions) => {
       const skillIdSet = new Set(skillIds);
       const items = Array.from(projectStore.values()).filter(
-        p => p.status === 'open' && p.requiredSkills.some(s => skillIdSet.has(s.skillId))
+        p => p.status === 'open' && p.required_skills.some(s => skillIdSet.has(s.skill_id))
       );
-      const pageSize = options?.maxItemCount ?? 100;
+      const pageSize = options?.limit ?? 100;
       const pagedItems = items.slice(0, pageSize);
       return { items: pagedItems, hasMore: items.length > pageSize };
     }),
-    getProjectsByBudgetRange: jest.fn(async (minBudget: number, maxBudget: number, options?: { maxItemCount?: number }) => {
+    getProjectsByBudgetRange: jest.fn(async (minBudget: number, maxBudget: number, options?: QueryOptions) => {
       const items = Array.from(projectStore.values()).filter(
         p => p.status === 'open' && p.budget >= minBudget && p.budget <= maxBudget
       );
-      const pageSize = options?.maxItemCount ?? 100;
+      const pageSize = options?.limit ?? 100;
       const pagedItems = items.slice(0, pageSize);
       return { items: pagedItems, hasMore: items.length > pageSize };
     }),
   },
   ProjectRepository: jest.fn(),
+  ProjectEntity: {} as ProjectEntity,
 }));
 
 
 jest.unstable_mockModule('../../repositories/freelancer-profile-repository.js', () => ({
   freelancerProfileRepository: {
-    getAllProfilesPaginated: jest.fn(async (options?: { maxItemCount?: number }) => {
+    getAllProfilesPaginated: jest.fn(async (options?: QueryOptions) => {
       const items = Array.from(freelancerStore.values());
-      const pageSize = options?.maxItemCount ?? 100;
+      const pageSize = options?.limit ?? 100;
       const pagedItems = items.slice(0, pageSize);
       return { items: pagedItems, hasMore: items.length > pageSize };
     }),
-    searchBySkills: jest.fn(async (skillIds: string[], options?: { maxItemCount?: number }) => {
+    searchBySkills: jest.fn(async (skillIds: string[], options?: QueryOptions) => {
       const skillIdSet = new Set(skillIds);
       const items = Array.from(freelancerStore.values()).filter(
-        p => p.skills.some(s => skillIdSet.has(s.skillId))
+        p => p.skills.some(s => skillIdSet.has(s.skill_id))
       );
-      const pageSize = options?.maxItemCount ?? 100;
+      const pageSize = options?.limit ?? 100;
       const pagedItems = items.slice(0, pageSize);
       return { items: pagedItems, hasMore: items.length > pageSize };
     }),
-    searchByKeyword: jest.fn(async (keyword: string, options?: { maxItemCount?: number }) => {
+    searchByKeyword: jest.fn(async (keyword: string, options?: QueryOptions) => {
       const lowerKeyword = keyword.toLowerCase();
       const items = Array.from(freelancerStore.values()).filter(
         p => p.bio.toLowerCase().includes(lowerKeyword)
       );
-      const pageSize = options?.maxItemCount ?? 100;
+      const pageSize = options?.limit ?? 100;
       const pagedItems = items.slice(0, pageSize);
       return { items: pagedItems, hasMore: items.length > pageSize };
     }),
   },
   FreelancerProfileRepository: jest.fn(),
+  FreelancerProfileEntity: {} as FreelancerProfileEntity,
 }));
 
 // Import after mocking
 const { searchProjects, searchFreelancers } = await import('../search-service.js');
 
-// Helper to create test projects
-function createTestProject(overrides: Partial<Project> = {}): Project {
+// Skill reference type for entity
+type SkillRefEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
+
+// Helper to create test project entities
+function createTestProject(overrides: Partial<ProjectEntity> = {}): ProjectEntity {
   const id = generateId();
+  const now = new Date().toISOString();
   return {
     id,
-    employerId: generateId(),
+    employer_id: generateId(),
     title: `Project ${id.slice(0, 8)}`,
     description: `Description for project ${id.slice(0, 8)}`,
-    requiredSkills: [],
+    required_skills: [],
     budget: 1000,
     deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     status: 'open',
     milestones: [],
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: now,
+    updated_at: now,
     ...overrides,
   };
 }
 
-// Helper to create test freelancer profiles
-function createTestFreelancer(overrides: Partial<FreelancerProfile> = {}): FreelancerProfile {
+// Helper to create test freelancer profile entities
+function createTestFreelancer(overrides: Partial<FreelancerProfileEntity> = {}): FreelancerProfileEntity {
   const id = generateId();
+  const now = new Date().toISOString();
   return {
     id,
-    userId: generateId(),
+    user_id: generateId(),
     bio: `Bio for freelancer ${id.slice(0, 8)}`,
-    hourlyRate: 50,
+    hourly_rate: 50,
     skills: [],
     experience: [],
     availability: 'available',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: now,
+    updated_at: now,
     ...overrides,
   };
 }
 
-// Helper to create skill references
-function createSkillRef(skillId: string, skillName: string): SkillReference {
+// Helper to create skill references (entity format)
+function createSkillRef(skillId: string, skillName: string): SkillRefEntity {
   return {
-    skillId,
-    skillName,
-    categoryId: 'cat-1',
-    yearsOfExperience: 2,
+    skill_id: skillId,
+    skill_name: skillName,
+    category_id: 'cat-1',
+    years_of_experience: 2,
   };
 }
 
@@ -213,16 +221,16 @@ describe('Search Service - Property Tests', () => {
 
           // Create test projects with various skills
           const allSkillIds = ['skill-1', 'skill-2', 'skill-3', 'skill-4', 'skill-5'];
-          
+
           for (let i = 0; i < projectCount; i++) {
             // Randomly assign skills to projects
             const projectSkillIds = fc.sample(
               fc.subarray(allSkillIds, { minLength: 1, maxLength: 3 }),
               1
             )[0] ?? ['skill-1'];
-            
+
             const project = createTestProject({
-              requiredSkills: projectSkillIds.map(id => createSkillRef(id, `Skill ${id}`)),
+              required_skills: projectSkillIds.map(id => createSkillRef(id, `Skill ${id}`)),
             });
             projectStore.set(project.id, project);
           }
@@ -266,14 +274,14 @@ describe('Search Service - Property Tests', () => {
 
           // Create test freelancers with various skills
           const allSkillIds = ['skill-1', 'skill-2', 'skill-3', 'skill-4', 'skill-5'];
-          
+
           for (let i = 0; i < freelancerCount; i++) {
             // Randomly assign skills to freelancers
             const freelancerSkillIds = fc.sample(
               fc.subarray(allSkillIds, { minLength: 1, maxLength: 3 }),
               1
             )[0] ?? ['skill-1'];
-            
+
             const freelancer = createTestFreelancer({
               skills: freelancerSkillIds.map(id => createSkillRef(id, `Skill ${id}`)),
             });
@@ -326,7 +334,7 @@ describe('Search Service - Property Tests', () => {
           for (let i = 0; i < projectCount; i++) {
             // Generate random budget between 100 and 100000
             const projectBudget = fc.sample(validBudgetArbitrary(), 1)[0] ?? 1000;
-            
+
             const project = createTestProject({
               budget: projectBudget,
             });

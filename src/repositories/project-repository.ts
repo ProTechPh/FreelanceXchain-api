@@ -1,89 +1,189 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
-import { COLLECTIONS } from '../config/database.js';
-import { Project } from '../models/project.js';
+import { TABLES } from '../config/supabase.js';
 
-export class ProjectRepository extends BaseRepository<Project> {
+export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
+export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed';
+
+export type MilestoneEntity = {
+  id: string;
+  title: string;
+  description: string;
+  amount: number;
+  due_date: string;
+  status: MilestoneStatus;
+};
+
+export type ProjectEntity = {
+  id: string;
+  employer_id: string;
+  title: string;
+  description: string;
+  required_skills: { skill_id: string; skill_name: string; category_id: string; years_of_experience: number }[];
+  budget: number;
+  deadline: string;
+  status: ProjectStatus;
+  milestones: MilestoneEntity[];
+  created_at: string;
+  updated_at: string;
+};
+
+export class ProjectRepository extends BaseRepository<ProjectEntity> {
   constructor() {
-    super(COLLECTIONS.PROJECTS);
+    super(TABLES.PROJECTS);
   }
 
-  async createProject(project: Project): Promise<Project> {
-    return this.create(project, project.employerId);
+  async createProject(project: Omit<ProjectEntity, 'created_at' | 'updated_at'>): Promise<ProjectEntity> {
+    return this.create(project);
   }
 
-  async getProjectById(id: string, employerId: string): Promise<Project | null> {
-    return this.getById(id, employerId);
+  async getProjectById(id: string): Promise<ProjectEntity | null> {
+    return this.getById(id);
   }
 
-  async updateProject(id: string, employerId: string, updates: Partial<Project>): Promise<Project | null> {
-    return this.update(id, employerId, updates);
+  async updateProject(id: string, updates: Partial<ProjectEntity>): Promise<ProjectEntity | null> {
+    return this.update(id, updates);
   }
 
-  async deleteProject(id: string, employerId: string): Promise<boolean> {
-    return this.delete(id, employerId);
+  async deleteProject(id: string): Promise<boolean> {
+    return this.delete(id);
   }
 
-  async findProjectById(id: string): Promise<Project | null> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.id = @id',
-      parameters: [{ name: '@id', value: id }],
+  async findProjectById(id: string): Promise<ProjectEntity | null> {
+    return this.getById(id);
+  }
+
+  async getProjectsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('employer_id', employerId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get projects by employer: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ProjectEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.findOne(querySpec);
   }
 
-  async getProjectsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<Project>> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.employerId = @employerId ORDER BY c.createdAt DESC',
-      parameters: [{ name: '@employerId', value: employerId }],
+  async getAllOpenProjects(options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get open projects: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ProjectEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.query(querySpec, options);
   }
 
+  async getProjectsByStatus(status: ProjectStatus, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
 
-  async getAllOpenProjects(options?: QueryOptions): Promise<PaginatedResult<Project>> {
-    const querySpec = {
-      query: "SELECT * FROM c WHERE c.status = 'open' ORDER BY c.createdAt DESC",
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('status', status)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get projects by status: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ProjectEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.query(querySpec, options);
   }
 
-  async getProjectsByStatus(status: string, options?: QueryOptions): Promise<PaginatedResult<Project>> {
-    const querySpec = {
-      query: 'SELECT * FROM c WHERE c.status = @status ORDER BY c.createdAt DESC',
-      parameters: [{ name: '@status', value: status }],
+  async getProjectsBySkills(skillIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get projects by skills: ${error.message}`);
+    
+    // Filter for skill matching in memory
+    const filtered = (data ?? []).filter((project: ProjectEntity) =>
+      project.required_skills.some(skill => skillIds.includes(skill.skill_id))
+    );
+
+    return {
+      items: filtered as ProjectEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.query(querySpec, options);
   }
 
-  async getProjectsBySkills(skillIds: string[], options?: QueryOptions): Promise<PaginatedResult<Project>> {
-    const querySpec = {
-      query: `SELECT * FROM c WHERE c.status = 'open' AND EXISTS(
-        SELECT VALUE s FROM s IN c.requiredSkills WHERE ARRAY_CONTAINS(@skillIds, s.skillId)
-      ) ORDER BY c.createdAt DESC`,
-      parameters: [{ name: '@skillIds', value: skillIds }],
+  async getProjectsByBudgetRange(minBudget: number, maxBudget: number, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('status', 'open')
+      .gte('budget', minBudget)
+      .lte('budget', maxBudget)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get projects by budget: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ProjectEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.query(querySpec, options);
   }
 
-  async getProjectsByBudgetRange(minBudget: number, maxBudget: number, options?: QueryOptions): Promise<PaginatedResult<Project>> {
-    const querySpec = {
-      query: `SELECT * FROM c WHERE c.status = 'open' AND c.budget >= @minBudget AND c.budget <= @maxBudget ORDER BY c.createdAt DESC`,
-      parameters: [
-        { name: '@minBudget', value: minBudget },
-        { name: '@maxBudget', value: maxBudget },
-      ],
-    };
-    return this.query(querySpec, options);
-  }
+  async searchProjects(keyword: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
 
-  async searchProjects(keyword: string, options?: QueryOptions): Promise<PaginatedResult<Project>> {
-    const querySpec = {
-      query: `SELECT * FROM c WHERE c.status = 'open' AND (
-        CONTAINS(LOWER(c.title), @keyword) OR CONTAINS(LOWER(c.description), @keyword)
-      ) ORDER BY c.createdAt DESC`,
-      parameters: [{ name: '@keyword', value: keyword.toLowerCase() }],
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('status', 'open')
+      .or(`title.ilike.%${keyword}%,description.ilike.%${keyword}%`)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to search projects: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ProjectEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
-    return this.query(querySpec, options);
   }
 }
 

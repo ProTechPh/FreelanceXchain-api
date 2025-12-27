@@ -31,6 +31,7 @@ coverage/
 tmp/
 temp/
 .kiro/
+.agent/
 
 # Hardhat / Blockchain
 artifacts/

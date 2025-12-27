@@ -23,7 +23,6 @@ import {
 } from './ai-types.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
-import { SkillReference } from '../models/freelancer-profile.js';
 import { getActiveSkills } from './skill-service.js';
 
 // Types
@@ -41,15 +40,18 @@ const DEFAULT_RECOMMENDATION_LIMIT = 10;
 const REPUTATION_WEIGHT = 0.3;
 const SKILL_MATCH_WEIGHT = 0.7;
 
+// Helper type for skill entity
+type SkillRefEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
+
 /**
- * Convert SkillReference to SkillInfo for matching
+ * Convert skill entity to SkillInfo for matching
  */
-function skillReferenceToInfo(ref: SkillReference): SkillInfo {
+function skillEntityToInfo(entity: SkillRefEntity): SkillInfo {
   return {
-    skillId: ref.skillId,
-    skillName: ref.skillName,
-    categoryId: ref.categoryId,
-    yearsOfExperience: ref.yearsOfExperience,
+    skillId: entity.skill_id,
+    skillName: entity.skill_name,
+    categoryId: entity.category_id,
+    yearsOfExperience: entity.years_of_experience,
   };
 }
 
@@ -62,8 +64,8 @@ export async function getProjectRecommendations(
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
 ): Promise<MatchingServiceResult<ProjectRecommendation[]>> {
   // Get freelancer profile
-  const profile = await freelancerProfileRepository.getProfileByUserId(freelancerId);
-  if (!profile) {
+  const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
+  if (!profileEntity) {
     return {
       success: false,
       error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
@@ -71,21 +73,21 @@ export async function getProjectRecommendations(
   }
 
   // Get open projects
-  const projectsResult = await projectRepository.getAllOpenProjects({ maxItemCount: 100 });
-  const projects = projectsResult.items;
+  const projectsResult = await projectRepository.getAllOpenProjects({ limit: 100 });
+  const projectEntities = projectsResult.items;
 
-  if (projects.length === 0) {
+  if (projectEntities.length === 0) {
     return { success: true, data: [] };
   }
 
   // Convert freelancer skills to SkillInfo
-  const freelancerSkills = profile.skills.map(skillReferenceToInfo);
+  const freelancerSkills = profileEntity.skills.map(skillEntityToInfo);
 
   // Calculate match scores for each project
   const recommendations: ProjectRecommendation[] = [];
 
-  for (const project of projects) {
-    const projectRequirements = project.requiredSkills.map(skillReferenceToInfo);
+  for (const projectEntity of projectEntities) {
+    const projectRequirements = projectEntity.required_skills.map(skillEntityToInfo);
     
     let matchResult: SkillMatchResult;
     
@@ -108,7 +110,7 @@ export async function getProjectRecommendations(
     }
 
     recommendations.push({
-      projectId: project.id,
+      projectId: projectEntity.id,
       matchScore: matchResult.matchScore,
       matchedSkills: matchResult.matchedSkills,
       missingSkills: matchResult.missingSkills,
@@ -132,8 +134,8 @@ export async function getFreelancerRecommendations(
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
 ): Promise<MatchingServiceResult<FreelancerRecommendation[]>> {
   // Get project
-  const project = await projectRepository.findProjectById(projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(projectId);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' },
@@ -141,20 +143,20 @@ export async function getFreelancerRecommendations(
   }
 
   // Get available freelancers
-  const freelancers = await freelancerProfileRepository.getAvailableProfiles();
+  const freelancerEntities = await freelancerProfileRepository.getAvailableProfiles();
 
-  if (freelancers.length === 0) {
+  if (freelancerEntities.length === 0) {
     return { success: true, data: [] };
   }
 
   // Convert project requirements to SkillInfo
-  const projectRequirements = project.requiredSkills.map(skillReferenceToInfo);
+  const projectRequirements = projectEntity.required_skills.map(skillEntityToInfo);
 
   // Calculate match scores for each freelancer
   const recommendations: FreelancerRecommendation[] = [];
 
-  for (const freelancer of freelancers) {
-    const freelancerSkills = freelancer.skills.map(skillReferenceToInfo);
+  for (const freelancerEntity of freelancerEntities) {
+    const freelancerSkills = freelancerEntity.skills.map(skillEntityToInfo);
     
     // TODO: Get actual reputation score from blockchain
     const reputationScore = 50; // Default reputation score
@@ -184,7 +186,7 @@ export async function getFreelancerRecommendations(
     );
 
     recommendations.push({
-      freelancerId: freelancer.userId,
+      freelancerId: freelancerEntity.user_id,
       matchScore: matchResult.matchScore,
       reputationScore,
       combinedScore,
@@ -258,15 +260,15 @@ export async function analyzeSkillGaps(
   freelancerId: string
 ): Promise<MatchingServiceResult<SkillGapAnalysis>> {
   // Get freelancer profile
-  const profile = await freelancerProfileRepository.getProfileByUserId(freelancerId);
-  if (!profile) {
+  const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
+  if (!profileEntity) {
     return {
       success: false,
       error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
     };
   }
 
-  const currentSkills = profile.skills.map(s => s.skillName);
+  const currentSkills = profileEntity.skills.map(s => s.skill_name);
 
   if (!isAIAvailable()) {
     // Return basic analysis without AI

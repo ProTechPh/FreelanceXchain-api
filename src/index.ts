@@ -4,21 +4,21 @@ import { config, initializeDatabase } from './config/index.js';
 async function main(): Promise<void> {
   const app = createApp();
 
-  // Initialize database if Cosmos DB is configured
-  if (config.cosmos.endpoint && config.cosmos.key) {
+  // Initialize database if Supabase is configured
+  if (config.supabase.url && config.supabase.anonKey) {
     try {
-      console.log('Initializing database...');
+      console.log('Initializing Supabase connection...');
       await initializeDatabase();
-      console.log('Database initialized successfully');
+      console.log('Supabase connection verified');
     } catch (error) {
-      console.error('Failed to initialize database:', error);
+      console.error('Failed to connect to Supabase:', error);
       // Continue without database in development mode
       if (config.server.nodeEnv === 'production') {
         process.exit(1);
       }
     }
   } else {
-    console.log('Cosmos DB not configured, skipping database initialization');
+    console.log('Supabase not configured, skipping database initialization');
   }
 
   const server = app.listen(config.server.port, () => {

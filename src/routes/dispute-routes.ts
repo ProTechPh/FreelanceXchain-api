@@ -446,6 +446,7 @@ router.post(
         decision,
         reasoning,
         resolvedBy: userId,
+        resolverRole: 'admin',
       });
 
       if (!result.success) {

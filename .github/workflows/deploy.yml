@@ -1,0 +1,44 @@
+name: Deploy to Production
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.8.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Deploy to server
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+            cd /var/www/freelancexchain
+            git pull origin main
+            
+            # Backend deployment
+            # Assumes root directory is backend since this is a backend repo
+            npm install --production
+            npm run build
+            pm2 restart freelancexchain-backend || pm2 start dist/index.js --name freelancexchain-backend
+            
+            # Frontend deployment (Skipped: No frontend directory in this repo)
+            
+            # Restart services (Optional if using PM2 for backend only)
+            # sudo systemctl reload nginx
+          EOF
+
+      - name: Health check
+        run: |
+          sleep 10
+          # Update URL to match your production URL
+          curl -f ${{ secrets.PRODUCTION_URL }}/health || exit 1
