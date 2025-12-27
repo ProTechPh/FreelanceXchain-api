@@ -67,6 +67,15 @@ export function createApp(): Express {
     res.send(swaggerSpec);
   });
 
+  // Health check endpoint
+  app.get('/', (_req, res) => {
+    res.status(200).json({
+      status: 'success',
+      message: 'FreelanceXchain API is running',
+      version: process.env.npm_package_version || '1.0.0'
+    });
+  });
+
   // API routes
   app.use('/api', routes);
 
