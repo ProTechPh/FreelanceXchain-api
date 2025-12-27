@@ -6,6 +6,7 @@
 // Mock Supabase environment variables
 process.env.SUPABASE_URL = 'https://test-project.supabase.co';
 process.env.SUPABASE_KEY = 'test-anon-key-for-testing-purposes-only';
+process.env.SUPABASE_ANON_KEY = 'test-anon-key-for-testing-purposes-only';
 process.env.SUPABASE_SERVICE_KEY = 'test-service-key-for-testing-purposes-only';
 
 // Mock JWT configuration
