@@ -11,9 +11,14 @@ export default {
       'ts-jest',
       {
         useESM: true,
+        isolatedModules: true, // Fix ts-jest warning for NodeNext module
+        diagnostics: {
+          ignoreCodes: [151002], // Ignore hybrid module warning
+        },
       },
     ],
   },
+  setupFiles: ['<rootDir>/jest.setup.js'],
   testMatch: ['**/*.test.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
