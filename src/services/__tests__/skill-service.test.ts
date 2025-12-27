@@ -1,17 +1,21 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
 import { Skill, SkillCategory } from '../../models/skill.js';
+import { SkillCategoryEntity } from '../../repositories/skill-category-repository.js';
+import { SkillEntity } from '../../repositories/skill-repository.js';
 
-// In-memory stores for testing
-let categoryStore: Map<string, SkillCategory> = new Map();
-let skillStore: Map<string, Skill> = new Map();
+// In-memory stores for testing - using entity types
+let categoryStore: Map<string, SkillCategoryEntity> = new Map();
+let skillStore: Map<string, SkillEntity> = new Map();
 
 // Mock the repositories before importing skill-service
 jest.unstable_mockModule('../../repositories/skill-category-repository.js', () => ({
   skillCategoryRepository: {
-    createCategory: jest.fn(async (category: SkillCategory) => {
-      categoryStore.set(category.id, category);
-      return category;
+    createCategory: jest.fn(async (category: Omit<SkillCategoryEntity, 'created_at' | 'updated_at'>) => {
+      const now = new Date().toISOString();
+      const entity: SkillCategoryEntity = { ...category, created_at: now, updated_at: now };
+      categoryStore.set(entity.id, entity);
+      return entity;
     }),
     getCategoryById: jest.fn(async (id: string) => {
       return categoryStore.get(id) ?? null;
@@ -22,10 +26,10 @@ jest.unstable_mockModule('../../repositories/skill-category-repository.js', () =
       }
       return null;
     }),
-    updateCategory: jest.fn(async (id: string, updates: Partial<SkillCategory>) => {
+    updateCategory: jest.fn(async (id: string, updates: Partial<SkillCategoryEntity>) => {
       const existing = categoryStore.get(id);
       if (!existing) return null;
-      const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+      const updated: SkillCategoryEntity = { ...existing, ...updates, updated_at: new Date().toISOString() };
       categoryStore.set(id, updated);
       return updated;
     }),
@@ -34,34 +38,40 @@ jest.unstable_mockModule('../../repositories/skill-category-repository.js', () =
     }),
     getActiveCategories: jest.fn(async () => {
       return Array.from(categoryStore.values())
-        .filter(c => c.isActive)
+        .filter(c => c.is_active)
         .sort((a, b) => a.name.localeCompare(b.name));
     }),
   },
   SkillCategoryRepository: jest.fn(),
+  SkillCategoryEntity: {} as SkillCategoryEntity,
 }));
 
 jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
   skillRepository: {
-    createSkill: jest.fn(async (skill: Skill) => {
-      skillStore.set(skill.id, skill);
-      return skill;
+    createSkill: jest.fn(async (skill: Omit<SkillEntity, 'created_at' | 'updated_at'>) => {
+      const now = new Date().toISOString();
+      const entity: SkillEntity = { ...skill, created_at: now, updated_at: now };
+      skillStore.set(entity.id, entity);
+      return entity;
     }),
     findSkillById: jest.fn(async (id: string) => {
       return skillStore.get(id) ?? null;
     }),
+    getSkillById: jest.fn(async (id: string) => {
+      return skillStore.get(id) ?? null;
+    }),
     getSkillByNameInCategory: jest.fn(async (name: string, categoryId: string) => {
       for (const skill of skillStore.values()) {
-        if (skill.categoryId === categoryId && skill.name.toLowerCase() === name.toLowerCase()) {
+        if (skill.category_id === categoryId && skill.name.toLowerCase() === name.toLowerCase()) {
           return skill;
         }
       }
       return null;
     }),
-    updateSkill: jest.fn(async (id: string, _categoryId: string, updates: Partial<Skill>) => {
+    updateSkill: jest.fn(async (id: string, updates: Partial<SkillEntity>) => {
       const existing = skillStore.get(id);
       if (!existing) return null;
-      const updated = { ...existing, ...updates, updatedAt: new Date().toISOString() };
+      const updated: SkillEntity = { ...existing, ...updates, updated_at: new Date().toISOString() };
       skillStore.set(id, updated);
       return updated;
     }),
@@ -70,23 +80,23 @@ jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
     }),
     getActiveSkills: jest.fn(async () => {
       return Array.from(skillStore.values())
-        .filter(s => s.isActive)
+        .filter(s => s.is_active)
         .sort((a, b) => a.name.localeCompare(b.name));
     }),
     getSkillsByCategory: jest.fn(async (categoryId: string) => {
       return Array.from(skillStore.values())
-        .filter(s => s.categoryId === categoryId)
+        .filter(s => s.category_id === categoryId)
         .sort((a, b) => a.name.localeCompare(b.name));
     }),
     getActiveSkillsByCategory: jest.fn(async (categoryId: string) => {
       return Array.from(skillStore.values())
-        .filter(s => s.categoryId === categoryId && s.isActive)
+        .filter(s => s.category_id === categoryId && s.is_active)
         .sort((a, b) => a.name.localeCompare(b.name));
     }),
     searchSkillsByKeyword: jest.fn(async (keyword: string) => {
       const lowerKeyword = keyword.toLowerCase();
       return Array.from(skillStore.values())
-        .filter(s => s.isActive && (
+        .filter(s => s.is_active && (
           s.name.toLowerCase().includes(lowerKeyword) ||
           s.description.toLowerCase().includes(lowerKeyword)
         ))
@@ -94,13 +104,14 @@ jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
     }),
   },
   SkillRepository: jest.fn(),
+  SkillEntity: {} as SkillEntity,
 }));
 
 // Import after mocking
-const { 
-  createCategory, 
-  getCategoryById, 
-  createSkill, 
+const {
+  createCategory,
+  getCategoryById,
+  createSkill,
   getSkillById,
   deprecateSkill,
   getFullTaxonomy,
@@ -281,18 +292,18 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
           // Create unique skills distributed across categories
           const uniqueSkillNames = [...new Set(skillNames.map(n => n.toLowerCase()))];
           const createdSkills: Skill[] = [];
-          
+
           for (let i = 0; i < uniqueSkillNames.length; i++) {
             const categoryIndex = i % createdCategories.length;
             const category = createdCategories[categoryIndex]!;
             const skillName = uniqueSkillNames[i]!;
-            
+
             const result = await createSkill({
               categoryId: category.id,
               name: skillName,
               description: `Description for ${skillName}`,
             });
-            
+
             if (result.success) {
               createdSkills.push(result.data);
             }
@@ -437,7 +448,7 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
           // Create unique skills
           const seenNames = new Set<string>();
           const createdSkills: Skill[] = [];
-          
+
           for (const input of skillInputs) {
             const lowerName = input.name.toLowerCase();
             if (seenNames.has(lowerName)) continue;

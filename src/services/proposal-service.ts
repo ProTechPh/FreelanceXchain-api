@@ -1,10 +1,12 @@
-import { Proposal } from '../models/proposal.js';
-import { Contract } from '../models/contract.js';
-import { proposalRepository } from '../repositories/proposal-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
+import { Proposal, mapProposalFromEntity } from '../utils/entity-mapper.js';
+import { Contract, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
+import { proposalRepository, ProposalEntity } from '../repositories/proposal-repository.js';
+import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
+import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
 
 export type CreateProposalInput = {
   projectId: string;
@@ -64,13 +66,14 @@ export async function submitProposal(
   input: CreateProposalInput
 ): Promise<ProposalServiceResult<ProposalWithNotification>> {
   // Check if project exists
-  const project = await projectRepository.findProjectById(input.projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(input.projectId);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
+  const project = mapProjectFromEntity(projectEntity);
 
   // Check if project is open for proposals
   if (project.status !== 'open') {
@@ -89,19 +92,18 @@ export async function submitProposal(
     };
   }
 
-  const proposal: Proposal = {
+  const proposalEntity: Omit<ProposalEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
-    projectId: input.projectId,
-    freelancerId,
-    coverLetter: input.coverLetter,
-    proposedRate: input.proposedRate,
-    estimatedDuration: input.estimatedDuration,
+    project_id: input.projectId,
+    freelancer_id: freelancerId,
+    cover_letter: input.coverLetter,
+    proposed_rate: input.proposedRate,
+    estimated_duration: input.estimatedDuration,
     status: 'pending',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
 
-  const created = await proposalRepository.createProposal(proposal);
+  const createdEntity = await proposalRepository.createProposal(proposalEntity);
+  const created = mapProposalFromEntity(createdEntity);
 
   // Create notification for employer
   const notification = {
@@ -126,14 +128,14 @@ export async function submitProposal(
 
 // Get proposal by ID
 export async function getProposalById(proposalId: string): Promise<ProposalServiceResult<Proposal>> {
-  const proposal = await proposalRepository.findProposalById(proposalId);
-  if (!proposal) {
+  const proposalEntity = await proposalRepository.findProposalById(proposalId);
+  if (!proposalEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Proposal not found' },
     };
   }
-  return { success: true, data: proposal };
+  return { success: true, data: mapProposalFromEntity(proposalEntity) };
 }
 
 // Get proposals for a project
@@ -141,8 +143,8 @@ export async function getProposalsByProject(
   projectId: string,
   options?: QueryOptions
 ): Promise<ProposalServiceResult<PaginatedResult<Proposal>>> {
-  const project = await projectRepository.findProjectById(projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(projectId);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
@@ -150,15 +152,22 @@ export async function getProposalsByProject(
   }
 
   const result = await proposalRepository.getProposalsByProject(projectId, options);
-  return { success: true, data: result };
+  return { 
+    success: true, 
+    data: {
+      items: result.items.map(mapProposalFromEntity),
+      hasMore: result.hasMore,
+      total: result.total,
+    }
+  };
 }
 
 // Get proposals by freelancer
 export async function getProposalsByFreelancer(
   freelancerId: string
 ): Promise<ProposalServiceResult<Proposal[]>> {
-  const proposals = await proposalRepository.getProposalsByFreelancer(freelancerId);
-  return { success: true, data: proposals };
+  const proposalEntities = await proposalRepository.getProposalsByFreelancer(freelancerId);
+  return { success: true, data: proposalEntities.map(mapProposalFromEntity) };
 }
 
 
@@ -167,8 +176,8 @@ export async function acceptProposal(
   proposalId: string,
   employerId: string
 ): Promise<ProposalServiceResult<AcceptProposalResult>> {
-  const proposal = await proposalRepository.findProposalById(proposalId);
-  if (!proposal) {
+  const proposalEntity = await proposalRepository.findProposalById(proposalId);
+  if (!proposalEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Proposal not found' },
@@ -176,21 +185,22 @@ export async function acceptProposal(
   }
 
   // Check if proposal is pending
-  if (proposal.status !== 'pending') {
+  if (proposalEntity.status !== 'pending') {
     return {
       success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot accept proposal with status "${proposal.status}"` },
+      error: { code: 'INVALID_STATUS', message: `Cannot accept proposal with status "${proposalEntity.status}"` },
     };
   }
 
   // Verify employer owns the project
-  const project = await projectRepository.findProjectById(proposal.projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
+  const project = mapProjectFromEntity(projectEntity);
 
   if (project.employerId !== employerId) {
     return {
@@ -200,46 +210,75 @@ export async function acceptProposal(
   }
 
   // Update proposal status
-  const updatedProposal = await proposalRepository.updateProposal(proposalId, proposal.projectId, {
+  const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
     status: 'accepted',
   });
 
-  if (!updatedProposal) {
+  if (!updatedProposalEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to update proposal status' },
     };
   }
+  const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
 
-  // Create contract
-  const contract: Contract = {
+  // Create contract entity
+  const contractEntity: Omit<ContractEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
-    projectId: proposal.projectId,
-    proposalId: proposal.id,
-    freelancerId: proposal.freelancerId,
-    employerId: project.employerId,
-    escrowAddress: '', // Will be set when smart contract is deployed
-    totalAmount: project.budget,
+    project_id: proposalEntity.project_id,
+    proposal_id: proposalEntity.id,
+    freelancer_id: proposalEntity.freelancer_id,
+    employer_id: project.employerId,
+    escrow_address: '', // Will be set when smart contract is deployed
+    total_amount: project.budget,
     status: 'active',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
 
-  const createdContract = await contractRepository.createContract(contract);
+  const createdContractEntity = await contractRepository.createContract(contractEntity);
+  const createdContract = mapContractFromEntity(createdContractEntity);
+
+  // Create agreement on blockchain
+  try {
+    const employer = await userRepository.getUserById(project.employerId);
+    const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
+    
+    if (employer?.wallet_address && freelancer?.wallet_address) {
+      // Create agreement on blockchain (employer signs on creation)
+      await createAgreementOnBlockchain({
+        contractId: createdContract.id,
+        employerWallet: employer.wallet_address,
+        freelancerWallet: freelancer.wallet_address,
+        totalAmount: project.budget,
+        milestoneCount: project.milestones.length,
+        terms: {
+          projectTitle: project.title,
+          description: project.description ?? '',
+          milestones: project.milestones.map(m => ({ title: m.title, amount: m.amount })),
+          deadline: project.deadline ?? '',
+        },
+      });
+
+      // Freelancer auto-signs since they accepted the proposal
+      await signAgreement(createdContract.id, freelancer.wallet_address);
+    }
+  } catch (error) {
+    console.error('Failed to create blockchain agreement:', error);
+    // Continue - blockchain is secondary
+  }
 
   // Update project status to in_progress
-  await projectRepository.updateProject(project.id, project.employerId, {
+  await projectRepository.updateProject(project.id, {
     status: 'in_progress',
   });
 
   // Create notification for freelancer
   const notification = {
-    userId: proposal.freelancerId,
+    userId: proposalEntity.freelancer_id,
     type: 'proposal_accepted' as const,
     title: 'Proposal Accepted',
     message: `Your proposal for "${project.title}" has been accepted!`,
     data: {
-      proposalId: proposal.id,
+      proposalId: proposalEntity.id,
       projectId: project.id,
       projectTitle: project.title,
       contractId: createdContract.id,
@@ -262,8 +301,8 @@ export async function rejectProposal(
   proposalId: string,
   employerId: string
 ): Promise<ProposalServiceResult<RejectProposalResult>> {
-  const proposal = await proposalRepository.findProposalById(proposalId);
-  if (!proposal) {
+  const proposalEntity = await proposalRepository.findProposalById(proposalId);
+  if (!proposalEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Proposal not found' },
@@ -271,21 +310,22 @@ export async function rejectProposal(
   }
 
   // Check if proposal is pending
-  if (proposal.status !== 'pending') {
+  if (proposalEntity.status !== 'pending') {
     return {
       success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot reject proposal with status "${proposal.status}"` },
+      error: { code: 'INVALID_STATUS', message: `Cannot reject proposal with status "${proposalEntity.status}"` },
     };
   }
 
   // Verify employer owns the project
-  const project = await projectRepository.findProjectById(proposal.projectId);
-  if (!project) {
+  const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
+  if (!projectEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
+  const project = mapProjectFromEntity(projectEntity);
 
   if (project.employerId !== employerId) {
     return {
@@ -295,25 +335,26 @@ export async function rejectProposal(
   }
 
   // Update proposal status
-  const updatedProposal = await proposalRepository.updateProposal(proposalId, proposal.projectId, {
+  const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
     status: 'rejected',
   });
 
-  if (!updatedProposal) {
+  if (!updatedProposalEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to update proposal status' },
     };
   }
+  const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
 
   // Create notification for freelancer
   const notification = {
-    userId: proposal.freelancerId,
+    userId: proposalEntity.freelancer_id,
     type: 'proposal_rejected' as const,
     title: 'Proposal Rejected',
     message: `Your proposal for "${project.title}" was not accepted.`,
     data: {
-      proposalId: proposal.id,
+      proposalId: proposalEntity.id,
       projectId: project.id,
       projectTitle: project.title,
     },
@@ -333,8 +374,8 @@ export async function withdrawProposal(
   proposalId: string,
   freelancerId: string
 ): Promise<ProposalServiceResult<Proposal>> {
-  const proposal = await proposalRepository.findProposalById(proposalId);
-  if (!proposal) {
+  const proposalEntity = await proposalRepository.findProposalById(proposalId);
+  if (!proposalEntity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Proposal not found' },
@@ -342,7 +383,7 @@ export async function withdrawProposal(
   }
 
   // Verify freelancer owns the proposal
-  if (proposal.freelancerId !== freelancerId) {
+  if (proposalEntity.freelancer_id !== freelancerId) {
     return {
       success: false,
       error: { code: 'UNAUTHORIZED', message: 'You are not authorized to withdraw this proposal' },
@@ -350,23 +391,23 @@ export async function withdrawProposal(
   }
 
   // Check if proposal can be withdrawn
-  if (proposal.status !== 'pending') {
+  if (proposalEntity.status !== 'pending') {
     return {
       success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot withdraw proposal with status "${proposal.status}"` },
+      error: { code: 'INVALID_STATUS', message: `Cannot withdraw proposal with status "${proposalEntity.status}"` },
     };
   }
 
-  const updatedProposal = await proposalRepository.updateProposal(proposalId, proposal.projectId, {
+  const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
     status: 'withdrawn',
   });
 
-  if (!updatedProposal) {
+  if (!updatedProposalEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to withdraw proposal' },
     };
   }
 
-  return { success: true, data: updatedProposal };
+  return { success: true, data: mapProposalFromEntity(updatedProposalEntity) };
 }

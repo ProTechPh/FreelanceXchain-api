@@ -1,7 +1,6 @@
 import bcrypt from 'bcrypt';
 import jwt, { SignOptions } from 'jsonwebtoken';
-import { User } from '../models/user.js';
-import { userRepository } from '../repositories/user-repository.js';
+import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
 import { generateId } from '../utils/id.js';
 import {
@@ -11,8 +10,48 @@ import {
   AuthResult,
   AuthError,
 } from './auth-types.js';
+import { getSupabaseClient } from '../config/supabase.js';
+import { Provider } from '@supabase/supabase-js';
+import { UserRole } from '../models/user.js';
 
 const SALT_ROUNDS = 10;
+
+// Password strength requirements
+const PASSWORD_MIN_LENGTH = 8;
+
+export type PasswordValidationResult = {
+  valid: boolean;
+  errors: string[];
+};
+
+/**
+ * Validates password strength
+ * Requirements: min 8 chars, uppercase, lowercase, number, special char
+ */
+export function validatePasswordStrength(password: string): PasswordValidationResult {
+  const errors: string[] = [];
+
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    errors.push(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
+  }
+  if (!/[a-z]/.test(password)) {
+    errors.push('Password must contain at least one lowercase letter');
+  }
+  if (!/[A-Z]/.test(password)) {
+    errors.push('Password must contain at least one uppercase letter');
+  }
+  if (!/\d/.test(password)) {
+    errors.push('Password must contain at least one number');
+  }
+  if (!/[@$!%*?&]/.test(password)) {
+    errors.push('Password must contain at least one special character (@$!%*?&)');
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
+}
 
 function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS);
@@ -33,20 +72,19 @@ function generateAccessToken(payload: Omit<TokenPayload, 'type'>): string {
 function generateRefreshToken(payload: Omit<TokenPayload, 'type'>): string {
   return jwt.sign(
     { ...payload, type: 'refresh' },
-    config.jwt.secret,
+    config.jwt.refreshSecret, // Use separate secret for refresh tokens
     { expiresIn: config.jwt.refreshExpiresIn } as SignOptions
   );
 }
 
-
-function createAuthResult(user: User, accessToken: string, refreshToken: string): AuthResult {
+function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): AuthResult {
   return {
     user: {
       id: user.id,
       email: user.email,
       role: user.role,
-      walletAddress: user.walletAddress,
-      createdAt: user.createdAt,
+      walletAddress: user.wallet_address,
+      createdAt: user.created_at,
     },
     accessToken,
     refreshToken,
@@ -69,18 +107,15 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
   const passwordHash = await hashPassword(input.password);
 
   // Create user
-  const now = new Date().toISOString();
-  const user: User = {
+  const userInput = {
     id: generateId(),
     email: normalizedEmail,
-    passwordHash,
+    password_hash: passwordHash,
     role: input.role,
-    walletAddress: input.walletAddress ?? '',
-    createdAt: now,
-    updatedAt: now,
+    wallet_address: input.walletAddress ?? '',
   };
 
-  const createdUser = await userRepository.createUser(user);
+  const createdUser = await userRepository.createUser(userInput);
 
   // Generate tokens
   const tokenPayload = {
@@ -93,7 +128,6 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
 
   return createAuthResult(createdUser, accessToken, refreshToken);
 }
-
 
 export async function login(input: LoginInput): Promise<AuthResult | AuthError> {
   const normalizedEmail = input.email.toLowerCase().trim();
@@ -108,7 +142,7 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
   }
 
   // Verify password
-  const isValidPassword = await verifyPassword(input.password, user.passwordHash);
+  const isValidPassword = await verifyPassword(input.password, user.password_hash);
   if (!isValidPassword) {
     return {
       code: 'INVALID_CREDENTIALS',
@@ -128,9 +162,10 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
   return createAuthResult(user, accessToken, refreshToken);
 }
 
-export function validateToken(token: string): TokenPayload | AuthError {
+export function validateToken(token: string, tokenType: 'access' | 'refresh' = 'access'): TokenPayload | AuthError {
   try {
-    const decoded = jwt.verify(token, config.jwt.secret) as TokenPayload;
+    const secret = tokenType === 'refresh' ? config.jwt.refreshSecret : config.jwt.secret;
+    const decoded = jwt.verify(token, secret) as TokenPayload;
     return decoded;
   } catch (error) {
     if (error instanceof jwt.TokenExpiredError) {
@@ -147,8 +182,8 @@ export function validateToken(token: string): TokenPayload | AuthError {
 }
 
 export async function refreshTokens(refreshToken: string): Promise<AuthResult | AuthError> {
-  const payload = validateToken(refreshToken);
-  
+  const payload = validateToken(refreshToken, 'refresh');
+
   if ('code' in payload) {
     return payload;
   }
@@ -181,6 +216,131 @@ export async function refreshTokens(refreshToken: string): Promise<AuthResult | 
   return createAuthResult(user, newAccessToken, newRefreshToken);
 }
 
+export async function loginWithSupabase(accessToken: string): Promise<AuthResult | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Verify user with Supabase
+  const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(accessToken);
+
+  if (error || !supabaseUser || !supabaseUser.email) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid Supabase token',
+    };
+  }
+
+  const normalizedEmail = supabaseUser.email.toLowerCase().trim();
+
+  // Check if user exists in our DB
+  const user = await userRepository.getUserByEmail(normalizedEmail);
+
+  if (!user) {
+    // User does not exist, require registration
+    return {
+      code: 'AUTH_REQUIRE_REGISTRATION',
+      message: 'User registration required. Please select a role.',
+    };
+  }
+
+  // Generate tokens for existing user
+  const tokenPayload = {
+    userId: user.id,
+    email: user.email,
+    role: user.role,
+  };
+  const appAccessToken = generateAccessToken(tokenPayload);
+  const refreshToken = generateRefreshToken(tokenPayload);
+
+  return createAuthResult(user, appAccessToken, refreshToken);
+}
+
+export async function getOAuthUrl(provider: Provider): Promise<string> {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider,
+    options: {
+      redirectTo: 'http://localhost:3000/api/auth/callback',
+      skipBrowserRedirect: true,
+    },
+  });
+
+  if (error) {
+    throw new Error(`Failed to get OAuth URL: ${error.message}`);
+  }
+
+  return data.url;
+}
+
+export async function exchangeCodeForSession(code: string): Promise<{ accessToken: string } | AuthError> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+
+  if (error || !data.session) {
+    return {
+      code: 'AUTH_EXCHANGE_FAILED',
+      message: error?.message || 'Failed to exchange code for session',
+    };
+  }
+
+  return { accessToken: data.session.access_token };
+}
+
 export function isAuthError(result: AuthResult | AuthError): result is AuthError {
   return 'code' in result;
+}
+
+export async function registerWithSupabase(accessToken: string, role: UserRole): Promise<AuthResult | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Verify user with Supabase
+  const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(accessToken);
+
+  if (error || !supabaseUser || !supabaseUser.email) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid Supabase token',
+    };
+  }
+
+  const normalizedEmail = supabaseUser.email.toLowerCase().trim();
+
+  // Check if user already exists
+  const existingUser = await userRepository.getUserByEmail(normalizedEmail);
+  if (existingUser) {
+    // If user exists, just log them in (idempotency)
+    const tokenPayload = {
+      userId: existingUser.id,
+      email: existingUser.email,
+      role: existingUser.role,
+    };
+    const appAccessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+    return createAuthResult(existingUser, appAccessToken, refreshToken);
+  }
+
+  // Generate random password hash since they use OAuth
+  const randomPassword = Math.random().toString(36).slice(-8);
+  const passwordHash = await hashPassword(randomPassword);
+
+  const userInput = {
+    id: generateId(),
+    email: normalizedEmail,
+    password_hash: passwordHash,
+    role: role,
+    wallet_address: '',
+  };
+
+  const newUser = await userRepository.createUser(userInput);
+
+  // Generate tokens
+  const tokenPayload = {
+    userId: newUser.id,
+    email: newUser.email,
+    role: newUser.role,
+  };
+  const appAccessToken = generateAccessToken(tokenPayload);
+  const refreshToken = generateRefreshToken(tokenPayload);
+
+  return createAuthResult(newUser, appAccessToken, refreshToken);
 }

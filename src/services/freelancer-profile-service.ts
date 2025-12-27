@@ -1,5 +1,5 @@
-import { FreelancerProfile, SkillReference, WorkExperience } from '../models/freelancer-profile.js';
-import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
+import { FreelancerProfile, mapFreelancerProfileFromEntity, mapSkillFromEntity } from '../utils/entity-mapper.js';
+import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { skillRepository } from '../repositories/skill-repository.js';
 import { generateId } from '../utils/id.js';
 
@@ -81,31 +81,29 @@ export async function createProfile(
     };
   }
 
-  const profile: FreelancerProfile = {
+  const profileEntity: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
-    userId,
+    user_id: userId,
     bio: input.bio,
-    hourlyRate: input.hourlyRate,
+    hourly_rate: input.hourlyRate,
     skills: [],
     experience: [],
     availability: input.availability ?? 'available',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
 
-  const created = await freelancerProfileRepository.createProfile(profile);
-  return { success: true, data: created };
+  const createdEntity = await freelancerProfileRepository.createProfile(profileEntity);
+  return { success: true, data: mapFreelancerProfileFromEntity(createdEntity) };
 }
 
 export async function getProfileByUserId(userId: string): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
-  const profile = await freelancerProfileRepository.getProfileByUserId(userId);
-  if (!profile) {
+  const profileEntity = await freelancerProfileRepository.getProfileByUserId(userId);
+  if (!profileEntity) {
     return {
       success: false,
       error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
     };
   }
-  return { success: true, data: profile };
+  return { success: true, data: mapFreelancerProfileFromEntity(profileEntity) };
 }
 
 export async function updateProfile(
@@ -120,15 +118,20 @@ export async function updateProfile(
     };
   }
 
-  const updated = await freelancerProfileRepository.updateProfile(existingProfile.id, userId, input);
-  if (!updated) {
+  const updates: Partial<FreelancerProfileEntity> = {};
+  if (input.bio !== undefined) updates.bio = input.bio;
+  if (input.hourlyRate !== undefined) updates.hourly_rate = input.hourlyRate;
+  if (input.availability !== undefined) updates.availability = input.availability;
+
+  const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, updates);
+  if (!updatedEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to update profile' },
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
 }
 
 
@@ -146,28 +149,29 @@ export async function addSkillsToProfile(
     };
   }
 
-  const validSkills: SkillReference[] = [];
+  const validSkillEntities: FreelancerProfileEntity['skills'][0][] = [];
   const invalidSkillIds: string[] = [];
 
   for (const skillInput of skills) {
-    const skill = await skillRepository.findSkillById(skillInput.skillId);
-    if (!skill || !skill.isActive) {
+    const skillEntity = await skillRepository.findSkillById(skillInput.skillId);
+    if (!skillEntity || !skillEntity.is_active) {
       invalidSkillIds.push(skillInput.skillId);
     } else {
+      const skill = mapSkillFromEntity(skillEntity);
       // Check if skill already exists in profile
-      const existingSkillIndex = existingProfile.skills.findIndex(s => s.skillId === skillInput.skillId);
+      const existingSkillIndex = existingProfile.skills.findIndex(s => s.skill_id === skillInput.skillId);
       if (existingSkillIndex === -1) {
-        validSkills.push({
-          skillId: skill.id,
-          skillName: skill.name,
-          categoryId: skill.categoryId,
-          yearsOfExperience: skillInput.yearsOfExperience,
+        validSkillEntities.push({
+          skill_id: skill.id,
+          skill_name: skill.name,
+          category_id: skill.categoryId,
+          years_of_experience: skillInput.yearsOfExperience,
         });
       } else {
         // Update years of experience for existing skill
         const existingSkill = existingProfile.skills[existingSkillIndex];
         if (existingSkill) {
-          existingSkill.yearsOfExperience = skillInput.yearsOfExperience;
+          existingSkill.years_of_experience = skillInput.yearsOfExperience;
         }
       }
     }
@@ -184,19 +188,19 @@ export async function addSkillsToProfile(
     };
   }
 
-  const updatedSkills = [...existingProfile.skills, ...validSkills];
-  const updated = await freelancerProfileRepository.updateProfile(existingProfile.id, userId, {
+  const updatedSkills = [...existingProfile.skills, ...validSkillEntities];
+  const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     skills: updatedSkills,
   });
 
-  if (!updated) {
+  if (!updatedEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to add skills to profile' },
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
 }
 
 export async function removeSkillFromProfile(
@@ -211,19 +215,19 @@ export async function removeSkillFromProfile(
     };
   }
 
-  const updatedSkills = existingProfile.skills.filter(s => s.skillId !== skillId);
-  const updated = await freelancerProfileRepository.updateProfile(existingProfile.id, userId, {
+  const updatedSkills = existingProfile.skills.filter(s => s.skill_id !== skillId);
+  const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     skills: updatedSkills,
   });
 
-  if (!updated) {
+  if (!updatedEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to remove skill from profile' },
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
 }
 
 
@@ -249,28 +253,28 @@ export async function addExperience(
     };
   }
 
-  const experience: WorkExperience = {
+  const experienceEntity: FreelancerProfileEntity['experience'][0] = {
     id: generateId(),
     title: input.title,
     company: input.company,
     description: input.description,
-    startDate: input.startDate,
-    endDate: input.endDate ?? null,
+    start_date: input.startDate,
+    end_date: input.endDate ?? null,
   };
 
-  const updatedExperience = [...existingProfile.experience, experience];
-  const updated = await freelancerProfileRepository.updateProfile(existingProfile.id, userId, {
+  const updatedExperience = [...existingProfile.experience, experienceEntity];
+  const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     experience: updatedExperience,
   });
 
-  if (!updated) {
+  if (!updatedEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to add experience' },
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
 }
 
 export async function updateExperience(
@@ -302,8 +306,8 @@ export async function updateExperience(
     };
   }
 
-  const newStartDate = input.startDate ?? currentExperience.startDate;
-  const newEndDate = input.endDate !== undefined ? input.endDate : currentExperience.endDate;
+  const newStartDate = input.startDate ?? currentExperience.start_date;
+  const newEndDate = input.endDate !== undefined ? input.endDate : currentExperience.end_date;
 
   const dateValidation = validateDateRange(newStartDate, newEndDate);
   if (!dateValidation.valid) {
@@ -319,22 +323,22 @@ export async function updateExperience(
     title: input.title ?? currentExperience.title,
     company: input.company ?? currentExperience.company,
     description: input.description ?? currentExperience.description,
-    startDate: newStartDate,
-    endDate: newEndDate,
+    start_date: newStartDate,
+    end_date: newEndDate,
   };
 
-  const updated = await freelancerProfileRepository.updateProfile(existingProfile.id, userId, {
+  const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     experience: updatedExperience,
   });
 
-  if (!updated) {
+  if (!updatedEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to update experience' },
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
 }
 
 export async function removeExperience(
@@ -350,16 +354,16 @@ export async function removeExperience(
   }
 
   const updatedExperience = existingProfile.experience.filter(e => e.id !== experienceId);
-  const updated = await freelancerProfileRepository.updateProfile(existingProfile.id, userId, {
+  const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     experience: updatedExperience,
   });
 
-  if (!updated) {
+  if (!updatedEntity) {
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to remove experience' },
     };
   }
 
-  return { success: true, data: updated };
+  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
 }

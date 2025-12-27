@@ -10,59 +10,59 @@ import {
 } from '../payment-service.js';
 import { clearTransactions } from '../blockchain-client.js';
 import { clearEscrows } from '../escrow-contract.js';
-import { Contract } from '../../models/contract.js';
-import { Project, Milestone } from '../../models/project.js';
+import { ContractEntity } from '../../repositories/contract-repository.js';
+import { ProjectEntity, MilestoneEntity } from '../../repositories/project-repository.js';
 import { contractRepository } from '../../repositories/contract-repository.js';
 import { projectRepository } from '../../repositories/project-repository.js';
 import { notificationRepository } from '../../repositories/notification-repository.js';
 import { generateId } from '../../utils/id.js';
 
 // Test data generators
-const createTestMilestone = (overrides: Partial<Milestone> = {}): Milestone => ({
+const createTestMilestone = (overrides: Partial<MilestoneEntity> = {}): MilestoneEntity => ({
   id: generateId(),
   title: 'Test Milestone',
   description: 'Test milestone description',
   amount: 1000,
-  dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+  due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
   status: 'pending',
   ...overrides,
 });
 
-const createTestProject = (employerId: string, milestones: Milestone[] = []): Project => ({
+const createTestProject = (employerId: string, milestones: MilestoneEntity[] = []): ProjectEntity => ({
   id: generateId(),
-  employerId,
+  employer_id: employerId,
   title: 'Test Project',
   description: 'Test project description',
-  requiredSkills: [],
+  required_skills: [],
   budget: milestones.reduce((sum, m) => sum + m.amount, 0) || 5000,
   deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
   status: 'in_progress',
   milestones,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
 });
 
 const createTestContract = (
   projectId: string,
   freelancerId: string,
   employerId: string
-): Contract => ({
+): ContractEntity => ({
   id: generateId(),
-  projectId,
-  proposalId: generateId(),
-  freelancerId,
-  employerId,
-  escrowAddress: '0x' + '1'.repeat(40),
-  totalAmount: 5000,
+  project_id: projectId,
+  proposal_id: generateId(),
+  freelancer_id: freelancerId,
+  employer_id: employerId,
+  escrow_address: '0x' + '1'.repeat(40),
+  total_amount: 5000,
   status: 'active',
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
 });
 
 
 // Mock repositories for testing
-let mockContracts: Map<string, Contract>;
-let mockProjects: Map<string, Project>;
+let mockContracts: Map<string, ContractEntity>;
+let mockProjects: Map<string, ProjectEntity>;
 
 // Setup mock implementations
 beforeEach(() => {
@@ -77,10 +77,10 @@ beforeEach(() => {
     return mockContracts.get(id) ?? null;
   });
 
-  jest.spyOn(contractRepository, 'updateContract').mockImplementation(async (id: string, updates: Partial<Contract>) => {
+  jest.spyOn(contractRepository, 'updateContract').mockImplementation(async (id: string, updates: Partial<ContractEntity>) => {
     const contract = mockContracts.get(id);
     if (!contract) return null;
-    const updated = { ...contract, ...updates, updatedAt: new Date().toISOString() };
+    const updated = { ...contract, ...updates, updated_at: new Date().toISOString() };
     mockContracts.set(id, updated);
     return updated;
   });
@@ -90,17 +90,18 @@ beforeEach(() => {
     return mockProjects.get(id) ?? null;
   });
 
-  jest.spyOn(projectRepository, 'updateProject').mockImplementation(async (id: string, _employerId: string, updates: Partial<Project>) => {
+  jest.spyOn(projectRepository, 'updateProject').mockImplementation(async (id: string, updates: Partial<ProjectEntity>) => {
     const project = mockProjects.get(id);
     if (!project) return null;
-    const updated = { ...project, ...updates, updatedAt: new Date().toISOString() };
+    const updated = { ...project, ...updates, updated_at: new Date().toISOString() };
     mockProjects.set(id, updated);
     return updated;
   });
 
-  // Mock notification repository to avoid Cosmos DB calls
+  // Mock notification repository to avoid database calls
   jest.spyOn(notificationRepository, 'createNotification').mockImplementation(async (notification) => {
-    return notification;
+    const now = new Date().toISOString();
+    return { ...notification, created_at: now, updated_at: now };
   });
 });
 
@@ -122,10 +123,10 @@ describe('Payment Service - Payment Logic Properties', () => {
           fc.string({ minLength: 1, maxLength: 50 }),
           async (freelancerId, employerId, milestoneId, milestoneTitle) => {
             // Setup test data
-            const milestone = createTestMilestone({ 
-              id: milestoneId, 
+            const milestone = createTestMilestone({
+              id: milestoneId,
               title: milestoneTitle,
-              status: 'pending' 
+              status: 'pending'
             });
             const project = createTestProject(employerId, [milestone]);
             const contract = createTestContract(project.id, freelancerId, employerId);
@@ -224,9 +225,9 @@ describe('Payment Service - Payment Logic Properties', () => {
           fc.string({ minLength: 1, maxLength: 200 }),
           async (freelancerId, employerId, milestoneId, reason) => {
             // Setup test data
-            const milestone = createTestMilestone({ 
-              id: milestoneId, 
-              status: 'submitted' 
+            const milestone = createTestMilestone({
+              id: milestoneId,
+              status: 'submitted'
             });
             const project = createTestProject(employerId, [milestone]);
             const contract = createTestContract(project.id, freelancerId, employerId);
@@ -366,7 +367,7 @@ describe('Payment Service - Payment Logic Properties', () => {
           fc.integer({ min: 1, max: 5 }),
           async (freelancerId, employerId, milestoneCount) => {
             // Create milestones
-            const milestones: Milestone[] = [];
+            const milestones: MilestoneEntity[] = [];
             for (let i = 0; i < milestoneCount; i++) {
               milestones.push(createTestMilestone({
                 id: generateId(),

@@ -21,8 +21,8 @@ The Blockchain-Based Freelance Marketplace is a decentralized platform combining
 
 | Component | Technology | Purpose |
 |-----------|------------|---------|
-| Primary Database | Azure Cosmos DB | Document storage, global distribution |
-| Partition Strategy | Per-entity | Optimized for common queries |
+| Primary Database | Supabase (PostgreSQL) | Relational storage, real-time subscriptions |
+| ORM/Client | @supabase/supabase-js | Database operations |
 
 ### Blockchain
 
@@ -58,6 +58,7 @@ The Blockchain-Based Freelance Marketplace is a decentralized platform combining
 Base URL: /api
 Content-Type: application/json
 Authentication: Bearer Token (JWT)
+OAuth: GET /api/auth/oauth/:provider | GET /api/auth/callback
 ```
 
 ### Rate Limits (Recommended)
@@ -337,24 +338,72 @@ type NotificationType =
 
 ## Security Specifications
 
+### HTTP Security Headers (Helmet.js)
+
+| Header | Value | Purpose |
+|--------|-------|--------|
+| Content-Security-Policy | Restrictive policy | Prevent XSS attacks |
+| X-Frame-Options | DENY | Prevent clickjacking |
+| X-Content-Type-Options | nosniff | Prevent MIME sniffing |
+| Strict-Transport-Security | max-age=31536000 | Force HTTPS |
+| Referrer-Policy | strict-origin-when-cross-origin | Control referrer info |
+| X-Powered-By | (removed) | Hide server technology |
+
+### CORS Configuration
+
+| Setting | Development | Production |
+|---------|-------------|------------|
+| Allowed Origins | localhost:3000,3001 | Via `CORS_ORIGIN` env var |
+| Methods | GET, POST, PUT, PATCH, DELETE, OPTIONS | Same |
+| Headers | Content-Type, Authorization, X-Request-ID | Same |
+| Credentials | true | true |
+
 ### Authentication Flow
 
 ```
 1. User registers/logs in
 2. Server validates credentials
 3. Server generates JWT tokens:
-   - Access Token: { userId, role, exp: 1h }
-   - Refresh Token: { userId, exp: 7d }
+   - Access Token: { userId, role, exp: 1h } - signed with JWT_SECRET
+   - Refresh Token: { userId, exp: 7d } - signed with JWT_REFRESH_SECRET
 4. Client stores tokens securely
 5. Client sends Access Token in Authorization header
 6. Server validates token on each request
 7. Client uses Refresh Token to get new Access Token
+
+### OAuth Flow (Backend-Only, 2-Step)
+```
+1. Client requests GET /api/auth/oauth/:provider (google, github, etc.)
+2. Server validates provider and redirects to Supabase OAuth URL
+3. User logs in with provider
+4. Supabase redirects to /api/auth/callback with code
+5. Server exchanges code for Supabase session
+6. Server checks if user exists in local database:
+   - IF EXISTS: 
+     - Returns HTTP 200 with tokens { user, accessToken, refreshToken }
+   - IF NEW USER:
+     - Returns HTTP 202 Accepted { status: 'registration_required', accessToken }
+     - Client prompts user to select Role (Employer/Freelancer)
+     - Client calls POST /api/auth/oauth/register with { accessToken, role }
+     - Server creates user and returns tokens
 ```
 
 ### Password Requirements
 - Minimum 8 characters
+- At least one uppercase letter (A-Z)
+- At least one lowercase letter (a-z)
+- At least one number (0-9)
+- At least one special character (@$!%*?&)
 - Hashed with bcrypt (10 salt rounds)
 - Never stored in plain text
+
+### Rate Limiting
+
+| Endpoint Type | Limit | Window |
+|---------------|-------|--------|
+| Authentication (/login, /register, /refresh) | 10 requests | 15 minutes |
+| Standard API | 100 requests | 1 minute |
+| Sensitive Operations | 5 requests | 1 hour |
 
 ### Smart Contract Security
 - Reentrancy guards on all payment functions
@@ -367,9 +416,9 @@ type NotificationType =
 ## Performance Specifications
 
 ### Database
-- Cosmos DB RU allocation: 400-4000 (autoscale recommended)
-- Partition keys optimized for query patterns
+- Supabase PostgreSQL with connection pooling
 - Indexes on frequently queried fields
+- JSONB columns for flexible data structures
 
 ### API
 - Response time target: < 200ms (p95)
@@ -389,7 +438,7 @@ type NotificationType =
 
 ```json
 {
-  "@azure/cosmos": "^4.2.0",
+  "@supabase/supabase-js": "^2.89.0",
   "bcrypt": "^5.1.1",
   "cors": "^2.8.5",
   "dotenv": "^16.4.5",
@@ -418,18 +467,59 @@ type NotificationType =
 
 ---
 
+## Testing Specifications
+
+### Test Framework
+
+| Component | Technology | Purpose |
+|-----------|------------|---------|
+| Test Runner | Jest | Unit and integration testing |
+| TypeScript Support | ts-jest | TypeScript compilation |
+| Property Testing | fast-check | Property-based testing |
+
+### Test Coverage
+
+| Suite | Tests | Description |
+|-------|-------|-------------|
+| auth-service | 6 | Registration, login, JWT tokens |
+| proposal-service | 4 | Proposals, acceptance, rejection |
+| project-service | 4 | Projects, milestones, budgets |
+| payment-service | 11 | Payments, approvals, disputes |
+| dispute-service | 4 | Disputes, evidence, resolution |
+| integration | 4 | End-to-end critical flows |
+| **Total** | **175** | **100% pass rate** |
+
+### Mock Architecture
+
+Tests use in-memory stores with Jest mocks. Key pattern:
+- Services expect entity types (snake_case: `project_id`)
+- Mocks convert incoming domain models to entity format
+- All repository mocks return entity types for consistency
+
+### Running Tests
+
+```bash
+npm test              # Run all tests
+npm test -- --watch  # Watch mode
+npm test -- --coverage  # Coverage report
+```
+
+---
+
 ## Environment Configuration
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | PORT | No | 3000 | Server port |
 | NODE_ENV | No | development | Environment |
-| COSMOS_ENDPOINT | Yes | - | Cosmos DB URL |
-| COSMOS_KEY | Yes | - | Cosmos DB key |
-| COSMOS_DATABASE | Yes | - | Database name |
-| JWT_SECRET | Yes | - | JWT signing secret |
+| SUPABASE_URL | Yes | - | Supabase project URL |
+| SUPABASE_ANON_KEY | Yes | - | Supabase anon key |
+| SUPABASE_SERVICE_ROLE_KEY | No | - | Supabase service role key |
+| JWT_SECRET | Yes | - | JWT signing secret (access tokens) |
+| JWT_REFRESH_SECRET | Yes (prod) | JWT_SECRET | Separate secret for refresh tokens |
 | JWT_EXPIRES_IN | No | 1h | Access token expiry |
 | JWT_REFRESH_EXPIRES_IN | No | 7d | Refresh token expiry |
+| CORS_ORIGIN | No | localhost:3000,3001 | Comma-separated allowed origins |
 | LLM_API_KEY | No | - | Gemini API key |
 | LLM_API_URL | No | - | Gemini API URL |
 | BLOCKCHAIN_RPC_URL | No | - | Ethereum RPC |
@@ -470,14 +560,12 @@ CMD ["node", "dist/index.js"]
 | Image Size | ~150MB (production) |
 | Port | 3000 |
 | Registry | Docker Hub |
-| Image Name | jericko134/freelancexchain-api |
+| Image Name | freelancexchain-api |
 
 ### Deployment Platform
 
 | Property | Value |
 |----------|-------|
-| Platform | Azure Container Apps |
-| Region | Japan West |
-| Scaling | Consumption-based (0-10 replicas) |
-| Resources | 0.5 CPU, 1GB RAM |
-| URL | https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io |
+| Platform | Docker / Any cloud provider |
+| Scaling | Configurable |
+| Resources | 0.5 CPU, 1GB RAM (minimum) |

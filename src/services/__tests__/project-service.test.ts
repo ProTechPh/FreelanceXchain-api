@@ -1,45 +1,47 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { Project } from '../../models/project.js';
-import { Proposal } from '../../models/proposal.js';
-import { Skill } from '../../models/skill.js';
+import { ProjectEntity, MilestoneEntity } from '../../repositories/project-repository.js';
+import { ProposalEntity } from '../../repositories/proposal-repository.js';
+import { SkillEntity } from '../../repositories/skill-repository.js';
 import { generateId } from '../../utils/id.js';
 
 // In-memory stores for testing
-let projectStore: Map<string, Project> = new Map();
-let proposalStore: Map<string, Proposal> = new Map();
-let skillStore: Map<string, Skill> = new Map();
+let projectStore: Map<string, ProjectEntity> = new Map();
+let proposalStore: Map<string, ProposalEntity> = new Map();
+let skillStore: Map<string, SkillEntity> = new Map();
 
 // Mock the repositories before importing project-service
 jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
   projectRepository: {
-    createProject: jest.fn(async (project: Project) => {
+    createProject: jest.fn(async (project: ProjectEntity) => {
       const now = new Date().toISOString();
-      const created = { ...project, createdAt: now, updatedAt: now };
+      const created = { ...project, created_at: now, updated_at: now };
       projectStore.set(project.id, created);
       return created;
     }),
-    getProjectById: jest.fn(async (id: string, employerId: string) => {
-      const project = projectStore.get(id);
-      if (project && project.employerId === employerId) return project;
-      return null;
+    getProjectById: jest.fn(async (id: string) => {
+      return projectStore.get(id) ?? null;
     }),
     findProjectById: jest.fn(async (id: string) => {
       return projectStore.get(id) ?? null;
     }),
-    updateProject: jest.fn(async (id: string, employerId: string, updates: Partial<Project>) => {
+    updateProject: jest.fn(async (id: string, updates: Partial<ProjectEntity>) => {
       const project = projectStore.get(id);
-      if (!project || project.employerId !== employerId) return null;
-      const updated = { ...project, ...updates, updatedAt: new Date().toISOString() };
+      if (!project) return null;
+      const updated = { ...project, ...updates, updated_at: new Date().toISOString() };
       projectStore.set(id, updated);
       return updated;
     }),
     getProjectsByEmployer: jest.fn(async (employerId: string) => {
-      const items = Array.from(projectStore.values()).filter(p => p.employerId === employerId);
+      const items = Array.from(projectStore.values()).filter(p => p.employer_id === employerId);
       return { items, hasMore: false };
     }),
   },
   ProjectRepository: jest.fn(),
+  ProjectEntity: {} as ProjectEntity,
+  MilestoneEntity: {} as MilestoneEntity,
+  ProjectStatus: 'open',
+  MilestoneStatus: 'pending',
 }));
 
 
@@ -47,7 +49,7 @@ jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
   proposalRepository: {
     hasAcceptedProposal: jest.fn(async (projectId: string) => {
       for (const proposal of proposalStore.values()) {
-        if (proposal.projectId === projectId && proposal.status === 'accepted') {
+        if (proposal.project_id === projectId && proposal.status === 'accepted') {
           return true;
         }
       }
@@ -56,7 +58,7 @@ jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
     getProposalCountByProject: jest.fn(async (projectId: string) => {
       let count = 0;
       for (const proposal of proposalStore.values()) {
-        if (proposal.projectId === projectId) count++;
+        if (proposal.project_id === projectId) count++;
       }
       return count;
     }),
@@ -77,30 +79,30 @@ jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
 const { createProject, getProjectById, updateProject, setMilestones } = await import('../project-service.js');
 
 // Helper to create test skills
-function createTestSkill(id: string, name: string, categoryId: string): Skill {
+function createTestSkill(id: string, name: string, categoryId: string): SkillEntity {
   return {
     id,
-    categoryId,
+    category_id: categoryId,
     name,
     description: `${name} skill`,
-    isActive: true,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 }
 
 // Helper to add accepted proposal
-function addAcceptedProposal(projectId: string, freelancerId: string): Proposal {
-  const proposal: Proposal = {
+function addAcceptedProposal(projectId: string, freelancerId: string): ProposalEntity {
+  const proposal: ProposalEntity = {
     id: generateId(),
-    projectId,
-    freelancerId,
-    coverLetter: 'Test cover letter',
-    proposedRate: 50,
-    estimatedDuration: 30,
+    project_id: projectId,
+    freelancer_id: freelancerId,
+    cover_letter: 'Test cover letter',
+    proposed_rate: 50,
+    estimated_duration: 30,
     status: 'accepted',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
   proposalStore.set(proposal.id, proposal);
   return proposal;
@@ -130,7 +132,7 @@ const validFreelancerIdArbitrary = () =>
 // Generate milestones that sum to a specific budget
 const validMilestonesArbitrary = (totalBudget: number, count: number) => {
   if (count <= 0) return fc.constant([]);
-  
+
   return fc.array(
     fc.record({
       title: fc.stringMatching(/^Milestone [0-9]+$/),
@@ -142,7 +144,7 @@ const validMilestonesArbitrary = (totalBudget: number, count: number) => {
     // Distribute budget evenly with remainder going to last milestone
     const baseAmount = Math.floor(totalBudget / count);
     const remainder = totalBudget - (baseAmount * count);
-    
+
     return milestones.map((m, i) => ({
       ...m,
       amount: i === count - 1 ? baseAmount + remainder : baseAmount,
@@ -171,7 +173,7 @@ describe('Project Service - Property Tests', () => {
     projectStore.clear();
     proposalStore.clear();
     skillStore.clear();
-    
+
     // Set up some test skills
     const skill1 = createTestSkill('skill-1', 'JavaScript', 'cat-1');
     const skill2 = createTestSkill('skill-2', 'TypeScript', 'cat-1');
@@ -213,7 +215,7 @@ describe('Project Service - Property Tests', () => {
 
           // Create project
           const createResult = await createProject(employerId, createInput);
-          
+
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
 
@@ -224,14 +226,14 @@ describe('Project Service - Property Tests', () => {
           expect(createdProject.description).toBe(description);
           expect(createdProject.budget).toBe(budget);
           expect(createdProject.deadline).toBe(deadline);
-          expect(createdProject.employerId).toBe(employerId);
+          expect(createdProject.employer_id).toBe(employerId);
           expect(createdProject.status).toBe('open');
           expect(createdProject.milestones).toEqual([]);
-          expect(createdProject.requiredSkills.length).toBe(skillIds.length);
+          expect(createdProject.required_skills.length).toBe(skillIds.length);
 
           // Retrieve project
           const getResult = await getProjectById(createdProject.id);
-          
+
           expect(getResult.success).toBe(true);
           if (!getResult.success) return;
 

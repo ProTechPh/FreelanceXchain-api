@@ -4,19 +4,19 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AZURE CLOUD                                        │
+│                           APPLICATION                                        │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │                    Azure Container Apps (Japan West)                 │    │
+│  │                    Docker Container / Cloud Host                     │    │
 │  │  ┌─────────────────────────────────────────────────────────────┐    │    │
 │  │  │  freelancexchain-api                                         │    │    │
-│  │  │  Docker: jericko134/freelancexchain-api:latest              │    │    │
-│  │  │  Port: 3000 | Ingress: External                             │    │    │
+│  │  │  Node.js + Express + TypeScript                              │    │    │
+│  │  │  Port: 3000                                                  │    │    │
 │  │  └─────────────────────────────────────────────────────────────┘    │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 │                                    │                                         │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │              Azure Cosmos DB (Malaysia West)                         │    │
-│  │              freelance-marketplace-db                                │    │
+│  │                    Supabase (PostgreSQL)                             │    │
+│  │                    freelance-marketplace                             │    │
 │  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                     │
@@ -28,8 +28,6 @@
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘             │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
-
-**Production URL:** https://freelancexchain-api.orangebeach-df8d1409.japanwest.azurecontainerapps.io
 
 ---
 
@@ -73,45 +71,17 @@
 ┌─────────────────────────┐ ┌─────────────────────┐ ┌─────────────────────────┐
 │     DATA LAYER          │ │   BLOCKCHAIN LAYER  │ │      AI LAYER           │
 │  ┌───────────────────┐  │ │ ┌─────────────────┐ │ │  ┌───────────────────┐  │
-│  │  Azure Cosmos DB  │  │ │ │ Ethereum Network│ │ │  │  Google Gemini    │  │
-│  │                   │  │ │ │  (Sepolia/Local)│ │ │  │      API          │  │
-│  │  • Users          │  │ │ └─────────────────┘ │ │  └───────────────────┘  │
-│  │  • Projects       │  │ │         │           │ │           │             │
-│  │  • Proposals      │  │ │         ▼           │ │           ▼             │
-│  │  • Contracts      │  │ │ ┌─────────────────┐ │ │  • Skill Matching       │
-│  │  • Notifications  │  │ │ │ Smart Contracts │ │ │  • Skill Extraction     │
-│  │  • Skills         │  │ │ │ • Escrow        │ │ │  • Gap Analysis         │
-│  └───────────────────┘  │ │ │ • Reputation    │ │ │  • Recommendations      │
-└─────────────────────────┘ │ └─────────────────┘ │ └─────────────────────────┘
-                            └─────────────────────┘
-```
-
-## Component Diagram
-
-```
-┌────────────────────────────────────────────────────────────────────────────┐
-│                           MIDDLEWARE LAYER                                  │
-│  ┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐           │
-│  │   Auth     │  │  Request   │  │   Error    │  │ Validation │           │
-│  │ Middleware │  │  Logger    │  │  Handler   │  │ Middleware │           │
-│  └────────────┘  └────────────┘  └────────────┘  └────────────┘           │
-└────────────────────────────────────────────────────────────────────────────┘
-
-┌────────────────────────────────────────────────────────────────────────────┐
-│                         EXTERNAL INTEGRATIONS                               │
-│                                                                             │
-│  ┌─────────────────────┐    ┌─────────────────────┐                        │
-│  │    Web3 Client      │    │     AI Client       │                        │
-│  │  ┌───────────────┐  │    │  ┌───────────────┐  │                        │
-│  │  │ Ethers.js     │  │    │  │ Gemini API    │  │                        │
-│  │  │ Provider      │  │    │  │ Integration   │  │                        │
-│  │  └───────────────┘  │    │  └───────────────┘  │                        │
-│  │  ┌───────────────┐  │    │  ┌───────────────┐  │                        │
-│  │  │ Contract      │  │    │  │ Keyword       │  │                        │
-│  │  │ Interactions  │  │    │  │ Fallback      │  │                        │
-│  │  └───────────────┘  │    │  └───────────────┘  │                        │
-│  └─────────────────────┘    └─────────────────────┘                        │
-└────────────────────────────────────────────────────────────────────────────┘
+│  │     Supabase      │  │ │ │ Ethereum Network│ │ │  │  Google Gemini    │  │
+│  │   (PostgreSQL)    │  │ │ │  (Sepolia/Local)│ │ │  │      API          │  │
+│  │                   │  │ │ └─────────────────┘ │ │  └───────────────────┘  │
+│  │  • Users          │  │ │         │           │ │           │             │
+│  │  • Projects       │  │ │         ▼           │ │           ▼             │
+│  │  • Proposals      │  │ │ ┌─────────────────┐ │ │  • Skill Matching       │
+│  │  • Contracts      │  │ │ │ Smart Contracts │ │ │  • Skill Extraction     │
+│  │  • Notifications  │  │ │ │ • Escrow        │ │ │  • Gap Analysis         │
+│  │  • Skills         │  │ │ │ • Reputation    │ │ │  • Recommendations      │
+│  └───────────────────┘  │ │ └─────────────────┘ │ │                         │
+└─────────────────────────┘ └─────────────────────┘ └─────────────────────────┘
 ```
 
 ## Data Flow Diagrams
@@ -120,7 +90,7 @@
 
 ```
 ┌──────┐     ┌─────────┐     ┌─────────────┐     ┌──────────┐
-│Client│────▶│Auth API │────▶│Auth Service │────▶│Cosmos DB │
+│Client│────▶│Auth API │────▶│Auth Service │────▶│ Supabase │
 └──────┘     └─────────┘     └─────────────┘     └──────────┘
     │                              │
     │◀─────── JWT Token ───────────┤
@@ -130,7 +100,7 @@
 
 ```
 ┌────────┐    ┌───────────┐    ┌─────────────┐    ┌──────────┐
-│Employer│───▶│Project API│───▶│Project Svc  │───▶│Cosmos DB │
+│Employer│───▶│Project API│───▶│Project Svc  │───▶│ Supabase │
 └────────┘    └───────────┘    └─────────────┘    └──────────┘
                                       │
                                       ▼
@@ -160,128 +130,26 @@
                                       │            └──────────────┘
                                       ▼
                               ┌───────────────┐
-                              │  Cosmos DB    │
+                              │   Supabase    │
                               │ (Status Update)│
                               └───────────────┘
 ```
 
-### 4. AI Matching Flow
+## Database Schema (Supabase PostgreSQL)
 
-```
-┌──────────┐    ┌────────────┐    ┌─────────────┐    ┌────────────┐
-│Freelancer│───▶│Matching API│───▶│Matching Svc │───▶│ AI Client  │
-└──────────┘    └────────────┘    └─────────────┘    └────────────┘
-                                        │                  │
-                                        │                  ▼
-                                        │          ┌────────────┐
-                                        │          │Gemini API  │
-                                        │          └────────────┘
-                                        │                  │
-                                        │◀─── Match Scores─┤
-                                        │
-                                        ▼
-                              ┌───────────────────┐
-                              │ Ranked Project    │
-                              │ Recommendations   │
-                              └───────────────────┘
-```
-
-### 5. Reputation Flow
-
-```
-┌──────┐    ┌──────────────┐    ┌─────────────────┐    ┌────────────────────┐
-│ User │───▶│Reputation API│───▶│Reputation Svc   │───▶│Reputation Contract │
-└──────┘    └──────────────┘    └─────────────────┘    └────────────────────┘
-                                        │                       │
-                                        │                       │ On-chain
-                                        │                       │ Storage
-                                        │                       ▼
-                                        │              ┌────────────────┐
-                                        │              │ Immutable      │
-                                        │              │ Rating Record  │
-                                        │              └────────────────┘
-                                        │
-                                        ▼
-                              ┌───────────────────┐
-                              │   Cosmos DB       │
-                              │ (Cache/Reference) │
-                              └───────────────────┘
-```
-
-## Smart Contract Architecture
-
-### FreelanceEscrow Contract
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     FreelanceEscrow                              │
-├─────────────────────────────────────────────────────────────────┤
-│ State Variables:                                                 │
-│   • employer: address                                           │
-│   • freelancer: address                                         │
-│   • arbiter: address                                            │
-│   • milestones: Milestone[]                                     │
-│   • totalAmount: uint256                                        │
-│   • releasedAmount: uint256                                     │
-│   • isActive: bool                                              │
-├─────────────────────────────────────────────────────────────────┤
-│ Functions:                                                       │
-│   • constructor(freelancer, arbiter, milestones) payable        │
-│   • submitMilestone(index) - Freelancer                         │
-│   • approveMilestone(index) - Employer → Releases ETH           │
-│   • disputeMilestone(index) - Either party                      │
-│   • resolveDispute(index, decision) - Arbiter                   │
-│   • refundMilestone(index) - Employer                           │
-│   • cancelContract() - Employer                                 │
-├─────────────────────────────────────────────────────────────────┤
-│ Events:                                                          │
-│   • FundsDeposited, MilestoneSubmitted, MilestoneApproved       │
-│   • MilestoneDisputed, MilestoneRefunded, DisputeResolved       │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### FreelanceReputation Contract
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                   FreelanceReputation                            │
-├─────────────────────────────────────────────────────────────────┤
-│ State Variables:                                                 │
-│   • ratings: Rating[]                                           │
-│   • userRatings: mapping(address => uint256[])                  │
-│   • givenRatings: mapping(address => uint256[])                 │
-│   • ratingExists: mapping(bytes32 => bool)                      │
-│   • totalScore: mapping(address => uint256)                     │
-│   • ratingCount: mapping(address => uint256)                    │
-├─────────────────────────────────────────────────────────────────┤
-│ Functions:                                                       │
-│   • submitRating(ratee, score, comment, contractId, isEmployer) │
-│   • getAverageRating(user) → uint256                            │
-│   • getRatingCount(user) → uint256                              │
-│   • getUserRatingIndices(user) → uint256[]                      │
-│   • getRating(index) → Rating                                   │
-│   • hasRated(rater, ratee, contractId) → bool                   │
-├─────────────────────────────────────────────────────────────────┤
-│ Events:                                                          │
-│   • RatingSubmitted(index, rater, ratee, score, contractId)     │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-## Database Schema (Cosmos DB)
-
-### Collections
+### Tables
 
 ```
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │     users       │  │    projects     │  │   proposals     │
 ├─────────────────┤  ├─────────────────┤  ├─────────────────┤
-│ id (PK)         │  │ id (PK)         │  │ id (PK)         │
-│ email           │  │ employerId      │  │ projectId       │
-│ passwordHash    │  │ title           │  │ freelancerId    │
-│ role            │  │ description     │  │ coverLetter     │
-│ walletAddress   │  │ requiredSkills  │  │ proposedRate    │
-│ createdAt       │  │ budget          │  │ status          │
-│ updatedAt       │  │ milestones      │  │ createdAt       │
+│ id (PK, UUID)   │  │ id (PK, UUID)   │  │ id (PK, UUID)   │
+│ email           │  │ employer_id (FK)│  │ project_id (FK) │
+│ password_hash   │  │ title           │  │ freelancer_id   │
+│ role            │  │ description     │  │ cover_letter    │
+│ wallet_address  │  │ required_skills │  │ proposed_rate   │
+│ created_at      │  │ budget          │  │ status          │
+│ updated_at      │  │ milestones      │  │ created_at      │
 └─────────────────┘  │ status          │  └─────────────────┘
                      │ deadline        │
                      └─────────────────┘
@@ -289,24 +157,24 @@
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │   contracts     │  │    disputes     │  │  notifications  │
 ├─────────────────┤  ├─────────────────┤  ├─────────────────┤
-│ id (PK)         │  │ id (PK)         │  │ id (PK)         │
-│ projectId       │  │ contractId      │  │ userId          │
-│ proposalId      │  │ milestoneIndex  │  │ type            │
-│ freelancerId    │  │ initiatorId     │  │ title           │
-│ employerId      │  │ reason          │  │ message         │
-│ escrowAddress   │  │ evidence        │  │ data            │
-│ totalAmount     │  │ status          │  │ isRead          │
-│ status          │  │ resolution      │  │ createdAt       │
+│ id (PK, UUID)   │  │ id (PK, UUID)   │  │ id (PK, UUID)   │
+│ project_id (FK) │  │ contract_id (FK)│  │ user_id (FK)    │
+│ proposal_id (FK)│  │ milestone_id    │  │ type            │
+│ freelancer_id   │  │ initiator_id    │  │ title           │
+│ employer_id     │  │ reason          │  │ message         │
+│ escrow_address  │  │ evidence (JSONB)│  │ data (JSONB)    │
+│ total_amount    │  │ status          │  │ is_read         │
+│ status          │  │ resolution      │  │ created_at      │
 └─────────────────┘  └─────────────────┘  └─────────────────┘
 
 ┌─────────────────┐  ┌─────────────────┐
 │     skills      │  │ skill_categories│
 ├─────────────────┤  ├─────────────────┤
-│ id (PK)         │  │ id (PK)         │
-│ categoryId      │  │ name            │
+│ id (PK, UUID)   │  │ id (PK, UUID)   │
+│ category_id (FK)│  │ name            │
 │ name            │  │ description     │
-│ description     │  │ isActive        │
-│ isActive        │  └─────────────────┘
+│ description     │  │ is_active       │
+│ is_active       │  └─────────────────┘
 └─────────────────┘
 ```
 
@@ -335,7 +203,7 @@
 │  └─────────────────────────────────────────────────────────┘    │
 │                              │                                   │
 │  ┌─────────────────────────────────────────────────────────┐    │
-│  │ Input Validation: Request validation middleware          │    │
+│  │ Database Security: Supabase Row Level Security (RLS)     │    │
 │  └─────────────────────────────────────────────────────────┘    │
 │                              │                                   │
 │  ┌─────────────────────────────────────────────────────────┐    │

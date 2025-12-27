@@ -1,7 +1,6 @@
-import { Project } from '../models/project.js';
-import { FreelancerProfile } from '../models/freelancer-profile.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
+import { Project, FreelancerProfile, mapProjectFromEntity, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
+import { projectRepository, ProjectEntity } from '../repositories/project-repository.js';
+import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 
 export type ProjectSearchFilters = {
@@ -18,13 +17,13 @@ export type FreelancerSearchFilters = {
 
 export type SearchPaginationInput = {
   pageSize?: number;
-  continuationToken?: string;
+  offset?: number;
 };
 
 export type SearchResultMetadata = {
   pageSize: number;
   hasMore: boolean;
-  continuationToken?: string;
+  offset?: number;
 };
 
 export type SearchResult<T> = {
@@ -50,12 +49,8 @@ function normalizePageSize(pageSize?: number): number {
   return pageSize;
 }
 
-function buildQueryOptions(pageSize: number, continuationToken?: string): QueryOptions {
-  const options: QueryOptions = { maxItemCount: pageSize };
-  if (continuationToken) {
-    options.continuationToken = continuationToken;
-  }
-  return options;
+function buildQueryOptions(pageSize: number, offset?: number): QueryOptions {
+  return { limit: pageSize, offset: offset ?? 0 };
 }
 
 
@@ -63,28 +58,16 @@ function buildSearchResult<T>(
   items: T[],
   pageSize: number,
   hasMore: boolean,
-  continuationToken?: string
+  offset?: number
 ): SearchResult<T> {
   const metadata: SearchResultMetadata = {
     pageSize,
     hasMore,
   };
-  if (continuationToken) {
-    metadata.continuationToken = continuationToken;
+  if (offset !== undefined) {
+    metadata.offset = offset;
   }
   return { items, metadata };
-}
-
-function buildPaginatedResult<T>(
-  items: T[],
-  hasMore: boolean,
-  continuationToken?: string
-): PaginatedResult<T> {
-  const result: PaginatedResult<T> = { items, hasMore };
-  if (continuationToken) {
-    result.continuationToken = continuationToken;
-  }
-  return result;
 }
 
 /**
@@ -96,9 +79,9 @@ export async function searchProjects(
   pagination?: SearchPaginationInput
 ): Promise<SearchServiceResult<SearchResult<Project>>> {
   const pageSize = normalizePageSize(pagination?.pageSize);
-  const queryOptions = buildQueryOptions(pageSize, pagination?.continuationToken);
+  const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 
-  let result: PaginatedResult<Project>;
+  let entityResult: PaginatedResult<ProjectEntity>;
 
   // Determine which search method to use based on filters
   const hasKeyword = filters.keyword && filters.keyword.trim().length > 0;
@@ -108,21 +91,21 @@ export async function searchProjects(
   // If multiple filters are provided, we need to apply them in memory
   // For single filters, we can use the optimized repository methods
   if (hasKeyword && !hasSkills && !hasBudgetRange) {
-    result = await projectRepository.searchProjects(filters.keyword!, queryOptions);
+    entityResult = await projectRepository.searchProjects(filters.keyword!, queryOptions);
   } else if (hasSkills && !hasKeyword && !hasBudgetRange) {
-    result = await projectRepository.getProjectsBySkills(filters.skillIds!, queryOptions);
+    entityResult = await projectRepository.getProjectsBySkills(filters.skillIds!, queryOptions);
   } else if (hasBudgetRange && !hasKeyword && !hasSkills) {
     const minBudget = filters.minBudget ?? 0;
     const maxBudget = filters.maxBudget ?? Number.MAX_SAFE_INTEGER;
-    result = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, queryOptions);
+    entityResult = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, queryOptions);
   } else if (!hasKeyword && !hasSkills && !hasBudgetRange) {
     // No filters - return all open projects
-    result = await projectRepository.getAllOpenProjects(queryOptions);
+    entityResult = await projectRepository.getAllOpenProjects(queryOptions);
   } else {
     // Multiple filters - get all open projects and filter in memory
-    result = await projectRepository.getAllOpenProjects(queryOptions);
+    entityResult = await projectRepository.getAllOpenProjects(queryOptions);
     
-    let filteredItems = result.items;
+    let filteredItems = entityResult.items;
 
     // Apply keyword filter
     if (hasKeyword) {
@@ -138,7 +121,7 @@ export async function searchProjects(
     if (hasSkills) {
       const skillIdSet = new Set(filters.skillIds);
       filteredItems = filteredItems.filter(project =>
-        project.requiredSkills.some(skill => skillIdSet.has(skill.skillId))
+        project.required_skills.some(skill => skillIdSet.has(skill.skill_id))
       );
     }
 
@@ -151,12 +134,15 @@ export async function searchProjects(
       );
     }
 
-    result = buildPaginatedResult(filteredItems, result.hasMore, result.continuationToken);
+    entityResult = { items: filteredItems, hasMore: entityResult.hasMore };
   }
+
+  // Map entities to models
+  const projects = entityResult.items.map(mapProjectFromEntity);
 
   return {
     success: true,
-    data: buildSearchResult(result.items, pageSize, result.hasMore, result.continuationToken),
+    data: buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset),
   };
 }
 
@@ -170,25 +156,25 @@ export async function searchFreelancers(
   pagination?: SearchPaginationInput
 ): Promise<SearchServiceResult<SearchResult<FreelancerProfile>>> {
   const pageSize = normalizePageSize(pagination?.pageSize);
-  const queryOptions = buildQueryOptions(pageSize, pagination?.continuationToken);
+  const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 
-  let result: PaginatedResult<FreelancerProfile>;
+  let entityResult: PaginatedResult<FreelancerProfileEntity>;
 
   const hasKeyword = filters.keyword && filters.keyword.trim().length > 0;
   const hasSkills = filters.skillIds && filters.skillIds.length > 0;
 
   if (hasSkills && !hasKeyword) {
-    result = await freelancerProfileRepository.searchBySkills(filters.skillIds!, queryOptions);
+    entityResult = await freelancerProfileRepository.searchBySkills(filters.skillIds!, queryOptions);
   } else if (hasKeyword && !hasSkills) {
-    result = await freelancerProfileRepository.searchByKeyword(filters.keyword!, queryOptions);
+    entityResult = await freelancerProfileRepository.searchByKeyword(filters.keyword!, queryOptions);
   } else if (!hasKeyword && !hasSkills) {
     // No filters - return all profiles
-    result = await freelancerProfileRepository.getAllProfilesPaginated(queryOptions);
+    entityResult = await freelancerProfileRepository.getAllProfilesPaginated(queryOptions);
   } else {
     // Multiple filters - get all profiles and filter in memory
-    result = await freelancerProfileRepository.getAllProfilesPaginated(queryOptions);
+    entityResult = await freelancerProfileRepository.getAllProfilesPaginated(queryOptions);
     
-    let filteredItems = result.items;
+    let filteredItems = entityResult.items;
 
     // Apply keyword filter
     if (hasKeyword) {
@@ -202,15 +188,18 @@ export async function searchFreelancers(
     if (hasSkills) {
       const skillIdSet = new Set(filters.skillIds);
       filteredItems = filteredItems.filter(profile =>
-        profile.skills.some(skill => skillIdSet.has(skill.skillId))
+        profile.skills.some(skill => skillIdSet.has(skill.skill_id))
       );
     }
 
-    result = buildPaginatedResult(filteredItems, result.hasMore, result.continuationToken);
+    entityResult = { items: filteredItems, hasMore: entityResult.hasMore };
   }
+
+  // Map entities to models
+  const profiles = entityResult.items.map(mapFreelancerProfileFromEntity);
 
   return {
     success: true,
-    data: buildSearchResult(result.items, pageSize, result.hasMore, result.continuationToken),
+    data: buildSearchResult(profiles, pageSize, entityResult.hasMore, pagination?.offset),
   };
 }

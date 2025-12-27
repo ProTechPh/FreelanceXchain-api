@@ -1,11 +1,9 @@
 export { config } from './env.js';
 export type { Config } from './env.js';
 export { 
-  getCosmosClient, 
-  getDatabase, 
-  getContainer, 
+  getSupabaseClient, 
   initializeDatabase,
-  COLLECTIONS 
-} from './database.js';
-export type { CollectionName } from './database.js';
+  TABLES 
+} from './supabase.js';
+export type { TableName } from './supabase.js';
 export { swaggerSpec } from './swagger.js';

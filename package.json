@@ -27,7 +27,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+<<<<<<< HEAD
     "@azure/cosmos": "^4.2.0",
+=======
+>>>>>>> e27a79cf58f503d55d1ed181ccf68b72bd586c32
     "@supabase/supabase-js": "^2.89.0",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",

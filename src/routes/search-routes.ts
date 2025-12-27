@@ -151,7 +151,9 @@ router.get('/projects', async (req: Request, res: Response) => {
   // Build pagination object conditionally
   const pagination: import('../services/search-service.js').SearchPaginationInput = {};
   if (pageSize !== undefined) pagination.pageSize = pageSize;
-  if (continuationToken) pagination.continuationToken = continuationToken;
+  if (typeof continuationToken === 'string' && continuationToken) {
+    pagination.offset = parseInt(continuationToken, 10) || 0;
+  }
 
   const result = await searchProjects(filters, pagination);
 
@@ -243,7 +245,9 @@ router.get('/freelancers', async (req: Request, res: Response) => {
   // Build pagination object conditionally
   const pagination: import('../services/search-service.js').SearchPaginationInput = {};
   if (pageSize !== undefined) pagination.pageSize = pageSize;
-  if (continuationToken) pagination.continuationToken = continuationToken;
+  if (typeof continuationToken === 'string' && continuationToken) {
+    pagination.offset = parseInt(continuationToken, 10) || 0;
+  }
 
   const result = await searchFreelancers(filters, pagination);
 

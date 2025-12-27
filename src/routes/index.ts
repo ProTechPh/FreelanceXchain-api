@@ -14,6 +14,7 @@ import notificationRoutes from './notification-routes.js';
 import paymentRoutes from './payment-routes.js';
 import reputationRoutes from './reputation-routes.js';
 import disputeRoutes from './dispute-routes.js';
+import kycRoutes from './kyc-routes.js';
 
 const router = Router();
 
@@ -82,5 +83,8 @@ router.use('/reputation', reputationRoutes);
 
 // Dispute routes
 router.use('/disputes', disputeRoutes);
+
+// KYC routes
+router.use('/kyc', kycRoutes);
 
 export default router;
