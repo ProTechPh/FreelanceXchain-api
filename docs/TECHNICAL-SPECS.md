@@ -371,16 +371,21 @@ type NotificationType =
 6. Server validates token on each request
 7. Client uses Refresh Token to get new Access Token
 
-### OAuth Flow (Backend-Only)
+### OAuth Flow (Backend-Only, 2-Step)
 ```
 1. Client requests GET /api/auth/oauth/:provider (google, github, etc.)
 2. Server validates provider and redirects to Supabase OAuth URL
 3. User logs in with provider
 4. Supabase redirects to /api/auth/callback with code
 5. Server exchanges code for Supabase session
-6. Server syncs user to local database
-7. Server issues application JWTs (access + refresh)
-8. Server returns tokens as JSON (for mobile/API clients) or sets cookies (optional)
+6. Server checks if user exists in local database:
+   - IF EXISTS: 
+     - Returns HTTP 200 with tokens { user, accessToken, refreshToken }
+   - IF NEW USER:
+     - Returns HTTP 202 Accepted { status: 'registration_required', accessToken }
+     - Client prompts user to select Role (Employer/Freelancer)
+     - Client calls POST /api/auth/oauth/register with { accessToken, role }
+     - Server creates user and returns tokens
 ```
 
 ### Password Requirements

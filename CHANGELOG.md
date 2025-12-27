@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [2.5.0] - 2025-12-27
+
+### Added
+
+#### OAuth Role Selection (2-Step Flow)
+- **Role Selection Logic**: Implemented "Post-Login Role Selection" to prevent default role assignment.
+- **New Endpoints**:
+  - `POST /api/auth/oauth/register`: Finalize OAuth account creation with a mandatory role (`employer` or `freelancer`).
+- **Registration Signal**: `GET /api/auth/callback` now returns `202 Accepted` with `registration_required` status for new users.
+
+### Security
+- **Safety Handler**: Added `try-catch` block to OAuth registration route to prevent server crashes on database errors.
+- **Strict Role Enforcement**: OAuth login no longer auto-creates accounts; explicit registration step is now required.
+
+### Fixed
+- **Role Assignment**: Fixed issue where Supabase OAuth defaults would create users without a clear role intent.
+
+---
+
 ## [2.4.0] - 2025-12-26
 
 ### Added

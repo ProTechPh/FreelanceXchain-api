@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { register, login, refreshTokens, isAuthError, validatePasswordStrength, loginWithSupabase, getOAuthUrl, exchangeCodeForSession } from '../services/auth-service.js';
+import { register, login, refreshTokens, isAuthError, validatePasswordStrength, loginWithSupabase, registerWithSupabase, getOAuthUrl, exchangeCodeForSession } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter } from '../middleware/rate-limiter.js';
@@ -401,7 +401,7 @@ router.get('/oauth/:provider', async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
   try {
-    // Basic validation of provider
+    // Valid provider check
     if (!['google', 'github', 'azure', 'linkedin'].includes(provider)) {
       res.status(400).json({
         error: {
@@ -414,6 +414,7 @@ router.get('/oauth/:provider', async (req: Request, res: Response) => {
       return;
     }
 
+    // Note: We no longer accept role here. Role selection happens AFTER callback.
     const url = await getOAuthUrl(provider as any);
     res.redirect(url);
   } catch (error) {
@@ -481,12 +482,21 @@ router.get('/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  // 2. Login/Sync with our backend using the Supabase Access Token
-  // We type cast because we know exchangeCodeForSession returns { accessToken } on success
+  // 2. Login
   const accessToken = (sessionResult as { accessToken: string }).accessToken;
   const result = await loginWithSupabase(accessToken);
 
   if (isAuthError(result)) {
+    // Check if registration is required
+    if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
+      res.status(202).json({
+        status: 'registration_required',
+        message: 'User does not exist. Please register with a role.',
+        accessToken, // Client needs this to call /register
+      });
+      return;
+    }
+
     res.status(401).json({
       error: {
         code: 'AUTH_INVALID_TOKEN',
@@ -503,6 +513,93 @@ router.get('/callback', async (req: Request, res: Response) => {
   // or set HttpOnly cookies. Since the user asked for backend only, returning JSON is appropriate 
   // for testing via Postman/Curl or if the "frontend" is just a CLI or mobile app.
   res.status(200).json(result);
+});
+
+
+/**
+ * @swagger
+ * /api/auth/oauth/register:
+ *   post:
+ *     summary: Complete OAuth registration with role
+ *     description: Finalize account creation for a new OAuth user by providing a role
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - accessToken
+ *               - role
+ *             properties:
+ *               accessToken:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *                 enum: [freelancer, employer]
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResult'
+ *       400:
+ *         description: Validation error or invalid role
+ *       401:
+ *         description: Invalid token
+ */
+router.post('/oauth/register', authRateLimiter, async (req: Request, res: Response) => {
+  const { accessToken, role } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!accessToken || typeof accessToken !== 'string') {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'accessToken is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!role || (role !== 'freelancer' && role !== 'employer')) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Valid role (freelancer or employer) is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  try {
+    const result = await registerWithSupabase(accessToken, role);
+
+    if (isAuthError(result)) {
+      res.status(401).json({
+        error: {
+          code: 'AUTH_INVALID_TOKEN',
+          message: result.message || 'Registration failed',
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    res.status(201).json(result);
+  } catch (error) {
+    console.error('OAuth registration error:', error);
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred during registration',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
 });
 
 export default router;

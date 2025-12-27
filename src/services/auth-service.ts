@@ -12,6 +12,7 @@ import {
 } from './auth-types.js';
 import { getSupabaseClient } from '../config/supabase.js';
 import { Provider } from '@supabase/supabase-js';
+import { UserRole } from '../models/user.js';
 
 const SALT_ROUNDS = 10;
 
@@ -231,33 +232,17 @@ export async function loginWithSupabase(accessToken: string): Promise<AuthResult
   const normalizedEmail = supabaseUser.email.toLowerCase().trim();
 
   // Check if user exists in our DB
-  let user = await userRepository.getUserByEmail(normalizedEmail);
+  const user = await userRepository.getUserByEmail(normalizedEmail);
 
   if (!user) {
-    // Create new user if not exists
-    // We'll set a random password hash since they use OAuth
-    // and default role to freelancer (user can update later)
-    const randomPassword = Math.random().toString(36).slice(-8);
-    const passwordHash = await hashPassword(randomPassword);
-
-    // Check if there's user_metadata for role
-    const roleCandidate = supabaseUser.user_metadata?.role;
-    const role = (roleCandidate === 'employer' || roleCandidate === 'freelancer')
-      ? roleCandidate
-      : 'freelancer';
-
-    const userInput = {
-      id: generateId(),
-      email: normalizedEmail,
-      password_hash: passwordHash,
-      role: role,
-      wallet_address: '',
+    // User does not exist, require registration
+    return {
+      code: 'AUTH_REQUIRE_REGISTRATION',
+      message: 'User registration required. Please select a role.',
     };
-
-    user = await userRepository.createUser(userInput);
   }
 
-  // Generate our own JWTs
+  // Generate tokens for existing user
   const tokenPayload = {
     userId: user.id,
     email: user.email,
@@ -271,6 +256,7 @@ export async function loginWithSupabase(accessToken: string): Promise<AuthResult
 
 export async function getOAuthUrl(provider: Provider): Promise<string> {
   const supabase = getSupabaseClient();
+
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider,
     options: {
@@ -302,4 +288,59 @@ export async function exchangeCodeForSession(code: string): Promise<{ accessToke
 
 export function isAuthError(result: AuthResult | AuthError): result is AuthError {
   return 'code' in result;
+}
+
+export async function registerWithSupabase(accessToken: string, role: UserRole): Promise<AuthResult | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Verify user with Supabase
+  const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(accessToken);
+
+  if (error || !supabaseUser || !supabaseUser.email) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid Supabase token',
+    };
+  }
+
+  const normalizedEmail = supabaseUser.email.toLowerCase().trim();
+
+  // Check if user already exists
+  const existingUser = await userRepository.getUserByEmail(normalizedEmail);
+  if (existingUser) {
+    // If user exists, just log them in (idempotency)
+    const tokenPayload = {
+      userId: existingUser.id,
+      email: existingUser.email,
+      role: existingUser.role,
+    };
+    const appAccessToken = generateAccessToken(tokenPayload);
+    const refreshToken = generateRefreshToken(tokenPayload);
+    return createAuthResult(existingUser, appAccessToken, refreshToken);
+  }
+
+  // Generate random password hash since they use OAuth
+  const randomPassword = Math.random().toString(36).slice(-8);
+  const passwordHash = await hashPassword(randomPassword);
+
+  const userInput = {
+    id: generateId(),
+    email: normalizedEmail,
+    password_hash: passwordHash,
+    role: role,
+    wallet_address: '',
+  };
+
+  const newUser = await userRepository.createUser(userInput);
+
+  // Generate tokens
+  const tokenPayload = {
+    userId: newUser.id,
+    email: newUser.email,
+    role: newUser.role,
+  };
+  const appAccessToken = generateAccessToken(tokenPayload);
+  const refreshToken = generateRefreshToken(tokenPayload);
+
+  return createAuthResult(newUser, appAccessToken, refreshToken);
 }

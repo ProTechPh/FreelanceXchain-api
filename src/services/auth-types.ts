@@ -40,6 +40,7 @@ export type AuthError = {
   | 'AUTH_EXCHANGE_FAILED'
   | 'AUTH_INVALID_TOKEN'
   | 'AUTH_INVALID_CREDENTIALS'
+  | 'AUTH_REQUIRE_REGISTRATION'
   | 'VALIDATION_ERROR'
   | 'INTERNAL_ERROR';
   message: string;
