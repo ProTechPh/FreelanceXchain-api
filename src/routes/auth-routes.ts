@@ -350,6 +350,103 @@ router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => 
 
 /**
  * @swagger
+ * /api/auth/callback:
+ *   get:
+ *     summary: OAuth callback endpoint
+ *     description: Handles OAuth redirect. For PKCE flow (code in query), exchanges code for tokens. For implicit flow (tokens in fragment), extracts and processes tokens.
+ *     tags:
+ *       - Authentication
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema:
+ *           type: string
+ *         description: Authorization code (PKCE flow)
+ *       - in: query
+ *         name: error
+ *         schema:
+ *           type: string
+ *         description: Error code if OAuth failed
+ *     responses:
+ *       200:
+ *         description: Success with tokens
+ *       202:
+ *         description: Registration required
+ *       400:
+ *         description: OAuth error
+ *       401:
+ *         description: Authentication failed
+ */
+router.get('/callback', async (req: Request, res: Response) => {
+  const { code, error, error_description } = req.query;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (error) {
+    res.status(400).json({
+      success: false,
+      error: { code: 'OAUTH_ERROR', message: error_description || error },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // PKCE flow: code in query params
+  if (code && typeof code === 'string') {
+    const sessionResult = await exchangeCodeForSession(code);
+
+    if ('code' in sessionResult) {
+      res.status(401).json({
+        success: false,
+        error: { code: 'AUTH_EXCHANGE_FAILED', message: sessionResult.message },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const result = await loginWithSupabase(sessionResult.accessToken);
+
+    if (isAuthError(result)) {
+      if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
+        res.status(202).json({
+          success: true,
+          status: 'registration_required',
+          message: 'User does not exist. Please register with a role.',
+          access_token: sessionResult.accessToken,
+        });
+        return;
+      }
+
+      res.status(401).json({
+        success: false,
+        error: { code: 'AUTH_INVALID_TOKEN', message: result.message },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      access_token: result.accessToken,
+      refresh_token: result.refreshToken,
+      user: result.user,
+    });
+    return;
+  }
+
+  // Implicit flow: tokens in URL fragment - serve minimal HTML to extract and display as JSON
+  res.send(`<script>
+var p=new URLSearchParams(location.hash.slice(1));
+var t=p.get('access_token'),r=p.get('refresh_token');
+if(t){fetch('/api/auth/oauth/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:t})}).then(r=>r.json()).then(d=>document.write('<pre>'+JSON.stringify({success:true,access_token:t,refresh_token:r,...d},null,2)+'</pre>')).catch(e=>document.write(JSON.stringify({success:false,error:e.message})));}
+else document.write(JSON.stringify({success:false,error:'No tokens found'}));
+</script>`);
+});
+
+/**
+ * @swagger
  * /api/auth/oauth-login:
  *   post:
  *     summary: Login with Supabase OAuth
@@ -431,35 +528,45 @@ router.get('/oauth/:provider', async (req: Request, res: Response) => {
 
 /**
  * @swagger
- * /api/auth/callback:
- *   get:
- *     summary: OAuth callback handler
- *     description: Handling the redirect from Supabase, exchanging code for tokens
+ * /api/auth/oauth/callback:
+ *   post:
+ *     summary: OAuth token callback (for implicit flow)
+ *     description: Receives access_token from frontend after OAuth redirect (when tokens are in URL fragment)
  *     tags:
  *       - Authentication
- *     parameters:
- *       - in: query
- *         name: code
- *         required: true
- *         schema:
- *           type: string
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - access_token
+ *             properties:
+ *               access_token:
+ *                 type: string
+ *                 description: Supabase access token from OAuth redirect
  *     responses:
  *       200:
- *         description: Login successful, returns tokens
+ *         description: Login successful
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/AuthResult'
+ *       202:
+ *         description: Registration required
+ *       401:
+ *         description: Invalid token
  */
-router.get('/callback', async (req: Request, res: Response) => {
-  const { code } = req.query;
+router.post('/oauth/callback', async (req: Request, res: Response) => {
+  const { access_token } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
-  if (!code || typeof code !== 'string') {
+  if (!access_token || typeof access_token !== 'string') {
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'Authorization code is required',
+        message: 'access_token is required',
       },
       timestamp: new Date().toISOString(),
       requestId,
@@ -467,32 +574,14 @@ router.get('/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  // 1. Exchange code for Supabase Session
-  const sessionResult = await exchangeCodeForSession(code);
-
-  if (isAuthError(sessionResult as any)) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_EXCHANGE_FAILED',
-        message: (sessionResult as any).message,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  // 2. Login
-  const accessToken = (sessionResult as { accessToken: string }).accessToken;
-  const result = await loginWithSupabase(accessToken);
+  const result = await loginWithSupabase(access_token);
 
   if (isAuthError(result)) {
-    // Check if registration is required
     if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
       res.status(202).json({
         status: 'registration_required',
         message: 'User does not exist. Please register with a role.',
-        accessToken, // Client needs this to call /register
+        accessToken: access_token,
       });
       return;
     }
@@ -508,13 +597,8 @@ router.get('/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  // Return the tokens directly. 
-  // In a real browser app, we might redirect to a frontend page with tokens in URL hash 
-  // or set HttpOnly cookies. Since the user asked for backend only, returning JSON is appropriate 
-  // for testing via Postman/Curl or if the "frontend" is just a CLI or mobile app.
-  res.status(200).json(result);
+  res.status(200).json({ status: 'success' });
 });
-
 
 /**
  * @swagger

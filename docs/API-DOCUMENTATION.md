@@ -22,10 +22,18 @@ Register a new user account.
 ```json
 {
   "email": "user@example.com",
-  "password": "securePassword123",
-  "role": "freelancer"
+  "password": "SecurePass1!",
+  "role": "freelancer",
+  "walletAddress": "0x..." 
 }
 ```
+
+**Password Requirements:**
+- Minimum 8 characters
+- At least one lowercase letter
+- At least one uppercase letter
+- At least one number
+- At least one special character (`@$!%*?&`)
 
 **Response (201):**
 ```json
@@ -58,6 +66,84 @@ Refresh access token using refresh token.
 **Request Body:**
 ```json
 {
+  "refreshToken": "refresh_token"
+}
+```
+
+### GET /auth/oauth/:provider
+Initiate OAuth flow with a provider.
+
+**Path Parameters:**
+- `provider`: OAuth provider (`google`, `github`, `azure`, `linkedin`)
+
+**Response (302):** Redirects to provider login page.
+
+### GET /auth/callback
+OAuth callback endpoint. Handles both PKCE flow (code in query params) and implicit flow (tokens in URL fragment).
+
+**Query Parameters:**
+- `code` (string): Authorization code for PKCE flow
+- `error` (string): Error code if OAuth failed
+
+**PKCE Flow Response (200):**
+```json
+{
+  "success": true,
+  "access_token": "jwt_token",
+  "refresh_token": "refresh_token",
+  "user": { /* user object */ }
+}
+```
+
+**PKCE Flow Response (202):** New user needs to register with role.
+```json
+{
+  "success": true,
+  "status": "registration_required",
+  "message": "User does not exist. Please register with a role.",
+  "access_token": "supabase_token"
+}
+```
+
+**Implicit Flow Response (200):** HTML page that extracts tokens from URL fragment and calls `/api/auth/oauth/callback`.
+
+### POST /auth/oauth/callback
+OAuth token callback (legacy implicit flow support).
+
+**Request Body:**
+```json
+{
+  "access_token": "supabase_access_token"
+}
+```
+
+**Response (200):**
+```json
+{
+  "status": "success"
+}
+```
+
+**Response (202):** Registration required for new users.
+
+**Response (401):** Invalid token.
+
+### POST /auth/oauth/register
+Complete OAuth registration with role selection.
+
+**Request Body:**
+```json
+{
+  "accessToken": "supabase_access_token",
+  "role": "freelancer"
+}
+```
+
+**Response (201):**
+```json
+{
+  "user": { /* user object */ },
+  "accessToken": "jwt_token",
   "refreshToken": "refresh_token"
 }
 ```

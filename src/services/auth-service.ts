@@ -257,14 +257,22 @@ export async function loginWithSupabase(accessToken: string): Promise<AuthResult
 export async function getOAuthUrl(provider: Provider): Promise<string> {
   const supabase = getSupabaseClient();
 
+  // Map 'linkedin' to 'linkedin_oidc' since Supabase uses the OIDC version
+  const supabaseProvider = provider === 'linkedin' ? 'linkedin_oidc' : provider;
+
+  const redirectUrl = process.env.PUBLIC_URL
+    ? `${process.env.PUBLIC_URL}/api/auth/callback`
+    : `http://localhost:${config.server.port}/api/auth/callback`;
+
   const { data, error } = await supabase.auth.signInWithOAuth({
-    provider,
+    provider: supabaseProvider as Provider,
     options: {
-      // Use PUBLIC_URL env var if set (for Docker/Production), otherwise fallback to localhost
-      redirectTo: process.env.PUBLIC_URL
-        ? `${process.env.PUBLIC_URL}/api/auth/callback`
-        : `http://localhost:${config.server.port}/api/auth/callback`,
+      redirectTo: redirectUrl,
       skipBrowserRedirect: true,
+      queryParams: {
+        access_type: 'offline',
+        prompt: 'consent',
+      },
     },
   });
 

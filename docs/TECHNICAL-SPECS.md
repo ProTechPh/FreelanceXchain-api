@@ -58,7 +58,7 @@ The Blockchain-Based Freelance Marketplace is a decentralized platform combining
 Base URL: /api
 Content-Type: application/json
 Authentication: Bearer Token (JWT)
-OAuth: GET /api/auth/oauth/:provider | GET /api/auth/callback
+OAuth: GET /api/auth/oauth/:provider | POST /api/auth/oauth/callback
 ```
 
 ### Rate Limits (Recommended)
@@ -371,21 +371,19 @@ type NotificationType =
 6. Server validates token on each request
 7. Client uses Refresh Token to get new Access Token
 
-### OAuth Flow (Backend-Only, 2-Step)
+### OAuth Flow (PKCE)
+
+#### Server-Side OAuth with PKCE
 ```
-1. Client requests GET /api/auth/oauth/:provider (google, github, etc.)
-2. Server validates provider and redirects to Supabase OAuth URL
+1. Client calls GET /api/auth/oauth/:provider
+2. Server redirects to Supabase OAuth with PKCE flow
 3. User logs in with provider
-4. Supabase redirects to /api/auth/callback with code
-5. Server exchanges code for Supabase session
-6. Server checks if user exists in local database:
-   - IF EXISTS: 
-     - Returns HTTP 200 with tokens { user, accessToken, refreshToken }
-   - IF NEW USER:
-     - Returns HTTP 202 Accepted { status: 'registration_required', accessToken }
-     - Client prompts user to select Role (Employer/Freelancer)
-     - Client calls POST /api/auth/oauth/register with { accessToken, role }
-     - Server creates user and returns tokens
+4. Supabase redirects to GET /api/auth/callback with authorization code
+5. Server exchanges code for session tokens
+6. Server validates token and checks if user exists:
+   - IF EXISTS: Returns HTTP 200 with tokens
+   - IF NEW USER: Returns HTTP 202 with registration_required status
+7. For new users, client calls POST /api/auth/oauth/register with role
 ```
 
 ### Password Requirements

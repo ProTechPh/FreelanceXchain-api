@@ -37,28 +37,58 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     return this.findOne('proposal_id', proposalId);
   }
 
+
   async getContractsByFreelancer(freelancerId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
     const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
-    const { data, error, count } = await client.from(this.tableName).select('*', { count: 'exact' }).eq('freelancer_id', freelancerId).order('created_at', { ascending: false }).range(offset, offset + limit - 1);
-    if (error) throw new Error('Failed to get contracts by freelancer: ' + error.message);
-    return { items: (data ?? []) as ContractEntity[], hasMore: count ? offset + limit < count : false, total: count ?? undefined };
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('freelancer_id', freelancerId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get contracts by freelancer: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ContractEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
+    };
   }
 
   async getContractsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
     const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
-    const { data, error, count } = await client.from(this.tableName).select('*', { count: 'exact' }).eq('employer_id', employerId).order('created_at', { ascending: false }).range(offset, offset + limit - 1);
-    if (error) throw new Error('Failed to get contracts by employer: ' + error.message);
-    return { items: (data ?? []) as ContractEntity[], hasMore: count ? offset + limit < count : false, total: count ?? undefined };
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('employer_id', employerId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get contracts by employer: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ContractEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
+    };
   }
 
   async getContractsByProject(projectId: string): Promise<ContractEntity[]> {
     const client = this.getClient();
-    const { data, error } = await client.from(this.tableName).select('*').eq('project_id', projectId).order('created_at', { ascending: false });
-    if (error) throw new Error('Failed to get contracts by project: ' + error.message);
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+    
+    if (error) throw new Error(`Failed to get contracts by project: ${error.message}`);
     return (data ?? []) as ContractEntity[];
   }
 
@@ -66,18 +96,42 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
-    const { data, error, count } = await client.from(this.tableName).select('*', { count: 'exact' }).eq('status', status).order('created_at', { ascending: false }).range(offset, offset + limit - 1);
-    if (error) throw new Error('Failed to get contracts by status: ' + error.message);
-    return { items: (data ?? []) as ContractEntity[], hasMore: count ? offset + limit < count : false, total: count ?? undefined };
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .eq('status', status)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get contracts by status: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ContractEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
+    };
   }
 
   async getUserContracts(userId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
     const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
-    const { data, error, count } = await client.from(this.tableName).select('*', { count: 'exact' }).or('freelancer_id.eq.' + userId + ',employer_id.eq.' + userId).order('created_at', { ascending: false }).range(offset, offset + limit - 1);
-    if (error) throw new Error('Failed to get user contracts: ' + error.message);
-    return { items: (data ?? []) as ContractEntity[], hasMore: count ? offset + limit < count : false, total: count ?? undefined };
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .or(`freelancer_id.eq.${userId},employer_id.eq.${userId}`)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get user contracts: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as ContractEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
+    };
   }
 }
 
