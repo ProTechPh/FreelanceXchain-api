@@ -58,7 +58,6 @@ Dockerfile*
 .dockerignore
 docker-compose*.yml
 
-# Dev configs
+# Dev configs (keep tsconfig.json for build)
 jest.config.js
 eslint.config.js
-tsconfig.json
