@@ -26,3 +26,15 @@ jobs:
       - name: Run npm audit
         run: npm audit --audit-level=high
         continue-on-error: true
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog OSS
+        uses: trufflesecurity/trufflehog@v3.88.0
+        with:
+          extra_args: --only-verified
