@@ -24,7 +24,7 @@ async function main(): Promise<void> {
   const server = app.listen(config.server.port, () => {
     console.log(`Server running on port ${config.server.port}`);
     console.log(`Environment: ${config.server.nodeEnv}`);
-    console.log(`API docs available at http://localhost:${config.server.port}/api-docs`);
+    console.log(`API docs available at ${config.server.baseUrl}/api-docs`);
   });
 
   // Graceful shutdown handling

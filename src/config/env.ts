@@ -24,10 +24,25 @@ function getEnvVarNumber(key: string, defaultValue: number): number {
   return parsed;
 }
 
+function getBaseUrl(): string {
+  // Check for explicit BASE_URL first
+  const explicitUrl = getEnvVarOptional('BASE_URL');
+  if (explicitUrl) return explicitUrl;
+
+  // HuggingFace Spaces
+  const hfSpaceId = getEnvVarOptional('SPACE_ID');
+  if (hfSpaceId) return `https://${hfSpaceId.replace('/', '-').toLowerCase()}.hf.space`;
+
+  // Default to localhost
+  const port = getEnvVarNumber('PORT', 3000);
+  return `http://localhost:${port}`;
+}
+
 export const config = {
   server: {
     port: getEnvVarNumber('PORT', 3000),
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
+    baseUrl: getBaseUrl(),
   },
   supabase: {
     url: getEnvVar('SUPABASE_URL'),
