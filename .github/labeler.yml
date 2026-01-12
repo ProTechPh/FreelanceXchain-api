@@ -1,0 +1,33 @@
+# Auto-label PRs based on changed files
+
+frontend:
+  - changed-files:
+      - any-glob-to-any-file: 'src/routes/**/*'
+
+backend:
+  - changed-files:
+      - any-glob-to-any-file: ['src/services/**/*', 'src/repositories/**/*']
+
+smart-contracts:
+  - changed-files:
+      - any-glob-to-any-file: 'contracts/**/*'
+
+config:
+  - changed-files:
+      - any-glob-to-any-file: ['src/config/**/*', '*.json', '*.yml', '*.yaml']
+
+documentation:
+  - changed-files:
+      - any-glob-to-any-file: ['docs/**/*', '*.md']
+
+tests:
+  - changed-files:
+      - any-glob-to-any-file: ['**/*.test.ts', '**/*.spec.ts', '__tests__/**/*']
+
+ci:
+  - changed-files:
+      - any-glob-to-any-file: '.github/**/*'
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file: ['package.json', 'package-lock.json']
