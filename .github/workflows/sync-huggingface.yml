@@ -1,4 +1,4 @@
-name: Sync to HuggingFace Space
+name: Deploy to HuggingFace Space
 
 on:
   push:
@@ -6,8 +6,11 @@ on:
       - main
 
 jobs:
-  sync:
+  deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://protechph-freelancexchain.hf.space
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

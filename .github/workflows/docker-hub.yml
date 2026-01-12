@@ -8,6 +8,9 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    environment:
+      name: docker-hub
+      url: https://hub.docker.com/r/jericko134/freelancexchain-api
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
