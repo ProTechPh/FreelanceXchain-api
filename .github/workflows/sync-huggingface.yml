@@ -1,0 +1,23 @@
+name: Sync to HuggingFace Space
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to HuggingFace Space
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          git remote add huggingface https://ProTechPh:$HF_TOKEN@huggingface.co/spaces/ProTechPh/FreelanceXchain
+          git push huggingface main --force
