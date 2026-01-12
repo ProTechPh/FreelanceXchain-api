@@ -1,3 +1,13 @@
+---
+title: FreelanceXchain API
+emoji: 🔗
+colorFrom: blue
+colorTo: purple
+sdk: docker
+app_port: 3000
+pinned: false
+---
+
 # Blockchain-Based Freelance Marketplace with AI Skill Matching
 
 A decentralized freelance marketplace that leverages AI for intelligent skill matching and blockchain for secure, transparent transactions.

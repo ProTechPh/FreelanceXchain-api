@@ -1,21 +1,64 @@
+# Dependencies
 node_modules
+
+# Build output
 dist
+
+# Version control
 .git
 .gitignore
+.github
+
+# Environment files
 .env
 .env.*
-*.md
+!.env.example
+
+# IDE/Editor
 .vscode
 .idea
 .kiro
+
+# Documentation
+*.md
+docs
+
+# Testing
 coverage
+*.test.ts
+*.spec.ts
+__tests__
+
+# Logs
 *.log
+npm-debug.log*
+
+# Temp files
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Smart contracts (not needed for API)
 contracts
 artifacts
 cache
 scripts
 hardhat.config.cjs
 deployment.json
+
+# Infrastructure/Cloud configs
 infra
 .azure
 azure.yaml
+supabase
+
+# Docker files (no need to copy into image)
+Dockerfile*
+.dockerignore
+docker-compose*.yml
+
+# Dev configs
+jest.config.js
+eslint.config.js
+tsconfig.json
