@@ -12,19 +12,12 @@ const options: swaggerJsdoc.Options = {
         name: 'API Support',
       },
     },
-    servers: config.server.nodeEnv === 'production'
-      ? [
-        {
-          url: `http://localhost:${config.server.port}`,
-          description: 'Production server',
-        },
-      ]
-      : [
-        {
-          url: `http://localhost:${config.server.port}`,
-          description: 'Development server',
-        },
-      ],
+    servers: [
+      {
+        url: config.server.baseUrl,
+        description: config.server.nodeEnv === 'production' ? 'Production server' : 'Development server',
+      },
+    ],
     components: {
       securitySchemes: {
         bearerAuth: {
