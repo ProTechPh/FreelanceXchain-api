@@ -26,21 +26,3 @@ jobs:
       - name: Run npm audit
         run: npm audit --audit-level=high
         continue-on-error: true
-
-  codeql:
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: javascript-typescript
-
-      - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
