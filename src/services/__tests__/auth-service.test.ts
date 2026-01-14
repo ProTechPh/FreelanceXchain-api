@@ -6,9 +6,128 @@ import { config } from '../../config/env.js';
 import { UserEntity } from '../../repositories/user-repository.js';
 import { UserRole } from '../../models/user.js';
 import { RegisterInput, LoginInput, AuthResult, AuthError } from '../auth-types.js';
+import { generateId } from '../../utils/id.js';
 
 // In-memory user store for testing - uses entity type with snake_case
 let userStore: Map<string, UserEntity> = new Map();
+// Password store to verify login (email -> hashed password)
+let passwordStore: Map<string, string> = new Map();
+
+// Use low cost factor for fast test execution
+const BCRYPT_TEST_ROUNDS = 4;
+
+// Mock the Supabase client before importing auth-service
+jest.unstable_mockModule('../../config/supabase.js', () => ({
+  getSupabaseClient: jest.fn(() => ({
+    auth: {
+      signUp: jest.fn(async ({ email, password, options }: { email: string; password: string; options?: { data?: Record<string, unknown> } }) => {
+        const normalizedEmail = email.toLowerCase();
+        // Check if email already exists
+        if (passwordStore.has(normalizedEmail)) {
+          return {
+            data: { user: null, session: null },
+            error: { message: 'User already registered' },
+          };
+        }
+        // Hash password and store with low cost for speed
+        const hashedPassword = bcrypt.hashSync(password, BCRYPT_TEST_ROUNDS);
+        passwordStore.set(normalizedEmail, hashedPassword);
+        
+        const userId = generateId();
+        const mockUser = {
+          id: userId,
+          email: normalizedEmail,
+          user_metadata: options?.data ?? {},
+        };
+        const mockSession = {
+          access_token: jwt.sign(
+            { userId, email: normalizedEmail, role: options?.data?.role ?? 'freelancer', type: 'access' },
+            config.jwt.secret,
+            { expiresIn: '1h' }
+          ),
+          refresh_token: jwt.sign(
+            { userId, type: 'refresh' },
+            config.jwt.refreshSecret,
+            { expiresIn: '7d' }
+          ),
+        };
+        return { data: { user: mockUser, session: mockSession }, error: null };
+      }),
+      signInWithPassword: jest.fn(async ({ email, password }: { email: string; password: string }) => {
+        const normalizedEmail = email.toLowerCase();
+        const storedHash = passwordStore.get(normalizedEmail);
+        
+        if (!storedHash) {
+          return {
+            data: { user: null, session: null },
+            error: { message: 'Invalid login credentials' },
+          };
+        }
+        
+        const isValid = bcrypt.compareSync(password, storedHash);
+        if (!isValid) {
+          return {
+            data: { user: null, session: null },
+            error: { message: 'Invalid login credentials' },
+          };
+        }
+        
+        // Find user in store
+        let foundUser: UserEntity | undefined;
+        for (const user of userStore.values()) {
+          if (user.email === normalizedEmail) {
+            foundUser = user;
+            break;
+          }
+        }
+        
+        if (!foundUser) {
+          return {
+            data: { user: null, session: null },
+            error: { message: 'User not found' },
+          };
+        }
+        
+        const mockSession = {
+          access_token: jwt.sign(
+            { userId: foundUser.id, email: normalizedEmail, role: foundUser.role, type: 'access' },
+            config.jwt.secret,
+            { expiresIn: '1h' }
+          ),
+          refresh_token: jwt.sign(
+            { userId: foundUser.id, type: 'refresh' },
+            config.jwt.refreshSecret,
+            { expiresIn: '7d' }
+          ),
+        };
+        
+        return {
+          data: {
+            user: { id: foundUser.id, email: normalizedEmail },
+            session: mockSession,
+          },
+          error: null,
+        };
+      }),
+    },
+  })),
+  TABLES: {
+    USERS: 'users',
+    FREELANCER_PROFILES: 'freelancer_profiles',
+    EMPLOYER_PROFILES: 'employer_profiles',
+    PROJECTS: 'projects',
+    PROPOSALS: 'proposals',
+    CONTRACTS: 'contracts',
+    DISPUTES: 'disputes',
+    SKILLS: 'skills',
+    SKILL_CATEGORIES: 'skill_categories',
+    NOTIFICATIONS: 'notifications',
+    KYC_VERIFICATIONS: 'kyc_verifications',
+    REVIEWS: 'reviews',
+    MESSAGES: 'messages',
+    PAYMENTS: 'payments',
+  },
+}));
 
 // Mock the user repository before importing auth-service
 jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
@@ -21,6 +140,10 @@ jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
     }),
     createUser: jest.fn(async (user: Omit<UserEntity, 'created_at' | 'updated_at'>) => {
       const now = new Date().toISOString();
+      // Store the password hash for login verification
+      if (user.password_hash) {
+        passwordStore.set(user.email.toLowerCase(), user.password_hash);
+      }
       const entity: UserEntity = { ...user, created_at: now, updated_at: now };
       userStore.set(user.id, entity);
       return entity;
@@ -70,6 +193,7 @@ const validRegistrationDataArbitrary = () =>
 describe('Auth Service - Registration Properties', () => {
   beforeEach(() => {
     userStore.clear();
+    passwordStore.clear();
   });
 
   /**
@@ -229,6 +353,7 @@ describe('Auth Service - Registration Properties', () => {
 describe('Auth Service - Authentication Properties', () => {
   beforeEach(() => {
     userStore.clear();
+    passwordStore.clear();
   });
 
   /**

@@ -42,3 +42,4 @@ deployment.json
 # Ganache
 .ganache/
 /.agent
+.qoder/
