@@ -48,6 +48,10 @@ describe('AuthService - OAuth Login', () => {
         auth: {
             getUser: jest.fn(),
             signInWithOAuth: jest.fn(),
+            getSession: jest.fn().mockResolvedValue({
+                data: { session: { refresh_token: 'mock_refresh_token' } },
+                error: null,
+            } as never),
         },
     };
 
@@ -98,7 +102,7 @@ describe('AuthService - OAuth Login', () => {
         const result = await loginWithSupabase('valid_supabase_token');
 
         expect(userRepository.createUser).not.toHaveBeenCalled();
-        expect(result).toHaveProperty('accessToken', 'mock_token');
+        expect(result).toHaveProperty('accessToken', 'valid_supabase_token');
         if ('user' in result) {
             expect(result.user.id).toBe('existing_user_id');
         }
@@ -120,6 +124,14 @@ describe('AuthService - registerWithSupabase', () => {
     const mockSupabase = {
         auth: {
             getUser: jest.fn(),
+            getSession: jest.fn().mockResolvedValue({
+                data: { session: { refresh_token: 'mock_refresh_token' } },
+                error: null,
+            } as never),
+            updateUser: jest.fn().mockResolvedValue({
+                data: { user: {} },
+                error: null,
+            } as never),
         },
     };
 
