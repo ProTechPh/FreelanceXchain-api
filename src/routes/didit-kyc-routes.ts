@@ -1,0 +1,575 @@
+/**
+ * Didit KYC Routes
+ * API endpoints for KYC verification using Didit
+ */
+
+import { Router, Request, Response } from 'express';
+import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
+import { verifyWebhookSignature } from '../services/didit-client.js';
+import {
+  initiateKycVerification,
+  getKycStatus,
+  getKycById,
+  refreshVerificationStatus,
+  processWebhook,
+  adminReviewVerification,
+  getPendingAdminReviews,
+  getVerificationsByStatus,
+  getUserVerificationHistory,
+  isUserVerified,
+} from '../services/didit-kyc-service.js';
+import { CreateKycVerificationInput, DiditWebhookPayload, KycStatus } from '../models/didit-kyc.js';
+
+const router = Router();
+
+/**
+ * @swagger
+ * components:
+ *   schemas:
+ *     KycVerification:
+ *       type: object
+ *       properties:
+ *         id:
+ *           type: string
+ *           format: uuid
+ *         user_id:
+ *           type: string
+ *           format: uuid
+ *         status:
+ *           type: string
+ *           enum: [pending, in_progress, completed, approved, rejected, expired]
+ *         didit_session_id:
+ *           type: string
+ *         didit_session_url:
+ *           type: string
+ *           description: URL to redirect user for verification
+ *         decision:
+ *           type: string
+ *           enum: [approved, declined, review]
+ *         document_type:
+ *           type: string
+ *         first_name:
+ *           type: string
+ *         last_name:
+ *           type: string
+ *         date_of_birth:
+ *           type: string
+ *           format: date
+ *         nationality:
+ *           type: string
+ *         document_verified:
+ *           type: boolean
+ *         liveness_passed:
+ *           type: boolean
+ *         liveness_confidence_score:
+ *           type: number
+ *         face_matched:
+ *           type: boolean
+ *         face_similarity_score:
+ *           type: number
+ *         ip_address:
+ *           type: string
+ *         ip_country_code:
+ *           type: string
+ *         ip_risk_score:
+ *           type: number
+ *         threat_level:
+ *           type: string
+ *           enum: [low, medium, high]
+ *         created_at:
+ *           type: string
+ *           format: date-time
+ *         completed_at:
+ *           type: string
+ *           format: date-time
+ *         expires_at:
+ *           type: string
+ *           format: date-time
+ *     CreateKycRequest:
+ *       type: object
+ *       properties:
+ *         metadata:
+ *           type: object
+ *           additionalProperties: true
+ *         contact_details:
+ *           type: object
+ *           properties:
+ *             email:
+ *               type: string
+ *               format: email
+ *             phone:
+ *               type: string
+ */
+
+/**
+ * @swagger
+ * /api/kyc/initiate:
+ *   post:
+ *     summary: Initiate KYC verification
+ *     description: Creates a new Didit verification session and returns URL for user to complete verification
+ *     tags:
+ *       - KYC
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/CreateKycRequest'
+ *     responses:
+ *       201:
+ *         description: Verification session created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/KycVerification'
+ *       400:
+ *         description: Validation error or user already has active verification
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/initiate', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const input: CreateKycVerificationInput = {
+    user_id: userId,
+    metadata: req.body.metadata,
+    contact_details: req.body.contact_details,
+  };
+
+  const result = await initiateKycVerification(input);
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'USER_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(201).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/kyc/status:
+ *   get:
+ *     summary: Get current user's KYC verification status
+ *     tags:
+ *       - KYC
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: KYC verification status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/KycVerification'
+ *       404:
+ *         description: No verification found
+ */
+router.get('/status', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await getKycStatus(userId);
+
+  if (!result.success) {
+    res.status(400).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!result.data) {
+    res.status(404).json({
+      error: { code: 'NOT_FOUND', message: 'No KYC verification found' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/kyc/verified:
+ *   get:
+ *     summary: Check if current user is verified
+ *     tags:
+ *       - KYC
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Verification status
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 verified:
+ *                   type: boolean
+ */
+router.get('/verified', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+    });
+    return;
+  }
+
+  const verified = await isUserVerified(userId);
+  res.status(200).json({ verified });
+});
+
+/**
+ * @swagger
+ * /api/kyc/history:
+ *   get:
+ *     summary: Get user's KYC verification history
+ *     tags:
+ *       - KYC
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Verification history
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/KycVerification'
+ */
+router.get('/history', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+    });
+    return;
+  }
+
+  const result = await getUserVerificationHistory(userId);
+
+  if (!result.success) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/kyc/refresh/{verificationId}:
+ *   post:
+ *     summary: Refresh verification status from Didit
+ *     description: Manually fetch latest status from Didit API
+ *     tags:
+ *       - KYC
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: verificationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Status refreshed
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/KycVerification'
+ */
+router.post('/refresh/:verificationId', authMiddleware, validateUUID(['verificationId']), async (req: Request, res: Response) => {
+  const verificationId = req.params['verificationId'];
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!verificationId) {
+    res.status(400).json({
+      error: { code: 'INVALID_ID', message: 'Verification ID required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await refreshVerificationStatus(verificationId);
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'VERIFICATION_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/kyc/webhook:
+ *   post:
+ *     summary: Didit webhook endpoint
+ *     description: Receives verification status updates from Didit
+ *     tags:
+ *       - KYC Webhooks
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *     responses:
+ *       200:
+ *         description: Webhook processed
+ *       401:
+ *         description: Invalid signature
+ */
+router.post('/webhook', async (req: Request, res: Response) => {
+  const signature = req.headers['x-signature'] as string;
+  const payload = JSON.stringify(req.body);
+
+  // Verify webhook signature
+  if (!signature || !verifyWebhookSignature(payload, signature)) {
+    res.status(401).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' },
+    });
+    return;
+  }
+
+  const webhookPayload: DiditWebhookPayload = req.body;
+
+  const result = await processWebhook(webhookPayload);
+
+  if (!result.success) {
+    console.error('Webhook processing error:', result.error);
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  res.status(200).json({ message: 'Webhook processed', data: result.data });
+});
+
+/**
+ * @swagger
+ * /api/kyc/admin/pending:
+ *   get:
+ *     summary: Get verifications pending admin review
+ *     tags:
+ *       - KYC Admin
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Pending verifications
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/KycVerification'
+ */
+router.get('/admin/pending', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+  const result = await getPendingAdminReviews();
+
+  if (!result.success) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/kyc/admin/status/{status}:
+ *   get:
+ *     summary: Get verifications by status
+ *     tags:
+ *       - KYC Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: status
+ *         required: true
+ *         schema:
+ *           type: string
+ *           enum: [pending, in_progress, completed, approved, rejected, expired]
+ *     responses:
+ *       200:
+ *         description: Verifications list
+ */
+router.get('/admin/status/:status', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+  const status = req.params['status'] as KycStatus;
+  const validStatuses: KycStatus[] = ['pending', 'in_progress', 'completed', 'approved', 'rejected', 'expired'];
+
+  if (!validStatuses.includes(status)) {
+    res.status(400).json({
+      error: { code: 'INVALID_STATUS', message: 'Invalid status' },
+    });
+    return;
+  }
+
+  const result = await getVerificationsByStatus(status);
+
+  if (!result.success) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/kyc/admin/review/{verificationId}:
+ *   post:
+ *     summary: Admin review verification
+ *     description: Approve or reject a completed verification
+ *     tags:
+ *       - KYC Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: verificationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - decision
+ *             properties:
+ *               decision:
+ *                 type: string
+ *                 enum: [approved, rejected]
+ *               notes:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Review completed
+ */
+router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'), validateUUID(['verificationId']), async (req: Request, res: Response) => {
+  const verificationId = req.params['verificationId'];
+  const adminUserId = req.user?.userId;
+  const { decision, notes } = req.body;
+
+  if (!verificationId || !adminUserId) {
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+    });
+    return;
+  }
+
+  if (!decision || !['approved', 'rejected'].includes(decision)) {
+    res.status(400).json({
+      error: { code: 'INVALID_DECISION', message: 'Decision must be approved or rejected' },
+    });
+    return;
+  }
+
+  const result = await adminReviewVerification(verificationId, adminUserId, decision, notes);
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'VERIFICATION_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({ error: result.error });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/kyc/admin/verification/{verificationId}:
+ *   get:
+ *     summary: Get verification details (Admin)
+ *     tags:
+ *       - KYC Admin
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: verificationId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Verification details
+ */
+router.get('/admin/verification/:verificationId', authMiddleware, requireRole('admin'), validateUUID(['verificationId']), async (req: Request, res: Response) => {
+  const verificationId = req.params['verificationId'];
+
+  if (!verificationId) {
+    res.status(400).json({
+      error: { code: 'INVALID_ID', message: 'Verification ID required' },
+    });
+    return;
+  }
+
+  const result = await getKycById(verificationId);
+
+  if (!result.success) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  if (!result.data) {
+    res.status(404).json({
+      error: { code: 'NOT_FOUND', message: 'Verification not found' },
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+export default router;

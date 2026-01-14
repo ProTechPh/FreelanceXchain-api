@@ -14,7 +14,7 @@ import notificationRoutes from './notification-routes.js';
 import paymentRoutes from './payment-routes.js';
 import reputationRoutes from './reputation-routes.js';
 import disputeRoutes from './dispute-routes.js';
-import kycRoutes from './kyc-routes.js';
+import kycRoutes from './didit-kyc-routes.js';
 
 const router = Router();
 

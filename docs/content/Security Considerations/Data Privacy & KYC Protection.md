@@ -2,282 +2,446 @@
 
 <cite>
 **Referenced Files in This Document**   
-- [KYCVerification.sol](file://contracts/KYCVerification.sol)
-- [kyc.ts](file://src/models/kyc.ts)
-- [kyc-repository.ts](file://src/repositories/kyc-repository.ts)
-- [kyc-service.ts](file://src/services/kyc-service.ts)
-- [kyc-routes.ts](file://src/routes/kyc-routes.ts)
+- [didit-kyc.ts](file://src/models/didit-kyc.ts)
+- [didit-kyc-repository.ts](file://src/repositories/didit-kyc-repository.ts)
+- [didit-kyc-service.ts](file://src/services/didit-kyc-service.ts)
+- [didit-client.ts](file://src/services/didit-client.ts)
+- [didit-kyc-routes.ts](file://src/routes/didit-kyc-routes.ts)
+- [003_didit_kyc_verifications.sql](file://supabase/migrations/003_didit_kyc_verifications.sql)
 - [security-middleware.ts](file://src/middleware/security-middleware.ts)
 - [auth-middleware.ts](file://src/middleware/auth-middleware.ts)
-- [schema.sql](file://supabase/schema.sql)
-- [kyc-contract.ts](file://src/services/kyc-contract.ts)
-- [env.ts](file://src/config/env.ts)
-- [supabase.ts](file://src/config/supabase.ts)
 </cite>
 
 ## Table of Contents
 1. [Introduction](#introduction)
-2. [Data Minimization Principle](#data-minimization-principle)
-3. [Tiered KYC System](#tiered-kyc-system)
-4. [GDPR Compliance Measures](#gdpr-compliance-measures)
-5. [Document Image Handling](#document-image-handling)
-6. [Encryption Strategies](#encryption-strategies)
-7. [Secure Transmission](#secure-transmission)
-8. [Audit Logging and Monitoring](#audit-logging-and-monitoring)
-9. [System Architecture](#system-architecture)
+2. [Didit KYC Integration](#didit-kyc-integration)
+3. [Verification Features](#verification-features)
+4. [Data Minimization Principle](#data-minimization-principle)
+5. [GDPR Compliance Measures](#gdpr-compliance-measures)
+6. [Webhook Security](#webhook-security)
+7. [Encryption Strategies](#encryption-strategies)
+8. [API Endpoints](#api-endpoints)
+9. [Database Schema](#database-schema)
+10. [System Architecture](#system-architecture)
 
 ## Introduction
-FreelanceXchain implements a comprehensive data privacy and KYC protection framework designed to balance regulatory compliance with user privacy. The system follows the data minimization principle by collecting only essential identity information and storing sensitive data with robust encryption. KYC verification is implemented through a tiered system that adapts to different country requirements, with enhanced security measures for regions with stricter regulations. The architecture incorporates both on-chain and off-chain components to ensure GDPR compliance while maintaining transparency and immutability where appropriate.
 
-**Section sources**
-- [KYCVerification.sol](file://contracts/KYCVerification.sol#L1-L211)
-- [kyc.ts](file://src/models/kyc.ts#L1-L206)
+FreelanceXchain uses [Didit](https://didit.me) for enterprise-grade KYC (Know Your Customer) verification. Didit provides professional identity verification with support for 220+ countries, replacing the previous custom KYC implementation.
 
-## Data Minimization Principle
-FreelanceXchain adheres to the data minimization principle by collecting only essential identity information required for KYC verification. The system stores only name, date of birth, and document images, with all sensitive fields encrypted at rest. Personal data is not stored on the blockchain; instead, only verification status and cryptographic hashes of KYC data are recorded on-chain, ensuring GDPR compliance.
+The system follows the data minimization principle by collecting only essential identity information. Personal data is stored encrypted in Supabase, while Didit handles document images and biometric processing.
 
-The KYC data model includes essential fields such as first name, last name, date of birth, nationality, and address information, while avoiding collection of unnecessary personal details. Document verification is limited to essential attributes including document type, number, issuing country, and validity period. The system does not collect or store sensitive information such as full financial records, employment history, or detailed biometric data beyond what is necessary for identity verification.
+## Didit KYC Integration
 
-```mermaid
-classDiagram
-class KycVerification {
-+string id
-+string userId
-+KycStatus status
-+KycTier tier
-+string firstName
-+string lastName
-+string dateOfBirth
-+string nationality
-+InternationalAddress address
-+KycDocument[] documents
-+LivenessCheck? livenessCheck
-+string? selfieImageUrl
-+number? faceMatchScore
-+string? faceMatchStatus
-+string? amlScreeningStatus
-+string? riskLevel
-+string? riskScore
-}
-class KycDocument {
-+string id
-+DocumentType type
-+string documentNumber
-+string issuingCountry
-+string? issuingAuthority
-+string? issueDate
-+string? expiryDate
-+string frontImageUrl
-+string? backImageUrl
-+string verificationStatus
-}
-class InternationalAddress {
-+string addressLine1
-+string? addressLine2
-+string city
-+string? stateProvince
-+string? postalCode
-+string country
-+string countryCode
-}
-KycVerification --> KycDocument : "contains"
-KycVerification --> InternationalAddress : "has"
+### Overview
+
+Didit provides a hosted verification page where users complete identity verification. The backend creates sessions via API and receives results through webhooks.
+
+### Environment Configuration
+
+```bash
+# Didit KYC Configuration
+DIDIT_API_KEY=your-didit-api-key
+DIDIT_API_URL=https://verification.didit.me
+DIDIT_WEBHOOK_SECRET=your-didit-webhook-secret-key
+DIDIT_WORKFLOW_ID=your-didit-workflow-id
 ```
 
-**Diagram sources **
-- [kyc.ts](file://src/models/kyc.ts#L84-L119)
-
-**Section sources**
-- [kyc.ts](file://src/models/kyc.ts#L84-L119)
-- [schema.sql](file://supabase/schema.sql#L136-L159)
-
-## Tiered KYC System
-FreelanceXchain implements a tiered KYC system that supports different requirements for various countries, including US, UK, Singapore, and India. The system defines three KYC tiers—Basic, Standard, and Enhanced—each with different verification requirements and privileges within the platform.
-
-The tiered system adapts to country-specific regulations, with varying requirements for liveness checks and address proof. For example, US and UK users require both liveness verification and address proof, qualifying them for the Enhanced tier, while Singapore and India users require liveness checks but not address proof, qualifying for the Standard tier. Nigeria and Kenya users have Basic tier requirements with liveness checks but no address proof requirement.
-
-```mermaid
-flowchart TD
-A[User Registration] --> B{Country Selection}
-B --> C[US, UK, CA, AU, DE, FR, JP, AE, ZA]
-B --> D[SG, IN, PH, BR, MX]
-B --> E[NG, KE]
-C --> F[Enhanced Tier]
-D --> G[Standard Tier]
-E --> H[Basic Tier]
-F --> I[Required: Liveness Check + Address Proof]
-G --> J[Required: Liveness Check]
-H --> K[Required: Liveness Check]
-I --> L[Document Types: Passport, Driver's License, National ID, Residence Permit]
-J --> M[Document Types: Passport, National ID, Driver's License, Voter ID]
-K --> N[Document Types: Passport, National ID]
-F --> O[Higher Transaction Limits]
-G --> P[Moderate Transaction Limits]
-H --> Q[Basic Transaction Limits]
-```
-
-**Diagram sources **
-- [kyc-service.ts](file://src/services/kyc-service.ts#L46-L63)
-
-**Section sources**
-- [kyc-service.ts](file://src/services/kyc-service.ts#L46-L63)
-- [kyc-routes.ts](file://src/routes/kyc-routes.ts#L258-L310)
-
-## GDPR Compliance Measures
-FreelanceXchain implements comprehensive GDPR compliance measures to protect user data and ensure regulatory adherence. The system incorporates user consent management, right to erasure implementation, and defined data retention policies to meet GDPR requirements.
-
-User consent is managed through explicit opt-in mechanisms during the KYC submission process, with clear disclosure of data usage purposes. The right to erasure is implemented through a data deletion workflow that removes personal information from both the application database and associated storage systems while maintaining necessary audit trails for regulatory compliance. Data retention policies specify that KYC data is retained for a maximum of five years from the date of account closure, with automatic deletion processes enforced through system workflows.
-
-The system architecture ensures GDPR compliance by storing personal data off-chain in encrypted form, while only storing verification status and cryptographic hashes on the blockchain. This approach provides transparency and immutability for verification status without compromising personal data privacy. Users have access to their data through self-service portals and can request data exports in standard formats.
+### Workflow
 
 ```mermaid
 sequenceDiagram
-participant User
-participant Frontend
-participant Backend
-participant Blockchain
-User->>Frontend : Submit KYC Request
-Frontend->>Backend : Send KYC Data (encrypted)
-Backend->>Backend : Store encrypted data in database
-Backend->>Backend : Generate data hash
-Backend->>Blockchain : Store hash and status
-Blockchain-->>Backend : Confirmation
-Backend-->>Frontend : Verification Pending
-Frontend-->>User : Confirmation
-User->>Frontend : Request Data Deletion
-Frontend->>Backend : Delete Request
-Backend->>Backend : Anonymize personal data
-Backend->>Backend : Retain audit logs
-Backend-->>Frontend : Confirmation
-Frontend-->>User : Data Removed
+    participant User
+    participant Frontend
+    participant Backend
+    participant Didit
+    participant Database
+
+    User->>Frontend: Request KYC Verification
+    Frontend->>Backend: POST /api/kyc/initiate
+    Backend->>Didit: Create Session
+    Didit-->>Backend: Session URL + ID
+    Backend->>Database: Store Session
+    Backend-->>Frontend: Return Session URL
+    Frontend-->>User: Redirect to Didit
+
+    User->>Didit: Complete Verification
+    Didit->>Backend: Webhook (session.completed)
+    Backend->>Didit: Fetch Full Results
+    Didit-->>Backend: Verification Data
+    Backend->>Database: Update Status
+    
+    User->>Frontend: Check Status
+    Frontend->>Backend: GET /api/kyc/status
+    Backend->>Database: Query Status
+    Backend-->>Frontend: Return Status
+    Frontend-->>User: Display Result
 ```
 
-**Diagram sources **
-- [KYCVerification.sol](file://contracts/KYCVerification.sol#L7-L8)
-- [kyc-service.ts](file://src/services/kyc-service.ts#L381-L385)
+## Verification Features
 
-**Section sources**
-- [KYCVerification.sol](file://contracts/KYCVerification.sol#L7-L8)
-- [kyc-service.ts](file://src/services/kyc-service.ts#L381-L385)
-- [kyc-routes.ts](file://src/routes/kyc-routes.ts#L875-L892)
+Didit provides four verification features:
 
-## Document Image Handling
-FreelanceXchain implements secure handling of document images with temporary storage and strict access controls. Document images are stored in encrypted form with temporary access URLs that expire after a short period, minimizing the risk of unauthorized access.
+| Feature | Description |
+|---------|-------------|
+| **ID Verification** | Document verification for passports, national IDs, driver's licenses (220+ countries) |
+| **Passive Liveness** | Anti-spoofing technology with no user interaction required |
+| **Face Match 1:1** | Compares selfie to document photo with similarity scoring |
+| **IP Analysis** | Geolocation, VPN/Proxy detection, risk scoring |
 
-The system uses a secure document processing workflow where images are uploaded directly to secure storage with end-to-end encryption. Access to document images is strictly controlled through role-based access control (RBAC), with only authorized KYC reviewers able to access images during the verification process. All access to document images is logged for audit purposes, and images are automatically purged after successful verification or after a defined retention period for rejected applications.
+### Verification Results
 
-Document images are never stored in the primary application database; instead, the system stores only encrypted references to the storage location. The image processing pipeline includes automated virus scanning and content validation to prevent malicious file uploads. Temporary storage ensures that images are not permanently retained beyond the verification period, further enhancing privacy protection.
+```typescript
+type DiditVerificationResult = {
+  decision: 'approved' | 'declined' | 'review';
+  document_verified: boolean;
+  liveness_passed: boolean;
+  liveness_confidence_score: number;
+  spoofing_detected: boolean;
+  face_matched: boolean;
+  face_similarity_score: number;
+  ip_risk_score: number;
+  threat_level: 'low' | 'medium' | 'high';
+  is_vpn: boolean;
+  is_proxy: boolean;
+};
+```
 
-**Section sources**
-- [kyc.ts](file://src/models/kyc.ts#L35-L50)
-- [kyc-service.ts](file://src/services/kyc-service.ts#L116-L128)
-- [kyc-routes.ts](file://src/routes/kyc-routes.ts#L391-L428)
+## Data Minimization Principle
+
+FreelanceXchain adheres to data minimization by:
+
+1. **Didit Handles Sensitive Data**: Document images and biometric data are processed by Didit, not stored locally
+2. **Store Only Results**: Only verification results and extracted data are stored
+3. **No Raw Documents**: Document images are never stored in the application database
+4. **Encrypted Storage**: All personal data is encrypted at rest in Supabase
+
+### Data Stored Locally
+
+| Field | Purpose |
+|-------|---------|
+| `first_name`, `last_name` | Identity confirmation |
+| `date_of_birth` | Age verification |
+| `nationality` | Compliance requirements |
+| `document_type` | Verification record |
+| `decision` | Verification outcome |
+| `ip_risk_score` | Risk assessment |
+
+### Data NOT Stored Locally
+
+- Document images (front/back)
+- Selfie images
+- Raw biometric data
+- Full document scans
+
+## GDPR Compliance Measures
+
+### User Rights Implementation
+
+| Right | Implementation |
+|-------|----------------|
+| **Right to Access** | `GET /api/kyc/status` returns user's verification data |
+| **Right to Erasure** | Admin can delete verification records |
+| **Right to Portability** | `GET /api/kyc/history` exports verification history |
+| **Consent** | Explicit consent required before initiating verification |
+
+### Data Retention
+
+- **Approved Verifications**: Retained for 1 year from approval date (`expires_at`)
+- **Rejected Verifications**: Retained for 90 days for dispute resolution
+- **Expired Sessions**: Automatically cleaned up after 30 days
+
+### Audit Trail
+
+All KYC operations are logged:
+
+```typescript
+type KycAuditLog = {
+  user_id: string;
+  action: 'initiate' | 'complete' | 'approve' | 'reject' | 'expire';
+  timestamp: Date;
+  ip_address: string;
+  admin_id?: string;
+  notes?: string;
+};
+```
+
+## Webhook Security
+
+### HMAC-SHA256 Signature Verification
+
+All webhooks from Didit are verified using HMAC-SHA256:
+
+```typescript
+import crypto from 'crypto';
+
+function verifyWebhookSignature(payload: string, signature: string): boolean {
+  const secret = process.env.DIDIT_WEBHOOK_SECRET;
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+  
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expectedSignature)
+  );
+}
+```
+
+### Webhook Endpoint Security
+
+- Signature verification required
+- IP allowlisting (optional)
+- Rate limiting applied
+- Idempotency handling for duplicate webhooks
 
 ## Encryption Strategies
-FreelanceXchain employs robust encryption strategies to protect sensitive data both at rest and in transit. Sensitive fields in the database, including personal information and document references, are encrypted using industry-standard encryption algorithms with key management practices that ensure data confidentiality.
 
-The system implements field-level encryption for sensitive data elements such as tax identification numbers, address information, and document metadata. Encryption keys are managed through a secure key management system with regular rotation policies. Database storage encryption is enabled at the infrastructure level, providing an additional layer of protection for data at rest.
+### At Rest
 
-The encryption architecture follows a defense-in-depth approach with multiple layers of protection. Application-level encryption ensures that sensitive data is encrypted before being stored in the database, while database-level encryption provides protection against infrastructure-level attacks. This dual-layer approach ensures that even in the event of a database breach, sensitive information remains protected and unusable to unauthorized parties.
+- Supabase encryption enabled for all tables
+- Sensitive fields use additional application-level encryption
+- Encryption keys managed via environment variables
 
-**Section sources**
-- [schema.sql](file://supabase/schema.sql#L136-L159)
-- [kyc-repository.ts](file://src/repositories/kyc-repository.ts#L7-L41)
-- [env.ts](file://src/config/env.ts#L52-L58)
+### In Transit
 
-## Secure Transmission
-FreelanceXchain ensures secure transmission of data through the implementation of TLS encryption for all communications between clients and servers. The system enforces HTTPS for all endpoints, with HSTS (HTTP Strict Transport Security) headers configured to prevent downgrade attacks.
+- TLS 1.3 for all API communications
+- HTTPS enforced for webhook endpoints
+- Certificate pinning for mobile clients
 
-The security middleware configures TLS with modern cipher suites and disables outdated protocols to ensure secure communication. Certificate pinning is implemented for mobile applications to prevent man-in-the-middle attacks. All API endpoints require authentication through JWT (JSON Web Tokens) with short expiration times and refresh token rotation to minimize the risk of token compromise.
-
-The system implements additional security headers including Content Security Policy (CSP), X-Content-Type-Options, and X-Frame-Options to protect against common web vulnerabilities. CORS (Cross-Origin Resource Sharing) policies are strictly configured to allow only trusted domains, preventing unauthorized cross-origin requests. These measures collectively ensure that data transmitted between clients and servers remains confidential and integrity-protected.
+### Key Management
 
 ```mermaid
-graph TB
-Client[Client Application] --> |HTTPS/TLS| LoadBalancer
-LoadBalancer --> |HTTPS/TLS| APIGateway
-APIGateway --> |HTTPS/TLS| ApplicationServer
-ApplicationServer --> |Encrypted Connection| Database
-ApplicationServer --> |HTTPS/TLS| BlockchainNode
-style Client fill:#4CAF50,stroke:#388E3C
-style LoadBalancer fill:#2196F3,stroke:#1976D2
-style APIGateway fill:#FF9800,stroke:#F57C00
-style ApplicationServer fill:#9C27B0,stroke:#7B1FA2
-style Database fill:#F44336,stroke:#D32F2F
-style BlockchainNode fill:#00BCD4,stroke:#0097A7
+graph LR
+    A[Environment Variables] --> B[Application]
+    B --> C[Supabase Client]
+    C --> D[Encrypted Database]
+    
+    E[Didit API Key] --> B
+    F[Webhook Secret] --> B
 ```
 
-**Diagram sources **
-- [security-middleware.ts](file://src/middleware/security-middleware.ts#L18-L47)
-- [auth-middleware.ts](file://src/middleware/auth-middleware.ts#L25-L69)
+## API Endpoints
 
-**Section sources**
-- [security-middleware.ts](file://src/middleware/security-middleware.ts#L18-L47)
-- [auth-middleware.ts](file://src/middleware/auth-middleware.ts#L25-L69)
+### User Endpoints
 
-## Audit Logging and Monitoring
-FreelanceXchain implements comprehensive audit logging for KYC access and monitoring for unauthorized data queries. All access to KYC data is logged with detailed information including user ID, timestamp, requested resource, and action performed, enabling thorough audit trails for compliance and security monitoring.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/kyc/initiate` | Start verification, get session URL |
+| `GET` | `/api/kyc/status` | Get current verification status |
+| `GET` | `/api/kyc/verified` | Check if user is verified |
+| `GET` | `/api/kyc/history` | Get verification history |
+| `POST` | `/api/kyc/refresh/:id` | Manually refresh status from Didit |
 
-The system generates structured logs for all KYC-related operations, including submission, review, approval, and rejection events. Log entries include request IDs, user roles, IP addresses, and other contextual information to support forensic analysis. Logs are stored in a secure, immutable format with access restricted to authorized personnel only.
+### Admin Endpoints
 
-Monitoring systems continuously analyze access patterns to detect anomalous behavior that may indicate unauthorized data queries or potential security breaches. Alerting mechanisms are in place to notify security teams of suspicious activities, such as multiple failed access attempts or access from unusual geographic locations. Regular log reviews and automated analysis help ensure ongoing compliance with data protection regulations and internal security policies.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/kyc/admin/pending` | Get pending reviews |
+| `GET` | `/api/kyc/admin/status/:status` | Get verifications by status |
+| `POST` | `/api/kyc/admin/review/:id` | Approve/reject verification |
+| `GET` | `/api/kyc/admin/verification/:id` | Get verification details |
 
-**Section sources**
-- [request-logger.ts](file://src/middleware/request-logger.ts#L1-L41)
-- [kyc-service.ts](file://src/services/kyc-service.ts#L329-L407)
-- [kyc-routes.ts](file://src/routes/kyc-routes.ts#L780-L783)
+### Webhook Endpoint
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/kyc/webhook` | Receive Didit status updates |
+
+### Example: Initiate Verification
+
+```bash
+curl -X POST http://localhost:3000/api/kyc/initiate \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "contact_details": {
+      "email": "[email protected]"
+    }
+  }'
+```
+
+Response:
+```json
+{
+  "id": "uuid",
+  "user_id": "uuid",
+  "status": "pending",
+  "didit_session_url": "https://verify.didit.me/session/token",
+  "created_at": "2026-01-14T10:00:00Z"
+}
+```
+
+## Database Schema
+
+### Table: `kyc_verifications`
+
+```sql
+CREATE TABLE kyc_verifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL REFERENCES users(id),
+    status VARCHAR(20) NOT NULL CHECK (status IN (
+        'pending', 'in_progress', 'completed', 
+        'approved', 'rejected', 'expired'
+    )),
+    
+    -- Didit Session
+    didit_session_id VARCHAR(255) UNIQUE NOT NULL,
+    didit_session_token VARCHAR(500),
+    didit_session_url TEXT NOT NULL,
+    didit_workflow_id VARCHAR(255),
+    
+    -- Decision
+    decision VARCHAR(20) CHECK (decision IN ('approved', 'declined', 'review')),
+    decline_reasons TEXT[],
+    review_reasons TEXT[],
+    
+    -- Document Info
+    document_type VARCHAR(50),
+    document_number VARCHAR(100),
+    issuing_country VARCHAR(3),
+    
+    -- Personal Data (extracted)
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    date_of_birth DATE,
+    nationality VARCHAR(3),
+    
+    -- Verification Results
+    document_verified BOOLEAN,
+    liveness_passed BOOLEAN,
+    liveness_confidence_score DECIMAL(5,4),
+    spoofing_detected BOOLEAN,
+    face_matched BOOLEAN,
+    face_similarity_score DECIMAL(5,4),
+    
+    -- IP Analysis
+    ip_address VARCHAR(45),
+    ip_country_code VARCHAR(3),
+    ip_risk_score DECIMAL(5,2),
+    is_vpn BOOLEAN,
+    is_proxy BOOLEAN,
+    threat_level VARCHAR(10) CHECK (threat_level IN ('low', 'medium', 'high')),
+    
+    -- Admin Review
+    reviewed_by UUID REFERENCES users(id),
+    reviewed_at TIMESTAMPTZ,
+    admin_notes TEXT,
+    
+    -- Timestamps
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ
+);
+
+-- Indexes
+CREATE INDEX idx_kyc_user_id ON kyc_verifications(user_id);
+CREATE INDEX idx_kyc_status ON kyc_verifications(status);
+CREATE INDEX idx_kyc_didit_session_id ON kyc_verifications(didit_session_id);
+CREATE INDEX idx_kyc_pending_review ON kyc_verifications(status, reviewed_by) 
+    WHERE status = 'completed' AND reviewed_by IS NULL;
+```
+
+### Row Level Security
+
+```sql
+-- Users can only see their own verifications
+CREATE POLICY "Users can view own KYC" ON kyc_verifications
+    FOR SELECT USING (auth.uid() = user_id);
+
+-- Only service role can insert/update
+CREATE POLICY "Service role full access" ON kyc_verifications
+    FOR ALL USING (auth.role() = 'service_role');
+```
 
 ## System Architecture
-The FreelanceXchain KYC system architecture integrates on-chain and off-chain components to balance transparency, security, and privacy requirements. The architecture follows a layered approach with clear separation between data storage, processing logic, and external interfaces.
 
 ```mermaid
 graph TD
-A[User Interface] --> B[API Gateway]
-B --> C[Authentication Service]
-C --> D[Authorization Service]
-D --> E[KYC Service]
-E --> F[KYC Repository]
-F --> G[Supabase Database]
-E --> H[Blockchain Client]
-H --> I[KYCVerification Contract]
-E --> J[Document Processing Service]
-J --> K[Secure Storage]
-E --> L[Audit Logging Service]
-L --> M[Log Storage]
-style A fill:#E8F5E9,stroke:#4CAF50
-style B fill:#E3F2FD,stroke:#2196F3
-style C fill:#E8F5E9,stroke:#4CAF50
-style D fill:#E8F5E9,stroke:#4CAF50
-style E fill:#FFF3E0,stroke:#FF9800
-style F fill:#E8F5E9,stroke:#4CAF50
-style G fill:#FFEBEE,stroke:#F44336
-style H fill:#E8F5E9,stroke:#4CAF50
-style I fill:#C8E6C9,stroke:#4CAF50
-style J fill:#E8F5E9,stroke:#4CAF50
-style K fill:#FFEBEE,stroke:#F44336
-style L fill:#E8F5E9,stroke:#4CAF50
-style M fill:#FFEBEE,stroke:#F44336
-subgraph "Security Layer"
-C
-D
-L
-end
-subgraph "Data Layer"
-G
-K
-M
-end
-subgraph "Blockchain Layer"
-I
-end
+    subgraph "Client Layer"
+        A[Web App] --> B[API Gateway]
+        M[Mobile App] --> B
+    end
+    
+    subgraph "API Layer"
+        B --> C[Auth Middleware]
+        C --> D[KYC Routes]
+        D --> E[KYC Service]
+    end
+    
+    subgraph "Service Layer"
+        E --> F[Didit Client]
+        E --> G[KYC Repository]
+    end
+    
+    subgraph "External Services"
+        F --> H[Didit API]
+        H --> I[Webhook Handler]
+        I --> E
+    end
+    
+    subgraph "Data Layer"
+        G --> J[(Supabase)]
+    end
+    
+    style A fill:#4CAF50
+    style M fill:#4CAF50
+    style H fill:#2196F3
+    style J fill:#FF9800
 ```
 
-**Diagram sources **
-- [kyc-service.ts](file://src/services/kyc-service.ts#L1-L547)
-- [kyc-repository.ts](file://src/repositories/kyc-repository.ts#L1-L178)
-- [kyc-contract.ts](file://src/services/kyc-contract.ts#L1-L366)
+### File Structure
 
-**Section sources**
-- [kyc-service.ts](file://src/services/kyc-service.ts#L1-L547)
-- [kyc-repository.ts](file://src/repositories/kyc-repository.ts#L1-L178)
-- [kyc-contract.ts](file://src/services/kyc-contract.ts#L1-L366)
+```
+src/
+├── models/
+│   └── didit-kyc.ts              # Type definitions
+├── services/
+│   ├── didit-client.ts           # Didit API client
+│   └── didit-kyc-service.ts      # Business logic
+├── repositories/
+│   └── didit-kyc-repository.ts   # Database operations
+└── routes/
+    └── didit-kyc-routes.ts       # API endpoints
+
+supabase/
+└── migrations/
+    └── 003_didit_kyc_verifications.sql
+```
+
+## Quick Reference
+
+### Status Values
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Session created, user hasn't started |
+| `in_progress` | User is completing verification |
+| `completed` | Verification done, awaiting admin review |
+| `approved` | Admin approved, user is verified |
+| `rejected` | Admin rejected or Didit declined |
+| `expired` | Session expired without completion |
+
+### Decision Values
+
+| Decision | Description |
+|----------|-------------|
+| `approved` | All checks passed |
+| `declined` | Failed verification checks |
+| `review` | Needs manual review |
+
+### Threat Levels
+
+| Level | IP Risk Score | Action |
+|-------|---------------|--------|
+| `low` | 0-30 | Auto-approve eligible |
+| `medium` | 31-70 | Manual review recommended |
+| `high` | 71-100 | Manual review required |
+
+## Support Resources
+
+- **Didit Documentation**: https://docs.didit.me
+- **API Reference**: https://docs.didit.me/reference/
+- **Business Console**: https://business.didit.me
+- **Support Email**: [email protected]
