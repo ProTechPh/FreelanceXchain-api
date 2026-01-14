@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import {
   submitProposal,
   getProposalById,
@@ -111,6 +112,8 @@ router.post('/', authMiddleware, requireRole('freelancer'), async (req: Request,
   const errors: { field: string; message: string }[] = [];
   if (!projectId || typeof projectId !== 'string') {
     errors.push({ field: 'projectId', message: 'Project ID is required' });
+  } else if (!isValidUUID(projectId)) {
+    errors.push({ field: 'projectId', message: 'Project ID must be a valid UUID' });
   }
   if (!coverLetter || typeof coverLetter !== 'string' || coverLetter.trim().length < 10) {
     errors.push({ field: 'coverLetter', message: 'Cover letter must be at least 10 characters' });
@@ -166,7 +169,8 @@ router.post('/', authMiddleware, requireRole('freelancer'), async (req: Request,
  *         required: true
  *         schema:
  *           type: string
- *         description: Proposal ID
+ *           format: uuid
+ *         description: Proposal ID (UUID)
  *     responses:
  *       200:
  *         description: Proposal retrieved successfully
@@ -174,12 +178,14 @@ router.post('/', authMiddleware, requireRole('freelancer'), async (req: Request,
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Proposal'
+ *       400:
+ *         description: Invalid UUID format
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Proposal not found
  */
-router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -263,7 +269,8 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (r
  *         required: true
  *         schema:
  *           type: string
- *         description: Proposal ID
+ *           format: uuid
+ *         description: Proposal ID (UUID)
  *     responses:
  *       200:
  *         description: Proposal accepted successfully
@@ -277,13 +284,13 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (r
  *                 contract:
  *                   $ref: '#/components/schemas/Contract'
  *       400:
- *         description: Invalid proposal status
+ *         description: Invalid proposal status or UUID format
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/accept', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.post('/:id/accept', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -334,7 +341,8 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), async (req: 
  *         required: true
  *         schema:
  *           type: string
- *         description: Proposal ID
+ *           format: uuid
+ *         description: Proposal ID (UUID)
  *     responses:
  *       200:
  *         description: Proposal rejected successfully
@@ -343,13 +351,13 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), async (req: 
  *             schema:
  *               $ref: '#/components/schemas/Proposal'
  *       400:
- *         description: Invalid proposal status
+ *         description: Invalid proposal status or UUID format
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/reject', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -398,7 +406,8 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), async (req: 
  *         required: true
  *         schema:
  *           type: string
- *         description: Proposal ID
+ *           format: uuid
+ *         description: Proposal ID (UUID)
  *     responses:
  *       200:
  *         description: Proposal withdrawn successfully
@@ -407,13 +416,13 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), async (req: 
  *             schema:
  *               $ref: '#/components/schemas/Proposal'
  *       400:
- *         description: Invalid proposal status
+ *         description: Invalid proposal status or UUID format
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

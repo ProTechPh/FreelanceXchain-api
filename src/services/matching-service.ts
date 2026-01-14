@@ -40,18 +40,33 @@ const DEFAULT_RECOMMENDATION_LIMIT = 10;
 const REPUTATION_WEIGHT = 0.3;
 const SKILL_MATCH_WEIGHT = 0.7;
 
-// Helper type for skill entity
-type SkillRefEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
+// Helper type for freelancer skill entity (new simplified structure)
+type FreelancerSkillEntity = { name: string; years_of_experience: number };
+
+// Helper type for project skill entity (keeps original structure for backward compatibility)
+type ProjectSkillEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience?: number };
 
 /**
- * Convert skill entity to SkillInfo for matching
+ * Convert freelancer skill entity to SkillInfo for matching
  */
-function skillEntityToInfo(entity: SkillRefEntity): SkillInfo {
+function freelancerSkillToInfo(entity: FreelancerSkillEntity): SkillInfo {
+  return {
+    skillId: '', // No longer using skill IDs for freelancers
+    skillName: entity.name,
+    categoryId: '', // No longer using category IDs for freelancers
+    yearsOfExperience: entity.years_of_experience,
+  };
+}
+
+/**
+ * Convert project skill entity to SkillInfo for matching
+ */
+function projectSkillToInfo(entity: ProjectSkillEntity): SkillInfo {
   return {
     skillId: entity.skill_id,
     skillName: entity.skill_name,
     categoryId: entity.category_id,
-    yearsOfExperience: entity.years_of_experience,
+    yearsOfExperience: entity.years_of_experience ?? 0,
   };
 }
 
@@ -81,13 +96,13 @@ export async function getProjectRecommendations(
   }
 
   // Convert freelancer skills to SkillInfo
-  const freelancerSkills = profileEntity.skills.map(skillEntityToInfo);
+  const freelancerSkills = profileEntity.skills.map(freelancerSkillToInfo);
 
   // Calculate match scores for each project
   const recommendations: ProjectRecommendation[] = [];
 
   for (const projectEntity of projectEntities) {
-    const projectRequirements = projectEntity.required_skills.map(skillEntityToInfo);
+    const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
     
     let matchResult: SkillMatchResult;
     
@@ -150,13 +165,13 @@ export async function getFreelancerRecommendations(
   }
 
   // Convert project requirements to SkillInfo
-  const projectRequirements = projectEntity.required_skills.map(skillEntityToInfo);
+  const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
 
   // Calculate match scores for each freelancer
   const recommendations: FreelancerRecommendation[] = [];
 
   for (const freelancerEntity of freelancerEntities) {
-    const freelancerSkills = freelancerEntity.skills.map(skillEntityToInfo);
+    const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
     
     // TODO: Get actual reputation score from blockchain
     const reputationScore = 50; // Default reputation score
@@ -268,7 +283,7 @@ export async function analyzeSkillGaps(
     };
   }
 
-  const currentSkills = profileEntity.skills.map(s => s.skill_name);
+  const currentSkills = profileEntity.skills.map(s => s.name);
 
   if (!isAIAvailable()) {
     // Return basic analysis without AI

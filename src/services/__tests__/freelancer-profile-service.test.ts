@@ -222,60 +222,53 @@ describe('Freelancer Profile Service - Profile Properties', () => {
 });
 
 
-describe('Freelancer Profile Service - Skill Taxonomy Properties', () => {
+describe('Freelancer Profile Service - Skill Properties', () => {
   beforeEach(() => {
     profileStore.clear();
     skillStore.clear();
   });
 
   /**
-   * **Feature: blockchain-freelance-marketplace, Property 5: Skill taxonomy validation**
+   * **Feature: blockchain-freelance-marketplace, Property 5: Skill management**
    * **Validates: Requirements 2.2, 3.2**
    * 
-   * For any set of skill IDs submitted for a profile, only skills that exist
-   * in the active skill taxonomy shall be associated, and invalid skill IDs
-   * shall be rejected.
+   * For any set of skills submitted for a profile, skills are stored as free-form
+   * text with years of experience. AI will handle skill matching.
    */
-  it('Property 5: Skill taxonomy validation - valid skills are accepted', async () => {
+  it('Property 5: Skills are stored with name and years of experience', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.uuid(),
         validProfileInputArbitrary(),
-        fc.integer({ min: 1, max: 5 }),
-        validYearsOfExperienceArbitrary(),
-        async (userId, profileInput, skillCount, yearsExp) => {
+        fc.array(
+          fc.record({
+            name: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length >= 1),
+            yearsOfExperience: validYearsOfExperienceArbitrary(),
+          }),
+          { minLength: 1, maxLength: 5 }
+        ),
+        async (userId, profileInput, skillInputs) => {
           // Clear stores
           profileStore.clear();
-          skillStore.clear();
-
-          // Create test skills
-          const testSkills: SkillEntity[] = [];
-          for (let i = 0; i < skillCount; i++) {
-            testSkills.push(createTestSkill({ name: `Skill ${i}` }));
-          }
 
           // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
 
-          // Add valid skills
-          const skillInputs = testSkills.map(s => ({
-            skillId: s.id,
-            yearsOfExperience: yearsExp,
-          }));
-
+          // Add skills
           const addResult = await addSkillsToProfile(userId, skillInputs);
 
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
 
           // Verify all skills were added
-          expect(addResult.data.skills.length).toBe(skillCount);
-          for (const testSkill of testSkills) {
-            const found = addResult.data.skills.find(s => s.skillId === testSkill.id);
+          expect(addResult.data.skills.length).toBe(skillInputs.length);
+          for (const input of skillInputs) {
+            const found = addResult.data.skills.find(
+              s => s.name.toLowerCase() === input.name.trim().toLowerCase()
+            );
             expect(found).toBeDefined();
-            expect(found?.skillName).toBe(testSkill.name);
-            expect(found?.yearsOfExperience).toBe(yearsExp);
+            expect(found?.yearsOfExperience).toBe(input.yearsOfExperience);
           }
         }
       ),
@@ -284,70 +277,36 @@ describe('Freelancer Profile Service - Skill Taxonomy Properties', () => {
   });
 
   /**
-   * Property 5: Invalid skill IDs are rejected
+   * Property 5: Duplicate skills update years of experience
    */
-  it('Property 5: Skill taxonomy validation - invalid skills are rejected', async () => {
+  it('Property 5: Duplicate skills update years of experience', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.uuid(),
         validProfileInputArbitrary(),
-        fc.uuid(),
+        fc.string({ minLength: 2, maxLength: 50 }).filter(s => s.trim().length >= 2),
         validYearsOfExperienceArbitrary(),
-        async (userId, profileInput, invalidSkillId, yearsExp) => {
+        validYearsOfExperienceArbitrary(),
+        async (userId, profileInput, skillName, yearsExp1, yearsExp2) => {
           // Clear stores
           profileStore.clear();
-          skillStore.clear();
-
-          // Create profile (no skills in store)
-          const createResult = await createProfile(userId, profileInput);
-          expect(createResult.success).toBe(true);
-
-          // Try to add invalid skill
-          const addResult = await addSkillsToProfile(userId, [
-            { skillId: invalidSkillId, yearsOfExperience: yearsExp },
-          ]);
-
-          expect(addResult.success).toBe(false);
-          if (addResult.success) return;
-
-          expect(addResult.error.code).toBe('INVALID_SKILL');
-          expect(addResult.error.details).toContain(invalidSkillId);
-        }
-      ),
-      { numRuns: 100 }
-    );
-  });
-
-  /**
-   * Property 5: Inactive skills are rejected
-   */
-  it('Property 5: Skill taxonomy validation - inactive skills are rejected', async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.uuid(),
-        validProfileInputArbitrary(),
-        validYearsOfExperienceArbitrary(),
-        async (userId, profileInput, yearsExp) => {
-          // Clear stores
-          profileStore.clear();
-          skillStore.clear();
-
-          // Create an inactive skill
-          const inactiveSkill = createTestSkill({ is_active: false, name: 'Deprecated Skill' });
 
           // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
 
-          // Try to add inactive skill
-          const addResult = await addSkillsToProfile(userId, [
-            { skillId: inactiveSkill.id, yearsOfExperience: yearsExp },
-          ]);
+          // Add skill first time
+          await addSkillsToProfile(userId, [{ name: skillName, yearsOfExperience: yearsExp1 }]);
 
-          expect(addResult.success).toBe(false);
-          if (addResult.success) return;
+          // Add same skill again with different years (exact same name)
+          const addResult = await addSkillsToProfile(userId, [{ name: skillName, yearsOfExperience: yearsExp2 }]);
 
-          expect(addResult.error.code).toBe('INVALID_SKILL');
+          expect(addResult.success).toBe(true);
+          if (!addResult.success) return;
+
+          // Should only have one skill (updated)
+          expect(addResult.data.skills.length).toBe(1);
+          expect(addResult.data.skills[0]?.yearsOfExperience).toBe(yearsExp2);
         }
       ),
       { numRuns: 100 }

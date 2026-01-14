@@ -184,11 +184,11 @@ export async function searchFreelancers(
       );
     }
 
-    // Apply skill filter
+    // Apply skill filter (now using skill names instead of IDs)
     if (hasSkills) {
-      const skillIdSet = new Set(filters.skillIds);
+      const skillNameSet = new Set(filters.skillIds?.map(s => s.toLowerCase()));
       filteredItems = filteredItems.filter(profile =>
-        profile.skills.some(skill => skillIdSet.has(skill.skill_id))
+        profile.skills.some(skill => skillNameSet.has(skill.name.toLowerCase()))
       );
     }
 

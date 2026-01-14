@@ -128,7 +128,7 @@ describe('AuthService - registerWithSupabase', () => {
         (getSupabaseClient as jest.Mock).mockReturnValue(mockSupabase);
     });
 
-    it('should create new user with valid role', async () => {
+    it('should create new user with role (name and wallet optional)', async () => {
         (mockSupabase.auth.getUser as jest.Mock).mockResolvedValue({
             data: {
                 user: {
@@ -143,14 +143,18 @@ describe('AuthService - registerWithSupabase', () => {
             id: 'new_employer_id',
             email: 'new_employer@example.com',
             role: 'employer',
+            wallet_address: '',
+            name: '',
             created_at: new Date(),
         } as never);
 
-        const result = await registerWithSupabase('valid_token', 'employer');
+        const result = await registerWithSupabase('valid_token', 'employer', '', '');
 
         expect(userRepository.createUser).toHaveBeenCalledWith(expect.objectContaining({
             role: 'employer',
             email: 'new_employer@example.com',
+            wallet_address: '',
+            name: '',
         }));
         expect(result).toHaveProperty('user');
         if ('user' in result) {
@@ -174,7 +178,7 @@ describe('AuthService - registerWithSupabase', () => {
             role: 'freelancer',
         } as never);
 
-        const result = await registerWithSupabase('valid_token', 'employer'); // try to register as employer
+        const result = await registerWithSupabase('valid_token', 'employer', '', '');
 
         expect(userRepository.createUser).not.toHaveBeenCalled();
         expect(result).toHaveProperty('user');

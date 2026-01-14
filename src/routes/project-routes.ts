@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import {
   createProject,
   getProjectById,
@@ -181,7 +182,8 @@ router.get('/', async (req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: Project ID
+ *           format: uuid
+ *         description: Project ID (UUID)
  *     responses:
  *       200:
  *         description: Project retrieved successfully
@@ -189,10 +191,12 @@ router.get('/', async (req: Request, res: Response) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Project'
+ *       400:
+ *         description: Invalid UUID format
  *       404:
  *         description: Project not found
  */
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -288,6 +292,14 @@ router.post('/', authMiddleware, requireRole('employer'), async (req: Request, r
   }
   if (!requiredSkills || !Array.isArray(requiredSkills) || requiredSkills.length === 0) {
     errors.push({ field: 'requiredSkills', message: 'At least one skill is required' });
+  } else {
+    // Validate skillId UUIDs in requiredSkills array
+    for (let i = 0; i < requiredSkills.length; i++) {
+      const skill = requiredSkills[i];
+      if (skill.skillId && !isValidUUID(skill.skillId)) {
+        errors.push({ field: `requiredSkills[${i}].skillId`, message: 'skillId must be a valid UUID' });
+      }
+    }
   }
   if (!budget || typeof budget !== 'number' || budget < 100) {
     errors.push({ field: 'budget', message: 'Budget must be at least 100' });
@@ -336,7 +348,8 @@ router.post('/', authMiddleware, requireRole('employer'), async (req: Request, r
  *         required: true
  *         schema:
  *           type: string
- *         description: Project ID
+ *           format: uuid
+ *         description: Project ID (UUID)
  *     requestBody:
  *       required: true
  *       content:
@@ -371,7 +384,7 @@ router.post('/', authMiddleware, requireRole('employer'), async (req: Request, r
  *             schema:
  *               $ref: '#/components/schemas/Project'
  *       400:
- *         description: Validation error
+ *         description: Validation error or invalid UUID format
  *       401:
  *         description: Unauthorized
  *       404:
@@ -379,7 +392,7 @@ router.post('/', authMiddleware, requireRole('employer'), async (req: Request, r
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.patch('/:id', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { title, description, requiredSkills, budget, deadline, status } = req.body;
   const userId = req.user?.userId;
@@ -450,7 +463,8 @@ router.patch('/:id', authMiddleware, requireRole('employer'), async (req: Reques
  *         required: true
  *         schema:
  *           type: string
- *         description: Project ID
+ *           format: uuid
+ *         description: Project ID (UUID)
  *     requestBody:
  *       required: true
  *       content:
@@ -487,7 +501,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), async (req: Reques
  *             schema:
  *               $ref: '#/components/schemas/Project'
  *       400:
- *         description: Validation error or milestone sum mismatch
+ *         description: Validation error, invalid UUID format, or milestone sum mismatch
  *       401:
  *         description: Unauthorized
  *       404:
@@ -495,7 +509,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), async (req: Reques
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.post('/:id/milestones', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.post('/:id/milestones', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { milestones } = req.body;
   const userId = req.user?.userId;
@@ -575,7 +589,8 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), async (r
  *         required: true
  *         schema:
  *           type: string
- *         description: Project ID
+ *           format: uuid
+ *         description: Project ID (UUID)
  *       - in: query
  *         name: limit
  *         schema:
@@ -603,12 +618,14 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), async (r
  *                   type: boolean
  *                 continuationToken:
  *                   type: string
+ *       400:
+ *         description: Invalid UUID format
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Project not found
  */
-router.get('/:id/proposals', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.get('/:id/proposals', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

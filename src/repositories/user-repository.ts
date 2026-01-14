@@ -7,6 +7,7 @@ export type UserEntity = {
   password_hash: string;
   role: 'freelancer' | 'employer' | 'admin';
   wallet_address: string;
+  name: string;
   created_at: string;
   updated_at: string;
 };

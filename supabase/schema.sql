@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash VARCHAR(255) NOT NULL,
   role VARCHAR(20) NOT NULL CHECK (role IN ('freelancer', 'employer', 'admin')),
   wallet_address VARCHAR(255) DEFAULT '',
+  name VARCHAR(255) DEFAULT '',
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );

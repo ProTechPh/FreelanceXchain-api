@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 import {
   getKycStatus,
   submitKyc,
@@ -834,6 +835,8 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), async 
  *         required: true
  *         schema:
  *           type: string
+ *           format: uuid
+ *         description: KYC verification ID (UUID)
  *     requestBody:
  *       required: true
  *       content:
@@ -864,10 +867,12 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), async 
  *     responses:
  *       200:
  *         description: KYC reviewed successfully
+ *       400:
+ *         description: Invalid UUID format or validation error
  *       404:
  *         description: KYC not found
  */
-router.post('/admin/review/:kycId', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+router.post('/admin/review/:kycId', authMiddleware, requireRole('admin'), validateUUID(['kycId']), async (req: Request, res: Response) => {
   const kycId = req.params['kycId'];
   const reviewerId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

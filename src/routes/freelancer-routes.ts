@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 import {
   createProfile,
   getProfileByUserId,
@@ -88,7 +89,8 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID of the freelancer
+ *           format: uuid
+ *         description: User ID of the freelancer (UUID)
  *     responses:
  *       200:
  *         description: Freelancer profile retrieved successfully
@@ -96,10 +98,12 @@ const router = Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/FreelancerProfile'
+ *       400:
+ *         description: Invalid UUID format
  *       404:
  *         description: Profile not found
  */
-router.get('/:id', async (req: Request, res: Response) => {
+router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -307,7 +311,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), async (req: 
  * /api/freelancers/profile/skills:
  *   post:
  *     summary: Add skills to freelancer profile
- *     description: Adds skills to the authenticated user's profile
+ *     description: Adds skills to the authenticated user's profile. Skills are stored as free-form text for AI matching.
  *     tags:
  *       - Freelancers
  *     security:
@@ -326,13 +330,23 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), async (req: 
  *                 items:
  *                   type: object
  *                   required:
- *                     - skillId
+ *                     - name
  *                     - yearsOfExperience
  *                   properties:
- *                     skillId:
+ *                     name:
  *                       type: string
+ *                       description: Skill name (e.g., "React", "Node.js", "Solidity")
+ *                       example: "React"
  *                     yearsOfExperience:
  *                       type: number
+ *                       description: Years of experience with this skill
+ *                       example: 3
+ *           example:
+ *             skills:
+ *               - name: "React"
+ *                 yearsOfExperience: 3
+ *               - name: "Node.js"
+ *                 yearsOfExperience: 2
  *     responses:
  *       200:
  *         description: Skills added successfully
@@ -341,7 +355,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), async (req: 
  *             schema:
  *               $ref: '#/components/schemas/FreelancerProfile'
  *       400:
- *         description: Validation error or invalid skills
+ *         description: Validation error
  *       401:
  *         description: Unauthorized
  *       404:
@@ -374,8 +388,8 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), async 
   const errors: { field: string; message: string }[] = [];
   for (let i = 0; i < skills.length; i++) {
     const skill = skills[i];
-    if (!skill.skillId || typeof skill.skillId !== 'string') {
-      errors.push({ field: `skills[${i}].skillId`, message: 'Skill ID is required' });
+    if (!skill.name || typeof skill.name !== 'string' || skill.name.trim().length === 0) {
+      errors.push({ field: `skills[${i}].name`, message: 'Skill name is required' });
     }
     if (typeof skill.yearsOfExperience !== 'number' || skill.yearsOfExperience < 0) {
       errors.push({ field: `skills[${i}].yearsOfExperience`, message: 'Years of experience must be a non-negative number' });

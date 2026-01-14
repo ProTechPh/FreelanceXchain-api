@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 import {
   createEmployerProfile,
   getEmployerProfileByUserId,
@@ -36,41 +37,74 @@ const router = Router();
 
 /**
  * @swagger
- * /api/employers/{id}:
+ * /api/employers/projects:
  *   get:
- *     summary: Get employer profile by user ID
- *     description: Retrieves an employer's public profile
+ *     summary: List employer's projects
+ *     description: Retrieves all projects created by the authenticated employer with proposal counts
  *     tags:
  *       - Employers
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: id
- *         required: true
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of results per page
+ *       - in: query
+ *         name: continuationToken
  *         schema:
  *           type: string
- *         description: User ID of the employer
+ *         description: Token for pagination
  *     responses:
  *       200:
- *         description: Employer profile retrieved successfully
+ *         description: Projects retrieved successfully
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/EmployerProfile'
- *       404:
- *         description: Profile not found
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     allOf:
+ *                       - $ref: '#/components/schemas/Project'
+ *                       - type: object
+ *                         properties:
+ *                           proposalCount:
+ *                             type: integer
+ *                 hasMore:
+ *                   type: boolean
+ *                 continuationToken:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
  */
-router.get('/:id', async (req: Request, res: Response) => {
-  const id = req.params['id'] ?? '';
+router.get('/projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
+  const continuationToken = req.query['continuationToken'] as string | undefined;
 
-  const result = await getEmployerProfileByUserId(id);
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const options: { maxItemCount: number; continuationToken?: string } = { maxItemCount: limit };
+  if (continuationToken) {
+    options.continuationToken = continuationToken;
+  }
+  const result = await listProjectsByEmployer(userId, options);
 
   if (!result.success) {
-    res.status(404).json({
-      error: {
-        code: result.error.code,
-        message: result.error.message,
-      },
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
     });
@@ -79,7 +113,6 @@ router.get('/:id', async (req: Request, res: Response) => {
 
   res.status(200).json(result.data);
 });
-
 
 /**
  * @swagger
@@ -264,74 +297,44 @@ router.patch('/profile', authMiddleware, requireRole('employer'), async (req: Re
 
 /**
  * @swagger
- * /api/employers/projects:
+ * /api/employers/{id}:
  *   get:
- *     summary: List employer's projects
- *     description: Retrieves all projects created by the authenticated employer with proposal counts
+ *     summary: Get employer profile by user ID
+ *     description: Retrieves an employer's public profile
  *     tags:
  *       - Employers
- *     security:
- *       - bearerAuth: []
  *     parameters:
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *         description: Number of results per page
- *       - in: query
- *         name: continuationToken
+ *       - in: path
+ *         name: id
+ *         required: true
  *         schema:
  *           type: string
- *         description: Token for pagination
+ *           format: uuid
+ *         description: User ID of the employer (UUID)
  *     responses:
  *       200:
- *         description: Projects retrieved successfully
+ *         description: Employer profile retrieved successfully
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 items:
- *                   type: array
- *                   items:
- *                     allOf:
- *                       - $ref: '#/components/schemas/Project'
- *                       - type: object
- *                         properties:
- *                           proposalCount:
- *                             type: integer
- *                 hasMore:
- *                   type: boolean
- *                 continuationToken:
- *                   type: string
- *       401:
- *         description: Unauthorized
+ *               $ref: '#/components/schemas/EmployerProfile'
+ *       400:
+ *         description: Invalid UUID format
+ *       404:
+ *         description: Profile not found
  */
-router.get('/projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
+router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
+  const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
-  const continuationToken = req.query['continuationToken'] as string | undefined;
 
-  if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  const options: { maxItemCount: number; continuationToken?: string } = { maxItemCount: limit };
-  if (continuationToken) {
-    options.continuationToken = continuationToken;
-  }
-  const result = await listProjectsByEmployer(userId, options);
+  const result = await getEmployerProfileByUserId(id);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
+    res.status(404).json({
+      error: {
+        code: result.error.code,
+        message: result.error.message,
+      },
       timestamp: new Date().toISOString(),
       requestId,
     });

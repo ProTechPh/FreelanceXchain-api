@@ -40,6 +40,7 @@ export function mapUserToEntity(user: Omit<User, 'createdAt' | 'updatedAt'>): Om
     password_hash: user.passwordHash,
     role: user.role,
     wallet_address: user.walletAddress,
+    name: '',
   };
 }
 
@@ -86,32 +87,44 @@ export function mapSkillFromEntity(entity: SkillEntity): Skill {
   };
 }
 
-// SkillReference for profiles and projects
+// SkillReference for profiles (simplified - just name and experience)
 export type SkillReference = {
-  skillId: string;
-  skillName: string;
-  categoryId: string;
+  name: string;
   yearsOfExperience: number;
 };
 
-type SkillRefEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
+type SkillRefEntity = { name: string; years_of_experience: number };
 
 function mapSkillRefFromEntity(entity: SkillRefEntity): SkillReference {
   return {
-    skillId: entity.skill_id,
-    skillName: entity.skill_name,
-    categoryId: entity.category_id,
+    name: entity.name,
     yearsOfExperience: entity.years_of_experience,
   };
 }
 
 function mapSkillRefToEntity(ref: SkillReference): SkillRefEntity {
   return {
-    skill_id: ref.skillId,
-    skill_name: ref.skillName,
-    category_id: ref.categoryId,
+    name: ref.name,
     years_of_experience: ref.yearsOfExperience,
   };
+}
+
+// ProjectSkillReference for projects (can be more detailed if needed)
+export type ProjectSkillReference = {
+  skillId?: string;
+  skillName: string;
+  categoryId?: string;
+};
+
+type ProjectSkillRefEntity = { skill_id?: string; skill_name: string; category_id?: string };
+
+function mapProjectSkillRefFromEntity(entity: ProjectSkillRefEntity): ProjectSkillReference {
+  const result: ProjectSkillReference = {
+    skillName: entity.skill_name,
+  };
+  if (entity.skill_id) result.skillId = entity.skill_id;
+  if (entity.category_id) result.categoryId = entity.category_id;
+  return result;
 }
 
 // FreelancerProfile mapping
@@ -200,7 +213,7 @@ export type Project = {
   employerId: string;
   title: string;
   description: string;
-  requiredSkills: SkillReference[];
+  requiredSkills: ProjectSkillReference[];
   budget: number;
   deadline: string;
   status: ProjectStatus;
@@ -226,7 +239,7 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
     employerId: entity.employer_id,
     title: entity.title,
     description: entity.description,
-    requiredSkills: (entity.required_skills || []).map(mapSkillRefFromEntity),
+    requiredSkills: (entity.required_skills || []).map(mapProjectSkillRefFromEntity),
     budget: entity.budget,
     deadline: entity.deadline,
     status: entity.status,

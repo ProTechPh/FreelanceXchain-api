@@ -19,7 +19,7 @@ import {
 import { generateId } from '../utils/id.js';
 
 // Constants
-const DEFAULT_MODEL = 'gemini-1.5-flash';
+const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
 const REQUEST_TIMEOUT_MS = 30000;

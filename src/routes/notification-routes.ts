@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 import {
   getNotificationsByUser,
   markNotificationAsRead,
@@ -184,7 +185,8 @@ router.get('/unread-count', authMiddleware, async (req: Request, res: Response) 
  *         required: true
  *         schema:
  *           type: string
- *         description: Notification ID
+ *           format: uuid
+ *         description: Notification ID (UUID)
  *     responses:
  *       200:
  *         description: Notification marked as read successfully
@@ -192,12 +194,14 @@ router.get('/unread-count', authMiddleware, async (req: Request, res: Response) 
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Notification'
+ *       400:
+ *         description: Invalid UUID format
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Notification not found
  */
-router.patch('/:id/read', authMiddleware, async (req: Request, res: Response) => {
+router.patch('/:id/read', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
   const notificationId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

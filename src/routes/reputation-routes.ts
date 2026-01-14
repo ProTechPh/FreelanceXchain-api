@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import {
   submitRating,
   getReputation,
@@ -106,7 +107,8 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID to get reputation for
+ *           format: uuid
+ *         description: User ID to get reputation for (UUID)
  *     responses:
  *       200:
  *         description: Reputation retrieved successfully
@@ -114,10 +116,12 @@ const router = Router();
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ReputationScore'
+ *       400:
+ *         description: Invalid UUID format
  *       404:
  *         description: User not found
  */
-router.get('/:userId', async (req: Request, res: Response) => {
+router.get('/:userId', validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -220,6 +224,28 @@ router.post('/rate', authMiddleware, async (req: Request, res: Response) => {
     return;
   }
 
+  // Validate UUID format
+  const uuidErrors: { field: string; message: string }[] = [];
+  if (contractId && !isValidUUID(contractId)) {
+    uuidErrors.push({ field: 'contractId', message: 'contractId must be a valid UUID' });
+  }
+  if (rateeId && !isValidUUID(rateeId)) {
+    uuidErrors.push({ field: 'rateeId', message: 'rateeId must be a valid UUID' });
+  }
+
+  if (uuidErrors.length > 0) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid UUID format',
+        details: uuidErrors,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
   const result = await submitRating({
     contractId: contractId!,
     raterId: userId,
@@ -260,7 +286,8 @@ router.post('/rate', authMiddleware, async (req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: User ID to get work history for
+ *           format: uuid
+ *         description: User ID to get work history for (UUID)
  *     responses:
  *       200:
  *         description: Work history retrieved successfully
@@ -270,10 +297,12 @@ router.post('/rate', authMiddleware, async (req: Request, res: Response) => {
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/WorkHistoryEntry'
+ *       400:
+ *         description: Invalid UUID format
  *       404:
  *         description: User not found
  */
-router.get('/:userId/history', async (req: Request, res: Response) => {
+router.get('/:userId/history', validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

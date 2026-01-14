@@ -4,6 +4,7 @@ export type RegisterInput = {
   email: string;
   password: string;
   role: UserRole;
+  name?: string;
   walletAddress?: string;
 };
 

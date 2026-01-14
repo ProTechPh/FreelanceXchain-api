@@ -1,6 +1,5 @@
-import { FreelancerProfile, mapFreelancerProfileFromEntity, mapSkillFromEntity } from '../utils/entity-mapper.js';
+import { FreelancerProfile, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
-import { skillRepository } from '../repositories/skill-repository.js';
 import { generateId } from '../utils/id.js';
 
 export type CreateFreelancerProfileInput = {
@@ -16,7 +15,7 @@ export type UpdateFreelancerProfileInput = {
 };
 
 export type AddSkillInput = {
-  skillId: string;
+  name: string;
   yearsOfExperience: number;
 };
 
@@ -149,46 +148,32 @@ export async function addSkillsToProfile(
     };
   }
 
-  const validSkillEntities: FreelancerProfileEntity['skills'][0][] = [];
-  const invalidSkillIds: string[] = [];
+  const newSkills: FreelancerProfileEntity['skills'] = [];
 
   for (const skillInput of skills) {
-    const skillEntity = await skillRepository.findSkillById(skillInput.skillId);
-    if (!skillEntity || !skillEntity.is_active) {
-      invalidSkillIds.push(skillInput.skillId);
+    const trimmedName = skillInput.name.trim();
+    
+    // Check if skill already exists in profile (case-insensitive)
+    const existingSkillIndex = existingProfile.skills.findIndex(
+      s => s.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    
+    if (existingSkillIndex === -1) {
+      // Add new skill
+      newSkills.push({
+        name: trimmedName,
+        years_of_experience: skillInput.yearsOfExperience,
+      });
     } else {
-      const skill = mapSkillFromEntity(skillEntity);
-      // Check if skill already exists in profile
-      const existingSkillIndex = existingProfile.skills.findIndex(s => s.skill_id === skillInput.skillId);
-      if (existingSkillIndex === -1) {
-        validSkillEntities.push({
-          skill_id: skill.id,
-          skill_name: skill.name,
-          category_id: skill.categoryId,
-          years_of_experience: skillInput.yearsOfExperience,
-        });
-      } else {
-        // Update years of experience for existing skill
-        const existingSkill = existingProfile.skills[existingSkillIndex];
-        if (existingSkill) {
-          existingSkill.years_of_experience = skillInput.yearsOfExperience;
-        }
+      // Update years of experience for existing skill
+      const existingSkill = existingProfile.skills[existingSkillIndex];
+      if (existingSkill) {
+        existingSkill.years_of_experience = skillInput.yearsOfExperience;
       }
     }
   }
 
-  if (invalidSkillIds.length > 0) {
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_SKILL',
-        message: 'One or more skill IDs are invalid or inactive',
-        details: invalidSkillIds,
-      },
-    };
-  }
-
-  const updatedSkills = [...existingProfile.skills, ...validSkillEntities];
+  const updatedSkills = [...existingProfile.skills, ...newSkills];
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     skills: updatedSkills,
   });
@@ -205,7 +190,7 @@ export async function addSkillsToProfile(
 
 export async function removeSkillFromProfile(
   userId: string,
-  skillId: string
+  skillName: string
 ): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
@@ -215,7 +200,9 @@ export async function removeSkillFromProfile(
     };
   }
 
-  const updatedSkills = existingProfile.skills.filter(s => s.skill_id !== skillId);
+  const updatedSkills = existingProfile.skills.filter(
+    s => s.name.toLowerCase() !== skillName.toLowerCase()
+  );
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     skills: updatedSkills,
   });

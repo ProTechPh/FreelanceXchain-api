@@ -1,5 +1,18 @@
 import { Router, Request, Response } from 'express';
-import { register, login, refreshTokens, isAuthError, validatePasswordStrength, loginWithSupabase, registerWithSupabase, getOAuthUrl, exchangeCodeForSession } from '../services/auth-service.js';
+import {
+  register,
+  login,
+  refreshTokens,
+  isAuthError,
+  validatePasswordStrength,
+  loginWithSupabase,
+  registerWithSupabase,
+  getOAuthUrl,
+  exchangeCodeForSession,
+  resendConfirmationEmail,
+  requestPasswordReset,
+  updatePassword,
+} from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter } from '../middleware/rate-limiter.js';
@@ -29,9 +42,14 @@ const router = Router();
  *           type: string
  *           enum: [freelancer, employer]
  *           description: User's role on the platform
+ *         name:
+ *           type: string
+ *           minLength: 2
+ *           description: Optional user's full name (min 2 characters if provided)
  *         walletAddress:
  *           type: string
- *           description: Optional blockchain wallet address
+ *           pattern: ^0x[a-fA-F0-9]{40}$
+ *           description: Optional Ethereum wallet address
  *     LoginInput:
  *       type: object
  *       required:
@@ -140,7 +158,7 @@ function validateRole(role: unknown): role is UserRole {
  *               $ref: '#/components/schemas/AuthError'
  */
 router.post('/register', authRateLimiter, async (req: Request, res: Response) => {
-  const { email, password, role, walletAddress } = req.body;
+  const { email, password, role, name, walletAddress } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
   // Validate input
@@ -166,6 +184,18 @@ router.post('/register', authRateLimiter, async (req: Request, res: Response) =>
     errors.push({ field: 'role', message: 'Role must be freelancer or employer' });
   }
 
+  // Validate name if provided (min 2 chars)
+  if (name && typeof name === 'string' && name.trim().length > 0 && name.trim().length < 2) {
+    errors.push({ field: 'name', message: 'Name must be at least 2 characters if provided' });
+  }
+
+  // Validate wallet address format if provided
+  if (walletAddress && typeof walletAddress === 'string' && walletAddress.trim() !== '') {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      errors.push({ field: 'walletAddress', message: 'Invalid Ethereum wallet address format' });
+    }
+  }
+
   if (errors.length > 0) {
     res.status(400).json({
       error: {
@@ -179,7 +209,13 @@ router.post('/register', authRateLimiter, async (req: Request, res: Response) =>
     return;
   }
 
-  const input: RegisterInput = { email, password, role, walletAddress };
+  const input: RegisterInput = { 
+    email, 
+    password, 
+    role, 
+    name: name?.trim() || undefined, 
+    walletAddress 
+  };
   const result = await register(input);
 
   if (isAuthError(result)) {
@@ -605,7 +641,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
  * /api/auth/oauth/register:
  *   post:
  *     summary: Complete OAuth registration with role
- *     description: Finalize account creation for a new OAuth user by providing a role
+ *     description: Finalize account creation for a new OAuth user by providing a role, and optionally name and wallet address
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -623,6 +659,14 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
  *               role:
  *                 type: string
  *                 enum: [freelancer, employer]
+ *               name:
+ *                 type: string
+ *                 minLength: 2
+ *                 description: Optional user's full name (min 2 characters if provided)
+ *               walletAddress:
+ *                 type: string
+ *                 pattern: ^0x[a-fA-F0-9]{40}$
+ *                 description: Optional Ethereum wallet address
  *     responses:
  *       201:
  *         description: User registered successfully
@@ -636,21 +680,38 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
  *         description: Invalid token
  */
 router.post('/oauth/register', authRateLimiter, async (req: Request, res: Response) => {
-  const { accessToken, role } = req.body;
+  const { accessToken, role, walletAddress, name } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
+  const errors: { field: string; message: string }[] = [];
+
   if (!accessToken || typeof accessToken !== 'string') {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'accessToken is required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
+    errors.push({ field: 'accessToken', message: 'accessToken is required' });
   }
 
   if (!role || (role !== 'freelancer' && role !== 'employer')) {
+    errors.push({ field: 'role', message: 'Valid role (freelancer or employer) is required' });
+  }
+
+  // Validate name if provided (min 2 chars)
+  if (name && typeof name === 'string' && name.trim().length > 0 && name.trim().length < 2) {
+    errors.push({ field: 'name', message: 'Name must be at least 2 characters if provided' });
+  }
+
+  // Validate wallet address format if provided
+  if (walletAddress && typeof walletAddress === 'string' && walletAddress.trim() !== '') {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+      errors.push({ field: 'walletAddress', message: 'Invalid Ethereum wallet address format' });
+    }
+  }
+
+  if (errors.length > 0) {
     res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Valid role (freelancer or employer) is required' },
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request data',
+        details: errors,
+      },
       timestamp: new Date().toISOString(),
       requestId,
     });
@@ -658,7 +719,12 @@ router.post('/oauth/register', authRateLimiter, async (req: Request, res: Respon
   }
 
   try {
-    const result = await registerWithSupabase(accessToken, role);
+    const result = await registerWithSupabase(
+      accessToken, 
+      role, 
+      walletAddress ?? '', 
+      name?.trim() || ''
+    );
 
     if (isAuthError(result)) {
       res.status(401).json({
@@ -684,6 +750,188 @@ router.post('/oauth/register', authRateLimiter, async (req: Request, res: Respon
       requestId,
     });
   }
+});
+
+/**
+ * @swagger
+ * /api/auth/resend-confirmation:
+ *   post:
+ *     summary: Resend confirmation email
+ *     description: Resends the email verification link to the user
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       200:
+ *         description: Confirmation email sent
+ *       400:
+ *         description: Validation error
+ */
+router.post('/resend-confirmation', authRateLimiter, async (req: Request, res: Response) => {
+  const { email } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Valid email is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await resendConfirmationEmail(email);
+
+  if (isAuthError(result)) {
+    res.status(400).json({
+      error: { code: result.code, message: result.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ message: 'Confirmation email sent' });
+});
+
+/**
+ * @swagger
+ * /api/auth/forgot-password:
+ *   post:
+ *     summary: Request password reset
+ *     description: Sends a password reset email to the user
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - email
+ *             properties:
+ *               email:
+ *                 type: string
+ *                 format: email
+ *     responses:
+ *       200:
+ *         description: Password reset email sent
+ *       400:
+ *         description: Validation error
+ */
+router.post('/forgot-password', authRateLimiter, async (req: Request, res: Response) => {
+  const { email } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!email || typeof email !== 'string' || !email.includes('@')) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Valid email is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await requestPasswordReset(email);
+
+  if (isAuthError(result)) {
+    res.status(400).json({
+      error: { code: result.code, message: result.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ message: 'Password reset email sent' });
+});
+
+/**
+ * @swagger
+ * /api/auth/reset-password:
+ *   post:
+ *     summary: Reset password
+ *     description: Updates the user password using the reset token
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - accessToken
+ *               - password
+ *             properties:
+ *               accessToken:
+ *                 type: string
+ *                 description: Access token from password reset email
+ *               password:
+ *                 type: string
+ *                 minLength: 8
+ *     responses:
+ *       200:
+ *         description: Password updated successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Invalid token
+ */
+router.post('/reset-password', authRateLimiter, async (req: Request, res: Response) => {
+  const { accessToken, password } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  const errors: { field: string; message: string }[] = [];
+
+  if (!accessToken || typeof accessToken !== 'string') {
+    errors.push({ field: 'accessToken', message: 'Access token is required' });
+  }
+
+  if (typeof password === 'string') {
+    const passwordValidation = validatePasswordStrength(password);
+    if (!passwordValidation.valid) {
+      passwordValidation.errors.forEach(err => {
+        errors.push({ field: 'password', message: err });
+      });
+    }
+  } else {
+    errors.push({ field: 'password', message: 'Password is required' });
+  }
+
+  if (errors.length > 0) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await updatePassword(accessToken, password);
+
+  if (isAuthError(result)) {
+    res.status(401).json({
+      error: { code: result.code, message: result.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ message: 'Password updated successfully' });
 });
 
 export default router;

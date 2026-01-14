@@ -218,7 +218,7 @@ export async function generateProposal(
     .replace('{requiredSkills}', project.requiredSkills.map(s => s.skillName).join(', '))
     .replace('{budget}', String(project.budget))
     .replace('{deadline}', project.deadline ?? 'Flexible')
-    .replace('{freelancerSkills}', profileEntity.skills.map(s => s.skill_name).join(', '))
+    .replace('{freelancerSkills}', profileEntity.skills.map(s => s.name).join(', '))
     .replace('{experience}', JSON.stringify(profileEntity.experience.slice(0, 3)))
     .replace('{highlights}', input.highlights?.join(', ') ?? 'None specified')
     .replace('{tone}', input.tone ?? 'professional');

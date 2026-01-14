@@ -1,9 +1,15 @@
 import { Request, Response, NextFunction } from 'express';
 import { validateToken } from '../services/auth-service.js';
-import { TokenPayload, AuthError } from '../services/auth-types.js';
+import { AuthError } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 
-function isTokenError(result: TokenPayload | AuthError): result is AuthError {
+type ValidatedUser = {
+  userId: string;
+  email: string;
+  role: UserRole;
+};
+
+function isTokenError(result: ValidatedUser | AuthError): result is AuthError {
   return 'code' in result;
 }
 
@@ -11,12 +17,12 @@ function isTokenError(result: TokenPayload | AuthError): result is AuthError {
 declare global {
   namespace Express {
     interface Request {
-      user?: TokenPayload;
+      user?: ValidatedUser;
     }
   }
 }
 
-export function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {
@@ -45,28 +51,13 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   }
 
   const token = parts[1] as string;
-  const result = validateToken(token);
+  const result = await validateToken(token);
 
   if (isTokenError(result)) {
-    const statusCode = result.code === 'TOKEN_EXPIRED' ? 401 : 401;
-    res.status(statusCode).json({
+    res.status(401).json({
       error: {
         code: result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN',
         message: result.message,
-      },
-      timestamp: new Date().toISOString(),
-      requestId: req.headers['x-request-id'] ?? 'unknown',
-    });
-    return;
-  }
-
-
-  // Check if it's an access token (not refresh token)
-  if (result.type !== 'access') {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_INVALID_TOKEN',
-        message: 'Invalid token type',
       },
       timestamp: new Date().toISOString(),
       requestId: req.headers['x-request-id'] ?? 'unknown',

@@ -1,20 +1,14 @@
-import bcrypt from 'bcrypt';
-import jwt, { SignOptions } from 'jsonwebtoken';
+import { Provider } from '@supabase/supabase-js';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
-import { generateId } from '../utils/id.js';
+import { getSupabaseClient } from '../config/supabase.js';
+import { UserRole } from '../models/user.js';
 import {
   RegisterInput,
   LoginInput,
-  TokenPayload,
   AuthResult,
   AuthError,
 } from './auth-types.js';
-import { getSupabaseClient } from '../config/supabase.js';
-import { Provider } from '@supabase/supabase-js';
-import { UserRole } from '../models/user.js';
-
-const SALT_ROUNDS = 10;
 
 // Password strength requirements
 const PASSWORD_MIN_LENGTH = 8;
@@ -53,30 +47,6 @@ export function validatePasswordStrength(password: string): PasswordValidationRe
   };
 }
 
-function hashPassword(password: string): Promise<string> {
-  return bcrypt.hash(password, SALT_ROUNDS);
-}
-
-function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return bcrypt.compare(password, hash);
-}
-
-function generateAccessToken(payload: Omit<TokenPayload, 'type'>): string {
-  return jwt.sign(
-    { ...payload, type: 'access' },
-    config.jwt.secret,
-    { expiresIn: config.jwt.expiresIn } as SignOptions
-  );
-}
-
-function generateRefreshToken(payload: Omit<TokenPayload, 'type'>): string {
-  return jwt.sign(
-    { ...payload, type: 'refresh' },
-    config.jwt.refreshSecret, // Use separate secret for refresh tokens
-    { expiresIn: config.jwt.refreshExpiresIn } as SignOptions
-  );
-}
-
 function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): AuthResult {
   return {
     user: {
@@ -91,10 +61,15 @@ function createAuthResult(user: UserEntity, accessToken: string, refreshToken: s
   };
 }
 
+/**
+ * Register a new user with Supabase Auth (email/password)
+ * Sends confirmation email automatically
+ */
 export async function register(input: RegisterInput): Promise<AuthResult | AuthError> {
+  const supabase = getSupabaseClient();
   const normalizedEmail = input.email.toLowerCase().trim();
 
-  // Check for duplicate email
+  // Check for duplicate email in public.users first
   const emailExists = await userRepository.emailExists(normalizedEmail);
   if (emailExists) {
     return {
@@ -103,161 +78,226 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
     };
   }
 
-  // Hash password
-  const passwordHash = await hashPassword(input.password);
-
-  // Create user
-  const userInput = {
-    id: generateId(),
+  // Register with Supabase Auth - this sends confirmation email
+  const { data, error } = await supabase.auth.signUp({
     email: normalizedEmail,
-    password_hash: passwordHash,
-    role: input.role,
-    wallet_address: input.walletAddress ?? '',
-  };
+    password: input.password,
+    options: {
+      data: {
+        role: input.role,
+        wallet_address: input.walletAddress ?? '',
+        name: input.name ?? '',
+      },
+    },
+  });
 
-  const createdUser = await userRepository.createUser(userInput);
-
-  // Generate tokens
-  const tokenPayload = {
-    userId: createdUser.id,
-    email: createdUser.email,
-    role: createdUser.role,
-  };
-  const accessToken = generateAccessToken(tokenPayload);
-  const refreshToken = generateRefreshToken(tokenPayload);
-
-  return createAuthResult(createdUser, accessToken, refreshToken);
-}
-
-export async function login(input: LoginInput): Promise<AuthResult | AuthError> {
-  const normalizedEmail = input.email.toLowerCase().trim();
-
-  // Find user by email
-  const user = await userRepository.getUserByEmail(normalizedEmail);
-  if (!user) {
-    return {
-      code: 'INVALID_CREDENTIALS',
-      message: 'Invalid email or password',
-    };
-  }
-
-  // Verify password
-  const isValidPassword = await verifyPassword(input.password, user.password_hash);
-  if (!isValidPassword) {
-    return {
-      code: 'INVALID_CREDENTIALS',
-      message: 'Invalid email or password',
-    };
-  }
-
-  // Generate tokens
-  const tokenPayload = {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  };
-  const accessToken = generateAccessToken(tokenPayload);
-  const refreshToken = generateRefreshToken(tokenPayload);
-
-  return createAuthResult(user, accessToken, refreshToken);
-}
-
-export function validateToken(token: string, tokenType: 'access' | 'refresh' = 'access'): TokenPayload | AuthError {
-  try {
-    const secret = tokenType === 'refresh' ? config.jwt.refreshSecret : config.jwt.secret;
-    const decoded = jwt.verify(token, secret) as TokenPayload;
-    return decoded;
-  } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
+  if (error) {
+    if (error.message.includes('already registered')) {
       return {
-        code: 'TOKEN_EXPIRED',
-        message: 'Token has expired',
+        code: 'DUPLICATE_EMAIL',
+        message: 'An account with this email already exists',
       };
     }
     return {
-      code: 'INVALID_TOKEN',
-      message: 'Invalid token',
+      code: 'INTERNAL_ERROR',
+      message: error.message,
     };
   }
+
+  if (!data.user) {
+    return {
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to create user',
+    };
+  }
+
+  // Wait briefly for trigger to create public.users record
+  await new Promise(resolve => setTimeout(resolve, 500));
+
+  // Get the user from public.users (created by trigger)
+  const publicUser = await userRepository.getUserById(data.user.id);
+
+  if (!publicUser) {
+    // Trigger might not have fired yet, create manually
+    const createdUser = await userRepository.createUser({
+      id: data.user.id,
+      email: normalizedEmail,
+      password_hash: '',
+      role: input.role,
+      wallet_address: input.walletAddress ?? '',
+      name: input.name ?? '',
+    });
+
+    return {
+      user: {
+        id: createdUser.id,
+        email: createdUser.email,
+        role: createdUser.role,
+        walletAddress: createdUser.wallet_address,
+        createdAt: createdUser.created_at,
+      },
+      accessToken: data.session?.access_token ?? '',
+      refreshToken: data.session?.refresh_token ?? '',
+    };
+  }
+
+  return {
+    user: {
+      id: publicUser.id,
+      email: publicUser.email,
+      role: publicUser.role,
+      walletAddress: publicUser.wallet_address,
+      createdAt: publicUser.created_at,
+    },
+    accessToken: data.session?.access_token ?? '',
+    refreshToken: data.session?.refresh_token ?? '',
+  };
 }
 
-export async function refreshTokens(refreshToken: string): Promise<AuthResult | AuthError> {
-  const payload = validateToken(refreshToken, 'refresh');
+/**
+ * Login with Supabase Auth (email/password)
+ * Only works if email is verified
+ */
+export async function login(input: LoginInput): Promise<AuthResult | AuthError> {
+  const supabase = getSupabaseClient();
+  const normalizedEmail = input.email.toLowerCase().trim();
 
-  if ('code' in payload) {
-    return payload;
-  }
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: normalizedEmail,
+    password: input.password,
+  });
 
-  if (payload.type !== 'refresh') {
+  if (error) {
+    if (error.message.includes('Email not confirmed')) {
+      return {
+        code: 'INVALID_CREDENTIALS',
+        message: 'Please verify your email before logging in',
+      };
+    }
     return {
-      code: 'INVALID_TOKEN',
-      message: 'Invalid refresh token',
+      code: 'INVALID_CREDENTIALS',
+      message: 'Invalid email or password',
     };
   }
 
-  // Get user to ensure they still exist
-  const user = await userRepository.getUserById(payload.userId);
-  if (!user) {
+  if (!data.user || !data.session) {
+    return {
+      code: 'INVALID_CREDENTIALS',
+      message: 'Invalid email or password',
+    };
+  }
+
+  // Get user from public.users
+  const publicUser = await userRepository.getUserById(data.user.id);
+
+  if (!publicUser) {
+    return {
+      code: 'INVALID_CREDENTIALS',
+      message: 'User profile not found',
+    };
+  }
+
+  return createAuthResult(publicUser, data.session.access_token, data.session.refresh_token);
+}
+
+/**
+ * Refresh tokens using Supabase Auth
+ */
+export async function refreshTokens(refreshToken: string): Promise<AuthResult | AuthError> {
+  const supabase = getSupabaseClient();
+
+  const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
+
+  if (error || !data.session || !data.user) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid or expired refresh token',
+    };
+  }
+
+  const publicUser = await userRepository.getUserById(data.user.id);
+
+  if (!publicUser) {
     return {
       code: 'INVALID_TOKEN',
       message: 'User not found',
     };
   }
 
-  // Generate new tokens
-  const tokenPayload = {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  };
-  const newAccessToken = generateAccessToken(tokenPayload);
-  const newRefreshToken = generateRefreshToken(tokenPayload);
-
-  return createAuthResult(user, newAccessToken, newRefreshToken);
+  return createAuthResult(publicUser, data.session.access_token, data.session.refresh_token);
 }
 
+/**
+ * Validate Supabase access token
+ */
+export async function validateToken(accessToken: string): Promise<{ userId: string; email: string; role: UserRole } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+
+  if (error || !user) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid or expired token',
+    };
+  }
+
+  const publicUser = await userRepository.getUserById(user.id);
+
+  if (!publicUser) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'User not found',
+    };
+  }
+
+  return {
+    userId: publicUser.id,
+    email: publicUser.email,
+    role: publicUser.role,
+  };
+}
+
+/**
+ * Login with existing Supabase session (for OAuth users)
+ */
 export async function loginWithSupabase(accessToken: string): Promise<AuthResult | AuthError> {
   const supabase = getSupabaseClient();
 
-  // Verify user with Supabase
-  const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(accessToken);
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
 
-  if (error || !supabaseUser || !supabaseUser.email) {
+  if (error || !user || !user.email) {
     return {
       code: 'INVALID_TOKEN',
       message: 'Invalid Supabase token',
     };
   }
 
-  const normalizedEmail = supabaseUser.email.toLowerCase().trim();
+  const publicUser = await userRepository.getUserByEmail(user.email.toLowerCase());
 
-  // Check if user exists in our DB
-  const user = await userRepository.getUserByEmail(normalizedEmail);
-
-  if (!user) {
-    // User does not exist, require registration
+  if (!publicUser) {
     return {
       code: 'AUTH_REQUIRE_REGISTRATION',
       message: 'User registration required. Please select a role.',
     };
   }
 
-  // Generate tokens for existing user
-  const tokenPayload = {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-  };
-  const appAccessToken = generateAccessToken(tokenPayload);
-  const refreshToken = generateRefreshToken(tokenPayload);
+  // Get current session for tokens
+  const { data: sessionData } = await supabase.auth.getSession();
 
-  return createAuthResult(user, appAccessToken, refreshToken);
+  return createAuthResult(
+    publicUser,
+    accessToken,
+    sessionData?.session?.refresh_token ?? ''
+  );
 }
 
+/**
+ * Get OAuth URL for provider
+ */
 export async function getOAuthUrl(provider: Provider): Promise<string> {
   const supabase = getSupabaseClient();
 
-  // Map 'linkedin' to 'linkedin_oidc' since Supabase uses the OIDC version
   const supabaseProvider = provider === 'linkedin' ? 'linkedin_oidc' : provider;
 
   const redirectUrl = process.env.PUBLIC_URL
@@ -283,8 +323,12 @@ export async function getOAuthUrl(provider: Provider): Promise<string> {
   return data.url;
 }
 
-export async function exchangeCodeForSession(code: string): Promise<{ accessToken: string } | AuthError> {
+/**
+ * Exchange OAuth code for session
+ */
+export async function exchangeCodeForSession(code: string): Promise<{ accessToken: string; refreshToken: string } | AuthError> {
   const supabase = getSupabaseClient();
+
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !data.session) {
@@ -294,64 +338,135 @@ export async function exchangeCodeForSession(code: string): Promise<{ accessToke
     };
   }
 
-  return { accessToken: data.session.access_token };
+  return {
+    accessToken: data.session.access_token,
+    refreshToken: data.session.refresh_token,
+  };
 }
 
-export function isAuthError(result: AuthResult | AuthError): result is AuthError {
-  return 'code' in result;
-}
-
-export async function registerWithSupabase(accessToken: string, role: UserRole): Promise<AuthResult | AuthError> {
+/**
+ * Register OAuth user with role selection
+ */
+export async function registerWithSupabase(
+  accessToken: string,
+  role: UserRole,
+  walletAddress: string,
+  name: string
+): Promise<AuthResult | AuthError> {
   const supabase = getSupabaseClient();
 
-  // Verify user with Supabase
-  const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(accessToken);
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
 
-  if (error || !supabaseUser || !supabaseUser.email) {
+  if (error || !user || !user.email) {
     return {
       code: 'INVALID_TOKEN',
       message: 'Invalid Supabase token',
     };
   }
 
-  const normalizedEmail = supabaseUser.email.toLowerCase().trim();
+  const normalizedEmail = user.email.toLowerCase().trim();
 
   // Check if user already exists
   const existingUser = await userRepository.getUserByEmail(normalizedEmail);
   if (existingUser) {
-    // If user exists, just log them in (idempotency)
-    const tokenPayload = {
-      userId: existingUser.id,
-      email: existingUser.email,
-      role: existingUser.role,
-    };
-    const appAccessToken = generateAccessToken(tokenPayload);
-    const refreshToken = generateRefreshToken(tokenPayload);
-    return createAuthResult(existingUser, appAccessToken, refreshToken);
+    const { data: sessionData } = await supabase.auth.getSession();
+    return createAuthResult(existingUser, accessToken, sessionData?.session?.refresh_token ?? '');
   }
 
-  // Generate random password hash since they use OAuth
-  const randomPassword = Math.random().toString(36).slice(-8);
-  const passwordHash = await hashPassword(randomPassword);
+  // Update user metadata in Supabase Auth
+  const { error: updateError } = await supabase.auth.updateUser({
+    data: {
+      role,
+      wallet_address: walletAddress,
+      name,
+    },
+  });
 
-  const userInput = {
-    id: generateId(),
+  if (updateError) {
+    console.error('Failed to update user metadata:', updateError);
+  }
+
+  // Create user in public.users
+  const newUser = await userRepository.createUser({
+    id: user.id,
     email: normalizedEmail,
-    password_hash: passwordHash,
-    role: role,
-    wallet_address: '',
-  };
+    password_hash: '',
+    role,
+    wallet_address: walletAddress,
+    name,
+  });
 
-  const newUser = await userRepository.createUser(userInput);
+  const { data: sessionData } = await supabase.auth.getSession();
 
-  // Generate tokens
-  const tokenPayload = {
-    userId: newUser.id,
-    email: newUser.email,
-    role: newUser.role,
-  };
-  const appAccessToken = generateAccessToken(tokenPayload);
-  const refreshToken = generateRefreshToken(tokenPayload);
+  return createAuthResult(newUser, accessToken, sessionData?.session?.refresh_token ?? '');
+}
 
-  return createAuthResult(newUser, appAccessToken, refreshToken);
+/**
+ * Resend confirmation email
+ */
+export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase.auth.resend({
+    type: 'signup',
+    email: email.toLowerCase().trim(),
+  });
+
+  if (error) {
+    return {
+      code: 'INTERNAL_ERROR',
+      message: error.message,
+    };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Request password reset email
+ */
+export async function requestPasswordReset(email: string): Promise<{ success: boolean } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  const redirectUrl = process.env.PUBLIC_URL
+    ? `${process.env.PUBLIC_URL}/reset-password`
+    : `http://localhost:${config.server.port}/reset-password`;
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase().trim(), {
+    redirectTo: redirectUrl,
+  });
+
+  if (error) {
+    return {
+      code: 'INTERNAL_ERROR',
+      message: error.message,
+    };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Update password (after reset)
+ */
+export async function updatePassword(accessToken: string, newPassword: string): Promise<{ success: boolean } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Set the session first
+  await supabase.auth.setSession({ access_token: accessToken, refresh_token: '' });
+
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+
+  if (error) {
+    return {
+      code: 'INTERNAL_ERROR',
+      message: error.message,
+    };
+  }
+
+  return { success: true };
+}
+
+export function isAuthError(result: AuthResult | AuthError | { success: boolean }): result is AuthError {
+  return 'code' in result;
 }

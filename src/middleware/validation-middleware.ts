@@ -18,7 +18,7 @@ type PropertySchema = {
   minimum?: number;
   maximum?: number;
   pattern?: string;
-  format?: 'email' | 'date' | 'date-time' | 'uri';
+  format?: 'email' | 'date' | 'date-time' | 'uri' | 'uuid';
   enum?: (string | number)[];
   items?: PropertySchema;
   properties?: Record<string, PropertySchema>;
@@ -60,6 +60,9 @@ const DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}(\.\d{3})?(Z|[+-]
 
 // URI pattern
 const URI_PATTERN = /^https?:\/\/.+/;
+
+// UUID pattern (v4)
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 
 /**
@@ -240,7 +243,7 @@ function isTypeMatch(actualType: string, schemaType: SchemaType): boolean {
  */
 function validateFormat(
   value: string,
-  format: 'email' | 'date' | 'date-time' | 'uri',
+  format: 'email' | 'date' | 'date-time' | 'uri' | 'uuid',
   fieldPath: string
 ): ValidationError | null {
   switch (format) {
@@ -262,6 +265,11 @@ function validateFormat(
     case 'uri':
       if (!URI_PATTERN.test(value)) {
         return { field: fieldPath, message: `${fieldPath} must be a valid URI`, value };
+      }
+      break;
+    case 'uuid':
+      if (!UUID_PATTERN.test(value)) {
+        return { field: fieldPath, message: `${fieldPath} must be a valid UUID`, value };
       }
       break;
   }
@@ -459,10 +467,10 @@ export const addSkillsSchema: RequestSchema = {
         items: {
           type: 'object',
           properties: {
-            skillId: { type: 'string', minLength: 1 },
+            name: { type: 'string', minLength: 1 },
             yearsOfExperience: { type: 'number', minimum: 0 },
           },
-          requiredProperties: ['skillId', 'yearsOfExperience'],
+          requiredProperties: ['name', 'yearsOfExperience'],
         },
       },
     },
@@ -521,7 +529,7 @@ export const createProjectSchema: RequestSchema = {
         items: {
           type: 'object',
           properties: {
-            skillId: { type: 'string', minLength: 1 },
+            skillId: { type: 'string', format: 'uuid' },
           },
           requiredProperties: ['skillId'],
         },
@@ -545,7 +553,7 @@ export const updateProjectSchema: RequestSchema = {
         items: {
           type: 'object',
           properties: {
-            skillId: { type: 'string', minLength: 1 },
+            skillId: { type: 'string', format: 'uuid' },
           },
         },
       },
@@ -585,7 +593,7 @@ export const submitProposalSchema: RequestSchema = {
   body: {
     type: 'object',
     properties: {
-      projectId: { type: 'string', minLength: 1 },
+      projectId: { type: 'string', format: 'uuid' },
       coverLetter: { type: 'string', minLength: 10 },
       proposedRate: { type: 'number', minimum: 1 },
       estimatedDuration: { type: 'number', minimum: 1 },
@@ -599,8 +607,8 @@ export const createDisputeSchema: RequestSchema = {
   body: {
     type: 'object',
     properties: {
-      contractId: { type: 'string', minLength: 1 },
-      milestoneId: { type: 'string', minLength: 1 },
+      contractId: { type: 'string', format: 'uuid' },
+      milestoneId: { type: 'string', format: 'uuid' },
       reason: { type: 'string', minLength: 1 },
     },
     required: ['contractId', 'milestoneId', 'reason'],
@@ -634,8 +642,8 @@ export const submitRatingSchema: RequestSchema = {
   body: {
     type: 'object',
     properties: {
-      contractId: { type: 'string', minLength: 1 },
-      rateeId: { type: 'string', minLength: 1 },
+      contractId: { type: 'string', format: 'uuid' },
+      rateeId: { type: 'string', format: 'uuid' },
       rating: { type: 'integer', minimum: 1, maximum: 5 },
       comment: { type: 'string' },
     },
@@ -659,7 +667,7 @@ export const createSkillSchema: RequestSchema = {
   body: {
     type: 'object',
     properties: {
-      categoryId: { type: 'string', minLength: 1 },
+      categoryId: { type: 'string', format: 'uuid' },
       name: { type: 'string', minLength: 2 },
       description: { type: 'string', minLength: 5 },
     },
@@ -672,7 +680,7 @@ export const markNotificationReadSchema: RequestSchema = {
   params: {
     type: 'object',
     properties: {
-      id: { type: 'string', minLength: 1 },
+      id: { type: 'string', format: 'uuid' },
     },
     required: ['id'],
   },
@@ -723,7 +731,7 @@ export const milestoneActionSchema: RequestSchema = {
   params: {
     type: 'object',
     properties: {
-      id: { type: 'string', minLength: 1 },
+      id: { type: 'string', format: 'uuid' },
     },
     required: ['id'],
   },
@@ -733,7 +741,7 @@ export const disputeMilestoneSchema: RequestSchema = {
   params: {
     type: 'object',
     properties: {
-      id: { type: 'string', minLength: 1 },
+      id: { type: 'string', format: 'uuid' },
     },
     required: ['id'],
   },
@@ -746,14 +754,61 @@ export const disputeMilestoneSchema: RequestSchema = {
   },
 };
 
-// ID Parameter Schema (reusable)
-export const idParamSchema: RequestSchema = {
+// ID Parameter Schema (reusable) - validates UUID format
+export const uuidParamSchema: RequestSchema = {
   params: {
     type: 'object',
     properties: {
-      id: { type: 'string', minLength: 1 },
+      id: { type: 'string', format: 'uuid' },
     },
     required: ['id'],
   },
 };
+
+// Legacy alias for backward compatibility
+export const idParamSchema = uuidParamSchema;
+
+/**
+ * Validates that a string is a valid UUID
+ */
+export function isValidUUID(value: string): boolean {
+  return UUID_PATTERN.test(value);
+}
+
+/**
+ * Middleware to validate UUID parameters
+ * @param paramNames - Array of parameter names to validate as UUIDs (defaults to ['id'])
+ */
+export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const requestId = (req.headers['x-request-id'] as string) ?? 'unknown';
+    const errors: ValidationError[] = [];
+
+    for (const paramName of paramNames) {
+      const value = req.params[paramName];
+      if (value && !isValidUUID(value)) {
+        errors.push({
+          field: paramName,
+          message: `${paramName} must be a valid UUID`,
+          value,
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid UUID format',
+          details: errors,
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    next();
+  };
+}
 

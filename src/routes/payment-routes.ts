@@ -12,6 +12,7 @@ import {
   getContractPaymentStatus,
 } from '../services/payment-service.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 
 const router = Router();
 
@@ -109,13 +110,15 @@ const router = Router();
  *         required: true
  *         schema:
  *           type: string
- *         description: The milestone ID
+ *           format: uuid
+ *         description: The milestone ID (UUID)
  *       - in: query
  *         name: contractId
  *         required: true
  *         schema:
  *           type: string
- *         description: The contract ID
+ *           format: uuid
+ *         description: The contract ID (UUID)
  *     responses:
  *       200:
  *         description: Milestone marked as complete
@@ -124,7 +127,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/MilestoneCompletionResult'
  *       400:
- *         description: Invalid request
+ *         description: Invalid request or UUID format
  *       401:
  *         description: Unauthorized
  *       404:
@@ -133,6 +136,7 @@ const router = Router();
 router.post(
   '/milestones/:milestoneId/complete',
   authMiddleware,
+  validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -189,13 +193,15 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *         description: The milestone ID
+ *           format: uuid
+ *         description: The milestone ID (UUID)
  *       - in: query
  *         name: contractId
  *         required: true
  *         schema:
  *           type: string
- *         description: The contract ID
+ *           format: uuid
+ *         description: The contract ID (UUID)
  *     responses:
  *       200:
  *         description: Milestone approved and payment released
@@ -204,7 +210,7 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/MilestoneApprovalResult'
  *       400:
- *         description: Invalid request
+ *         description: Invalid request or UUID format
  *       401:
  *         description: Unauthorized
  *       404:
@@ -213,6 +219,7 @@ router.post(
 router.post(
   '/milestones/:milestoneId/approve',
   authMiddleware,
+  validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -269,13 +276,15 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *         description: The milestone ID
+ *           format: uuid
+ *         description: The milestone ID (UUID)
  *       - in: query
  *         name: contractId
  *         required: true
  *         schema:
  *           type: string
- *         description: The contract ID
+ *           format: uuid
+ *         description: The contract ID (UUID)
  *     requestBody:
  *       required: true
  *       content:
@@ -290,7 +299,7 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/MilestoneDisputeResult'
  *       400:
- *         description: Invalid request
+ *         description: Invalid request or UUID format
  *       401:
  *         description: Unauthorized
  *       404:
@@ -299,6 +308,7 @@ router.post(
 router.post(
   '/milestones/:milestoneId/dispute',
   authMiddleware,
+  validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -364,7 +374,8 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *         description: The contract ID
+ *           format: uuid
+ *         description: The contract ID (UUID)
  *     responses:
  *       200:
  *         description: Contract payment status
@@ -372,6 +383,8 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/ContractPaymentStatus'
+ *       400:
+ *         description: Invalid UUID format
  *       401:
  *         description: Unauthorized
  *       404:
@@ -380,6 +393,7 @@ router.post(
 router.get(
   '/contracts/:contractId/status',
   authMiddleware,
+  validateUUID(['contractId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;

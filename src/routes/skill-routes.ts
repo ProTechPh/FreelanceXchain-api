@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { 
   createCategory, 
   createSkill, 
@@ -274,6 +275,8 @@ router.post('/', async (req: Request, res: Response) => {
 
   if (!categoryId || typeof categoryId !== 'string') {
     errors.push({ field: 'categoryId', message: 'Category ID is required' });
+  } else if (!isValidUUID(categoryId)) {
+    errors.push({ field: 'categoryId', message: 'Category ID must be a valid UUID' });
   }
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
     errors.push({ field: 'name', message: 'Name is required' });
@@ -336,7 +339,7 @@ router.post('/', async (req: Request, res: Response) => {
  *         schema:
  *           type: string
  *           format: uuid
- *         description: ID of the skill to deprecate
+ *         description: ID of the skill to deprecate (UUID)
  *     responses:
  *       200:
  *         description: Skill deprecated successfully
@@ -344,6 +347,8 @@ router.post('/', async (req: Request, res: Response) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Skill'
+ *       400:
+ *         description: Invalid UUID format
  *       404:
  *         description: Skill not found
  *         content:
@@ -351,7 +356,7 @@ router.post('/', async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.patch('/:id/deprecate', async (req: Request, res: Response) => {
+router.patch('/:id/deprecate', validateUUID(), async (req: Request, res: Response) => {
   const { id } = req.params;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

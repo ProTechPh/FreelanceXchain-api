@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 import {
   getContractById,
   getUserContracts,
@@ -131,7 +132,8 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: Contract ID
+ *           format: uuid
+ *         description: Contract ID (UUID)
  *     responses:
  *       200:
  *         description: Contract retrieved successfully
@@ -139,12 +141,14 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Contract'
+ *       400:
+ *         description: Invalid UUID format
  *       401:
  *         description: Unauthorized
  *       404:
  *         description: Contract not found
  */
-router.get('/:id', authMiddleware, async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

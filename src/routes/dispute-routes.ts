@@ -13,6 +13,7 @@ import {
   getDisputesByContract,
 } from '../services/dispute-service.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 
 const router = Router();
 
@@ -171,9 +172,23 @@ router.post(
         return;
       }
 
+      if (!isValidUUID(contractId)) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'contractId must be a valid UUID' },
+        });
+        return;
+      }
+
       if (!milestoneId || typeof milestoneId !== 'string') {
         res.status(400).json({
           error: { code: 'VALIDATION_ERROR', message: 'milestoneId is required' },
+        });
+        return;
+      }
+
+      if (!isValidUUID(milestoneId)) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'milestoneId must be a valid UUID' },
         });
         return;
       }
@@ -224,7 +239,8 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *         description: The dispute ID
+ *           format: uuid
+ *         description: The dispute ID (UUID)
  *     responses:
  *       200:
  *         description: Dispute details
@@ -232,6 +248,8 @@ router.post(
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Dispute'
+ *       400:
+ *         description: Invalid UUID format
  *       401:
  *         description: Unauthorized
  *       404:
@@ -240,6 +258,7 @@ router.post(
 router.get(
   '/:disputeId',
   authMiddleware,
+  validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -282,7 +301,8 @@ router.get(
  *         required: true
  *         schema:
  *           type: string
- *         description: The dispute ID
+ *           format: uuid
+ *         description: The dispute ID (UUID)
  *     requestBody:
  *       required: true
  *       content:
@@ -297,7 +317,7 @@ router.get(
  *             schema:
  *               $ref: '#/components/schemas/Dispute'
  *       400:
- *         description: Invalid request or dispute already resolved
+ *         description: Invalid request, invalid UUID format, or dispute already resolved
  *       401:
  *         description: Unauthorized
  *       403:
@@ -308,6 +328,7 @@ router.get(
 router.post(
   '/:disputeId/evidence',
   authMiddleware,
+  validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -376,7 +397,8 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *         description: The dispute ID
+ *           format: uuid
+ *         description: The dispute ID (UUID)
  *     requestBody:
  *       required: true
  *       content:
@@ -391,7 +413,7 @@ router.post(
  *             schema:
  *               $ref: '#/components/schemas/Dispute'
  *       400:
- *         description: Invalid request or dispute already resolved
+ *         description: Invalid request, invalid UUID format, or dispute already resolved
  *       401:
  *         description: Unauthorized
  *       403:
@@ -402,6 +424,7 @@ router.post(
 router.post(
   '/:disputeId/resolve',
   authMiddleware,
+  validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -479,7 +502,8 @@ router.post(
  *         required: true
  *         schema:
  *           type: string
- *         description: The contract ID
+ *           format: uuid
+ *         description: The contract ID (UUID)
  *     responses:
  *       200:
  *         description: List of disputes
@@ -489,6 +513,8 @@ router.post(
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/Dispute'
+ *       400:
+ *         description: Invalid UUID format
  *       401:
  *         description: Unauthorized
  *       403:
@@ -499,6 +525,7 @@ router.post(
 router.get(
   '/contracts/:contractId/disputes',
   authMiddleware,
+  validateUUID(['contractId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;

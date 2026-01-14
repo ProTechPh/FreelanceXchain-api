@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { validateUUID } from '../middleware/validation-middleware.js';
 import { TokenPayload } from '../services/auth-types.js';
 import {
   getProjectRecommendations,
@@ -196,7 +197,8 @@ router.get('/projects', authMiddleware, async (req: Request, res: Response) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: ID of the project to find freelancers for
+ *           format: uuid
+ *         description: ID of the project to find freelancers for (UUID)
  *       - in: query
  *         name: limit
  *         schema:
@@ -214,12 +216,14 @@ router.get('/projects', authMiddleware, async (req: Request, res: Response) => {
  *               type: array
  *               items:
  *                 $ref: '#/components/schemas/FreelancerRecommendation'
+ *       400:
+ *         description: Invalid UUID format
  *       401:
  *         description: Unauthorized - Invalid or missing token
  *       404:
  *         description: Project not found
  */
-router.get('/freelancers/:projectId', authMiddleware, async (req: Request, res: Response) => {
+router.get('/freelancers/:projectId', authMiddleware, validateUUID(['projectId']), async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const projectId = req.params['projectId'];
 

@@ -6,7 +6,7 @@ export type FreelancerProfileEntity = {
   user_id: string;
   bio: string;
   hourly_rate: number;
-  skills: { skill_id: string; skill_name: string; category_id: string; years_of_experience: number }[];
+  skills: { name: string; years_of_experience: number }[];
   experience: { id: string; title: string; company: string; description: string; start_date: string; end_date: string | null }[];
   availability: 'available' | 'busy' | 'unavailable';
   created_at: string;
@@ -65,7 +65,7 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     return (data ?? []) as FreelancerProfileEntity[];
   }
 
-  async searchBySkills(skillIds: string[], options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
+  async searchBySkills(skillNames: string[], options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
     const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
@@ -79,9 +79,10 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     
     if (error) throw new Error(`Failed to search by skills: ${error.message}`);
     
-    // Filter in memory for complex array matching (Supabase limitation)
+    // Filter in memory for complex array matching (case-insensitive skill name search)
+    const lowerSkillNames = skillNames.map(s => s.toLowerCase());
     const filtered = (data ?? []).filter((profile: FreelancerProfileEntity) =>
-      profile.skills.some(skill => skillIds.includes(skill.skill_id))
+      profile.skills.some(skill => lowerSkillNames.includes(skill.name.toLowerCase()))
     );
 
     return {

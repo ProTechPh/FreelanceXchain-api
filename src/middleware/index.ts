@@ -7,6 +7,8 @@ export { authMiddleware, requireRole } from './auth-middleware.js';
 export {
   validate,
   validateRequest,
+  validateUUID,
+  isValidUUID,
   // Auth schemas
   registerSchema,
   loginSchema,
@@ -46,5 +48,6 @@ export {
   disputeMilestoneSchema,
   // Common schemas
   idParamSchema,
+  uuidParamSchema,
 } from './validation-middleware.js';
 export type { RequestSchema } from './validation-middleware.js';
