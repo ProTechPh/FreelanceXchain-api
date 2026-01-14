@@ -62,9 +62,10 @@ jest.unstable_mockModule('../../repositories/freelancer-profile-repository.js', 
       return { items: pagedItems, hasMore: items.length > pageSize };
     }),
     searchBySkills: jest.fn(async (skillIds: string[], options?: QueryOptions) => {
-      const skillIdSet = new Set(skillIds);
+      // For freelancers, skills are matched by name (format: 'Skill skill-X')
+      const skillNames = new Set(skillIds.map(id => `Skill ${id}`));
       const items = Array.from(freelancerStore.values()).filter(
-        p => p.skills.some(s => skillIdSet.has(s.skill_id))
+        p => p.skills.some(s => skillNames.has(s.name))
       );
       const pageSize = options?.limit ?? 100;
       const pagedItems = items.slice(0, pageSize);
@@ -87,8 +88,11 @@ jest.unstable_mockModule('../../repositories/freelancer-profile-repository.js', 
 // Import after mocking
 const { searchProjects, searchFreelancers } = await import('../search-service.js');
 
-// Skill reference type for entity
-type SkillRefEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
+// Skill reference type for freelancer entity (matches what entity-mapper expects for FreelancerProfile)
+type FreelancerSkillRefEntity = { name: string; years_of_experience: number };
+
+// Skill reference type for project entity (matches what entity-mapper expects for Project)
+type ProjectSkillRefEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
 
 // Helper to create test project entities
 function createTestProject(overrides: Partial<ProjectEntity> = {}): ProjectEntity {
@@ -128,8 +132,16 @@ function createTestFreelancer(overrides: Partial<FreelancerProfileEntity> = {}):
   };
 }
 
-// Helper to create skill references (entity format)
-function createSkillRef(skillId: string, skillName: string): SkillRefEntity {
+// Helper to create skill references for freelancers (entity format)
+function createFreelancerSkillRef(skillName: string): FreelancerSkillRefEntity {
+  return {
+    name: skillName,
+    years_of_experience: 2,
+  };
+}
+
+// Helper to create skill references for projects (entity format)
+function createProjectSkillRef(skillId: string, skillName: string): ProjectSkillRefEntity {
   return {
     skill_id: skillId,
     skill_name: skillName,
@@ -230,7 +242,7 @@ describe('Search Service - Property Tests', () => {
             )[0] ?? ['skill-1'];
 
             const project = createTestProject({
-              required_skills: projectSkillIds.map(id => createSkillRef(id, `Skill ${id}`)),
+              required_skills: projectSkillIds.map(id => createProjectSkillRef(id, `Skill ${id}`)),
             });
             projectStore.set(project.id, project);
           }
@@ -245,7 +257,7 @@ describe('Search Service - Property Tests', () => {
           const filterSkillIdSet = new Set(filterSkillIds);
           for (const project of result.data.items) {
             const hasMatchingSkill = project.requiredSkills.some(
-              skill => filterSkillIdSet.has(skill.skillId)
+              skill => skill.skillId && filterSkillIdSet.has(skill.skillId)
             );
             expect(hasMatchingSkill).toBe(true);
           }
@@ -283,7 +295,7 @@ describe('Search Service - Property Tests', () => {
             )[0] ?? ['skill-1'];
 
             const freelancer = createTestFreelancer({
-              skills: freelancerSkillIds.map(id => createSkillRef(id, `Skill ${id}`)),
+              skills: freelancerSkillIds.map(id => createFreelancerSkillRef(`Skill ${id}`)),
             });
             freelancerStore.set(freelancer.id, freelancer);
           }
@@ -295,10 +307,11 @@ describe('Search Service - Property Tests', () => {
           if (!result.success) return;
 
           // Verify all returned freelancers have at least one of the filter skills
-          const filterSkillIdSet = new Set(filterSkillIds);
+          // Note: SkillReference only has 'name', not 'skillId', so we match by name
+          const filterSkillNames = new Set(filterSkillIds.map(id => `Skill ${id}`));
           for (const freelancer of result.data.items) {
             const hasMatchingSkill = freelancer.skills.some(
-              skill => filterSkillIdSet.has(skill.skillId)
+              skill => filterSkillNames.has(skill.name)
             );
             expect(hasMatchingSkill).toBe(true);
           }

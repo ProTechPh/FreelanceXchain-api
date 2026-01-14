@@ -730,6 +730,58 @@ jest.unstable_mockModule('../services/blockchain-client.js', () => ({
   deserializeTransaction: jest.fn(tx => tx),
 }));
 
+// Mock Supabase client to prevent real network calls
+jest.unstable_mockModule('../config/supabase.js', () => ({
+  getSupabaseClient: jest.fn(() => ({
+    auth: {
+      signUp: jest.fn(async ({ email, options }: { email: string; password: string; options?: { data?: Record<string, unknown> } }) => {
+        const userId = generateId();
+        const mockUser = {
+          id: userId,
+          email: email.toLowerCase(),
+          user_metadata: options?.data ?? {},
+        };
+        // Store user in memory for the test
+        const now = new Date().toISOString();
+        userStore.set(userId, {
+          id: userId,
+          email: email.toLowerCase(),
+          passwordHash: '',
+          role: (options?.data?.role as 'freelancer' | 'employer') ?? 'freelancer',
+          walletAddress: (options?.data?.wallet_address as string) ?? '',
+          createdAt: now,
+          updatedAt: now,
+        });
+        const mockSession = {
+          access_token: 'mock-access-token-' + userId,
+          refresh_token: 'mock-refresh-token-' + userId,
+        };
+        return { data: { user: mockUser, session: mockSession }, error: null };
+      }),
+      signInWithPassword: jest.fn(async () => ({
+        data: { user: null, session: null },
+        error: { message: 'Not implemented in test' },
+      })),
+    },
+  })),
+  TABLES: {
+    USERS: 'users',
+    FREELANCER_PROFILES: 'freelancer_profiles',
+    EMPLOYER_PROFILES: 'employer_profiles',
+    PROJECTS: 'projects',
+    PROPOSALS: 'proposals',
+    CONTRACTS: 'contracts',
+    DISPUTES: 'disputes',
+    SKILLS: 'skills',
+    SKILL_CATEGORIES: 'skill_categories',
+    NOTIFICATIONS: 'notifications',
+    KYC_VERIFICATIONS: 'kyc_verifications',
+    REVIEWS: 'reviews',
+    MESSAGES: 'messages',
+    PAYMENTS: 'payments',
+  },
+}));
+
 // Import services after mocking
 const { register } = await import('../services/auth-service.js');
 const { createProfile: createFreelancerProfile, addSkillsToProfile } = await import('../services/freelancer-profile-service.js');
@@ -838,7 +890,7 @@ describe('Integration Tests - Critical Flows', () => {
 
       // Add skills to profile
       const addSkillsResult = await addSkillsToProfile(freelancerId, [
-        { skillId: skill.id, yearsOfExperience: 5 },
+        { name: skill.name, yearsOfExperience: 5 },
       ]);
       expect(addSkillsResult.success).toBe(true);
 

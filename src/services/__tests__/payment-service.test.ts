@@ -15,6 +15,7 @@ import { ProjectEntity, MilestoneEntity } from '../../repositories/project-repos
 import { contractRepository } from '../../repositories/contract-repository.js';
 import { projectRepository } from '../../repositories/project-repository.js';
 import { notificationRepository } from '../../repositories/notification-repository.js';
+import { userRepository, UserEntity } from '../../repositories/user-repository.js';
 import { generateId } from '../../utils/id.js';
 
 // Test data generators
@@ -63,11 +64,13 @@ const createTestContract = (
 // Mock repositories for testing
 let mockContracts: Map<string, ContractEntity>;
 let mockProjects: Map<string, ProjectEntity>;
+let mockUsers: Map<string, UserEntity>;
 
 // Setup mock implementations
 beforeEach(() => {
   mockContracts = new Map();
   mockProjects = new Map();
+  mockUsers = new Map();
   clearTransactions();
   clearEscrows();
   clearDisputes();
@@ -102,6 +105,27 @@ beforeEach(() => {
   jest.spyOn(notificationRepository, 'createNotification').mockImplementation(async (notification) => {
     const now = new Date().toISOString();
     return { ...notification, created_at: now, updated_at: now };
+  });
+
+  // Mock user repository to avoid database/Supabase calls
+  jest.spyOn(userRepository, 'getUserById').mockImplementation(async (id: string) => {
+    // Return a mock user if found, otherwise return null
+    const existingUser = mockUsers.get(id);
+    if (existingUser) return existingUser;
+    
+    // Create a default mock user with wallet address for blockchain operations
+    const now = new Date().toISOString();
+    const mockUser: UserEntity = {
+      id,
+      email: `user-${id.slice(0, 8)}@test.com`,
+      password_hash: '',
+      role: 'freelancer',
+      wallet_address: '0x' + 'a'.repeat(40),
+      name: `Test User ${id.slice(0, 8)}`,
+      created_at: now,
+      updated_at: now,
+    };
+    return mockUser;
   });
 });
 
