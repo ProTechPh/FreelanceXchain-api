@@ -1,268 +1,299 @@
 /**
  * Blockchain Services Integration Tests
- * Tests for Agreement, Milestone, and Dispute blockchain services
+ * Tests for blockchain service layer functionality
  */
 
-import { describe, it, expect, beforeEach } from '@jest/globals';
-import {
-  createAgreementOnBlockchain,
-  signAgreement,
-  completeAgreement,
-  verifyAgreementTerms,
-  clearBlockchainAgreements,
-} from '../agreement-contract.js';
-import {
-  submitMilestoneToRegistry,
-  approveMilestoneOnRegistry,
-  getFreelancerStatsFromRegistry,
-  getFreelancerPortfolio,
-  clearMilestoneRegistry,
-} from '../milestone-registry.js';
-import {
-  createDisputeOnBlockchain,
-  resolveDisputeOnBlockchain,
-  getUserDisputeStats,
-  clearDisputeRegistry,
-} from '../dispute-registry.js';
-import { clearTransactions } from '../blockchain-client.js';
+import { describe, it, expect } from '@jest/globals';
 
-describe('Agreement Contract', () => {
-  const employerWallet = '0x' + 'a'.repeat(40);
-  const freelancerWallet = '0x' + 'b'.repeat(40);
-  const contractId = 'contract-123';
-  const terms = {
-    projectTitle: 'Build Website',
-    description: 'Create a responsive website',
-    milestones: [{ title: 'Design', amount: 1000 }, { title: 'Development', amount: 2000 }],
-    deadline: '2025-03-01',
-  };
+describe('Blockchain Services', () => {
+  describe('Reputation Blockchain Service', () => {
+    it('should have submitRatingToBlockchain function', async () => {
+      const { submitRatingToBlockchain } = await import('../reputation-blockchain.js');
+      expect(typeof submitRatingToBlockchain).toBe('function');
+    });
 
-  beforeEach(() => {
-    clearBlockchainAgreements();
-    clearTransactions();
+    it('should have getRatingsFromBlockchain function', async () => {
+      const { getRatingsFromBlockchain } = await import('../reputation-blockchain.js');
+      expect(typeof getRatingsFromBlockchain).toBe('function');
+    });
+
+    it('should have getAverageRating function', async () => {
+      const { getAverageRating } = await import('../reputation-blockchain.js');
+      expect(typeof getAverageRating).toBe('function');
+    });
+
+    it('should have getRatingCount function', async () => {
+      const { getRatingCount } = await import('../reputation-blockchain.js');
+      expect(typeof getRatingCount).toBe('function');
+    });
+
+    it('should have getTotalRatings function', async () => {
+      const { getTotalRatings } = await import('../reputation-blockchain.js');
+      expect(typeof getTotalRatings).toBe('function');
+    });
+
+    it('should have getReputationContractAddress function', async () => {
+      const { getReputationContractAddress } = await import('../reputation-blockchain.js');
+      expect(typeof getReputationContractAddress).toBe('function');
+    });
   });
 
-  it('should create agreement on blockchain', async () => {
-    const result = await createAgreementOnBlockchain({
-      contractId,
-      employerWallet,
-      freelancerWallet,
-      totalAmount: 3000,
-      milestoneCount: 2,
-      terms,
+  describe('Escrow Blockchain Service', () => {
+    it('should have deployEscrowContract function', async () => {
+      const { deployEscrowContract } = await import('../escrow-blockchain.js');
+      expect(typeof deployEscrowContract).toBe('function');
     });
 
-    expect(result.agreement.status).toBe('pending');
-    expect(result.agreement.employerWallet).toBe(employerWallet);
-    expect(result.agreement.freelancerWallet).toBe(freelancerWallet);
-    expect(result.agreement.employerSignedAt).toBeDefined();
-    expect(result.agreement.freelancerSignedAt).toBeNull();
-    expect(result.receipt.status).toBe('success');
+    it('should have submitMilestone function', async () => {
+      const { submitMilestone } = await import('../escrow-blockchain.js');
+      expect(typeof submitMilestone).toBe('function');
+    });
+
+    it('should have approveMilestone function', async () => {
+      const { approveMilestone } = await import('../escrow-blockchain.js');
+      expect(typeof approveMilestone).toBe('function');
+    });
+
+    it('should have getMilestone function', async () => {
+      const { getMilestone } = await import('../escrow-blockchain.js');
+      expect(typeof getMilestone).toBe('function');
+    });
+
+    it('should have disputeMilestone function', async () => {
+      const { disputeMilestone } = await import('../escrow-blockchain.js');
+      expect(typeof disputeMilestone).toBe('function');
+    });
+
+    it('should have resolveDispute function', async () => {
+      const { resolveDispute } = await import('../escrow-blockchain.js');
+      expect(typeof resolveDispute).toBe('function');
+    });
+
+    it('should have getEscrowInfo function', async () => {
+      const { getEscrowInfo } = await import('../escrow-blockchain.js');
+      expect(typeof getEscrowInfo).toBe('function');
+    });
+
+    it('should have getAllMilestones function', async () => {
+      const { getAllMilestones } = await import('../escrow-blockchain.js');
+      expect(typeof getAllMilestones).toBe('function');
+    });
   });
 
-  it('should sign agreement by freelancer', async () => {
-    await createAgreementOnBlockchain({
-      contractId,
-      employerWallet,
-      freelancerWallet,
-      totalAmount: 3000,
-      milestoneCount: 2,
-      terms,
+  describe('Agreement Blockchain Service', () => {
+    it('should have createAgreementOnBlockchain function', async () => {
+      const { createAgreementOnBlockchain } = await import('../agreement-blockchain.js');
+      expect(typeof createAgreementOnBlockchain).toBe('function');
     });
 
-    const result = await signAgreement(contractId, freelancerWallet);
+    it('should have signAgreement function', async () => {
+      const { signAgreement } = await import('../agreement-blockchain.js');
+      expect(typeof signAgreement).toBe('function');
+    });
 
-    expect(result.agreement.status).toBe('signed');
-    expect(result.agreement.freelancerSignedAt).toBeDefined();
+    it('should have getAgreementFromBlockchain function', async () => {
+      const { getAgreementFromBlockchain } = await import('../agreement-blockchain.js');
+      expect(typeof getAgreementFromBlockchain).toBe('function');
+    });
+
+    it('should have completeAgreement function', async () => {
+      const { completeAgreement } = await import('../agreement-blockchain.js');
+      expect(typeof completeAgreement).toBe('function');
+    });
+
+    it('should have cancelAgreement function', async () => {
+      const { cancelAgreement } = await import('../agreement-blockchain.js');
+      expect(typeof cancelAgreement).toBe('function');
+    });
+
+    it('should have disputeAgreement function', async () => {
+      const { disputeAgreement } = await import('../agreement-blockchain.js');
+      expect(typeof disputeAgreement).toBe('function');
+    });
+
+    it('should generate consistent contract ID hash', async () => {
+      const { generateContractIdHash } = await import('../agreement-blockchain.js');
+      
+      const contractId = 'test-contract-123';
+
+      const hash1 = generateContractIdHash(contractId);
+      const hash2 = generateContractIdHash(contractId);
+
+      expect(hash1).toBe(hash2);
+      expect(hash1).toMatch(/^0x[a-fA-F0-9]{64}$/);
+    });
+
+    it('should generate different hashes for different contract IDs', async () => {
+      const { generateContractIdHash } = await import('../agreement-blockchain.js');
+      
+      const hash1 = generateContractIdHash('contract-123');
+      const hash2 = generateContractIdHash('contract-456');
+
+      expect(hash1).not.toBe(hash2);
+    });
+
+    it('should generate terms hash', async () => {
+      const { generateTermsHash } = await import('../agreement-blockchain.js');
+      
+      const terms = {
+        projectTitle: 'Test Project',
+        description: 'Test project description',
+        milestones: [
+          { title: 'Milestone 1', amount: 1000 },
+          { title: 'Milestone 2', amount: 2000 }
+        ],
+        deadline: '2024-12-31',
+      };
+
+      const hash = generateTermsHash(terms);
+      expect(hash).toMatch(/^0x[a-fA-F0-9]{64}$/);
+    });
+
+    it('should have getAgreementStatusString function', async () => {
+      const { getAgreementStatusString } = await import('../agreement-blockchain.js');
+      
+      expect(getAgreementStatusString(0)).toBe('pending');
+      expect(getAgreementStatusString(1)).toBe('signed');
+      expect(getAgreementStatusString(2)).toBe('completed');
+      expect(getAgreementStatusString(3)).toBe('disputed');
+      expect(getAgreementStatusString(4)).toBe('cancelled');
+    });
   });
 
-  it('should verify terms hash', async () => {
-    await createAgreementOnBlockchain({
-      contractId,
-      employerWallet,
-      freelancerWallet,
-      totalAmount: 3000,
-      milestoneCount: 2,
-      terms,
+  describe('Web3 Client Utilities', () => {
+    it('should have isWeb3Available function', async () => {
+      const { isWeb3Available } = await import('../web3-client.js');
+      expect(typeof isWeb3Available).toBe('function');
     });
 
-    const isValid = await verifyAgreementTerms(contractId, terms);
-    expect(isValid).toBe(true);
+    it('should validate Ethereum addresses correctly', async () => {
+      const { isValidAddress } = await import('../web3-client.js');
+      
+      // Valid addresses
+      expect(isValidAddress('0x1234567890123456789012345678901234567890')).toBe(true);
+      expect(isValidAddress('0xABCDEF1234567890123456789012345678901234')).toBe(true);
+      
+      // Invalid addresses
+      expect(isValidAddress('invalid')).toBe(false);
+      expect(isValidAddress('0x123')).toBe(false);
+      expect(isValidAddress('')).toBe(false);
+    });
 
-    const isInvalid = await verifyAgreementTerms(contractId, { ...terms, projectTitle: 'Different' });
-    expect(isInvalid).toBe(false);
+    it('should format and parse ether correctly', async () => {
+      const { formatEther, parseEther } = await import('../web3-client.js');
+      
+      const wei = parseEther('1');
+      expect(wei).toBe(BigInt('1000000000000000000'));
+      
+      const eth = formatEther(BigInt('1000000000000000000'));
+      expect(eth).toBe('1.0');
+      
+      const wei2 = parseEther('0.5');
+      expect(wei2).toBe(BigInt('500000000000000000'));
+    });
+
+    it('should have getProvider function', async () => {
+      const { getProvider } = await import('../web3-client.js');
+      expect(typeof getProvider).toBe('function');
+    });
+
+    it('should have getWallet function', async () => {
+      const { getWallet } = await import('../web3-client.js');
+      expect(typeof getWallet).toBe('function');
+    });
+
+    it('should have getContract function', async () => {
+      const { getContract } = await import('../web3-client.js');
+      expect(typeof getContract).toBe('function');
+    });
+
+    it('should have getContractWithSigner function', async () => {
+      const { getContractWithSigner } = await import('../web3-client.js');
+      expect(typeof getContractWithSigner).toBe('function');
+    });
   });
 
-  it('should complete agreement', async () => {
-    await createAgreementOnBlockchain({
-      contractId,
-      employerWallet,
-      freelancerWallet,
-      totalAmount: 3000,
-      milestoneCount: 2,
-      terms,
-    });
-    await signAgreement(contractId, freelancerWallet);
-
-    const result = await completeAgreement(contractId, employerWallet);
-    expect(result.agreement.status).toBe('completed');
-  });
-});
-
-describe('Milestone Registry', () => {
-  const freelancerWallet = '0x' + 'c'.repeat(40);
-  const employerWallet = '0x' + 'd'.repeat(40);
-
-  beforeEach(() => {
-    clearMilestoneRegistry();
-    clearTransactions();
-  });
-
-  it('should submit milestone to registry', async () => {
-    const result = await submitMilestoneToRegistry({
-      milestoneId: 'milestone-1',
-      contractId: 'contract-1',
-      freelancerWallet,
-      employerWallet,
-      amount: 1000,
-      title: 'Design Phase',
-      deliverables: 'Figma designs completed',
+  describe('Contract ABIs', () => {
+    it('should export FreelanceEscrowABI', async () => {
+      const { FreelanceEscrowABI } = await import('../contract-abis.js');
+      expect(Array.isArray(FreelanceEscrowABI)).toBe(true);
+      expect(FreelanceEscrowABI.length).toBeGreaterThan(0);
     });
 
-    expect(result.record.status).toBe('submitted');
-    expect(result.record.title).toBe('Design Phase');
-    expect(result.receipt.status).toBe('success');
-  });
-
-  it('should approve milestone and update stats', async () => {
-    await submitMilestoneToRegistry({
-      milestoneId: 'milestone-1',
-      contractId: 'contract-1',
-      freelancerWallet,
-      employerWallet,
-      amount: 1000,
-      title: 'Design Phase',
-      deliverables: 'Figma designs completed',
+    it('should export FreelanceReputationABI', async () => {
+      const { FreelanceReputationABI } = await import('../contract-abis.js');
+      expect(Array.isArray(FreelanceReputationABI)).toBe(true);
+      expect(FreelanceReputationABI.length).toBeGreaterThan(0);
     });
 
-    const result = await approveMilestoneOnRegistry('milestone-1', employerWallet);
-    expect(result.record.status).toBe('approved');
-    expect(result.record.completedAt).toBeDefined();
-
-    const stats = await getFreelancerStatsFromRegistry(freelancerWallet);
-    expect(stats.completedCount).toBe(1);
-    expect(stats.totalEarned).toBe(1000);
-  });
-
-  it('should build freelancer portfolio', async () => {
-    // Submit and approve multiple milestones
-    await submitMilestoneToRegistry({
-      milestoneId: 'milestone-1',
-      contractId: 'contract-1',
-      freelancerWallet,
-      employerWallet,
-      amount: 1000,
-      title: 'Design',
-      deliverables: 'Design done',
+    it('should export ContractAgreementABI', async () => {
+      const { ContractAgreementABI } = await import('../contract-abis.js');
+      expect(Array.isArray(ContractAgreementABI)).toBe(true);
+      expect(ContractAgreementABI.length).toBeGreaterThan(0);
     });
-    await approveMilestoneOnRegistry('milestone-1', employerWallet);
 
-    await submitMilestoneToRegistry({
-      milestoneId: 'milestone-2',
-      contractId: 'contract-1',
-      freelancerWallet,
-      employerWallet,
-      amount: 2000,
-      title: 'Development',
-      deliverables: 'Code done',
+    it('should have correct function signatures in Escrow ABI', async () => {
+      const { FreelanceEscrowABI } = await import('../contract-abis.js');
+      
+      const functionNames = FreelanceEscrowABI
+        .filter((item: any) => item.type === 'function')
+        .map((item: any) => item.name);
+
+      expect(functionNames).toContain('submitMilestone');
+      expect(functionNames).toContain('approveMilestone');
+      expect(functionNames).toContain('getMilestone');
     });
-    await approveMilestoneOnRegistry('milestone-2', employerWallet);
 
-    const portfolio = await getFreelancerPortfolio(freelancerWallet);
-    expect(portfolio.length).toBe(2);
-    expect(portfolio.every(m => m.status === 'approved')).toBe(true);
-  });
-});
+    it('should have correct function signatures in Reputation ABI', async () => {
+      const { FreelanceReputationABI } = await import('../contract-abis.js');
+      
+      const functionNames = FreelanceReputationABI
+        .filter((item: any) => item.type === 'function')
+        .map((item: any) => item.name);
 
-describe('Dispute Registry', () => {
-  const freelancerWallet = '0x' + 'e'.repeat(40);
-  const employerWallet = '0x' + 'f'.repeat(40);
-  const arbiterWallet = '0x' + '1'.repeat(40);
+      expect(functionNames).toContain('submitRating');
+      expect(functionNames).toContain('getAverageRating');
+      expect(functionNames).toContain('getRatingCount');
+    });
 
-  beforeEach(() => {
-    clearDisputeRegistry();
-    clearTransactions();
+    it('should have correct function signatures in Agreement ABI', async () => {
+      const { ContractAgreementABI } = await import('../contract-abis.js');
+      
+      const functionNames = ContractAgreementABI
+        .filter((item: any) => item.type === 'function')
+        .map((item: any) => item.name);
+
+      expect(functionNames).toContain('createAgreement');
+      expect(functionNames).toContain('signAgreement');
+      expect(functionNames).toContain('getAgreement');
+      expect(functionNames).toContain('completeAgreement');
+    });
+
+    it('should export bytecode for contracts', async () => {
+      const { 
+        FreelanceEscrowBytecode,
+        FreelanceReputationBytecode,
+        ContractAgreementBytecode 
+      } = await import('../contract-abis.js');
+      
+      expect(typeof FreelanceEscrowBytecode).toBe('string');
+      expect(typeof FreelanceReputationBytecode).toBe('string');
+      expect(typeof ContractAgreementBytecode).toBe('string');
+      
+      expect(FreelanceEscrowBytecode.startsWith('0x')).toBe(true);
+      expect(FreelanceReputationBytecode.startsWith('0x')).toBe(true);
+      expect(ContractAgreementBytecode.startsWith('0x')).toBe(true);
+    });
   });
 
-  it('should create dispute on blockchain', async () => {
-    const result = await createDisputeOnBlockchain({
-      disputeId: 'dispute-1',
-      contractId: 'contract-1',
-      milestoneId: 'milestone-1',
-      initiatorWallet: employerWallet,
-      freelancerWallet,
-      employerWallet,
-      amount: 1000,
+  describe('Blockchain Integration', () => {
+    it('should export blockchain service functions', async () => {
+      const blockchainIntegration = await import('../blockchain-integration.js');
+      
+      expect(typeof blockchainIntegration.submitRatingToBlockchain).toBe('function');
+      expect(typeof blockchainIntegration.getAverageRating).toBe('function');
+      expect(typeof blockchainIntegration.deployEscrowContract).toBe('function');
+      expect(typeof blockchainIntegration.createAgreementOnBlockchain).toBe('function');
     });
-
-    expect(result.record.outcome).toBe('pending');
-    expect(result.record.initiatorWallet).toBe(employerWallet);
-    expect(result.receipt.status).toBe('success');
-  });
-
-  it('should resolve dispute in freelancer favor', async () => {
-    await createDisputeOnBlockchain({
-      disputeId: 'dispute-1',
-      contractId: 'contract-1',
-      milestoneId: 'milestone-1',
-      initiatorWallet: employerWallet,
-      freelancerWallet,
-      employerWallet,
-      amount: 1000,
-    });
-
-    const result = await resolveDisputeOnBlockchain({
-      disputeId: 'dispute-1',
-      outcome: 'freelancer_favor',
-      reasoning: 'Work was completed as specified',
-      arbiterWallet,
-    });
-
-    expect(result.record.outcome).toBe('freelancer_favor');
-    expect(result.record.reasoning).toBe('Work was completed as specified');
-    expect(result.record.arbiterWallet).toBe(arbiterWallet);
-    expect(result.record.resolvedAt).toBeDefined();
-
-    const freelancerStats = await getUserDisputeStats(freelancerWallet);
-    expect(freelancerStats.won).toBe(1);
-    expect(freelancerStats.lost).toBe(0);
-
-    const employerStats = await getUserDisputeStats(employerWallet);
-    expect(employerStats.won).toBe(0);
-    expect(employerStats.lost).toBe(1);
-  });
-
-  it('should resolve dispute in employer favor', async () => {
-    await createDisputeOnBlockchain({
-      disputeId: 'dispute-2',
-      contractId: 'contract-2',
-      milestoneId: 'milestone-2',
-      initiatorWallet: freelancerWallet,
-      freelancerWallet,
-      employerWallet,
-      amount: 2000,
-    });
-
-    const result = await resolveDisputeOnBlockchain({
-      disputeId: 'dispute-2',
-      outcome: 'employer_favor',
-      reasoning: 'Work did not meet requirements',
-      arbiterWallet,
-    });
-
-    expect(result.record.outcome).toBe('employer_favor');
-
-    const employerStats = await getUserDisputeStats(employerWallet);
-    expect(employerStats.won).toBe(1);
   });
 });

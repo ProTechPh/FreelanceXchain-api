@@ -1,11 +1,18 @@
 import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-mapper.js';
 import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
 import { generateId } from '../utils/id.js';
+import { getProfileDataFromKyc } from './didit-kyc-service.js';
 
 export type CreateEmployerProfileInput = {
   companyName: string;
   description: string;
   industry: string;
+};
+
+export type CreateEmployerProfileFromKycInput = {
+  companyName?: string;
+  description?: string;
+  industry?: string;
 };
 
 export type UpdateEmployerProfileInput = {
@@ -40,9 +47,67 @@ export async function createEmployerProfile(
   const profileEntity: Omit<EmployerProfileEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
     user_id: userId,
+    name: null,
+    nationality: null,
     company_name: input.companyName,
     description: input.description,
     industry: input.industry,
+  };
+
+  const createdEntity = await employerProfileRepository.createProfile(profileEntity);
+  return { success: true, data: mapEmployerProfileFromEntity(createdEntity) };
+}
+
+/**
+ * Create employer profile from KYC data
+ * Pre-populates profile with verified name from KYC
+ */
+export async function createEmployerProfileFromKyc(
+  userId: string,
+  input: CreateEmployerProfileFromKycInput = {}
+): Promise<EmployerProfileServiceResult<EmployerProfile>> {
+  // Check if profile already exists
+  const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
+  if (existingProfile) {
+    return {
+      success: false,
+      error: { code: 'PROFILE_EXISTS', message: 'Employer profile already exists for this user' },
+    };
+  }
+
+  // Get KYC data
+  const kycResult = await getProfileDataFromKyc(userId);
+  if (!kycResult.success) {
+    return {
+      success: false,
+      error: { 
+        code: 'KYC_NOT_APPROVED', 
+        message: kycResult.error.message || 'KYC verification must be approved before creating profile' 
+      },
+    };
+  }
+
+  const kycData = kycResult.data;
+  if (!kycData) {
+    return {
+      success: false,
+      error: { code: 'KYC_NOT_APPROVED', message: 'No KYC data available' },
+    };
+  }
+
+  // Build default description from KYC data if not provided
+  const defaultDescription = kycData.name 
+    ? `Verified employer: ${kycData.name}. Looking for talented freelancers.`
+    : 'Verified employer looking for talented freelancers.';
+
+  const profileEntity: Omit<EmployerProfileEntity, 'created_at' | 'updated_at'> = {
+    id: generateId(),
+    user_id: userId,
+    name: kycData.name,
+    nationality: kycData.nationality,
+    company_name: input.companyName ?? kycData.name ?? 'My Company',
+    description: input.description ?? defaultDescription,
+    industry: input.industry ?? 'Technology',
   };
 
   const createdEntity = await employerProfileRepository.createProfile(profileEntity);

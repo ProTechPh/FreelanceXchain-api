@@ -130,6 +130,51 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
       total: count ?? undefined,
     };
   }
+
+  async getAllDisputes(options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    const { data, error, count } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get all disputes: ${error.message}`);
+    
+    return {
+      items: (data ?? []) as DisputeEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
+    };
+  }
+
+  async getDisputesByUserId(userId: string, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    // Get disputes where user is initiator OR part of the contract
+    const { data: disputes, error, count } = await client
+      .from(this.tableName)
+      .select(`
+        *,
+        contracts!inner(employer_id, freelancer_id)
+      `, { count: 'exact' })
+      .or(`initiator_id.eq.${userId},contracts.employer_id.eq.${userId},contracts.freelancer_id.eq.${userId}`)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    if (error) throw new Error(`Failed to get disputes by user: ${error.message}`);
+    
+    return {
+      items: (disputes ?? []) as DisputeEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
+    };
+  }
 }
 
 export const disputeRepository = new DisputeRepository();

@@ -116,7 +116,7 @@ The multi-stage approach provides several advantages:
 - **Performance**: Optimized for production runtime
 - **Consistency**: Reproducible builds across environments
 
-The production stage uses `npm ci --omit=dev` to install only production dependencies, significantly reducing the attack surface and image size.
+The production stage uses `pnpm install --frozen-lockfile --prod` to install only production dependencies, significantly reducing the attack surface and image size.
 
 **Section sources**
 - [Dockerfile](file://Dockerfile)

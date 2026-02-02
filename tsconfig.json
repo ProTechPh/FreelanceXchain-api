@@ -31,7 +31,18 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "types": [
+      "node",
+      "jest",
+      "express",
+      "cors",
+      "bcrypt",
+      "jsonwebtoken",
+      "swagger-jsdoc",
+      "swagger-ui-express",
+      "uuid"
+    ]
   },
   "include": [
     "src/**/*"

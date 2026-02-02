@@ -49,6 +49,12 @@ This platform addresses key challenges in the gig economy:
 - **Reputation Contract** - Immutable on-chain ratings and reviews
 - **Payment Processing** - Automated ETH transfers upon milestone approval
 
+### KYC Verification (Didit Integration)
+- **ID Verification** - Document verification for 220+ countries
+- **Passive Liveness Detection** - Anti-spoofing and fraud prevention
+- **Face Match 1:1** - Selfie to document photo matching
+- **IP Analysis** - Location verification and risk assessment
+
 ### AI Features
 - **Skill Matching** - AI-powered project-freelancer recommendations
 - **Skill Extraction** - Automatic skill detection from text descriptions
@@ -78,7 +84,7 @@ This platform addresses key challenges in the gig economy:
 
 ### Prerequisites
 - Node.js 18+ (20 recommended)
-- npm or yarn
+- pnpm (fast, disk space efficient package manager)
 - Supabase account (https://supabase.com)
 - Ethereum wallet (for blockchain features)
 - LLM API key (for AI features)
@@ -90,7 +96,7 @@ This platform addresses key challenges in the gig economy:
 ```bash
 git clone <repository-url>
 cd blockchain-freelance-marketplace
-npm install
+pnpm install
 ```
 
 2. **Configure environment variables**
@@ -106,19 +112,19 @@ cp .env.example .env
 
 4. **Compile smart contracts**
 ```bash
-npm run compile
+pnpm run compile
 ```
 
 5. **Build TypeScript**
 ```bash
-npm run build
+pnpm run build
 ```
 
 6. **Start the server**
 ```bash
-npm start
+pnpm start
 # Or for development with hot reload:
-npm run dev
+pnpm run dev
 ```
 
 ### Docker Deployment
@@ -149,6 +155,10 @@ docker run -p 3000:3000 --env-file .env freelancexchain-api:latest
 | `LLM_API_URL` | LLM API base URL |
 | `BLOCKCHAIN_RPC_URL` | Ethereum RPC endpoint |
 | `BLOCKCHAIN_PRIVATE_KEY` | Deployer wallet private key |
+| `DIDIT_API_KEY` | Didit KYC API key |
+| `DIDIT_API_URL` | Didit API base URL (default: https://verification.didit.me) |
+| `DIDIT_WEBHOOK_SECRET` | Didit webhook signature secret |
+| `DIDIT_WORKFLOW_ID` | Didit workflow ID for KYC verification |
 
 ## API Documentation
 
@@ -197,37 +207,37 @@ Immutable reputation system:
 
 **Local (Ganache):**
 ```bash
-npm run deploy:ganache
+pnpm run deploy:ganache
 ```
 
 **Testnet (Sepolia):**
 ```bash
-npm run deploy:reputation
-npm run deploy:escrow
+pnpm run deploy:reputation
+pnpm run deploy:escrow
 ```
 
 ## Testing
 
 ```bash
 # Run all tests
-npm test
+pnpm test
 
 # Watch mode
-npm run test:watch
+pnpm run test:watch
 ```
 
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start dev server with hot reload |
-| `npm run build` | Compile TypeScript |
-| `npm start` | Start production server |
-| `npm test` | Run tests |
-| `npm run compile` | Compile Solidity contracts |
-| `npm run deploy:ganache` | Deploy to local Ganache |
-| `npm run deploy:reputation` | Deploy reputation contract to Sepolia |
-| `npm run deploy:escrow` | Deploy escrow contract to Sepolia |
+| `pnpm run dev` | Start dev server with hot reload |
+| `pnpm run build` | Compile TypeScript |
+| `pnpm start` | Start production server |
+| `pnpm test` | Run tests |
+| `pnpm run compile` | Compile Solidity contracts |
+| `pnpm run deploy:ganache` | Deploy to local Ganache |
+| `pnpm run deploy:reputation` | Deploy reputation contract to Sepolia |
+| `pnpm run deploy:escrow` | Deploy escrow contract to Sepolia |
 
 ## Documentation
 
@@ -235,6 +245,7 @@ npm run test:watch
 |----------|-------------|
 | [Architecture](docs/ARCHITECTURE.md) | System architecture diagrams |
 | [API Documentation](docs/API-DOCUMENTATION.md) | Complete API endpoint reference |
+| [Didit KYC Integration](docs/DIDIT-KYC-INTEGRATION.md) | KYC verification setup and usage |
 | [User Manual](docs/USER-MANUAL.md) | Guide for freelancers and employers |
 | [Admin Manual](docs/ADMIN-MANUAL.md) | System administration guide |
 | [Technical Specs](docs/TECHNICAL-SPECS.md) | Technical specifications |

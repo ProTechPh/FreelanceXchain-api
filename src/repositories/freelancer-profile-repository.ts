@@ -4,6 +4,8 @@ import { TABLES } from '../config/supabase.js';
 export type FreelancerProfileEntity = {
   id: string;
   user_id: string;
+  name: string | null;
+  nationality: string | null;
   bio: string;
   hourly_rate: number;
   skills: { name: string; years_of_experience: number }[];

@@ -397,6 +397,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### In Progress
+- Didit KYC integration (replacing custom KYC implementation)
+
+---
+
+## [2.6.0] - 2026-01-14
+
+### Added
+
+#### Didit KYC Integration
+- **Complete KYC Replacement**: Replaced custom KYC implementation with Didit API integration
+- **ID Verification**: Document verification for 220+ countries and territories
+- **Passive Liveness Detection**: Anti-spoofing technology with no user interaction required
+- **Face Match 1:1**: Selfie to document photo comparison with similarity scoring
+- **IP Analysis**: Geolocation verification, VPN/proxy detection, and risk assessment
+- **New Models**: `src/models/didit-kyc.ts` - Complete type definitions for Didit API
+- **API Client**: `src/services/didit-client.ts` - Didit API communication layer
+- **Service Layer**: `src/services/didit-kyc-service.ts` - Business logic for KYC verification
+- **Repository**: `src/repositories/didit-kyc-repository.ts` - Database operations
+- **Routes**: `src/routes/didit-kyc-routes.ts` - RESTful API endpoints
+- **Webhook Support**: Secure webhook endpoint with HMAC signature verification
+- **Database Migration**: `supabase/migrations/003_didit_kyc_verifications.sql` - New schema
+- **Documentation**: `docs/DIDIT-KYC-INTEGRATION.md` - Complete integration guide
+
+#### KYC Features
+- Session-based verification workflow
+- Real-time status updates via webhooks
+- Admin review and approval system
+- Verification history tracking
+- Automatic expiry (1 year from approval)
+- Risk scoring and threat level assessment
+- Metadata support for custom tracking
+
+### Changed
+- **Routes**: Updated `src/routes/index.ts` to use new Didit KYC routes
+- **Environment**: Added Didit configuration variables to `.env.example`
+- **README**: Updated with Didit KYC features and documentation links
+
+### Deprecated
+- **Smart Contract**: `contracts/KYCVerification.sol` moved to `.old.sol` (deprecated)
+- **Old KYC Service**: `src/services/kyc-service.ts` (replaced by Didit integration)
+- **Old KYC Routes**: `src/routes/kyc-routes.ts` (replaced by Didit routes)
+- **Old KYC Models**: `src/models/kyc.ts` (replaced by Didit models)
+
+### Security
+- Webhook signature verification using HMAC-SHA256
+- Secure API key management via environment variables
+- Row Level Security (RLS) policies on KYC table
+- Personal data stored encrypted in Supabase
+- Document images handled by Didit (not stored locally)
+
+### Migration Notes
+- Existing KYC data will be cleared (users must re-verify)
+- New database schema required (run migration)
+- Didit account and API credentials required
+- Webhook URL must be configured in Didit dashboard
+
+---
+
+## [Unreleased]
+
 ### Planned Features
 - Email notifications
 - File upload for portfolio/evidence

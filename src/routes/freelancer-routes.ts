@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requireKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import {
-  createProfile,
   getProfileByUserId,
   updateProfile,
   addSkillsToProfile,
   addExperience,
+  removeExperience,
 } from '../services/freelancer-profile-service.js';
 
 const router = Router();
@@ -77,98 +77,27 @@ const router = Router();
 
 /**
  * @swagger
- * /api/freelancers/{id}:
- *   get:
- *     summary: Get freelancer profile by user ID
- *     description: Retrieves a freelancer's public profile
- *     tags:
- *       - Freelancers
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: User ID of the freelancer (UUID)
- *     responses:
- *       200:
- *         description: Freelancer profile retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/FreelancerProfile'
- *       400:
- *         description: Invalid UUID format
- *       404:
- *         description: Profile not found
- */
-router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
-  const id = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-
-  const result = await getProfileByUserId(id);
-
-  if (!result.success) {
-    res.status(404).json({
-      error: {
-        code: result.error.code,
-        message: result.error.message,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  res.status(200).json(result.data);
-});
-
-/**
- * @swagger
  * /api/freelancers/profile:
- *   post:
- *     summary: Create freelancer profile
- *     description: Creates a new freelancer profile for the authenticated user
+ *   get:
+ *     summary: Get current user's freelancer profile
+ *     description: Retrieves the authenticated user's freelancer profile
  *     tags:
  *       - Freelancers
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - bio
- *               - hourlyRate
- *             properties:
- *               bio:
- *                 type: string
- *                 minLength: 10
- *               hourlyRate:
- *                 type: number
- *                 minimum: 1
- *               availability:
- *                 type: string
- *                 enum: [available, busy, unavailable]
  *     responses:
- *       201:
- *         description: Profile created successfully
+ *       200:
+ *         description: Profile retrieved successfully
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/FreelancerProfile'
- *       400:
- *         description: Validation error
  *       401:
  *         description: Unauthorized
- *       409:
- *         description: Profile already exists
+ *       404:
+ *         description: Profile not found
  */
-router.post('/profile', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
-  const { bio, hourlyRate, availability } = req.body;
+router.get('/profile', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -181,32 +110,10 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), async (req: R
     return;
   }
 
-  // Validate input
-  const errors: { field: string; message: string }[] = [];
-  if (!bio || typeof bio !== 'string' || bio.trim().length < 10) {
-    errors.push({ field: 'bio', message: 'Bio must be at least 10 characters' });
-  }
-  if (typeof hourlyRate !== 'number' || hourlyRate < 1) {
-    errors.push({ field: 'hourlyRate', message: 'Hourly rate must be a positive number' });
-  }
-  if (availability && !['available', 'busy', 'unavailable'].includes(availability)) {
-    errors.push({ field: 'availability', message: 'Invalid availability value' });
-  }
-
-  if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  const result = await createProfile(userId, { bio, hourlyRate, availability });
+  const result = await getProfileByUserId(userId);
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_EXISTS' ? 409 : 400;
-    res.status(statusCode).json({
+    res.status(404).json({
       error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
@@ -214,7 +121,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), async (req: R
     return;
   }
 
-  res.status(201).json(result.data);
+  res.status(200).json(result.data);
 });
 
 
@@ -256,7 +163,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), async (req: R
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
   const { bio, hourlyRate, availability } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -361,7 +268,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), async (req: 
  *       404:
  *         description: Profile not found
  */
-router.post('/profile/skills', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.post('/profile/skills', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
   const { skills } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -470,7 +377,7 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), async 
  *       404:
  *         description: Profile not found
  */
-router.post('/profile/experience', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.post('/profile/experience', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
   const { title, company, description, startDate, endDate } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -514,6 +421,115 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), as
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
     res.status(statusCode).json({
       error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+
+/**
+ * @swagger
+ * /api/freelancers/profile/experience/{id}:
+ *   delete:
+ *     summary: Delete work experience from freelancer profile
+ *     description: Removes a work experience entry from the authenticated user's profile
+ *     tags:
+ *       - Freelancers
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Experience ID
+ *     responses:
+ *       200:
+ *         description: Experience deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/FreelancerProfile'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Profile or experience not found
+ */
+router.delete('/profile/experience/:id', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
+  const experienceId = req.params['id'] ?? '';
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await removeExperience(userId, experienceId);
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+
+/**
+ * @swagger
+ * /api/freelancers/{id}:
+ *   get:
+ *     summary: Get freelancer profile by user ID
+ *     description: Retrieves a freelancer's public profile
+ *     tags:
+ *       - Freelancers
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: User ID of the freelancer (UUID)
+ *     responses:
+ *       200:
+ *         description: Freelancer profile retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/FreelancerProfile'
+ *       400:
+ *         description: Invalid UUID format
+ *       404:
+ *         description: Profile not found
+ */
+router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
+  const id = req.params['id'] ?? '';
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  const result = await getProfileByUserId(id);
+
+  if (!result.success) {
+    res.status(404).json({
+      error: {
+        code: result.error.code,
+        message: result.error.message,
+      },
       timestamp: new Date().toISOString(),
       requestId,
     });

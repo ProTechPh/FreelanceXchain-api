@@ -133,6 +133,17 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
       total: count ?? undefined,
     };
   }
+
+  async getAllContracts(): Promise<ContractEntity[]> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw new Error(`Failed to get all contracts: ${error.message}`);
+    return (data ?? []) as ContractEntity[];
+  }
 }
 
 export const contractRepository = new ContractRepository();

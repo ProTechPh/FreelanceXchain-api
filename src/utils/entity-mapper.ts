@@ -11,23 +11,27 @@ import { SkillEntity, SkillCategoryEntity } from '../repositories/skill-reposito
 import { NotificationEntity } from '../repositories/notification-repository.js';
 
 // User mapping
+export type KycStatus = 'pending' | 'in_progress' | 'completed' | 'approved' | 'rejected' | 'expired';
+
 export type User = {
   id: string;
   email: string;
   passwordHash: string;
   role: 'freelancer' | 'employer' | 'admin';
   walletAddress: string;
+  kycStatus?: KycStatus;
   createdAt: string;
   updatedAt: string;
 };
 
-export function mapUserFromEntity(entity: UserEntity): User {
+export function mapUserFromEntity(entity: UserEntity, kycStatus?: string): User {
   return {
     id: entity.id,
     email: entity.email,
     passwordHash: entity.password_hash,
     role: entity.role,
     walletAddress: entity.wallet_address,
+    kycStatus: kycStatus as any,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };
@@ -140,6 +144,8 @@ export type WorkExperience = {
 export type FreelancerProfile = {
   id: string;
   userId: string;
+  name: string | null;
+  nationality: string | null;
   bio: string;
   hourlyRate: number;
   skills: SkillReference[];
@@ -155,6 +161,8 @@ export function mapFreelancerProfileFromEntity(entity: FreelancerProfileEntity):
   return {
     id: entity.id,
     userId: entity.user_id,
+    name: entity.name,
+    nationality: entity.nationality,
     bio: entity.bio,
     hourlyRate: entity.hourly_rate,
     skills: (entity.skills || []).map(mapSkillRefFromEntity),
@@ -176,6 +184,8 @@ export function mapFreelancerProfileFromEntity(entity: FreelancerProfileEntity):
 export type EmployerProfile = {
   id: string;
   userId: string;
+  name: string | null;
+  nationality: string | null;
   companyName: string;
   description: string;
   industry: string;
@@ -187,6 +197,8 @@ export function mapEmployerProfileFromEntity(entity: EmployerProfileEntity): Emp
   return {
     id: entity.id,
     userId: entity.user_id,
+    name: entity.name,
+    nationality: entity.nationality,
     companyName: entity.company_name,
     description: entity.description,
     industry: entity.industry,

@@ -1,10 +1,17 @@
 import { FreelancerProfile, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { generateId } from '../utils/id.js';
+import { getProfileDataFromKyc } from './didit-kyc-service.js';
 
 export type CreateFreelancerProfileInput = {
   bio: string;
   hourlyRate: number;
+  availability?: 'available' | 'busy' | 'unavailable';
+};
+
+export type CreateProfileFromKycInput = {
+  bio?: string;
+  hourlyRate?: number;
   availability?: 'available' | 'busy' | 'unavailable';
 };
 
@@ -83,8 +90,68 @@ export async function createProfile(
   const profileEntity: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
     user_id: userId,
+    name: null,
+    nationality: null,
     bio: input.bio,
     hourly_rate: input.hourlyRate,
+    skills: [],
+    experience: [],
+    availability: input.availability ?? 'available',
+  };
+
+  const createdEntity = await freelancerProfileRepository.createProfile(profileEntity);
+  return { success: true, data: mapFreelancerProfileFromEntity(createdEntity) };
+}
+
+/**
+ * Create freelancer profile from KYC data
+ * Pre-populates profile with verified name and location from KYC
+ */
+export async function createProfileFromKyc(
+  userId: string,
+  input: CreateProfileFromKycInput = {}
+): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+  // Check if profile already exists
+  const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
+  if (existingProfile) {
+    return {
+      success: false,
+      error: { code: 'PROFILE_EXISTS', message: 'Freelancer profile already exists for this user' },
+    };
+  }
+
+  // Get KYC data
+  const kycResult = await getProfileDataFromKyc(userId);
+  if (!kycResult.success) {
+    return {
+      success: false,
+      error: { 
+        code: 'KYC_NOT_APPROVED', 
+        message: kycResult.error.message || 'KYC verification must be approved before creating profile' 
+      },
+    };
+  }
+
+  const kycData = kycResult.data;
+  if (!kycData) {
+    return {
+      success: false,
+      error: { code: 'KYC_NOT_APPROVED', message: 'No KYC data available' },
+    };
+  }
+
+  // Build bio from KYC data if not provided
+  const defaultBio = kycData.name 
+    ? `Hi, I'm ${kycData.name}. I'm a verified freelancer ready to work on your projects.`
+    : 'Verified freelancer ready to work on your projects.';
+
+  const profileEntity: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'> = {
+    id: generateId(),
+    user_id: userId,
+    name: kycData.name,
+    nationality: kycData.nationality,
+    bio: input.bio ?? defaultBio,
+    hourly_rate: input.hourlyRate ?? 0,
     skills: [],
     experience: [],
     availability: input.availability ?? 'available',

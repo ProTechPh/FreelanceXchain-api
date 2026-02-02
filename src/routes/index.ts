@@ -14,7 +14,8 @@ import notificationRoutes from './notification-routes.js';
 import paymentRoutes from './payment-routes.js';
 import reputationRoutes from './reputation-routes.js';
 import disputeRoutes from './dispute-routes.js';
-import kycRoutes from './kyc-routes.js';
+import kycRoutes from './didit-kyc-routes.js';
+import adminRoutes from './admin-routes.js';
 
 const router = Router();
 
@@ -86,5 +87,8 @@ router.use('/disputes', disputeRoutes);
 
 // KYC routes
 router.use('/kyc', kycRoutes);
+
+// Admin routes
+router.use('/admin', adminRoutes);
 
 export default router;

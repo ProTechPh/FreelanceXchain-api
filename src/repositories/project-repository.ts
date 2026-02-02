@@ -185,6 +185,16 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
       total: count ?? undefined,
     };
   }
+
+  async getAllProjects(): Promise<ProjectEntity[]> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*');
+    
+    if (error) throw new Error(`Failed to get all projects: ${error.message}`);
+    return (data ?? []) as ProjectEntity[];
+  }
 }
 
 export const projectRepository = new ProjectRepository();

@@ -4,6 +4,8 @@ import { TABLES } from '../config/supabase.js';
 export type EmployerProfileEntity = {
   id: string;
   user_id: string;
+  name: string | null;
+  nationality: string | null;
   company_name: string;
   description: string;
   industry: string;

@@ -1,4 +1,4 @@
-import express, { Express } from 'express';
+import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
 import { errorHandler, requestLogger } from './middleware/index.js';
@@ -55,11 +55,24 @@ export function createApp(): Express {
   // Request logging middleware
   app.use(requestLogger);
 
-  // Swagger documentation
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-    explorer: true,
-    customSiteTitle: 'Freelance Marketplace API',
-  }));
+  // Swagger documentation - dynamically set server URL based on request
+  app.use('/api-docs', swaggerUi.serve, (req: Request, res: Response, next: NextFunction) => {
+    const protocol = req.headers['x-forwarded-proto'] ?? req.protocol;
+    const host = req.headers['x-forwarded-host'] ?? req.headers.host;
+    const dynamicSwaggerSpec = {
+      ...swaggerSpec,
+      servers: [
+        {
+          url: `${protocol}://${host}`,
+          description: 'Current server',
+        },
+      ],
+    };
+    swaggerUi.setup(dynamicSwaggerSpec, {
+      explorer: true,
+      customSiteTitle: 'Freelance Marketplace API',
+    })(req, res, next);
+  });
 
   // Swagger JSON endpoint
   app.get('/api-docs.json', (_req, res) => {

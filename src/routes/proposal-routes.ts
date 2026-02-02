@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireKyc, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import {
   submitProposal,
@@ -94,7 +94,7 @@ const router = Router();
  *       409:
  *         description: Duplicate proposal
  */
-router.post('/', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
   const { projectId, coverLetter, proposedRate, estimatedDuration } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -185,7 +185,7 @@ router.post('/', authMiddleware, requireRole('freelancer'), async (req: Request,
  *       404:
  *         description: Proposal not found
  */
-router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, requireKyc, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -225,7 +225,7 @@ router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Res
  *       401:
  *         description: Unauthorized
  */
-router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.get('/freelancer/me', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -290,7 +290,7 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (r
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/accept', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/accept', authMiddleware, requireKyc, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -357,7 +357,7 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), validateUUID
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/reject', authMiddleware, requireKyc, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -422,7 +422,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/withdraw', authMiddleware, requireKyc, requireRole('freelancer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
