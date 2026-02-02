@@ -11,8 +11,9 @@ import {
   resolveDispute,
   getDisputeById,
   getDisputesByContract,
+  getAllDisputes,
 } from '../services/dispute-service.js';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 
 const router = Router();
@@ -118,6 +119,81 @@ const router = Router();
 /**
  * @swagger
  * /api/disputes:
+ *   get:
+ *     summary: List all disputes
+ *     description: Get all disputes (admin sees all, users see only their own)
+ *     tags: [Disputes]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: status
+ *         schema:
+ *           type: string
+ *           enum: [open, under_review, resolved]
+ *         description: Filter by dispute status
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 100
+ *         description: Maximum number of items to return
+ *     responses:
+ *       200:
+ *         description: List of disputes
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Dispute'
+ *                 continuationToken:
+ *                   type: string
+ *                   nullable: true
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/',
+  authMiddleware,
+  requireKyc,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.userId;
+      const userRole = req.user?.role;
+      const status = req.query['status'] as string | undefined;
+      const limit = req.query['limit'] ? parseInt(req.query['limit'] as string) : 100;
+
+      if (!userId || !userRole) {
+        res.status(401).json({
+          error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        });
+        return;
+      }
+
+      const result = await getAllDisputes(userId, userRole, { 
+        ...(status && { status }), 
+        limit 
+      });
+
+      if (!result.success) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+
+      res.json(result.data);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/disputes:
  *   post:
  *     summary: Create a new dispute
  *     description: Create a dispute for a milestone, locking associated funds
@@ -149,6 +225,7 @@ const router = Router();
 router.post(
   '/',
   authMiddleware,
+  requireKyc,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -258,6 +335,7 @@ router.post(
 router.get(
   '/:disputeId',
   authMiddleware,
+  requireKyc,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -328,6 +406,7 @@ router.get(
 router.post(
   '/:disputeId/evidence',
   authMiddleware,
+  requireKyc,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -424,6 +503,7 @@ router.post(
 router.post(
   '/:disputeId/resolve',
   authMiddleware,
+  requireKyc,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -525,6 +605,7 @@ router.post(
 router.get(
   '/contracts/:contractId/disputes',
   authMiddleware,
+  requireKyc,
   validateUUID(['contractId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

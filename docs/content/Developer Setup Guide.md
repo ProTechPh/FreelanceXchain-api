@@ -31,22 +31,22 @@ This guide provides comprehensive instructions for setting up a development envi
 Before beginning the setup process, ensure you have the following tools and accounts installed or created:
 
 - **Node.js 18+** (20 recommended) - JavaScript runtime environment
-- **npm** - Node.js package manager (included with Node.js installation)
+- **pnpm** - Fast, disk space efficient package manager
 - **Docker** - Containerization platform for optional containerized deployment
 - **Supabase account** - Create a free account at https://supabase.com for database hosting
 - **Ethereum wallet** - For blockchain interactions and deployment
 - **LLM API key** - Required for AI features and skill matching functionality
 - **Hardhat** - Ethereum development environment for smart contract compilation and deployment
 
-Verify your Node.js and npm installations by running:
+Verify your Node.js and pnpm installations by running:
 ```bash
 node --version
-npm --version
+pnpm --version
 ```
 
-Install Docker by following the official installation guide for your operating system at https://docs.docker.com/get-docker/. The Supabase CLI can be installed globally using npm:
+Install Docker by following the official installation guide for your operating system at https://docs.docker.com/get-docker/. The Supabase CLI can be installed globally using pnpm:
 ```bash
-npm install -g supabase
+pnpm install -g supabase
 ```
 
 **Section sources**
@@ -61,9 +61,9 @@ git clone <repository-url>
 cd FreelanceXchain
 ```
 
-2. Install all project dependencies using npm:
+2. Install all project dependencies using pnpm:
 ```bash
-npm install
+pnpm install
 ```
 
 This command will read the package.json file and install all dependencies listed in both the dependencies and devDependencies sections. The package.json file reveals that the project uses Node.js with TypeScript, Express for the backend framework, Supabase for the PostgreSQL database, and Hardhat for Ethereum development.
@@ -151,7 +151,7 @@ The blockchain development environment is configured using Hardhat, a developmen
 
 1. Ensure Hardhat is installed as a devDependency in the project (specified in package.json):
 ```bash
-npm install --save-dev hardhat
+pnpm install --save-dev hardhat
 ```
 
 2. Review the Hardhat configuration in hardhat.config.cjs, which defines:
@@ -165,14 +165,14 @@ npm install --save-dev hardhat
 
 4. Compile the smart contracts:
 ```bash
-npm run compile
+pnpm run compile
 ```
-This command runs `npx hardhat compile` and generates artifacts in the artifacts directory.
+This command runs `pnpm dlx hardhat compile` and generates artifacts in the artifacts directory.
 
-5. Deploy contracts to various networks using the predefined npm scripts:
-   - Local Hardhat network: `npm run deploy:local`
-   - Ganache: `npm run deploy:ganache`
-   - Sepolia testnet: `npm run deploy:reputation` and `npm run deploy:escrow`
+5. Deploy contracts to various networks using the predefined pnpm scripts:
+   - Local Hardhat network: `pnpm run deploy:local`
+   - Ganache: `pnpm run deploy:ganache`
+   - Sepolia testnet: `pnpm run deploy:reputation` and `pnpm run deploy:escrow`
 
 The contracts directory contains Solidity smart contracts including FreelanceEscrow.sol for milestone-based payments and FreelanceReputation.sol for immutable on-chain ratings.
 
@@ -186,18 +186,18 @@ Once all dependencies are installed and configuration is complete, you can run t
 
 1. Build the TypeScript code:
 ```bash
-npm run build
+pnpm run build
 ```
 
 2. Start the server in development mode with hot reloading:
 ```bash
-npm run dev
+pnpm run dev
 ```
 This command uses tsx to watch for file changes and automatically restart the server.
 
 3. Alternatively, start the production server:
 ```bash
-npm start
+pnpm start
 ```
 
 4. Verify the server is running by accessing the health check endpoint:
@@ -246,17 +246,17 @@ The project includes comprehensive testing and code quality tools to ensure code
 
 1. Run all tests:
 ```bash
-npm test
+pnpm test
 ```
 
 2. Run tests in watch mode for continuous testing during development:
 ```bash
-npm run test:watch
+pnpm run test:watch
 ```
 
 3. Run ESLint for code quality checks:
 ```bash
-npm run lint
+pnpm run lint
 ```
 
 The testing framework uses Jest with TypeScript support, configured in jest.config.js. The test setup includes:
@@ -283,8 +283,8 @@ This section addresses common setup issues and their solutions.
 - Verify network connectivity to Supabase
 
 **Missing Dependencies**
-- Run `npm install` to ensure all dependencies are installed
-- Delete node_modules and package-lock.json and reinstall if issues persist
+- Run `pnpm install` to ensure all dependencies are installed
+- Delete node_modules and pnpm-lock.yaml and reinstall if issues persist
 - Verify Node.js version meets the minimum requirement (18+)
 
 **Blockchain Network Configuration**
@@ -294,7 +294,7 @@ This section addresses common setup issues and their solutions.
 - Ensure sufficient funds in the deployment wallet for testnet deployments
 
 **TypeScript and Compilation Issues**
-- Run `npm run build` to identify compilation errors
+- Run `pnpm run build` to identify compilation errors
 - Verify tsconfig.json settings are correct
 - Ensure all required environment variables are set
 

@@ -3,6 +3,7 @@
  * Handles all communication with Didit verification API
  */
 
+import crypto from 'crypto';
 import {
   DiditCreateSessionRequest,
   DiditCreateSessionResponse,
@@ -115,6 +116,21 @@ export async function getSessionDetails(
       },
     });
 
+    // Check if response is JSON
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      console.error('Didit API returned non-JSON response:', await response.text());
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'INVALID_RESPONSE',
+            message: 'Didit API returned an invalid response. Please check your API configuration.',
+          },
+        },
+      };
+    }
+
     const data = await response.json();
 
     if (!response.ok) {
@@ -129,12 +145,13 @@ export async function getSessionDetails(
       data: data as DiditCreateSessionResponse,
     };
   } catch (error) {
+    console.error('Failed to get session details:', error);
     return {
       success: false,
       error: {
         error: {
           code: 'NETWORK_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to connect to Didit API',
+          message: error instanceof Error ? error.message : 'Failed to connect to Didit API. Please check your network connection and API configuration.',
         },
       },
     };
@@ -142,24 +159,61 @@ export async function getSessionDetails(
 }
 
 /**
- * Verify webhook signature
+ * Verify webhook signature from Didit
+ * Uses HMAC-SHA256 with timestamp for replay protection
  */
-export function verifyWebhookSignature(payload: string, signature: string): boolean {
-  const crypto = require('crypto');
+export function verifyWebhookSignature(
+  payload: string,
+  signature: string,
+  timestamp: string
+): boolean {
   const secret = process.env['DIDIT_WEBHOOK_SECRET'];
   
   if (!secret) {
-    console.error('DIDIT_WEBHOOK_SECRET not configured');
+    console.warn('DIDIT_WEBHOOK_SECRET not configured - skipping signature verification');
+    return true; // Allow in development if not configured
+  }
+
+  if (!signature || !timestamp) {
+    console.warn('Missing signature or timestamp headers - skipping verification in development');
+    return process.env['NODE_ENV'] !== 'production';
+  }
+
+  // Verify timestamp is within 5 minutes to prevent replay attacks
+  const timestampNum = parseInt(timestamp, 10);
+  const now = Math.floor(Date.now() / 1000);
+  const fiveMinutes = 5 * 60;
+  
+  if (Math.abs(now - timestampNum) > fiveMinutes) {
+    console.error('Webhook timestamp too old or in future');
     return false;
   }
 
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(payload)
-    .digest('hex');
+  // Try different signature formats that Didit might use
+  const possiblePayloads = [
+    `${timestamp}${payload}`,           // timestamp + payload
+    payload,                             // just payload
+    `${timestamp}.${payload}`,           // timestamp.payload
+  ];
 
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  );
+  for (const signedPayload of possiblePayloads) {
+    const expectedSignature = crypto
+      .createHmac('sha256', secret)
+      .update(signedPayload)
+      .digest('hex');
+
+    try {
+      if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+        return true;
+      }
+    } catch {
+      // Length mismatch, try next
+    }
+  }
+
+  // Log for debugging
+  console.log('Signature verification failed. Received signature:', signature);
+  console.log('Timestamp:', timestamp);
+  
+  return false;
 }

@@ -15,20 +15,18 @@
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Didit KYC Integration](#didit-kyc-integration)
-3. [Verification Features](#verification-features)
-4. [Data Minimization Principle](#data-minimization-principle)
-5. [GDPR Compliance Measures](#gdpr-compliance-measures)
-6. [Webhook Security](#webhook-security)
-7. [Encryption Strategies](#encryption-strategies)
-8. [API Endpoints](#api-endpoints)
-9. [Database Schema](#database-schema)
-10. [System Architecture](#system-architecture)
+3. [Data Minimization Principle](#data-minimization-principle)
+4. [GDPR Compliance Measures](#gdpr-compliance-measures)
+5. [Webhook Security](#webhook-security)
+6. [API Endpoints](#api-endpoints)
+7. [Database Schema](#database-schema)
+8. [System Architecture](#system-architecture)
 
 ## Introduction
 
-FreelanceXchain uses [Didit](https://didit.me) for enterprise-grade KYC (Know Your Customer) verification. Didit provides professional identity verification with support for 220+ countries, replacing the previous custom KYC implementation.
+FreelanceXchain uses [Didit](https://didit.me) for enterprise-grade KYC (Know Your Customer) verification. Didit provides professional identity verification with support for 220+ countries.
 
-The system follows the data minimization principle by collecting only essential identity information. Personal data is stored encrypted in Supabase, while Didit handles document images and biometric processing.
+**Key Principle**: Didit handles ALL verification data (documents, liveness, face match, IP analysis). We only store session info and the final decision locally.
 
 ## Didit KYC Integration
 
@@ -60,15 +58,13 @@ sequenceDiagram
     Frontend->>Backend: POST /api/kyc/initiate
     Backend->>Didit: Create Session
     Didit-->>Backend: Session URL + ID
-    Backend->>Database: Store Session
+    Backend->>Database: Store Session Info
     Backend-->>Frontend: Return Session URL
     Frontend-->>User: Redirect to Didit
 
     User->>Didit: Complete Verification
     Didit->>Backend: Webhook (session.completed)
-    Backend->>Didit: Fetch Full Results
-    Didit-->>Backend: Verification Data
-    Backend->>Database: Update Status
+    Backend->>Database: Update Status & Decision
     
     User->>Frontend: Check Status
     Frontend->>Backend: GET /api/kyc/status
@@ -77,9 +73,7 @@ sequenceDiagram
     Frontend-->>User: Display Result
 ```
 
-## Verification Features
-
-Didit provides four verification features:
+### Verification Features (Handled by Didit)
 
 | Feature | Description |
 |---------|-------------|
@@ -88,50 +82,37 @@ Didit provides four verification features:
 | **Face Match 1:1** | Compares selfie to document photo with similarity scoring |
 | **IP Analysis** | Geolocation, VPN/Proxy detection, risk scoring |
 
-### Verification Results
-
-```typescript
-type DiditVerificationResult = {
-  decision: 'approved' | 'declined' | 'review';
-  document_verified: boolean;
-  liveness_passed: boolean;
-  liveness_confidence_score: number;
-  spoofing_detected: boolean;
-  face_matched: boolean;
-  face_similarity_score: number;
-  ip_risk_score: number;
-  threat_level: 'low' | 'medium' | 'high';
-  is_vpn: boolean;
-  is_proxy: boolean;
-};
-```
+All verification data is processed and stored by Didit. We only receive the final decision.
 
 ## Data Minimization Principle
 
-FreelanceXchain adheres to data minimization by:
+FreelanceXchain follows strict data minimization:
 
-1. **Didit Handles Sensitive Data**: Document images and biometric data are processed by Didit, not stored locally
-2. **Store Only Results**: Only verification results and extracted data are stored
-3. **No Raw Documents**: Document images are never stored in the application database
-4. **Encrypted Storage**: All personal data is encrypted at rest in Supabase
-
-### Data Stored Locally
+### What We Store
 
 | Field | Purpose |
 |-------|---------|
-| `first_name`, `last_name` | Identity confirmation |
-| `date_of_birth` | Age verification |
-| `nationality` | Compliance requirements |
-| `document_type` | Verification record |
-| `decision` | Verification outcome |
-| `ip_risk_score` | Risk assessment |
+| `didit_session_id` | Link to Didit session |
+| `didit_session_url` | Redirect URL for user |
+| `status` | Current verification status |
+| `decision` | Final decision (approved/declined/review) |
+| `reviewed_by`, `reviewed_at`, `admin_notes` | Admin review tracking |
 
-### Data NOT Stored Locally
+### What Didit Handles (NOT stored locally)
 
 - Document images (front/back)
 - Selfie images
 - Raw biometric data
-- Full document scans
+- Personal information (name, DOB, nationality)
+- Document details (type, number, issuing country)
+- Liveness detection results
+- Face match scores
+- IP analysis data
+
+This approach ensures:
+1. **Minimal data exposure** - Sensitive data stays with Didit
+2. **Reduced compliance burden** - Didit handles PII storage
+3. **Simplified architecture** - Less data to secure locally
 
 ## GDPR Compliance Measures
 
@@ -139,8 +120,8 @@ FreelanceXchain adheres to data minimization by:
 
 | Right | Implementation |
 |-------|----------------|
-| **Right to Access** | `GET /api/kyc/status` returns user's verification data |
-| **Right to Erasure** | Admin can delete verification records |
+| **Right to Access** | `GET /api/kyc/status` returns user's verification status |
+| **Right to Erasure** | Admin can delete verification records; Didit handles PII deletion |
 | **Right to Portability** | `GET /api/kyc/history` exports verification history |
 | **Consent** | Explicit consent required before initiating verification |
 
@@ -149,21 +130,6 @@ FreelanceXchain adheres to data minimization by:
 - **Approved Verifications**: Retained for 1 year from approval date (`expires_at`)
 - **Rejected Verifications**: Retained for 90 days for dispute resolution
 - **Expired Sessions**: Automatically cleaned up after 30 days
-
-### Audit Trail
-
-All KYC operations are logged:
-
-```typescript
-type KycAuditLog = {
-  user_id: string;
-  action: 'initiate' | 'complete' | 'approve' | 'reject' | 'expire';
-  timestamp: Date;
-  ip_address: string;
-  admin_id?: string;
-  notes?: string;
-};
-```
 
 ## Webhook Security
 
@@ -191,35 +157,8 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
 ### Webhook Endpoint Security
 
 - Signature verification required
-- IP allowlisting (optional)
 - Rate limiting applied
 - Idempotency handling for duplicate webhooks
-
-## Encryption Strategies
-
-### At Rest
-
-- Supabase encryption enabled for all tables
-- Sensitive fields use additional application-level encryption
-- Encryption keys managed via environment variables
-
-### In Transit
-
-- TLS 1.3 for all API communications
-- HTTPS enforced for webhook endpoints
-- Certificate pinning for mobile clients
-
-### Key Management
-
-```mermaid
-graph LR
-    A[Environment Variables] --> B[Application]
-    B --> C[Supabase Client]
-    C --> D[Encrypted Database]
-    
-    E[Didit API Key] --> B
-    F[Webhook Secret] --> B
-```
 
 ## API Endpoints
 
@@ -268,7 +207,7 @@ Response:
   "user_id": "uuid",
   "status": "pending",
   "didit_session_url": "https://verify.didit.me/session/token",
-  "created_at": "2026-01-14T10:00:00Z"
+  "created_at": "2026-01-15T10:00:00Z"
 }
 ```
 
@@ -279,49 +218,20 @@ Response:
 ```sql
 CREATE TABLE kyc_verifications (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     status VARCHAR(20) NOT NULL CHECK (status IN (
         'pending', 'in_progress', 'completed', 
         'approved', 'rejected', 'expired'
     )),
     
-    -- Didit Session
+    -- Didit Session (all we need to store)
     didit_session_id VARCHAR(255) UNIQUE NOT NULL,
-    didit_session_token VARCHAR(500),
+    didit_session_token VARCHAR(255) NOT NULL,
     didit_session_url TEXT NOT NULL,
-    didit_workflow_id VARCHAR(255),
+    didit_workflow_id VARCHAR(255) NOT NULL,
     
-    -- Decision
+    -- Decision from Didit
     decision VARCHAR(20) CHECK (decision IN ('approved', 'declined', 'review')),
-    decline_reasons TEXT[],
-    review_reasons TEXT[],
-    
-    -- Document Info
-    document_type VARCHAR(50),
-    document_number VARCHAR(100),
-    issuing_country VARCHAR(3),
-    
-    -- Personal Data (extracted)
-    first_name VARCHAR(100),
-    last_name VARCHAR(100),
-    date_of_birth DATE,
-    nationality VARCHAR(3),
-    
-    -- Verification Results
-    document_verified BOOLEAN,
-    liveness_passed BOOLEAN,
-    liveness_confidence_score DECIMAL(5,4),
-    spoofing_detected BOOLEAN,
-    face_matched BOOLEAN,
-    face_similarity_score DECIMAL(5,4),
-    
-    -- IP Analysis
-    ip_address VARCHAR(45),
-    ip_country_code VARCHAR(3),
-    ip_risk_score DECIMAL(5,2),
-    is_vpn BOOLEAN,
-    is_proxy BOOLEAN,
-    threat_level VARCHAR(10) CHECK (threat_level IN ('low', 'medium', 'high')),
     
     -- Admin Review
     reviewed_by UUID REFERENCES users(id),
@@ -383,12 +293,14 @@ graph TD
     
     subgraph "Data Layer"
         G --> J[(Supabase)]
+        H --> K[(Didit Storage)]
     end
     
     style A fill:#4CAF50
     style M fill:#4CAF50
     style H fill:#2196F3
     style J fill:#FF9800
+    style K fill:#2196F3
 ```
 
 ### File Structure
@@ -423,7 +335,7 @@ supabase/
 | `rejected` | Admin rejected or Didit declined |
 | `expired` | Session expired without completion |
 
-### Decision Values
+### Decision Values (from Didit)
 
 | Decision | Description |
 |----------|-------------|
@@ -431,17 +343,8 @@ supabase/
 | `declined` | Failed verification checks |
 | `review` | Needs manual review |
 
-### Threat Levels
-
-| Level | IP Risk Score | Action |
-|-------|---------------|--------|
-| `low` | 0-30 | Auto-approve eligible |
-| `medium` | 31-70 | Manual review recommended |
-| `high` | 71-100 | Manual review required |
-
 ## Support Resources
 
 - **Didit Documentation**: https://docs.didit.me
 - **API Reference**: https://docs.didit.me/reference/
 - **Business Console**: https://business.didit.me
-- **Support Email**: [email protected]

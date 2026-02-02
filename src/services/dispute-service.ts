@@ -518,3 +518,53 @@ export async function getDisputesByInitiator(
   const result = await disputeRepository.getDisputesByInitiator(initiatorId);
   return { success: true, data: result.items.map(mapDisputeFromEntity) };
 }
+
+/**
+ * Get all disputes (admin) or user's disputes (regular users)
+ */
+export async function getAllDisputes(
+  userId: string,
+  userRole: string,
+  options?: { limit?: number; offset?: number; status?: string }
+): Promise<DisputeServiceResult<{ items: Dispute[]; continuationToken: string | null }>> {
+  try {
+    let result;
+    
+    if (userRole === 'admin') {
+      // Admin sees all disputes
+      result = await disputeRepository.getAllDisputes({
+        ...(options?.limit !== undefined && { limit: options.limit }),
+        ...(options?.offset !== undefined && { offset: options.offset }),
+      });
+    } else {
+      // Regular users see only their disputes
+      result = await disputeRepository.getDisputesByUserId(userId, {
+        ...(options?.limit !== undefined && { limit: options.limit }),
+        ...(options?.offset !== undefined && { offset: options.offset }),
+      });
+    }
+
+    const disputes = result.items.map(mapDisputeFromEntity);
+    
+    // Filter by status if provided
+    const filteredDisputes = options?.status 
+      ? disputes.filter(d => d.status === options.status)
+      : disputes;
+
+    return {
+      success: true,
+      data: {
+        items: filteredDisputes,
+        continuationToken: result.hasMore ? String(result.items.length) : null,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: {
+        code: 'FETCH_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to fetch disputes',
+      },
+    };
+  }
+}

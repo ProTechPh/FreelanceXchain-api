@@ -105,7 +105,7 @@ FreelanceXchain employs a multi-stage Docker build process to create optimized p
 
 The first stage, labeled "builder," uses the Node.js 20 Alpine image as its base. This stage installs all dependencies, including development packages required for TypeScript compilation. It copies the source code and compiles TypeScript to JavaScript, producing the transpiled output in the dist directory.
 
-The second stage, labeled "production," creates a minimal runtime environment by again using the Node.js 20 Alpine image. This stage installs only production dependencies by using npm ci with the --omit=dev flag, significantly reducing the container size and attack surface. It then copies the compiled JavaScript files from the builder stage, sets environment variables, and configures the application to run on port 7860.
+The second stage, labeled "production," creates a minimal runtime environment by again using the Node.js 20 Alpine image. This stage installs only production dependencies by using pnpm install with the --frozen-lockfile --prod flags, significantly reducing the container size and attack surface. It then copies the compiled JavaScript files from the builder stage, sets environment variables, and configures the application to run on port 7860.
 
 This multi-stage approach provides several benefits:
 - **Smaller image size**: Production containers exclude development dependencies and source files
@@ -140,7 +140,7 @@ The blockchain integration through ethers.js connects to Ethereum networks via I
 
 ## Dependency Management
 
-The FreelanceXchain project employs npm for dependency management, utilizing package-lock.json to ensure consistent installations across different environments. The dependency strategy emphasizes stability, security, and compatibility through careful version selection and regular updates.
+The FreelanceXchain project employs pnpm for dependency management, utilizing pnpm-lock.yaml to ensure consistent installations across different environments. The dependency strategy emphasizes stability, security, and compatibility through careful version selection and regular updates.
 
 The project uses caret (^) version ranges in package.json to allow for minor and patch updates while preventing breaking changes. This approach balances the need for security updates and bug fixes with the stability required for production applications. Regular dependency audits are recommended to identify and address security vulnerabilities.
 

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireKyc, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import {
   createProject,
@@ -10,6 +10,7 @@ import {
   searchProjects,
   listProjectsBySkills,
   listProjectsByBudgetRange,
+  listProjectsByEmployer,
 } from '../services/project-service.js';
 import { getProposalsByProject } from '../services/proposal-service.js';
 
@@ -170,6 +171,81 @@ router.get('/', async (req: Request, res: Response) => {
 
 /**
  * @swagger
+ * /api/projects/my-projects:
+ *   get:
+ *     summary: Get employer's own projects
+ *     description: Retrieves all projects created by the authenticated employer
+ *     tags:
+ *       - Projects
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *         description: Number of results per page
+ *       - in: query
+ *         name: continuationToken
+ *         schema:
+ *           type: string
+ *         description: Token for pagination
+ *     responses:
+ *       200:
+ *         description: Projects retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 items:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Project'
+ *                 hasMore:
+ *                   type: boolean
+ *                 continuationToken:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/my-projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
+  const continuationToken = req.query['continuationToken'] as string | undefined;
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const options: { maxItemCount: number; continuationToken?: string } = { maxItemCount: limit };
+  if (continuationToken) {
+    options.continuationToken = continuationToken;
+  }
+
+  const result = await listProjectsByEmployer(userId, options);
+
+  if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
  * /api/projects/{id}:
  *   get:
  *     summary: Get project details
@@ -252,7 +328,8 @@ router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
  *                       type: string
  *               budget:
  *                 type: number
- *                 minimum: 100
+ *                 minimum: 0
+ *                 exclusiveMinimum: true
  *               deadline:
  *                 type: string
  *                 format: date-time
@@ -268,7 +345,7 @@ router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireKyc, requireRole('employer'), async (req: Request, res: Response) => {
   const { title, description, requiredSkills, budget, deadline } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -301,8 +378,8 @@ router.post('/', authMiddleware, requireRole('employer'), async (req: Request, r
       }
     }
   }
-  if (!budget || typeof budget !== 'number' || budget < 100) {
-    errors.push({ field: 'budget', message: 'Budget must be at least 100' });
+  if (!budget || typeof budget !== 'number' || budget <= 0) {
+    errors.push({ field: 'budget', message: 'Budget must be greater than 0' });
   }
   if (!deadline || typeof deadline !== 'string') {
     errors.push({ field: 'deadline', message: 'Deadline is required' });
@@ -392,7 +469,7 @@ router.post('/', authMiddleware, requireRole('employer'), async (req: Request, r
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.patch('/:id', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireKyc, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { title, description, requiredSkills, budget, deadline, status } = req.body;
   const userId = req.user?.userId;
@@ -415,8 +492,8 @@ router.patch('/:id', authMiddleware, requireRole('employer'), validateUUID(), as
   if (description !== undefined && (typeof description !== 'string' || description.trim().length < 20)) {
     errors.push({ field: 'description', message: 'Description must be at least 20 characters' });
   }
-  if (budget !== undefined && (typeof budget !== 'number' || budget < 100)) {
-    errors.push({ field: 'budget', message: 'Budget must be at least 100' });
+  if (budget !== undefined && (typeof budget !== 'number' || budget <= 0)) {
+    errors.push({ field: 'budget', message: 'Budget must be greater than 0' });
   }
 
   if (errors.length > 0) {
@@ -509,7 +586,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), validateUUID(), as
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.post('/:id/milestones', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/milestones', authMiddleware, requireKyc, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { milestones } = req.body;
   const userId = req.user?.userId;
@@ -625,7 +702,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), validate
  *       404:
  *         description: Project not found
  */
-router.get('/:id/proposals', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id/proposals', authMiddleware, requireKyc, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

@@ -69,6 +69,30 @@ export function getWallet(): Wallet {
 }
 
 /**
+ * Get a fresh wallet instance (not cached) for sequential transactions
+ * This creates a new provider connection to ensure accurate nonce
+ */
+export function getFreshWallet(): Wallet {
+  if (!config.blockchain.privateKey) {
+    throw new Error('BLOCKCHAIN_PRIVATE_KEY is not configured');
+  }
+  if (!config.blockchain.rpcUrl) {
+    throw new Error('BLOCKCHAIN_RPC_URL is not configured');
+  }
+  const freshProvider = new JsonRpcProvider(config.blockchain.rpcUrl);
+  return new Wallet(config.blockchain.privateKey, freshProvider);
+}
+
+/**
+ * Reset the cached provider and wallet instances
+ * Useful when nonce gets out of sync
+ */
+export function resetWeb3Instances(): void {
+  provider = null;
+  wallet = null;
+}
+
+/**
  * Get wallet information including balance
  */
 export async function getWalletInfo(): Promise<WalletInfo> {

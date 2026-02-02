@@ -1,10 +1,15 @@
 /**
  * Didit KYC Service
  * Business logic for KYC verification using Didit API
+ * 
+ * Note: Didit handles all verification data (documents, liveness, face match, IP analysis).
+ * We only store session info and final decision locally.
  */
 
 import { generateId } from '../utils/id.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
+import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
 import {
   createKycVerification,
   getKycVerificationById,
@@ -17,13 +22,11 @@ import {
 } from '../repositories/didit-kyc-repository.js';
 import {
   createVerificationSession,
-  getVerificationDecision,
   getSessionDetails,
 } from './didit-client.js';
 import {
   KycVerification,
   CreateKycVerificationInput,
-  DiditVerificationDecisionResponse,
   DiditWebhookPayload,
   KycStatus,
 } from '../models/didit-kyc.js';
@@ -77,8 +80,6 @@ export async function initiateKycVerification(
   const sessionResult = await createVerificationSession({
     workflow_id: DIDIT_WORKFLOW_ID ?? '',
     vendor_data: input.user_id,
-    ...(input.metadata && { metadata: input.metadata }),
-    ...(input.contact_details && { contact_details: input.contact_details }),
   });
 
   if (!sessionResult.success) {
@@ -103,8 +104,6 @@ export async function initiateKycVerification(
     didit_session_token: session.session_token,
     didit_session_url: session.url,
     didit_workflow_id: session.workflow_id,
-    ...(input.vendor_data && { vendor_data: input.vendor_data }),
-    ...(input.metadata && { metadata: input.metadata as Record<string, unknown> }),
   });
 
   if (!verification) {
@@ -163,19 +162,14 @@ export async function refreshVerificationStatus(
   const session = sessionResult.data;
   const status = mapDiditStatusToKycStatus(session.status);
 
-  // If completed, fetch decision
+  // Update status if completed
+  const updates: Partial<KycVerification> = { status };
+  
   if (session.status === 'Completed') {
-    const decisionResult = await getVerificationDecision(verification.didit_session_id);
-    if (decisionResult.success) {
-      const updated = await processVerificationDecision(verification.id, decisionResult.data);
-      if (updated) {
-        return { success: true, data: updated };
-      }
-    }
+    updates.completed_at = new Date().toISOString();
   }
 
-  // Update status
-  const updated = await updateKycVerification(verification.id, { status });
+  const updated = await updateKycVerification(verification.id, updates);
   if (!updated) {
     return {
       success: false,
@@ -199,20 +193,74 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
   }
 
   const status = mapDiditStatusToKycStatus(payload.status);
+  const updates: Partial<KycVerification> = { status };
 
-  // If completed, fetch full decision
-  if (payload.status === 'Completed' && payload.decision) {
-    const decisionResult = await getVerificationDecision(payload.session_id);
-    if (decisionResult.success) {
-      const updated = await processVerificationDecision(verification.id, decisionResult.data);
-      if (updated) {
-        return { success: true, data: updated };
+  // Variables to store KYC data for profile creation
+  let firstName: string | null = null;
+  let lastName: string | null = null;
+  let nationality: string | null = null;
+
+  // Handle final statuses with decision data
+  if (['Approved', 'Declined', 'In Review'].includes(payload.status)) {
+    updates.completed_at = new Date(payload.timestamp * 1000).toISOString();
+    
+    // Map Didit status to our decision field
+    if (payload.status === 'Approved') {
+      updates.decision = 'approved';
+      // Set expiry date (1 year from completion)
+      const expiryDate = new Date();
+      expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+      updates.expires_at = expiryDate.toISOString();
+    } else if (payload.status === 'Declined') {
+      updates.decision = 'declined';
+    } else if (payload.status === 'In Review') {
+      updates.decision = 'review';
+    }
+
+    // Extract basic info from decision data
+    if (payload.decision) {
+      const idVerification = payload.decision.id_verifications?.[0];
+      if (idVerification) {
+        firstName = idVerification.first_name ?? null;
+        lastName = idVerification.last_name ?? null;
+        nationality = idVerification.nationality ?? idVerification.issuing_state_name ?? null;
+        
+        updates.first_name = firstName;
+        updates.last_name = lastName;
+        updates.date_of_birth = idVerification.date_of_birth ?? null;
+        updates.nationality = nationality;
+        updates.document_type = idVerification.document_type ?? null;
+        updates.document_number = idVerification.document_number ?? null;
+        updates.issuing_country = idVerification.issuing_state_name ?? null;
+        updates.document_verified = idVerification.status === 'Approved';
+      }
+
+      // Extract liveness data
+      const livenessCheck = payload.decision.liveness_checks?.[0];
+      if (livenessCheck) {
+        updates.liveness_passed = livenessCheck.status === 'Approved';
+        updates.liveness_confidence_score = livenessCheck.score?.toString() ?? null;
+      }
+
+      // Extract face match data
+      const faceMatch = payload.decision.face_matches?.[0];
+      if (faceMatch) {
+        updates.face_matched = faceMatch.status === 'Approved';
+        updates.face_similarity_score = faceMatch.score?.toString() ?? null;
+      }
+
+      // Extract IP analysis data
+      const ipAnalysis = payload.decision.ip_analyses?.[0];
+      if (ipAnalysis) {
+        updates.ip_address = ipAnalysis.ip_address ?? null;
+        updates.ip_country_code = ipAnalysis.ip_country_code ?? null;
+        updates.is_vpn = ipAnalysis.is_vpn_or_tor ?? null;
+        updates.is_proxy = ipAnalysis.is_data_center ?? null;
       }
     }
   }
 
-  // Update status
-  const updated = await updateKycVerification(verification.id, { status });
+  const updated = await updateKycVerification(verification.id, updates);
   if (!updated) {
     return {
       success: false,
@@ -220,78 +268,159 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
     };
   }
 
+  // Auto-create profile when KYC is approved
+  if (payload.status === 'Approved') {
+    await autoCreateProfile(verification.user_id, firstName, lastName, nationality);
+  }
+
   return { success: true, data: updated };
 }
 
 /**
- * Process verification decision and extract all data
+ * Auto-create profile based on user role when KYC is approved
+ * Also syncs KYC name to users table and existing profiles
  */
-async function processVerificationDecision(
-  verificationId: string,
-  decision: DiditVerificationDecisionResponse
-): Promise<KycVerification | null> {
-  const updates: Partial<KycVerification> = {
-    status: 'completed',
-    decision: decision.decision,
-    ...(decision.decline_reasons && { decline_reasons: decision.decline_reasons }),
-    ...(decision.review_reasons && { review_reasons: decision.review_reasons }),
-    completed_at: decision.completed_at ?? new Date().toISOString(),
+async function autoCreateProfile(
+  userId: string,
+  firstName: string | null,
+  lastName: string | null,
+  nationality: string | null
+): Promise<void> {
+  await syncKycNameToUserAndProfiles(userId, firstName, lastName, nationality);
+}
+
+/**
+ * Sync KYC name to users table and profiles
+ * Shared logic for webhook and admin approval flows
+ */
+async function syncKycNameToUserAndProfiles(
+  userId: string,
+  firstName: string | null,
+  lastName: string | null,
+  nationality: string | null
+): Promise<void> {
+  try {
+    const user = await userRepository.getUserById(userId);
+    if (!user) {
+      console.error(`Sync KYC name: User not found: ${userId}`);
+      return;
+    }
+
+    const fullName = [firstName, lastName].filter(Boolean).join(' ') || user.name || 'User';
+
+    // Sync name to users table (KYC is source of truth)
+    if (fullName && fullName !== 'User') {
+      await userRepository.updateUserName(userId, fullName);
+      console.log(`Synced KYC name to users table for user: ${userId}`);
+    }
+
+    if (user.role === 'freelancer') {
+      // Check if profile already exists
+      const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
+      if (existingProfile) {
+        console.log(`Freelancer profile already exists for user: ${userId}`);
+        // Update existing profile with KYC name
+        await freelancerProfileRepository.updateProfile(existingProfile.id, {
+          name: fullName,
+          nationality: nationality,
+        });
+        console.log(`Updated freelancer profile name from KYC for user: ${userId}`);
+        return;
+      }
+
+      // Create freelancer profile
+      const bio = `Hi, I'm ${fullName}. I'm a verified freelancer ready to work on your projects.`;
+      
+      await freelancerProfileRepository.createProfile({
+        id: generateId(),
+        user_id: userId,
+        name: fullName,
+        nationality: nationality,
+        bio,
+        hourly_rate: 0,
+        skills: [],
+        experience: [],
+        availability: 'available',
+      });
+      
+      console.log(`Auto-created freelancer profile for user: ${userId}`);
+      
+    } else if (user.role === 'employer') {
+      // Check if profile already exists
+      const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
+      if (existingProfile) {
+        console.log(`Employer profile already exists for user: ${userId}`);
+        // Update existing profile with KYC name
+        await employerProfileRepository.updateProfile(existingProfile.id, {
+          name: fullName,
+          nationality: nationality,
+        });
+        console.log(`Updated employer profile name from KYC for user: ${userId}`);
+        return;
+      }
+
+      // Create employer profile
+      const description = `Verified employer: ${fullName}. Looking for talented freelancers.`;
+      
+      await employerProfileRepository.createProfile({
+        id: generateId(),
+        user_id: userId,
+        name: fullName,
+        nationality: nationality,
+        company_name: fullName,
+        description,
+        industry: 'Technology',
+      });
+      
+      console.log(`Auto-created employer profile for user: ${userId}`);
+    }
+  } catch (error) {
+    console.error(`Failed to sync KYC name for user ${userId}:`, error);
+    // Don't throw - profile sync failure shouldn't fail the webhook/approval
+  }
+}
+
+/**
+ * Get KYC data formatted for profile creation
+ * Returns basic info that can be used to pre-populate profile
+ */
+export async function getProfileDataFromKyc(userId: string): Promise<ServiceResult<ProfileDataFromKyc | null>> {
+  const verification = await getKycVerificationByUserId(userId);
+  
+  if (!verification) {
+    return {
+      success: false,
+      error: { code: 'NO_KYC', message: 'No KYC verification found for user' },
+    };
+  }
+
+  if (verification.status !== 'approved') {
+    return {
+      success: false,
+      error: { code: 'KYC_NOT_APPROVED', message: 'KYC verification is not approved' },
+    };
+  }
+
+  const profileData: ProfileDataFromKyc = {
+    name: [verification.first_name, verification.last_name].filter(Boolean).join(' ') || null,
+    first_name: verification.first_name ?? null,
+    last_name: verification.last_name ?? null,
+    nationality: verification.nationality ?? null,
+    kyc_verified: true,
+    kyc_verified_at: verification.completed_at ?? null,
   };
 
-  // Extract ID verification data
-  if (decision.id_verification) {
-    const idv = decision.id_verification;
-    if (idv.document_type) updates.document_type = idv.document_type;
-    if (idv.document_number) updates.document_number = idv.document_number;
-    if (idv.issuing_country) updates.issuing_country = idv.issuing_country;
-    if (idv.first_name) updates.first_name = idv.first_name;
-    if (idv.last_name) updates.last_name = idv.last_name;
-    if (idv.date_of_birth) updates.date_of_birth = idv.date_of_birth;
-    if (idv.nationality) updates.nationality = idv.nationality;
-    updates.document_verified = idv.verification_status === 'verified';
-  }
-
-  // Extract liveness data
-  if (decision.liveness_detection) {
-    const liveness = decision.liveness_detection;
-    updates.liveness_passed = liveness.liveness_status === 'passed';
-    if (liveness.confidence_score !== undefined) {
-      updates.liveness_confidence_score = liveness.confidence_score;
-    }
-    if (liveness.spoofing_detected !== undefined) {
-      updates.spoofing_detected = liveness.spoofing_detected;
-    }
-  }
-
-  // Extract face match data
-  if (decision.face_match) {
-    const faceMatch = decision.face_match;
-    updates.face_matched = faceMatch.match_status === 'matched';
-    if (faceMatch.similarity_score !== undefined) {
-      updates.face_similarity_score = faceMatch.similarity_score;
-    }
-  }
-
-  // Extract IP analysis data
-  if (decision.ip_analysis) {
-    const ipAnalysis = decision.ip_analysis;
-    if (ipAnalysis.ip_address) updates.ip_address = ipAnalysis.ip_address;
-    if (ipAnalysis.country_code) updates.ip_country_code = ipAnalysis.country_code;
-    if (ipAnalysis.risk_score !== undefined) updates.ip_risk_score = ipAnalysis.risk_score;
-    if (ipAnalysis.is_vpn !== undefined) updates.is_vpn = ipAnalysis.is_vpn;
-    if (ipAnalysis.is_proxy !== undefined) updates.is_proxy = ipAnalysis.is_proxy;
-    if (ipAnalysis.threat_level) updates.threat_level = ipAnalysis.threat_level;
-  }
-
-  // Set expiry date (1 year from completion for approved verifications)
-  if (decision.decision === 'approved') {
-    const expiryDate = new Date();
-    expiryDate.setFullYear(expiryDate.getFullYear() + 1);
-    updates.expires_at = expiryDate.toISOString();
-  }
-
-  return updateKycVerification(verificationId, updates);
+  return { success: true, data: profileData };
 }
+
+type ProfileDataFromKyc = {
+  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  nationality: string | null;
+  kyc_verified: boolean;
+  kyc_verified_at: string | null;
+};
 
 /**
  * Admin review and approve/reject verification
@@ -340,6 +469,16 @@ export async function adminReviewVerification(
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to update verification' },
     };
+  }
+
+  // Sync name to users table and profiles when admin approves
+  if (decision === 'approved') {
+    await syncKycNameToUserAndProfiles(
+      verification.user_id,
+      verification.first_name ?? null,
+      verification.last_name ?? null,
+      verification.nationality ?? null
+    );
   }
 
   return { success: true, data: updated };
@@ -400,12 +539,16 @@ function mapDiditStatusToKycStatus(diditStatus: string): KycStatus {
       return 'pending';
     case 'In Progress':
       return 'in_progress';
-    case 'Completed':
-      return 'completed';
+    case 'Approved':
+      return 'approved';
+    case 'Declined':
+      return 'rejected';
+    case 'In Review':
+      return 'completed'; // Needs admin review
     case 'Expired':
       return 'expired';
-    case 'Cancelled':
-      return 'rejected';
+    case 'Abandoned':
+      return 'expired';
     default:
       return 'pending';
   }

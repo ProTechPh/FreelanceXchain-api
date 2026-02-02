@@ -12,6 +12,7 @@ export default {
       {
         useESM: true,
         isolatedModules: true, // Fix ts-jest warning for NodeNext module
+        tsconfig: 'tsconfig.test.json',
         diagnostics: {
           ignoreCodes: [151002], // Ignore hybrid module warning
         },

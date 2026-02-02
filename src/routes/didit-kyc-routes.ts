@@ -1,6 +1,8 @@
 /**
  * Didit KYC Routes
  * API endpoints for KYC verification using Didit
+ * 
+ * Note: Didit handles all verification data. We only track session and decision.
  */
 
 import { Router, Request, Response } from 'express';
@@ -18,8 +20,9 @@ import {
   getVerificationsByStatus,
   getUserVerificationHistory,
   isUserVerified,
+  getProfileDataFromKyc,
 } from '../services/didit-kyc-service.js';
-import { CreateKycVerificationInput, DiditWebhookPayload, KycStatus } from '../models/didit-kyc.js';
+import { DiditWebhookPayload, KycStatus } from '../models/didit-kyc.js';
 
 const router = Router();
 
@@ -47,36 +50,14 @@ const router = Router();
  *         decision:
  *           type: string
  *           enum: [approved, declined, review]
- *         document_type:
+ *         reviewed_by:
  *           type: string
- *         first_name:
+ *           format: uuid
+ *         reviewed_at:
  *           type: string
- *         last_name:
+ *           format: date-time
+ *         admin_notes:
  *           type: string
- *         date_of_birth:
- *           type: string
- *           format: date
- *         nationality:
- *           type: string
- *         document_verified:
- *           type: boolean
- *         liveness_passed:
- *           type: boolean
- *         liveness_confidence_score:
- *           type: number
- *         face_matched:
- *           type: boolean
- *         face_similarity_score:
- *           type: number
- *         ip_address:
- *           type: string
- *         ip_country_code:
- *           type: string
- *         ip_risk_score:
- *           type: number
- *         threat_level:
- *           type: string
- *           enum: [low, medium, high]
  *         created_at:
  *           type: string
  *           format: date-time
@@ -86,20 +67,6 @@ const router = Router();
  *         expires_at:
  *           type: string
  *           format: date-time
- *     CreateKycRequest:
- *       type: object
- *       properties:
- *         metadata:
- *           type: object
- *           additionalProperties: true
- *         contact_details:
- *           type: object
- *           properties:
- *             email:
- *               type: string
- *               format: email
- *             phone:
- *               type: string
  */
 
 /**
@@ -112,11 +79,6 @@ const router = Router();
  *       - KYC
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/CreateKycRequest'
  *     responses:
  *       201:
  *         description: Verification session created
@@ -142,13 +104,7 @@ router.post('/initiate', authMiddleware, async (req: Request, res: Response) => 
     return;
   }
 
-  const input: CreateKycVerificationInput = {
-    user_id: userId,
-    metadata: req.body.metadata,
-    contact_details: req.body.contact_details,
-  };
-
-  const result = await initiateKycVerification(input);
+  const result = await initiateKycVerification({ user_id: userId });
 
   if (!result.success) {
     const statusCode = result.error.code === 'USER_NOT_FOUND' ? 404 : 400;
@@ -250,6 +206,62 @@ router.get('/verified', authMiddleware, async (req: Request, res: Response) => {
 
   const verified = await isUserVerified(userId);
   res.status(200).json({ verified });
+});
+
+/**
+ * @swagger
+ * /api/kyc/profile-data:
+ *   get:
+ *     summary: Get KYC data for profile creation
+ *     description: Returns verified KYC data that can be used to pre-populate user profile
+ *     tags:
+ *       - KYC
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Profile data from KYC
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 name:
+ *                   type: string
+ *                 first_name:
+ *                   type: string
+ *                 last_name:
+ *                   type: string
+ *                 location:
+ *                   type: string
+ *                 nationality:
+ *                   type: string
+ *                 kyc_verified:
+ *                   type: boolean
+ *                 kyc_verified_at:
+ *                   type: string
+ *                   format: date-time
+ *       400:
+ *         description: KYC not approved or not found
+ */
+router.get('/profile-data', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+    });
+    return;
+  }
+
+  const result = await getProfileDataFromKyc(userId);
+
+  if (!result.success) {
+    res.status(400).json({ error: result.error });
+    return;
+  }
+
+  res.status(200).json(result.data);
 });
 
 /**
@@ -366,10 +378,12 @@ router.post('/refresh/:verificationId', authMiddleware, validateUUID(['verificat
  */
 router.post('/webhook', async (req: Request, res: Response) => {
   const signature = req.headers['x-signature'] as string;
+  const timestamp = req.headers['x-timestamp'] as string;
   const payload = JSON.stringify(req.body);
 
   // Verify webhook signature
-  if (!signature || !verifyWebhookSignature(payload, signature)) {
+  if (!verifyWebhookSignature(payload, signature, timestamp)) {
+    console.error('Invalid webhook signature');
     res.status(401).json({
       error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' },
     });
@@ -377,6 +391,9 @@ router.post('/webhook', async (req: Request, res: Response) => {
   }
 
   const webhookPayload: DiditWebhookPayload = req.body;
+
+  // Log webhook for debugging (remove in production)
+  console.log(`Didit webhook: ${webhookPayload.webhook_type} - ${webhookPayload.status}`);
 
   const result = await processWebhook(webhookPayload);
 
@@ -457,7 +474,46 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), async 
     return;
   }
 
-  res.status(200).json(result.data);
+  // Transform snake_case to camelCase for frontend
+  const transformedData = result.data.map(kyc => ({
+    id: kyc.id,
+    userId: kyc.user_id,
+    status: kyc.status,
+    firstName: kyc.first_name || '',
+    lastName: kyc.last_name || '',
+    dateOfBirth: kyc.date_of_birth,
+    nationality: kyc.nationality,
+    documentType: kyc.document_type,
+    documentNumber: kyc.document_number,
+    issuingCountry: kyc.issuing_country,
+    documentVerified: kyc.document_verified,
+    livenessCheck: kyc.liveness_passed ? {
+      id: kyc.id,
+      sessionId: kyc.didit_session_id,
+      status: kyc.liveness_passed ? 'passed' : 'failed',
+      confidenceScore: parseFloat(kyc.liveness_confidence_score || '0'),
+      challenges: [],
+      expiresAt: kyc.expires_at || '',
+    } : undefined,
+    faceMatchScore: kyc.face_similarity_score ? parseFloat(kyc.face_similarity_score) : undefined,
+    faceMatchStatus: kyc.face_matched ? 'matched' : kyc.face_matched === false ? 'not_matched' : 'pending',
+    rejectionReason: kyc.admin_notes,
+    didit_session_url: kyc.didit_session_url,
+    completed_at: kyc.completed_at,
+    admin_notes: kyc.admin_notes,
+    createdAt: kyc.created_at,
+    updatedAt: kyc.updated_at,
+    tier: 1,
+    address: {
+      addressLine1: '',
+      city: '',
+      country: kyc.nationality || '',
+      countryCode: kyc.ip_country_code || '',
+    },
+    documents: [],
+  }));
+
+  res.status(200).json(transformedData);
 });
 
 /**

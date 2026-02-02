@@ -12,10 +12,12 @@ import {
   resendConfirmationEmail,
   requestPasswordReset,
   updatePassword,
+  getCurrentUserWithKyc,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter } from '../middleware/rate-limiter.js';
+import { authMiddleware } from '../middleware/auth-middleware.js';
 
 const router = Router();
 
@@ -42,10 +44,6 @@ const router = Router();
  *           type: string
  *           enum: [freelancer, employer]
  *           description: User's role on the platform
- *         name:
- *           type: string
- *           minLength: 2
- *           description: Optional user's full name (min 2 characters if provided)
  *         walletAddress:
  *           type: string
  *           pattern: ^0x[a-fA-F0-9]{40}$
@@ -158,7 +156,7 @@ function validateRole(role: unknown): role is UserRole {
  *               $ref: '#/components/schemas/AuthError'
  */
 router.post('/register', authRateLimiter, async (req: Request, res: Response) => {
-  const { email, password, role, name, walletAddress } = req.body;
+  const { email, password, role, walletAddress } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
   // Validate input
@@ -182,11 +180,6 @@ router.post('/register', authRateLimiter, async (req: Request, res: Response) =>
 
   if (!validateRole(role)) {
     errors.push({ field: 'role', message: 'Role must be freelancer or employer' });
-  }
-
-  // Validate name if provided (min 2 chars)
-  if (name && typeof name === 'string' && name.trim().length > 0 && name.trim().length < 2) {
-    errors.push({ field: 'name', message: 'Name must be at least 2 characters if provided' });
   }
 
   // Validate wallet address format if provided
@@ -213,7 +206,6 @@ router.post('/register', authRateLimiter, async (req: Request, res: Response) =>
     email, 
     password, 
     role, 
-    name: name?.trim() || undefined, 
     walletAddress 
   };
   const result = await register(input);
@@ -598,7 +590,10 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
   const { access_token } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
+  console.log('[OAuth] POST /oauth/callback - Received request');
+
   if (!access_token || typeof access_token !== 'string') {
+    console.log('[OAuth] POST /oauth/callback - Missing access_token');
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
@@ -610,10 +605,14 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
     return;
   }
 
+  console.log('[OAuth] POST /oauth/callback - Calling loginWithSupabase');
   const result = await loginWithSupabase(access_token);
 
   if (isAuthError(result)) {
+    console.log('[OAuth] POST /oauth/callback - Got auth error:', result.code);
+    
     if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
+      console.log('[OAuth] POST /oauth/callback - Returning 202 registration_required');
       res.status(202).json({
         status: 'registration_required',
         message: 'User does not exist. Please register with a role.',
@@ -622,6 +621,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
       return;
     }
 
+    console.log('[OAuth] POST /oauth/callback - Returning 401 invalid token');
     res.status(401).json({
       error: {
         code: 'AUTH_INVALID_TOKEN',
@@ -633,7 +633,9 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  res.status(200).json({ status: 'success' });
+  console.log('[OAuth] POST /oauth/callback - Success! Returning 200 with user data');
+  // Return the full auth result with user and tokens
+  res.status(200).json(result);
 });
 
 /**
@@ -641,7 +643,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
  * /api/auth/oauth/register:
  *   post:
  *     summary: Complete OAuth registration with role
- *     description: Finalize account creation for a new OAuth user by providing a role, and optionally name and wallet address
+ *     description: Finalize account creation for a new OAuth user by providing a role and optionally wallet address
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -659,10 +661,6 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
  *               role:
  *                 type: string
  *                 enum: [freelancer, employer]
- *               name:
- *                 type: string
- *                 minLength: 2
- *                 description: Optional user's full name (min 2 characters if provided)
  *               walletAddress:
  *                 type: string
  *                 pattern: ^0x[a-fA-F0-9]{40}$
@@ -680,7 +678,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
  *         description: Invalid token
  */
 router.post('/oauth/register', authRateLimiter, async (req: Request, res: Response) => {
-  const { accessToken, role, walletAddress, name } = req.body;
+  const { accessToken, role, walletAddress } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
   const errors: { field: string; message: string }[] = [];
@@ -691,11 +689,6 @@ router.post('/oauth/register', authRateLimiter, async (req: Request, res: Respon
 
   if (!role || (role !== 'freelancer' && role !== 'employer')) {
     errors.push({ field: 'role', message: 'Valid role (freelancer or employer) is required' });
-  }
-
-  // Validate name if provided (min 2 chars)
-  if (name && typeof name === 'string' && name.trim().length > 0 && name.trim().length < 2) {
-    errors.push({ field: 'name', message: 'Name must be at least 2 characters if provided' });
   }
 
   // Validate wallet address format if provided
@@ -722,8 +715,7 @@ router.post('/oauth/register', authRateLimiter, async (req: Request, res: Respon
     const result = await registerWithSupabase(
       accessToken, 
       role, 
-      walletAddress ?? '', 
-      name?.trim() || ''
+      walletAddress ?? ''
     );
 
     if (isAuthError(result)) {
@@ -932,6 +924,75 @@ router.post('/reset-password', authRateLimiter, async (req: Request, res: Respon
   }
 
   res.status(200).json({ message: 'Password updated successfully' });
+});
+
+/**
+ * @swagger
+ * /api/auth/me:
+ *   get:
+ *     summary: Get current user
+ *     description: Returns the authenticated user's information including KYC status
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: User retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 user:
+ *                   type: object
+ *                   properties:
+ *                     id:
+ *                       type: string
+ *                     email:
+ *                       type: string
+ *                     role:
+ *                       type: string
+ *                     walletAddress:
+ *                       type: string
+ *                     kycStatus:
+ *                       type: string
+ *                     createdAt:
+ *                       type: string
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/me', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_UNAUTHORIZED',
+        message: 'Authentication required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await getCurrentUserWithKyc(userId);
+
+  if (isAuthError(result)) {
+    res.status(404).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ user: result });
 });
 
 export default router;

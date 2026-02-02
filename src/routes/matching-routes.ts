@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { TokenPayload } from '../services/auth-types.js';
 import {
@@ -145,7 +145,7 @@ const router = Router();
  *       404:
  *         description: Freelancer profile not found
  */
-router.get('/projects', authMiddleware, async (req: Request, res: Response) => {
+router.get('/projects', authMiddleware, requireKyc, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const userId = authReq.user.userId;
@@ -223,7 +223,7 @@ router.get('/projects', authMiddleware, async (req: Request, res: Response) => {
  *       404:
  *         description: Project not found
  */
-router.get('/freelancers/:projectId', authMiddleware, validateUUID(['projectId']), async (req: Request, res: Response) => {
+router.get('/freelancers/:projectId', authMiddleware, requireKyc, validateUUID(['projectId']), async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const projectId = req.params['projectId'];
 
@@ -297,7 +297,7 @@ router.get('/freelancers/:projectId', authMiddleware, validateUUID(['projectId']
  *       401:
  *         description: Unauthorized - Invalid or missing token
  */
-router.post('/extract-skills', authMiddleware, async (req: Request, res: Response) => {
+router.post('/extract-skills', authMiddleware, requireKyc, async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const { text } = req.body as { text?: string };
 
@@ -346,7 +346,7 @@ router.post('/extract-skills', authMiddleware, async (req: Request, res: Respons
  *       404:
  *         description: Freelancer profile not found
  */
-router.get('/skill-gaps', authMiddleware, async (req: Request, res: Response) => {
+router.get('/skill-gaps', authMiddleware, requireKyc, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const userId = authReq.user.userId;

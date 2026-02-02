@@ -1,8 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requireKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import {
-  createEmployerProfile,
   getEmployerProfileByUserId,
   updateEmployerProfile,
 } from '../services/employer-profile-service.js';
@@ -81,7 +80,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.get('/projects', authMiddleware, requireKyc, requireRole('employer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
@@ -114,52 +113,30 @@ router.get('/projects', authMiddleware, requireRole('employer'), async (req: Req
   res.status(200).json(result.data);
 });
 
+
 /**
  * @swagger
  * /api/employers/profile:
- *   post:
- *     summary: Create employer profile
- *     description: Creates a new employer profile for the authenticated user
+ *   get:
+ *     summary: Get current user's employer profile
+ *     description: Retrieves the authenticated user's employer profile
  *     tags:
  *       - Employers
  *     security:
  *       - bearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - companyName
- *               - description
- *               - industry
- *             properties:
- *               companyName:
- *                 type: string
- *                 minLength: 2
- *               description:
- *                 type: string
- *                 minLength: 10
- *               industry:
- *                 type: string
- *                 minLength: 2
  *     responses:
- *       201:
- *         description: Profile created successfully
+ *       200:
+ *         description: Profile retrieved successfully
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/EmployerProfile'
- *       400:
- *         description: Validation error
  *       401:
  *         description: Unauthorized
- *       409:
- *         description: Profile already exists
+ *       404:
+ *         description: Profile not found
  */
-router.post('/profile', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
-  const { companyName, description, industry } = req.body;
+router.get('/profile', authMiddleware, requireKyc, requireRole('employer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -172,32 +149,10 @@ router.post('/profile', authMiddleware, requireRole('employer'), async (req: Req
     return;
   }
 
-  // Validate input
-  const errors: { field: string; message: string }[] = [];
-  if (!companyName || typeof companyName !== 'string' || companyName.trim().length < 2) {
-    errors.push({ field: 'companyName', message: 'Company name must be at least 2 characters' });
-  }
-  if (!description || typeof description !== 'string' || description.trim().length < 10) {
-    errors.push({ field: 'description', message: 'Description must be at least 10 characters' });
-  }
-  if (!industry || typeof industry !== 'string' || industry.trim().length < 2) {
-    errors.push({ field: 'industry', message: 'Industry must be at least 2 characters' });
-  }
-
-  if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  const result = await createEmployerProfile(userId, { companyName, description, industry });
+  const result = await getEmployerProfileByUserId(userId);
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_EXISTS' ? 409 : 400;
-    res.status(statusCode).json({
+    res.status(404).json({
       error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
@@ -205,8 +160,9 @@ router.post('/profile', authMiddleware, requireRole('employer'), async (req: Req
     return;
   }
 
-  res.status(201).json(result.data);
+  res.status(200).json(result.data);
 });
+
 
 /**
  * @swagger
@@ -245,7 +201,7 @@ router.post('/profile', authMiddleware, requireRole('employer'), async (req: Req
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireKyc, requireRole('employer'), async (req: Request, res: Response) => {
   const { companyName, description, industry } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

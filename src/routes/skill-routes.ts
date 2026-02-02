@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
-import { 
-  createCategory, 
-  createSkill, 
-  deprecateSkill, 
-  getFullTaxonomy, 
-  searchSkills 
+import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import {
+  createCategory,
+  createSkill,
+  deprecateSkill,
+  getFullTaxonomy,
+  searchSkills,
+  getActiveSkillsByCategory
 } from '../services/skill-service.js';
 import { CreateSkillCategoryInput, CreateSkillInput } from '../models/skill.js';
 
@@ -146,6 +148,55 @@ router.get('/search', async (req: Request, res: Response) => {
   res.status(200).json(results);
 });
 
+/**
+ * @swagger
+ * /api/skills/categories/{categoryId}/skills:
+ *   get:
+ *     summary: Get skills by category
+ *     description: Returns all active skills for a specific category
+ *     tags:
+ *       - Skills
+ *     parameters:
+ *       - in: path
+ *         name: categoryId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: ID of the category
+ *     responses:
+ *       200:
+ *         description: Skills retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Skill'
+ *       400:
+ *         description: Invalid category ID format
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get('/categories/:categoryId/skills', validateUUID(), async (req: Request, res: Response) => {
+  const { categoryId } = req.params;
+  
+  if (!categoryId) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Category ID is required',
+      },
+    });
+    return;
+  }
+  
+  const skills = await getActiveSkillsByCategory(categoryId);
+  res.status(200).json(skills);
+});
+
 
 /**
  * @swagger
@@ -183,7 +234,7 @@ router.get('/search', async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/categories', async (req: Request, res: Response) => {
+router.post('/categories', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
   const { name, description } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -266,7 +317,7 @@ router.post('/categories', async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
   const { categoryId, name, description } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -356,7 +407,7 @@ router.post('/', async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.patch('/:id/deprecate', validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), validateUUID(), async (req: Request, res: Response) => {
   const { id } = req.params;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

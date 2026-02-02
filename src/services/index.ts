@@ -392,28 +392,16 @@ export type {
 } from './ai-types.js';
 
 
-// KYC service exports
+// Didit KYC service exports
 export {
+  initiateKycVerification,
   getKycStatus,
-  submitKyc,
-  reviewKyc,
-  getPendingKycReviews,
-  getAllKycByStatus,
-  addDocument,
-  createLivenessSession,
-  verifyLiveness,
-  verifyFaceMatch,
-  getLivenessSession,
-  getSupportedCountries,
-  getCountryRequirements,
-  isCountrySupported,
-  isDocumentTypeSupported,
-  isKycError,
-  isKycApproved,
-  isKycComplete,
-} from './kyc-service.js';
-
-export type {
-  KycError,
-  KycResult,
-} from './kyc-service.js';
+  getKycById,
+  refreshVerificationStatus,
+  processWebhook,
+  adminReviewVerification,
+  getPendingAdminReviews,
+  getVerificationsByStatus,
+  getUserVerificationHistory,
+  isUserVerified,
+} from './didit-kyc-service.js';

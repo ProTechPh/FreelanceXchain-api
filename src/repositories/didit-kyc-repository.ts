@@ -1,6 +1,8 @@
 /**
  * Didit KYC Repository
  * Database operations for KYC verifications using Supabase
+ * 
+ * Note: We only store session info and decision - Didit handles all verification data.
  */
 
 import { getSupabaseClient } from '../config/supabase.js';

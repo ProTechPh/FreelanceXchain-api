@@ -78,6 +78,17 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
     if (error) throw new Error(`Failed to check review: ${error.message}`);
     return (data?.length ?? 0) > 0;
   }
+
+  async getAllReviews(): Promise<ReviewEntity[]> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) throw new Error(`Failed to get all reviews: ${error.message}`);
+    return (data ?? []) as ReviewEntity[];
+  }
 }
 
 export const ReviewRepository = new ReviewRepositoryClass();

@@ -4,7 +4,6 @@ export type RegisterInput = {
   email: string;
   password: string;
   role: UserRole;
-  name?: string;
   walletAddress?: string;
 };
 
@@ -26,6 +25,7 @@ export type AuthResult = {
     email: string;
     role: UserRole;
     walletAddress: string;
+    kycStatus?: string;
     createdAt: string;
   };
   accessToken: string;
@@ -42,6 +42,7 @@ export type AuthError = {
   | 'AUTH_INVALID_TOKEN'
   | 'AUTH_INVALID_CREDENTIALS'
   | 'AUTH_REQUIRE_REGISTRATION'
+  | 'USER_NOT_FOUND'
   | 'VALIDATION_ERROR'
   | 'INTERNAL_ERROR';
   message: string;

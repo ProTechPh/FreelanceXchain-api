@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { validateToken } from '../services/auth-service.js';
 import { AuthError } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
+import { isUserVerified } from '../services/didit-kyc-service.js';
 
 type ValidatedUser = {
   userId: string;
@@ -97,4 +98,45 @@ export function requireRole(...roles: UserRole[]) {
 
     next();
   };
+}
+
+
+/**
+ * Middleware to require KYC verification
+ * Admin users are exempted from KYC requirement
+ */
+export async function requireKyc(req: Request, res: Response, next: NextFunction): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_UNAUTHORIZED',
+        message: 'Authentication required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId: req.headers['x-request-id'] ?? 'unknown',
+    });
+    return;
+  }
+
+  // Admin users are exempted from KYC requirement
+  if (req.user.role === 'admin') {
+    next();
+    return;
+  }
+
+  const verified = await isUserVerified(req.user.userId);
+  
+  if (!verified) {
+    res.status(403).json({
+      error: {
+        code: 'KYC_REQUIRED',
+        message: 'KYC verification required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId: req.headers['x-request-id'] ?? 'unknown',
+    });
+    return;
+  }
+
+  next();
 }
