@@ -3,16 +3,11 @@
 import dotenv from 'dotenv';
 import { jest } from '@jest/globals';
 
-<<<<<<< Updated upstream
-dotenv.config({ path: '.env' });
-=======
 // Load test environment variables
 dotenv.config({ path: '.env.test' });
->>>>>>> Stashed changes
 
 // Ensure test environment is set
 process.env.NODE_ENV = 'test';
-<<<<<<< Updated upstream
 process.env.JWT_SECRET = 'test-jwt-secret-key-for-testing-only';
 process.env.JWT_EXPIRES_IN = '1h';
 process.env.JWT_REFRESH_EXPIRES_IN = '7d';
@@ -20,7 +15,7 @@ process.env.JWT_REFRESH_EXPIRES_IN = '7d';
 // Add BigInt serialization support to prevent Jest worker errors
 BigInt.prototype.toJSON = function() {
   return this.toString();
-=======
+};
 
 // Enhanced Mock Supabase client with comprehensive query builder
 const mockSupabaseClient = {
@@ -161,5 +156,4 @@ console.error = (...args) => {
     return;
   }
   originalConsoleError.apply(console, args);
->>>>>>> Stashed changes
 };

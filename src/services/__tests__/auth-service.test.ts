@@ -120,14 +120,6 @@ jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
     PAYMENTS: 'payments',
   },
 }));
-<<<<<<< Updated upstream
-
-// Mock the didit-kyc-repository before importing auth-service
-jest.unstable_mockModule('../../repositories/didit-kyc-repository.js', () => ({
-  getKycVerificationByUserId: jest.fn(async () => null),
-}));
-
-=======
 // Mock the KYC repository
 jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts'), () => ({
   getKycVerificationByUserId: jest.fn(async () => null),
@@ -135,7 +127,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts
   updateKycVerification: jest.fn(),
   getKycVerificationById: jest.fn(),
 }));
->>>>>>> Stashed changes
 // Mock the user repository before importing auth-service
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: {

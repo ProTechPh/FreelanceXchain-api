@@ -2,17 +2,13 @@
  * Agreement Blockchain Integration Tests
  * Tests for contract agreement blockchain functionality
  */
-<<<<<<< Updated upstream
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 
 // Fix BigInt serialization for Jest
 BigInt.prototype.toJSON = function() {
   return this.toString();
 };
-
-=======
->>>>>>> Stashed changes
-import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import path from 'node:path';
 
 // Mock web3-client
 const mockGetContract = jest.fn();
@@ -30,12 +26,7 @@ jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
 jest.unstable_mockModule(resolveModule('src/config/contracts.ts'), () => ({
   getContractAddress: jest.fn().mockReturnValue('0xAgreementContract'),
 }));
-<<<<<<< Updated upstream
-
-describe.skip('Agreement Blockchain Integration', () => {
-=======
 describe('Agreement Blockchain Integration', () => {
->>>>>>> Stashed changes
   let mockContract: any;
   beforeEach(() => {
     jest.clearAllMocks();
