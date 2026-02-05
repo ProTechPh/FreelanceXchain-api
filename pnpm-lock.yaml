@@ -3,6 +3,11 @@ lockfileVersion: '9.0'
 settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
+  onlyBuiltDependencies:
+    - bcrypt
+    - esbuild
+    - keccak
+    - secp256k1
 
 importers:
 
