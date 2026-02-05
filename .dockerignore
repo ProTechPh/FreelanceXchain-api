@@ -39,13 +39,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Smart contracts (not needed for API)
-contracts
-artifacts
-cache
-scripts
-hardhat.config.cjs
-deployment.json
+# Smart contracts (needed for compilation)
+!contracts
+!hardhat.config.cjs
 
 # Infrastructure/Cloud configs
 infra
