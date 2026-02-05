@@ -74,7 +74,7 @@
       "secp256k1"
     ]
   },
-  "packageManager": "pnpm@8",
+  "packageManager": "pnpm@8.15.9",
   "engines": {
     "node": ">=20",
     "pnpm": ">=8"
