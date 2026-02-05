@@ -3,11 +3,19 @@
  * Exports compiled contract ABIs for blockchain interaction
  */
 
-import FreelanceReputationArtifact from '../../artifacts/contracts/FreelanceReputation.sol/FreelanceReputation.json' with { type: 'json' };
-import FreelanceEscrowArtifact from '../../artifacts/contracts/FreelanceEscrow.sol/FreelanceEscrow.json' with { type: 'json' };
-import ContractAgreementArtifact from '../../artifacts/contracts/ContractAgreement.sol/ContractAgreement.json' with { type: 'json' };
-import DisputeResolutionArtifact from '../../artifacts/contracts/DisputeResolution.sol/DisputeResolution.json' with { type: 'json' };
-import MilestoneRegistryArtifact from '../../artifacts/contracts/MilestoneRegistry.sol/MilestoneRegistry.json' with { type: 'json' };
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const require = createRequire(import.meta.url);
+
+const FreelanceReputationArtifact = require(join(__dirname, '../../artifacts/contracts/FreelanceReputation.sol/FreelanceReputation.json'));
+const FreelanceEscrowArtifact = require(join(__dirname, '../../artifacts/contracts/FreelanceEscrow.sol/FreelanceEscrow.json'));
+const ContractAgreementArtifact = require(join(__dirname, '../../artifacts/contracts/ContractAgreement.sol/ContractAgreement.json'));
+const DisputeResolutionArtifact = require(join(__dirname, '../../artifacts/contracts/DisputeResolution.sol/DisputeResolution.json'));
+const MilestoneRegistryArtifact = require(join(__dirname, '../../artifacts/contracts/MilestoneRegistry.sol/MilestoneRegistry.json'));
 
 export const FreelanceReputationABI = FreelanceReputationArtifact.abi;
 export const FreelanceEscrowABI = FreelanceEscrowArtifact.abi;
