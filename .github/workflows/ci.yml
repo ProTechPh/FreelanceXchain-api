@@ -26,6 +26,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Cache Hardhat compiler
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: ${{ runner.os }}-hardhat-${{ hashFiles('hardhat.config.cjs') }}
+          restore-keys: |
+            ${{ runner.os }}-hardhat-
+
       - name: Compile smart contracts
         run: pnpm run compile
 
@@ -50,6 +58,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Cache Hardhat compiler
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: ${{ runner.os }}-hardhat-${{ hashFiles('hardhat.config.cjs') }}
+          restore-keys: |
+            ${{ runner.os }}-hardhat-
 
       - name: Compile smart contracts
         run: pnpm run compile
@@ -81,6 +97,14 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Cache Hardhat compiler
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: ${{ runner.os }}-hardhat-${{ hashFiles('hardhat.config.cjs') }}
+          restore-keys: |
+            ${{ runner.os }}-hardhat-
 
       - name: Compile smart contracts
         run: pnpm run compile
