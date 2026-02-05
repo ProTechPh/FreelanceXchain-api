@@ -4,12 +4,12 @@ import {
   calculateMatchScore,
   sortRecommendationsByScore,
   sortFreelancerRecommendationsByCombinedScore,
-} from '../matching-service.js';
+} from '../matching-service';
 import {
   SkillInfo,
   ProjectRecommendation,
   FreelancerRecommendation,
-} from '../ai-types.js';
+} from '../ai-types';
 
 // Custom arbitraries for property-based testing
 

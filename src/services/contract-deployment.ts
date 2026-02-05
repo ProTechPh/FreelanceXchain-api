@@ -4,8 +4,8 @@
  */
 
 import { ContractFactory } from 'ethers';
-import { getWallet, isWeb3Available, getNetworkInfo, getFreshWallet } from './web3-client.js';
-import { setContractAddress, getCurrentNetwork } from '../config/contracts.js';
+import { getWallet, isWeb3Available, getNetworkInfo, getFreshWallet } from './web3-client';
+import { setContractAddress, getCurrentNetwork } from '../config/contracts';
 import {
   FreelanceReputationABI,
   FreelanceReputationBytecode,
@@ -15,7 +15,7 @@ import {
   DisputeResolutionBytecode,
   MilestoneRegistryABI,
   MilestoneRegistryBytecode,
-} from './contract-abis.js';
+} from './contract-abis';
 
 export type DeploymentResult = {
   contractName: string;

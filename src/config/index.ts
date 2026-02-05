@@ -1,9 +1,9 @@
-export { config } from './env.js';
-export type { Config } from './env.js';
+export { config } from './env';
+export type { Config } from './env';
 export { 
   getSupabaseClient, 
   initializeDatabase,
   TABLES 
-} from './supabase.js';
-export type { TableName } from './supabase.js';
-export { swaggerSpec } from './swagger.js';
+} from './supabase';
+export type { TableName } from './supabase';
+export { swaggerSpec } from './swagger';

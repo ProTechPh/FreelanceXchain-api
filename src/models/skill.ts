@@ -1,6 +1,6 @@
 // Re-export types from entity-mapper for backward compatibility
-export type { Skill, SkillCategory, SkillReference } from '../utils/entity-mapper.js';
-import type { Skill, SkillCategory } from '../utils/entity-mapper.js';
+export type { Skill, SkillCategory, SkillReference } from '../utils/entity-mapper';
+import type { Skill, SkillCategory } from '../utils/entity-mapper';
 
 export type CreateSkillCategoryInput = {
   name: string;

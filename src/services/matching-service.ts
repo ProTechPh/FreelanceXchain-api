@@ -12,7 +12,7 @@ import {
   isAIError,
   generateContent,
   SKILL_GAP_PROMPT,
-} from './ai-client.js';
+} from './ai-client';
 import {
   SkillMatchResult,
   ExtractedSkill,
@@ -20,10 +20,10 @@ import {
   FreelancerRecommendation,
   SkillGapAnalysis,
   SkillInfo,
-} from './ai-types.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
-import { getActiveSkills } from './skill-service.js';
+} from './ai-types';
+import { projectRepository } from '../repositories/project-repository';
+import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository';
+import { getActiveSkills } from './skill-service';
 
 // Types
 export type MatchingServiceError = {

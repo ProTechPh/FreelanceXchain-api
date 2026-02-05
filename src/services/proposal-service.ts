@@ -1,12 +1,12 @@
-import { Proposal, mapProposalFromEntity } from '../utils/entity-mapper.js';
-import { Contract, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
-import { proposalRepository, ProposalEntity } from '../repositories/proposal-repository.js';
-import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { userRepository } from '../repositories/user-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
-import { generateId } from '../utils/id.js';
-import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
+import { Proposal, mapProposalFromEntity } from '../utils/entity-mapper';
+import { Contract, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper';
+import { proposalRepository, ProposalEntity } from '../repositories/proposal-repository';
+import { contractRepository, ContractEntity } from '../repositories/contract-repository';
+import { projectRepository } from '../repositories/project-repository';
+import { userRepository } from '../repositories/user-repository';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository';
+import { generateId } from '../utils/id';
+import { createAgreementOnBlockchain, signAgreement } from './agreement-contract';
 
 export type CreateProposalInput = {
   projectId: string;

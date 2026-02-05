@@ -4,9 +4,9 @@
  */
 
 import { Contract, TransactionReceipt } from 'ethers';
-import { getContractWithSigner, getContract, isWeb3Available } from './web3-client.js';
-import { getContractAddress } from '../config/contracts.js';
-import { ContractAgreementABI } from './contract-abis.js';
+import { getContractWithSigner, getContract, isWeb3Available } from './web3-client';
+import { getContractAddress } from '../config/contracts';
+import { ContractAgreementABI } from './contract-abis';
 import { createHash } from 'crypto';
 
 export type BlockchainAgreementStatus = 'pending' | 'signed' | 'completed' | 'disputed' | 'cancelled';

@@ -9,7 +9,7 @@ import {
   DiditCreateSessionResponse,
   DiditVerificationDecisionResponse,
   DiditApiError,
-} from '../models/didit-kyc.js';
+} from '../models/didit-kyc';
 
 const DIDIT_API_KEY = process.env['DIDIT_API_KEY'];
 const DIDIT_API_URL = process.env['DIDIT_API_URL'] ?? 'https://verification.didit.me';

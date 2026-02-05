@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole, requireKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { authMiddleware, requireRole, requireKyc } from '../middleware/auth-middleware';
+import { validateUUID } from '../middleware/validation-middleware';
 import {
   getProfileByUserId,
   updateProfile,
   addSkillsToProfile,
   addExperience,
   removeExperience,
-} from '../services/freelancer-profile-service.js';
+} from '../services/freelancer-profile-service';
 
 const router = Router();
 

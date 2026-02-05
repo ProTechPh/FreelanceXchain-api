@@ -4,8 +4,8 @@
  */
 
 import { Contract, TransactionReceipt } from 'ethers';
-import { getContractWithSigner, getContract, isWeb3Available, getWallet } from './web3-client.js';
-import { FreelanceEscrowABI, FreelanceEscrowBytecode } from './contract-abis.js';
+import { getContractWithSigner, getContract, isWeb3Available, getWallet } from './web3-client';
+import { FreelanceEscrowABI, FreelanceEscrowBytecode } from './contract-abis';
 import { ContractFactory } from 'ethers';
 
 export type MilestoneStatus = 'Pending' | 'Submitted' | 'Approved' | 'Disputed' | 'Refunded';

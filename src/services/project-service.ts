@@ -1,8 +1,8 @@
-import { projectRepository, ProjectEntity, MilestoneEntity, ProjectStatus, MilestoneStatus } from '../repositories/project-repository.js';
-import { proposalRepository } from '../repositories/proposal-repository.js';
-import { skillRepository } from '../repositories/skill-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
-import { generateId } from '../utils/id.js';
+import { projectRepository, ProjectEntity, MilestoneEntity, ProjectStatus, MilestoneStatus } from '../repositories/project-repository';
+import { proposalRepository } from '../repositories/proposal-repository';
+import { skillRepository } from '../repositories/skill-repository';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository';
+import { generateId } from '../utils/id';
 
 export type CreateProjectInput = {
   title: string;

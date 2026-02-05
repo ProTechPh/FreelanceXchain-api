@@ -1,5 +1,5 @@
-import { PaymentRepository, PaymentEntity, CreatePaymentInput, PaymentStatus, PaymentType } from '../repositories/payment-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import { PaymentRepository, PaymentEntity, CreatePaymentInput, PaymentStatus, PaymentType } from '../repositories/payment-repository';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository';
 
 export type RecordPaymentInput = {
   contractId: string;

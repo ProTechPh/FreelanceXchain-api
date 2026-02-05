@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { getSupabaseClient, TableName } from '../config/supabase.js';
+import { getSupabaseClient, TableName } from '../config/supabase';
 
 export type QueryOptions = {
   limit?: number;

@@ -1,9 +1,9 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { ProjectEntity } from '../../repositories/project-repository.js';
-import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository.js';
-import { QueryOptions } from '../../repositories/base-repository.js';
-import { generateId } from '../../utils/id.js';
+import { ProjectEntity } from '../../repositories/project-repository';
+import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository';
+import { QueryOptions } from '../../repositories/base-repository';
+import { generateId } from '../../utils/id';
 
 // In-memory stores for testing - using entity types
 let projectStore: Map<string, ProjectEntity> = new Map();

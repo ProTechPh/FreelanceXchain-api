@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
-import { validateToken } from '../services/auth-service.js';
-import { AuthError } from '../services/auth-types.js';
-import { UserRole } from '../models/user.js';
-import { isUserVerified } from '../services/didit-kyc-service.js';
+import { validateToken } from '../services/auth-service';
+import { AuthError } from '../services/auth-types';
+import { UserRole } from '../models/user';
+import { isUserVerified } from '../services/didit-kyc-service';
 
 type ValidatedUser = {
   userId: string;

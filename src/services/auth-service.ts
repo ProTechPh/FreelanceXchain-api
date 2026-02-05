@@ -1,14 +1,14 @@
 import { Provider } from '@supabase/supabase-js';
-import { userRepository, UserEntity } from '../repositories/user-repository.js';
-import { config } from '../config/env.js';
-import { getSupabaseClient } from '../config/supabase.js';
-import { UserRole } from '../models/user.js';
+import { userRepository, UserEntity } from '../repositories/user-repository';
+import { config } from '../config/env';
+import { getSupabaseClient } from '../config/supabase';
+import { UserRole } from '../models/user';
 import {
   RegisterInput,
   LoginInput,
   AuthResult,
   AuthError,
-} from './auth-types.js';
+} from './auth-types';
 
 // Password strength requirements
 const PASSWORD_MIN_LENGTH = 8;

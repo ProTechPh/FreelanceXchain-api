@@ -17,7 +17,7 @@ import {
   submitRatingSchema,
   createFreelancerProfileSchema,
   RequestSchema,
-} from '../validation-middleware.js';
+} from '../validation-middleware';
 
 // Helper to extract body schema with proper typing
 function getBodySchema(schema: RequestSchema) {

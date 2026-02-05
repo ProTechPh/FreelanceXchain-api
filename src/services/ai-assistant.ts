@@ -3,12 +3,12 @@
  * Provides AI-powered content generation and analysis features
  */
 
-import { generateContent, isAIAvailable, isAIError } from './ai-client.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
-import { disputeRepository } from '../repositories/dispute-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { mapProjectFromEntity } from '../utils/entity-mapper.js';
+import { generateContent, isAIAvailable, isAIError } from './ai-client';
+import { projectRepository } from '../repositories/project-repository';
+import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository';
+import { disputeRepository } from '../repositories/dispute-repository';
+import { contractRepository } from '../repositories/contract-repository';
+import { mapProjectFromEntity } from '../utils/entity-mapper';
 
 // Types
 export type AIAssistantError = {

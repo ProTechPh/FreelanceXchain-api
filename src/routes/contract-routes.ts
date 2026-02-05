@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { authMiddleware, requireKyc } from '../middleware/auth-middleware';
+import { validateUUID } from '../middleware/validation-middleware';
 import {
   getContractById,
   getUserContracts,
-} from '../services/contract-service.js';
+} from '../services/contract-service';
 
 const router = Router();
 

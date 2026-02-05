@@ -1,7 +1,7 @@
-import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-mapper.js';
-import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
-import { generateId } from '../utils/id.js';
-import { getProfileDataFromKyc } from './didit-kyc-service.js';
+import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-mapper';
+import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository';
+import { generateId } from '../utils/id';
+import { getProfileDataFromKyc } from './didit-kyc-service';
 
 export type CreateEmployerProfileInput = {
   companyName: string;

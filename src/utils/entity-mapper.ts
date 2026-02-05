@@ -1,14 +1,14 @@
 // Entity mapper utilities for converting between database entities (snake_case) and API models (camelCase)
 
-import { UserEntity } from '../repositories/user-repository.js';
-import { FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
-import { EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
-import { ProjectEntity, MilestoneEntity } from '../repositories/project-repository.js';
-import { ProposalEntity } from '../repositories/proposal-repository.js';
-import { ContractEntity } from '../repositories/contract-repository.js';
-import { DisputeEntity, EvidenceEntity } from '../repositories/dispute-repository.js';
-import { SkillEntity, SkillCategoryEntity } from '../repositories/skill-repository.js';
-import { NotificationEntity } from '../repositories/notification-repository.js';
+import { UserEntity } from '../repositories/user-repository';
+import { FreelancerProfileEntity } from '../repositories/freelancer-profile-repository';
+import { EmployerProfileEntity } from '../repositories/employer-profile-repository';
+import { ProjectEntity, MilestoneEntity } from '../repositories/project-repository';
+import { ProposalEntity } from '../repositories/proposal-repository';
+import { ContractEntity } from '../repositories/contract-repository';
+import { DisputeEntity, EvidenceEntity } from '../repositories/dispute-repository';
+import { SkillEntity, SkillCategoryEntity } from '../repositories/skill-repository';
+import { NotificationEntity } from '../repositories/notification-repository';
 
 // User mapping
 export type KycStatus = 'pending' | 'in_progress' | 'completed' | 'approved' | 'rejected' | 'expired';

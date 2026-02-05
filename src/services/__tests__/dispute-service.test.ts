@@ -1,10 +1,10 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { DisputeEntity, EvidenceEntity } from '../../repositories/dispute-repository.js';
-import { ContractEntity } from '../../repositories/contract-repository.js';
-import { ProjectEntity, MilestoneEntity, MilestoneStatus } from '../../repositories/project-repository.js';
-import { Notification, NotificationType } from '../../models/notification.js';
-import { generateId } from '../../utils/id.js';
+import { DisputeEntity, EvidenceEntity } from '../../repositories/dispute-repository';
+import { ContractEntity } from '../../repositories/contract-repository';
+import { ProjectEntity, MilestoneEntity, MilestoneStatus } from '../../repositories/project-repository';
+import { Notification, NotificationType } from '../../models/notification';
+import { generateId } from '../../utils/id';
 
 // In-memory stores for testing - using entity types
 let disputeStore: Map<string, DisputeEntity> = new Map();

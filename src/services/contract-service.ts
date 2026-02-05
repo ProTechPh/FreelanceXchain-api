@@ -1,6 +1,6 @@
-import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
-import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper';
+import { contractRepository, ContractEntity } from '../repositories/contract-repository';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository';
 
 export type ContractServiceError = {
   code: string;

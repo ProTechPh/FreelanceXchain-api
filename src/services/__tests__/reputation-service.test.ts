@@ -1,8 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { ContractEntity } from '../../repositories/contract-repository.js';
-import { ProjectEntity } from '../../repositories/project-repository.js';
-import { BlockchainRating } from '../reputation-contract.js';
+import { ContractEntity } from '../../repositories/contract-repository';
+import { ProjectEntity } from '../../repositories/project-repository';
+import { BlockchainRating } from '../reputation-contract';
 
 // In-memory stores for testing - using entity types
 let contractStore: Map<string, ContractEntity> = new Map();

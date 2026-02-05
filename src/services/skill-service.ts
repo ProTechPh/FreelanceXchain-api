@@ -3,16 +3,16 @@ import {
   SkillCategory, 
   mapSkillFromEntity,
   mapSkillCategoryFromEntity,
-} from '../utils/entity-mapper.js';
+} from '../utils/entity-mapper';
 import { 
   CreateSkillCategoryInput, 
   CreateSkillInput,
   SkillWithCategory,
   SkillTaxonomy 
-} from '../models/skill.js';
-import { skillCategoryRepository, SkillCategoryEntity } from '../repositories/skill-category-repository.js';
-import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
-import { generateId } from '../utils/id.js';
+} from '../models/skill';
+import { skillCategoryRepository, SkillCategoryEntity } from '../repositories/skill-category-repository';
+import { skillRepository, SkillEntity } from '../repositories/skill-repository';
+import { generateId } from '../utils/id';
 
 export type SkillServiceError = {
   code: string;

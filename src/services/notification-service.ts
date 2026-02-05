@@ -1,7 +1,7 @@
-import { Notification, NotificationType, mapNotificationFromEntity } from '../utils/entity-mapper.js';
-import { notificationRepository, NotificationEntity } from '../repositories/notification-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
-import { generateId } from '../utils/id.js';
+import { Notification, NotificationType, mapNotificationFromEntity } from '../utils/entity-mapper';
+import { notificationRepository, NotificationEntity } from '../repositories/notification-repository';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository';
+import { generateId } from '../utils/id';
 
 export type CreateNotificationInput = {
   userId: string;

@@ -10,14 +10,14 @@ import {
   confirmTransaction,
   clearTransactions,
   generateWalletAddress,
-} from '../blockchain-client.js';
+} from '../blockchain-client';
 import {
   Transaction,
   TransactionType,
   TransactionStatus,
   PaymentTransaction,
   TransactionInput,
-} from '../blockchain-types.js';
+} from '../blockchain-types';
 
 // Custom arbitraries for property-based testing
 

@@ -1,5 +1,5 @@
-import { BaseRepository } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepository } from './base-repository';
+import { TABLES } from '../config/supabase';
 
 export type SkillCategoryEntity = {
   id: string;

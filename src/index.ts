@@ -1,5 +1,5 @@
-import { createApp } from './app.js';
-import { config, initializeDatabase } from './config/index.js';
+import { createApp } from './app';
+import { config, initializeDatabase } from './config/index';
 
 async function main(): Promise<void> {
   const app = createApp();

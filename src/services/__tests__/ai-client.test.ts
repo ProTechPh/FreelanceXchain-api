@@ -7,7 +7,7 @@ import {
   deserializeAIResponse,
   keywordMatchSkills,
   keywordExtractSkills,
-} from '../ai-client.js';
+} from '../ai-client';
 import {
   SkillMatchRequest,
   SkillExtractionRequest,
@@ -15,7 +15,7 @@ import {
   ExtractedSkill,
   SkillGapAnalysis,
   SkillInfo,
-} from '../ai-types.js';
+} from '../ai-types';
 
 // Custom arbitraries for property-based testing
 

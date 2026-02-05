@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { authMiddleware, requireKyc } from '../middleware/auth-middleware';
+import { validateUUID } from '../middleware/validation-middleware';
 import {
   getNotificationsByUser,
   markNotificationAsRead,
   markAllNotificationsAsRead,
   getUnreadCount,
-} from '../services/notification-service.js';
+} from '../services/notification-service';
 
 const router = Router();
 

@@ -1,13 +1,13 @@
 // Models barrel export
 // This file will export all data models as they are created
 
-export type { User, UserRole } from './user.js';
-export type { FreelancerProfile, SkillReference, WorkExperience } from './freelancer-profile.js';
-export type { EmployerProfile } from './employer-profile.js';
-export type { Project, Milestone, ProjectStatus, MilestoneStatus } from './project.js';
-export type { Proposal, ProposalStatus } from './proposal.js';
-export type { Contract, ContractStatus } from './contract.js';
-export type { Dispute, Evidence, DisputeResolution, DisputeStatus } from './dispute.js';
+export type { User, UserRole } from './user';
+export type { FreelancerProfile, SkillReference, WorkExperience } from './freelancer-profile';
+export type { EmployerProfile } from './employer-profile';
+export type { Project, Milestone, ProjectStatus, MilestoneStatus } from './project';
+export type { Proposal, ProposalStatus } from './proposal';
+export type { Contract, ContractStatus } from './contract';
+export type { Dispute, Evidence, DisputeResolution, DisputeStatus } from './dispute';
 export type { 
   Skill, 
   SkillCategory, 
@@ -15,8 +15,8 @@ export type {
   CreateSkillInput, 
   SkillWithCategory, 
   SkillTaxonomy 
-} from './skill.js';
-export type { Notification, NotificationType } from './notification.js';
+} from './skill';
+export type { Notification, NotificationType } from './notification';
 export type {
   KycStatus,
   KycVerification,
@@ -32,4 +32,4 @@ export type {
   DiditWebhookPayload,
   DiditDecisionData,
   DiditApiError,
-} from './didit-kyc.js';
+} from './didit-kyc';

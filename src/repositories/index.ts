@@ -1,16 +1,16 @@
 // Repositories barrel export
-export { BaseRepository } from './base-repository.js';
-export type { QueryOptions, PaginatedResult, BaseEntity } from './base-repository.js';
-export { UserRepository, userRepository } from './user-repository.js';
-export { SkillCategoryRepository, skillCategoryRepository } from './skill-category-repository.js';
-export { SkillRepository, skillRepository } from './skill-repository.js';
-export { FreelancerProfileRepository, freelancerProfileRepository } from './freelancer-profile-repository.js';
-export { EmployerProfileRepository, employerProfileRepository } from './employer-profile-repository.js';
-export { ProjectRepository, projectRepository } from './project-repository.js';
-export { ProposalRepository, proposalRepository } from './proposal-repository.js';
-export { ContractRepository, contractRepository } from './contract-repository.js';
-export { NotificationRepository, notificationRepository } from './notification-repository.js';
-export { DisputeRepository, disputeRepository } from './dispute-repository.js';
+export { BaseRepository } from './base-repository';
+export type { QueryOptions, PaginatedResult, BaseEntity } from './base-repository';
+export { UserRepository, userRepository } from './user-repository';
+export { SkillCategoryRepository, skillCategoryRepository } from './skill-category-repository';
+export { SkillRepository, skillRepository } from './skill-repository';
+export { FreelancerProfileRepository, freelancerProfileRepository } from './freelancer-profile-repository';
+export { EmployerProfileRepository, employerProfileRepository } from './employer-profile-repository';
+export { ProjectRepository, projectRepository } from './project-repository';
+export { ProposalRepository, proposalRepository } from './proposal-repository';
+export { ContractRepository, contractRepository } from './contract-repository';
+export { NotificationRepository, notificationRepository } from './notification-repository';
+export { DisputeRepository, disputeRepository } from './dispute-repository';
 export {
   createKycVerification,
   getKycVerificationById,
@@ -20,4 +20,4 @@ export {
   getKycVerificationsByStatus,
   getPendingReviews,
   getKycVerificationHistory,
-} from './didit-kyc-repository.js';
+} from './didit-kyc-repository';

@@ -1,9 +1,9 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { ProposalEntity } from '../../repositories/proposal-repository.js';
-import { ContractEntity } from '../../repositories/contract-repository.js';
-import { ProjectEntity, ProjectStatus } from '../../repositories/project-repository.js';
-import { generateId } from '../../utils/id.js';
+import { ProposalEntity } from '../../repositories/proposal-repository';
+import { ContractEntity } from '../../repositories/contract-repository';
+import { ProjectEntity, ProjectStatus } from '../../repositories/project-repository';
+import { generateId } from '../../utils/id';
 
 // In-memory stores for testing
 let proposalStore: Map<string, ProposalEntity> = new Map();

@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireKyc, requireRole } from '../middleware/auth-middleware.js';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { authMiddleware, requireKyc, requireRole } from '../middleware/auth-middleware';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware';
 import {
   createProject,
   getProjectById,
@@ -11,8 +11,8 @@ import {
   listProjectsBySkills,
   listProjectsByBudgetRange,
   listProjectsByEmployer,
-} from '../services/project-service.js';
-import { getProposalsByProject } from '../services/proposal-service.js';
+} from '../services/project-service';
+import { getProposalsByProject } from '../services/proposal-service';
 
 const router = Router();
 

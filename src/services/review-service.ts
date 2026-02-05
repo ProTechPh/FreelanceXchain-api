@@ -1,7 +1,7 @@
-import { ReviewRepository, ReviewEntity, CreateReviewInput } from '../repositories/review-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { createNotification } from './notification-service.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import { ReviewRepository, ReviewEntity, CreateReviewInput } from '../repositories/review-repository';
+import { contractRepository } from '../repositories/contract-repository';
+import { createNotification } from './notification-service';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository';
 
 export type SubmitReviewInput = {
   contractId: string;

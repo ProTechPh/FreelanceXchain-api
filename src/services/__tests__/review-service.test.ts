@@ -1,8 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { ReviewEntity } from '../../repositories/review-repository.js';
-import { ContractEntity } from '../../repositories/contract-repository.js';
-import { generateId } from '../../utils/id.js';
+import { ReviewEntity } from '../../repositories/review-repository';
+import { ContractEntity } from '../../repositories/contract-repository';
+import { generateId } from '../../utils/id';
 
 // In-memory stores for testing
 let reviewStore: Map<string, ReviewEntity> = new Map();

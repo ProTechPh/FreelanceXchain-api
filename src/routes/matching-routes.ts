@@ -1,14 +1,14 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
-import { TokenPayload } from '../services/auth-types.js';
+import { authMiddleware, requireKyc } from '../middleware/auth-middleware';
+import { validateUUID } from '../middleware/validation-middleware';
+import { TokenPayload } from '../services/auth-types';
 import {
   getProjectRecommendations,
   getFreelancerRecommendations,
   extractSkillsFromText,
   analyzeSkillGaps,
   isMatchingError,
-} from '../services/matching-service.js';
+} from '../services/matching-service';
 
 // Type for authenticated request
 type AuthenticatedRequest = Request & { user: TokenPayload };

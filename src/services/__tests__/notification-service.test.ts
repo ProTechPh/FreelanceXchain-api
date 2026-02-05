@@ -1,7 +1,7 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { NotificationEntity, NotificationType } from '../../repositories/notification-repository.js';
-import { generateId } from '../../utils/id.js';
+import { NotificationEntity, NotificationType } from '../../repositories/notification-repository';
+import { generateId } from '../../utils/id';
 
 // In-memory store for testing
 let notificationStore: Map<string, NotificationEntity> = new Map();

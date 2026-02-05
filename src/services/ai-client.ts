@@ -3,7 +3,7 @@
  * Handles communication with LLM API for AI-powered skill matching
  */
 
-import { config } from '../config/env.js';
+import { config } from '../config/env';
 import {
   AIRequest,
   AIResponse,
@@ -15,8 +15,8 @@ import {
   SkillInfo,
   SerializableAIRequest,
   SerializableAIResponse,
-} from './ai-types.js';
-import { generateId } from '../utils/id.js';
+} from './ai-types';
+import { generateId } from '../utils/id';
 
 // Constants
 const DEFAULT_MODEL = 'gemini-2.5-flash-lite';

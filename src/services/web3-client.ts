@@ -5,7 +5,7 @@
  */
 
 import { ethers, JsonRpcProvider, Wallet, TransactionResponse, TransactionReceipt as EthersReceipt } from 'ethers';
-import { config } from '../config/env.js';
+import { config } from '../config/env';
 
 // Types
 export type Web3Config = {

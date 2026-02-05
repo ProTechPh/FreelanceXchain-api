@@ -1,16 +1,16 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import swaggerUi from 'swagger-ui-express';
-import { errorHandler, requestLogger } from './middleware/index.js';
+import { errorHandler, requestLogger } from './middleware/index';
 import {
   securityHeaders,
   requestIdMiddleware,
   httpsEnforcement,
   getAllowedOrigins,
   validateCorsOrigin
-} from './middleware/security-middleware.js';
-import { swaggerSpec } from './config/swagger.js';
-import routes from './routes/index.js';
+} from './middleware/security-middleware';
+import { swaggerSpec } from './config/swagger';
+import routes from './routes/index';
 
 export function createApp(): Express {
   const app = express();

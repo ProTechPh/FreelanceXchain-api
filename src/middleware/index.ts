@@ -1,9 +1,9 @@
 // Middleware barrel export
 // This file will export all middleware as they are created
 
-export { errorHandler } from './error-handler.js';
-export { requestLogger } from './request-logger.js';
-export { authMiddleware, requireRole } from './auth-middleware.js';
+export { errorHandler } from './error-handler';
+export { requestLogger } from './request-logger';
+export { authMiddleware, requireRole } from './auth-middleware';
 export {
   validate,
   validateRequest,
@@ -49,5 +49,5 @@ export {
   // Common schemas
   idParamSchema,
   uuidParamSchema,
-} from './validation-middleware.js';
-export type { RequestSchema } from './validation-middleware.js';
+} from './validation-middleware';
+export type { RequestSchema } from './validation-middleware';

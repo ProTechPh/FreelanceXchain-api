@@ -4,8 +4,8 @@
  * Requirements: 6.6, 6.7
  */
 
-import { config } from '../config/env.js';
-import { generateId } from '../utils/id.js';
+import { config } from '../config/env';
+import { generateId } from '../utils/id';
 import {
   Transaction,
   TransactionInput,
@@ -15,7 +15,7 @@ import {
   PaymentTransaction,
   SerializedPaymentTransaction,
   BlockchainConfig,
-} from './blockchain-types.js';
+} from './blockchain-types';
 
 // In-memory transaction store for simulation (would be replaced with actual blockchain in production)
 const transactionStore = new Map<string, Transaction>();

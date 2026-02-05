@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { searchProjects, searchFreelancers } from '../services/search-service.js';
+import { searchProjects, searchFreelancers } from '../services/search-service';
 
 const router = Router();
 

@@ -7,7 +7,7 @@ export {
   validateToken,
   refreshTokens,
   isAuthError,
-} from './auth-service.js';
+} from './auth-service';
 
 export type {
   RegisterInput,
@@ -15,7 +15,7 @@ export type {
   TokenPayload,
   AuthResult,
   AuthError,
-} from './auth-types.js';
+} from './auth-types';
 
 export {
   createCategory,
@@ -34,12 +34,12 @@ export {
   searchSkills,
   getFullTaxonomy,
   validateSkillIds,
-} from './skill-service.js';
+} from './skill-service';
 
 export type {
   SkillServiceError,
   SkillServiceResult,
-} from './skill-service.js';
+} from './skill-service';
 
 export {
   createProfile as createFreelancerProfile,
@@ -50,7 +50,7 @@ export {
   addExperience,
   updateExperience,
   removeExperience,
-} from './freelancer-profile-service.js';
+} from './freelancer-profile-service';
 
 export type {
   CreateFreelancerProfileInput,
@@ -59,20 +59,20 @@ export type {
   AddExperienceInput,
   FreelancerProfileServiceError,
   FreelancerProfileServiceResult,
-} from './freelancer-profile-service.js';
+} from './freelancer-profile-service';
 
 export {
   createEmployerProfile,
   getEmployerProfileByUserId,
   updateEmployerProfile,
-} from './employer-profile-service.js';
+} from './employer-profile-service';
 
 export type {
   CreateEmployerProfileInput,
   UpdateEmployerProfileInput,
   EmployerProfileServiceError,
   EmployerProfileServiceResult,
-} from './employer-profile-service.js';
+} from './employer-profile-service';
 
 export {
   createProject,
@@ -87,7 +87,7 @@ export {
   listProjectsBySkills,
   listProjectsByBudgetRange,
   deleteProject,
-} from './project-service.js';
+} from './project-service';
 
 export type {
   CreateProjectInput,
@@ -96,12 +96,12 @@ export type {
   ProjectWithProposalCount,
   ProjectServiceError,
   ProjectServiceResult,
-} from './project-service.js';
+} from './project-service';
 
 export {
   searchProjects,
   searchFreelancers,
-} from './search-service.js';
+} from './search-service';
 
 export type {
   ProjectSearchFilters,
@@ -111,7 +111,7 @@ export type {
   SearchResult,
   SearchServiceError,
   SearchServiceResult,
-} from './search-service.js';
+} from './search-service';
 
 export {
   submitProposal,
@@ -121,7 +121,7 @@ export {
   acceptProposal,
   rejectProposal,
   withdrawProposal,
-} from './proposal-service.js';
+} from './proposal-service';
 
 export type {
   CreateProposalInput,
@@ -130,7 +130,7 @@ export type {
   ProposalWithNotification,
   AcceptProposalResult,
   RejectProposalResult,
-} from './proposal-service.js';
+} from './proposal-service';
 
 export {
   getContractById,
@@ -141,12 +141,12 @@ export {
   updateContractStatus,
   setEscrowAddress,
   getContractByProposalId,
-} from './contract-service.js';
+} from './contract-service';
 
 export type {
   ContractServiceError,
   ContractServiceResult,
-} from './contract-service.js';
+} from './contract-service';
 
 export {
   createNotification,
@@ -167,13 +167,13 @@ export {
   notifyDisputeCreated,
   notifyDisputeResolved,
   notifyRatingReceived,
-} from './notification-service.js';
+} from './notification-service';
 
 export type {
   CreateNotificationInput,
   NotificationServiceError,
   NotificationServiceResult,
-} from './notification-service.js';
+} from './notification-service';
 
 // Blockchain client exports
 export {
@@ -192,7 +192,7 @@ export {
   clearTransactions,
   getBlockchainConfig,
   isBlockchainAvailable,
-} from './blockchain-client.js';
+} from './blockchain-client';
 
 export type {
   Transaction,
@@ -208,7 +208,7 @@ export type {
   EscrowParams,
   EscrowMilestone,
   EscrowDeployment,
-} from './blockchain-types.js';
+} from './blockchain-types';
 
 // Escrow contract exports
 export {
@@ -222,7 +222,7 @@ export {
   areAllMilestonesReleased,
   clearEscrows,
   getEscrowByContractId,
-} from './escrow-contract.js';
+} from './escrow-contract';
 
 // Payment service exports
 export {
@@ -235,7 +235,7 @@ export {
   getDisputesByContract,
   clearDisputes,
   initializeContractEscrow,
-} from './payment-service.js';
+} from './payment-service';
 
 export type {
   PaymentServiceError,
@@ -244,7 +244,7 @@ export type {
   MilestoneApprovalResult,
   MilestoneDisputeResult,
   ContractPaymentStatus,
-} from './payment-service.js';
+} from './payment-service';
 
 // Reputation contract exports
 export {
@@ -260,13 +260,13 @@ export {
   getReputationContractAddress,
   serializeBlockchainRating,
   deserializeBlockchainRating,
-} from './reputation-contract.js';
+} from './reputation-contract';
 
 export type {
   BlockchainRating,
   SerializedBlockchainRating,
   RatingSubmissionParams,
-} from './reputation-contract.js';
+} from './reputation-contract';
 
 // Reputation service exports
 export {
@@ -277,7 +277,7 @@ export {
   canUserRate,
   serializeReputationRecord,
   deserializeReputationRecord,
-} from './reputation-service.js';
+} from './reputation-service';
 
 export type {
   RatingInput,
@@ -286,7 +286,7 @@ export type {
   ReputationServiceError,
   ReputationServiceResult,
   RatingResult,
-} from './reputation-service.js';
+} from './reputation-service';
 
 // Dispute service exports
 export {
@@ -297,7 +297,7 @@ export {
   getDisputesByContract as getDisputesByContractFromService,
   getOpenDisputes,
   getDisputesByInitiator,
-} from './dispute-service.js';
+} from './dispute-service';
 
 export type {
   DisputeServiceError,
@@ -305,7 +305,7 @@ export type {
   CreateDisputeInput,
   SubmitEvidenceInput,
   ResolveDisputeInput,
-} from './dispute-service.js';
+} from './dispute-service';
 
 // Web3 client exports (real Ethereum integration)
 export {
@@ -332,13 +332,13 @@ export {
   deployContract,
   getContract,
   getContractWithSigner,
-} from './web3-client.js';
+} from './web3-client';
 
 export type {
   Web3Config,
   Web3TransactionResult,
   WalletInfo,
-} from './web3-client.js';
+} from './web3-client';
 
 // AI client exports
 export {
@@ -353,7 +353,7 @@ export {
   deserializeAIRequest,
   serializeAIResponse,
   deserializeAIResponse,
-} from './ai-client.js';
+} from './ai-client';
 
 export type {
   AIRequest,
@@ -366,7 +366,7 @@ export type {
   SkillInfo,
   SerializableAIRequest,
   SerializableAIResponse,
-} from './ai-types.js';
+} from './ai-types';
 
 // Matching service exports
 export {
@@ -378,18 +378,18 @@ export {
   sortRecommendationsByScore,
   sortFreelancerRecommendationsByCombinedScore,
   isMatchingError,
-} from './matching-service.js';
+} from './matching-service';
 
 export type {
   MatchingServiceError,
   MatchingServiceResult,
-} from './matching-service.js';
+} from './matching-service';
 
 export type {
   ProjectRecommendation,
   FreelancerRecommendation,
   SkillGapAnalysis,
-} from './ai-types.js';
+} from './ai-types';
 
 
 // Didit KYC service exports
@@ -404,4 +404,4 @@ export {
   getVerificationsByStatus,
   getUserVerificationHistory,
   isUserVerified,
-} from './didit-kyc-service.js';
+} from './didit-kyc-service';

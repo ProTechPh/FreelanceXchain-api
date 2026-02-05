@@ -5,16 +5,16 @@
  */
 
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
-import { User } from '../models/user.js';
-import { FreelancerProfile } from '../models/freelancer-profile.js';
-import { EmployerProfile } from '../models/employer-profile.js';
-import { Project, Milestone } from '../models/project.js';
-import { Proposal } from '../models/proposal.js';
-import { Contract } from '../models/contract.js';
-import { Dispute } from '../models/dispute.js';
-import { Notification } from '../models/notification.js';
-import { Skill, SkillCategory } from '../models/skill.js';
-import { generateId } from '../utils/id.js';
+import { User } from '../models/user';
+import { FreelancerProfile } from '../models/freelancer-profile';
+import { EmployerProfile } from '../models/employer-profile';
+import { Project, Milestone } from '../models/project';
+import { Proposal } from '../models/proposal';
+import { Contract } from '../models/contract';
+import { Dispute } from '../models/dispute';
+import { Notification } from '../models/notification';
+import { Skill, SkillCategory } from '../models/skill';
+import { generateId } from '../utils/id';
 
 // In-memory stores for integration testing
 let userStore: Map<string, User> = new Map();

@@ -1,12 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { authMiddleware, requireKyc } from '../middleware/auth-middleware';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware';
 import {
   submitRating,
   getReputation,
   getWorkHistory,
   canUserRate,
-} from '../services/reputation-service.js';
+} from '../services/reputation-service';
 
 const router = Router();
 

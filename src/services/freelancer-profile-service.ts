@@ -1,7 +1,7 @@
-import { FreelancerProfile, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
-import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
-import { generateId } from '../utils/id.js';
-import { getProfileDataFromKyc } from './didit-kyc-service.js';
+import { FreelancerProfile, mapFreelancerProfileFromEntity } from '../utils/entity-mapper';
+import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository';
+import { generateId } from '../utils/id';
+import { getProfileDataFromKyc } from './didit-kyc-service';
 
 export type CreateFreelancerProfileInput = {
   bio: string;

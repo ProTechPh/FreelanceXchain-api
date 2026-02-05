@@ -1,8 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { MessageEntity } from '../../repositories/message-repository.js';
-import { ContractEntity } from '../../repositories/contract-repository.js';
-import { generateId } from '../../utils/id.js';
+import { MessageEntity } from '../../repositories/message-repository';
+import { ContractEntity } from '../../repositories/contract-repository';
+import { generateId } from '../../utils/id';
 
 // In-memory stores for testing
 let messageStore: Map<string, MessageEntity> = new Map();

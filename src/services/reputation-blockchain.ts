@@ -4,9 +4,9 @@
  */
 
 import { Contract, TransactionReceipt } from 'ethers';
-import { getContractWithSigner, getContract, isWeb3Available } from './web3-client.js';
-import { getContractAddress } from '../config/contracts.js';
-import { FreelanceReputationABI } from './contract-abis.js';
+import { getContractWithSigner, getContract, isWeb3Available } from './web3-client';
+import { getContractAddress } from '../config/contracts';
+import { FreelanceReputationABI } from './contract-abis';
 
 export type BlockchainRating = {
   rater: string;

@@ -14,11 +14,11 @@ import {
   serializeBlockchainRating,
   deserializeBlockchainRating,
   SerializedBlockchainRating,
-} from './reputation-contract.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { mapContractFromEntity } from '../utils/entity-mapper.js';
-import { notifyRatingReceived } from './notification-service.js';
+} from './reputation-contract';
+import { contractRepository } from '../repositories/contract-repository';
+import { projectRepository } from '../repositories/project-repository';
+import { mapContractFromEntity } from '../utils/entity-mapper';
+import { notifyRatingReceived } from './notification-service';
 
 // Rating input type
 export type RatingInput = {

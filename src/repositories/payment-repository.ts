@@ -1,5 +1,5 @@
-import { BaseRepository, BaseEntity, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepository, BaseEntity, PaginatedResult, QueryOptions } from './base-repository';
+import { TABLES } from '../config/supabase';
 
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 export type PaymentType = 'escrow_deposit' | 'milestone_release' | 'refund' | 'dispute_resolution';

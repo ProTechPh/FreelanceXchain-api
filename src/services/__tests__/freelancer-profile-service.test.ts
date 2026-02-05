@@ -1,8 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository.js';
-import { SkillEntity } from '../../repositories/skill-repository.js';
-import { generateId } from '../../utils/id.js';
+import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository';
+import { SkillEntity } from '../../repositories/skill-repository';
+import { generateId } from '../../utils/id';
 
 // In-memory stores for testing - using entity types with snake_case
 let profileStore: Map<string, FreelancerProfileEntity> = new Map();

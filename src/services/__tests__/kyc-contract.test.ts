@@ -16,8 +16,8 @@ import {
   clearBlockchainKyc,
   getAllVerifiedWallets,
   getKycContractAddress,
-} from '../kyc-contract.js';
-import { clearTransactions } from '../blockchain-client.js';
+} from '../kyc-contract';
+import { clearTransactions } from '../blockchain-client';
 
 describe('KYC Blockchain Contract', () => {
   const testWallet = '0x' + 'a'.repeat(40);

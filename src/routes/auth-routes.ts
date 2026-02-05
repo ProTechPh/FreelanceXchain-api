@@ -13,11 +13,11 @@ import {
   requestPasswordReset,
   updatePassword,
   getCurrentUserWithKyc,
-} from '../services/auth-service.js';
-import { RegisterInput, LoginInput } from '../services/auth-types.js';
-import { UserRole } from '../models/user.js';
-import { authRateLimiter } from '../middleware/rate-limiter.js';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+} from '../services/auth-service';
+import { RegisterInput, LoginInput } from '../services/auth-types';
+import { UserRole } from '../models/user';
+import { authRateLimiter } from '../middleware/rate-limiter';
+import { authMiddleware } from '../middleware/auth-middleware';
 
 const router = Router();
 

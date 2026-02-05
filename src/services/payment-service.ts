@@ -4,29 +4,29 @@
  * Requirements: 6.2, 6.3, 6.4, 6.5
  */
 
-import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { userRepository } from '../repositories/user-repository.js';
-import { generateId } from '../utils/id.js';
+import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper';
+import { contractRepository } from '../repositories/contract-repository';
+import { projectRepository } from '../repositories/project-repository';
+import { userRepository } from '../repositories/user-repository';
+import { generateId } from '../utils/id';
 import {
   deployEscrow,
   depositToEscrow,
   releaseMilestone as releaseEscrowMilestone,
   getEscrowByContractId,
-} from './escrow-contract.js';
+} from './escrow-contract';
 import {
   notifyMilestoneSubmitted,
   notifyMilestoneApproved,
   notifyPaymentReleased,
   notifyDisputeCreated,
-} from './notification-service.js';
-import { EscrowMilestone } from './blockchain-types.js';
+} from './notification-service';
+import { EscrowMilestone } from './blockchain-types';
 import {
   submitMilestoneToRegistry,
   approveMilestoneOnRegistry,
-} from './milestone-registry.js';
-import { completeAgreement } from './agreement-contract.js';
+} from './milestone-registry';
+import { completeAgreement } from './agreement-contract';
 
 export type PaymentServiceError = {
   code: string;

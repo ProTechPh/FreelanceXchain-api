@@ -4,28 +4,28 @@
  * Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6
  */
 
-import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
-import { disputeRepository, DisputeEntity, EvidenceEntity, DisputeResolutionEntity } from '../repositories/dispute-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { userRepository } from '../repositories/user-repository.js';
-import { mapContractFromEntity, mapProjectFromEntity, mapMilestoneFromEntity } from '../utils/entity-mapper.js';
-import { generateId } from '../utils/id.js';
+import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper';
+import { disputeRepository, DisputeEntity, EvidenceEntity, DisputeResolutionEntity } from '../repositories/dispute-repository';
+import { contractRepository } from '../repositories/contract-repository';
+import { projectRepository } from '../repositories/project-repository';
+import { userRepository } from '../repositories/user-repository';
+import { mapContractFromEntity, mapProjectFromEntity, mapMilestoneFromEntity } from '../utils/entity-mapper';
+import { generateId } from '../utils/id';
 import {
   notifyDisputeCreated,
   notifyDisputeResolved,
-} from './notification-service.js';
+} from './notification-service';
 import {
   releaseMilestone as releaseEscrowMilestone,
   refundMilestone as refundEscrowMilestone,
   getEscrowByContractId,
-} from './escrow-contract.js';
+} from './escrow-contract';
 import {
   createDisputeOnBlockchain,
   updateDisputeEvidence,
   resolveDisputeOnBlockchain,
-} from './dispute-registry.js';
-import { disputeAgreement } from './agreement-contract.js';
+} from './dispute-registry';
+import { disputeAgreement } from './agreement-contract';
 
 export type DisputeServiceError = {
   code: string;

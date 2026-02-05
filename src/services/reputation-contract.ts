@@ -8,9 +8,9 @@ import {
   submitTransaction,
   confirmTransaction,
   generateWalletAddress,
-} from './blockchain-client.js';
-import { TransactionReceipt } from './blockchain-types.js';
-import { generateId } from '../utils/id.js';
+} from './blockchain-client';
+import { TransactionReceipt } from './blockchain-types';
+import { generateId } from '../utils/id';
 
 // Blockchain rating record type
 export type BlockchainRating = {

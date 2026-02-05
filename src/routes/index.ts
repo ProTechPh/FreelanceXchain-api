@@ -1,21 +1,21 @@
 // Routes barrel export
 // This file will export all route modules as they are created
 import { Router } from 'express';
-import authRoutes from './auth-routes.js';
-import skillRoutes from './skill-routes.js';
-import freelancerRoutes from './freelancer-routes.js';
-import employerRoutes from './employer-routes.js';
-import projectRoutes from './project-routes.js';
-import searchRoutes from './search-routes.js';
-import matchingRoutes from './matching-routes.js';
-import proposalRoutes from './proposal-routes.js';
-import contractRoutes from './contract-routes.js';
-import notificationRoutes from './notification-routes.js';
-import paymentRoutes from './payment-routes.js';
-import reputationRoutes from './reputation-routes.js';
-import disputeRoutes from './dispute-routes.js';
-import kycRoutes from './didit-kyc-routes.js';
-import adminRoutes from './admin-routes.js';
+import authRoutes from './auth-routes';
+import skillRoutes from './skill-routes';
+import freelancerRoutes from './freelancer-routes';
+import employerRoutes from './employer-routes';
+import projectRoutes from './project-routes';
+import searchRoutes from './search-routes';
+import matchingRoutes from './matching-routes';
+import proposalRoutes from './proposal-routes';
+import contractRoutes from './contract-routes';
+import notificationRoutes from './notification-routes';
+import paymentRoutes from './payment-routes';
+import reputationRoutes from './reputation-routes';
+import disputeRoutes from './dispute-routes';
+import kycRoutes from './didit-kyc-routes';
+import adminRoutes from './admin-routes';
 
 const router = Router();
 

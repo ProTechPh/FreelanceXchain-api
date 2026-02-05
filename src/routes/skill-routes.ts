@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware';
+import { authMiddleware, requireRole } from '../middleware/auth-middleware';
 import {
   createCategory,
   createSkill,
@@ -8,8 +8,8 @@ import {
   getFullTaxonomy,
   searchSkills,
   getActiveSkillsByCategory
-} from '../services/skill-service.js';
-import { CreateSkillCategoryInput, CreateSkillInput } from '../models/skill.js';
+} from '../services/skill-service';
+import { CreateSkillCategoryInput, CreateSkillInput } from '../models/skill';
 
 const router = Router();
 

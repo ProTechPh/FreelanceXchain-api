@@ -1,8 +1,8 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { Skill, SkillCategory } from '../../models/skill.js';
-import { SkillCategoryEntity } from '../../repositories/skill-category-repository.js';
-import { SkillEntity } from '../../repositories/skill-repository.js';
+import { Skill, SkillCategory } from '../../models/skill';
+import { SkillCategoryEntity } from '../../repositories/skill-category-repository';
+import { SkillEntity } from '../../repositories/skill-repository';
 
 // In-memory stores for testing - using entity types
 let categoryStore: Map<string, SkillCategoryEntity> = new Map();

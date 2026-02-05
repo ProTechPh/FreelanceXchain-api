@@ -1,5 +1,5 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository';
+import { TABLES } from '../config/supabase';
 
 export type NotificationType =
   | 'proposal_received'

@@ -6,9 +6,9 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
-import { verifyWebhookSignature } from '../services/didit-client.js';
+import { authMiddleware, requireRole } from '../middleware/auth-middleware';
+import { validateUUID } from '../middleware/validation-middleware';
+import { verifyWebhookSignature } from '../services/didit-client';
 import {
   initiateKycVerification,
   getKycStatus,
@@ -21,8 +21,8 @@ import {
   getUserVerificationHistory,
   isUserVerified,
   getProfileDataFromKyc,
-} from '../services/didit-kyc-service.js';
-import { DiditWebhookPayload, KycStatus } from '../models/didit-kyc.js';
+} from '../services/didit-kyc-service';
+import { DiditWebhookPayload, KycStatus } from '../models/didit-kyc';
 
 const router = Router();
 

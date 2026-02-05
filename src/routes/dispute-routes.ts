@@ -12,9 +12,9 @@ import {
   getDisputeById,
   getDisputesByContract,
   getAllDisputes,
-} from '../services/dispute-service.js';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+} from '../services/dispute-service';
+import { authMiddleware, requireKyc } from '../middleware/auth-middleware';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware';
 
 const router = Router();
 

@@ -7,8 +7,8 @@ import {
   submitTransaction,
   confirmTransaction,
   generateWalletAddress,
-} from './blockchain-client.js';
-import { TransactionReceipt } from './blockchain-types.js';
+} from './blockchain-client';
+import { TransactionReceipt } from './blockchain-types';
 import { createHash } from 'crypto';
 
 export type BlockchainDisputeOutcome = 'pending' | 'freelancer_favor' | 'employer_favor' | 'split' | 'cancelled';

@@ -5,7 +5,7 @@
  */
 
 import { Request, Response, NextFunction, RequestHandler } from 'express';
-import { ValidationError } from './error-handler.js';
+import { ValidationError } from './error-handler';
 
 // JSON Schema types
 type SchemaType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';

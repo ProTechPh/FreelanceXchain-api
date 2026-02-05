@@ -8,13 +8,13 @@ import {
   submitTransaction,
   confirmTransaction,
   generateWalletAddress,
-} from './blockchain-client.js';
+} from './blockchain-client';
 import {
   EscrowParams,
   EscrowMilestone,
   EscrowDeployment,
   TransactionReceipt,
-} from './blockchain-types.js';
+} from './blockchain-types';
 
 // In-memory escrow store for simulation
 type EscrowState = {

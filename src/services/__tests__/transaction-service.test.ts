@@ -1,7 +1,7 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { PaymentEntity, PaymentStatus, PaymentType } from '../../repositories/payment-repository.js';
-import { generateId } from '../../utils/id.js';
+import { PaymentEntity, PaymentStatus, PaymentType } from '../../repositories/payment-repository';
+import { generateId } from '../../utils/id';
 
 // In-memory stores for testing
 let paymentStore: Map<string, PaymentEntity> = new Map();

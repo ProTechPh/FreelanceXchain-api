@@ -3,7 +3,7 @@
  * Manages deployed contract addresses for different networks
  */
 
-import { config } from './env.js';
+import { config } from './env';
 
 export type NetworkName = 'hardhat' | 'ganache' | 'sepolia' | 'polygon' | 'mumbai' | 'mainnet';
 

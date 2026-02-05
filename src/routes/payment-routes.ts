@@ -10,9 +10,9 @@ import {
   approveMilestone,
   disputeMilestone,
   getContractPaymentStatus,
-} from '../services/payment-service.js';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+} from '../services/payment-service';
+import { authMiddleware, requireKyc } from '../middleware/auth-middleware';
+import { validateUUID } from '../middleware/validation-middleware';
 
 const router = Router();
 

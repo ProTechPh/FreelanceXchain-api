@@ -4,21 +4,21 @@
  */
 
 // Web3 Client (Primary blockchain interface)
-export * from './web3-client.js';
+export * from './web3-client';
 
 // Contract ABIs
-export * from './contract-abis.js';
+export * from './contract-abis';
 
 // Contract Configuration
-export * from '../config/contracts.js';
+export * from '../config/contracts';
 
 // Blockchain Integration Services
-export * from './reputation-blockchain.js';
-export * from './escrow-blockchain.js';
-export * from './agreement-blockchain.js';
+export * from './reputation-blockchain';
+export * from './escrow-blockchain';
+export * from './agreement-blockchain';
 
 // Deployment Utilities
-export * from './contract-deployment.js';
+export * from './contract-deployment';
 
 // Legacy blockchain client (for backward compatibility - simulation mode)
 // Note: Use web3-client for real blockchain interactions
@@ -37,4 +37,4 @@ export {
   deserializePaymentTransaction,
   generateWalletAddress,
   signTransaction,
-} from './blockchain-client.js';
+} from './blockchain-client';

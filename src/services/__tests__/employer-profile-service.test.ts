@@ -1,7 +1,7 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
-import { EmployerProfileEntity } from '../../repositories/employer-profile-repository.js';
-import { generateId } from '../../utils/id.js';
+import { EmployerProfileEntity } from '../../repositories/employer-profile-repository';
+import { generateId } from '../../utils/id';
 
 // In-memory stores for testing
 let profileStore: Map<string, EmployerProfileEntity> = new Map();

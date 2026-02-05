@@ -2,11 +2,11 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import fc from 'fast-check';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { config } from '../../config/env.js';
-import { UserEntity } from '../../repositories/user-repository.js';
-import { UserRole } from '../../models/user.js';
-import { RegisterInput, LoginInput, AuthResult, AuthError } from '../auth-types.js';
-import { generateId } from '../../utils/id.js';
+import { config } from '../../config/env';
+import { UserEntity } from '../../repositories/user-repository';
+import { UserRole } from '../../models/user';
+import { RegisterInput, LoginInput, AuthResult, AuthError } from '../auth-types';
+import { generateId } from '../../utils/id';
 
 // In-memory user store for testing - uses entity type with snake_case
 let userStore: Map<string, UserEntity> = new Map();

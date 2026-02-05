@@ -6,10 +6,10 @@
  * We only store session info and final decision locally.
  */
 
-import { generateId } from '../utils/id.js';
-import { userRepository } from '../repositories/user-repository.js';
-import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
-import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
+import { generateId } from '../utils/id';
+import { userRepository } from '../repositories/user-repository';
+import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository';
+import { employerProfileRepository } from '../repositories/employer-profile-repository';
 import {
   createKycVerification,
   getKycVerificationById,
@@ -19,17 +19,17 @@ import {
   getKycVerificationsByStatus,
   getPendingReviews,
   getKycVerificationHistory,
-} from '../repositories/didit-kyc-repository.js';
+} from '../repositories/didit-kyc-repository';
 import {
   createVerificationSession,
   getSessionDetails,
-} from './didit-client.js';
+} from './didit-client';
 import {
   KycVerification,
   CreateKycVerificationInput,
   DiditWebhookPayload,
   KycStatus,
-} from '../models/didit-kyc.js';
+} from '../models/didit-kyc';
 
 const DIDIT_WORKFLOW_ID = process.env['DIDIT_WORKFLOW_ID'];
 

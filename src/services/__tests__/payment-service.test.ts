@@ -7,16 +7,16 @@ import {
   isContractComplete,
   clearDisputes,
   getDisputeById,
-} from '../payment-service.js';
-import { clearTransactions } from '../blockchain-client.js';
-import { clearEscrows } from '../escrow-contract.js';
-import { ContractEntity } from '../../repositories/contract-repository.js';
-import { ProjectEntity, MilestoneEntity } from '../../repositories/project-repository.js';
-import { contractRepository } from '../../repositories/contract-repository.js';
-import { projectRepository } from '../../repositories/project-repository.js';
-import { notificationRepository } from '../../repositories/notification-repository.js';
-import { userRepository, UserEntity } from '../../repositories/user-repository.js';
-import { generateId } from '../../utils/id.js';
+} from '../payment-service';
+import { clearTransactions } from '../blockchain-client';
+import { clearEscrows } from '../escrow-contract';
+import { ContractEntity } from '../../repositories/contract-repository';
+import { ProjectEntity, MilestoneEntity } from '../../repositories/project-repository';
+import { contractRepository } from '../../repositories/contract-repository';
+import { projectRepository } from '../../repositories/project-repository';
+import { notificationRepository } from '../../repositories/notification-repository';
+import { userRepository, UserEntity } from '../../repositories/user-repository';
+import { generateId } from '../../utils/id';
 
 // Test data generators
 const createTestMilestone = (overrides: Partial<MilestoneEntity> = {}): MilestoneEntity => ({

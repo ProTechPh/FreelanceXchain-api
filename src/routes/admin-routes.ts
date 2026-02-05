@@ -1,10 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { userRepository } from '../repositories/user-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { ReviewRepository } from '../repositories/review-repository.js';
-import { getKycVerificationByUserId } from '../repositories/didit-kyc-repository.js';
+import { authMiddleware, requireRole } from '../middleware/auth-middleware';
+import { userRepository } from '../repositories/user-repository';
+import { projectRepository } from '../repositories/project-repository';
+import { contractRepository } from '../repositories/contract-repository';
+import { ReviewRepository } from '../repositories/review-repository';
+import { getKycVerificationByUserId } from '../repositories/didit-kyc-repository';
 
 const router = Router();
 
