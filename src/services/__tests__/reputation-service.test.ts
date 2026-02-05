@@ -1,15 +1,15 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 import fc from 'fast-check';
 import { ContractEntity } from '../../repositories/contract-repository.js';
 import { ProjectEntity } from '../../repositories/project-repository.js';
-import { BlockchainRating } from '../reputation-contract.js';
-
+import { BlockchainRating } from '../reputation-blockchain.js';
 // In-memory stores for testing - using entity types
 let contractStore: Map<string, ContractEntity> = new Map();
 let projectStore: Map<string, ProjectEntity> = new Map();
-
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 // Mock the repositories before importing services
-jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: {
     getContractById: jest.fn(async (id: string) => {
       return contractStore.get(id) ?? null;
@@ -27,8 +27,7 @@ jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
   ContractRepository: jest.fn(),
   ContractEntity: {} as ContractEntity,
 }));
-
-jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: {
     getProjectById: jest.fn(async (projectId: string) => {
       return projectStore.get(projectId) ?? null;
@@ -37,40 +36,32 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
   ProjectRepository: jest.fn(),
   ProjectEntity: {} as ProjectEntity,
 }));
-
 // Mock notification service
-jest.unstable_mockModule('../notification-service.js', () => ({
+jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), () => ({
   notifyRatingReceived: jest.fn(async () => ({ success: true, data: {} })),
 }));
-
 // Import after mocking
 const {
   submitRating,
   serializeReputationRecord,
   deserializeReputationRecord,
 } = await import('../reputation-service.js');
-
 const {
   clearBlockchainRatings,
   computeAggregateScore,
 } = await import('../reputation-contract.js');
-
-
 // Helper to generate IDs
 function generateTestId(): string {
   return Math.random().toString(36).substring(2, 15);
 }
-
 // Custom arbitraries for property-based testing
 const validRatingArbitrary = () => fc.integer({ min: 1, max: 5 });
-
 const invalidRatingArbitrary = () =>
   fc.oneof(
     fc.integer({ max: 0 }),
     fc.integer({ min: 6 }),
     fc.double({ min: 1.1, max: 4.9 }) // Non-integer values
   );
-
 // Generates contract entities with snake_case properties
 const validContractEntityArbitrary = () =>
   fc.record({
@@ -85,9 +76,6 @@ const validContractEntityArbitrary = () =>
     created_at: fc.date().map(d => d.toISOString()),
     updated_at: fc.date().map(d => d.toISOString()),
   });
-
-
-
 // Helper to create a blockchain rating with specific timestamp
 function createRatingWithTimestamp(
   rating: number,
@@ -104,15 +92,12 @@ function createRatingWithTimestamp(
     transactionHash: '0x' + generateTestId(),
   };
 }
-
 describe('Reputation Service - Property Tests', () => {
   beforeEach(() => {
     contractStore.clear();
     projectStore.clear();
     clearBlockchainRatings();
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 22: Rating validation bounds**
    * **Validates: Requirements 7.4**
@@ -131,11 +116,9 @@ describe('Reputation Service - Property Tests', () => {
             contractStore.clear();
             projectStore.clear();
             clearBlockchainRatings();
-
             // Set up contract
             const contract: ContractEntity = contractData;
             contractStore.set(contract.id, contract);
-
             // Set up project
             const now = new Date().toISOString();
             const project: ProjectEntity = {
@@ -152,7 +135,6 @@ describe('Reputation Service - Property Tests', () => {
               updated_at: now,
             };
             projectStore.set(project.id, project);
-
             // Submit rating from employer to freelancer
             const result = await submitRating({
               contractId: contract.id,
@@ -160,7 +142,6 @@ describe('Reputation Service - Property Tests', () => {
               rateeId: contract.freelancer_id,
               rating,
             });
-
             // Should succeed for valid ratings
             expect(result.success).toBe(true);
             if (result.success) {
@@ -173,7 +154,6 @@ describe('Reputation Service - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should reject ratings outside 1-5 range', async () => {
       await fc.assert(
         fc.asyncProperty(
@@ -184,11 +164,9 @@ describe('Reputation Service - Property Tests', () => {
             contractStore.clear();
             projectStore.clear();
             clearBlockchainRatings();
-
             // Set up contract
             const contract: ContractEntity = contractData;
             contractStore.set(contract.id, contract);
-
             // Submit invalid rating
             const result = await submitRating({
               contractId: contract.id,
@@ -196,7 +174,6 @@ describe('Reputation Service - Property Tests', () => {
               rateeId: contract.freelancer_id,
               rating: invalidRating,
             });
-
             // Should fail for invalid ratings
             expect(result.success).toBe(false);
             if (!result.success) {
@@ -208,8 +185,6 @@ describe('Reputation Service - Property Tests', () => {
       );
     });
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 23: Reputation time decay weighting**
    * **Validates: Requirements 7.5**
@@ -226,28 +201,21 @@ describe('Reputation Service - Property Tests', () => {
           async (oldRating, newRating) => {
             // Skip if ratings are equal (no way to distinguish weighting)
             if (oldRating === newRating) return;
-
             const userId = generateTestId();
             const now = Date.now();
             const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
-
             // Create ratings with different timestamps
             const oldRatingRecord = createRatingWithTimestamp(oldRating, oneYearAgo, userId);
             const newRatingRecord = createRatingWithTimestamp(newRating, now, userId);
-
             const ratings = [oldRatingRecord, newRatingRecord];
-
             // Compute score with time decay
             const scoreWithDecay = computeAggregateScore(ratings, 0.01);
-
             // Compute simple average (no decay)
             const simpleAverage = (oldRating + newRating) / 2;
-
             // The score with decay should be closer to the new rating than the simple average
             // because recent ratings have higher weight
             const distanceToNewWithDecay = Math.abs(scoreWithDecay - newRating);
             const distanceToNewSimple = Math.abs(simpleAverage - newRating);
-
             // With time decay, the score should be closer to the recent rating
             expect(distanceToNewWithDecay).toBeLessThanOrEqual(distanceToNewSimple + 0.01);
           }
@@ -255,7 +223,6 @@ describe('Reputation Service - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should produce higher score when recent ratings are higher', async () => {
       await fc.assert(
         fc.asyncProperty(
@@ -265,22 +232,18 @@ describe('Reputation Service - Property Tests', () => {
             const userId = generateTestId();
             const now = Date.now();
             const oneYearAgo = now - 365 * 24 * 60 * 60 * 1000;
-
             // Scenario 1: Low rating is old, high rating is recent
             const scenario1Ratings = [
               createRatingWithTimestamp(lowOldRating, oneYearAgo, userId),
               createRatingWithTimestamp(highNewRating, now, userId),
             ];
-
             // Scenario 2: High rating is old, low rating is recent
             const scenario2Ratings = [
               createRatingWithTimestamp(highNewRating, oneYearAgo, userId),
               createRatingWithTimestamp(lowOldRating, now, userId),
             ];
-
             const score1 = computeAggregateScore(scenario1Ratings, 0.01);
             const score2 = computeAggregateScore(scenario2Ratings, 0.01);
-
             // Score should be higher when the high rating is recent
             expect(score1).toBeGreaterThan(score2);
           }
@@ -289,8 +252,6 @@ describe('Reputation Service - Property Tests', () => {
       );
     });
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 24: Reputation record serialization round-trip**
    * **Validates: Requirements 7.6, 7.7**
@@ -314,17 +275,13 @@ describe('Reputation Service - Property Tests', () => {
           }),
           async (ratingRecord) => {
             const original: BlockchainRating = ratingRecord;
-
             // Serialize to JSON string
             const serialized = serializeReputationRecord(original);
-
             // Verify it's a valid JSON string
             expect(typeof serialized).toBe('string');
             expect(() => JSON.parse(serialized)).not.toThrow();
-
             // Deserialize back to object
             const deserialized = deserializeReputationRecord(serialized);
-
             // Verify all fields are preserved
             expect(deserialized.id).toBe(original.id);
             expect(deserialized.contractId).toBe(original.contractId);
@@ -339,7 +296,6 @@ describe('Reputation Service - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should handle records with and without comments', async () => {
       await fc.assert(
         fc.asyncProperty(
@@ -358,10 +314,8 @@ describe('Reputation Service - Property Tests', () => {
               timestamp: Date.now(),
               transactionHash: '0x' + generateTestId(),
             };
-
             const serialized = serializeReputationRecord(original);
             const deserialized = deserializeReputationRecord(serialized);
-
             expect(deserialized.comment).toBe(original.comment);
           }
         ),
@@ -369,8 +323,6 @@ describe('Reputation Service - Property Tests', () => {
       );
     });
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 25: Reputation score computation**
    * **Validates: Requirements 7.3**
@@ -387,17 +339,14 @@ describe('Reputation Service - Property Tests', () => {
             const userId = generateTestId();
             const now = Date.now();
             const decayLambda = 0.01;
-
             // Create ratings with varying timestamps (spread over past year)
             const ratingRecords = ratings.map((rating, index) => {
               const daysAgo = index * 30; // Each rating 30 days apart
               const timestamp = now - daysAgo * 24 * 60 * 60 * 1000;
               return createRatingWithTimestamp(rating, timestamp, userId);
             });
-
             // Compute score using the function
             const computedScore = computeAggregateScore(ratingRecords, decayLambda);
-
             // Manually compute expected weighted average
             let weightedSum = 0;
             let totalWeight = 0;
@@ -409,7 +358,6 @@ describe('Reputation Service - Property Tests', () => {
               totalWeight += weight;
             }
             const expectedScore = Math.round((weightedSum / totalWeight) * 100) / 100;
-
             // Scores should match
             expect(computedScore).toBeCloseTo(expectedScore, 2);
           }
@@ -417,12 +365,10 @@ describe('Reputation Service - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return 0 for users with no ratings', async () => {
       const score = computeAggregateScore([], 0.01);
       expect(score).toBe(0);
     });
-
     it('should return exact rating for single rating', async () => {
       await fc.assert(
         fc.asyncProperty(
@@ -430,9 +376,7 @@ describe('Reputation Service - Property Tests', () => {
           async (rating) => {
             const userId = generateTestId();
             const ratingRecord = createRatingWithTimestamp(rating, Date.now(), userId);
-
             const score = computeAggregateScore([ratingRecord], 0.01);
-
             // Single rating should return that rating value
             expect(score).toBe(rating);
           }
@@ -440,7 +384,6 @@ describe('Reputation Service - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should bound score between 1 and 5', async () => {
       await fc.assert(
         fc.asyncProperty(
@@ -448,14 +391,11 @@ describe('Reputation Service - Property Tests', () => {
           async (ratings) => {
             const userId = generateTestId();
             const now = Date.now();
-
             const ratingRecords = ratings.map((rating, index) => {
               const timestamp = now - index * 24 * 60 * 60 * 1000;
               return createRatingWithTimestamp(rating, timestamp, userId);
             });
-
             const score = computeAggregateScore(ratingRecords, 0.01);
-
             // Score should always be between 1 and 5
             expect(score).toBeGreaterThanOrEqual(1);
             expect(score).toBeLessThanOrEqual(5);
@@ -466,3 +406,4 @@ describe('Reputation Service - Property Tests', () => {
     });
   });
 });
+

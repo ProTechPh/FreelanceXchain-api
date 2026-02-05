@@ -1,17 +1,17 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 import fc from 'fast-check';
 import { ProjectEntity, MilestoneEntity } from '../../repositories/project-repository.js';
 import { ProposalEntity } from '../../repositories/proposal-repository.js';
 import { SkillEntity } from '../../repositories/skill-repository.js';
 import { generateId } from '../../utils/id.js';
-
 // In-memory stores for testing
 let projectStore: Map<string, ProjectEntity> = new Map();
 let proposalStore: Map<string, ProposalEntity> = new Map();
 let skillStore: Map<string, SkillEntity> = new Map();
-
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 // Mock the repositories before importing project-service
-jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: {
     createProject: jest.fn(async (project: ProjectEntity) => {
       const now = new Date().toISOString();
@@ -43,9 +43,7 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
   ProjectStatus: 'open',
   MilestoneStatus: 'pending',
 }));
-
-
-jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
   proposalRepository: {
     hasAcceptedProposal: jest.fn(async (projectId: string) => {
       for (const proposal of proposalStore.values()) {
@@ -65,8 +63,7 @@ jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
   },
   ProposalRepository: jest.fn(),
 }));
-
-jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
   skillRepository: {
     findSkillById: jest.fn(async (id: string) => {
       return skillStore.get(id) ?? null;
@@ -74,10 +71,8 @@ jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
   },
   SkillRepository: jest.fn(),
 }));
-
 // Import after mocking
 const { createProject, getProjectById, updateProject, setMilestones } = await import('../project-service.js');
-
 // Helper to create test skills
 function createTestSkill(id: string, name: string, categoryId: string): SkillEntity {
   return {
@@ -90,7 +85,6 @@ function createTestSkill(id: string, name: string, categoryId: string): SkillEnt
     updated_at: new Date().toISOString(),
   };
 }
-
 // Helper to add accepted proposal
 function addAcceptedProposal(projectId: string, freelancerId: string): ProposalEntity {
   const proposal: ProposalEntity = {
@@ -107,32 +101,23 @@ function addAcceptedProposal(projectId: string, freelancerId: string): ProposalE
   proposalStore.set(proposal.id, proposal);
   return proposal;
 }
-
-
 // Custom arbitraries for property-based testing
 const validTitleArbitrary = () =>
   fc.stringMatching(/^[A-Za-z][A-Za-z0-9 ]{5,50}$/);
-
 const validDescriptionArbitrary = () =>
   fc.stringMatching(/^[A-Za-z][A-Za-z0-9 .,!?]{20,200}$/);
-
 const validBudgetArbitrary = () =>
   fc.integer({ min: 100, max: 100000 });
-
 const validDeadlineArbitrary = () =>
   fc.date({ min: new Date(), max: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) })
     .map(d => d.toISOString());
-
 const validEmployerIdArbitrary = () =>
   fc.uuid();
-
 const validFreelancerIdArbitrary = () =>
   fc.uuid();
-
 // Generate milestones that sum to a specific budget
 const validMilestonesArbitrary = (totalBudget: number, count: number) => {
   if (count <= 0) return fc.constant([]);
-
   return fc.array(
     fc.record({
       title: fc.stringMatching(/^Milestone [0-9]+$/),
@@ -144,14 +129,12 @@ const validMilestonesArbitrary = (totalBudget: number, count: number) => {
     // Distribute budget evenly with remainder going to last milestone
     const baseAmount = Math.floor(totalBudget / count);
     const remainder = totalBudget - (baseAmount * count);
-
     return milestones.map((m, i) => ({
       ...m,
       amount: i === count - 1 ? baseAmount + remainder : baseAmount,
     }));
   });
 };
-
 // Generate milestones that DON'T sum to budget (for negative testing)
 const invalidMilestonesArbitrary = (totalBudget: number) =>
   fc.array(
@@ -166,14 +149,11 @@ const invalidMilestonesArbitrary = (totalBudget: number) =>
     const sum = milestones.reduce((acc, m) => acc + m.amount, 0);
     return sum !== totalBudget;
   });
-
-
 describe('Project Service - Property Tests', () => {
   beforeEach(() => {
     projectStore.clear();
     proposalStore.clear();
     skillStore.clear();
-
     // Set up some test skills
     const skill1 = createTestSkill('skill-1', 'JavaScript', 'cat-1');
     const skill2 = createTestSkill('skill-2', 'TypeScript', 'cat-1');
@@ -182,7 +162,6 @@ describe('Project Service - Property Tests', () => {
     skillStore.set(skill2.id, skill2);
     skillStore.set(skill3.id, skill3);
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 7: Project creation and retrieval**
    * **Validates: Requirements 3.1, 3.5**
@@ -204,7 +183,6 @@ describe('Project Service - Property Tests', () => {
           // Clear stores for each test case
           projectStore.clear();
           proposalStore.clear();
-
           const createInput = {
             title,
             description,
@@ -212,15 +190,11 @@ describe('Project Service - Property Tests', () => {
             budget,
             deadline,
           };
-
           // Create project
           const createResult = await createProject(employerId, createInput);
-
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
-
           const createdProject = createResult.data;
-
           // Verify created project data matches input
           expect(createdProject.title).toBe(title);
           expect(createdProject.description).toBe(description);
@@ -230,15 +204,11 @@ describe('Project Service - Property Tests', () => {
           expect(createdProject.status).toBe('open');
           expect(createdProject.milestones).toEqual([]);
           expect(createdProject.required_skills.length).toBe(skillIds.length);
-
           // Retrieve project
           const getResult = await getProjectById(createdProject.id);
-
           expect(getResult.success).toBe(true);
           if (!getResult.success) return;
-
           const retrievedProject = getResult.data;
-
           // Verify retrieved project matches created project
           expect(retrievedProject.id).toBe(createdProject.id);
           expect(retrievedProject.title).toBe(title);
@@ -251,8 +221,6 @@ describe('Project Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 8: Project lock on accepted proposal**
    * **Validates: Requirements 3.4**
@@ -274,7 +242,6 @@ describe('Project Service - Property Tests', () => {
           // Clear stores for each test case
           projectStore.clear();
           proposalStore.clear();
-
           // Create a project
           const createInput = {
             title,
@@ -283,27 +250,21 @@ describe('Project Service - Property Tests', () => {
             budget,
             deadline,
           };
-
           const createResult = await createProject(employerId, createInput);
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
-
           const project = createResult.data;
-
           // Add an accepted proposal
           addAcceptedProposal(project.id, freelancerId);
-
           // Attempt to update the project
           const updateResult = await updateProject(project.id, employerId, {
             title: newTitle,
           });
-
           // Should fail with PROJECT_LOCKED error
           expect(updateResult.success).toBe(false);
           if (!updateResult.success) {
             expect(updateResult.error.code).toBe('PROJECT_LOCKED');
           }
-
           // Verify project was not modified
           const getResult = await getProjectById(project.id);
           expect(getResult.success).toBe(true);
@@ -315,8 +276,6 @@ describe('Project Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 9: Milestone budget invariant**
    * **Validates: Requirements 3.6**
@@ -337,7 +296,6 @@ describe('Project Service - Property Tests', () => {
           // Clear stores for each test case
           projectStore.clear();
           proposalStore.clear();
-
           // Create a project
           const createInput = {
             title,
@@ -346,25 +304,19 @@ describe('Project Service - Property Tests', () => {
             budget,
             deadline,
           };
-
           const createResult = await createProject(employerId, createInput);
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
-
           const project = createResult.data;
-
           // Generate milestones that sum to budget
           const milestonesGen = validMilestonesArbitrary(budget, milestoneCount);
           const milestones = fc.sample(milestonesGen, 1)[0];
           if (!milestones || milestones.length === 0) return;
-
           // Add milestones
           const addResult = await setMilestones(project.id, employerId, milestones);
-
           // Should succeed
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
-
           // Verify milestone sum equals budget
           const totalMilestoneAmount = addResult.data.milestones.reduce(
             (sum, m) => sum + m.amount,
@@ -376,7 +328,6 @@ describe('Project Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 9: Milestone budget invariant**
    * **Validates: Requirements 3.6**
@@ -395,7 +346,6 @@ describe('Project Service - Property Tests', () => {
           // Clear stores for each test case
           projectStore.clear();
           proposalStore.clear();
-
           // Create a project
           const createInput = {
             title,
@@ -404,23 +354,18 @@ describe('Project Service - Property Tests', () => {
             budget,
             deadline,
           };
-
           const createResult = await createProject(employerId, createInput);
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
-
           const project = createResult.data;
-
           // Generate milestones that DON'T sum to budget
           const invalidMilestonesGen = invalidMilestonesArbitrary(budget);
           const samples = fc.sample(invalidMilestonesGen, 1);
           if (!samples || samples.length === 0) return;
           const milestones = samples[0];
           if (!milestones || milestones.length === 0) return;
-
           // Attempt to add invalid milestones
           const addResult = await setMilestones(project.id, employerId, milestones);
-
           // Should fail with MILESTONE_SUM_MISMATCH error
           expect(addResult.success).toBe(false);
           if (!addResult.success) {
@@ -432,3 +377,4 @@ describe('Project Service - Property Tests', () => {
     );
   });
 });
+

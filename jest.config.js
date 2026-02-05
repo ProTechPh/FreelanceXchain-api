@@ -5,13 +5,13 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
         useESM: true,
-        isolatedModules: true, // Fix ts-jest warning for NodeNext module
         tsconfig: 'tsconfig.test.json',
         diagnostics: {
           ignoreCodes: [151002], // Ignore hybrid module warning
@@ -19,7 +19,7 @@ export default {
       },
     ],
   },
-  setupFiles: ['<rootDir>/jest.setup.js'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testMatch: ['**/*.test.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -29,4 +29,14 @@ export default {
   coverageDirectory: 'coverage',
   verbose: true,
   testTimeout: 30000,
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  // Handle module resolution more aggressively
+  transformIgnorePatterns: [
+    'node_modules/(?!(.*\\.mjs$))'
+  ],
+  globals: {
+    'ts-jest': {
+      useESM: true
+    }
+  }
 };

@@ -17,6 +17,9 @@ jobs:
 
   size-check:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:

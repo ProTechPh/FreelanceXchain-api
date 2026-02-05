@@ -1,18 +1,8 @@
 import { describe, it, expect } from '@jest/globals';
 import fc from 'fast-check';
-import {
-  calculateMatchScore,
-  sortRecommendationsByScore,
-  sortFreelancerRecommendationsByCombinedScore,
-} from '../matching-service.js';
-import {
-  SkillInfo,
-  ProjectRecommendation,
-  FreelancerRecommendation,
-} from '../ai-types.js';
-
+import { sortRecommendationsByScore, sortFreelancerRecommendationsByCombinedScore, calculateMatchScore } from '../matching-service.js';
+import { SkillInfo, ProjectRecommendation, FreelancerRecommendation } from '../matching-service.js';
 // Custom arbitraries for property-based testing
-
 const skillInfoArbitrary = () =>
   fc.record({
     skillId: fc.uuid(),
@@ -20,7 +10,6 @@ const skillInfoArbitrary = () =>
     categoryId: fc.oneof(fc.uuid(), fc.constant(undefined)),
     yearsOfExperience: fc.oneof(fc.integer({ min: 0, max: 30 }), fc.constant(undefined)),
   }) as fc.Arbitrary<SkillInfo>;
-
 const projectRecommendationArbitrary = () =>
   fc.record({
     projectId: fc.uuid(),
@@ -29,7 +18,6 @@ const projectRecommendationArbitrary = () =>
     missingSkills: fc.array(fc.string({ minLength: 1, maxLength: 50 }), { minLength: 0, maxLength: 5 }),
     reasoning: fc.string({ minLength: 0, maxLength: 200 }),
   }) as fc.Arbitrary<ProjectRecommendation>;
-
 const freelancerRecommendationArbitrary = () =>
   fc.record({
     freelancerId: fc.uuid(),
@@ -39,7 +27,6 @@ const freelancerRecommendationArbitrary = () =>
     matchedSkills: fc.array(fc.string({ minLength: 1, maxLength: 50 }), { minLength: 0, maxLength: 5 }),
     reasoning: fc.string({ minLength: 0, maxLength: 200 }),
   }) as fc.Arbitrary<FreelancerRecommendation>;
-
 describe('Matching Service - Recommendation Properties', () => {
   /**
    * **Feature: blockchain-freelance-marketplace, Property 10: Recommendation ranking order**
@@ -56,7 +43,6 @@ describe('Matching Service - Recommendation Properties', () => {
           (recommendations: ProjectRecommendation[]) => {
             // Sort recommendations
             const sorted = sortRecommendationsByScore(recommendations);
-            
             // Verify descending order
             for (let i = 0; i < sorted.length - 1; i++) {
               const current = sorted[i];
@@ -70,17 +56,14 @@ describe('Matching Service - Recommendation Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should preserve all recommendations after sorting', () => {
       fc.assert(
         fc.property(
           fc.array(projectRecommendationArbitrary(), { minLength: 0, maxLength: 20 }),
           (recommendations: ProjectRecommendation[]) => {
             const sorted = sortRecommendationsByScore(recommendations);
-            
             // Same length
             expect(sorted.length).toBe(recommendations.length);
-            
             // All original items present
             const originalIds = new Set(recommendations.map(r => r.projectId));
             const sortedIds = new Set(sorted.map(r => r.projectId));
@@ -90,16 +73,13 @@ describe('Matching Service - Recommendation Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should not modify the original array', () => {
       fc.assert(
         fc.property(
           fc.array(projectRecommendationArbitrary(), { minLength: 1, maxLength: 10 }),
           (recommendations: ProjectRecommendation[]) => {
             const originalOrder = recommendations.map(r => r.projectId);
-            
             sortRecommendationsByScore(recommendations);
-            
             // Original array unchanged
             const afterOrder = recommendations.map(r => r.projectId);
             expect(afterOrder).toEqual(originalOrder);
@@ -109,7 +89,6 @@ describe('Matching Service - Recommendation Properties', () => {
       );
     });
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 11: Freelancer recommendation ranking**
    * **Validates: Requirements 4.5**
@@ -126,7 +105,6 @@ describe('Matching Service - Recommendation Properties', () => {
           (recommendations: FreelancerRecommendation[]) => {
             // Sort recommendations
             const sorted = sortFreelancerRecommendationsByCombinedScore(recommendations);
-            
             // Verify descending order by combined score
             for (let i = 0; i < sorted.length - 1; i++) {
               const current = sorted[i];
@@ -140,17 +118,14 @@ describe('Matching Service - Recommendation Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should preserve all recommendations after sorting', () => {
       fc.assert(
         fc.property(
           fc.array(freelancerRecommendationArbitrary(), { minLength: 0, maxLength: 20 }),
           (recommendations: FreelancerRecommendation[]) => {
             const sorted = sortFreelancerRecommendationsByCombinedScore(recommendations);
-            
             // Same length
             expect(sorted.length).toBe(recommendations.length);
-            
             // All original items present
             const originalIds = new Set(recommendations.map(r => r.freelancerId));
             const sortedIds = new Set(sorted.map(r => r.freelancerId));
@@ -160,16 +135,13 @@ describe('Matching Service - Recommendation Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should not modify the original array', () => {
       fc.assert(
         fc.property(
           fc.array(freelancerRecommendationArbitrary(), { minLength: 1, maxLength: 10 }),
           (recommendations: FreelancerRecommendation[]) => {
             const originalOrder = recommendations.map(r => r.freelancerId);
-            
             sortFreelancerRecommendationsByCombinedScore(recommendations);
-            
             // Original array unchanged
             const afterOrder = recommendations.map(r => r.freelancerId);
             expect(afterOrder).toEqual(originalOrder);
@@ -180,7 +152,6 @@ describe('Matching Service - Recommendation Properties', () => {
     });
   });
 });
-
 describe('Matching Service - Skill Match Calculation', () => {
   it('should return 100% match when freelancer has all required skills', () => {
     fc.assert(
@@ -189,7 +160,6 @@ describe('Matching Service - Skill Match Calculation', () => {
         (skills: SkillInfo[]) => {
           // Freelancer has exactly the required skills
           const result = calculateMatchScore(skills, skills);
-          
           expect(result.matchScore).toBe(100);
           expect(result.matchedSkills.length).toBe(skills.length);
           expect(result.missingSkills.length).toBe(0);
@@ -198,7 +168,6 @@ describe('Matching Service - Skill Match Calculation', () => {
       { numRuns: 50 }
     );
   });
-
   it('should return 0% match when freelancer has no matching skills', () => {
     fc.assert(
       fc.property(
@@ -211,9 +180,7 @@ describe('Matching Service - Skill Match Calculation', () => {
             skillId: `project-only-${i}`,
             skillName: `ProjectSkill${i}`,
           }));
-          
           const result = calculateMatchScore(freelancerSkills, modifiedProjectSkills);
-          
           expect(result.matchScore).toBe(0);
           expect(result.matchedSkills.length).toBe(0);
           expect(result.missingSkills.length).toBe(modifiedProjectSkills.length);
@@ -222,14 +189,12 @@ describe('Matching Service - Skill Match Calculation', () => {
       { numRuns: 50 }
     );
   });
-
   it('should handle empty project requirements', () => {
     fc.assert(
       fc.property(
         fc.array(skillInfoArbitrary(), { minLength: 0, maxLength: 5 }),
         (freelancerSkills: SkillInfo[]) => {
           const result = calculateMatchScore(freelancerSkills, []);
-          
           expect(result.matchScore).toBe(0);
           expect(result.matchedSkills.length).toBe(0);
           expect(result.missingSkills.length).toBe(0);
@@ -238,7 +203,6 @@ describe('Matching Service - Skill Match Calculation', () => {
       { numRuns: 50 }
     );
   });
-
   it('should calculate partial match correctly', () => {
     const freelancerSkills: SkillInfo[] = [
       { skillId: 'skill-1', skillName: 'JavaScript' },
@@ -248,11 +212,10 @@ describe('Matching Service - Skill Match Calculation', () => {
       { skillId: 'skill-1', skillName: 'JavaScript' },
       { skillId: 'skill-3', skillName: 'Python' },
     ];
-
     const result = calculateMatchScore(freelancerSkills, projectRequirements);
-    
     expect(result.matchScore).toBe(50); // 1 out of 2 skills matched
     expect(result.matchedSkills).toContain('JavaScript');
     expect(result.missingSkills).toContain('Python');
   });
 });
+

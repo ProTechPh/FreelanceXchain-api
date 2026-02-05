@@ -1,17 +1,17 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 import fc from 'fast-check';
 import { ProposalEntity } from '../../repositories/proposal-repository.js';
 import { ContractEntity } from '../../repositories/contract-repository.js';
 import { ProjectEntity, ProjectStatus } from '../../repositories/project-repository.js';
 import { generateId } from '../../utils/id.js';
-
 // In-memory stores for testing
 let proposalStore: Map<string, ProposalEntity> = new Map();
 let contractStore: Map<string, ContractEntity> = new Map();
 let projectStore: Map<string, ProjectEntity> = new Map();
-
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 // Mock the repositories before importing proposal-service
-jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
   proposalRepository: {
     createProposal: jest.fn(async (proposal: ProposalEntity) => {
       proposalStore.set(proposal.id, proposal);
@@ -45,9 +45,7 @@ jest.unstable_mockModule('../../repositories/proposal-repository.js', () => ({
   },
   ProposalRepository: jest.fn(),
 }));
-
-
-jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: {
     createContract: jest.fn(async (contract: ContractEntity) => {
       contractStore.set(contract.id, contract);
@@ -65,8 +63,7 @@ jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
   },
   ContractRepository: jest.fn(),
 }));
-
-jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: {
     findProjectById: jest.fn(async (id: string) => {
       return projectStore.get(id) ?? null;
@@ -81,8 +78,7 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
   },
   ProjectRepository: jest.fn(),
 }));
-
-jest.unstable_mockModule('../../repositories/notification-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/notification-repository.ts'), () => ({
   notificationRepository: {
     createNotification: jest.fn(async (notification: Record<string, unknown>) => {
       const now = new Date().toISOString();
@@ -91,9 +87,8 @@ jest.unstable_mockModule('../../repositories/notification-repository.js', () => 
   },
   NotificationRepository: jest.fn(),
 }));
-
 // Mock user repository for acceptProposal
-jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: {
     getUserById: jest.fn(async () => ({
       id: 'user-1',
@@ -102,27 +97,20 @@ jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
   },
   UserRepository: jest.fn(),
 }));
-
 // Mock agreement contract for acceptProposal
-jest.unstable_mockModule('../agreement-contract.js', () => ({
+jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({
   createAgreementOnBlockchain: jest.fn(async () => ({ transactionHash: '0x123' })),
   signAgreement: jest.fn(async () => ({ transactionHash: '0x456' })),
 }));
-
 // Import after mocking
 const { submitProposal, acceptProposal, rejectProposal } = await import('../proposal-service.js');
-
 // Custom arbitraries for property-based testing
 const validCoverLetterArbitrary = () =>
   fc.string({ minLength: 10, maxLength: 500 }).filter(s => s.trim().length >= 10);
-
 const validProposedRateArbitrary = () =>
   fc.integer({ min: 10, max: 10000 });
-
 const validEstimatedDurationArbitrary = () =>
   fc.integer({ min: 1, max: 365 });
-
-
 // Helper to create a test project
 function createTestProject(employerId: string, status: ProjectStatus = 'open'): ProjectEntity {
   const project: ProjectEntity = {
@@ -141,14 +129,12 @@ function createTestProject(employerId: string, status: ProjectStatus = 'open'): 
   projectStore.set(project.id, project);
   return project;
 }
-
 describe('Proposal Service - Property Tests', () => {
   beforeEach(() => {
     proposalStore.clear();
     contractStore.clear();
     projectStore.clear();
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 14: Proposal creation**
    * **Validates: Requirements 5.1**
@@ -169,22 +155,17 @@ describe('Proposal Service - Property Tests', () => {
           proposalStore.clear();
           contractStore.clear();
           projectStore.clear();
-
           // Create a project for the employer
           const project = createTestProject(employerId);
-
           const input = {
             projectId: project.id,
             coverLetter,
             proposedRate,
             estimatedDuration,
           };
-
           const result = await submitProposal(freelancerId, input);
-
           // Should succeed
           expect(result.success).toBe(true);
-
           if (result.success) {
             // Verify proposal was created with correct data
             expect(result.data.proposal.projectId).toBe(project.id);
@@ -193,14 +174,12 @@ describe('Proposal Service - Property Tests', () => {
             expect(result.data.proposal.proposedRate).toBe(proposedRate);
             expect(result.data.proposal.estimatedDuration).toBe(estimatedDuration);
             expect(result.data.proposal.status).toBe('pending');
-
             // Verify notification was generated for employer
             expect(result.data.notification).toBeDefined();
             expect(result.data.notification.userId).toBe(employerId);
             expect(result.data.notification.type).toBe('proposal_received');
             expect(result.data.notification.data.proposalId).toBe(result.data.proposal.id);
             expect(result.data.notification.data.projectId).toBe(project.id);
-
             // Verify proposal exists in store
             expect(proposalStore.has(result.data.proposal.id)).toBe(true);
           }
@@ -209,8 +188,6 @@ describe('Proposal Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 15: Duplicate proposal rejection**
    * **Validates: Requirements 5.2**
@@ -244,10 +221,8 @@ describe('Proposal Service - Property Tests', () => {
           proposalStore.clear();
           contractStore.clear();
           projectStore.clear();
-
           // Create a project for the employer
           const project = createTestProject(employerId);
-
           // First proposal should succeed
           const firstInput = {
             projectId: project.id,
@@ -255,13 +230,10 @@ describe('Proposal Service - Property Tests', () => {
             proposedRate: proposedRate1,
             estimatedDuration: estimatedDuration1,
           };
-
           const firstResult = await submitProposal(freelancerId, firstInput);
           expect(firstResult.success).toBe(true);
-
           const proposalCountAfterFirst = proposalStore.size;
           expect(proposalCountAfterFirst).toBe(1);
-
           // Second proposal from same freelancer should fail
           const secondInput = {
             projectId: project.id,
@@ -269,16 +241,12 @@ describe('Proposal Service - Property Tests', () => {
             proposedRate: proposedRate2,
             estimatedDuration: estimatedDuration2,
           };
-
           const secondResult = await submitProposal(freelancerId, secondInput);
-
           // Should be a duplicate proposal error
           expect(secondResult.success).toBe(false);
-
           if (!secondResult.success) {
             expect(secondResult.error.code).toBe('DUPLICATE_PROPOSAL');
           }
-
           // No new proposal should be created
           expect(proposalStore.size).toBe(proposalCountAfterFirst);
         }
@@ -286,8 +254,6 @@ describe('Proposal Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 16: Contract creation on proposal acceptance**
    * **Validates: Requirements 5.3**
@@ -308,10 +274,8 @@ describe('Proposal Service - Property Tests', () => {
           proposalStore.clear();
           contractStore.clear();
           projectStore.clear();
-
           // Create a project for the employer
           const project = createTestProject(employerId);
-
           // Submit a proposal
           const input = {
             projectId: project.id,
@@ -319,24 +283,17 @@ describe('Proposal Service - Property Tests', () => {
             proposedRate,
             estimatedDuration,
           };
-
           const submitResult = await submitProposal(freelancerId, input);
           expect(submitResult.success).toBe(true);
-
           if (!submitResult.success) return;
-
           const proposalId = submitResult.data.proposal.id;
-
           // Accept the proposal
           const acceptResult = await acceptProposal(proposalId, employerId);
-
           // Should succeed
           expect(acceptResult.success).toBe(true);
-
           if (acceptResult.success) {
             // Verify proposal status was updated
             expect(acceptResult.data.proposal.status).toBe('accepted');
-
             // Verify contract was created with correct data
             const contract = acceptResult.data.contract;
             expect(contract).toBeDefined();
@@ -346,10 +303,8 @@ describe('Proposal Service - Property Tests', () => {
             expect(contract.employerId).toBe(employerId);
             expect(contract.totalAmount).toBe(project.budget);
             expect(contract.status).toBe('active');
-
             // Verify contract exists in store
             expect(contractStore.has(contract.id)).toBe(true);
-
             // Verify notification was generated for freelancer
             expect(acceptResult.data.notification).toBeDefined();
             expect(acceptResult.data.notification.userId).toBe(freelancerId);
@@ -361,8 +316,6 @@ describe('Proposal Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 17: Proposal status update on rejection**
    * **Validates: Requirements 5.5**
@@ -383,10 +336,8 @@ describe('Proposal Service - Property Tests', () => {
           proposalStore.clear();
           contractStore.clear();
           projectStore.clear();
-
           // Create a project for the employer
           const project = createTestProject(employerId);
-
           // Submit a proposal
           const input = {
             projectId: project.id,
@@ -394,35 +345,26 @@ describe('Proposal Service - Property Tests', () => {
             proposedRate,
             estimatedDuration,
           };
-
           const submitResult = await submitProposal(freelancerId, input);
           expect(submitResult.success).toBe(true);
-
           if (!submitResult.success) return;
-
           const proposalId = submitResult.data.proposal.id;
-
           // Reject the proposal
           const rejectResult = await rejectProposal(proposalId, employerId);
-
           // Should succeed
           expect(rejectResult.success).toBe(true);
-
           if (rejectResult.success) {
             // Verify proposal status was updated to 'rejected'
             expect(rejectResult.data.proposal.status).toBe('rejected');
-
             // Verify the proposal in store has updated status
             const storedProposal = proposalStore.get(proposalId);
             expect(storedProposal?.status).toBe('rejected');
-
             // Verify notification was generated for freelancer
             expect(rejectResult.data.notification).toBeDefined();
             expect(rejectResult.data.notification.userId).toBe(freelancerId);
             expect(rejectResult.data.notification.type).toBe('proposal_rejected');
             expect(rejectResult.data.notification.data.proposalId).toBe(proposalId);
             expect(rejectResult.data.notification.data.projectId).toBe(project.id);
-
             // Verify no contract was created
             expect(contractStore.size).toBe(0);
           }
@@ -432,3 +374,4 @@ describe('Proposal Service - Property Tests', () => {
     );
   });
 });
+

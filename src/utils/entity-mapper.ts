@@ -69,6 +69,9 @@ export type Skill = {
 };
 
 export function mapSkillCategoryFromEntity(entity: SkillCategoryEntity): SkillCategory {
+  if (!entity) {
+    throw new Error('Cannot map null or undefined SkillCategoryEntity');
+  }
   return {
     id: entity.id,
     name: entity.name,
@@ -80,6 +83,9 @@ export function mapSkillCategoryFromEntity(entity: SkillCategoryEntity): SkillCa
 }
 
 export function mapSkillFromEntity(entity: SkillEntity): Skill {
+  if (!entity) {
+    throw new Error('Cannot map null or undefined SkillEntity');
+  }
   return {
     id: entity.id,
     categoryId: entity.category_id,
@@ -158,6 +164,9 @@ export type FreelancerProfile = {
 type ExpEntity = { id: string; title: string; company: string; description: string; start_date: string; end_date: string | null };
 
 export function mapFreelancerProfileFromEntity(entity: FreelancerProfileEntity): FreelancerProfile {
+  if (!entity) {
+    throw new Error('Cannot map null or undefined FreelancerProfileEntity');
+  }
   return {
     id: entity.id,
     userId: entity.user_id,
@@ -194,6 +203,9 @@ export type EmployerProfile = {
 };
 
 export function mapEmployerProfileFromEntity(entity: EmployerProfileEntity): EmployerProfile {
+  if (!entity) {
+    throw new Error('Cannot map null or undefined EmployerProfileEntity');
+  }
   return {
     id: entity.id,
     userId: entity.user_id,
@@ -246,6 +258,9 @@ export function mapMilestoneFromEntity(entity: MilestoneEntity): Milestone {
 }
 
 export function mapProjectFromEntity(entity: ProjectEntity): Project {
+  if (!entity) {
+    throw new Error('Cannot map null or undefined ProjectEntity');
+  }
   return {
     id: entity.id,
     employerId: entity.employer_id,
@@ -277,6 +292,9 @@ export type Proposal = {
 };
 
 export function mapProposalFromEntity(entity: ProposalEntity): Proposal {
+  if (!entity) {
+    throw new Error('Cannot map null or undefined ProposalEntity');
+  }
   return {
     id: entity.id,
     projectId: entity.project_id,
@@ -307,6 +325,9 @@ export type Contract = {
 };
 
 export function mapContractFromEntity(entity: ContractEntity): Contract {
+  if (!entity) {
+    throw new Error('Cannot map null or undefined ContractEntity');
+  }
   return {
     id: entity.id,
     projectId: entity.project_id,

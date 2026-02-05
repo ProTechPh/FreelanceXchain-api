@@ -4,22 +4,24 @@
  */
 
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 
 // Mock web3-client
 const mockGetContract = jest.fn();
 const mockGetContractWithSigner = jest.fn();
 const mockIsWeb3Available = jest.fn();
 const mockGetWallet = jest.fn();
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-jest.mock('../web3-client.js', () => ({
+jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
   getContract: mockGetContract,
   getContractWithSigner: mockGetContractWithSigner,
   isWeb3Available: mockIsWeb3Available,
   getWallet: mockGetWallet,
 }));
 
-// Mock ethers
-jest.mock('ethers', () => ({
+// Mock ethers (ESM)
+jest.unstable_mockModule('ethers', () => ({
   ContractFactory: jest.fn(),
   Contract: jest.fn(),
   TransactionReceipt: jest.fn(),

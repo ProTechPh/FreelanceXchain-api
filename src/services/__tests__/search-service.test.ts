@@ -1,16 +1,16 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 import fc from 'fast-check';
 import { ProjectEntity } from '../../repositories/project-repository.js';
 import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository.js';
 import { QueryOptions } from '../../repositories/base-repository.js';
 import { generateId } from '../../utils/id.js';
-
 // In-memory stores for testing - using entity types
 let projectStore: Map<string, ProjectEntity> = new Map();
 let freelancerStore: Map<string, FreelancerProfileEntity> = new Map();
-
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 // Mock the repositories before importing search-service
-jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: {
     getAllOpenProjects: jest.fn(async (options?: QueryOptions) => {
       const items = Array.from(projectStore.values()).filter(p => p.status === 'open');
@@ -51,9 +51,7 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
   ProjectRepository: jest.fn(),
   ProjectEntity: {} as ProjectEntity,
 }));
-
-
-jest.unstable_mockModule('../../repositories/freelancer-profile-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
   freelancerProfileRepository: {
     getAllProfilesPaginated: jest.fn(async (options?: QueryOptions) => {
       const items = Array.from(freelancerStore.values());
@@ -84,16 +82,12 @@ jest.unstable_mockModule('../../repositories/freelancer-profile-repository.js', 
   FreelancerProfileRepository: jest.fn(),
   FreelancerProfileEntity: {} as FreelancerProfileEntity,
 }));
-
 // Import after mocking
 const { searchProjects, searchFreelancers } = await import('../search-service.js');
-
 // Skill reference type for freelancer entity (matches what entity-mapper expects for FreelancerProfile)
 type FreelancerSkillRefEntity = { name: string; years_of_experience: number };
-
 // Skill reference type for project entity (matches what entity-mapper expects for Project)
 type ProjectSkillRefEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
-
 // Helper to create test project entities
 function createTestProject(overrides: Partial<ProjectEntity> = {}): ProjectEntity {
   const id = generateId();
@@ -113,7 +107,6 @@ function createTestProject(overrides: Partial<ProjectEntity> = {}): ProjectEntit
     ...overrides,
   };
 }
-
 // Helper to create test freelancer profile entities
 function createTestFreelancer(overrides: Partial<FreelancerProfileEntity> = {}): FreelancerProfileEntity {
   const id = generateId();
@@ -131,7 +124,6 @@ function createTestFreelancer(overrides: Partial<FreelancerProfileEntity> = {}):
     ...overrides,
   };
 }
-
 // Helper to create skill references for freelancers (entity format)
 function createFreelancerSkillRef(skillName: string): FreelancerSkillRefEntity {
   return {
@@ -139,7 +131,6 @@ function createFreelancerSkillRef(skillName: string): FreelancerSkillRefEntity {
     years_of_experience: 2,
   };
 }
-
 // Helper to create skill references for projects (entity format)
 function createProjectSkillRef(skillId: string, skillName: string): ProjectSkillRefEntity {
   return {
@@ -149,24 +140,16 @@ function createProjectSkillRef(skillId: string, skillName: string): ProjectSkill
     years_of_experience: 2,
   };
 }
-
-
 // Custom arbitraries for property-based testing
 const validPageSizeArbitrary = () => fc.integer({ min: 1, max: 100 });
-
 const validBudgetArbitrary = () => fc.integer({ min: 100, max: 100000 });
-
 const validSkillIdArbitrary = () => fc.stringMatching(/^skill-[0-9]+$/);
-
 const validSkillIdsArbitrary = () => fc.array(validSkillIdArbitrary(), { minLength: 1, maxLength: 5 });
-
-
 describe('Search Service - Property Tests', () => {
   beforeEach(() => {
     projectStore.clear();
     freelancerStore.clear();
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 34: Search result pagination**
    * **Validates: Requirements 10.1, 10.4**
@@ -183,27 +166,21 @@ describe('Search Service - Property Tests', () => {
         async (pageSize, projectCount) => {
           // Clear stores for each test case
           projectStore.clear();
-
           // Create test projects
           for (let i = 0; i < projectCount; i++) {
             const project = createTestProject();
             projectStore.set(project.id, project);
           }
-
           // Search with pagination
           const result = await searchProjects({}, { pageSize });
-
           expect(result.success).toBe(true);
           if (!result.success) return;
-
           // Verify pagination metadata exists
           expect(result.data.metadata).toBeDefined();
           expect(result.data.metadata.pageSize).toBe(pageSize);
           expect(typeof result.data.metadata.hasMore).toBe('boolean');
-
           // Verify result count does not exceed page size
           expect(result.data.items.length).toBeLessThanOrEqual(pageSize);
-
           // If there are more items than page size, hasMore should be true
           if (projectCount > pageSize) {
             expect(result.data.metadata.hasMore).toBe(true);
@@ -213,8 +190,6 @@ describe('Search Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 35: Project skill filter**
    * **Validates: Requirements 10.2**
@@ -230,29 +205,23 @@ describe('Search Service - Property Tests', () => {
         async (filterSkillIds, projectCount) => {
           // Clear stores for each test case
           projectStore.clear();
-
           // Create test projects with various skills
           const allSkillIds = ['skill-1', 'skill-2', 'skill-3', 'skill-4', 'skill-5'];
-
           for (let i = 0; i < projectCount; i++) {
             // Randomly assign skills to projects
             const projectSkillIds = fc.sample(
               fc.subarray(allSkillIds, { minLength: 1, maxLength: 3 }),
               1
             )[0] ?? ['skill-1'];
-
             const project = createTestProject({
               required_skills: projectSkillIds.map(id => createProjectSkillRef(id, `Skill ${id}`)),
             });
             projectStore.set(project.id, project);
           }
-
           // Search with skill filter
           const result = await searchProjects({ skillIds: filterSkillIds });
-
           expect(result.success).toBe(true);
           if (!result.success) return;
-
           // Verify all returned projects have at least one of the filter skills
           const filterSkillIdSet = new Set(filterSkillIds);
           for (const project of result.data.items) {
@@ -266,8 +235,6 @@ describe('Search Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 36: Freelancer skill filter**
    * **Validates: Requirements 10.3**
@@ -283,29 +250,23 @@ describe('Search Service - Property Tests', () => {
         async (filterSkillIds, freelancerCount) => {
           // Clear stores for each test case
           freelancerStore.clear();
-
           // Create test freelancers with various skills
           const allSkillIds = ['skill-1', 'skill-2', 'skill-3', 'skill-4', 'skill-5'];
-
           for (let i = 0; i < freelancerCount; i++) {
             // Randomly assign skills to freelancers
             const freelancerSkillIds = fc.sample(
               fc.subarray(allSkillIds, { minLength: 1, maxLength: 3 }),
               1
             )[0] ?? ['skill-1'];
-
             const freelancer = createTestFreelancer({
               skills: freelancerSkillIds.map(id => createFreelancerSkillRef(`Skill ${id}`)),
             });
             freelancerStore.set(freelancer.id, freelancer);
           }
-
           // Search with skill filter
           const result = await searchFreelancers({ skillIds: filterSkillIds });
-
           expect(result.success).toBe(true);
           if (!result.success) return;
-
           // Verify all returned freelancers have at least one of the filter skills
           // Note: SkillReference only has 'name', not 'skillId', so we match by name
           const filterSkillNames = new Set(filterSkillIds.map(id => `Skill ${id}`));
@@ -320,8 +281,6 @@ describe('Search Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 37: Budget range filter**
    * **Validates: Requirements 10.5**
@@ -338,28 +297,22 @@ describe('Search Service - Property Tests', () => {
         async (budget1, budget2, projectCount) => {
           // Clear stores for each test case
           projectStore.clear();
-
           // Ensure minBudget <= maxBudget
           const minBudget = Math.min(budget1, budget2);
           const maxBudget = Math.max(budget1, budget2);
-
           // Create test projects with various budgets
           for (let i = 0; i < projectCount; i++) {
             // Generate random budget between 100 and 100000
             const projectBudget = fc.sample(validBudgetArbitrary(), 1)[0] ?? 1000;
-
             const project = createTestProject({
               budget: projectBudget,
             });
             projectStore.set(project.id, project);
           }
-
           // Search with budget range filter
           const result = await searchProjects({ minBudget, maxBudget });
-
           expect(result.success).toBe(true);
           if (!result.success) return;
-
           // Verify all returned projects have budget within range
           for (const project of result.data.items) {
             expect(project.budget).toBeGreaterThanOrEqual(minBudget);
@@ -371,3 +324,4 @@ describe('Search Service - Property Tests', () => {
     );
   });
 });
+

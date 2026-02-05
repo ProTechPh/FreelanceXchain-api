@@ -4,6 +4,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import path from 'node:path';
 
 // Create mock instances
 const mockProvider = {
@@ -33,8 +34,7 @@ const mockContractFactory = {
   deploy: jest.fn<any>(),
 };
 
-// Mock ethers module
-jest.mock('ethers', () => ({
+const mockEthers = {
   JsonRpcProvider: jest.fn(() => mockProvider),
   Wallet: jest.fn(() => mockWallet),
   Contract: jest.fn(() => mockContract),
@@ -44,10 +44,26 @@ jest.mock('ethers', () => ({
   isAddress: jest.fn((addr: string) => /^0x[a-fA-F0-9]{40}$/.test(addr)),
   getAddress: jest.fn((addr: string) => addr),
   verifyMessage: jest.fn(),
+};
+
+// Mock ethers module (ESM)
+jest.unstable_mockModule('ethers', () => ({
+  ethers: mockEthers,
+  JsonRpcProvider: mockEthers.JsonRpcProvider,
+  Wallet: mockEthers.Wallet,
+  Contract: mockEthers.Contract,
+  ContractFactory: mockEthers.ContractFactory,
+  formatEther: mockEthers.formatEther,
+  parseEther: mockEthers.parseEther,
+  isAddress: mockEthers.isAddress,
+  getAddress: mockEthers.getAddress,
+  verifyMessage: mockEthers.verifyMessage,
 }));
 
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
+
 // Mock config
-jest.mock('../../config/env.js', () => ({
+jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   config: {
     blockchain: {
       rpcUrl: 'http://localhost:8545',
@@ -129,11 +145,9 @@ describe('Web3 Client', () => {
     it('should return wallet information', async () => {
       const { getWalletInfo } = await import('../web3-client.js');
       const info = await getWalletInfo();
-      expect(info).toEqual({
-        address: '0x1234567890123456789012345678901234567890',
-        chainId: 1337,
-        balance: BigInt('1000000000000000000'),
-      });
+      expect(info.address).toBe('0x1234567890123456789012345678901234567890');
+      expect(info.chainId).toBe(1337);
+      expect(info.balance.toString()).toBe('1000000000000000000');
     });
   });
 
@@ -141,7 +155,7 @@ describe('Web3 Client', () => {
     it('should return balance for an address', async () => {
       const { getBalance } = await import('../web3-client.js');
       const balance = await getBalance('0xTestAddress');
-      expect(balance).toBe(BigInt('1000000000000000000'));
+      expect(balance.toString()).toBe('1000000000000000000');
       expect(mockProvider.getBalance).toHaveBeenCalledWith('0xTestAddress');
     });
   });
@@ -168,15 +182,13 @@ describe('Web3 Client', () => {
         BigInt('1000000000000000000')
       );
 
-      expect(result).toEqual({
-        hash: '0xTransactionHash',
-        blockNumber: 12346,
-        from: '0x1234567890123456789012345678901234567890',
-        to: '0xRecipient',
-        value: BigInt('1000000000000000000'),
-        gasUsed: BigInt('21000'),
-        status: 'success',
-      });
+      expect(result.hash).toBe('0xTransactionHash');
+      expect(result.blockNumber).toBe(12346);
+      expect(result.from).toBe('0x1234567890123456789012345678901234567890');
+      expect(result.to).toBe('0xRecipient');
+      expect(result.value.toString()).toBe('1000000000000000000');
+      expect(result.gasUsed.toString()).toBe('21000');
+      expect(result.status).toBe('success');
     });
 
     it('should handle failed transaction', async () => {
@@ -217,20 +229,19 @@ describe('Web3 Client', () => {
       mockProvider.getTransactionReceipt.mockResolvedValue({
         status: 1,
         gasUsed: BigInt('21000'),
+        blockNumber: 12345,
       });
 
       const { getTransactionByHash } = await import('../web3-client.js');
       const result = await getTransactionByHash('0xTxHash');
 
-      expect(result).toEqual({
-        hash: '0xTxHash',
-        from: '0xSender',
-        to: '0xRecipient',
-        value: BigInt('1000000000000000000'),
-        blockNumber: 12345,
-        status: 'success',
-        gasUsed: BigInt('21000'),
-      });
+      expect(result.hash).toBe('0xTxHash');
+      expect(result.from).toBe('0xSender');
+      expect(result.to).toBe('0xRecipient');
+      expect(result.value.toString()).toBe('1000000000000000000');
+      expect(result.blockNumber).toBe(12345);
+      expect(result.status).toBe('success');
+      expect(result.gasUsed.toString()).toBe('21000');
     });
 
     it('should return null for non-existent transaction', async () => {
@@ -247,7 +258,7 @@ describe('Web3 Client', () => {
     it('should return current gas price', async () => {
       const { getGasPrice } = await import('../web3-client.js');
       const gasPrice = await getGasPrice();
-      expect(gasPrice).toBe(BigInt('20000000000'));
+      expect(gasPrice.toString()).toBe('20000000000');
     });
   });
 
@@ -266,7 +277,7 @@ describe('Web3 Client', () => {
         '0xRecipient',
         BigInt('1000000000000000000')
       );
-      expect(gas).toBe(BigInt('21000'));
+      expect(gas.toString()).toBe('21000');
     });
   });
 
@@ -280,7 +291,7 @@ describe('Web3 Client', () => {
     it('should parse ETH to wei', async () => {
       const { parseEther } = await import('../web3-client.js');
       const wei = parseEther('1');
-      expect(wei).toBe(BigInt('1000000000000000000'));
+      expect(wei.toString()).toBe('1000000000000000000');
     });
   });
 
@@ -309,10 +320,8 @@ describe('Web3 Client', () => {
     it('should return network information', async () => {
       const { getNetworkInfo } = await import('../web3-client.js');
       const info = await getNetworkInfo();
-      expect(info).toEqual({
-        chainId: BigInt(1337),
-        name: 'localhost',
-      });
+      expect(info.chainId.toString()).toBe('1337');
+      expect(info.name).toBe('localhost');
     });
   });
 
@@ -335,12 +344,13 @@ describe('Web3 Client', () => {
   describe('deployContract', () => {
     it('should deploy contract and return address', async () => {
       const { deployContract } = await import('../web3-client.js');
-      const address = await deployContract(
+      const result = await deployContract(
         [{ type: 'constructor', inputs: [] }],
         '0xBytecode',
         []
       );
-      expect(address).toBe('0xContractAddress');
+      expect(result.address).toBe('0xContractAddress');
+      expect(result.transactionHash).toBe('0xDeployHash');
     });
   });
 

@@ -1,13 +1,14 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 import fc from 'fast-check';
-import { NotificationEntity, NotificationType } from '../../repositories/notification-repository.js';
+import { NotificationEntity } from '../../repositories/notification-repository.js';
+import { NotificationType } from '../../models/notification.js';
 import { generateId } from '../../utils/id.js';
-
 // In-memory store for testing
 let notificationStore: Map<string, NotificationEntity> = new Map();
-
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 // Mock the notification repository before importing notification-service
-jest.unstable_mockModule('../../repositories/notification-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/notification-repository.ts'), () => ({
   notificationRepository: {
     createNotification: jest.fn(async (notification: Omit<NotificationEntity, 'created_at' | 'updated_at'>) => {
       const now = new Date().toISOString();
@@ -62,7 +63,6 @@ jest.unstable_mockModule('../../repositories/notification-repository.js', () => 
   NotificationEntity: {} as NotificationEntity,
   NotificationType: 'proposal_received' as NotificationType,
 }));
-
 // Import after mocking
 const {
   createNotification,
@@ -75,8 +75,6 @@ const {
   notifyMilestoneSubmitted,
   notifyPaymentReleased,
 } = await import('../notification-service.js');
-
-
 // Custom arbitraries for property-based testing
 const notificationTypeArbitrary = (): fc.Arbitrary<NotificationType> =>
   fc.constantFrom(
@@ -90,19 +88,15 @@ const notificationTypeArbitrary = (): fc.Arbitrary<NotificationType> =>
     'dispute_resolved',
     'rating_received'
   );
-
 const validTitleArbitrary = () =>
   fc.string({ minLength: 1, maxLength: 100 }).filter(s => s.trim().length >= 1);
-
 const validMessageArbitrary = () =>
   fc.string({ minLength: 1, maxLength: 500 }).filter(s => s.trim().length >= 1);
-
 const validDataArbitrary = () =>
   fc.dictionary(
     fc.string({ minLength: 1, maxLength: 20 }).filter(s => /^[a-zA-Z][a-zA-Z0-9]*$/.test(s)),
     fc.oneof(fc.string(), fc.integer(), fc.boolean())
   );
-
 // Helper to create a notification directly in the store for testing
 function createTestNotification(
   userId: string,
@@ -125,13 +119,10 @@ function createTestNotification(
   notificationStore.set(notification.id, notification);
   return notification;
 }
-
 describe('Notification Service - Property Tests', () => {
   beforeEach(() => {
     notificationStore.clear();
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 38: Event-driven notification creation**
    * **Validates: Requirements 11.1, 11.2, 11.3, 11.4**
@@ -151,13 +142,10 @@ describe('Notification Service - Property Tests', () => {
         async (userId, type, title, message, data) => {
           // Clear store for each test case
           notificationStore.clear();
-
           const input = { userId, type, title, message, data };
           const result = await createNotification(input);
-
           // Should succeed
           expect(result.success).toBe(true);
-
           if (result.success) {
             // Verify notification was created with correct data
             expect(result.data.userId).toBe(userId);
@@ -167,10 +155,8 @@ describe('Notification Service - Property Tests', () => {
             expect(result.data.data).toEqual(data);
             expect(result.data.isRead).toBe(false);
             expect(result.data.createdAt).toBeDefined();
-
             // Verify notification exists in store
             expect(notificationStore.has(result.data.id)).toBe(true);
-
             // Verify stored notification matches
             const stored = notificationStore.get(result.data.id);
             expect(stored?.user_id).toBe(userId);
@@ -181,8 +167,6 @@ describe('Notification Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 38: Event-driven notification creation (specific events)**
    * **Validates: Requirements 11.1, 11.2, 11.3, 11.4**
@@ -205,7 +189,6 @@ describe('Notification Service - Property Tests', () => {
         async (employerId, freelancerId, proposalId, projectId, contractId, milestoneId, projectTitle, milestoneTitle, amount) => {
           // Clear store for each test case
           notificationStore.clear();
-
           // Test proposal_received notification
           const proposalReceivedResult = await notifyProposalReceived(
             employerId, proposalId, projectId, projectTitle, freelancerId
@@ -216,7 +199,6 @@ describe('Notification Service - Property Tests', () => {
             expect(proposalReceivedResult.data.type).toBe('proposal_received');
             expect(proposalReceivedResult.data.data.proposalId).toBe(proposalId);
           }
-
           // Test proposal_accepted notification
           const proposalAcceptedResult = await notifyProposalAccepted(
             freelancerId, proposalId, projectId, projectTitle, contractId
@@ -227,7 +209,6 @@ describe('Notification Service - Property Tests', () => {
             expect(proposalAcceptedResult.data.type).toBe('proposal_accepted');
             expect(proposalAcceptedResult.data.data.contractId).toBe(contractId);
           }
-
           // Test proposal_rejected notification
           const proposalRejectedResult = await notifyProposalRejected(
             freelancerId, proposalId, projectId, projectTitle
@@ -237,7 +218,6 @@ describe('Notification Service - Property Tests', () => {
             expect(proposalRejectedResult.data.userId).toBe(freelancerId);
             expect(proposalRejectedResult.data.type).toBe('proposal_rejected');
           }
-
           // Test milestone_submitted notification
           const milestoneSubmittedResult = await notifyMilestoneSubmitted(
             employerId, milestoneId, milestoneTitle, projectId, projectTitle, contractId
@@ -247,7 +227,6 @@ describe('Notification Service - Property Tests', () => {
             expect(milestoneSubmittedResult.data.userId).toBe(employerId);
             expect(milestoneSubmittedResult.data.type).toBe('milestone_submitted');
           }
-
           // Test payment_released notification
           const paymentReleasedResult = await notifyPaymentReleased(
             freelancerId, amount, milestoneId, milestoneTitle, projectId, projectTitle, contractId
@@ -263,8 +242,6 @@ describe('Notification Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 39: Notification ordering**
    * **Validates: Requirements 11.5**
@@ -280,11 +257,9 @@ describe('Notification Service - Property Tests', () => {
         async (userId, count) => {
           // Clear store for each test case
           notificationStore.clear();
-
           // Create notifications with different timestamps
           const baseTime = Date.now();
           const createdNotifications: NotificationEntity[] = [];
-
           for (let i = 0; i < count; i++) {
             // Create notifications with timestamps spread out by 1 second each
             const createdAt = new Date(baseTime + i * 1000);
@@ -295,18 +270,13 @@ describe('Notification Service - Property Tests', () => {
             );
             createdNotifications.push(notification);
           }
-
           // Get all notifications for the user
           const result = await getAllNotificationsByUser(userId);
-
           expect(result.success).toBe(true);
-
           if (result.success) {
             const notifications = result.data;
-
             // Should have all notifications
             expect(notifications.length).toBe(count);
-
             // Verify notifications are sorted by createdAt in descending order (newest first)
             for (let i = 0; i < notifications.length - 1; i++) {
               const current = notifications[i];
@@ -317,14 +287,12 @@ describe('Notification Service - Property Tests', () => {
                 expect(currentTime).toBeGreaterThanOrEqual(nextTime);
               }
             }
-
             // The first notification should be the newest (last created)
             const newestCreated = createdNotifications[createdNotifications.length - 1];
             const firstNotification = notifications[0];
             if (newestCreated && firstNotification) {
               expect(firstNotification.id).toBe(newestCreated.id);
             }
-
             // The last notification should be the oldest (first created)
             const oldestCreated = createdNotifications[0];
             const lastNotification = notifications[notifications.length - 1];
@@ -337,8 +305,6 @@ describe('Notification Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 40: Notification read status update**
    * **Validates: Requirements 11.6**
@@ -356,7 +322,6 @@ describe('Notification Service - Property Tests', () => {
         async (userId, type, title, message) => {
           // Clear store for each test case
           notificationStore.clear();
-
           // Create a notification
           const createResult = await createNotification({
             userId,
@@ -365,26 +330,19 @@ describe('Notification Service - Property Tests', () => {
             message,
             data: {},
           });
-
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
-
           const notificationId = createResult.data.id;
-
           // Verify initial state is unread
           expect(createResult.data.isRead).toBe(false);
-
           // Mark as read
           const markReadResult = await markNotificationAsRead(notificationId, userId);
-
           expect(markReadResult.success).toBe(true);
-
           if (markReadResult.success) {
             // Verify the returned notification shows isRead as true
             expect(markReadResult.data.isRead).toBe(true);
             expect(markReadResult.data.id).toBe(notificationId);
             expect(markReadResult.data.userId).toBe(userId);
-
             // Verify the stored notification also shows is_read as true
             const stored = notificationStore.get(notificationId);
             expect(stored?.is_read).toBe(true);
@@ -394,8 +352,6 @@ describe('Notification Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 40: Notification read status update (mark all)**
    * **Validates: Requirements 11.6**
@@ -411,36 +367,28 @@ describe('Notification Service - Property Tests', () => {
         async (userId, count) => {
           // Clear store for each test case
           notificationStore.clear();
-
           // Create multiple unread notifications
           const baseTime = Date.now();
           for (let i = 0; i < count; i++) {
             const createdAt = new Date(baseTime + i * 1000);
             createTestNotification(userId, 'proposal_received', createdAt, false);
           }
-
           // Verify all are initially unread
           const unreadBefore = Array.from(notificationStore.values())
             .filter(n => n.user_id === userId && !n.is_read);
           expect(unreadBefore.length).toBe(count);
-
           // Mark all as read
           const markAllResult = await markAllNotificationsAsRead(userId);
-
           expect(markAllResult.success).toBe(true);
-
           if (markAllResult.success) {
             // Verify the count matches
             expect(markAllResult.data.count).toBe(count);
-
             // Verify all notifications in store are now read
             const allNotifications = Array.from(notificationStore.values())
               .filter(n => n.user_id === userId);
-
             for (const notification of allNotifications) {
               expect(notification.is_read).toBe(true);
             }
-
             // Verify no unread notifications remain
             const unreadAfter = Array.from(notificationStore.values())
               .filter(n => n.user_id === userId && !n.is_read);
@@ -452,3 +400,4 @@ describe('Notification Service - Property Tests', () => {
     );
   });
 });
+
