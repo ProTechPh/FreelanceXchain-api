@@ -129,6 +129,11 @@ jest.unstable_mockModule('../../config/supabase.js', () => ({
   },
 }));
 
+// Mock the didit-kyc-repository before importing auth-service
+jest.unstable_mockModule('../../repositories/didit-kyc-repository.js', () => ({
+  getKycVerificationByUserId: jest.fn(async () => null),
+}));
+
 // Mock the user repository before importing auth-service
 jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
   userRepository: {

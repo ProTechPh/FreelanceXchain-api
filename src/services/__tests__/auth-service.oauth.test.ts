@@ -11,6 +11,10 @@ jest.unstable_mockModule('../../repositories/user-repository', () => ({
     },
 }));
 
+jest.unstable_mockModule('../../repositories/didit-kyc-repository', () => ({
+  getKycVerificationByUserId: jest.fn().mockResolvedValue(null),
+}));
+
 jest.unstable_mockModule('../../config/supabase', () => ({
     __esModule: true,
     getSupabaseClient: jest.fn(),
@@ -222,7 +226,7 @@ describe('AuthService - getOAuthUrl', () => {
 
         expect(mockSupabase.auth.signInWithOAuth).toHaveBeenCalledWith(expect.objectContaining({
             options: expect.objectContaining({
-                redirectTo: 'http://localhost:3000/api/auth/callback',
+                redirectTo: 'http://localhost:5173/oauth/callback',
             }),
         }));
     });
