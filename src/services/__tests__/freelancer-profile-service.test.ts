@@ -1,15 +1,15 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 import fc from 'fast-check';
 import { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository.js';
 import { SkillEntity } from '../../repositories/skill-repository.js';
 import { generateId } from '../../utils/id.js';
-
 // In-memory stores for testing - using entity types with snake_case
 let profileStore: Map<string, FreelancerProfileEntity> = new Map();
 let skillStore: Map<string, SkillEntity> = new Map();
-
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 // Mock the freelancer profile repository
-jest.unstable_mockModule('../../repositories/freelancer-profile-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
   freelancerProfileRepository: {
     getProfileByUserId: jest.fn(async (userId: string) => {
       for (const profile of profileStore.values()) {
@@ -34,9 +34,8 @@ jest.unstable_mockModule('../../repositories/freelancer-profile-repository.js', 
   FreelancerProfileRepository: jest.fn(),
   FreelancerProfileEntity: {} as FreelancerProfileEntity,
 }));
-
 // Mock the skill repository
-jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
   skillRepository: {
     findSkillById: jest.fn(async (id: string) => {
       return skillStore.get(id) ?? null;
@@ -48,8 +47,6 @@ jest.unstable_mockModule('../../repositories/skill-repository.js', () => ({
   SkillRepository: jest.fn(),
   SkillEntity: {} as SkillEntity,
 }));
-
-
 // Import after mocking
 const {
   createProfile,
@@ -58,7 +55,6 @@ const {
   addSkillsToProfile,
   addExperience,
 } = await import('../freelancer-profile-service.js');
-
 // Helper to create test skills in the store
 function createTestSkill(overrides: Partial<SkillEntity> = {}): SkillEntity {
   const now = new Date().toISOString();
@@ -75,34 +71,27 @@ function createTestSkill(overrides: Partial<SkillEntity> = {}): SkillEntity {
   skillStore.set(skill.id, skill);
   return skill;
 }
-
 // Custom arbitraries for property-based testing
 const validBioArbitrary = () =>
   fc.string({ minLength: 10, maxLength: 500 }).filter(s => s.trim().length >= 10);
-
 const validHourlyRateArbitrary = () =>
   fc.integer({ min: 1, max: 1000 });
-
 const validAvailabilityArbitrary = () =>
   fc.constantFrom<'available' | 'busy' | 'unavailable'>('available', 'busy', 'unavailable');
-
 const validProfileInputArbitrary = () =>
   fc.record({
     bio: validBioArbitrary(),
     hourlyRate: validHourlyRateArbitrary(),
     availability: validAvailabilityArbitrary(),
   });
-
 const validYearsOfExperienceArbitrary = () =>
   fc.integer({ min: 0, max: 50 });
-
 // Date arbitraries for work experience
 const validPastDateArbitrary = () =>
   fc.date({
     min: new Date('2000-01-01'),
     max: new Date('2024-12-31'),
   }).map(d => d.toISOString().split('T')[0]);
-
 const validDateRangeArbitrary = () =>
   fc.tuple(
     fc.date({ min: new Date('2000-01-01'), max: new Date('2020-12-31') }),
@@ -111,7 +100,6 @@ const validDateRangeArbitrary = () =>
     startDate: start.toISOString().split('T')[0] as string,
     endDate: end.toISOString().split('T')[0] as string,
   }));
-
 const invalidDateRangeArbitrary = () =>
   fc.tuple(
     fc.date({ min: new Date('2021-01-01'), max: new Date('2024-12-31') }),
@@ -120,21 +108,17 @@ const invalidDateRangeArbitrary = () =>
     startDate: start.toISOString().split('T')[0] as string,
     endDate: end.toISOString().split('T')[0] as string,
   }));
-
 const validExperienceInputArbitrary = () =>
   fc.record({
     title: fc.string({ minLength: 2, maxLength: 100 }).filter(s => s.trim().length >= 2),
     company: fc.string({ minLength: 2, maxLength: 100 }).filter(s => s.trim().length >= 2),
     description: fc.string({ minLength: 10, maxLength: 500 }).filter(s => s.trim().length >= 10),
   });
-
-
 describe('Freelancer Profile Service - Profile Properties', () => {
   beforeEach(() => {
     profileStore.clear();
     skillStore.clear();
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 4: Profile data persistence**
    * **Validates: Requirements 2.1, 2.3, 2.4**
@@ -150,19 +134,14 @@ describe('Freelancer Profile Service - Profile Properties', () => {
         async (userId, profileInput) => {
           // Clear store for each test case
           profileStore.clear();
-
           // Create profile
           const createResult = await createProfile(userId, profileInput);
-
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
-
           // Retrieve profile
           const getResult = await getProfileByUserId(userId);
-
           expect(getResult.success).toBe(true);
           if (!getResult.success) return;
-
           // Verify data persistence
           expect(getResult.data.userId).toBe(userId);
           expect(getResult.data.bio).toBe(profileInput.bio);
@@ -177,7 +156,6 @@ describe('Freelancer Profile Service - Profile Properties', () => {
       { numRuns: 100 }
     );
   });
-
   /**
    * Property 4 (extended): Profile update persistence
    * For any valid profile update, the changes shall be persisted and retrievable.
@@ -191,26 +169,21 @@ describe('Freelancer Profile Service - Profile Properties', () => {
         async (userId, initialInput, updateInput) => {
           // Clear store for each test case
           profileStore.clear();
-
           // Create profile
           const createResult = await createProfile(userId, initialInput);
           expect(createResult.success).toBe(true);
-
           // Update profile
           const updateResult = await updateProfile(userId, {
             bio: updateInput.bio,
             hourlyRate: updateInput.hourlyRate,
             availability: updateInput.availability,
           });
-
           expect(updateResult.success).toBe(true);
           if (!updateResult.success) return;
-
           // Retrieve and verify
           const getResult = await getProfileByUserId(userId);
           expect(getResult.success).toBe(true);
           if (!getResult.success) return;
-
           expect(getResult.data.bio).toBe(updateInput.bio);
           expect(getResult.data.hourlyRate).toBe(updateInput.hourlyRate);
           expect(getResult.data.availability).toBe(updateInput.availability);
@@ -220,14 +193,11 @@ describe('Freelancer Profile Service - Profile Properties', () => {
     );
   });
 });
-
-
 describe('Freelancer Profile Service - Skill Properties', () => {
   beforeEach(() => {
     profileStore.clear();
     skillStore.clear();
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 5: Skill management**
    * **Validates: Requirements 2.2, 3.2**
@@ -250,17 +220,13 @@ describe('Freelancer Profile Service - Skill Properties', () => {
         async (userId, profileInput, skillInputs) => {
           // Clear stores
           profileStore.clear();
-
           // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
-
           // Add skills
           const addResult = await addSkillsToProfile(userId, skillInputs);
-
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
-
           // Verify all skills were added
           expect(addResult.data.skills.length).toBe(skillInputs.length);
           for (const input of skillInputs) {
@@ -275,7 +241,6 @@ describe('Freelancer Profile Service - Skill Properties', () => {
       { numRuns: 100 }
     );
   });
-
   /**
    * Property 5: Duplicate skills update years of experience
    */
@@ -290,20 +255,15 @@ describe('Freelancer Profile Service - Skill Properties', () => {
         async (userId, profileInput, skillName, yearsExp1, yearsExp2) => {
           // Clear stores
           profileStore.clear();
-
           // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
-
           // Add skill first time
           await addSkillsToProfile(userId, [{ name: skillName, yearsOfExperience: yearsExp1 }]);
-
           // Add same skill again with different years (exact same name)
           const addResult = await addSkillsToProfile(userId, [{ name: skillName, yearsOfExperience: yearsExp2 }]);
-
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
-
           // Should only have one skill (updated)
           expect(addResult.data.skills.length).toBe(1);
           expect(addResult.data.skills[0]?.yearsOfExperience).toBe(yearsExp2);
@@ -313,14 +273,11 @@ describe('Freelancer Profile Service - Skill Properties', () => {
     );
   });
 });
-
-
 describe('Freelancer Profile Service - Work Experience Properties', () => {
   beforeEach(() => {
     profileStore.clear();
     skillStore.clear();
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 6: Work experience date validation**
    * **Validates: Requirements 2.5**
@@ -339,21 +296,17 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
         async (userId, profileInput, expInput, dateRange) => {
           // Clear stores
           profileStore.clear();
-
           // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
-
           // Add experience with valid date range
           const addResult = await addExperience(userId, {
             ...expInput,
             startDate: dateRange.startDate,
             endDate: dateRange.endDate,
           });
-
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
-
           // Verify experience was added
           expect(addResult.data.experience.length).toBe(1);
           const exp = addResult.data.experience[0];
@@ -366,7 +319,6 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
       { numRuns: 100 }
     );
   });
-
   /**
    * Property 6: Invalid date ranges are rejected
    */
@@ -380,28 +332,23 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
         async (userId, profileInput, expInput, dateRange) => {
           // Clear stores
           profileStore.clear();
-
           // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
-
           // Try to add experience with invalid date range (start > end)
           const addResult = await addExperience(userId, {
             ...expInput,
             startDate: dateRange.startDate,
             endDate: dateRange.endDate,
           });
-
           expect(addResult.success).toBe(false);
           if (addResult.success) return;
-
           expect(addResult.error.code).toBe('INVALID_DATE_RANGE');
         }
       ),
       { numRuns: 100 }
     );
   });
-
   /**
    * Property 6: Null end date is valid (current position)
    */
@@ -415,21 +362,17 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
         async (userId, profileInput, expInput, startDate) => {
           // Clear stores
           profileStore.clear();
-
           // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
-
           // Add experience with null end date (current position)
           const addResult = await addExperience(userId, {
             ...expInput,
             startDate: startDate as string,
             endDate: null,
           });
-
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
-
           // Verify experience was added with null end date
           expect(addResult.data.experience.length).toBe(1);
           expect(addResult.data.experience[0]?.endDate).toBeNull();
@@ -439,3 +382,4 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
     );
   });
 });
+

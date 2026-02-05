@@ -1,19 +1,19 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import path from 'node:path';
 import fc from 'fast-check';
-import { DisputeEntity, EvidenceEntity } from '../../repositories/dispute-repository.js';
+import { DisputeEntity, EvidenceEntity } from '../../utils/id.js';
 import { ContractEntity } from '../../repositories/contract-repository.js';
-import { ProjectEntity, MilestoneEntity, MilestoneStatus } from '../../repositories/project-repository.js';
-import { Notification, NotificationType } from '../../models/notification.js';
+import { ProjectEntity, MilestoneEntity, MilestoneStatus } from '../../utils/id.js';
+import { Notification, NotificationType } from '../../utils/id.js';
 import { generateId } from '../../utils/id.js';
-
 // In-memory stores for testing - using entity types
 let disputeStore: Map<string, DisputeEntity> = new Map();
 let contractStore: Map<string, ContractEntity> = new Map();
 let projectStore: Map<string, ProjectEntity> = new Map();
 let notificationStore: Map<string, Notification> = new Map();
-
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 // Mock the repositories before importing dispute-service
-jest.unstable_mockModule('../../repositories/dispute-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
   disputeRepository: {
     createDispute: jest.fn(async (dispute: Omit<DisputeEntity, 'created_at' | 'updated_at'>) => {
       const now = new Date().toISOString();
@@ -64,8 +64,7 @@ jest.unstable_mockModule('../../repositories/dispute-repository.js', () => ({
   DisputeEntity: {} as DisputeEntity,
   EvidenceEntity: {} as EvidenceEntity,
 }));
-
-jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: {
     getContractById: jest.fn(async (id: string) => {
       return contractStore.get(id) ?? null;
@@ -81,8 +80,7 @@ jest.unstable_mockModule('../../repositories/contract-repository.js', () => ({
   ContractRepository: jest.fn(),
   ContractEntity: {} as ContractEntity,
 }));
-
-jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: {
     findProjectById: jest.fn(async (id: string) => {
       return projectStore.get(id) ?? null;
@@ -98,8 +96,7 @@ jest.unstable_mockModule('../../repositories/project-repository.js', () => ({
   ProjectRepository: jest.fn(),
   ProjectEntity: {} as ProjectEntity,
 }));
-
-jest.unstable_mockModule('../notification-service.js', () => ({
+jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), () => ({
   notifyDisputeCreated: jest.fn(async (
     userId: string,
     disputeId: string,
@@ -146,9 +143,7 @@ jest.unstable_mockModule('../notification-service.js', () => ({
     return { success: true, data: notification };
   }),
 }));
-
-
-jest.unstable_mockModule('../escrow-contract.js', () => ({
+jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () => ({
   getEscrowByContractId: jest.fn(async (_contractId: string) => {
     return { address: '0x' + 'a'.repeat(40) };
   }),
@@ -167,9 +162,8 @@ jest.unstable_mockModule('../escrow-contract.js', () => ({
     timestamp: Date.now(),
   })),
 }));
-
 // Mock user-repository for submitEvidence
-jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: {
     getUserById: jest.fn(async (id: string) => ({
       id,
@@ -182,20 +176,22 @@ jest.unstable_mockModule('../../repositories/user-repository.js', () => ({
   },
   UserRepository: jest.fn(),
 }));
-
-// Mock agreement-contract for blockchain interactions
-jest.unstable_mockModule('../agreement-contract.js', () => ({
-  disputeAgreement: jest.fn(async () => ({})),
+// Mock dispute-registry for blockchain interactions
+jest.unstable_mockModule(resolveModule('src/services/dispute-registry.ts'), () => ({
+  createDisputeOnBlockchain: jest.fn(async () => ({})),
   updateDisputeEvidence: jest.fn(async () => ({})),
+  resolveDisputeOnBlockchain: jest.fn(async () => ({})),
 }));
-
+// Mock agreement-contract for blockchain interactions
+jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({
+  disputeAgreement: jest.fn(async () => ({})),
+}));
 // Import after mocking
 const {
   createDispute,
   submitEvidence,
   getDisputeById,
 } = await import('../dispute-service.js');
-
 // Helper functions
 function createTestContract(
   id: string,
@@ -219,7 +215,6 @@ function createTestContract(
   contractStore.set(id, contract);
   return contract;
 }
-
 function createTestProject(
   id: string,
   employerId: string,
@@ -242,9 +237,7 @@ function createTestProject(
   projectStore.set(id, project);
   return project;
 }
-
 // MilestoneStatus is imported from project-repository.ts
-
 function createTestMilestone(
   id: string,
   status: MilestoneStatus = 'submitted'
@@ -258,18 +251,13 @@ function createTestMilestone(
     status,
   };
 }
-
 // Custom arbitraries
 const validReasonArbitrary = () =>
   fc.string({ minLength: 10, maxLength: 500 }).filter(s => s.trim().length >= 10);
-
 const evidenceTypeArbitrary = () =>
   fc.constantFrom('text', 'file', 'link') as fc.Arbitrary<'text' | 'file' | 'link'>;
-
 const validEvidenceContentArbitrary = () =>
   fc.string({ minLength: 1, maxLength: 1000 }).filter(s => s.trim().length >= 1);
-
-
 describe('Dispute Service - Property Tests', () => {
   beforeEach(() => {
     disputeStore.clear();
@@ -277,7 +265,6 @@ describe('Dispute Service - Property Tests', () => {
     projectStore.clear();
     notificationStore.clear();
   });
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 26: Dispute creation**
    * **Validates: Requirements 8.1**
@@ -301,14 +288,11 @@ describe('Dispute Service - Property Tests', () => {
           contractStore.clear();
           projectStore.clear();
           notificationStore.clear();
-
           // Set up test data
           const milestone = createTestMilestone(milestoneId, 'submitted');
           createTestProject(projectId, employerId, [milestone]);
           createTestContract(contractId, projectId, freelancerId, employerId);
-
           const initiatorId = freelancerInitiates ? freelancerId : employerId;
-
           // Create dispute
           const result = await createDispute({
             contractId,
@@ -316,13 +300,10 @@ describe('Dispute Service - Property Tests', () => {
             initiatorId,
             reason,
           });
-
           // Should succeed
           expect(result.success).toBe(true);
-
           if (result.success) {
             const dispute = result.data;
-
             // Verify dispute has correct data
             expect(dispute.contractId).toBe(contractId);
             expect(dispute.milestoneId).toBe(milestoneId);
@@ -333,7 +314,6 @@ describe('Dispute Service - Property Tests', () => {
             expect(dispute.resolution).toBeNull();
             expect(dispute.createdAt).toBeDefined();
             expect(dispute.id).toBeDefined();
-
             // Verify dispute exists in store
             expect(disputeStore.has(dispute.id)).toBe(true);
             const stored = disputeStore.get(dispute.id);
@@ -346,8 +326,6 @@ describe('Dispute Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 27: Dispute notification**
    * **Validates: Requirements 8.2**
@@ -370,12 +348,10 @@ describe('Dispute Service - Property Tests', () => {
           contractStore.clear();
           projectStore.clear();
           notificationStore.clear();
-
           // Set up test data
           const milestone = createTestMilestone(milestoneId, 'submitted');
           createTestProject(projectId, employerId, [milestone]);
           createTestContract(contractId, projectId, freelancerId, employerId);
-
           // Create dispute (employer initiates)
           const result = await createDispute({
             contractId,
@@ -383,19 +359,14 @@ describe('Dispute Service - Property Tests', () => {
             initiatorId: employerId,
             reason,
           });
-
           // Should succeed
           expect(result.success).toBe(true);
-
           if (result.success) {
             const disputeId = result.data.id;
-
             // Verify notifications were created for both parties
             const notifications = Array.from(notificationStore.values());
-
             // Should have exactly 2 notifications (one for each party)
             expect(notifications.length).toBe(2);
-
             // Find notification for freelancer
             const freelancerNotification = notifications.find(n => n.userId === freelancerId);
             expect(freelancerNotification).toBeDefined();
@@ -403,7 +374,6 @@ describe('Dispute Service - Property Tests', () => {
             expect(freelancerNotification?.data.disputeId).toBe(disputeId);
             expect(freelancerNotification?.data.milestoneId).toBe(milestoneId);
             expect(freelancerNotification?.data.contractId).toBe(contractId);
-
             // Find notification for employer
             const employerNotification = notifications.find(n => n.userId === employerId);
             expect(employerNotification).toBeDefined();
@@ -417,8 +387,6 @@ describe('Dispute Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 28: Evidence storage with metadata**
    * **Validates: Requirements 8.3**
@@ -444,12 +412,10 @@ describe('Dispute Service - Property Tests', () => {
           contractStore.clear();
           projectStore.clear();
           notificationStore.clear();
-
           // Set up test data
           const milestone = createTestMilestone(milestoneId, 'submitted');
           createTestProject(projectId, employerId, [milestone]);
           createTestContract(contractId, projectId, freelancerId, employerId);
-
           // Create dispute first
           const createResult = await createDispute({
             contractId,
@@ -457,16 +423,12 @@ describe('Dispute Service - Property Tests', () => {
             initiatorId: employerId,
             reason,
           });
-
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
-
           const disputeId = createResult.data.id;
           const submitterId = freelancerSubmits ? freelancerId : employerId;
-
           // Record time before submission
           const beforeSubmission = new Date().toISOString();
-
           // Submit evidence
           const evidenceResult = await submitEvidence({
             disputeId,
@@ -474,41 +436,30 @@ describe('Dispute Service - Property Tests', () => {
             type: evidenceType,
             content: evidenceContent,
           });
-
           // Record time after submission
           const afterSubmission = new Date().toISOString();
-
           // Should succeed
           expect(evidenceResult.success).toBe(true);
-
           if (evidenceResult.success) {
             const updatedDispute = evidenceResult.data;
-
             // Verify evidence was added
             expect(updatedDispute.evidence.length).toBe(1);
-
             const evidence = updatedDispute.evidence[0];
             expect(evidence).toBeDefined();
-
             if (evidence) {
               // Verify evidence has correct submitter ID
               expect(evidence.submitterId).toBe(submitterId);
-
               // Verify evidence has correct type and content
               expect(evidence.type).toBe(evidenceType);
               expect(evidence.content).toBe(evidenceContent);
-
               // Verify evidence has a timestamp
               expect(evidence.submittedAt).toBeDefined();
-
               // Verify timestamp is within expected range
               expect(evidence.submittedAt >= beforeSubmission).toBe(true);
               expect(evidence.submittedAt <= afterSubmission).toBe(true);
-
               // Verify evidence has an ID
               expect(evidence.id).toBeDefined();
             }
-
             // Verify dispute status changed to under_review
             expect(updatedDispute.status).toBe('under_review');
           }
@@ -517,8 +468,6 @@ describe('Dispute Service - Property Tests', () => {
       { numRuns: 100 }
     );
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 28: Evidence storage with metadata (multiple evidence)**
    * **Validates: Requirements 8.3**
@@ -542,12 +491,10 @@ describe('Dispute Service - Property Tests', () => {
           contractStore.clear();
           projectStore.clear();
           notificationStore.clear();
-
           // Set up test data
           const milestone = createTestMilestone(milestoneId, 'submitted');
           createTestProject(projectId, employerId, [milestone]);
           createTestContract(contractId, projectId, freelancerId, employerId);
-
           // Create dispute first
           const createResult = await createDispute({
             contractId,
@@ -555,49 +502,37 @@ describe('Dispute Service - Property Tests', () => {
             initiatorId: employerId,
             reason,
           });
-
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
-
           const disputeId = createResult.data.id;
-
           // Submit multiple pieces of evidence alternating between parties
           const submittedEvidence: { submitterId: string; type: string; content: string }[] = [];
-
           for (let i = 0; i < evidenceCount; i++) {
             const submitterId = i % 2 === 0 ? freelancerId : employerId;
             const type = ['text', 'file', 'link'][i % 3] as 'text' | 'file' | 'link';
             const content = `Evidence ${i + 1} content`;
-
             const evidenceResult = await submitEvidence({
               disputeId,
               submitterId,
               type,
               content,
             });
-
             expect(evidenceResult.success).toBe(true);
             submittedEvidence.push({ submitterId, type, content });
           }
-
           // Get the final dispute state
           const finalResult = await getDisputeById(disputeId);
           expect(finalResult.success).toBe(true);
-
           if (finalResult.success) {
             const dispute = finalResult.data;
-
             // Verify all evidence was stored
             expect(dispute.evidence.length).toBe(evidenceCount);
-
             // Verify each piece of evidence has correct metadata
             for (let i = 0; i < evidenceCount; i++) {
               const evidence = dispute.evidence[i];
               const expected = submittedEvidence[i];
-
               expect(evidence).toBeDefined();
               expect(expected).toBeDefined();
-
               if (evidence && expected) {
                 expect(evidence.submitterId).toBe(expected.submitterId);
                 expect(evidence.type).toBe(expected.type);
@@ -613,3 +548,4 @@ describe('Dispute Service - Property Tests', () => {
     );
   });
 });
+

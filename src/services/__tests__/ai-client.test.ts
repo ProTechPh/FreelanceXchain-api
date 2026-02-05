@@ -8,17 +8,8 @@ import {
   keywordMatchSkills,
   keywordExtractSkills,
 } from '../ai-client.js';
-import {
-  SkillMatchRequest,
-  SkillExtractionRequest,
-  SkillMatchResult,
-  ExtractedSkill,
-  SkillGapAnalysis,
-  SkillInfo,
-} from '../ai-types.js';
-
+import { SkillInfo, ProjectRecommendation, FreelancerRecommendation } from '../matching-service.js';
 // Custom arbitraries for property-based testing
-
 const skillInfoArbitrary = () =>
   fc.record({
     skillId: fc.uuid(),
@@ -26,25 +17,21 @@ const skillInfoArbitrary = () =>
     categoryId: fc.oneof(fc.uuid(), fc.constant(undefined)),
     yearsOfExperience: fc.oneof(fc.integer({ min: 0, max: 30 }), fc.constant(undefined)),
   }) as fc.Arbitrary<SkillInfo>;
-
 const skillMatchRequestArbitrary = () =>
   fc.record({
     freelancerSkills: fc.array(skillInfoArbitrary(), { minLength: 0, maxLength: 10 }),
     projectRequirements: fc.array(skillInfoArbitrary(), { minLength: 0, maxLength: 10 }),
     reputationScore: fc.oneof(fc.integer({ min: 0, max: 100 }), fc.constant(undefined)),
   }) as fc.Arbitrary<SkillMatchRequest>;
-
 const skillExtractionRequestArbitrary = (): fc.Arbitrary<SkillExtractionRequest> =>
   fc.record({
     text: fc.string({ minLength: 1, maxLength: 500 }),
     availableSkills: fc.array(skillInfoArbitrary(), { minLength: 0, maxLength: 20 }),
   });
-
 const skillGapPayloadArbitrary = () =>
   fc.record({
     freelancerSkills: fc.array(skillInfoArbitrary(), { minLength: 0, maxLength: 10 }),
   });
-
 const skillMatchResultArbitrary = (): fc.Arbitrary<SkillMatchResult> =>
   fc.record({
     matchScore: fc.integer({ min: 0, max: 100 }),
@@ -52,15 +39,12 @@ const skillMatchResultArbitrary = (): fc.Arbitrary<SkillMatchResult> =>
     missingSkills: fc.array(fc.string({ minLength: 1, maxLength: 50 }), { minLength: 0, maxLength: 10 }),
     reasoning: fc.string({ minLength: 0, maxLength: 200 }),
   });
-
 const extractedSkillArbitrary = (): fc.Arbitrary<ExtractedSkill> =>
   fc.record({
     skillId: fc.uuid(),
     skillName: fc.string({ minLength: 1, maxLength: 50 }).filter(s => s.trim().length > 0),
     confidence: fc.double({ min: 0, max: 1, noNaN: true }),
   });
-
-
 const skillGapAnalysisArbitrary = (): fc.Arbitrary<SkillGapAnalysis> =>
   fc.record({
     currentSkills: fc.array(fc.string({ minLength: 1, maxLength: 50 }), { minLength: 0, maxLength: 10 }),
@@ -74,7 +58,6 @@ const skillGapAnalysisArbitrary = (): fc.Arbitrary<SkillGapAnalysis> =>
     ),
     reasoning: fc.string({ minLength: 0, maxLength: 200 }),
   });
-
 describe('AI Client - AI Serialization Properties', () => {
   /**
    * **Feature: blockchain-freelance-marketplace, Property 12: AI request/response serialization round-trip**
@@ -91,23 +74,18 @@ describe('AI Client - AI Serialization Properties', () => {
           (payload: SkillMatchRequest) => {
             // Serialize
             const serialized = serializeAIRequest('skill_match', payload);
-            
             // Deserialize
             const deserialized = deserializeAIRequest(serialized);
-            
             // Should not be null
             expect(deserialized).not.toBeNull();
-            
             if (deserialized) {
               // Type should match
               expect(deserialized.type).toBe('skill_match');
-              
               // Payload should be equivalent
               const deserializedPayload = deserialized.payload as SkillMatchRequest;
               expect(deserializedPayload.freelancerSkills).toEqual(payload.freelancerSkills);
               expect(deserializedPayload.projectRequirements).toEqual(payload.projectRequirements);
               expect(deserializedPayload.reputationScore).toEqual(payload.reputationScore);
-              
               // Timestamp and requestId should be present
               expect(deserialized.timestamp).toBeDefined();
               expect(deserialized.requestId).toBeDefined();
@@ -117,7 +95,6 @@ describe('AI Client - AI Serialization Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should round-trip skill_extraction requests correctly', () => {
       fc.assert(
         fc.property(
@@ -125,17 +102,13 @@ describe('AI Client - AI Serialization Properties', () => {
           (payload: SkillExtractionRequest) => {
             // Serialize
             const serialized = serializeAIRequest('skill_extraction', payload);
-            
             // Deserialize
             const deserialized = deserializeAIRequest(serialized);
-            
             // Should not be null
             expect(deserialized).not.toBeNull();
-            
             if (deserialized) {
               // Type should match
               expect(deserialized.type).toBe('skill_extraction');
-              
               // Payload should be equivalent
               const deserializedPayload = deserialized.payload as SkillExtractionRequest;
               expect(deserializedPayload.text).toEqual(payload.text);
@@ -146,7 +119,6 @@ describe('AI Client - AI Serialization Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should round-trip skill_gap requests correctly', () => {
       fc.assert(
         fc.property(
@@ -154,17 +126,13 @@ describe('AI Client - AI Serialization Properties', () => {
           (payload) => {
             // Serialize
             const serialized = serializeAIRequest('skill_gap', payload);
-            
             // Deserialize
             const deserialized = deserializeAIRequest(serialized);
-            
             // Should not be null
             expect(deserialized).not.toBeNull();
-            
             if (deserialized) {
               // Type should match
               expect(deserialized.type).toBe('skill_gap');
-              
               // Payload should be equivalent
               expect(deserialized.payload).toEqual(payload);
             }
@@ -173,7 +141,6 @@ describe('AI Client - AI Serialization Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should round-trip skill_match responses correctly', () => {
       fc.assert(
         fc.property(
@@ -182,24 +149,19 @@ describe('AI Client - AI Serialization Properties', () => {
           (payload: SkillMatchResult, processingTimeMs: number) => {
             // Serialize
             const serialized = serializeAIResponse('skill_match', payload, processingTimeMs);
-            
             // Deserialize
             const deserialized = deserializeAIResponse(serialized);
-            
             // Should not be null
             expect(deserialized).not.toBeNull();
-            
             if (deserialized) {
               // Type should match
               expect(deserialized.type).toBe('skill_match');
-              
               // Payload should be equivalent
               const deserializedPayload = deserialized.payload as SkillMatchResult;
               expect(deserializedPayload.matchScore).toEqual(payload.matchScore);
               expect(deserializedPayload.matchedSkills).toEqual(payload.matchedSkills);
               expect(deserializedPayload.missingSkills).toEqual(payload.missingSkills);
               expect(deserializedPayload.reasoning).toEqual(payload.reasoning);
-              
               // Processing time should match
               expect(deserialized.processingTimeMs).toBe(processingTimeMs);
             }
@@ -208,7 +170,6 @@ describe('AI Client - AI Serialization Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should round-trip skill_extraction responses correctly', () => {
       fc.assert(
         fc.property(
@@ -217,17 +178,13 @@ describe('AI Client - AI Serialization Properties', () => {
           (payload: ExtractedSkill[], processingTimeMs: number) => {
             // Serialize
             const serialized = serializeAIResponse('skill_extraction', payload, processingTimeMs);
-            
             // Deserialize
             const deserialized = deserializeAIResponse(serialized);
-            
             // Should not be null
             expect(deserialized).not.toBeNull();
-            
             if (deserialized) {
               // Type should match
               expect(deserialized.type).toBe('skill_extraction');
-              
               // Payload should be equivalent
               expect(deserialized.payload).toEqual(payload);
             }
@@ -236,7 +193,6 @@ describe('AI Client - AI Serialization Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should round-trip skill_gap responses correctly', () => {
       fc.assert(
         fc.property(
@@ -245,17 +201,13 @@ describe('AI Client - AI Serialization Properties', () => {
           (payload: SkillGapAnalysis, processingTimeMs: number) => {
             // Serialize
             const serialized = serializeAIResponse('skill_gap', payload, processingTimeMs);
-            
             // Deserialize
             const deserialized = deserializeAIResponse(serialized);
-            
             // Should not be null
             expect(deserialized).not.toBeNull();
-            
             if (deserialized) {
               // Type should match
               expect(deserialized.type).toBe('skill_gap');
-              
               // Payload should be equivalent
               expect(deserialized.payload).toEqual(payload);
             }
@@ -264,7 +216,6 @@ describe('AI Client - AI Serialization Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return null for invalid JSON', () => {
       const invalidInputs = [
         'not json',
@@ -275,7 +226,6 @@ describe('AI Client - AI Serialization Properties', () => {
         '{"type": "skill_match"}', // missing payload
         '{"payload": {}}', // missing type
       ];
-
       for (const input of invalidInputs) {
         expect(deserializeAIRequest(input)).toBeNull();
         expect(deserializeAIResponse(input)).toBeNull();
@@ -283,8 +233,6 @@ describe('AI Client - AI Serialization Properties', () => {
     });
   });
 });
-
-
 describe('AI Client - Keyword Fallback Functions', () => {
   describe('keywordMatchSkills', () => {
     it('should calculate correct match score based on skill overlap', () => {
@@ -294,7 +242,6 @@ describe('AI Client - Keyword Fallback Functions', () => {
           (skills: SkillInfo[]) => {
             // Use same skills for both freelancer and project
             const result = keywordMatchSkills(skills, skills);
-            
             // Perfect match should give 100%
             expect(result.matchScore).toBe(100);
             expect(result.matchedSkills.length).toBe(skills.length);
@@ -304,7 +251,6 @@ describe('AI Client - Keyword Fallback Functions', () => {
         { numRuns: 50 }
       );
     });
-
     it('should return 0 score when no skills match', () => {
       const freelancerSkills: SkillInfo[] = [
         { skillId: 'skill-1', skillName: 'JavaScript' },
@@ -314,27 +260,21 @@ describe('AI Client - Keyword Fallback Functions', () => {
         { skillId: 'skill-3', skillName: 'Python' },
         { skillId: 'skill-4', skillName: 'Java' },
       ];
-
       const result = keywordMatchSkills(freelancerSkills, projectRequirements);
-      
       expect(result.matchScore).toBe(0);
       expect(result.matchedSkills.length).toBe(0);
       expect(result.missingSkills.length).toBe(2);
     });
-
     it('should handle empty project requirements', () => {
       const freelancerSkills: SkillInfo[] = [
         { skillId: 'skill-1', skillName: 'JavaScript' },
       ];
-
       const result = keywordMatchSkills(freelancerSkills, []);
-      
       expect(result.matchScore).toBe(0);
       expect(result.matchedSkills.length).toBe(0);
       expect(result.missingSkills.length).toBe(0);
     });
   });
-
   describe('keywordExtractSkills', () => {
     it('should extract skills that appear in text', () => {
       const text = 'I have experience with JavaScript and TypeScript development';
@@ -343,54 +283,41 @@ describe('AI Client - Keyword Fallback Functions', () => {
         { skillId: 'skill-2', skillName: 'TypeScript' },
         { skillId: 'skill-3', skillName: 'Python' },
       ];
-
       const result = keywordExtractSkills(text, availableSkills);
-      
       expect(result.length).toBe(2);
       expect(result.map(s => s.skillName)).toContain('JavaScript');
       expect(result.map(s => s.skillName)).toContain('TypeScript');
       expect(result.map(s => s.skillName)).not.toContain('Python');
     });
-
     it('should be case-insensitive', () => {
       const text = 'I know JAVASCRIPT and typescript';
       const availableSkills: SkillInfo[] = [
         { skillId: 'skill-1', skillName: 'JavaScript' },
         { skillId: 'skill-2', skillName: 'TypeScript' },
       ];
-
       const result = keywordExtractSkills(text, availableSkills);
-      
       expect(result.length).toBe(2);
     });
-
     it('should return empty array when no skills match', () => {
       const text = 'I have no relevant skills';
       const availableSkills: SkillInfo[] = [
         { skillId: 'skill-1', skillName: 'JavaScript' },
         { skillId: 'skill-2', skillName: 'TypeScript' },
       ];
-
       const result = keywordExtractSkills(text, availableSkills);
-      
       expect(result.length).toBe(0);
     });
-
     it('should assign higher confidence to exact word matches', () => {
       const text = 'JavaScript is great';
       const availableSkills: SkillInfo[] = [
         { skillId: 'skill-1', skillName: 'JavaScript' },
       ];
-
       const result = keywordExtractSkills(text, availableSkills);
-      
       expect(result.length).toBe(1);
       expect(result[0]?.confidence).toBe(0.9); // Exact match
     });
   });
 });
-
-
 describe('AI Client - Skill Extraction Properties', () => {
   /**
    * **Feature: blockchain-freelance-marketplace, Property 13: Extracted skill taxonomy mapping**
@@ -414,15 +341,12 @@ describe('AI Client - Skill Extraction Properties', () => {
             // Create text that contains some of the skill names
             const skillsToInclude = availableSkills.slice(0, Math.ceil(availableSkills.length / 2));
             const text = skillsToInclude.map(s => `I have experience with ${s.skillName}`).join('. ');
-            
             // Extract skills using keyword fallback
             const extracted = keywordExtractSkills(text, availableSkills);
-            
             // All extracted skills should have valid taxonomy IDs
             for (const skill of extracted) {
               const taxonomySkill = availableSkills.find(s => s.skillId === skill.skillId);
               expect(taxonomySkill).toBeDefined();
-              
               // Skill name should match
               if (taxonomySkill) {
                 expect(skill.skillName).toBe(taxonomySkill.skillName);
@@ -433,7 +357,6 @@ describe('AI Client - Skill Extraction Properties', () => {
         { numRuns: 100 }
       );
     });
-
     it('should not extract skills that are not in taxonomy', () => {
       fc.assert(
         fc.property(
@@ -447,10 +370,8 @@ describe('AI Client - Skill Extraction Properties', () => {
           (availableSkills) => {
             // Text with skills NOT in taxonomy
             const text = 'I know Haskell, Erlang, and Prolog very well';
-            
             // Extract skills
             const extracted = keywordExtractSkills(text, availableSkills);
-            
             // Should not extract any skills since none match
             expect(extracted.length).toBe(0);
           }
@@ -458,7 +379,6 @@ describe('AI Client - Skill Extraction Properties', () => {
         { numRuns: 50 }
       );
     });
-
     it('should assign confidence scores between 0 and 1', () => {
       fc.assert(
         fc.property(
@@ -471,9 +391,7 @@ describe('AI Client - Skill Extraction Properties', () => {
           ),
           (availableSkills) => {
             const text = 'I have extensive experience with JavaScript and TypeScript development';
-            
             const extracted = keywordExtractSkills(text, availableSkills);
-            
             // All confidence scores should be between 0 and 1
             for (const skill of extracted) {
               expect(skill.confidence).toBeGreaterThanOrEqual(0);
@@ -484,20 +402,17 @@ describe('AI Client - Skill Extraction Properties', () => {
         { numRuns: 50 }
       );
     });
-
     it('should extract skills regardless of case in text', () => {
       const availableSkills: SkillInfo[] = [
         { skillId: 'skill-1', skillName: 'JavaScript' },
         { skillId: 'skill-2', skillName: 'TypeScript' },
       ];
-
       const variations = [
         'I know JAVASCRIPT and TYPESCRIPT',
         'I know javascript and typescript',
         'I know JavaScript and TypeScript',
         'I know JaVaScRiPt and TyPeScRiPt',
       ];
-
       for (const text of variations) {
         const extracted = keywordExtractSkills(text, availableSkills);
         expect(extracted.length).toBe(2);
@@ -506,3 +421,4 @@ describe('AI Client - Skill Extraction Properties', () => {
     });
   });
 });
+

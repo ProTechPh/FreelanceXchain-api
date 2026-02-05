@@ -5,7 +5,6 @@
  * **Property 42: Missing field validation errors**
  * **Validates: Requirements 12.2, 12.3**
  */
-
 import { describe, it, expect } from '@jest/globals';
 import fc from 'fast-check';
 import {
@@ -18,12 +17,10 @@ import {
   createFreelancerProfileSchema,
   RequestSchema,
 } from '../validation-middleware.js';
-
 // Helper to extract body schema with proper typing
 function getBodySchema(schema: RequestSchema) {
   return schema.body!;
 }
-
 describe('Validation Middleware - Property Tests', () => {
   /**
    * **Feature: blockchain-freelance-marketplace, Property 41: Invalid data validation errors**
@@ -43,10 +40,8 @@ describe('Validation Middleware - Property Tests', () => {
           (invalidEmail, password, role) => {
             const data = { email: invalidEmail, password, role };
             const result = validateRequest(data, getBodySchema(registerSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have field-specific error for email
             const emailError = result.errors.find(e => e.field === 'email');
             expect(emailError).toBeDefined();
@@ -56,7 +51,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return field-specific errors for password too short', () => {
       fc.assert(
         fc.property(
@@ -67,10 +61,8 @@ describe('Validation Middleware - Property Tests', () => {
           (email, shortPassword, role) => {
             const data = { email, password: shortPassword, role };
             const result = validateRequest(data, getBodySchema(registerSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have field-specific error for password
             const passwordError = result.errors.find(e => e.field === 'password');
             expect(passwordError).toBeDefined();
@@ -81,7 +73,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return field-specific errors for invalid role enum', () => {
       fc.assert(
         fc.property(
@@ -92,10 +83,8 @@ describe('Validation Middleware - Property Tests', () => {
           (email, password, invalidRole) => {
             const data = { email, password, role: invalidRole };
             const result = validateRequest(data, getBodySchema(registerSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have field-specific error for role
             const roleError = result.errors.find(e => e.field === 'role');
             expect(roleError).toBeDefined();
@@ -106,7 +95,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return field-specific errors for invalid number types', () => {
       fc.assert(
         fc.property(
@@ -116,10 +104,8 @@ describe('Validation Middleware - Property Tests', () => {
           (bio, invalidRate) => {
             const data = { bio, hourlyRate: invalidRate };
             const result = validateRequest(data, getBodySchema(createFreelancerProfileSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have field-specific error for hourlyRate
             const rateError = result.errors.find(e => e.field === 'hourlyRate');
             expect(rateError).toBeDefined();
@@ -129,7 +115,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return field-specific errors for number below minimum', () => {
       fc.assert(
         fc.property(
@@ -139,10 +124,8 @@ describe('Validation Middleware - Property Tests', () => {
           (bio, invalidRate) => {
             const data = { bio, hourlyRate: invalidRate };
             const result = validateRequest(data, getBodySchema(createFreelancerProfileSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have field-specific error for hourlyRate
             const rateError = result.errors.find(e => e.field === 'hourlyRate');
             expect(rateError).toBeDefined();
@@ -153,8 +136,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
-
     it('should return field-specific errors for rating outside bounds (1-5)', () => {
       fc.assert(
         fc.property(
@@ -168,10 +149,8 @@ describe('Validation Middleware - Property Tests', () => {
           (contractId, rateeId, invalidRating) => {
             const data = { contractId, rateeId, rating: invalidRating };
             const result = validateRequest(data, getBodySchema(submitRatingSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have field-specific error for rating
             const ratingError = result.errors.find(e => e.field === 'rating');
             expect(ratingError).toBeDefined();
@@ -181,7 +160,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return field-specific errors for string below minLength', () => {
       fc.assert(
         fc.property(
@@ -193,10 +171,8 @@ describe('Validation Middleware - Property Tests', () => {
           (projectId, shortCoverLetter, proposedRate, estimatedDuration) => {
             const data = { projectId, coverLetter: shortCoverLetter, proposedRate, estimatedDuration };
             const result = validateRequest(data, getBodySchema(submitProposalSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have field-specific error for coverLetter
             const coverLetterError = result.errors.find(e => e.field === 'coverLetter');
             expect(coverLetterError).toBeDefined();
@@ -207,7 +183,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return multiple field-specific errors when multiple fields are invalid', () => {
       fc.assert(
         fc.property(
@@ -220,13 +195,10 @@ describe('Validation Middleware - Property Tests', () => {
           (invalidEmail, shortPassword, invalidRole) => {
             const data = { email: invalidEmail, password: shortPassword, role: invalidRole };
             const result = validateRequest(data, getBodySchema(registerSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have errors for all three fields
             expect(result.errors.length).toBeGreaterThanOrEqual(3);
-            
             const fields = result.errors.map(e => e.field);
             expect(fields).toContain('email');
             expect(fields).toContain('password');
@@ -237,8 +209,6 @@ describe('Validation Middleware - Property Tests', () => {
       );
     });
   });
-
-
   /**
    * **Feature: blockchain-freelance-marketplace, Property 42: Missing field validation errors**
    * **Validates: Requirements 12.3**
@@ -259,24 +229,19 @@ describe('Validation Middleware - Property Tests', () => {
               password: 'password123',
               role: 'freelancer',
             };
-            
             const data: Record<string, unknown> = {};
             for (const [key, value] of Object.entries(fullData)) {
               if (!fieldsToOmit.includes(key)) {
                 data[key] = value;
               }
             }
-
             const result = validateRequest(data, getBodySchema(registerSchema));
-
             // Should have validation errors
             expect(result.valid).toBe(false);
-            
             // Should have errors for all omitted fields
             const errorFields = result.errors.map(e => e.field);
             for (const omittedField of fieldsToOmit) {
               expect(errorFields).toContain(omittedField);
-              
               // Error message should indicate the field is required
               const fieldError = result.errors.find(e => e.field === omittedField);
               expect(fieldError?.message).toContain('required');
@@ -286,7 +251,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should list all missing required fields for login', () => {
       fc.assert(
         fc.property(
@@ -296,18 +260,14 @@ describe('Validation Middleware - Property Tests', () => {
               email: 'test@example.com',
               password: 'password123',
             };
-            
             const data: Record<string, unknown> = {};
             for (const [key, value] of Object.entries(fullData)) {
               if (!fieldsToOmit.includes(key)) {
                 data[key] = value;
               }
             }
-
             const result = validateRequest(data, getBodySchema(loginSchema));
-
             expect(result.valid).toBe(false);
-            
             const errorFields = result.errors.map(e => e.field);
             for (const omittedField of fieldsToOmit) {
               expect(errorFields).toContain(omittedField);
@@ -319,7 +279,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should list all missing required fields for project creation', () => {
       fc.assert(
         fc.property(
@@ -332,18 +291,14 @@ describe('Validation Middleware - Property Tests', () => {
               budget: 1000,
               deadline: '2025-12-31T23:59:59Z',
             };
-            
             const data: Record<string, unknown> = {};
             for (const [key, value] of Object.entries(fullData)) {
               if (!fieldsToOmit.includes(key)) {
                 data[key] = value;
               }
             }
-
             const result = validateRequest(data, getBodySchema(createProjectSchema));
-
             expect(result.valid).toBe(false);
-            
             const errorFields = result.errors.map(e => e.field);
             for (const omittedField of fieldsToOmit) {
               expect(errorFields).toContain(omittedField);
@@ -355,7 +310,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should list all missing required fields for proposal submission', () => {
       fc.assert(
         fc.property(
@@ -367,18 +321,14 @@ describe('Validation Middleware - Property Tests', () => {
               proposedRate: 50,
               estimatedDuration: 30,
             };
-            
             const data: Record<string, unknown> = {};
             for (const [key, value] of Object.entries(fullData)) {
               if (!fieldsToOmit.includes(key)) {
                 data[key] = value;
               }
             }
-
             const result = validateRequest(data, getBodySchema(submitProposalSchema));
-
             expect(result.valid).toBe(false);
-            
             const errorFields = result.errors.map(e => e.field);
             for (const omittedField of fieldsToOmit) {
               expect(errorFields).toContain(omittedField);
@@ -390,7 +340,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should list all missing required fields for rating submission', () => {
       fc.assert(
         fc.property(
@@ -401,18 +350,14 @@ describe('Validation Middleware - Property Tests', () => {
               rateeId: 'user-456',
               rating: 5,
             };
-            
             const data: Record<string, unknown> = {};
             for (const [key, value] of Object.entries(fullData)) {
               if (!fieldsToOmit.includes(key)) {
                 data[key] = value;
               }
             }
-
             const result = validateRequest(data, getBodySchema(submitRatingSchema));
-
             expect(result.valid).toBe(false);
-            
             const errorFields = result.errors.map(e => e.field);
             for (const omittedField of fieldsToOmit) {
               expect(errorFields).toContain(omittedField);
@@ -424,7 +369,6 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should return empty errors for valid complete data', () => {
       fc.assert(
         fc.property(
@@ -434,7 +378,6 @@ describe('Validation Middleware - Property Tests', () => {
           (email, password, role) => {
             const data = { email, password, role };
             const result = validateRequest(data, getBodySchema(registerSchema));
-
             // Should be valid with no errors
             expect(result.valid).toBe(true);
             expect(result.errors).toHaveLength(0);
@@ -443,17 +386,13 @@ describe('Validation Middleware - Property Tests', () => {
         { numRuns: 100 }
       );
     });
-
     it('should handle empty object with all required fields missing', () => {
       const result = validateRequest({}, getBodySchema(registerSchema));
-
       expect(result.valid).toBe(false);
-      
       const errorFields = result.errors.map(e => e.field);
       expect(errorFields).toContain('email');
       expect(errorFields).toContain('password');
       expect(errorFields).toContain('role');
-      
       // All errors should mention "required"
       for (const error of result.errors) {
         expect(error.message).toContain('required');
