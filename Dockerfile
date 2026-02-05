@@ -4,7 +4,7 @@ FROM node:20-alpine AS builder
 # Install pnpm globally
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@8 --activate
+RUN corepack enable
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ FROM node:20-alpine AS production
 # Install pnpm globally
 ENV PNPM_HOME="/pnpm"
 ENV PATH="$PNPM_HOME:$PATH"
-RUN corepack enable && corepack prepare pnpm@8 --activate
+RUN corepack enable
 
 WORKDIR /app
 
