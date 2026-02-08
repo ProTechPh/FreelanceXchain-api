@@ -19,7 +19,6 @@ import {
 import { generateId } from '../utils/id.js';
 
 // Constants
-const DEFAULT_MODEL = 'gemini-2.5-flash-lite';
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
 const REQUEST_TIMEOUT_MS = 30000;
@@ -81,10 +80,10 @@ export function isAIAvailable(): boolean {
 }
 
 /**
- * Build the AI API URL for a specific model
+ * Build the AI API URL (OpenAI-compatible endpoint)
  */
-function buildApiUrl(model: string = DEFAULT_MODEL): string {
-  return `${config.llm.apiUrl}/models/${model}:generateContent?key=${config.llm.apiKey}`;
+function buildApiUrl(): string {
+  return `${config.llm.apiUrl}/v1/chat/completions`;
 }
 
 /**
@@ -95,7 +94,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
- * Make HTTP request to AI API with retry logic
+ * Make HTTP request to AI API with retry logic (OpenAI-compatible format)
  */
 async function makeAIRequest(
   request: AIRequest,
@@ -113,12 +112,25 @@ async function makeAIRequest(
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
+    // Convert to OpenAI-compatible format
+    const openAIRequest = {
+      model: config.llm.model,
+      messages: request.contents.map(content => ({
+        role: 'user',
+        content: content.parts.map(part => part.text).join('\n')
+      })),
+      stream: false,
+      temperature: request.generationConfig?.temperature ?? 0.7,
+      max_tokens: request.generationConfig?.maxOutputTokens ?? 2048,
+    };
+
     const response = await fetch(buildApiUrl(), {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${config.llm.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify(openAIRequest),
       signal: controller.signal,
     });
 
@@ -141,7 +153,28 @@ async function makeAIRequest(
       };
     }
 
-    const data = await response.json() as AIResponse;
+    // Parse OpenAI-compatible response and convert to internal format
+    const openAIResponse = await response.json();
+    
+    // Convert OpenAI format to internal AIResponse format
+    const data: AIResponse = {
+      candidates: openAIResponse.choices?.map((choice: any, index: number) => ({
+        content: {
+          parts: [{ text: choice.message?.content || '' }],
+          role: choice.message?.role || 'assistant',
+        },
+        finishReason: choice.finish_reason || 'stop',
+        index: index,
+      })) || [],
+      ...(openAIResponse.usage && {
+        usageMetadata: {
+          promptTokenCount: openAIResponse.usage.prompt_tokens || 0,
+          candidatesTokenCount: openAIResponse.usage.completion_tokens || 0,
+          totalTokenCount: openAIResponse.usage.total_tokens || 0,
+        }
+      }),
+    };
+
     return data;
   } catch (error) {
     clearTimeout(timeoutId);

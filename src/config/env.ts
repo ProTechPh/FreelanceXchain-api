@@ -59,6 +59,7 @@ export const config = {
   llm: {
     apiKey: getEnvVarOptional('LLM_API_KEY'),
     apiUrl: getEnvVar('LLM_API_URL'),
+    model: getEnvVar('LLM_MODEL', 'claude-haiku-4.5'),
   },
   blockchain: {
     rpcUrl: getEnvVarOptional('BLOCKCHAIN_RPC_URL'),
