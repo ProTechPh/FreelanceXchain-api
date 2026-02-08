@@ -47,3 +47,4 @@ deployment.json
 .ganache/
 /.agent
 .qoder/
+.roo/
