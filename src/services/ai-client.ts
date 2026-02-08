@@ -166,11 +166,13 @@ async function makeAIRequest(
         finishReason: choice.finish_reason || 'stop',
         index: index,
       })) || [],
-      usageMetadata: openAIResponse.usage ? {
-        promptTokenCount: openAIResponse.usage.prompt_tokens || 0,
-        candidatesTokenCount: openAIResponse.usage.completion_tokens || 0,
-        totalTokenCount: openAIResponse.usage.total_tokens || 0,
-      } : undefined,
+      ...(openAIResponse.usage && {
+        usageMetadata: {
+          promptTokenCount: openAIResponse.usage.prompt_tokens || 0,
+          candidatesTokenCount: openAIResponse.usage.completion_tokens || 0,
+          totalTokenCount: openAIResponse.usage.total_tokens || 0,
+        }
+      }),
     };
 
     return data;

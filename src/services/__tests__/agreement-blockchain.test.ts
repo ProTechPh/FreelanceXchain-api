@@ -6,6 +6,12 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 
 // Fix BigInt serialization for Jest
+declare global {
+  interface BigInt {
+    toJSON(): string;
+  }
+}
+
 BigInt.prototype.toJSON = function() {
   return this.toString();
 };

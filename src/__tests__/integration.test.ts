@@ -5,15 +5,15 @@
  */
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
-import { User } from '../../models/user.js';
-import { FreelancerProfile } from '../../models/freelancer-profile.js';
-import { EmployerProfile } from '../../models/employer-profile.js';
-import { Project, Milestone } from '../../models/project.js';
-import { Proposal } from '../../models/proposal.js';
-import { Contract } from '../../models/contract.js';
-import { Dispute } from '../../models/dispute.js';
-import { Notification } from '../../models/notification.js';
-import { Skill, SkillCategory } from '../../models/skill.js';
+import { User } from '../models/user.js';
+import { FreelancerProfile } from '../models/freelancer-profile.js';
+import { EmployerProfile } from '../models/employer-profile.js';
+import { Project, Milestone } from '../models/project.js';
+import { Proposal } from '../models/proposal.js';
+import { Contract } from '../models/contract.js';
+import { Dispute } from '../models/dispute.js';
+import { Notification } from '../models/notification.js';
+import { Skill, SkillCategory } from '../models/skill.js';
 import { generateId } from '../utils/id.js';
 // In-memory stores for integration testing
 let userStore: Map<string, User> = new Map();
@@ -1021,7 +1021,7 @@ describe('Integration Tests - Critical Flows', () => {
       }
       // Verify milestone status updated
       const updatedProject1 = projectStore.get(project.id);
-      const updatedMilestone1 = updatedProject1?.milestones.find(m => m.id === milestone1.id);
+      const updatedMilestone1 = updatedProject1?.milestones.find((m: Milestone) => m.id === milestone1.id);
       expect(updatedMilestone1?.status).toBe('submitted');
       // Step 2: Employer approves milestone 1
       const approvalResult1 = await approveMilestone(
@@ -1037,7 +1037,7 @@ describe('Integration Tests - Critical Flows', () => {
       }
       // Verify milestone status updated
       const updatedProject2 = projectStore.get(project.id);
-      const approvedMilestone1 = updatedProject2?.milestones.find(m => m.id === milestone1.id);
+      const approvedMilestone1 = updatedProject2?.milestones.find((m: Milestone) => m.id === milestone1.id);
       expect(approvedMilestone1?.status).toBe('approved');
       // Step 3: Freelancer marks milestone 2 as complete
       const completionResult2 = await requestMilestoneCompletion(
@@ -1160,7 +1160,7 @@ describe('Integration Tests - Critical Flows', () => {
       expect(dispute.evidence).toEqual([]);
       // Verify milestone status updated to disputed
       const updatedProject1 = projectStore.get(project.id);
-      const disputedMilestone = updatedProject1?.milestones.find(m => m.id === milestone.id);
+      const disputedMilestone = updatedProject1?.milestones.find((m: Milestone) => m.id === milestone.id);
       expect(disputedMilestone?.status).toBe('disputed');
       // Verify contract status updated to disputed
       const updatedContract1 = contractStore.get(contract.id);

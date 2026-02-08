@@ -141,7 +141,7 @@ describe('AuthService - registerWithSupabase', () => {
             name: '',
             created_at: new Date(),
         } as never);
-        const result = await registerWithSupabase('valid_token', 'employer', '', '');
+        const result = await registerWithSupabase('valid_token', 'employer', '');
         expect(userRepository.createUser).toHaveBeenCalledWith(expect.objectContaining({
             role: 'employer',
             email: 'new_employer@example.com',
@@ -167,7 +167,7 @@ describe('AuthService - registerWithSupabase', () => {
             email: 'existing@example.com',
             role: 'freelancer',
         } as never);
-        const result = await registerWithSupabase('valid_token', 'employer', '', '');
+        const result = await registerWithSupabase('valid_token', 'employer', '');
         expect(userRepository.createUser).not.toHaveBeenCalled();
         expect(result).toHaveProperty('user');
         if ('user' in result) {

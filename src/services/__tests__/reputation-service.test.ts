@@ -3,7 +3,7 @@ import path from 'node:path';
 import fc from 'fast-check';
 import { ContractEntity } from '../../repositories/contract-repository.js';
 import { ProjectEntity } from '../../repositories/project-repository.js';
-import { BlockchainRating } from '../reputation-blockchain.js';
+import type { BlockchainRating } from '../reputation-contract.js';
 // In-memory stores for testing - using entity types
 let contractStore: Map<string, ContractEntity> = new Map();
 let projectStore: Map<string, ProjectEntity> = new Map();
