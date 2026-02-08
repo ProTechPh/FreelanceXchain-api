@@ -20,11 +20,8 @@ COPY src ./src
 COPY contracts ./contracts
 COPY hardhat.config.cjs ./
 
-# Compile smart contracts first
-RUN pnpm run compile
-
-# Build TypeScript
-RUN pnpm run build
+# Compile smart contracts and build TypeScript
+RUN pnpm run compile && pnpm run build
 
 # Production stage
 FROM node:20-alpine AS production
