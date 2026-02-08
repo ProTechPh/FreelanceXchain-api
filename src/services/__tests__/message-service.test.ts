@@ -278,7 +278,8 @@ describe('Message Service', () => {
       createTestMessage({ contract_id: contract2.id, content: 'Contract 2 message' });
       const result = await MessageService.getMessages(contract1.id, contract1.freelancer_id);
       expect(result.items).toHaveLength(1);
-      expect(result.items[0].contract_id).toBe(contract1.id);
+      expect(result.items[0]).toBeDefined();
+      expect(result.items[0]!.contract_id).toBe(contract1.id);
     });
   });
   describe('markAsRead', () => {

@@ -114,6 +114,8 @@ function createTestFreelancer(overrides: Partial<FreelancerProfileEntity> = {}):
   return {
     id,
     user_id: generateId(),
+    name: null,
+    nationality: null,
     bio: `Bio for freelancer ${id.slice(0, 8)}`,
     hourly_rate: 50,
     skills: [],
