@@ -8,15 +8,15 @@ import {
   keywordMatchSkills,
   keywordExtractSkills,
 } from '../ai-client.js';
-import type {
+import {
   SkillInfo,
   ProjectRecommendation,
   FreelancerRecommendation,
   SkillMatchRequest,
-  SkillExtractionRequest,
-  SkillGapAnalysis,
   SkillMatchResult,
-  ExtractedSkill
+  SkillExtractionRequest,
+  ExtractedSkill,
+  SkillGapAnalysis,
 } from '../ai-types.js';
 // Custom arbitraries for property-based testing
 const skillInfoArbitrary = () =>

@@ -1,0 +1,20 @@
+# Ensure consistent line endings across platforms
+* text=auto
+
+# Force LF for lockfiles (critical for pnpm compatibility)
+pnpm-lock.yaml text eol=lf
+
+# Force LF for shell scripts
+*.sh text eol=lf
+
+# Force LF for YAML files
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary

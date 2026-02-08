@@ -365,9 +365,7 @@ describe('Escrow Blockchain Integration', () => {
       const milestones = await getAllMilestones('0xEscrowContract');
 
       expect(milestones).toHaveLength(2);
-      expect(milestones[0]).toBeDefined();
       expect(milestones[0]!.description).toBe('Milestone 1');
-      expect(milestones[1]).toBeDefined();
       expect(milestones[1]!.description).toBe('Milestone 2');
     });
 

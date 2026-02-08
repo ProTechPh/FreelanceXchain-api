@@ -1,0 +1,26 @@
+# MegaLinter Configuration
+# https://megalinter.io/latest/configuration/
+
+# Apply linters
+APPLY_FIXES: none
+
+# Linter specific settings
+YAML_YAMLLINT_FILTER_REGEX_EXCLUDE: 'pnpm-lock.yaml'
+
+# Enable specific linters
+ENABLE_LINTERS:
+  - TYPESCRIPT_ES
+  - JSON_JSONLINT
+  - YAML_YAMLLINT
+  - MARKDOWN_MARKDOWNLINT
+  - DOCKERFILE_HADOLINT
+  - SOLIDITY_SOLHINT
+
+# Disable telemetry
+DISABLE_TELEMETRY: true
+
+# Show elapsed time
+SHOW_ELAPSED_TIME: true
+
+# When false, validate only changed files on push to main/develop
+VALIDATE_ALL_CODEBASE: false

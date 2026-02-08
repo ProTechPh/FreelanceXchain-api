@@ -15,13 +15,12 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 8
+          version: 10.28.1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -48,16 +47,20 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 8
+          version: 10.28.1
 
-      - name: Setup Node.js
+      - name: Setup Node.js (no cache to ensure fresh bcrypt build)
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      - name: Setup test environment
+        run: |
+          cp .env.test .env
+          echo "Test environment configured"
 
       - name: Cache Hardhat compiler
         uses: actions/cache@v4
@@ -87,13 +90,12 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 8
+          version: 10.28.1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

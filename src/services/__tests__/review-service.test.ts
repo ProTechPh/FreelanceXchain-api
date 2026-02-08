@@ -337,7 +337,6 @@ describe('Review Service', () => {
       createTestReview({ contract_id: contract2.id });
       const reviews = await ReviewService.getReviewsByContract(contract1.id);
       expect(reviews).toHaveLength(1);
-      expect(reviews[0]).toBeDefined();
       expect(reviews[0]!.contract_id).toBe(contract1.id);
     });
   });
