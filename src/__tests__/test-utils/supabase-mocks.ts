@@ -96,14 +96,14 @@ export function createMockSupabaseClient(): any {
     limit: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     abortSignal: jest.fn().mockReturnThis(),
-    single: jest.fn().mockResolvedValue({ data: generateMockEntity(), error: null }),
-    maybeSingle: jest.fn().mockResolvedValue({ data: generateMockEntity(), error: null }),
+    single: (jest.fn() as any).mockResolvedValue({ data: generateMockEntity(), error: null }),
+    maybeSingle: (jest.fn() as any).mockResolvedValue({ data: generateMockEntity(), error: null }),
     csv: jest.fn().mockReturnThis(),
     geojson: jest.fn().mockReturnThis(),
     explain: jest.fn().mockReturnThis(),
     rollback: jest.fn().mockReturnThis(),
     returns: jest.fn().mockReturnThis(),
-    then: jest.fn().mockResolvedValue({ data: [generateMockEntity()], error: null, count: 1 }),
+    then: (jest.fn() as any).mockResolvedValue({ data: [generateMockEntity()], error: null, count: 1 }),
     catch: jest.fn(),
   };
 

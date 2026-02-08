@@ -124,58 +124,58 @@ export const mockSupabaseClient = {
     limit: jest.fn().mockReturnThis(),
     range: jest.fn().mockReturnThis(),
     abortSignal: jest.fn().mockReturnThis(),
-    single: jest.fn().mockResolvedValue({ data: null, error: null }),
-    maybeSingle: jest.fn().mockResolvedValue({ data: null, error: null }),
+    single: (jest.fn() as any).mockResolvedValue({ data: null, error: null }),
+    maybeSingle: (jest.fn() as any).mockResolvedValue({ data: null, error: null }),
     csv: jest.fn().mockReturnThis(),
     geojson: jest.fn().mockReturnThis(),
     explain: jest.fn().mockReturnThis(),
     rollback: jest.fn().mockReturnThis(),
     returns: jest.fn().mockReturnThis(),
-    then: jest.fn().mockResolvedValue({ data: [], error: null }),
+    then: (jest.fn() as any).mockResolvedValue({ data: [], error: null }),
     catch: jest.fn(),
   })),
   auth: {
-    signUp: jest.fn().mockResolvedValue({ 
+    signUp: (jest.fn() as any).mockResolvedValue({ 
       data: { user: { id: '1', email: 'test@example.com' }, session: null }, 
       error: null 
     }),
-    signInWithPassword: jest.fn().mockResolvedValue({ 
+    signInWithPassword: (jest.fn() as any).mockResolvedValue({ 
       data: { user: { id: '1', email: 'test@example.com' }, session: null }, 
       error: null 
     }),
-    getUser: jest.fn().mockResolvedValue({ 
+    getUser: (jest.fn() as any).mockResolvedValue({ 
       data: { user: { id: '1', email: 'test@example.com' } }, 
       error: null 
     }),
-    getSession: jest.fn().mockResolvedValue({ 
+    getSession: (jest.fn() as any).mockResolvedValue({ 
       data: { session: null }, 
       error: null 
     }),
-    signInWithOAuth: jest.fn().mockResolvedValue({ 
+    signInWithOAuth: (jest.fn() as any).mockResolvedValue({ 
       data: { url: 'https://mock-oauth-url.com' }, 
       error: null 
     }),
-    refreshSession: jest.fn().mockResolvedValue({ 
+    refreshSession: (jest.fn() as any).mockResolvedValue({ 
       data: { session: null }, 
       error: null 
     }),
-    setSession: jest.fn().mockResolvedValue({ 
+    setSession: (jest.fn() as any).mockResolvedValue({ 
       data: { session: null }, 
       error: null 
     }),
-    updateUser: jest.fn().mockResolvedValue({ 
+    updateUser: (jest.fn() as any).mockResolvedValue({ 
       data: { user: null }, 
       error: null 
     }),
-    resetPasswordForEmail: jest.fn().mockResolvedValue({ 
+    resetPasswordForEmail: (jest.fn() as any).mockResolvedValue({ 
       data: null, 
       error: null 
     }),
-    resend: jest.fn().mockResolvedValue({ 
+    resend: (jest.fn() as any).mockResolvedValue({ 
       data: null, 
       error: null 
     }),
-    exchangeCodeForSession: jest.fn().mockResolvedValue({ 
+    exchangeCodeForSession: (jest.fn() as any).mockResolvedValue({ 
       data: { session: null }, 
       error: null 
     }),
@@ -184,7 +184,7 @@ export const mockSupabaseClient = {
 
 // Mock KYC Repository
 export const mockKycRepository = {
-  getKycVerificationByUserId: jest.fn().mockResolvedValue(null),
+  getKycVerificationByUserId: (jest.fn() as any).mockResolvedValue(null),
   createKycVerification: jest.fn(),
   updateKycVerification: jest.fn(),
   getKycVerificationById: jest.fn(),

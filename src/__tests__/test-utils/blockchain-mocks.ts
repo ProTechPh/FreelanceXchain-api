@@ -46,13 +46,13 @@ export const mockContractResponses = {
 // Create mock provider
 export function createMockProvider() {
   return {
-    getBalance: jest.fn().mockResolvedValue(mockProviderResponses.balance),
-    getNetwork: jest.fn().mockResolvedValue(mockProviderResponses.network),
-    getTransaction: jest.fn().mockResolvedValue(mockProviderResponses.transaction),
-    getTransactionReceipt: jest.fn().mockResolvedValue(mockProviderResponses.receipt),
-    waitForTransaction: jest.fn().mockResolvedValue(mockProviderResponses.receipt),
-    getFeeData: jest.fn().mockResolvedValue(mockProviderResponses.feeData),
-    getBlockNumber: jest.fn().mockResolvedValue(mockProviderResponses.blockNumber),
+    getBalance: (jest.fn() as any).mockResolvedValue(mockProviderResponses.balance),
+    getNetwork: (jest.fn() as any).mockResolvedValue(mockProviderResponses.network),
+    getTransaction: (jest.fn() as any).mockResolvedValue(mockProviderResponses.transaction),
+    getTransactionReceipt: (jest.fn() as any).mockResolvedValue(mockProviderResponses.receipt),
+    waitForTransaction: (jest.fn() as any).mockResolvedValue(mockProviderResponses.receipt),
+    getFeeData: (jest.fn() as any).mockResolvedValue(mockProviderResponses.feeData),
+    getBlockNumber: (jest.fn() as any).mockResolvedValue(mockProviderResponses.blockNumber),
   };
 }
 
@@ -60,26 +60,26 @@ export function createMockProvider() {
 export function createMockWallet() {
   return {
     address: mockWalletResponses.address,
-    sendTransaction: jest.fn().mockResolvedValue({
+    sendTransaction: (jest.fn() as any).mockResolvedValue({
       hash: mockProviderResponses.transaction.hash,
       from: mockProviderResponses.transaction.from,
       to: mockProviderResponses.transaction.to,
       value: mockProviderResponses.transaction.value,
-      wait: jest.fn().mockResolvedValue(mockProviderResponses.receipt),
+      wait: (jest.fn() as any).mockResolvedValue(mockProviderResponses.receipt),
     }),
-    estimateGas: jest.fn().mockResolvedValue(mockWalletResponses.estimatedGas),
-    signMessage: jest.fn().mockResolvedValue(mockWalletResponses.signature),
+    estimateGas: (jest.fn() as any).mockResolvedValue(mockWalletResponses.estimatedGas),
+    signMessage: (jest.fn() as any).mockResolvedValue(mockWalletResponses.signature),
   };
 }
 
 // Create mock contract
 export function createMockContract() {
   return {
-    getAddress: jest.fn().mockResolvedValue(mockContractResponses.address),
-    waitForDeployment: jest.fn().mockResolvedValue(undefined),
-    deploymentTransaction: jest.fn().mockReturnValue({
+    getAddress: (jest.fn() as any).mockResolvedValue(mockContractResponses.address),
+    waitForDeployment: (jest.fn() as any).mockResolvedValue(undefined),
+    deploymentTransaction: (jest.fn() as any).mockReturnValue({
       hash: mockContractResponses.deploymentHash,
-      wait: jest.fn().mockResolvedValue({
+      wait: (jest.fn() as any).mockResolvedValue({
         hash: mockContractResponses.deploymentHash,
         blockNumber: mockProviderResponses.blockNumber,
         status: 1,
@@ -91,7 +91,7 @@ export function createMockContract() {
 // Create mock contract factory
 export function createMockContractFactory() {
   return {
-    deploy: jest.fn().mockResolvedValue(createMockContract()),
+    deploy: (jest.fn() as any).mockResolvedValue(createMockContract()),
   };
 }
 

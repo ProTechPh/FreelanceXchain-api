@@ -225,17 +225,28 @@ export async function addSkillsToProfile(
       s => s.name.toLowerCase() === trimmedName.toLowerCase()
     );
     
-    if (existingSkillIndex === -1) {
+    // Check if skill already exists in newSkills being built (case-insensitive)
+    const newSkillIndex = newSkills.findIndex(
+      s => s.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    
+    if (existingSkillIndex === -1 && newSkillIndex === -1) {
       // Add new skill
       newSkills.push({
         name: trimmedName,
         years_of_experience: skillInput.yearsOfExperience,
       });
-    } else {
-      // Update years of experience for existing skill
+    } else if (existingSkillIndex !== -1) {
+      // Update years of experience for existing skill in profile
       const existingSkill = existingProfile.skills[existingSkillIndex];
       if (existingSkill) {
         existingSkill.years_of_experience = skillInput.yearsOfExperience;
+      }
+    } else if (newSkillIndex !== -1) {
+      // Update years of experience for skill being added in this batch
+      const newSkill = newSkills[newSkillIndex];
+      if (newSkill) {
+        newSkill.years_of_experience = skillInput.yearsOfExperience;
       }
     }
   }
