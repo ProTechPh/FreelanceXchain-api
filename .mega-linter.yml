@@ -22,5 +22,5 @@ DISABLE_TELEMETRY: true
 # Show elapsed time
 SHOW_ELAPSED_TIME: true
 
-# Validate all codebase on push to main/develop
+# When false, validate only changed files on push to main/develop
 VALIDATE_ALL_CODEBASE: false

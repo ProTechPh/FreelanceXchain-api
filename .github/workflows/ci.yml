@@ -59,8 +59,10 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Rebuild native modules
-        run: pnpm rebuild bcrypt
+      - name: Clear bcrypt cache and rebuild
+        run: |
+          rm -rf node_modules/.pnpm/bcrypt@*/node_modules/bcrypt/lib/binding
+          pnpm rebuild bcrypt
 
       - name: Cache Hardhat compiler
         uses: actions/cache@v4
