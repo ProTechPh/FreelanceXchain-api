@@ -263,11 +263,11 @@ describe('Review Service', () => {
             contractStore.clear();
             notificationStore = [];
             const contract = createTestContract();
-            const input = {
+            const input: any = {
               contractId: contract.id,
               reviewerId: contract.freelancer_id,
               rating,
-              comment: comment || undefined,
+              ...(comment && { comment }),
             };
             const result = await ReviewService.submitReview(input);
             expect(result.rating).toBe(rating);
@@ -337,7 +337,7 @@ describe('Review Service', () => {
       createTestReview({ contract_id: contract2.id });
       const reviews = await ReviewService.getReviewsByContract(contract1.id);
       expect(reviews).toHaveLength(1);
-      expect(reviews[0].contract_id).toBe(contract1.id);
+      expect(reviews[0]!.contract_id).toBe(contract1.id);
     });
   });
   describe('getUserReviews', () => {

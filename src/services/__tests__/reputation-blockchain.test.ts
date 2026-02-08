@@ -191,7 +191,7 @@ describe('Reputation Blockchain Integration', () => {
       const { getRatingsGivenByUser } = await import('../reputation-blockchain.js');
       const ratings = await getRatingsGivenByUser('0xRater');
       expect(ratings).toHaveLength(1);
-      expect(ratings[0].rater).toBe('0xRater');
+      expect(ratings[0]!.rater).toBe('0xRater');
     });
   });
   describe('getAverageRating', () => {

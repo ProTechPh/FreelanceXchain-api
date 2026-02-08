@@ -8,7 +8,16 @@ import {
   keywordMatchSkills,
   keywordExtractSkills,
 } from '../ai-client.js';
-import { SkillInfo, ProjectRecommendation, FreelancerRecommendation } from '../matching-service.js';
+import {
+  SkillInfo,
+  ProjectRecommendation,
+  FreelancerRecommendation,
+  SkillMatchRequest,
+  SkillMatchResult,
+  SkillExtractionRequest,
+  ExtractedSkill,
+  SkillGapAnalysis,
+} from '../ai-types.js';
 // Custom arbitraries for property-based testing
 const skillInfoArbitrary = () =>
   fc.record({

@@ -235,13 +235,14 @@ describe('Web3 Client', () => {
       const { getTransactionByHash } = await import('../web3-client.js');
       const result = await getTransactionByHash('0xTxHash');
 
-      expect(result.hash).toBe('0xTxHash');
-      expect(result.from).toBe('0xSender');
-      expect(result.to).toBe('0xRecipient');
-      expect(result.value.toString()).toBe('1000000000000000000');
-      expect(result.blockNumber).toBe(12345);
-      expect(result.status).toBe('success');
-      expect(result.gasUsed.toString()).toBe('21000');
+      expect(result).not.toBeNull();
+      expect(result!.hash).toBe('0xTxHash');
+      expect(result!.from).toBe('0xSender');
+      expect(result!.to).toBe('0xRecipient');
+      expect(result!.value.toString()).toBe('1000000000000000000');
+      expect(result!.blockNumber).toBe(12345);
+      expect(result!.status).toBe('success');
+      expect(result!.gasUsed.toString()).toBe('21000');
     });
 
     it('should return null for non-existent transaction', async () => {

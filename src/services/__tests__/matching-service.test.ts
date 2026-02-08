@@ -1,7 +1,7 @@
 import { describe, it, expect } from '@jest/globals';
 import fc from 'fast-check';
 import { sortRecommendationsByScore, sortFreelancerRecommendationsByCombinedScore, calculateMatchScore } from '../matching-service.js';
-import { SkillInfo, ProjectRecommendation, FreelancerRecommendation } from '../matching-service.js';
+import { SkillInfo, ProjectRecommendation, FreelancerRecommendation } from '../ai-types.js';
 // Custom arbitraries for property-based testing
 const skillInfoArbitrary = () =>
   fc.record({
