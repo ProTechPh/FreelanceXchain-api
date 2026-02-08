@@ -22,8 +22,12 @@ jobs:
         uses: oxsecurity/megalinter@v8.4.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VALIDATE_ALL_CODEBASE: false
+          APPLY_FIXES: none
+          YAML_YAMLLINT_FILTER_REGEX_EXCLUDE: pnpm-lock.yaml
           ENABLE_LINTERS: TYPESCRIPT_ES,JSON_JSONLINT,YAML_YAMLLINT,MARKDOWN_MARKDOWNLINT,DOCKERFILE_HADOLINT,SOLIDITY_SOLHINT
+          DISABLE_TELEMETRY: true
+          SHOW_ELAPSED_TIME: true
+          VALIDATE_ALL_CODEBASE: false
 
       - name: Upload MegaLinter artifacts
         if: always()
