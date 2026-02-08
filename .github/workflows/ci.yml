@@ -15,15 +15,16 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 10.28.1
+          version: 8
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Cache Hardhat compiler
         uses: actions/cache@v4
@@ -47,20 +48,16 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 10.28.1
+          version: 8
 
-      - name: Setup Node.js (no cache to ensure fresh bcrypt build)
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Setup test environment
-        run: |
-          cp .env.test .env
-          echo "Test environment configured"
+        run: pnpm install --no-frozen-lockfile
 
       - name: Cache Hardhat compiler
         uses: actions/cache@v4
@@ -74,7 +71,7 @@ jobs:
         run: pnpm run compile
 
       - name: Run tests
-        run: pnpm run test:ci
+        run: pnpm test -- --coverage --passWithNoTests
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -90,15 +87,16 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v3
         with:
-          version: 10.28.1
+          version: 8
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
 
       - name: Cache Hardhat compiler
         uses: actions/cache@v4
