@@ -15,24 +15,27 @@ import {
 describe('Log Sanitizer - OWASP A02 & A09', () => {
   describe('sanitizeString', () => {
     it('should redact JWT tokens', () => {
-      const input = 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U';
+      // Test fixture: fake JWT for testing sanitization (not a real secret)
+      const input = 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwidGVzdCI6dHJ1ZX0.TJVA95OrM7E2cBab30RMHrHDcEfxjoYZgeFONFh7HgQ';
       const result = sanitizeString(input);
       expect(result).toContain('[REDACTED]');
       expect(result).not.toContain('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9');
     });
 
     it('should redact API keys', () => {
-      const input = 'api_key: sk_live_1234567890abcdefghijklmnop';
+      // Test fixture: fake API key pattern for testing (not a real secret)
+      const input = 'api_key: sk_test_FakeKey123456789ABCDEFGH';
       const result = sanitizeString(input);
       expect(result).toContain('[REDACTED]');
-      expect(result).not.toContain('sk_live_1234567890abcdefghijklmnop');
+      expect(result).not.toContain('sk_test_FakeKey123456789ABCDEFGH');
     });
 
     it('should redact passwords', () => {
-      const input = 'password: MySecretPassword123!';
+      // Test fixture: fake password for testing sanitization (not a real credential)
+      const input = 'password: TestPassword123ForUnitTest';
       const result = sanitizeString(input);
       expect(result).toContain('[REDACTED]');
-      expect(result).not.toContain('MySecretPassword123!');
+      expect(result).not.toContain('TestPassword123ForUnitTest');
     });
 
     it('should redact credit card numbers', () => {
@@ -115,8 +118,9 @@ describe('Log Sanitizer - OWASP A02 & A09', () => {
     });
 
     it('should sanitize string values in objects', () => {
+      // Test fixture: fake JWT pattern for testing (not a real token)
       const input = {
-        message: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.test',
+        message: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZXN0Ijp0cnVlfQ.fake_signature_for_test',
         data: 'normal data',
       };
       const result = sanitizeObject(input);
@@ -132,7 +136,8 @@ describe('Log Sanitizer - OWASP A02 & A09', () => {
 
   describe('sanitizeError', () => {
     it('should sanitize error messages', () => {
-      const error = new Error('Authentication failed with token: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.test');
+      // Test fixture: fake JWT pattern for testing (not a real token)
+      const error = new Error('Authentication failed with token: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZXN0Ijp0cnVlfQ.test_sig');
       const result = sanitizeError(error);
       expect(result.message).toContain('[REDACTED_JWT]');
       expect(result.name).toBe('Error');
@@ -140,30 +145,34 @@ describe('Log Sanitizer - OWASP A02 & A09', () => {
 
     it('should sanitize error stack traces', () => {
       const error = new Error('Test error');
-      error.stack = 'Error: password=secret123\n    at test.js:10';
+      // Test fixture: fake password in stack trace for testing (not a real credential)
+      error.stack = 'Error: password=FakeTestPassword123\n    at test.js:10';
       const result = sanitizeError(error);
       expect(result.stack).toContain('[REDACTED]');
-      expect(result.stack).not.toContain('secret123');
+      expect(result.stack).not.toContain('FakeTestPassword123');
     });
 
     it('should handle custom error properties', () => {
       const error: any = new Error('Test');
-      error.apiKey = 'sk_live_123456';
+      // Test fixture: fake API key for testing (not a real secret)
+      error.apiKey = 'sk_test_FakeTestKey999';
       error.userId = 'user123';
       const result = sanitizeError(error);
       expect(result.apiKey).toContain('[REDACTED');
-      expect(result.apiKey).not.toContain('123456');
+      expect(result.apiKey).not.toContain('FakeTestKey999');
     });
   });
 
   describe('containsSensitiveData', () => {
     it('should detect JWT tokens', () => {
-      const input = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.test';
+      // Test fixture: fake JWT pattern for testing (not a real token)
+      const input = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZXN0Ijp0cnVlfQ.fake_sig';
       expect(containsSensitiveData(input)).toBe(true);
     });
 
     it('should detect passwords', () => {
-      const input = 'password: secret123';
+      // Test fixture: fake password for testing (not a real credential)
+      const input = 'password: FakeTestPass999';
       expect(containsSensitiveData(input)).toBe(true);
     });
 
@@ -185,16 +194,17 @@ describe('Log Sanitizer - OWASP A02 & A09', () => {
 
   describe('Real-world scenarios', () => {
     it('should sanitize HTTP request logs', () => {
+      // Test fixtures: fake credentials for testing sanitization (not real secrets)
       const requestLog = {
         method: 'POST',
         path: '/api/auth/login',
         headers: {
-          authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.test',
+          authorization: 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ0ZXN0Ijp0cnVlfQ.fake_test_sig',
           'content-type': 'application/json',
         },
         body: {
           email: 'user@example.com',
-          password: 'MyPassword123!',
+          password: 'FakeTestPassword999',
         },
       };
       const result = sanitizeObject(requestLog);
@@ -205,9 +215,10 @@ describe('Log Sanitizer - OWASP A02 & A09', () => {
     });
 
     it('should sanitize database error logs', () => {
+      // Test fixtures: fake connection string for testing (not real credentials)
       const dbError = {
         message: 'Connection failed',
-        connectionString: 'postgresql://user:password123@localhost:5432/db',
+        connectionString: 'postgresql://testuser:FakeDbPass999@localhost:5432/testdb',
         query: 'SELECT * FROM users WHERE email = "user@example.com"',
       };
       const result = sanitizeObject(dbError);
@@ -217,13 +228,14 @@ describe('Log Sanitizer - OWASP A02 & A09', () => {
     });
 
     it('should sanitize webhook payloads', () => {
+      // Test fixtures: fake API key for testing (not a real secret)
       const webhook = {
         event: 'user.created',
         data: {
           user_id: '123',
           email: 'newuser@example.com',
           phone: '+1-555-123-4567',
-          api_key: 'sk_live_abcdef123456',
+          api_key: 'sk_test_FakeWebhookKey999',
         },
       };
       const result = sanitizeObject(webhook);

@@ -180,7 +180,14 @@ export function sanitizeError(error: Error): any {
   // Include any additional properties
   for (const [key, value] of Object.entries(error)) {
     if (key !== 'name' && key !== 'message' && key !== 'stack') {
-      sanitized[key] = sanitizeLogData(value);
+      const lowerKey = key.toLowerCase();
+      
+      // Check if field name is sensitive
+      if (SENSITIVE_FIELDS.has(key) || SENSITIVE_FIELDS.has(lowerKey)) {
+        sanitized[key] = REDACTED;
+      } else {
+        sanitized[key] = sanitizeLogData(value);
+      }
     }
   }
 

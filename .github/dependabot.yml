@@ -34,11 +34,6 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
-    # Ignore specific dependencies if needed
-    ignore:
-      # Example: ignore major version updates for specific packages
-      # - dependency-name: "express"
-      #   update-types: ["version-update:semver-major"]
     # Security updates priority
     versioning-strategy: increase
 
