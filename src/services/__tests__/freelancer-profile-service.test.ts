@@ -227,9 +227,15 @@ describe('Freelancer Profile Service - Skill Properties', () => {
           const addResult = await addSkillsToProfile(userId, skillInputs);
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
-          // Verify all skills were added
-          expect(addResult.data.skills.length).toBe(skillInputs.length);
-          for (const input of skillInputs) {
+          // Deduplicate by name (case-insensitive) to match service behavior
+          const uniqueSkills = Array.from(
+            new Map(
+              skillInputs.map(s => [s.name.trim().toLowerCase(), s])
+            ).values()
+          );
+          // Verify all unique skills were added
+          expect(addResult.data.skills.length).toBe(uniqueSkills.length);
+          for (const input of uniqueSkills) {
             const found = addResult.data.skills.find(
               s => s.name.toLowerCase() === input.name.trim().toLowerCase()
             );
