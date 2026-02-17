@@ -78,3 +78,9 @@ export const sensitiveRateLimiter = rateLimiter('sensitive', {
   maxRequests: 5, // 5 attempts per hour
   message: 'Too many attempts for this sensitive operation',
 });
+
+export const fileUploadRateLimiter = rateLimiter('file-upload', {
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 20, // 20 file uploads per hour (allows multiple proposals/evidence submissions)
+  message: 'Too many file uploads, please try again later',
+});

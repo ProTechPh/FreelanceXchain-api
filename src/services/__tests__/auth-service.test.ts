@@ -1,13 +1,25 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
-import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { config } from '../../config/env';
 import { UserEntity } from '../../repositories/user-repository';
 import { UserRole } from '../../models/user';
 import { RegisterInput, LoginInput, AuthResult, AuthError } from '../auth-types.js';
 import { generateId } from '../../utils/id.js';
+
+// Mock bcrypt to avoid native module issues with pnpm
+const bcrypt = {
+  hashSync: (password: string, _rounds: number): string => {
+    // Simple mock hash - just prefix with "hashed_" for testing
+    return `hashed_${password}`;
+  },
+  compareSync: (password: string, hash: string): boolean => {
+    // Compare against our mock hash format
+    return hash === `hashed_${password}`;
+  },
+};
+
 // In-memory user store for testing - uses entity type with snake_case
 let userStore: Map<string, UserEntity> = new Map();
 // Password store to verify login (email -> hashed password)

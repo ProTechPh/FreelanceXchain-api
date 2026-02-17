@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS proposals (
   project_id UUID REFERENCES projects(id) ON DELETE CASCADE,
   freelancer_id UUID REFERENCES users(id) ON DELETE CASCADE,
   cover_letter TEXT,
+  attachments JSONB DEFAULT '[]'::jsonb,
   proposed_rate DECIMAL(10, 2) DEFAULT 0,
   estimated_duration INTEGER DEFAULT 0,
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'withdrawn')),
@@ -90,6 +91,9 @@ CREATE TABLE IF NOT EXISTS proposals (
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   UNIQUE(project_id, freelancer_id)
 );
+
+COMMENT ON COLUMN proposals.attachments IS 'Array of file attachments with metadata: [{url, filename, size, mimeType}]';
+COMMENT ON COLUMN proposals.cover_letter IS 'Legacy text cover letter field - nullable for backward compatibility';
 
 -- Contracts table
 CREATE TABLE IF NOT EXISTS contracts (

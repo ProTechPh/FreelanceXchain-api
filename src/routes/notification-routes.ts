@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
+import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import {
   getNotificationsByUser,
@@ -80,7 +80,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/', authMiddleware, requireKyc, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -141,7 +141,7 @@ router.get('/', authMiddleware, requireKyc, async (req: Request, res: Response) 
  *       401:
  *         description: Unauthorized
  */
-router.get('/unread-count', authMiddleware, requireKyc, async (req: Request, res: Response) => {
+router.get('/unread-count', authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -201,7 +201,7 @@ router.get('/unread-count', authMiddleware, requireKyc, async (req: Request, res
  *       404:
  *         description: Notification not found
  */
-router.patch('/:id/read', authMiddleware, requireKyc, validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id/read', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
   const notificationId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -258,7 +258,7 @@ router.patch('/:id/read', authMiddleware, requireKyc, validateUUID(), async (req
  *       401:
  *         description: Unauthorized
  */
-router.patch('/read-all', authMiddleware, requireKyc, async (req: Request, res: Response) => {
+router.patch('/read-all', authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

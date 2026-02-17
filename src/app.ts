@@ -9,6 +9,7 @@ import {
   getAllowedOrigins,
   validateCorsOrigin
 } from './middleware/security-middleware.js';
+import { csrfProtection } from './middleware/csrf-middleware.js';
 import { swaggerSpec } from './config/swagger.js';
 import routes from './routes/index.js';
 
@@ -48,12 +49,15 @@ export function createApp(): Express {
       }
     },
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token'],
     credentials: true,
   }));
 
   // Request logging middleware
   app.use(requestLogger);
+
+  // CSRF protection middleware (after body parsing and logging)
+  app.use(csrfProtection);
 
   // Swagger documentation - dynamically set server URL based on request
   app.use('/api-docs', swaggerUi.serve, (req: Request, res: Response, next: NextFunction) => {

@@ -1,6 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireKyc, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { uploadProposalAttachments } from '../middleware/file-upload-middleware.js';
+import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
+import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
+import { STORAGE_BUCKETS } from '../config/supabase.js';
 import {
   submitProposal,
   getProposalById,
@@ -16,6 +20,27 @@ const router = Router();
  * @swagger
  * components:
  *   schemas:
+ *     FileAttachment:
+ *       type: object
+ *       required:
+ *         - url
+ *         - filename
+ *         - size
+ *         - mimeType
+ *       properties:
+ *         url:
+ *           type: string
+ *           format: uri
+ *           description: Supabase Storage URL of the uploaded file
+ *         filename:
+ *           type: string
+ *           description: Original filename
+ *         size:
+ *           type: number
+ *           description: File size in bytes
+ *         mimeType:
+ *           type: string
+ *           description: MIME type of the file
  *     Proposal:
  *       type: object
  *       properties:
@@ -27,6 +52,13 @@ const router = Router();
  *           type: string
  *         coverLetter:
  *           type: string
+ *           nullable: true
+ *           description: Legacy text cover letter (deprecated)
+ *         attachments:
+ *           type: array
+ *           items:
+ *             $ref: '#/components/schemas/FileAttachment'
+ *           description: File attachments (1-5 files)
  *         proposedRate:
  *           type: number
  *         estimatedDuration:
@@ -49,7 +81,7 @@ const router = Router();
  * /api/proposals:
  *   post:
  *     summary: Submit proposal
- *     description: Submit a proposal for a project (freelancer only)
+ *     description: Submit a proposal for a project with file attachments (freelancer only). Supports both multipart/form-data (server-side upload) and application/json (URL-reference pattern).
  *     tags:
  *       - Proposals
  *     security:
@@ -57,20 +89,51 @@ const router = Router();
  *     requestBody:
  *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - projectId
+ *               - proposedRate
+ *               - estimatedDuration
+ *               - files
+ *             properties:
+ *               projectId:
+ *                 type: string
+ *                 format: uuid
+ *               proposedRate:
+ *                 type: number
+ *                 minimum: 1
+ *               estimatedDuration:
+ *                 type: number
+ *                 minimum: 1
+ *                 description: Duration in days
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 minItems: 1
+ *                 maxItems: 5
+ *                 description: File attachments (1-5 files, max 10MB each, 25MB total)
  *         application/json:
  *           schema:
  *             type: object
  *             required:
  *               - projectId
- *               - coverLetter
+ *               - attachments
  *               - proposedRate
  *               - estimatedDuration
  *             properties:
  *               projectId:
  *                 type: string
- *               coverLetter:
- *                 type: string
- *                 minLength: 10
+ *               attachments:
+ *                 type: array
+ *                 minItems: 1
+ *                 maxItems: 5
+ *                 items:
+ *                   $ref: '#/components/schemas/FileAttachment'
+ *                 description: File attachments (URL-reference pattern for backward compatibility)
  *               proposedRate:
  *                 type: number
  *                 minimum: 1
@@ -94,18 +157,188 @@ const router = Router();
  *       409:
  *         description: Duplicate proposal
  */
-router.post('/', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
-  const { projectId, coverLetter, proposedRate, estimatedDuration } = req.body;
+router.post('/', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response, next) => {
+  const contentType = req.headers['content-type'] || '';
+  
+  // Route to appropriate handler based on Content-Type
+  if (contentType.includes('multipart/form-data')) {
+    // Server-side file upload pattern
+    return handleMultipartProposalSubmission(req, res, next);
+  } else {
+    // URL-reference pattern (backward compatibility)
+    return handleJsonProposalSubmission(req, res);
+  }
+});
+
+/**
+ * Handle proposal submission with multipart/form-data (server-side upload)
+ */
+async function handleMultipartProposalSubmission(req: Request, res: Response, next: any) {
+  // Apply rate limiting for file uploads
+  fileUploadRateLimiter(req, res, async (err?: any) => {
+    if (err || res.headersSent) return;
+    
+    // Apply file upload middleware
+    const middleware = uploadProposalAttachments;
+  
+    // Execute middleware array
+    let index = 0;
+    const executeMiddleware = async () => {
+      if (index >= middleware.length) {
+        // All middleware executed, now process the upload
+        return processMultipartProposal(req, res);
+      }
+      
+      const currentMiddleware = middleware[index++];
+      if (!currentMiddleware) return;
+      await new Promise<void>((resolve, reject) => {
+        currentMiddleware(req, res, (err?: any) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+      
+      return executeMiddleware();
+    };
+    
+    try {
+      await executeMiddleware();
+    } catch (error: any) {
+      // Middleware already sent response for validation errors
+      if (res.headersSent) return;
+      
+      // Handle unexpected errors
+      const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+      res.status(500).json({
+        error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+    }
+  });
+}
+
+/**
+ * Process multipart proposal after files are validated
+ */
+async function processMultipartProposal(req: Request, res: Response) {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-
+  
   if (!userId) {
-    res.status(401).json({
+    return res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
       timestamp: new Date().toISOString(),
       requestId,
     });
-    return;
+  }
+  
+  const files = req.files as Express.Multer.File[] | undefined;
+  const { projectId, proposedRate, estimatedDuration } = req.body;
+  
+  // Validate input
+  const errors: { field: string; message: string }[] = [];
+  if (!projectId || typeof projectId !== 'string') {
+    errors.push({ field: 'projectId', message: 'Project ID is required' });
+  } else if (!isValidUUID(projectId)) {
+    errors.push({ field: 'projectId', message: 'Project ID must be a valid UUID' });
+  }
+  
+  const rate = Number(proposedRate);
+  const duration = Number(estimatedDuration);
+  
+  if (isNaN(rate) || rate < 1) {
+    errors.push({ field: 'proposedRate', message: 'Proposed rate must be at least 1' });
+  }
+  if (isNaN(duration) || duration < 1) {
+    errors.push({ field: 'estimatedDuration', message: 'Estimated duration must be at least 1 day' });
+  }
+  
+  if (errors.length > 0) {
+    return res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
+  
+  if (!files || files.length === 0) {
+    return res.status(400).json({
+      error: { code: 'NO_FILES', message: 'At least 1 file is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
+  
+  // Upload files to Supabase Storage
+  const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS, userId);
+  
+  // Check for upload failures
+  const failedUploads = uploadResults.filter(r => !r.success);
+  if (failedUploads.length > 0) {
+    // Cleanup any successfully uploaded files
+    const successfulUploads = uploadResults.filter(r => r.success && r.metadata);
+    if (successfulUploads.length > 0) {
+      await cleanupUploadedFiles(
+        successfulUploads.map(r => r.metadata!),
+        STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS
+      );
+    }
+    
+    return res.status(500).json({
+      error: { 
+        code: 'UPLOAD_FAILED', 
+        message: 'Failed to upload one or more files',
+        details: failedUploads.map(r => r.error),
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
+  
+  // Extract file metadata
+  const attachments = uploadResults.map(r => r.metadata!);
+  
+  // Submit proposal with file metadata
+  const result = await submitProposal(userId, { 
+    projectId, 
+    attachments, 
+    proposedRate: rate, 
+    estimatedDuration: duration 
+  });
+  
+  if (!result.success) {
+    // Cleanup uploaded files if proposal submission fails
+    await cleanupUploadedFiles(attachments, STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS);
+    
+    let statusCode = 400;
+    if (result.error.code === 'NOT_FOUND') statusCode = 404;
+    if (result.error.code === 'DUPLICATE_PROPOSAL') statusCode = 409;
+    
+    return res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message, details: result.error.details },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
+  
+  return res.status(201).json(result.data.proposal);
+}
+
+/**
+ * Handle proposal submission with application/json (URL-reference pattern)
+ */
+async function handleJsonProposalSubmission(req: Request, res: Response) {
+  const { projectId, attachments, proposedRate, estimatedDuration } = req.body;
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    return res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
   }
 
   // Validate input
@@ -115,8 +348,8 @@ router.post('/', authMiddleware, requireKyc, requireRole('freelancer'), async (r
   } else if (!isValidUUID(projectId)) {
     errors.push({ field: 'projectId', message: 'Project ID must be a valid UUID' });
   }
-  if (!coverLetter || typeof coverLetter !== 'string' || coverLetter.trim().length < 10) {
-    errors.push({ field: 'coverLetter', message: 'Cover letter must be at least 10 characters' });
+  if (!attachments || !Array.isArray(attachments)) {
+    errors.push({ field: 'attachments', message: 'Attachments array is required' });
   }
   if (!proposedRate || typeof proposedRate !== 'number' || proposedRate < 1) {
     errors.push({ field: 'proposedRate', message: 'Proposed rate must be at least 1' });
@@ -126,31 +359,29 @@ router.post('/', authMiddleware, requireKyc, requireRole('freelancer'), async (r
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
+    return res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
       timestamp: new Date().toISOString(),
       requestId,
     });
-    return;
   }
 
-  const result = await submitProposal(userId, { projectId, coverLetter, proposedRate, estimatedDuration });
+  const result = await submitProposal(userId, { projectId, attachments, proposedRate, estimatedDuration });
 
   if (!result.success) {
     let statusCode = 400;
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'DUPLICATE_PROPOSAL') statusCode = 409;
     
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
+    return res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message, details: result.error.details },
       timestamp: new Date().toISOString(),
       requestId,
     });
-    return;
   }
 
-  res.status(201).json(result.data.proposal);
-});
+  return res.status(201).json(result.data.proposal);
+}
 
 
 /**
@@ -185,7 +416,7 @@ router.post('/', authMiddleware, requireKyc, requireRole('freelancer'), async (r
  *       404:
  *         description: Proposal not found
  */
-router.get('/:id', authMiddleware, requireKyc, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -225,7 +456,7 @@ router.get('/:id', authMiddleware, requireKyc, validateUUID(), async (req: Reque
  *       401:
  *         description: Unauthorized
  */
-router.get('/freelancer/me', authMiddleware, requireKyc, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -290,7 +521,7 @@ router.get('/freelancer/me', authMiddleware, requireKyc, requireRole('freelancer
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/accept', authMiddleware, requireKyc, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/accept', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -357,7 +588,7 @@ router.post('/:id/accept', authMiddleware, requireKyc, requireRole('employer'), 
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/reject', authMiddleware, requireKyc, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -422,7 +653,7 @@ router.post('/:id/reject', authMiddleware, requireKyc, requireRole('employer'), 
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/withdraw', authMiddleware, requireKyc, requireRole('freelancer'), validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), validateUUID(), async (req: Request, res: Response) => {
   const proposalId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
