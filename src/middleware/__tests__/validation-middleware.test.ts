@@ -164,20 +164,19 @@ describe('Validation Middleware - Property Tests', () => {
       fc.assert(
         fc.property(
           fc.string({ minLength: 1 }),
-          // Generate cover letters that are too short (less than 10 chars)
-          fc.string({ minLength: 0, maxLength: 9 }),
+          // Generate attachments array that is empty (invalid)
+          fc.constant([]),
           fc.integer({ min: 1 }),
           fc.integer({ min: 1 }),
-          (projectId, shortCoverLetter, proposedRate, estimatedDuration) => {
-            const data = { projectId, coverLetter: shortCoverLetter, proposedRate, estimatedDuration };
+          (projectId, emptyAttachments, proposedRate, estimatedDuration) => {
+            const data = { projectId, attachments: emptyAttachments, proposedRate, estimatedDuration };
             const result = validateRequest(data, getBodySchema(submitProposalSchema));
             // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have field-specific error for coverLetter
-            const coverLetterError = result.errors.find(e => e.field === 'coverLetter');
-            expect(coverLetterError).toBeDefined();
-            expect(coverLetterError?.message).toContain('coverLetter');
-            expect(coverLetterError?.message).toContain('10');
+            // Should have field-specific error for attachments
+            const attachmentsError = result.errors.find(e => e.field === 'attachments');
+            expect(attachmentsError).toBeDefined();
+            expect(attachmentsError?.message).toContain('attachments');
           }
         ),
         { numRuns: 100 }
@@ -313,11 +312,18 @@ describe('Validation Middleware - Property Tests', () => {
     it('should list all missing required fields for proposal submission', () => {
       fc.assert(
         fc.property(
-          fc.subarray(['projectId', 'coverLetter', 'proposedRate', 'estimatedDuration'], { minLength: 1 }),
+          fc.subarray(['projectId', 'attachments', 'proposedRate', 'estimatedDuration'], { minLength: 1 }),
           (fieldsToOmit) => {
             const fullData: Record<string, unknown> = {
               projectId: 'project-123',
-              coverLetter: 'This is my cover letter for the project',
+              attachments: [
+                {
+                  url: 'https://test.supabase.co/storage/v1/object/public/proposal-attachments/test.pdf',
+                  filename: 'proposal.pdf',
+                  size: 1048576,
+                  mimeType: 'application/pdf',
+                },
+              ],
               proposedRate: 50,
               estimatedDuration: 30,
             };

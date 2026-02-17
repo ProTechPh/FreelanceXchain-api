@@ -259,7 +259,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
         id: proposal.id,
         project_id: proposal.project_id || proposal.projectId,
         freelancer_id: proposal.freelancer_id || proposal.freelancerId,
-        cover_letter: proposal.cover_letter || proposal.coverLetter,
+        cover_letter: proposal.cover_letter || proposal.coverLetter || null,
+        attachments: proposal.attachments || [],
         proposed_rate: proposal.proposed_rate ?? proposal.proposedRate,
         estimated_duration: proposal.estimated_duration || proposal.estimatedDuration,
         status: proposal.status || 'pending',
@@ -277,7 +278,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
         id: proposal.id,
         project_id: (proposal as any).project_id || proposal.projectId,
         freelancer_id: (proposal as any).freelancer_id || proposal.freelancerId,
-        cover_letter: (proposal as any).cover_letter || proposal.coverLetter,
+        cover_letter: (proposal as any).cover_letter || proposal.coverLetter || null,
+        attachments: (proposal as any).attachments || proposal.attachments || [],
         proposed_rate: (proposal as any).proposed_rate ?? proposal.proposedRate,
         estimated_duration: (proposal as any).estimated_duration || proposal.estimatedDuration,
         status: proposal.status,
@@ -294,7 +296,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
             id: proposal.id,
             project_id: propProjectId,
             freelancer_id: propFreelancerId,
-            cover_letter: (proposal as any).cover_letter || proposal.coverLetter,
+            cover_letter: (proposal as any).cover_letter || proposal.coverLetter || null,
+            attachments: (proposal as any).attachments || proposal.attachments || [],
             proposed_rate: (proposal as any).proposed_rate ?? proposal.proposedRate,
             estimated_duration: (proposal as any).estimated_duration || proposal.estimatedDuration,
             status: proposal.status,
@@ -901,7 +904,14 @@ describe('Integration Tests - Critical Flows', () => {
       // Step 7: Freelancer submits a proposal
       const proposalResult = await submitProposal(freelancerId, {
         projectId: project.id,
-        coverLetter: 'I am an experienced TypeScript developer and would love to work on this project.',
+        attachments: [
+          {
+            url: 'https://test.supabase.co/storage/v1/object/public/proposal-attachments/test.pdf',
+            filename: 'proposal.pdf',
+            size: 1048576,
+            mimeType: 'application/pdf',
+          },
+        ],
         proposedRate: 70,
         estimatedDuration: 30,
       });

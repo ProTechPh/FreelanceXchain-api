@@ -26,6 +26,7 @@ import {
   resolveDisputeOnBlockchain,
 } from './dispute-registry.js';
 import { disputeAgreement } from './agreement-contract.js';
+import { logger } from '../config/logger.js';
 
 export type DisputeServiceError = {
   code: string;
@@ -166,10 +167,13 @@ export async function createDispute(
       });
 
       // Mark agreement as disputed on blockchain
-      await disputeAgreement(contractId, initiator.wallet_address);
+      await disputeAgreement(createdDispute.contractId, initiator.wallet_address);
     }
   } catch (error) {
-    console.error('Failed to record dispute on blockchain:', error);
+    logger.error('Failed to record dispute on blockchain', error as Error, {
+      disputeId: createdDispute.id,
+      contractId: createdDispute.contractId,
+    });
   }
 
   // Update milestone status to disputed
@@ -286,7 +290,10 @@ export async function submitEvidence(
       await updateDisputeEvidence(disputeId, evidenceData, submitter.wallet_address);
     }
   } catch (error) {
-    console.error('Failed to update evidence on blockchain:', error);
+    logger.error('Failed to update evidence on blockchain', error as Error, {
+      disputeId,
+      evidenceId: updatedEvidence[updatedEvidence.length - 1]?.id,
+    });
   }
 
   return { success: true, data: mapDisputeFromEntity(updatedDisputeEntity) };
@@ -382,6 +389,10 @@ export async function resolveDispute(
       }
     }
   } catch (error) {
+    logger.error('Failed to process payment for dispute resolution', error as Error, {
+      disputeId,
+      decision: input.decision,
+    });
     console.error('Failed to process payment for dispute resolution:', error);
     // Continue with resolution even if payment fails
   }
@@ -428,7 +439,10 @@ export async function resolveDispute(
       });
     }
   } catch (error) {
-    console.error('Failed to record dispute resolution on blockchain:', error);
+    logger.error('Failed to record dispute resolution on blockchain', error as Error, {
+      disputeId,
+      decision: input.decision,
+    });
   }
 
   // Send notifications to both parties

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole, requireKyc } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import {
   getEmployerProfileByUserId,
@@ -80,7 +80,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/projects', authMiddleware, requireKyc, requireRole('employer'), async (req: Request, res: Response) => {
+router.get('/projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
@@ -136,7 +136,7 @@ router.get('/projects', authMiddleware, requireKyc, requireRole('employer'), asy
  *       404:
  *         description: Profile not found
  */
-router.get('/profile', authMiddleware, requireKyc, requireRole('employer'), async (req: Request, res: Response) => {
+router.get('/profile', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -201,7 +201,7 @@ router.get('/profile', authMiddleware, requireKyc, requireRole('employer'), asyn
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireKyc, requireRole('employer'), async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
   const { companyName, description, industry } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

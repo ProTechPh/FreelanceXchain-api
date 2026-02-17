@@ -277,13 +277,16 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
 }
 
 // Proposal mapping
+import { FileAttachment } from './file-validator.js';
+
 export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
 
 export type Proposal = {
   id: string;
   projectId: string;
   freelancerId: string;
-  coverLetter: string;
+  coverLetter: string | null;
+  attachments: FileAttachment[];
   proposedRate: number;
   estimatedDuration: number;
   status: ProposalStatus;
@@ -300,6 +303,7 @@ export function mapProposalFromEntity(entity: ProposalEntity): Proposal {
     projectId: entity.project_id,
     freelancerId: entity.freelancer_id,
     coverLetter: entity.cover_letter,
+    attachments: entity.attachments || [],
     proposedRate: entity.proposed_rate,
     estimatedDuration: entity.estimated_duration,
     status: entity.status,

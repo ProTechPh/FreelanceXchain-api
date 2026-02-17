@@ -6,6 +6,94 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [Unreleased]
+
+### Added
+
+#### Server-Side File Upload Validation (IAS Checklist Completion)
+- **Multer Middleware**: Implemented server-side file upload handling with `file-upload-middleware.ts`
+  - Memory storage for processing before Supabase upload
+  - Extension-based file type filtering (first line of defense)
+  - Magic number validation using `file-type` library (prevents MIME spoofing)
+  - File size validation (10MB per file, 25MB total)
+  - File count validation (1-5 files for proposals, 1-10 for disputes)
+  - Filename sanitization (removes special characters, prevents path traversal)
+  - Comprehensive error handling with detailed error messages
+- **Storage Uploader Utility**: Created `storage-uploader.ts` for Supabase Storage integration
+  - Uploads validated files from memory to Supabase Storage
+  - Generates unique filenames with UUID prefix
+  - Returns file metadata (URL, filename, size, MIME type)
+  - Cleanup functions for failed transactions
+  - File path extraction from URLs
+- **Rate Limiting**: Added `fileUploadRateLimiter` (20 uploads per hour per user)
+- **Dual Upload Patterns**: Both endpoints now support two upload methods:
+  - **Server-Side Upload** (Recommended): `multipart/form-data` with full validation
+  - **URL Reference** (Legacy): `application/json` with pre-uploaded file URLs
+- **Security Validations**: 5-layer defense-in-depth approach
+  1. Extension validation (multer file filter)
+  2. Magic number validation (file signature detection)
+  3. Size and count limits
+  4. Filename sanitization
+  5. Rate limiting
+- **Test Coverage**: Created comprehensive test suite with 35 passing tests
+  - Filename sanitization (path traversal, special characters, unicode)
+  - File size constants validation
+  - Path traversal prevention
+  - Null byte injection prevention
+  - Edge case handling
+- **IAS Checklist**: Marked "File upload validation (type + size)" as complete ✅
+
+#### Proposal File Attachments
+- **File Upload Support**: Proposals now support file attachments (1-5 files) instead of text-based cover letters.
+- **Allowed File Types**: 
+  - Documents: PDF, DOCX, DOC, TXT
+  - Images: PNG, JPG, JPEG, GIF
+- **File Size Limits**: 10MB per file, 25MB total per proposal
+- **URL Reference Pattern**: Clients upload files to Supabase Storage first, then submit file metadata (URL, filename, size, MIME type) to the API
+- **New Validation**: Added comprehensive file validation utility (`file-validator.ts`) that validates:
+  - File count (1-5 required)
+  - File types (MIME type and extension whitelist)
+  - File sizes (per file and total)
+  - URL format and domain (must be from Supabase Storage)
+- **Database Schema**: Added `attachments` JSONB column to proposals table, made `cover_letter` nullable for backward compatibility
+- **Storage Configuration**: Added `STORAGE_BUCKETS` constant and storage bucket configuration to environment
+- **Documentation**: Updated `docs/PROPOSAL_FILE_UPLOADS.md` with:
+  - Both upload patterns (server-side and URL reference)
+  - HTML and React implementation examples
+  - Security considerations for both approaches
+  - API usage for multipart/form-data requests
+
+### Changed
+- **Proposal Submission**: `POST /api/proposals` now accepts both:
+  - `multipart/form-data` with files (server-side upload)
+  - `application/json` with attachments array (URL reference)
+- **Dispute Evidence**: `POST /api/disputes/:disputeId/evidence` now accepts both:
+  - `multipart/form-data` with single file (server-side upload)
+  - `application/json` with type and content (URL reference)
+- **Proposal Schema**: Updated `Proposal` type to include `attachments: FileAttachment[]` and made `coverLetter` nullable
+- **API Documentation**: Updated Swagger/OpenAPI specs to reflect both upload patterns
+- **Validation Schema**: Updated `submitProposalSchema` to validate attachments array instead of cover letter text
+- **File Validator**: Exported constants (ALLOWED_MIME_TYPES, MAX_FILE_SIZE, etc.) for reuse across middleware
+
+### Security
+- **Magic Number Validation**: Prevents MIME type spoofing by validating file signatures
+- **Filename Sanitization**: Prevents path traversal attacks (../, ..\, absolute paths)
+- **Rate Limiting**: Prevents abuse with 20 uploads per hour per user
+- **Null Byte Injection**: Removes null bytes from filenames
+- **Defense-in-Depth**: Multiple validation layers ensure comprehensive security
+
+### Migration
+- **Database Migration**: Created migration file `20260218000000_add_proposal_attachments.sql` to add attachments column
+- **Backward Compatibility**: Existing proposals with text cover letters remain accessible; `cover_letter` field is nullable
+- **Gradual Migration**: Both upload patterns supported to allow gradual client migration
+
+### Dependencies
+- Added `multer@^1.4.5-lts.1` for multipart/form-data handling
+- Added `file-type@16.5.4` for magic number validation
+- Added `@types/multer@^2.0.0` for TypeScript support
+
+---
+
 ## [2.5.1] - 2026-01-02
 
 ### Fixed

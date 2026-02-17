@@ -105,8 +105,6 @@ jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), ()
 // Import after mocking
 const { submitProposal, acceptProposal, rejectProposal } = await import('../proposal-service.js');
 // Custom arbitraries for property-based testing
-const validCoverLetterArbitrary = () =>
-  fc.string({ minLength: 10, maxLength: 500 }).filter(s => s.trim().length >= 10);
 const validProposedRateArbitrary = () =>
   fc.integer({ min: 10, max: 10000 });
 const validEstimatedDurationArbitrary = () =>
@@ -147,10 +145,9 @@ describe('Proposal Service - Property Tests', () => {
       fc.asyncProperty(
         fc.uuid(),
         fc.uuid(),
-        validCoverLetterArbitrary(),
         validProposedRateArbitrary(),
         validEstimatedDurationArbitrary(),
-        async (freelancerId, employerId, coverLetter, proposedRate, estimatedDuration) => {
+        async (freelancerId, employerId, proposedRate, estimatedDuration) => {
           // Clear stores for each test case
           proposalStore.clear();
           contractStore.clear();
@@ -159,9 +156,9 @@ describe('Proposal Service - Property Tests', () => {
           const project = createTestProject(employerId);
           const input = {
             projectId: project.id,
-            coverLetter,
             proposedRate,
             estimatedDuration,
+            attachments: [],
           };
           const result = await submitProposal(freelancerId, input);
           // Should succeed
@@ -170,7 +167,7 @@ describe('Proposal Service - Property Tests', () => {
             // Verify proposal was created with correct data
             expect(result.data.proposal.projectId).toBe(project.id);
             expect(result.data.proposal.freelancerId).toBe(freelancerId);
-            expect(result.data.proposal.coverLetter).toBe(coverLetter);
+            expect(result.data.proposal.coverLetter).toBeNull();
             expect(result.data.proposal.proposedRate).toBe(proposedRate);
             expect(result.data.proposal.estimatedDuration).toBe(estimatedDuration);
             expect(result.data.proposal.status).toBe('pending');
@@ -201,19 +198,15 @@ describe('Proposal Service - Property Tests', () => {
       fc.asyncProperty(
         fc.uuid(),
         fc.uuid(),
-        validCoverLetterArbitrary(),
         validProposedRateArbitrary(),
         validEstimatedDurationArbitrary(),
-        validCoverLetterArbitrary(),
         validProposedRateArbitrary(),
         validEstimatedDurationArbitrary(),
         async (
           freelancerId,
           employerId,
-          coverLetter1,
           proposedRate1,
           estimatedDuration1,
-          coverLetter2,
           proposedRate2,
           estimatedDuration2
         ) => {
@@ -226,9 +219,9 @@ describe('Proposal Service - Property Tests', () => {
           // First proposal should succeed
           const firstInput = {
             projectId: project.id,
-            coverLetter: coverLetter1,
             proposedRate: proposedRate1,
             estimatedDuration: estimatedDuration1,
+            attachments: [],
           };
           const firstResult = await submitProposal(freelancerId, firstInput);
           expect(firstResult.success).toBe(true);
@@ -237,9 +230,9 @@ describe('Proposal Service - Property Tests', () => {
           // Second proposal from same freelancer should fail
           const secondInput = {
             projectId: project.id,
-            coverLetter: coverLetter2,
             proposedRate: proposedRate2,
             estimatedDuration: estimatedDuration2,
+            attachments: [],
           };
           const secondResult = await submitProposal(freelancerId, secondInput);
           // Should be a duplicate proposal error
@@ -266,10 +259,9 @@ describe('Proposal Service - Property Tests', () => {
       fc.asyncProperty(
         fc.uuid(),
         fc.uuid(),
-        validCoverLetterArbitrary(),
         validProposedRateArbitrary(),
         validEstimatedDurationArbitrary(),
-        async (freelancerId, employerId, coverLetter, proposedRate, estimatedDuration) => {
+        async (freelancerId, employerId, proposedRate, estimatedDuration) => {
           // Clear stores for each test case
           proposalStore.clear();
           contractStore.clear();
@@ -279,9 +271,9 @@ describe('Proposal Service - Property Tests', () => {
           // Submit a proposal
           const input = {
             projectId: project.id,
-            coverLetter,
             proposedRate,
             estimatedDuration,
+            attachments: [],
           };
           const submitResult = await submitProposal(freelancerId, input);
           expect(submitResult.success).toBe(true);
@@ -328,10 +320,9 @@ describe('Proposal Service - Property Tests', () => {
       fc.asyncProperty(
         fc.uuid(),
         fc.uuid(),
-        validCoverLetterArbitrary(),
         validProposedRateArbitrary(),
         validEstimatedDurationArbitrary(),
-        async (freelancerId, employerId, coverLetter, proposedRate, estimatedDuration) => {
+        async (freelancerId, employerId, proposedRate, estimatedDuration) => {
           // Clear stores for each test case
           proposalStore.clear();
           contractStore.clear();
@@ -341,9 +332,9 @@ describe('Proposal Service - Property Tests', () => {
           // Submit a proposal
           const input = {
             projectId: project.id,
-            coverLetter,
             proposedRate,
             estimatedDuration,
+            attachments: [],
           };
           const submitResult = await submitProposal(freelancerId, input);
           expect(submitResult.success).toBe(true);

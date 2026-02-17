@@ -10,12 +10,24 @@ import {
   DiditVerificationDecisionResponse,
   DiditApiError,
 } from '../models/didit-kyc.js';
+import { logger } from '../config/logger.js';
+import { validateUrl, sanitizeSessionId } from '../utils/url-validator.js';
 
 const DIDIT_API_KEY = process.env['DIDIT_API_KEY'];
 const DIDIT_API_URL = process.env['DIDIT_API_URL'] ?? 'https://verification.didit.me';
 
 if (!DIDIT_API_KEY) {
-  console.warn('DIDIT_API_KEY not configured. KYC verification will not work.');
+  logger.warn('DIDIT_API_KEY not configured. KYC verification will not work.');
+}
+
+// Validate the Didit API URL on startup
+const urlValidation = validateUrl(DIDIT_API_URL);
+if (!urlValidation.valid) {
+  logger.error('Invalid DIDIT_API_URL configuration', undefined, {
+    url: DIDIT_API_URL,
+    error: urlValidation.error,
+  });
+  throw new Error(`Invalid DIDIT_API_URL: ${urlValidation.error}`);
 }
 
 type DiditClientResult<T> = { success: true; data: T } | { success: false; error: DiditApiError };
@@ -69,7 +81,10 @@ export async function getVerificationDecision(
   sessionId: string
 ): Promise<DiditClientResult<DiditVerificationDecisionResponse>> {
   try {
-    const response = await fetch(`${DIDIT_API_URL}/v2/session/${sessionId}/decision/`, {
+    // Sanitize session ID to prevent SSRF attacks
+    const sanitizedSessionId = sanitizeSessionId(sessionId);
+    
+    const response = await fetch(`${DIDIT_API_URL}/v2/session/${sanitizedSessionId}/decision/`, {
       method: 'GET',
       headers: {
         'X-Api-Key': DIDIT_API_KEY ?? '',
@@ -79,6 +94,11 @@ export async function getVerificationDecision(
     const data = await response.json();
 
     if (!response.ok) {
+      logger.warn('Didit API returned error for verification decision', {
+        sessionId: sanitizedSessionId,
+        status: response.status,
+      });
+      
       return {
         success: false,
         error: data as DiditApiError,
@@ -90,6 +110,10 @@ export async function getVerificationDecision(
       data: data as DiditVerificationDecisionResponse,
     };
   } catch (error) {
+    logger.error('Failed to get verification decision', error as Error, {
+      sessionId,
+    });
+    
     return {
       success: false,
       error: {
@@ -102,14 +126,12 @@ export async function getVerificationDecision(
   }
 }
 
-/**
- * Retrieve session details
- */
-export async function getSessionDetails(
-  sessionId: string
-): Promise<DiditClientResult<DiditCreateSessionResponse>> {
+export async function getVerificationSession(sessionId: string): Promise<DiditClientResult<DiditCreateSessionResponse>> {
   try {
-    const response = await fetch(`${DIDIT_API_URL}/v2/session/${sessionId}/`, {
+    // Sanitize session ID to prevent SSRF attacks
+    const sanitizedSessionId = sanitizeSessionId(sessionId);
+    
+    const response = await fetch(`${DIDIT_API_URL}/v2/session/${sanitizedSessionId}/`, {
       method: 'GET',
       headers: {
         'X-Api-Key': DIDIT_API_KEY ?? '',
@@ -119,7 +141,13 @@ export async function getSessionDetails(
     // Check if response is JSON
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
-      console.error('Didit API returned non-JSON response:', await response.text());
+      const responseText = await response.text();
+      logger.error('Didit API returned non-JSON response', undefined, {
+        sessionId: sanitizedSessionId,
+        contentType,
+        responsePreview: responseText.substring(0, 200),
+      });
+      
       return {
         success: false,
         error: {
@@ -134,6 +162,11 @@ export async function getSessionDetails(
     const data = await response.json();
 
     if (!response.ok) {
+      logger.warn('Didit API returned error for session details', {
+        sessionId: sanitizedSessionId,
+        status: response.status,
+      });
+      
       return {
         success: false,
         error: data as DiditApiError,
@@ -145,13 +178,16 @@ export async function getSessionDetails(
       data: data as DiditCreateSessionResponse,
     };
   } catch (error) {
-    console.error('Failed to get session details:', error);
+    logger.error('Failed to get session details', error as Error, {
+      sessionId,
+    });
+    
     return {
       success: false,
       error: {
         error: {
           code: 'NETWORK_ERROR',
-          message: error instanceof Error ? error.message : 'Failed to connect to Didit API. Please check your network connection and API configuration.',
+          message: error instanceof Error ? error.message : 'Failed to connect to Didit API',
         },
       },
     };
@@ -170,12 +206,16 @@ export function verifyWebhookSignature(
   const secret = process.env['DIDIT_WEBHOOK_SECRET'];
   
   if (!secret) {
-    console.warn('DIDIT_WEBHOOK_SECRET not configured - skipping signature verification');
+    logger.warn('DIDIT_WEBHOOK_SECRET not configured - skipping signature verification');
     return true; // Allow in development if not configured
   }
 
   if (!signature || !timestamp) {
-    console.warn('Missing signature or timestamp headers - skipping verification in development');
+    logger.warn('Missing signature or timestamp headers', {
+      hasSignature: !!signature,
+      hasTimestamp: !!timestamp,
+      nodeEnv: process.env['NODE_ENV'],
+    });
     return process.env['NODE_ENV'] !== 'production';
   }
 
@@ -185,7 +225,11 @@ export function verifyWebhookSignature(
   const fiveMinutes = 5 * 60;
   
   if (Math.abs(now - timestampNum) > fiveMinutes) {
-    console.error('Webhook timestamp too old or in future');
+    logger.security('Webhook timestamp too old or in future', {
+      timestamp: timestampNum,
+      now,
+      difference: Math.abs(now - timestampNum),
+    });
     return false;
   }
 
@@ -211,9 +255,10 @@ export function verifyWebhookSignature(
     }
   }
 
-  // Log for debugging
-  console.log('Signature verification failed. Received signature:', signature);
-  console.log('Timestamp:', timestamp);
+  // Log signature verification failure
+  logger.security('Webhook signature verification failed', {
+    timestampAge: Math.abs(now - timestampNum),
+  });
   
   return false;
 }

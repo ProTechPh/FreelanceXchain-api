@@ -20,7 +20,12 @@ export const TABLES = {
   PAYMENTS: 'payments',
 } as const;
 
+export const STORAGE_BUCKETS = {
+  PROPOSAL_ATTACHMENTS: 'proposal-attachments',
+} as const;
+
 export type TableName = typeof TABLES[keyof typeof TABLES];
+export type StorageBucketName = typeof STORAGE_BUCKETS[keyof typeof STORAGE_BUCKETS];
 
 export function getSupabaseClient(): SupabaseClient {
   if (!supabaseClient) {

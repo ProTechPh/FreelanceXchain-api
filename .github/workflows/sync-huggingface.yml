@@ -12,6 +12,11 @@ jobs:
       name: production
       url: https://protechph-freelancexchain.hf.space
     steps:
+      - name: Harden-Runner
+        uses: step-security/harden-runner@v2.12.0
+        with:
+          egress-policy: audit
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -22,5 +27,8 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          git remote add huggingface https://ProTechPh:$HF_TOKEN@huggingface.co/spaces/ProTechPh/FreelanceXchain
+          git config --global credential.helper store
+          echo "https://ProTechPh:${HF_TOKEN}@huggingface.co" > ~/.git-credentials
+          git remote add huggingface https://huggingface.co/spaces/ProTechPh/FreelanceXchain
           git push huggingface main --force
+          rm -f ~/.git-credentials

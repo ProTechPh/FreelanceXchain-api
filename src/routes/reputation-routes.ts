@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
+import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import {
   submitRating,
@@ -185,7 +185,7 @@ router.get('/:userId', validateUUID(['userId']), async (req: Request, res: Respo
  *       409:
  *         description: Duplicate rating
  */
-router.post('/rate', authMiddleware, requireKyc, async (req: Request, res: Response) => {
+router.post('/rate', authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -367,7 +367,7 @@ router.get('/:userId/history', validateUUID(['userId']), async (req: Request, re
  *       401:
  *         description: Unauthorized
  */
-router.get('/can-rate', authMiddleware, requireKyc, async (req: Request, res: Response) => {
+router.get('/can-rate', authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

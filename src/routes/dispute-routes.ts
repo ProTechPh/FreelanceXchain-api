@@ -5,6 +5,12 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
+import { authMiddleware } from '../middleware/auth-middleware.js';
+import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { uploadDisputeEvidence } from '../middleware/file-upload-middleware.js';
+import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
+import { uploadFileToStorage, cleanupUploadedFiles } from '../utils/storage-uploader.js';
+import { STORAGE_BUCKETS } from '../config/supabase.js';
 import {
   createDispute,
   submitEvidence,
@@ -13,8 +19,6 @@ import {
   getDisputesByContract,
   getAllDisputes,
 } from '../services/dispute-service.js';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 
 const router = Router();
 
@@ -159,7 +163,6 @@ const router = Router();
 router.get(
   '/',
   authMiddleware,
-  requireKyc,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -225,7 +228,6 @@ router.get(
 router.post(
   '/',
   authMiddleware,
-  requireKyc,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -335,7 +337,6 @@ router.post(
 router.get(
   '/:disputeId',
   authMiddleware,
-  requireKyc,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -369,7 +370,7 @@ router.get(
  * /api/disputes/{disputeId}/evidence:
  *   post:
  *     summary: Submit evidence for a dispute
- *     description: Submit evidence to support a dispute case
+ *     description: Submit evidence to support a dispute case. Supports both multipart/form-data (server-side upload) and application/json (URL-reference pattern).
  *     tags: [Disputes]
  *     security:
  *       - bearerAuth: []
@@ -384,6 +385,25 @@ router.get(
  *     requestBody:
  *       required: true
  *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - type
+ *               - files
+ *             properties:
+ *               type:
+ *                 type: string
+ *                 enum: [file]
+ *                 description: Must be 'file' for multipart uploads
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 minItems: 1
+ *                 maxItems: 1
+ *                 description: Single file upload (max 10MB)
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/SubmitEvidenceRequest'
@@ -406,59 +426,199 @@ router.get(
 router.post(
   '/:disputeId/evidence',
   authMiddleware,
-  requireKyc,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const userId = req.user?.userId;
-      const disputeId = req.params['disputeId'] ?? '';
-      const { type, content } = req.body as {
-        type?: 'text' | 'file' | 'link';
-        content?: string;
-      };
-
-      if (!userId) {
-        res.status(401).json({
-          error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        });
-        return;
-      }
-
-      if (!type || !['text', 'file', 'link'].includes(type)) {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'type must be one of: text, file, link' },
-        });
-        return;
-      }
-
-      if (!content || typeof content !== 'string') {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'content is required' },
-        });
-        return;
-      }
-
-      const result = await submitEvidence({
-        disputeId,
-        submitterId: userId,
-        type,
-        content,
-      });
-
-      if (!result.success) {
-        const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
-                          result.error.code === 'UNAUTHORIZED' ? 403 :
-                          result.error.code === 'INVALID_STATUS' ? 400 : 400;
-        res.status(statusCode).json({ error: result.error });
-        return;
-      }
-
-      res.json(result.data);
-    } catch (error) {
-      next(error);
+    const contentType = req.headers['content-type'] || '';
+    
+    // Route to appropriate handler based on Content-Type
+    if (contentType.includes('multipart/form-data')) {
+      // Server-side file upload pattern
+      return handleMultipartEvidenceSubmission(req, res, next);
+    } else {
+      // URL-reference pattern (backward compatibility)
+      return handleJsonEvidenceSubmission(req, res, next);
     }
   }
 );
+
+/**
+ * Handle evidence submission with multipart/form-data (server-side upload)
+ */
+async function handleMultipartEvidenceSubmission(req: Request, res: Response, next: NextFunction) {
+  // Apply rate limiting for file uploads
+  fileUploadRateLimiter(req, res, async (err?: any) => {
+    if (err || res.headersSent) return;
+    
+    // Apply file upload middleware (single file for evidence)
+    const middleware = uploadDisputeEvidence;
+  
+  // Execute middleware array
+  let index = 0;
+  const executeMiddleware = async () => {
+    if (index >= middleware.length) {
+      // All middleware executed, now process the upload
+      return processMultipartEvidence(req, res, next);
+    }
+    
+    const currentMiddleware = middleware[index++];
+    if (!currentMiddleware) return;
+    await new Promise<void>((resolve, reject) => {
+      currentMiddleware(req, res, (err?: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    return executeMiddleware();
+  };
+  
+  try {
+    await executeMiddleware();
+  } catch (error: any) {
+    // Middleware already sent response for validation errors
+    if (res.headersSent) return;
+    
+    // Handle unexpected errors
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
+    });
+  }
+  });
+}
+
+/**
+ * Process multipart evidence after file is validated
+ */
+async function processMultipartEvidence(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user?.userId;
+    const disputeId = req.params['disputeId'] ?? '';
+    const files = req.files as Express.Multer.File[] | undefined;
+    const { type } = req.body;
+
+    if (!userId) {
+      res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      });
+      return;
+    }
+
+    if (!files || files.length === 0) {
+      res.status(400).json({
+        error: { code: 'NO_FILES', message: 'At least 1 file is required' },
+      });
+      return;
+    }
+
+    // For evidence, we typically upload one file at a time
+    const file = files[0];
+    if (!file) {
+      res.status(400).json({
+        error: { code: 'NO_FILES', message: 'At least 1 file is required' },
+      });
+      return;
+    }
+    const mimeType = (file as any).detectedMimeType || file.mimetype;
+    
+    // Upload file to Supabase Storage
+    const uploadResult = await uploadFileToStorage(
+      file.buffer,
+      file.originalname,
+      mimeType,
+      STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS, // Reuse proposal attachments bucket
+      `evidence/${disputeId}`
+    );
+    
+    if (!uploadResult.success) {
+      res.status(500).json({
+        error: { 
+          code: 'UPLOAD_FAILED', 
+          message: uploadResult.error || 'Failed to upload file',
+        },
+      });
+      return;
+    }
+    
+    // Submit evidence with file URL as content
+    const result = await submitEvidence({
+      disputeId,
+      submitterId: userId,
+      type: 'file',
+      content: uploadResult.metadata!.url,
+    });
+
+    if (!result.success) {
+      // Cleanup uploaded file if evidence submission fails
+      if (uploadResult.metadata) {
+        await cleanupUploadedFiles([uploadResult.metadata], STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS);
+      }
+      
+      const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
+                        result.error.code === 'UNAUTHORIZED' ? 403 :
+                        result.error.code === 'INVALID_STATUS' ? 400 : 400;
+      res.status(statusCode).json({ error: result.error });
+      return;
+    }
+
+    res.json(result.data);
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * Handle evidence submission with application/json (URL-reference pattern)
+ */
+async function handleJsonEvidenceSubmission(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user?.userId;
+    const disputeId = req.params['disputeId'] ?? '';
+    const { type, content } = req.body as {
+      type?: 'text' | 'file' | 'link';
+      content?: string;
+    };
+
+    if (!userId) {
+      res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      });
+      return;
+    }
+
+    if (!type || !['text', 'file', 'link'].includes(type)) {
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'type must be one of: text, file, link' },
+      });
+      return;
+    }
+
+    if (!content || typeof content !== 'string') {
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'content is required' },
+      });
+      return;
+    }
+
+    const result = await submitEvidence({
+      disputeId,
+      submitterId: userId,
+      type,
+      content,
+    });
+
+    if (!result.success) {
+      const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
+                        result.error.code === 'UNAUTHORIZED' ? 403 :
+                        result.error.code === 'INVALID_STATUS' ? 400 : 400;
+      res.status(statusCode).json({ error: result.error });
+      return;
+    }
+
+    res.json(result.data);
+  } catch (error) {
+    next(error);
+  }
+}
 
 
 /**
@@ -503,7 +663,6 @@ router.post(
 router.post(
   '/:disputeId/resolve',
   authMiddleware,
-  requireKyc,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -605,7 +764,6 @@ router.post(
 router.get(
   '/contracts/:contractId/disputes',
   authMiddleware,
-  requireKyc,
   validateUUID(['contractId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

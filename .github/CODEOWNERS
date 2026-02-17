@@ -1,0 +1,41 @@
+# CODEOWNERS file for FreelanceXchain API
+# These owners will be requested for review when someone opens a pull request
+# that modifies files matching the patterns below
+
+# Default owners for everything in the repo
+* @ProTechPh
+
+# Security-sensitive paths require additional review
+# GitHub Actions workflows - CI/CD security
+/.github/workflows/ @ProTechPh
+/.github/dependabot.yml @ProTechPh
+
+# Smart contracts - blockchain security
+/contracts/ @ProTechPh
+/hardhat.config.cjs @ProTechPh
+/scripts/deploy*.* @ProTechPh
+
+# Authentication and authorization
+/src/middleware/auth-middleware.ts @ProTechPh
+/src/middleware/csrf-middleware.ts @ProTechPh
+/src/middleware/rate-limiter.ts @ProTechPh
+
+# Configuration files - sensitive settings
+/src/config/ @ProTechPh
+/.env.example @ProTechPh
+
+# Container and deployment
+/Dockerfile @ProTechPh
+/deployment.json @ProTechPh
+
+# Database schema and migrations
+/supabase/schema.sql @ProTechPh
+/supabase/migrations/ @ProTechPh
+
+# Security documentation
+/docs/SECURITY_IMPLEMENTATION.md @ProTechPh
+/docs/OWASP_TOP_10_VALIDATION_REPORT.md @ProTechPh
+
+# Dependencies
+/package.json @ProTechPh
+/pnpm-lock.yaml @ProTechPh

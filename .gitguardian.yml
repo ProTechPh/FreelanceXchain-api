@@ -1,0 +1,12 @@
+# GitGuardian configuration
+# Exclude test files that contain intentional fake credentials for testing sanitization
+
+version: 2
+
+paths-ignore:
+  # Test files with fake credentials used to verify sanitization works
+  - "**/__tests__/**"
+  - "**/*.test.ts"
+  - "**/*.test.js"
+  - "**/test-utils/**"
+  - "**/fixtures/**"

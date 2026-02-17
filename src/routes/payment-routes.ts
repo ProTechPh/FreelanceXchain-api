@@ -11,7 +11,7 @@ import {
   disputeMilestone,
   getContractPaymentStatus,
 } from '../services/payment-service.js';
-import { authMiddleware, requireKyc } from '../middleware/auth-middleware.js';
+import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 
 const router = Router();
@@ -136,7 +136,6 @@ const router = Router();
 router.post(
   '/milestones/:milestoneId/complete',
   authMiddleware,
-  requireKyc,
   validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -220,7 +219,6 @@ router.post(
 router.post(
   '/milestones/:milestoneId/approve',
   authMiddleware,
-  requireKyc,
   validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -310,7 +308,6 @@ router.post(
 router.post(
   '/milestones/:milestoneId/dispute',
   authMiddleware,
-  requireKyc,
   validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -396,7 +393,6 @@ router.post(
 router.get(
   '/contracts/:contractId/status',
   authMiddleware,
-  requireKyc,
   validateUUID(['contractId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
