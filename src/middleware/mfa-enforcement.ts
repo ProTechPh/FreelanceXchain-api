@@ -1,6 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
 import { getMFAFactors } from '../services/auth-service.js';
 import { logger } from '../config/logger.js';
+import { UserRole } from '../models/user.js';
+
+type ValidatedUser = {
+  userId: string;
+  email: string;
+  role: UserRole;
+};
+
+// Extend Express Request to include user info
+declare global {
+  namespace Express {
+    interface Request {
+      user?: ValidatedUser;
+    }
+  }
+}
 
 /**
  * Middleware to enforce MFA for admin and arbitrator roles
