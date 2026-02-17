@@ -1,13 +1,16 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { TABLES } from '../config/supabase.js';
 
+import { FileAttachment } from '../utils/file-validator.js';
+
 export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
 
 export type ProposalEntity = {
   id: string;
   project_id: string;
   freelancer_id: string;
-  cover_letter: string;
+  cover_letter: string | null;
+  attachments: FileAttachment[];
   proposed_rate: number;
   estimated_duration: number;
   status: ProposalStatus;

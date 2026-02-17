@@ -16,6 +16,11 @@ jobs:
   compile-and-test:
     runs-on: ubuntu-latest
     steps:
+      - name: Harden-Runner
+        uses: step-security/harden-runner@v2.12.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@v4
 
       - name: Setup pnpm
@@ -37,16 +42,20 @@ jobs:
 
       - name: Run Hardhat tests
         run: pnpm dlx hardhat test
-        continue-on-error: true
 
   slither:
     runs-on: ubuntu-latest
     steps:
+      - name: Harden-Runner
+        uses: step-security/harden-runner@v2.12.0
+        with:
+          egress-policy: audit
+
       - uses: actions/checkout@v4
 
       - name: Run Slither
         uses: crytic/slither-action@v0.4.0
-        continue-on-error: true
         with:
           target: 'contracts/'
           slither-args: '--exclude-dependencies'
+          fail-on: high

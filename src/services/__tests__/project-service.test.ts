@@ -95,6 +95,7 @@ function addAcceptedProposal(projectId: string, freelancerId: string): ProposalE
     proposed_rate: 50,
     estimated_duration: 30,
     status: 'accepted',
+    attachments: [],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

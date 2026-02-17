@@ -5,6 +5,7 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { ReviewRepository } from '../repositories/review-repository.js';
 import { getKycVerificationByUserId } from '../repositories/didit-kyc-repository.js';
+import { logger } from '../config/logger.js';
 
 const router = Router();
 
@@ -60,7 +61,7 @@ router.get('/users', authMiddleware, requireRole('admin'), async (_req: Request,
 
     res.json(usersWithKyc);
   } catch (error) {
-    console.error('Error fetching users:', error);
+    logger.error('Error fetching users', error);
     res.status(500).json({
       error: {
         code: 'INTERNAL_ERROR',
@@ -114,7 +115,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), async (_req: Request,
       totalEmployers,
     });
   } catch (error) {
-    console.error('Error fetching admin stats:', error);
+    logger.error('Error fetching admin stats', error);
     res.status(500).json({
       error: {
         code: 'INTERNAL_ERROR',
@@ -201,7 +202,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), async (_req: Requ
       projectGrowth: parseFloat(projectGrowth.toFixed(1)),
     });
   } catch (error) {
-    console.error('Error fetching analytics:', error);
+    logger.error('Error fetching analytics', error);
     res.status(500).json({
       error: {
         code: 'INTERNAL_ERROR',
@@ -270,7 +271,7 @@ router.get('/platform-stats', async (_req: Request, res: Response) => {
       satisfactionRate,
     });
   } catch (error) {
-    console.error('Error fetching platform stats:', error);
+    logger.error('Error fetching platform stats', error);
     res.status(500).json({
       error: {
         code: 'INTERNAL_ERROR',
@@ -383,7 +384,7 @@ router.patch('/users/:id', authMiddleware, requireRole('admin'), async (req: Req
       isActive: true,
     });
   } catch (error) {
-    console.error('Error updating user:', error);
+    logger.error('Error updating user', error);
     res.status(500).json({
       error: {
         code: 'INTERNAL_ERROR',

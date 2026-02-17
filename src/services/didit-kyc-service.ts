@@ -22,7 +22,7 @@ import {
 } from '../repositories/didit-kyc-repository.js';
 import {
   createVerificationSession,
-  getSessionDetails,
+  getVerificationSession,
 } from './didit-client.js';
 import {
   KycVerification,
@@ -30,11 +30,12 @@ import {
   DiditWebhookPayload,
   KycStatus,
 } from '../models/didit-kyc.js';
+import { logger } from '../config/logger.js';
 
 const DIDIT_WORKFLOW_ID = process.env['DIDIT_WORKFLOW_ID'];
 
 if (!DIDIT_WORKFLOW_ID) {
-  console.warn('DIDIT_WORKFLOW_ID not configured. Using default workflow.');
+  logger.warn('DIDIT_WORKFLOW_ID not configured. Using default workflow.');
 }
 
 type ServiceResult<T> = { success: true; data: T } | { success: false; error: { code: string; message: string } };
@@ -147,7 +148,7 @@ export async function refreshVerificationStatus(
   }
 
   // Get latest status from Didit
-  const sessionResult = await getSessionDetails(verification.didit_session_id);
+  const sessionResult = await getVerificationSession(verification.didit_session_id);
   if (!sessionResult.success) {
     console.error('Failed to get session details:', sessionResult.error);
     return {

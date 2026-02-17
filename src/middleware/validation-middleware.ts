@@ -594,11 +594,25 @@ export const submitProposalSchema: RequestSchema = {
     type: 'object',
     properties: {
       projectId: { type: 'string', format: 'uuid' },
-      coverLetter: { type: 'string', minLength: 10 },
+      attachments: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 5,
+        items: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', format: 'uri' },
+            filename: { type: 'string', minLength: 1 },
+            size: { type: 'number', minimum: 1 },
+            mimeType: { type: 'string', minLength: 1 },
+          },
+          required: ['url', 'filename', 'size', 'mimeType'] as any,
+        },
+      },
       proposedRate: { type: 'number', minimum: 1 },
       estimatedDuration: { type: 'number', minimum: 1 },
     },
-    required: ['projectId', 'coverLetter', 'proposedRate', 'estimatedDuration'],
+    required: ['projectId', 'attachments', 'proposedRate', 'estimatedDuration'],
   },
 };
 

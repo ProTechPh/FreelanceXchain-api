@@ -13,11 +13,20 @@ import {
   requestPasswordReset,
   updatePassword,
   getCurrentUserWithKyc,
+  logout,
+  enrollMFA,
+  verifyMFAEnrollment,
+  challengeMFA,
+  verifyMFAChallenge,
+  getMFAFactors,
+  disableMFA,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter } from '../middleware/rate-limiter.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { logger } from '../config/logger.js';
+import { generateCsrfToken } from '../middleware/csrf-middleware.js';
 
 const router = Router();
 
@@ -590,10 +599,10 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
   const { access_token } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
-  console.log('[OAuth] POST /oauth/callback - Received request');
+  logger.debug('OAuth callback received', { requestId });
 
   if (!access_token || typeof access_token !== 'string') {
-    console.log('[OAuth] POST /oauth/callback - Missing access_token');
+    logger.warn('OAuth callback missing access_token', { requestId });
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
@@ -605,14 +614,17 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  console.log('[OAuth] POST /oauth/callback - Calling loginWithSupabase');
+  logger.debug('Calling loginWithSupabase', { requestId });
   const result = await loginWithSupabase(access_token);
 
   if (isAuthError(result)) {
-    console.log('[OAuth] POST /oauth/callback - Got auth error:', result.code);
+    logger.info('OAuth authentication error', {
+      requestId,
+      errorCode: result.code,
+    });
     
     if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
-      console.log('[OAuth] POST /oauth/callback - Returning 202 registration_required');
+      logger.info('OAuth user requires registration', { requestId });
       res.status(202).json({
         status: 'registration_required',
         message: 'User does not exist. Please register with a role.',
@@ -621,7 +633,11 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
       return;
     }
 
-    console.log('[OAuth] POST /oauth/callback - Returning 401 invalid token');
+    logger.warn('OAuth authentication failed', {
+      requestId,
+      errorCode: result.code,
+    });
+    
     res.status(401).json({
       error: {
         code: 'AUTH_INVALID_TOKEN',
@@ -632,6 +648,11 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
     });
     return;
   }
+
+  logger.info('OAuth authentication successful', {
+    requestId,
+    userId: result.user.id,
+  });
 
   console.log('[OAuth] POST /oauth/callback - Success! Returning 200 with user data');
   // Return the full auth result with user and tokens
@@ -852,6 +873,37 @@ router.post('/forgot-password', authRateLimiter, async (req: Request, res: Respo
 
 /**
  * @swagger
+ * /api/auth/csrf-token:
+ *   get:
+ *     summary: Get CSRF token
+ *     description: Returns a CSRF token for use in subsequent state-changing requests
+ *     tags:
+ *       - Authentication
+ *     responses:
+ *       200:
+ *         description: CSRF token generated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 csrfToken:
+ *                   type: string
+ *                   description: CSRF token to include in X-CSRF-Token header
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                 requestId:
+ *                   type: string
+ *       500:
+ *         description: Failed to generate token
+ */
+router.get('/csrf-token', (req: Request, res: Response) => {
+  generateCsrfToken(req, res);
+});
+
+/**
+ * @swagger
  * /api/auth/reset-password:
  *   post:
  *     summary: Reset password
@@ -924,6 +976,500 @@ router.post('/reset-password', authRateLimiter, async (req: Request, res: Respon
   }
 
   res.status(200).json({ message: 'Password updated successfully' });
+});
+
+/**
+ * @swagger
+ * /api/auth/logout:
+ *   post:
+ *     summary: Logout user
+ *     description: Invalidates the current user session and tokens
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Logout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logout successful
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Internal server error
+ */
+router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const userId = req.user?.userId;
+
+  logger.info('User logout initiated', { userId, requestId });
+
+  const result = await logout();
+
+  if (isAuthError(result)) {
+    logger.error('Logout failed', { userId, requestId, error: result.message });
+    res.status(500).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  logger.info('User logout successful', { userId, requestId });
+  res.status(200).json({ message: 'Logout successful' });
+});
+
+/**
+ * @swagger
+ * /api/auth/mfa/enroll:
+ *   post:
+ *     summary: Enroll MFA for user
+ *     description: Initiates MFA enrollment and returns QR code for authenticator app
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: MFA enrollment initiated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 qrCode:
+ *                   type: string
+ *                   description: QR code data URL for authenticator app
+ *                 secret:
+ *                   type: string
+ *                   description: Secret key for manual entry
+ *                 factorId:
+ *                   type: string
+ *                   description: Factor ID for verification
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/mfa/enroll', authMiddleware, async (req: Request, res: Response) => {
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (!token) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_MISSING_TOKEN',
+        message: 'Authorization token is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await enrollMFA(token);
+
+  if (isAuthError(result)) {
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result);
+});
+
+/**
+ * @swagger
+ * /api/auth/mfa/verify-enrollment:
+ *   post:
+ *     summary: Verify MFA enrollment
+ *     description: Verifies the TOTP code to complete MFA enrollment
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - factorId
+ *               - code
+ *             properties:
+ *               factorId:
+ *                 type: string
+ *               code:
+ *                 type: string
+ *                 description: 6-digit TOTP code
+ *     responses:
+ *       200:
+ *         description: MFA enrollment verified
+ *       400:
+ *         description: Invalid code
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/mfa/verify-enrollment', authMiddleware, async (req: Request, res: Response) => {
+  const { factorId, code } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (!token) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_MISSING_TOKEN',
+        message: 'Authorization token is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!factorId || !code) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId and code are required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await verifyMFAEnrollment(token, factorId, code);
+
+  if (isAuthError(result)) {
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ message: 'MFA enrollment verified successfully' });
+});
+
+/**
+ * @swagger
+ * /api/auth/mfa/challenge:
+ *   post:
+ *     summary: Create MFA challenge
+ *     description: Creates an MFA challenge for login verification
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - factorId
+ *             properties:
+ *               factorId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Challenge created
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 challengeId:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/mfa/challenge', authMiddleware, async (req: Request, res: Response) => {
+  const { factorId } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (!token) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_MISSING_TOKEN',
+        message: 'Authorization token is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!factorId) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await challengeMFA(token, factorId);
+
+  if (isAuthError(result)) {
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result);
+});
+
+/**
+ * @swagger
+ * /api/auth/mfa/verify:
+ *   post:
+ *     summary: Verify MFA challenge
+ *     description: Verifies the TOTP code for an MFA challenge
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - factorId
+ *               - challengeId
+ *               - code
+ *             properties:
+ *               factorId:
+ *                 type: string
+ *               challengeId:
+ *                 type: string
+ *               code:
+ *                 type: string
+ *                 description: 6-digit TOTP code
+ *     responses:
+ *       200:
+ *         description: MFA verified successfully
+ *       400:
+ *         description: Invalid code
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/mfa/verify', authMiddleware, async (req: Request, res: Response) => {
+  const { factorId, challengeId, code } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (!token) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_MISSING_TOKEN',
+        message: 'Authorization token is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!factorId || !challengeId || !code) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId, challengeId, and code are required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await verifyMFAChallenge(token, factorId, challengeId, code);
+
+  if (isAuthError(result)) {
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ message: 'MFA verified successfully' });
+});
+
+/**
+ * @swagger
+ * /api/auth/mfa/factors:
+ *   get:
+ *     summary: Get MFA factors
+ *     description: Returns list of enrolled MFA factors for the user
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: MFA factors retrieved
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 factors:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/mfa/factors', authMiddleware, async (req: Request, res: Response) => {
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (!token) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_MISSING_TOKEN',
+        message: 'Authorization token is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await getMFAFactors(token);
+
+  if (isAuthError(result)) {
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result);
+});
+
+/**
+ * @swagger
+ * /api/auth/mfa/disable:
+ *   post:
+ *     summary: Disable MFA
+ *     description: Disables MFA for the user
+ *     tags:
+ *       - Authentication
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - factorId
+ *             properties:
+ *               factorId:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: MFA disabled successfully
+ *       400:
+ *         description: Invalid request
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/mfa/disable', authMiddleware, async (req: Request, res: Response) => {
+  const { factorId } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.split(' ')[1];
+
+  if (!token) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_MISSING_TOKEN',
+        message: 'Authorization token is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!factorId) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await disableMFA(token, factorId);
+
+  if (isAuthError(result)) {
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ message: 'MFA disabled successfully' });
 });
 
 /**

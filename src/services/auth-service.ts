@@ -502,8 +502,238 @@ export async function updatePassword(accessToken: string, newPassword: string): 
   return { success: true };
 }
 
-export function isAuthError(result: AuthResult | AuthError | AuthResult['user'] | { success: boolean }): result is AuthError {
-  return 'code' in result;
+export function isAuthError(result: any): result is AuthError {
+  return result && typeof result === 'object' && 'code' in result && 'message' in result;
+}
+
+/**
+ * Logout user and invalidate session
+ */
+export async function logout(): Promise<{ success: boolean } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    return {
+      code: 'INTERNAL_ERROR',
+      message: error.message,
+    };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Enroll MFA for user
+ */
+export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; secret: string; factorId: string } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Set the session
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: '',
+  });
+
+  if (sessionError) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid access token',
+    };
+  }
+
+  const { data, error } = await supabase.auth.mfa.enroll({
+    factorType: 'totp',
+  });
+
+  if (error || !data) {
+    return {
+      code: 'MFA_ENROLLMENT_FAILED',
+      message: error?.message || 'Failed to enroll MFA',
+    };
+  }
+
+  return {
+    qrCode: data.totp.qr_code,
+    secret: data.totp.secret,
+    factorId: data.id,
+  };
+}
+
+/**
+ * Verify MFA enrollment
+ */
+export async function verifyMFAEnrollment(
+  accessToken: string,
+  factorId: string,
+  code: string
+): Promise<{ success: boolean } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Set the session
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: '',
+  });
+
+  if (sessionError) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid access token',
+    };
+  }
+
+  const { data, error } = await supabase.auth.mfa.challengeAndVerify({
+    factorId,
+    code,
+  });
+
+  if (error || !data) {
+    return {
+      code: 'MFA_VERIFICATION_FAILED',
+      message: error?.message || 'Invalid verification code',
+    };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Challenge MFA (during login)
+ */
+export async function challengeMFA(accessToken: string, factorId: string): Promise<{ challengeId: string } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Set the session
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: '',
+  });
+
+  if (sessionError) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid access token',
+    };
+  }
+
+  const { data, error } = await supabase.auth.mfa.challenge({
+    factorId,
+  });
+
+  if (error || !data) {
+    return {
+      code: 'MFA_CHALLENGE_FAILED',
+      message: error?.message || 'Failed to create MFA challenge',
+    };
+  }
+
+  return { challengeId: data.id };
+}
+
+/**
+ * Verify MFA challenge (during login)
+ */
+export async function verifyMFAChallenge(
+  accessToken: string,
+  factorId: string,
+  challengeId: string,
+  code: string
+): Promise<{ success: boolean } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Set the session
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: '',
+  });
+
+  if (sessionError) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid access token',
+    };
+  }
+
+  const { data, error } = await supabase.auth.mfa.verify({
+    factorId,
+    challengeId,
+    code,
+  });
+
+  if (error || !data) {
+    return {
+      code: 'MFA_VERIFICATION_FAILED',
+      message: error?.message || 'Invalid verification code',
+    };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Get MFA factors for user
+ */
+export async function getMFAFactors(accessToken: string): Promise<{ factors: any[] } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Set the session
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: '',
+  });
+
+  if (sessionError) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid access token',
+    };
+  }
+
+  const { data, error } = await supabase.auth.mfa.listFactors();
+
+  if (error) {
+    return {
+      code: 'MFA_LIST_FAILED',
+      message: error.message || 'Failed to list MFA factors',
+    };
+  }
+
+  return { factors: data.totp };
+}
+
+/**
+ * Disable MFA factor
+ */
+export async function disableMFA(accessToken: string, factorId: string): Promise<{ success: boolean } | AuthError> {
+  const supabase = getSupabaseClient();
+
+  // Set the session
+  const { error: sessionError } = await supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: '',
+  });
+
+  if (sessionError) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid access token',
+    };
+  }
+
+  const { error } = await supabase.auth.mfa.unenroll({
+    factorId,
+  });
+
+  if (error) {
+    return {
+      code: 'MFA_DISABLE_FAILED',
+      message: error.message || 'Failed to disable MFA',
+    };
+  }
+
+  return { success: true };
 }
 
 /**

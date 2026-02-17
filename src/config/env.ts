@@ -48,6 +48,9 @@ export const config = {
     url: getEnvVar('SUPABASE_URL'),
     anonKey: getEnvVar('SUPABASE_ANON_KEY'),
     serviceRoleKey: getEnvVarOptional('SUPABASE_SERVICE_ROLE_KEY'),
+    storage: {
+      proposalAttachmentsBucket: getEnvVar('SUPABASE_PROPOSAL_ATTACHMENTS_BUCKET', 'proposal-attachments'),
+    },
   },
   jwt: {
     secret: getEnvVar('JWT_SECRET'),

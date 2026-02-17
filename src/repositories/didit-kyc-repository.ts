@@ -7,6 +7,7 @@
 
 import { getSupabaseClient } from '../config/supabase.js';
 import { KycVerification, UpdateKycVerificationInput } from '../models/didit-kyc.js';
+import { logger } from '../config/logger.js';
 
 const supabase = getSupabaseClient();
 const TABLE_NAME = 'kyc_verifications';
@@ -28,7 +29,7 @@ export async function createKycVerification(
     .single();
 
   if (error) {
-    console.error('Error creating KYC verification:', error);
+    logger.error('Error creating KYC verification', error);
     return null;
   }
 
@@ -46,7 +47,7 @@ export async function getKycVerificationById(id: string): Promise<KycVerificatio
     .single();
 
   if (error) {
-    console.error('Error fetching KYC verification:', error);
+    logger.error('Error fetching KYC verification', error);
     return null;
   }
 
@@ -67,7 +68,7 @@ export async function getKycVerificationByUserId(userId: string): Promise<KycVer
 
   if (error) {
     if (error.code === 'PGRST116') return null; // No rows found
-    console.error('Error fetching KYC verification by user:', error);
+    logger.error('Error fetching KYC verification by user', error);
     return null;
   }
 
@@ -86,7 +87,7 @@ export async function getKycVerificationBySessionId(sessionId: string): Promise<
 
   if (error) {
     if (error.code === 'PGRST116') return null;
-    console.error('Error fetching KYC verification by session:', error);
+    logger.error('Error fetching KYC verification by session', error);
     return null;
   }
 
@@ -111,7 +112,7 @@ export async function updateKycVerification(
     .single();
 
   if (error) {
-    console.error('Error updating KYC verification:', error);
+    logger.error('Error updating KYC verification', error);
     return null;
   }
 
@@ -129,7 +130,7 @@ export async function getKycVerificationsByStatus(status: KycVerification['statu
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching KYC verifications by status:', error);
+    logger.error('Error fetching KYC verifications by status', error);
     return [];
   }
 
@@ -148,7 +149,7 @@ export async function getPendingReviews(): Promise<KycVerification[]> {
     .order('completed_at', { ascending: true });
 
   if (error) {
-    console.error('Error fetching pending reviews:', error);
+    logger.error('Error fetching pending reviews', error);
     return [];
   }
 
@@ -165,7 +166,7 @@ export async function deleteKycVerification(id: string): Promise<boolean> {
     .eq('id', id);
 
   if (error) {
-    console.error('Error deleting KYC verification:', error);
+    logger.error('Error deleting KYC verification', error);
     return false;
   }
 
@@ -183,7 +184,7 @@ export async function getKycVerificationHistory(userId: string): Promise<KycVeri
     .order('created_at', { ascending: false });
 
   if (error) {
-    console.error('Error fetching KYC verification history:', error);
+    logger.error('Error fetching KYC verification history', error);
     return [];
   }
 

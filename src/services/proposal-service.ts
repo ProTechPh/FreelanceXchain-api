@@ -7,10 +7,11 @@ import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
 import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
+import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 
 export type CreateProposalInput = {
   projectId: string;
-  coverLetter: string;
+  attachments: FileAttachment[];
   proposedRate: number;
   estimatedDuration: number;
 };
@@ -65,6 +66,19 @@ export async function submitProposal(
   freelancerId: string,
   input: CreateProposalInput
 ): Promise<ProposalServiceResult<ProposalWithNotification>> {
+  // Validate attachments
+  const attachmentErrors = validateAttachments(input.attachments);
+  if (attachmentErrors.length > 0) {
+    return {
+      success: false,
+      error: { 
+        code: 'VALIDATION_ERROR', 
+        message: 'Invalid attachments',
+        details: attachmentErrors.map(e => e.message),
+      },
+    };
+  }
+
   // Check if project exists
   const projectEntity = await projectRepository.findProjectById(input.projectId);
   if (!projectEntity) {
@@ -96,7 +110,8 @@ export async function submitProposal(
     id: generateId(),
     project_id: input.projectId,
     freelancer_id: freelancerId,
-    cover_letter: input.coverLetter,
+    cover_letter: null,
+    attachments: input.attachments,
     proposed_rate: input.proposedRate,
     estimated_duration: input.estimatedDuration,
     status: 'pending',

@@ -9,6 +9,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { verifyWebhookSignature } from '../services/didit-client.js';
+import { logger } from '../config/logger.js';
 import {
   initiateKycVerification,
   getKycStatus,
@@ -383,7 +384,12 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
   // Verify webhook signature
   if (!verifyWebhookSignature(payload, signature, timestamp)) {
-    console.error('Invalid webhook signature');
+    logger.security('Invalid Didit webhook signature', {
+      timestamp,
+      ip: req.ip,
+      webhookType: req.body?.webhook_type,
+    });
+    
     res.status(401).json({
       error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' },
     });
@@ -392,13 +398,22 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
   const webhookPayload: DiditWebhookPayload = req.body;
 
-  // Log webhook for debugging (remove in production)
-  console.log(`Didit webhook: ${webhookPayload.webhook_type} - ${webhookPayload.status}`);
+  // Log webhook event
+  logger.info('Didit webhook received', {
+    webhookType: webhookPayload.webhook_type,
+    status: webhookPayload.status,
+    sessionId: webhookPayload.session_id,
+  });
 
   const result = await processWebhook(webhookPayload);
 
   if (!result.success) {
-    console.error('Webhook processing error:', result.error);
+    logger.error('Webhook processing error', undefined, {
+      error: result.error,
+      webhookType: webhookPayload.webhook_type,
+      sessionId: webhookPayload.session_id,
+    });
+    
     res.status(400).json({ error: result.error });
     return;
   }

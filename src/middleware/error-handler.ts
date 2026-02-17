@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
+import { logger } from '../config/logger.js';
 
 export type ValidationError = {
   field: string;
@@ -91,6 +92,26 @@ export function errorHandler(
   const requestId = (req.headers['x-request-id'] as string) ?? uuidv4();
   
   if (err instanceof AppError) {
+    // Log application errors at appropriate level
+    if (err.statusCode >= 500) {
+      logger.error('Application error', err, {
+        requestId,
+        code: err.code,
+        statusCode: err.statusCode,
+        path: req.path,
+        method: req.method,
+      });
+    } else if (err.statusCode >= 400) {
+      logger.warn('Client error', {
+        requestId,
+        code: err.code,
+        message: err.message,
+        statusCode: err.statusCode,
+        path: req.path,
+        method: req.method,
+      });
+    }
+
     const response: ErrorResponse = {
       error: {
         code: err.code,
@@ -104,8 +125,13 @@ export function errorHandler(
     return;
   }
 
-  // Log unexpected errors
-  console.error('Unexpected error:', err);
+  // Log unexpected errors with full context
+  logger.error('Unexpected error', err, {
+    requestId,
+    path: req.path,
+    method: req.method,
+    statusCode: 500,
+  });
 
   const response: ErrorResponse = {
     error: {
