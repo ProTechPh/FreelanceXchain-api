@@ -1,5 +1,6 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import { errorHandler, requestLogger } from './middleware/index.js';
 import {
@@ -24,6 +25,9 @@ export function createApp(): Express {
   // Body parsing middleware
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true }));
+
+  // Cookie parsing middleware (required for CSRF protection)
+  app.use(cookieParser());
 
   // CORS middleware with restricted origins
   const allowedOrigins = getAllowedOrigins();

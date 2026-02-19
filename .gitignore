@@ -48,3 +48,5 @@ deployment.json
 /.agent
 .qoder/
 .roo/
+.env.production
+.env.development
