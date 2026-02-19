@@ -49,6 +49,7 @@ export type AuthError = {
   | 'MFA_VERIFICATION_FAILED'
   | 'MFA_CHALLENGE_FAILED'
   | 'MFA_LIST_FAILED'
-  | 'MFA_DISABLE_FAILED';
+  | 'MFA_DISABLE_FAILED'
+  | 'MFA_REQUIRED';
   message: string;
 };

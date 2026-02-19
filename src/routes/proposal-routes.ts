@@ -349,7 +349,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     errors.push({ field: 'projectId', message: 'Project ID must be a valid UUID' });
   }
   if (!attachments || !Array.isArray(attachments)) {
-    errors.push({ field: 'attachments', message: 'Attachments array is required' });
+    errors.push({ field: 'attachments', message: 'Attachments must be an array' });
   }
   if (!proposedRate || typeof proposedRate !== 'number' || proposedRate < 1) {
     errors.push({ field: 'proposedRate', message: 'Proposed rate must be at least 1' });

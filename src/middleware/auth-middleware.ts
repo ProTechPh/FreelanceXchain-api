@@ -6,7 +6,8 @@ import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
 
 type ValidatedUser = {
-  userId: string;
+  id: string; // Changed from userId to id for consistency
+  userId: string; // Keep both for backward compatibility
   email: string;
   role: UserRole;
 };
@@ -90,7 +91,12 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return;
   }
 
-  req.user = result;
+  req.user = {
+    id: result.userId,
+    userId: result.userId,
+    email: result.email,
+    role: result.role,
+  };
   next();
 }
 

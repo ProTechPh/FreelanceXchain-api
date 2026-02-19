@@ -20,6 +20,8 @@ import {
   verifyMFAChallenge,
   getMFAFactors,
   disableMFA,
+  validateToken,
+  createAuthResult,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
@@ -27,6 +29,8 @@ import { authRateLimiter } from '../middleware/rate-limiter.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
+import { getSupabaseClient } from '../config/supabase.js';
+import { userRepository } from '../repositories/user-repository.js';
 
 const router = Router();
 
@@ -301,6 +305,16 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   const result = await login(input);
 
   if (isAuthError(result)) {
+    // Check if MFA is required
+    if (result.code === 'MFA_REQUIRED') {
+      res.status(200).json({
+        mfaRequired: true,
+        accessToken: (result as any).accessToken,
+        factorId: (result as any).factorId,
+      });
+      return;
+    }
+    
     res.status(401).json({
       error: {
         code: 'AUTH_INVALID_CREDENTIALS',
@@ -313,6 +327,132 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   }
 
   res.status(200).json(result);
+});
+
+/**
+ * @swagger
+ * /api/auth/login/mfa-verify:
+ *   post:
+ *     summary: Complete MFA login
+ *     description: Verifies MFA code and completes the login process
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - accessToken
+ *               - factorId
+ *               - code
+ *             properties:
+ *               accessToken:
+ *                 type: string
+ *               factorId:
+ *                 type: string
+ *               code:
+ *                 type: string
+ *                 description: 6-digit TOTP code
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResult'
+ *       400:
+ *         description: Invalid code
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Response) => {
+  const { accessToken, factorId, code } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!accessToken || !factorId || !code) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'accessToken, factorId, and code are required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Create challenge
+  const challengeResult = await challengeMFA(accessToken, factorId);
+  
+  if (isAuthError(challengeResult)) {
+    res.status(400).json({
+      error: {
+        code: challengeResult.code,
+        message: challengeResult.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Verify the code
+  const verifyResult = await verifyMFAChallenge(accessToken, factorId, challengeResult.challengeId, code);
+  
+  if (isAuthError(verifyResult)) {
+    res.status(400).json({
+      error: {
+        code: verifyResult.code,
+        message: verifyResult.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // MFA verified - get user and return full auth result
+  const tokenValidation = await validateToken(accessToken);
+  
+  if (isAuthError(tokenValidation)) {
+    res.status(401).json({
+      error: {
+        code: tokenValidation.code,
+        message: tokenValidation.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const publicUser = await userRepository.getUserById(tokenValidation.userId);
+  
+  if (!publicUser) {
+    res.status(401).json({
+      error: {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Get a fresh session after MFA verification
+  const supabase = getSupabaseClient();
+  const { data: sessionData } = await supabase.auth.getSession();
+  
+  const authResult = await createAuthResult(
+    publicUser, 
+    accessToken, 
+    sessionData?.session?.refresh_token || ''
+  );
+
+  res.status(200).json(authResult);
 });
 
 
@@ -623,6 +763,17 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
       errorCode: result.code,
     });
     
+    // Check if MFA is required
+    if (result.code === 'MFA_REQUIRED') {
+      logger.info('OAuth user requires MFA', { requestId });
+      res.status(200).json({
+        mfaRequired: true,
+        accessToken: (result as any).accessToken,
+        factorId: (result as any).factorId,
+      });
+      return;
+    }
+    
     if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
       logger.info('OAuth user requires registration', { requestId });
       res.status(202).json({
@@ -898,7 +1049,7 @@ router.post('/forgot-password', authRateLimiter, async (req: Request, res: Respo
  *       500:
  *         description: Failed to generate token
  */
-router.get('/csrf-token', (req: Request, res: Response) => {
+router.post('/csrf-token', (req: Request, res: Response) => {
   generateCsrfToken(req, res);
 });
 

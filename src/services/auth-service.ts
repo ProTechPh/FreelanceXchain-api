@@ -1,4 +1,4 @@
-import { Provider } from '@supabase/supabase-js';
+import { Provider, createClient } from '@supabase/supabase-js';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
 import { getSupabaseClient } from '../config/supabase.js';
@@ -47,7 +47,7 @@ export function validatePasswordStrength(password: string): PasswordValidationRe
   };
 }
 
-async function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): Promise<AuthResult> {
+export async function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): Promise<AuthResult> {
   // Get KYC status
   const { getKycVerificationByUserId } = await import('../repositories/didit-kyc-repository.js');
   const kycVerification = await getKycVerificationByUserId(user.id);
@@ -191,6 +191,30 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
     };
   }
 
+  // Check if user has MFA enabled
+  const mfaClient = createClient(config.supabase.url, config.supabase.anonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${data.session.access_token}`,
+      },
+    },
+  });
+  
+  const { data: factorsData } = await mfaClient.auth.mfa.listFactors();
+  const hasVerifiedMFA = factorsData?.all?.some(f => f.status === 'verified') || false;
+
+  if (hasVerifiedMFA) {
+    // User has MFA enabled - return a special response indicating MFA is required
+    return {
+      code: 'MFA_REQUIRED',
+      message: 'MFA verification required',
+      // Return minimal data needed for MFA verification
+      mfaRequired: true,
+      accessToken: data.session.access_token,
+      factorId: factorsData?.all?.find(f => f.status === 'verified')?.id,
+    } as any;
+  }
+
   // Get user from public.users
   const publicUser = await userRepository.getUserById(data.user.id);
 
@@ -234,8 +258,9 @@ export async function refreshTokens(refreshToken: string): Promise<AuthResult | 
 /**
  * Validate Supabase access token
  */
-export async function validateToken(accessToken: string): Promise<{ userId: string; email: string; role: UserRole } | AuthError> {
-  const supabase = getSupabaseClient();
+export async function validateToken(accessToken: string): Promise<{ id: string; userId: string; email: string; role: UserRole } | AuthError> {
+  // Create a fresh Supabase client for token validation
+  const supabase = createClient(config.supabase.url, config.supabase.anonKey);
 
   const { data: { user }, error } = await supabase.auth.getUser(accessToken);
 
@@ -256,6 +281,7 @@ export async function validateToken(accessToken: string): Promise<{ userId: stri
   }
 
   return {
+    id: publicUser.id,
     userId: publicUser.id,
     email: publicUser.email,
     role: publicUser.role,
@@ -301,6 +327,33 @@ export async function loginWithSupabase(accessToken: string): Promise<AuthResult
     email: publicUser.email,
     role: publicUser.role
   });
+
+  // Check if user has MFA enabled
+  const mfaClient = createClient(config.supabase.url, config.supabase.anonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
+  
+  const { data: factorsData } = await mfaClient.auth.mfa.listFactors();
+  const hasVerifiedMFA = factorsData?.all?.some(f => f.status === 'verified') || false;
+
+  console.log('[OAuth] MFA check:', { hasVerifiedMFA, factorsCount: factorsData?.all?.length });
+
+  if (hasVerifiedMFA) {
+    // User has MFA enabled - return a special response indicating MFA is required
+    console.log('[OAuth] MFA required for user');
+    return {
+      code: 'MFA_REQUIRED',
+      message: 'MFA verification required',
+      // Return minimal data needed for MFA verification
+      mfaRequired: true,
+      accessToken: accessToken,
+      factorId: factorsData?.all?.find(f => f.status === 'verified')?.id,
+    } as any;
+  }
 
   // Get current session for tokens
   const { data: sessionData } = await supabase.auth.getSession();
@@ -528,37 +581,93 @@ export async function logout(): Promise<{ success: boolean } | AuthError> {
  * Enroll MFA for user
  */
 export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; secret: string; factorId: string } | AuthError> {
-  const supabase = getSupabaseClient();
+  try {
+    // Create a fresh Supabase client
+    const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
 
-  // Set the session
-  const { error: sessionError } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: '',
-  });
+    // Get user email first
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user?.email) {
+      console.error('[MFA] Failed to get user:', userError);
+      return {
+        code: 'INVALID_TOKEN',
+        message: 'Failed to get user information',
+      };
+    }
 
-  if (sessionError) {
+    // Check for existing factors and clean up unverified ones
+    const { data: existingFactors, error: listError } = await supabase.auth.mfa.listFactors();
+    
+    if (listError) {
+      console.error('[MFA] Failed to list existing factors:', listError);
+    } else if (existingFactors?.all && existingFactors.all.length > 0) {
+      console.log('[MFA] Found existing factors:', existingFactors.all);
+      
+      // Remove any unverified factors to allow re-enrollment
+      // Check the 'all' array since unverified factors appear there, not in 'totp'
+      for (const factor of existingFactors.all) {
+        if (factor.status === 'unverified') {
+          console.log('[MFA] Removing unverified factor:', factor.id, factor.friendly_name);
+          const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+          if (unenrollError) {
+            console.error('[MFA] Failed to remove unverified factor:', unenrollError);
+          } else {
+            console.log('[MFA] Successfully removed unverified factor');
+          }
+        }
+      }
+      
+      // Wait a bit for Supabase to process the deletion
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    const { data, error } = await supabase.auth.mfa.enroll({
+      factorType: 'totp',
+      friendlyName: 'Authenticator App',
+      issuer: 'FreelanceXchain',
+    });
+
+    if (error) {
+      console.error('[MFA] Enrollment failed:', error);
+      return {
+        code: error.status === 401 ? 'INVALID_TOKEN' : 'MFA_ENROLLMENT_FAILED',
+        message: error.message || 'Failed to enroll MFA',
+      };
+    }
+
+    if (!data?.totp?.qr_code || !data?.totp?.secret || !data?.id) {
+      return {
+        code: 'MFA_ENROLLMENT_FAILED',
+        message: 'Invalid enrollment response',
+      };
+    }
+
+    // Supabase returns qr_code as an SVG, but we need the otpauth:// URL
+    // Construct the otpauth URL manually from the secret
+    const otpauthUrl = `otpauth://totp/FreelanceXchain:${encodeURIComponent(user.email)}?secret=${data.totp.secret}&issuer=FreelanceXchain&algorithm=SHA1&digits=6&period=30`;
+    
+    console.log('[MFA] OTPAuth URL:', otpauthUrl);
+    console.log('[MFA] OTPAuth URL length:', otpauthUrl.length);
+    console.log('[MFA] Enrollment successful for user:', user.email);
+    
     return {
-      code: 'INVALID_TOKEN',
-      message: 'Invalid access token',
+      qrCode: otpauthUrl,
+      secret: data.totp.secret,
+      factorId: data.id,
     };
-  }
-
-  const { data, error } = await supabase.auth.mfa.enroll({
-    factorType: 'totp',
-  });
-
-  if (error || !data) {
+  } catch (err: any) {
+    console.error('[MFA] Exception in enrollMFA:', err);
     return {
       code: 'MFA_ENROLLMENT_FAILED',
-      message: error?.message || 'Failed to enroll MFA',
+      message: err.message || 'Failed to enroll MFA',
     };
   }
-
-  return {
-    qrCode: data.totp.qr_code,
-    secret: data.totp.secret,
-    factorId: data.id,
-  };
 }
 
 /**
@@ -569,67 +678,90 @@ export async function verifyMFAEnrollment(
   factorId: string,
   code: string
 ): Promise<{ success: boolean } | AuthError> {
-  const supabase = getSupabaseClient();
+  try {
+    // Create a fresh Supabase client
+    const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
 
-  // Set the session
-  const { error: sessionError } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: '',
-  });
+    // First create a challenge
+    const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+      factorId,
+    });
 
-  if (sessionError) {
-    return {
-      code: 'INVALID_TOKEN',
-      message: 'Invalid access token',
-    };
-  }
+    if (challengeError || !challengeData?.id) {
+      console.error('[MFA] Challenge creation failed:', challengeError);
+      return {
+        code: challengeError?.status === 401 ? 'INVALID_TOKEN' : 'MFA_VERIFICATION_FAILED',
+        message: challengeError?.message || 'Failed to create challenge',
+      };
+    }
 
-  const { data, error } = await supabase.auth.mfa.challengeAndVerify({
-    factorId,
-    code,
-  });
+    // Then verify the code
+    const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId: challengeData.id,
+      code,
+    });
 
-  if (error || !data) {
+    if (verifyError) {
+      console.error('[MFA] Verification failed:', verifyError);
+      return {
+        code: 'MFA_VERIFICATION_FAILED',
+        message: verifyError.message || 'Invalid verification code',
+      };
+    }
+
+    console.log('[MFA] Enrollment verification successful');
+    return { success: true };
+  } catch (err: any) {
+    console.error('[MFA] Exception in verifyMFAEnrollment:', err);
     return {
       code: 'MFA_VERIFICATION_FAILED',
-      message: error?.message || 'Invalid verification code',
+      message: err.message || 'Failed to verify MFA',
     };
   }
-
-  return { success: true };
 }
 
 /**
  * Challenge MFA (during login)
  */
 export async function challengeMFA(accessToken: string, factorId: string): Promise<{ challengeId: string } | AuthError> {
-  const supabase = getSupabaseClient();
+  try {
+    // Create a fresh Supabase client
+    const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
 
-  // Set the session
-  const { error: sessionError } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: '',
-  });
+    const { data, error } = await supabase.auth.mfa.challenge({
+      factorId,
+    });
 
-  if (sessionError) {
-    return {
-      code: 'INVALID_TOKEN',
-      message: 'Invalid access token',
-    };
-  }
+    if (error || !data?.id) {
+      console.error('[MFA] Challenge creation failed:', error);
+      return {
+        code: error?.status === 401 ? 'INVALID_TOKEN' : 'MFA_CHALLENGE_FAILED',
+        message: error?.message || 'Failed to create MFA challenge',
+      };
+    }
 
-  const { data, error } = await supabase.auth.mfa.challenge({
-    factorId,
-  });
-
-  if (error || !data) {
+    console.log('[MFA] Challenge created successfully');
+    return { challengeId: data.id };
+  } catch (err: any) {
+    console.error('[MFA] Exception in challengeMFA:', err);
     return {
       code: 'MFA_CHALLENGE_FAILED',
-      message: error?.message || 'Failed to create MFA challenge',
+      message: err.message || 'Failed to create MFA challenge',
     };
   }
-
-  return { challengeId: data.id };
 }
 
 /**
@@ -641,99 +773,116 @@ export async function verifyMFAChallenge(
   challengeId: string,
   code: string
 ): Promise<{ success: boolean } | AuthError> {
-  const supabase = getSupabaseClient();
+  try {
+    // Create a fresh Supabase client
+    const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
 
-  // Set the session
-  const { error: sessionError } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: '',
-  });
+    const { data, error } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId,
+      code,
+    });
 
-  if (sessionError) {
-    return {
-      code: 'INVALID_TOKEN',
-      message: 'Invalid access token',
-    };
-  }
+    if (error) {
+      console.error('[MFA] Challenge verification failed:', error);
+      return {
+        code: error.status === 401 ? 'INVALID_TOKEN' : 'MFA_VERIFICATION_FAILED',
+        message: error.message || 'Invalid verification code',
+      };
+    }
 
-  const { data, error } = await supabase.auth.mfa.verify({
-    factorId,
-    challengeId,
-    code,
-  });
-
-  if (error || !data) {
+    console.log('[MFA] Challenge verification successful');
+    return { success: true };
+  } catch (err: any) {
+    console.error('[MFA] Exception in verifyMFAChallenge:', err);
     return {
       code: 'MFA_VERIFICATION_FAILED',
-      message: error?.message || 'Invalid verification code',
+      message: err.message || 'Failed to verify MFA challenge',
     };
   }
-
-  return { success: true };
 }
 
 /**
  * Get MFA factors for user
  */
 export async function getMFAFactors(accessToken: string): Promise<{ factors: any[] } | AuthError> {
-  const supabase = getSupabaseClient();
+  try {
+    // Create a fresh Supabase client with the access token in headers
+    const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
 
-  // Set the session
-  const { error: sessionError } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: '',
-  });
+    // List the factors
+    const { data, error } = await supabase.auth.mfa.listFactors();
 
-  if (sessionError) {
-    return {
-      code: 'INVALID_TOKEN',
-      message: 'Invalid access token',
-    };
-  }
+    if (error) {
+      console.error('[MFA] Failed to list factors:', error);
+      return {
+        code: error.status === 401 ? 'INVALID_TOKEN' : 'MFA_LIST_FAILED',
+        message: error.message || 'Failed to list MFA factors',
+      };
+    }
 
-  const { data, error } = await supabase.auth.mfa.listFactors();
-
-  if (error) {
+    console.log('[MFA] Factors retrieved successfully:', data);
+    
+    // Return only verified TOTP factors from the 'all' array
+    // Unverified factors appear in 'all' but not in 'totp'
+    const verifiedFactors = data?.all?.filter(f => f.factor_type === 'totp' && f.status === 'verified') || [];
+    return { factors: verifiedFactors };
+  } catch (err: any) {
+    console.error('[MFA] Exception in getMFAFactors:', err);
     return {
       code: 'MFA_LIST_FAILED',
-      message: error.message || 'Failed to list MFA factors',
+      message: err.message || 'Failed to list MFA factors',
     };
   }
-
-  return { factors: data.totp };
 }
 
 /**
  * Disable MFA factor
  */
 export async function disableMFA(accessToken: string, factorId: string): Promise<{ success: boolean } | AuthError> {
-  const supabase = getSupabaseClient();
+  try {
+    // Create a fresh Supabase client
+    const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
 
-  // Set the session
-  const { error: sessionError } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: '',
-  });
+    const { data, error } = await supabase.auth.mfa.unenroll({
+      factorId,
+    });
 
-  if (sessionError) {
-    return {
-      code: 'INVALID_TOKEN',
-      message: 'Invalid access token',
-    };
-  }
+    if (error) {
+      console.error('[MFA] Unenroll failed:', error);
+      return {
+        code: error.status === 401 ? 'INVALID_TOKEN' : 'MFA_DISABLE_FAILED',
+        message: error.message || 'Failed to disable MFA',
+      };
+    }
 
-  const { error } = await supabase.auth.mfa.unenroll({
-    factorId,
-  });
-
-  if (error) {
+    console.log('[MFA] Factor disabled successfully');
+    return { success: true };
+  } catch (err: any) {
+    console.error('[MFA] Exception in disableMFA:', err);
     return {
       code: 'MFA_DISABLE_FAILED',
-      message: error.message || 'Failed to disable MFA',
+      message: err.message || 'Failed to disable MFA',
     };
   }
-
-  return { success: true };
 }
 
 /**
