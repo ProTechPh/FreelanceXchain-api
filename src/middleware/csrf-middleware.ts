@@ -31,13 +31,21 @@ const doubleCsrfProtection = csrfUtils.doubleCsrfProtection;
  * - Health checks
  * - Webhooks from external services
  * - Public endpoints that don't modify state
+ * - Authentication endpoints (login/register use credentials for protection)
  */
 const CSRF_EXEMPT_PATHS = [
   '/health',
   '/api/health',
   '/api/webhooks',
+  '/api/auth/login', // Login endpoint
+  '/api/auth/register', // Registration endpoint
   '/api/auth/callback', // OAuth callback
   '/api/auth/oauth/callback', // OAuth token callback
+  '/api/auth/oauth/register', // OAuth registration
+  '/api/auth/refresh', // Token refresh
+  '/api/auth/forgot-password', // Password reset request
+  '/api/auth/reset-password', // Password reset
+  '/api/auth/resend-confirmation', // Email confirmation
 ];
 
 /**
