@@ -21,7 +21,7 @@ function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): Paginat
 }
 
 export async function getContractById(contractId: string): Promise<ContractServiceResult<Contract>> {
-  const entity = await contractRepository.getContractById(contractId);
+  const entity = await contractRepository.getContractByIdWithRelations(contractId);
   if (!entity) {
     return {
       success: false,

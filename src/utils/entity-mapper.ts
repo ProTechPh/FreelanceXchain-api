@@ -324,14 +324,41 @@ export type Contract = {
   escrowAddress: string;
   totalAmount: number;
   status: ContractStatus;
+  title?: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  milestones?: any[];
   createdAt: string;
   updatedAt: string;
+  // Extended fields
+  project?: any;
+  freelancer?: any;
+  employer?: any;
 };
 
-export function mapContractFromEntity(entity: ContractEntity): Contract {
+export function mapContractFromEntity(entity: ContractEntity & { project?: any; freelancer?: any; employer?: any }): Contract {
   if (!entity) {
     throw new Error('Cannot map null or undefined ContractEntity');
   }
+  
+  // Map freelancer data
+  const freelancerData = entity.freelancer ? {
+    id: entity.freelancer.id,
+    name: entity.freelancer.name,
+    email: entity.freelancer.email,
+    ...entity.freelancer.freelancer_profile?.[0]
+  } : undefined;
+  
+  // Map employer data
+  const employerData = entity.employer ? {
+    id: entity.employer.id,
+    name: entity.employer.name,
+    email: entity.employer.email,
+    companyName: entity.employer.employer_profile?.[0]?.company_name,
+    ...entity.employer.employer_profile?.[0]
+  } : undefined;
+  
   return {
     id: entity.id,
     projectId: entity.project_id,
@@ -341,8 +368,16 @@ export function mapContractFromEntity(entity: ContractEntity): Contract {
     escrowAddress: entity.escrow_address,
     totalAmount: entity.total_amount,
     status: entity.status,
+    title: entity.project?.title,
+    description: entity.project?.description,
+    startDate: entity.created_at, // Use contract creation as start date
+    endDate: entity.project?.deadline,
+    milestones: entity.project?.milestones || [],
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
+    project: entity.project,
+    freelancer: freelancerData,
+    employer: employerData,
   };
 }
 
