@@ -79,11 +79,18 @@ export function isAIAvailable(): boolean {
   return Boolean(config.llm.apiKey);
 }
 
+const AI_RECOMMENDATIONS_ENDPOINT = '/FreelanceXchain/AI/Recommendations';
+
 /**
- * Build the AI API URL (OpenAI-compatible endpoint)
+ * Build the AI API URL for the recommendations endpoint.
+ * If LLM_API_URL already includes the endpoint, use it as-is.
  */
 function buildApiUrl(): string {
-  return `${config.llm.apiUrl}/v1/chat/completions`;
+  const baseUrl = config.llm.apiUrl.replace(/\/+$/, '');
+  if (baseUrl.toLowerCase().endsWith(AI_RECOMMENDATIONS_ENDPOINT.toLowerCase())) {
+    return baseUrl;
+  }
+  return `${baseUrl}${AI_RECOMMENDATIONS_ENDPOINT}`;
 }
 
 /**
@@ -129,6 +136,8 @@ async function makeAIRequest(
       headers: {
         'Authorization': `Bearer ${config.llm.apiKey}`,
         'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
       },
       body: JSON.stringify(openAIRequest),
       signal: controller.signal,
