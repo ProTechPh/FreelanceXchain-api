@@ -243,7 +243,7 @@ function parseJsonResponse<T>(text: string): T | null {
 function buildPrompt(template: string, variables: Record<string, string>): string {
   let prompt = template;
   for (const [key, value] of Object.entries(variables)) {
-    prompt = prompt.replace(`{${key}}`, value);
+    prompt = prompt.replaceAll(`{${key}}`, value);
   }
   return prompt;
 }

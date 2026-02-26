@@ -348,13 +348,13 @@ describe('Didit Client', () => {
       const result = verifyWebhookSignature(payload, signature, timestamp);
       expect(result).toBe(true);
     });
-    it('should allow missing signature in non-production', async () => {
+    it('should reject missing signature in non-production', async () => {
       process.env['NODE_ENV'] = 'development';
       const { verifyWebhookSignature } = await importModule();
       const payload = '{"event":"verification.completed"}';
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const result = verifyWebhookSignature(payload, '', timestamp);
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
     it('should reject missing signature in production', async () => {
       process.env['NODE_ENV'] = 'production';
@@ -364,13 +364,13 @@ describe('Didit Client', () => {
       const result = verifyWebhookSignature(payload, '', timestamp);
       expect(result).toBe(false);
     });
-    it('should allow missing timestamp in non-production', async () => {
+    it('should reject missing timestamp in non-production', async () => {
       process.env['NODE_ENV'] = 'development';
       const { verifyWebhookSignature } = await importModule();
       const payload = '{"event":"verification.completed"}';
       const signature = 'any-signature';
       const result = verifyWebhookSignature(payload, signature, '');
-      expect(result).toBe(true);
+      expect(result).toBe(false);
     });
     it('should handle timing-safe comparison with different lengths', async () => {
       const { verifyWebhookSignature } = await importModule();

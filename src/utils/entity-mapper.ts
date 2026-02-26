@@ -16,6 +16,7 @@ export type KycStatus = 'pending' | 'in_progress' | 'completed' | 'approved' | '
 export type User = {
   id: string;
   email: string;
+  name: string;
   passwordHash: string;
   role: 'freelancer' | 'employer' | 'admin';
   walletAddress: string;
@@ -28,6 +29,7 @@ export function mapUserFromEntity(entity: UserEntity, kycStatus?: string): User 
   return {
     id: entity.id,
     email: entity.email,
+    name: entity.name ?? '',
     passwordHash: entity.password_hash,
     role: entity.role,
     walletAddress: entity.wallet_address,
@@ -44,7 +46,7 @@ export function mapUserToEntity(user: Omit<User, 'createdAt' | 'updatedAt'>): Om
     password_hash: user.passwordHash,
     role: user.role,
     wallet_address: user.walletAddress,
-    name: '',
+    name: user.name,
   };
 }
 

@@ -76,7 +76,7 @@ export async function updateContractStatus(
 
   const validTransitions: Record<ContractStatus, ContractStatus[]> = {
     active: ['completed', 'disputed', 'cancelled'],
-    disputed: ['active', 'completed', 'cancelled'],
+    disputed: ['completed', 'cancelled'],  // FIXED: Removed 'active' - disputes must be resolved, not swept under the rug
     completed: [],
     cancelled: [],
   };

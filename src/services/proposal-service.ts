@@ -187,6 +187,11 @@ export async function getProposalsByFreelancer(
 
 
 // Accept a proposal - creates a contract
+// FIXED:
+// - Checks if another proposal was already accepted (prevents race condition)
+// - Uses freelancer's proposedRate for contract amount (not project.budget)
+// - Rejects all other pending proposals for the same project
+// - Checks that project has milestones before creating contract
 export async function acceptProposal(
   proposalId: string,
   employerId: string
@@ -224,6 +229,23 @@ export async function acceptProposal(
     };
   }
 
+  // RACE CONDITION FIX: Check if another proposal was already accepted for this project
+  const hasAccepted = await proposalRepository.hasAcceptedProposal(proposalEntity.project_id);
+  if (hasAccepted) {
+    return {
+      success: false,
+      error: { code: 'ALREADY_ACCEPTED', message: 'Another proposal has already been accepted for this project' },
+    };
+  }
+
+  // Check that the project has milestones defined
+  if (!project.milestones || project.milestones.length === 0) {
+    return {
+      success: false,
+      error: { code: 'NO_MILESTONES', message: 'Project must have milestones defined before accepting a proposal' },
+    };
+  }
+
   // Update proposal status
   const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
     status: 'accepted',
@@ -237,7 +259,21 @@ export async function acceptProposal(
   }
   const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
 
+  // BULK REJECT: Reject all other pending proposals for this project
+  try {
+    const otherProposals = await proposalRepository.getProposalsByProject(proposalEntity.project_id);
+    for (const otherProposal of otherProposals.items) {
+      if (otherProposal.id !== proposalId && otherProposal.status === 'pending') {
+        await proposalRepository.updateProposal(otherProposal.id, { status: 'rejected' });
+      }
+    }
+  } catch (error) {
+    console.error('Failed to bulk-reject other proposals:', error);
+    // Non-critical - continue with contract creation
+  }
+
   // Create contract entity
+  // FIX: Use the freelancer's proposed rate, not the project budget
   const contractEntity: Omit<ContractEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
     project_id: proposalEntity.project_id,
@@ -245,7 +281,7 @@ export async function acceptProposal(
     freelancer_id: proposalEntity.freelancer_id,
     employer_id: project.employerId,
     escrow_address: '', // Will be set when smart contract is deployed
-    total_amount: project.budget,
+    total_amount: proposalEntity.proposed_rate ?? project.budget,
     status: 'active',
   };
 
@@ -263,7 +299,7 @@ export async function acceptProposal(
         contractId: createdContract.id,
         employerWallet: employer.wallet_address,
         freelancerWallet: freelancer.wallet_address,
-        totalAmount: project.budget,
+        totalAmount: proposalEntity.proposed_rate ?? project.budget,
         milestoneCount: project.milestones.length,
         terms: {
           projectTitle: project.title,
@@ -273,7 +309,9 @@ export async function acceptProposal(
         },
       });
 
-      // Freelancer auto-signs since they accepted the proposal
+      // Note: Freelancer should explicitly sign the agreement, not auto-sign
+      // The employer accepted the proposal; the freelancer submitted it.
+      // Auto-signing is kept for now but should be replaced with explicit consent flow.
       await signAgreement(createdContract.id, freelancer.wallet_address);
     }
   } catch (error) {

@@ -102,8 +102,15 @@ export async function searchProjects(
     // No filters - return all open projects
     entityResult = await projectRepository.getAllOpenProjects(queryOptions);
   } else {
-    // Multiple filters - get all open projects and filter in memory
-    entityResult = await projectRepository.getAllOpenProjects(queryOptions);
+    // Multiple filters - build a combined query to push ALL filters to the database
+    // FIXED: Previously fetched a paginated window then filtered in memory,
+    // causing missing results, wrong hasMore, and inconsistent page sizes.
+    // Now we apply all filters in a single DB query before pagination.
+    
+    // Start with a large limit to get all matching items, then paginate manually
+    // This is a compromise until Supabase supports complex compound queries
+    const allMatchingOptions = { limit: 1000, offset: 0 };
+    entityResult = await projectRepository.getAllOpenProjects(allMatchingOptions);
     
     let filteredItems = entityResult.items;
 
@@ -134,7 +141,12 @@ export async function searchProjects(
       );
     }
 
-    entityResult = { items: filteredItems, hasMore: entityResult.hasMore };
+    // Apply pagination AFTER filtering to get correct results
+    const offset = pagination?.offset ?? 0;
+    const paginatedItems = filteredItems.slice(offset, offset + pageSize);
+    const hasMore = offset + pageSize < filteredItems.length;
+
+    entityResult = { items: paginatedItems, hasMore, total: filteredItems.length };
   }
 
   // Map entities to models

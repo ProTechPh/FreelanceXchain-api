@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm exec tsc || echo 'TypeScript compilation requires fixing pnpm permissions. Using tsx for development.'",
+    "openapi:generate": "tsx scripts/generate-openapi.ts",
     "build:check": "tsx --tsconfig tsconfig.json src/index.ts --dry-run || echo 'TypeScript check complete'",
     "start": "node dist/index.js",
     "start:prod": "tsx src/index.ts",
@@ -43,6 +44,7 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.0",
     "file-type": "16.5.4",
+    "hcaptcha": "^0.2.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
@@ -52,6 +54,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
+    "@jest/globals": "^30.2.0",
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
     "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@types/bcrypt": "^5.0.2",
@@ -82,5 +85,13 @@
   "engines": {
     "node": ">=20",
     "pnpm": ">=8"
+  },
+  "pnpm": {
+    "strictPeerDependencies": false,
+    "shamefullyHoist": true,
+    "autoInstallPeers": true,
+    "publicHoistPattern": [
+      "@types/*"
+    ]
   }
 }

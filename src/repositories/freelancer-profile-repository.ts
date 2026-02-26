@@ -45,14 +45,21 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   }
 
   async getProfilesBySkillId(skillId: string): Promise<FreelancerProfileEntity[]> {
+    // Note: Freelancer skills now use name-based structure { name, years_of_experience }
+    // not skill_id-based. This method is kept for backward compatibility but 
+    // searchBySkills(skillNames) should be preferred.
     const client = this.getClient();
     const { data, error } = await client
       .from(this.tableName)
-      .select('*')
-      .contains('skills', [{ skill_id: skillId }]);
+      .select('*');
     
     if (error) throw new Error(`Failed to get profiles by skill: ${error.message}`);
-    return (data ?? []) as FreelancerProfileEntity[];
+    
+    // Filter in memory since JSONB contains won't match across different schema shapes
+    const profiles = (data ?? []) as FreelancerProfileEntity[];
+    return profiles.filter(profile =>
+      profile.skills.some(skill => skill.name.toLowerCase() === skillId.toLowerCase())
+    );
   }
 
   async getAvailableProfiles(): Promise<FreelancerProfileEntity[]> {

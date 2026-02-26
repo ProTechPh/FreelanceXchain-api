@@ -59,6 +59,8 @@ contract ContractAgreement {
 
     /**
      * @dev Create a new contract agreement (called when proposal is accepted)
+     * FIXED: Added access control - only the contract owner (backend relayer) can create agreements
+     * This prevents anyone from creating fake agreements with arbitrary employer/freelancer addresses
      */
     function createAgreement(
         bytes32 contractIdHash,
@@ -67,7 +69,7 @@ contract ContractAgreement {
         address freelancer,
         uint256 totalAmount,
         uint256 milestoneCount
-    ) external {
+    ) external onlyOwner {
         require(agreements[contractIdHash].createdAt == 0, "Agreement exists");
         require(employer != address(0) && freelancer != address(0), "Invalid addresses");
         require(employer != freelancer, "Same party");

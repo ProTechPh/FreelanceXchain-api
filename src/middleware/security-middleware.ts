@@ -20,9 +20,9 @@ export const securityHeaders = helmetMiddleware({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"], // Allow inline for Swagger UI & Supabase
-            scriptSrcAttr: ["'unsafe-inline'"], // Allow inline event handlers
-            styleSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'"],
+            scriptSrcAttr: ["'none'"],
+            styleSrc: ["'self'"],
             imgSrc: ["'self'", "data:", "https:"],
             connectSrc: ["'self'", "https://nfcfgxfpidfvcpkyjgih.supabase.co"], // Allow connection to Supabase
             fontSrc: ["'self'"],
@@ -92,13 +92,41 @@ export function httpsEnforcement(req: Request, res: Response, next: NextFunction
 export function validateCorsOrigin(origin: string | undefined, allowedOrigins: string[]): boolean {
     if (!origin) return false;
 
+    let parsedOrigin: URL;
+    try {
+        parsedOrigin = new URL(origin);
+    } catch {
+        return false;
+    }
+
+    if (!['http:', 'https:'].includes(parsedOrigin.protocol)) {
+        return false;
+    }
+
+    const normalizedOrigin = parsedOrigin.origin.toLowerCase();
+
     for (const allowed of allowedOrigins) {
+        const trimmedAllowed = allowed.trim().toLowerCase();
+
         // Support wildcard subdomains like *.example.com
-        if (allowed.startsWith('*.')) {
-            const domain = allowed.slice(2);
-            if (origin.endsWith(domain)) return true;
-        } else if (origin === allowed) {
-            return true;
+        if (trimmedAllowed.startsWith('*.')) {
+            const domain = trimmedAllowed.slice(2);
+            const host = parsedOrigin.hostname.toLowerCase();
+
+            // Must be a real subdomain boundary: foo.example.com matches, evil-example.com does not
+            if (host !== domain && host.endsWith(`.${domain}`)) {
+                return true;
+            }
+            continue;
+        }
+
+        try {
+            const normalizedAllowed = new URL(trimmedAllowed).origin.toLowerCase();
+            if (normalizedOrigin === normalizedAllowed) {
+                return true;
+            }
+        } catch {
+            // Ignore malformed entries in CORS_ORIGIN and continue checking others
         }
     }
 
@@ -114,7 +142,14 @@ export function getAllowedOrigins(): string[] {
     if (!corsOrigin) {
         // In development, allow localhost by default
         if (process.env['NODE_ENV'] !== 'production') {
-            return ['http://localhost:3000', 'http://localhost:3001', 'http://127.0.0.1:3000'];
+            return [
+                'http://localhost:3000',
+                'http://localhost:3001',
+                'http://localhost:5173',
+                'http://localhost:5174',
+                'http://127.0.0.1:3000',
+                'http://127.0.0.1:5173',
+            ];
         }
         return [];
     }

@@ -9,7 +9,7 @@ import {
   sanitizeSessionId,
   addAllowedDomain,
   isAllowedDomain,
-} from '../url-validator';
+} from '../url-validator.js';
 
 describe('URL Validator - OWASP A10 SSRF Protection', () => {
   describe('validateUrl', () => {

@@ -2,7 +2,7 @@ import { createApp } from './app.js';
 import { config, initializeDatabase } from './config/index.js';
 
 async function main(): Promise<void> {
-  const app = createApp();
+  const app = await createApp();
 
   // Initialize database if Supabase is configured
   if (config.supabase.url && config.supabase.anonKey) {
@@ -24,7 +24,11 @@ async function main(): Promise<void> {
   const server = app.listen(config.server.port, () => {
     console.log(`Server running on port ${config.server.port}`);
     console.log(`Environment: ${config.server.nodeEnv}`);
-    console.log(`API docs available at ${config.server.baseUrl}/api-docs`);
+    if (config.server.enableApiDocs) {
+      console.log(`API docs available at ${config.server.baseUrl}/api-docs`);
+    } else {
+      console.log('API docs disabled (set ENABLE_API_DOCS=true to enable)');
+    }
   });
 
   // Graceful shutdown handling

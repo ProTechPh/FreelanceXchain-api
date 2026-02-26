@@ -151,6 +151,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
 router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const userId = req.user?.userId;
 
   const result = await getContractById(id);
 
@@ -161,6 +162,20 @@ router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Res
       requestId,
     });
     return;
+  }
+
+  // FIXED: Authorization check - only contract parties can view contract details
+  const contract = result.data;
+  if (userId && contract.freelancerId !== userId && contract.employerId !== userId) {
+    // Check if user is admin (admins can view all contracts)
+    if (req.user?.role !== 'admin') {
+      res.status(403).json({
+        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this contract' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
   }
 
   res.status(200).json(result.data);

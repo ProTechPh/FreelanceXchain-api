@@ -6,6 +6,13 @@ pragma solidity ^0.8.19;
  * @dev Escrow contract for freelance marketplace milestone payments
  * Holds funds and releases them upon milestone approval
  * Includes reentrancy protection for all payment functions
+ * 
+ * FIXED:
+ * - Track refundedAmount separately so contract can complete after refunds
+ * - Validate arbiter is not address(0), not employer, not freelancer
+ * - Block cancelContract when milestones are in submitted/disputed state
+ * - Refund excess ETH on deployment
+ * - Validate milestone amounts > 0
  */
 contract FreelanceEscrow {
     address public employer;
@@ -14,6 +21,7 @@ contract FreelanceEscrow {
     
     uint256 public totalAmount;
     uint256 public releasedAmount;
+    uint256 public refundedAmount;  // FIXED: Track refunds separately
     
     // Reentrancy guard
     uint256 private constant NOT_ENTERED = 1;
@@ -42,6 +50,7 @@ contract FreelanceEscrow {
     event DisputeResolved(uint256 indexed milestoneIndex, bool inFavorOfFreelancer);
     event ContractCompleted();
     event ContractCancelled();
+    event ExcessRefunded(address indexed to, uint256 amount);
     
     /**
      * @dev Prevents reentrancy attacks
@@ -89,6 +98,10 @@ contract FreelanceEscrow {
         string[] memory _milestoneDescriptions
     ) payable {
         require(_freelancer != address(0), "Invalid freelancer address");
+        // FIXED: Validate arbiter address
+        require(_arbiter != address(0), "Invalid arbiter address");
+        require(_arbiter != msg.sender, "Arbiter cannot be the employer");
+        require(_arbiter != _freelancer, "Arbiter cannot be the freelancer");
         require(_milestoneAmounts.length > 0, "Must have at least one milestone");
         require(
             _milestoneAmounts.length == _milestoneDescriptions.length,
@@ -103,6 +116,8 @@ contract FreelanceEscrow {
         
         uint256 total = 0;
         for (uint256 i = 0; i < _milestoneAmounts.length; i++) {
+            // FIXED: Validate milestone amounts > 0
+            require(_milestoneAmounts[i] > 0, "Milestone amount must be greater than zero");
             milestones.push(Milestone({
                 amount: _milestoneAmounts[i],
                 status: MilestoneStatus.Pending,
@@ -118,6 +133,14 @@ contract FreelanceEscrow {
         _status = NOT_ENTERED;
         
         emit FundsDeposited(msg.sender, msg.value);
+
+        // FIXED: Refund excess ETH immediately
+        if (msg.value > total) {
+            uint256 excess = msg.value - total;
+            (bool refundSuccess, ) = msg.sender.call{value: excess}("");
+            require(refundSuccess, "Excess refund failed");
+            emit ExcessRefunded(msg.sender, excess);
+        }
     }
 
     
@@ -153,8 +176,8 @@ contract FreelanceEscrow {
         
         emit MilestoneApproved(milestoneIndex, milestone.amount);
         
-        // Check if all milestones are complete
-        if (releasedAmount >= totalAmount) {
+        // FIXED: Check completion including refunded milestones
+        if (releasedAmount + refundedAmount >= totalAmount) {
             isActive = false;
             emit ContractCompleted();
         }
@@ -196,6 +219,7 @@ contract FreelanceEscrow {
             emit MilestoneApproved(milestoneIndex, milestone.amount);
         } else {
             milestone.status = MilestoneStatus.Refunded;
+            refundedAmount += milestone.amount;  // FIXED: Track refunded amount
             
             (bool success, ) = employer.call{value: milestone.amount}("");
             require(success, "Refund failed");
@@ -204,6 +228,12 @@ contract FreelanceEscrow {
         }
         
         emit DisputeResolved(milestoneIndex, inFavorOfFreelancer);
+
+        // FIXED: Check completion including refunded milestones
+        if (releasedAmount + refundedAmount >= totalAmount) {
+            isActive = false;
+            emit ContractCompleted();
+        }
     }
     
     /**
@@ -215,17 +245,35 @@ contract FreelanceEscrow {
         require(milestone.status == MilestoneStatus.Pending, "Milestone not pending");
         
         milestone.status = MilestoneStatus.Refunded;
+        refundedAmount += milestone.amount;  // FIXED: Track refunded amount
         
         (bool success, ) = employer.call{value: milestone.amount}("");
         require(success, "Refund failed");
         
         emit MilestoneRefunded(milestoneIndex, milestone.amount);
+
+        // FIXED: Check completion including refunded milestones
+        if (releasedAmount + refundedAmount >= totalAmount) {
+            isActive = false;
+            emit ContractCompleted();
+        }
     }
     
     /**
      * @dev Cancel contract and refund remaining funds to employer
+     * FIXED: Cannot cancel if any milestones are Submitted or Disputed
+     * (protects freelancers who have submitted work)
      */
     function cancelContract() external onlyEmployer contractActive nonReentrant {
+        // FIXED: Block cancellation if any milestone has been submitted or is under dispute
+        for (uint256 i = 0; i < milestones.length; i++) {
+            require(
+                milestones[i].status != MilestoneStatus.Submitted &&
+                milestones[i].status != MilestoneStatus.Disputed,
+                "Cannot cancel: milestone is submitted or disputed"
+            );
+        }
+
         uint256 remainingFunds = address(this).balance;
         isActive = false;
         
@@ -258,6 +306,7 @@ contract FreelanceEscrow {
     }
     
     function getRemainingAmount() external view returns (uint256) {
-        return totalAmount - releasedAmount;
+        // FIXED: Account for both released and refunded amounts
+        return totalAmount - releasedAmount - refundedAmount;
     }
 }

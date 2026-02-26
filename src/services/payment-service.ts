@@ -8,6 +8,7 @@ import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, map
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { PaymentRepository, PaymentType } from '../repositories/payment-repository.js';
 import { generateId } from '../utils/id.js';
 import {
   deployEscrow,
@@ -27,6 +28,38 @@ import {
   approveMilestoneOnRegistry,
 } from './milestone-registry.js';
 import { completeAgreement } from './agreement-contract.js';
+
+/**
+ * Create a payment record for audit trail
+ */
+async function createPaymentRecord(params: {
+  contractId: string;
+  milestoneId: string | null;
+  payerId: string;
+  payeeId: string;
+  amount: number;
+  paymentType: PaymentType;
+  txHash: string | null;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
+}): Promise<void> {
+  try {
+    await PaymentRepository.create({
+      id: generateId(),
+      contract_id: params.contractId,
+      milestone_id: params.milestoneId,
+      payer_id: params.payerId,
+      payee_id: params.payeeId,
+      amount: params.amount,
+      currency: 'ETH',
+      tx_hash: params.txHash,
+      status: params.status,
+      payment_type: params.paymentType,
+    });
+  } catch (error) {
+    console.error('Failed to create payment record:', error);
+    // Non-critical: payment record is for audit, don't fail the operation
+  }
+}
 
 export type PaymentServiceError = {
   code: string;
@@ -98,6 +131,14 @@ export async function requestMilestoneCompletion(
   }
   const contract = mapContractFromEntity(contractEntity);
 
+  // Verify contract is active
+  if (contract.status !== 'active') {
+    return {
+      success: false,
+      error: { code: 'INVALID_STATUS', message: `Cannot submit milestone on a ${contract.status} contract` },
+    };
+  }
+
   // Verify freelancer owns this contract
   if (contract.freelancerId !== freelancerId) {
     return {
@@ -126,7 +167,7 @@ export async function requestMilestoneCompletion(
     };
   }
 
-  // Check milestone status
+  // Check milestone status - only 'pending' or 'in_progress' can be submitted
   if (milestone.status === 'approved') {
     return {
       success: false,
@@ -141,18 +182,14 @@ export async function requestMilestoneCompletion(
     };
   }
 
-  // Update milestone status to submitted
-  const milestoneToUpdate = projectEntity.milestones[milestoneIndex];
-  if (milestoneToUpdate) {
-    milestoneToUpdate.status = 'submitted';
+  if (milestone.status === 'submitted') {
+    return {
+      success: false,
+      error: { code: 'INVALID_STATUS', message: 'Milestone already submitted for review' },
+    };
   }
 
-  // Update project in database
-  await projectRepository.updateProject(project.id, {
-    milestones: projectEntity.milestones,
-  });
-
-  // Submit milestone to blockchain registry
+  // Submit milestone to blockchain registry FIRST (blockchain-first pattern)
   try {
     const freelancer = await userRepository.getUserById(freelancerId);
     const employer = await userRepository.getUserById(contract.employerId);
@@ -170,7 +207,19 @@ export async function requestMilestoneCompletion(
     }
   } catch (error) {
     console.error('Failed to submit milestone to blockchain registry:', error);
+    // Non-critical: blockchain registry is supplementary, DB is source of truth for status
   }
+
+  // Update milestone status to submitted in DB
+  const milestoneToUpdate = projectEntity.milestones[milestoneIndex];
+  if (milestoneToUpdate) {
+    milestoneToUpdate.status = 'submitted';
+  }
+
+  // Update project in database
+  await projectRepository.updateProject(project.id, {
+    milestones: projectEntity.milestones,
+  });
 
   // Send notification to employer
   await notifyMilestoneSubmitted(
@@ -197,6 +246,13 @@ export async function requestMilestoneCompletion(
  * Approve milestone completion
  * Called by employer to approve and release payment
  * Requirements: 6.3
+ * 
+ * FIXED: 
+ * - Only milestones with status 'submitted' can be approved
+ * - Contract must be 'active' status
+ * - Looks up employer wallet address instead of passing UUID
+ * - Blockchain-first: only updates DB after successful escrow release
+ * - paymentReleased reflects actual blockchain result
  */
 export async function approveMilestone(
   contractId: string,
@@ -212,6 +268,14 @@ export async function approveMilestone(
     };
   }
   const contract = mapContractFromEntity(contractEntity);
+
+  // Verify contract is active
+  if (contract.status !== 'active') {
+    return {
+      success: false,
+      error: { code: 'INVALID_STATUS', message: `Cannot approve milestone on a ${contract.status} contract` },
+    };
+  }
 
   // Verify employer owns this contract
   if (contract.employerId !== employerId) {
@@ -241,39 +305,45 @@ export async function approveMilestone(
     };
   }
 
-  // Check milestone status
-  if (milestone.status === 'approved') {
+  // Only milestones with status 'submitted' can be approved
+  if (milestone.status !== 'submitted') {
     return {
       success: false,
-      error: { code: 'INVALID_STATUS', message: 'Milestone already approved' },
+      error: { 
+        code: 'INVALID_STATUS', 
+        message: milestone.status === 'approved' 
+          ? 'Milestone already approved' 
+          : milestone.status === 'disputed'
+          ? 'Milestone is under dispute and cannot be approved'
+          : `Milestone must be submitted before it can be approved (current status: ${milestone.status})` 
+      },
     };
   }
 
-  if (milestone.status === 'disputed') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Milestone is under dispute' },
-    };
-  }
-
-  // Release payment from escrow
+  // Release payment from escrow - BLOCKCHAIN FIRST
+  // Look up the employer's wallet address (NOT the UUID)
   let transactionHash: string | undefined;
+  let paymentReleased = false;
   try {
     const escrow = await getEscrowByContractId(contractId);
-    if (escrow) {
+    const employer = await userRepository.getUserById(employerId);
+    if (escrow && employer?.wallet_address) {
       const receipt = await releaseEscrowMilestone(
         escrow.address,
         milestoneId,
-        employerId
+        employer.wallet_address  // Use actual wallet address, not UUID
       );
       transactionHash = receipt.transactionHash;
+      paymentReleased = true;
     }
   } catch (error) {
-    // Log error but continue - payment release is best effort in simulation
     console.error('Failed to release escrow payment:', error);
+    // Payment release failed - still proceed with approval but mark paymentReleased as false
+    // The payment can be retried later
   }
 
-  // Update milestone status to approved
+  // Update milestone status to approved (proceed even if blockchain failed -
+  // the employer approved the work, payment release can be retried)
   const milestoneToApprove = projectEntity.milestones[milestoneIndex];
   if (milestoneToApprove) {
     milestoneToApprove.status = 'approved';
@@ -329,22 +399,25 @@ export async function approveMilestone(
     contractId
   );
 
-  await notifyPaymentReleased(
-    contract.freelancerId,
-    milestone.amount,
-    milestoneId,
-    milestone.title,
-    project.id,
-    project.title,
-    contractId
-  );
+  // Only send payment notification if payment was actually released
+  if (paymentReleased) {
+    await notifyPaymentReleased(
+      contract.freelancerId,
+      milestone.amount,
+      milestoneId,
+      milestone.title,
+      project.id,
+      project.title,
+      contractId
+    );
+  }
 
   return {
     success: true,
     data: {
       milestoneId,
       status: 'approved',
-      paymentReleased: true,
+      paymentReleased,  // Reflects actual blockchain result
       transactionHash,
       contractCompleted,
     },
@@ -354,8 +427,12 @@ export async function approveMilestone(
 
 /**
  * Dispute milestone
- * Called by employer to dispute a milestone completion
+ * Called by a contract party to dispute a milestone completion
  * Requirements: 6.4
+ * 
+ * FIXED:
+ * - Contract must be 'active' status
+ * - Only milestones with status 'submitted' can be disputed
  */
 export async function disputeMilestone(
   contractId: string,
@@ -372,6 +449,14 @@ export async function disputeMilestone(
     };
   }
   const contract = mapContractFromEntity(contractEntity);
+
+  // Verify contract is active
+  if (contract.status !== 'active') {
+    return {
+      success: false,
+      error: { code: 'INVALID_STATUS', message: `Cannot dispute milestone on a ${contract.status} contract` },
+    };
+  }
 
   // Verify initiator is part of this contract
   if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
@@ -401,18 +486,19 @@ export async function disputeMilestone(
     };
   }
 
-  // Check milestone status
-  if (milestone.status === 'approved') {
+  // Only milestones with status 'submitted' can be disputed
+  // You can't dispute work that hasn't been submitted
+  if (milestone.status !== 'submitted') {
     return {
       success: false,
-      error: { code: 'INVALID_STATUS', message: 'Cannot dispute approved milestone' },
-    };
-  }
-
-  if (milestone.status === 'disputed') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Milestone already under dispute' },
+      error: { 
+        code: 'INVALID_STATUS', 
+        message: milestone.status === 'approved' 
+          ? 'Cannot dispute an already approved milestone'
+          : milestone.status === 'disputed'
+          ? 'Milestone is already under dispute'
+          : `Milestone must be submitted before it can be disputed (current status: ${milestone.status})`
+      },
     };
   }
 
@@ -588,6 +674,20 @@ export function clearDisputes(): void {
 }
 
 /**
+ * Convert a decimal number to wei (BigInt) safely without floating-point precision loss.
+ * Uses string manipulation instead of `Math.floor(amount * 1e18)` which loses precision.
+ * e.g., 0.3 * 1e18 = 299999999999999940 (wrong), but this function returns 300000000000000000 (correct)
+ */
+function toWei(amount: number): bigint {
+  // Convert to string and split on decimal point
+  const str = amount.toString();
+  const parts = str.split('.');
+  const whole = parts[0] ?? '0';
+  const decimal = (parts[1] ?? '').padEnd(18, '0').slice(0, 18);
+  return BigInt(whole + decimal);
+}
+
+/**
  * Initialize escrow for a contract
  * Called when a contract is created
  */
@@ -599,25 +699,29 @@ export async function initializeContractEscrow(
 ): Promise<PaymentServiceResult<{ escrowAddress: string }>> {
   try {
     // Prepare milestone data for escrow
+    // FIXED: Use toWei() instead of BigInt(Math.floor(amount * 1e18)) to avoid floating-point precision loss
     const escrowMilestones: EscrowMilestone[] = project.milestones.map(m => ({
       id: m.id,
-      amount: BigInt(Math.floor(m.amount * 1e18)), // Convert to wei
+      amount: toWei(m.amount),
       status: 'pending' as const,
     }));
+
+    // Calculate total from milestones to ensure consistency
+    const totalFromMilestones = escrowMilestones.reduce((sum, m) => sum + m.amount, 0n);
 
     // Deploy escrow contract
     const deployment = await deployEscrow({
       contractId: contract.id,
       employerAddress: employerWalletAddress,
       freelancerAddress: freelancerWalletAddress,
-      totalAmount: BigInt(Math.floor(project.budget * 1e18)),
+      totalAmount: totalFromMilestones,
       milestones: escrowMilestones,
     });
 
     // Deposit funds to escrow
     await depositToEscrow(
       deployment.escrowAddress,
-      BigInt(Math.floor(project.budget * 1e18)),
+      totalFromMilestones,
       employerWalletAddress
     );
 

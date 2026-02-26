@@ -13,6 +13,7 @@ import {
   rejectProposal,
   withdrawProposal,
 } from '../services/proposal-service.js';
+import { getProjectById } from '../services/project-service.js';
 
 const router = Router();
 
@@ -419,6 +420,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
 router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const userId = req.user?.userId;
 
   const result = await getProposalById(id);
 
@@ -429,6 +431,22 @@ router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Res
       requestId,
     });
     return;
+  }
+
+  // Authorization check - only the freelancer who submitted the proposal,
+  // the employer who owns the project, or an admin can view it
+  const proposal = result.data;
+  if (req.user?.role !== 'admin' && proposal.freelancerId !== userId) {
+    // Check if the user is the employer of the project
+    const projectResult = await getProjectById(proposal.projectId);
+    if (!projectResult.success || projectResult.data.employer_id !== userId) {
+      res.status(403).json({
+        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this proposal' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
   }
 
   res.status(200).json(result.data);

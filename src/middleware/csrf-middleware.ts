@@ -3,6 +3,10 @@ import { doubleCsrf } from 'csrf-csrf';
 import { config } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
+// FIXED: Use a dedicated CSRF secret instead of reusing the JWT secret
+// If CSRF_SECRET env var is not set, fall back to JWT secret (not ideal but backward compatible)
+const csrfSecret = process.env['CSRF_SECRET'] ?? config.jwt.secret;
+
 // Configure CSRF protection with proper options
 const {
   invalidCsrfTokenError,
@@ -10,7 +14,7 @@ const {
   validateRequest,
   doubleCsrfProtection,
 } = doubleCsrf({
-  getSecret: () => config.jwt.secret,
+  getSecret: () => csrfSecret,
   cookieName: process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token',
   cookieOptions: {
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
@@ -28,9 +32,7 @@ const {
   },
 });
 
-console.log('[CSRF INIT] CSRF protection initialized');
-console.log('[CSRF INIT] csrfTokenGenerator type:', typeof csrfTokenGenerator);
-console.log('[CSRF INIT] doubleCsrfProtection type:', typeof doubleCsrfProtection);
+// CSRF protection initialized (no debug logging in production)
 
 /**
  * Paths that should be exempt from CSRF protection
@@ -57,9 +59,11 @@ const CSRF_EXEMPT_PATHS = [
 
 /**
  * Check if a path should be exempt from CSRF protection
+ * FIXED: Use exact match instead of prefix-based startsWith to prevent
+ * unintended exemptions on sub-paths
  */
 function isExemptPath(path: string): boolean {
-  return CSRF_EXEMPT_PATHS.some(exemptPath => path.startsWith(exemptPath));
+  return CSRF_EXEMPT_PATHS.some(exemptPath => path === exemptPath);
 }
 
 /**
@@ -115,43 +119,28 @@ export function generateCsrfToken(req: Request, res: Response): void {
   const requestId = req.headers['x-request-id'] ?? 'unknown';
 
   try {
-    console.log('[CSRF DEBUG] csrfTokenGenerator function type:', typeof csrfTokenGenerator);
-    
     if (typeof csrfTokenGenerator !== 'function') {
       throw new Error(`csrfTokenGenerator is not a function, it is: ${typeof csrfTokenGenerator}`);
     }
 
     // Generate the token using the library function
+    // The library handles setting the cookie internally
     const token = csrfTokenGenerator(req, res);
     const cookieName = process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
-    
-    console.log('[CSRF DEBUG] Token generated:', !!token);
-    console.log('[CSRF DEBUG] Token value:', token);
-    console.log('[CSRF DEBUG] Response headers after token generation:', res.getHeaders());
-    
-    // Also manually set the cookie to ensure it's sent
-    res.cookie(cookieName, token, {
-      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-      path: '/',
-      secure: process.env.NODE_ENV === 'production',
-      httpOnly: true,
-    });
-    
-    console.log('[CSRF DEBUG] Cookie manually set');
-    console.log('[CSRF DEBUG] Response headers after manual cookie:', res.getHeaders());
-    
+
     logger.info('CSRF token generated successfully', {
       requestId,
       cookieName,
       method: req.method,
-      userAgent: req.headers['user-agent'],
       ip: req.ip,
       tokenGenerated: !!token,
     });
     
+    // FIXED: Don't return the token in the response body - it defeats CSRF protection.
+    // The client should read the token from the non-httpOnly cookie set by the library.
+    // FIXED: Removed duplicate manual res.cookie() call that could cause validation failures.
     res.status(200).json({
       message: 'CSRF token generated and set in cookie',
-      token, // Include the token in response for debugging
       cookieName,
       timestamp: new Date().toISOString(),
       requestId,

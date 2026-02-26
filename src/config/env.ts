@@ -24,6 +24,16 @@ function getEnvVarNumber(key: string, defaultValue: number): number {
   return parsed;
 }
 
+function getEnvVarBoolean(key: string, defaultValue: boolean): boolean {
+  const value = process.env[key];
+  if (value === undefined) return defaultValue;
+
+  if (value === 'true') return true;
+  if (value === 'false') return false;
+
+  throw new Error(`Environment variable ${key} must be "true" or "false"`);
+}
+
 function getBaseUrl(): string {
   // Check for explicit BASE_URL first
   const explicitUrl = getEnvVarOptional('BASE_URL');
@@ -43,6 +53,7 @@ export const config = {
     port: getEnvVarNumber('PORT', 3000),
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     baseUrl: getBaseUrl(),
+    enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
   },
   supabase: {
     url: getEnvVar('SUPABASE_URL'),

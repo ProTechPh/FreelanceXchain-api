@@ -19,6 +19,7 @@ import {
   getDisputesByContract,
   getAllDisputes,
 } from '../services/dispute-service.js';
+import { getContractById } from '../services/contract-service.js';
 
 const router = Router();
 
@@ -356,6 +357,28 @@ router.get(
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 : 400;
         res.status(statusCode).json({ error: result.error });
         return;
+      }
+
+      // Authorization check - only dispute parties and admins can view dispute details
+      const dispute = result.data;
+      if (req.user?.role !== 'admin' && dispute.initiatorId !== userId) {
+        // Check if user is the other contract party via the contract
+        const contractResult = await getContractById(dispute.contractId);
+        if (contractResult.success) {
+          const contract = contractResult.data;
+          if (contract.freelancerId !== userId && contract.employerId !== userId) {
+            res.status(403).json({
+              error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this dispute' },
+            });
+            return;
+          }
+        } else {
+          // Contract not found — deny access as a precaution
+          res.status(403).json({
+            error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this dispute' },
+          });
+          return;
+        }
       }
 
       res.json(result.data);

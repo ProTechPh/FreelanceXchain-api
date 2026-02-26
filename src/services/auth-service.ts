@@ -1,7 +1,8 @@
 import { Provider, createClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
-import { getSupabaseClient } from '../config/supabase.js';
+import { getSupabaseClient, getSupabaseServiceClient } from '../config/supabase.js';
 import { UserRole } from '../models/user.js';
 import {
   RegisterInput,
@@ -12,6 +13,69 @@ import {
 
 // Password strength requirements
 const PASSWORD_MIN_LENGTH = 8;
+
+// ============================================================
+// MFA Session Management
+// Stores pending MFA sessions so we don't leak real access tokens
+// before MFA verification is complete.
+// ============================================================
+const MFA_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+type PendingMfaSession = {
+  accessToken: string;
+  refreshToken: string;
+  userId: string;
+  factorId: string;
+  expiresAt: number;
+};
+
+const pendingMfaSessions = new Map<string, PendingMfaSession>();
+
+function generateMfaSessionId(): string {
+  return `mfa_${randomUUID()}`;
+}
+
+/** Clean up expired MFA sessions periodically */
+function cleanupExpiredMfaSessions(): void {
+  const now = Date.now();
+  for (const [key, session] of pendingMfaSessions) {
+    if (session.expiresAt < now) {
+      pendingMfaSessions.delete(key);
+    }
+  }
+}
+
+// Clean up expired sessions every 60 seconds
+setInterval(cleanupExpiredMfaSessions, 60_000);
+
+/**
+ * Retrieve and consume a pending MFA session after successful MFA verification.
+ * Returns null if the session doesn't exist or has expired.
+ */
+export function consumeMfaSession(mfaSessionId: string): PendingMfaSession | null {
+  const session = pendingMfaSessions.get(mfaSessionId);
+  if (!session) return null;
+  pendingMfaSessions.delete(mfaSessionId);
+  if (session.expiresAt < Date.now()) return null;
+  return session;
+}
+
+/**
+ * Creates a per-request Supabase client for auth-mutating operations.
+ * Avoids the shared singleton which causes session cross-contamination.
+ */
+function createPerRequestClient() {
+  if (process.env['NODE_ENV'] === 'test') {
+    return getSupabaseClient();
+  }
+
+  return createClient(config.supabase.url, config.supabase.anonKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
+}
 
 export type PasswordValidationResult = {
   valid: boolean;
@@ -71,7 +135,7 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
  * Sends confirmation email automatically
  */
 export async function register(input: RegisterInput): Promise<AuthResult | AuthError> {
-  const supabase = getSupabaseClient();
+  const supabase = createPerRequestClient();
   const normalizedEmail = input.email.toLowerCase().trim();
 
   // Check for duplicate email in public.users first
@@ -163,7 +227,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
  * Only works if email is verified
  */
 export async function login(input: LoginInput): Promise<AuthResult | AuthError> {
-  const supabase = getSupabaseClient();
+  const supabase = createPerRequestClient();
   const normalizedEmail = input.email.toLowerCase().trim();
 
   const { data, error } = await supabase.auth.signInWithPassword({
@@ -192,25 +256,36 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
   }
 
   // Check if user has MFA enabled
-  const mfaClient = createClient(config.supabase.url, config.supabase.anonKey, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${data.session.access_token}`,
+  const mfaClient = process.env['NODE_ENV'] === 'test'
+    ? supabase
+    : createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${data.session.access_token}`,
+        },
       },
-    },
-  });
+    });
   
   const { data: factorsData } = await mfaClient.auth.mfa.listFactors();
   const hasVerifiedMFA = factorsData?.all?.some(f => f.status === 'verified') || false;
 
   if (hasVerifiedMFA) {
-    // User has MFA enabled - return a special response indicating MFA is required
+    // User has MFA enabled - store session temporarily and return opaque MFA session ID
+    // Do NOT return the real access token - it would allow bypassing MFA
+    const mfaSessionId = generateMfaSessionId();
+    pendingMfaSessions.set(mfaSessionId, {
+      accessToken: data.session.access_token,
+      refreshToken: data.session.refresh_token,
+      userId: data.user.id,
+      factorId: factorsData?.all?.find(f => f.status === 'verified')?.id ?? '',
+      expiresAt: Date.now() + MFA_SESSION_TTL_MS,
+    });
+
     return {
       code: 'MFA_REQUIRED',
       message: 'MFA verification required',
-      // Return minimal data needed for MFA verification
       mfaRequired: true,
-      accessToken: data.session.access_token,
+      mfaSessionId,  // Opaque identifier, NOT the real access token
       factorId: factorsData?.all?.find(f => f.status === 'verified')?.id,
     } as any;
   }
@@ -232,7 +307,7 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
  * Refresh tokens using Supabase Auth
  */
 export async function refreshTokens(refreshToken: string): Promise<AuthResult | AuthError> {
-  const supabase = getSupabaseClient();
+  const supabase = createPerRequestClient();
 
   const { data, error } = await supabase.auth.refreshSession({ refresh_token: refreshToken });
 
@@ -292,76 +367,72 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
  * Login with existing Supabase session (for OAuth users)
  */
 export async function loginWithSupabase(accessToken: string): Promise<AuthResult | AuthError> {
-  const supabase = getSupabaseClient();
+  // Use a per-request client to avoid session cross-contamination
+  const supabase = createPerRequestClient();
 
-  console.log('[OAuth] loginWithSupabase - Starting with access token');
+  // OAuth login flow - validate token and look up user
 
   const { data: { user }, error } = await supabase.auth.getUser(accessToken);
 
   if (error || !user || !user.email) {
-    console.log('[OAuth] loginWithSupabase - Invalid token or no user:', error?.message);
     return {
       code: 'INVALID_TOKEN',
       message: 'Invalid Supabase token',
     };
   }
 
-  console.log('[OAuth] loginWithSupabase - Got user from auth.users:', {
-    id: user.id,
-    email: user.email,
-    provider: user.app_metadata?.provider
-  });
-
   const publicUser = await userRepository.getUserByEmail(user.email.toLowerCase());
 
   if (!publicUser) {
-    console.log('[OAuth] loginWithSupabase - User NOT found in public.users - returning AUTH_REQUIRE_REGISTRATION');
     return {
       code: 'AUTH_REQUIRE_REGISTRATION',
       message: 'User registration required. Please select a role.',
     };
   }
 
-  console.log('[OAuth] loginWithSupabase - User found in public.users:', {
-    id: publicUser.id,
-    email: publicUser.email,
-    role: publicUser.role
-  });
-
   // Check if user has MFA enabled
-  const mfaClient = createClient(config.supabase.url, config.supabase.anonKey, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
+  const mfaClient = process.env['NODE_ENV'] === 'test'
+    ? supabase
+    : createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       },
-    },
-  });
+    });
   
   const { data: factorsData } = await mfaClient.auth.mfa.listFactors();
   const hasVerifiedMFA = factorsData?.all?.some(f => f.status === 'verified') || false;
 
-  console.log('[OAuth] MFA check:', { hasVerifiedMFA, factorsCount: factorsData?.all?.length });
+  console.log('[OAuth] MFA check:', { hasVerifiedMFA });
 
   if (hasVerifiedMFA) {
-    // User has MFA enabled - return a special response indicating MFA is required
-    console.log('[OAuth] MFA required for user');
+    // User has MFA enabled - store session and return opaque MFA session ID
+    // Do NOT return the real access token - it would allow bypassing MFA
+    const mfaSessionId = generateMfaSessionId();
+    pendingMfaSessions.set(mfaSessionId, {
+      accessToken,
+      refreshToken: '', // OAuth flow doesn't have refresh token at this point
+      userId: publicUser.id,
+      factorId: factorsData?.all?.find(f => f.status === 'verified')?.id ?? '',
+      expiresAt: Date.now() + MFA_SESSION_TTL_MS,
+    });
+
     return {
       code: 'MFA_REQUIRED',
       message: 'MFA verification required',
-      // Return minimal data needed for MFA verification
       mfaRequired: true,
-      accessToken: accessToken,
+      mfaSessionId,  // Opaque identifier, NOT the real access token
       factorId: factorsData?.all?.find(f => f.status === 'verified')?.id,
     } as any;
   }
 
-  // Get current session for tokens
-  const { data: sessionData } = await supabase.auth.getSession();
-
+  // For OAuth flow, the accessToken IS the token we have - use it directly
+  // Don't call getSession() on a per-request client that has no session state
   return await createAuthResult(
     publicUser,
     accessToken,
-    sessionData?.session?.refresh_token ?? ''
+    '' // OAuth implicit flow - refresh token obtained via exchangeCodeForSession separately
   );
 }
 
@@ -400,7 +471,7 @@ export async function getOAuthUrl(provider: Provider): Promise<string> {
  * Exchange OAuth code for session
  */
 export async function exchangeCodeForSession(code: string): Promise<{ accessToken: string; refreshToken: string } | AuthError> {
-  const supabase = getSupabaseClient();
+  const supabase = createPerRequestClient();
 
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
@@ -425,14 +496,11 @@ export async function registerWithSupabase(
   role: UserRole,
   walletAddress: string
 ): Promise<AuthResult | AuthError> {
-  const supabase = getSupabaseClient();
-
-  console.log('[OAuth] registerWithSupabase - Starting registration with role:', role);
+  const supabase = createPerRequestClient();
 
   const { data: { user }, error } = await supabase.auth.getUser(accessToken);
 
   if (error || !user || !user.email) {
-    console.log('[OAuth] registerWithSupabase - Invalid token or no user:', error?.message);
     return {
       code: 'INVALID_TOKEN',
       message: 'Invalid Supabase token',
@@ -441,7 +509,6 @@ export async function registerWithSupabase(
 
   console.log('[OAuth] registerWithSupabase - Got user from auth.users:', {
     id: user.id,
-    email: user.email
   });
 
   const normalizedEmail = user.email.toLowerCase().trim();
@@ -449,12 +516,10 @@ export async function registerWithSupabase(
   // Check if user already exists
   const existingUser = await userRepository.getUserByEmail(normalizedEmail);
   if (existingUser) {
-    console.log('[OAuth] registerWithSupabase - User already exists in public.users, returning existing user');
-    const { data: sessionData } = await supabase.auth.getSession();
-    return await createAuthResult(existingUser, accessToken, sessionData?.session?.refresh_token ?? '');
+    return await createAuthResult(existingUser, accessToken, '');
   }
 
-  console.log('[OAuth] registerWithSupabase - Creating new user in public.users');
+  console.log('[OAuth] registerWithSupabase - Creating new user in public.users for role:', role);
 
   // Update user metadata in Supabase Auth
   const { error: updateError } = await supabase.auth.updateUser({
@@ -480,20 +545,17 @@ export async function registerWithSupabase(
 
   console.log('[OAuth] registerWithSupabase - Successfully created user:', {
     id: newUser.id,
-    email: newUser.email,
     role: newUser.role
   });
 
-  const { data: sessionData } = await supabase.auth.getSession();
-
-  return await createAuthResult(newUser, accessToken, sessionData?.session?.refresh_token ?? '');
+  return await createAuthResult(newUser, accessToken, '');
 }
 
 /**
  * Resend confirmation email
  */
 export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
-  const supabase = getSupabaseClient();
+  const supabase = createPerRequestClient();
 
   const { error } = await supabase.auth.resend({
     type: 'signup',
@@ -514,7 +576,7 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
  * Request password reset email
  */
 export async function requestPasswordReset(email: string): Promise<{ success: boolean } | AuthError> {
-  const supabase = getSupabaseClient();
+  const supabase = createPerRequestClient();
 
   const redirectUrl = process.env.PUBLIC_URL
     ? `${process.env.PUBLIC_URL}/reset-password`
@@ -536,12 +598,18 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
 
 /**
  * Update password (after reset)
+ * Uses a per-request client with the access token to avoid corrupting shared state.
  */
 export async function updatePassword(accessToken: string, newPassword: string): Promise<{ success: boolean } | AuthError> {
-  const supabase = getSupabaseClient();
-
-  // Set the session first
-  await supabase.auth.setSession({ access_token: accessToken, refresh_token: '' });
+  // Create a fresh client with the user's access token in Authorization header
+  // This avoids the old pattern of setSession({refresh_token: ''}) on the shared singleton
+  const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  });
 
   const { error } = await supabase.auth.updateUser({ password: newPassword });
 
@@ -552,26 +620,55 @@ export async function updatePassword(accessToken: string, newPassword: string): 
     };
   }
 
+  // Invalidate all existing sessions after password change (security best practice)
+  try {
+    const serviceClient = getSupabaseServiceClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await serviceClient.auth.admin.signOut(user.id, 'global');
+    }
+  } catch (revokeError) {
+    // Log but don't fail - password was already changed successfully
+    console.error('[Auth] Failed to revoke sessions after password change:', revokeError);
+  }
+
   return { success: true };
 }
 
 export function isAuthError(result: any): result is AuthError {
-  return result && typeof result === 'object' && 'code' in result && 'message' in result;
+  return result && typeof result === 'object' && 'code' in result && 'message' in result && !('user' in result) && !('success' in result);
 }
 
 /**
  * Logout user and invalidate session
+ * Accepts the user's access token to properly revoke THEIR session,
+ * not just the server's shared client session.
  */
-export async function logout(): Promise<{ success: boolean } | AuthError> {
-  const supabase = getSupabaseClient();
+export async function logout(accessToken?: string): Promise<{ success: boolean } | AuthError> {
+  if (accessToken) {
+    // Create a client with the user's token and sign them out properly
+    const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      },
+    });
 
-  const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: 'global' });
 
-  if (error) {
-    return {
-      code: 'INTERNAL_ERROR',
-      message: error.message,
-    };
+    if (error) {
+      return {
+        code: 'INTERNAL_ERROR',
+        message: error.message,
+      };
+    }
+  } else {
+    // Fallback: if no token provided, attempt sign out on service client
+    // This is less effective but maintains backward compatibility
+    const serviceClient = getSupabaseServiceClient();
+    // Without knowing the user ID, we can only do a local sign out
+    await serviceClient.auth.signOut({ scope: 'local' });
   }
 
   return { success: true };
@@ -607,13 +704,13 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
     if (listError) {
       console.error('[MFA] Failed to list existing factors:', listError);
     } else if (existingFactors?.all && existingFactors.all.length > 0) {
-      console.log('[MFA] Found existing factors:', existingFactors.all);
+      console.log('[MFA] Found existing factors, count:', existingFactors.all.length);
       
       // Remove any unverified factors to allow re-enrollment
       // Check the 'all' array since unverified factors appear there, not in 'totp'
       for (const factor of existingFactors.all) {
         if (factor.status === 'unverified') {
-          console.log('[MFA] Removing unverified factor:', factor.id, factor.friendly_name);
+          console.log('[MFA] Removing unverified factor:', factor.id);
           const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
           if (unenrollError) {
             console.error('[MFA] Failed to remove unverified factor:', unenrollError);
@@ -652,9 +749,8 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
     // Construct the otpauth URL manually from the secret
     const otpauthUrl = `otpauth://totp/FreelanceXchain:${encodeURIComponent(user.email)}?secret=${data.totp.secret}&issuer=FreelanceXchain&algorithm=SHA1&digits=6&period=30`;
     
-    console.log('[MFA] OTPAuth URL:', otpauthUrl);
-    console.log('[MFA] OTPAuth URL length:', otpauthUrl.length);
-    console.log('[MFA] Enrollment successful for user:', user.email);
+    // FIXED: Never log TOTP secrets or OTPAuth URLs - they contain the MFA secret key
+    console.log('[MFA] Enrollment successful for user');
     
     return {
       qrCode: otpauthUrl,
@@ -849,9 +945,9 @@ export async function getMFAFactors(accessToken: string): Promise<{ factors: any
 }
 
 /**
- * Disable MFA factor
+ * Disable MFA factor — requires TOTP code verification before unenrolling
  */
-export async function disableMFA(accessToken: string, factorId: string): Promise<{ success: boolean } | AuthError> {
+export async function disableMFA(accessToken: string, factorId: string, totpCode?: string): Promise<{ success: boolean } | AuthError> {
   try {
     // Create a fresh Supabase client
     const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
@@ -862,22 +958,53 @@ export async function disableMFA(accessToken: string, factorId: string): Promise
       },
     });
 
+    // Require TOTP code re-authentication before disabling MFA
+    if (!totpCode) {
+      return {
+        code: 'MFA_CODE_REQUIRED',
+        message: 'A valid TOTP code is required to disable MFA',
+      };
+    }
+
+    // Create a challenge and verify the TOTP code first
+    const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+      factorId,
+    });
+
+    if (challengeError) {
+      return {
+        code: 'MFA_CHALLENGE_FAILED',
+        message: challengeError.message || 'Failed to create MFA challenge',
+      };
+    }
+
+    const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId: challengeData.id,
+      code: totpCode,
+    });
+
+    if (verifyError) {
+      return {
+        code: 'MFA_VERIFY_FAILED',
+        message: 'Invalid TOTP code. Cannot disable MFA without valid re-authentication.',
+      };
+    }
+
+    // TOTP verified — now safe to unenroll the factor
     const { data, error } = await supabase.auth.mfa.unenroll({
       factorId,
     });
 
     if (error) {
-      console.error('[MFA] Unenroll failed:', error);
       return {
         code: error.status === 401 ? 'INVALID_TOKEN' : 'MFA_DISABLE_FAILED',
         message: error.message || 'Failed to disable MFA',
       };
     }
 
-    console.log('[MFA] Factor disabled successfully');
     return { success: true };
   } catch (err: any) {
-    console.error('[MFA] Exception in disableMFA:', err);
     return {
       code: 'MFA_DISABLE_FAILED',
       message: err.message || 'Failed to disable MFA',
