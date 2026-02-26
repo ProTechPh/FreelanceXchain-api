@@ -42,6 +42,14 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
     getProposalsByFreelancer: jest.fn(async (freelancerId: string) => {
       return Array.from(proposalStore.values()).filter(p => p.freelancer_id === freelancerId);
     }),
+    hasAcceptedProposal: jest.fn(async (projectId: string) => {
+      for (const proposal of proposalStore.values()) {
+        if (proposal.project_id === projectId && proposal.status === 'accepted') {
+          return true;
+        }
+      }
+      return false;
+    }),
   },
   ProposalRepository: jest.fn(),
 }));
@@ -120,7 +128,16 @@ function createTestProject(employerId: string, status: ProjectStatus = 'open'): 
     budget: 5000,
     deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     status,
-    milestones: [],
+    milestones: [
+      {
+        id: generateId(),
+        title: 'Initial Milestone',
+        description: 'Test milestone',
+        amount: 1000,
+        due_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'pending',
+      },
+    ],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };
@@ -293,7 +310,7 @@ describe('Proposal Service - Property Tests', () => {
             expect(contract.proposalId).toBe(proposalId);
             expect(contract.freelancerId).toBe(freelancerId);
             expect(contract.employerId).toBe(employerId);
-            expect(contract.totalAmount).toBe(project.budget);
+            expect(contract.totalAmount).toBe(proposedRate);
             expect(contract.status).toBe('active');
             // Verify contract exists in store
             expect(contractStore.has(contract.id)).toBe(true);

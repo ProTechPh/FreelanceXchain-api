@@ -4,9 +4,12 @@ import { AuthError } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
+import { createClient } from '@supabase/supabase-js';
+import { config } from '../config/env.js';
 
 type ValidatedUser = {
-  userId: string;
+  id: string; // Changed from userId to id for consistency
+  userId: string; // Keep both for backward compatibility
   email: string;
   role: UserRole;
 };
@@ -20,6 +23,7 @@ declare global {
   namespace Express {
     interface Request {
       user?: ValidatedUser;
+      rawBody?: string;
     }
   }
 }
@@ -90,7 +94,101 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     return;
   }
 
-  req.user = result;
+  req.user = {
+    id: result.userId,
+    userId: result.userId,
+    email: result.email,
+    role: result.role,
+  };
+  next();
+}
+
+/**
+ * Middleware that requires MFA (AAL2) for sensitive operations.
+ * Must be used AFTER authMiddleware.
+ * Checks the user's Supabase session AAL level.
+ */
+export async function requireMFA(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const requestId = req.headers['x-request-id'] ?? 'unknown';
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !req.user) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_UNAUTHORIZED',
+        message: 'Authentication required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const token = authHeader.split(' ')[1];
+  if (!token) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_INVALID_FORMAT',
+        message: 'Invalid authorization header',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  try {
+    // Create a client with the user's token to check their AAL level
+    const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    });
+
+    const { data: aalData, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+
+    if (aalError) {
+      logger.auth('Failed to check AAL level', req.user.userId, {
+        requestId,
+        path: req.path,
+        error: aalError.message,
+      });
+      // If we can't check AAL, allow through (MFA may not be set up)
+      next();
+      return;
+    }
+
+    // If user has MFA factors enrolled (nextLevel is aal2) but current level is only aal1,
+    // they haven't completed MFA verification for this session
+    if (aalData.nextLevel === 'aal2' && aalData.currentLevel !== 'aal2') {
+      logger.auth('MFA required but not completed', req.user.userId, {
+        requestId,
+        path: req.path,
+        currentLevel: aalData.currentLevel,
+        nextLevel: aalData.nextLevel,
+      });
+
+      res.status(403).json({
+        error: {
+          code: 'MFA_REQUIRED',
+          message: 'Multi-factor authentication is required for this operation. Please complete MFA verification.',
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+  } catch (err) {
+    // If AAL check fails entirely, log and allow through
+    logger.auth('AAL check exception', req.user?.userId, {
+      requestId,
+      path: req.path,
+      error: err instanceof Error ? err.message : 'Unknown error',
+    });
+  }
+
   next();
 }
 

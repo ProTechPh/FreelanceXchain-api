@@ -180,7 +180,7 @@ router.get('/search', async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/categories/:categoryId/skills', validateUUID(), async (req: Request, res: Response) => {
+router.get('/categories/:categoryId/skills', validateUUID(['categoryId']), async (req: Request, res: Response) => {
   const { categoryId } = req.params;
   
   if (!categoryId) {

@@ -23,9 +23,67 @@ import {
   isUserVerified,
   getProfileDataFromKyc,
 } from '../services/didit-kyc-service.js';
-import { DiditWebhookPayload, KycStatus } from '../models/didit-kyc.js';
+import { DiditWebhookPayload, DiditWebhookStatus, DiditWebhookType, KycStatus } from '../models/didit-kyc.js';
 
 const router = Router();
+
+const VALID_WEBHOOK_TYPES: ReadonlySet<DiditWebhookType> = new Set(['status.updated', 'data.updated']);
+const VALID_WEBHOOK_STATUSES: ReadonlySet<DiditWebhookStatus> = new Set([
+  'Not Started',
+  'In Progress',
+  'Approved',
+  'Declined',
+  'In Review',
+  'Expired',
+  'Abandoned',
+]);
+
+function parseUnixTimestamp(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+
+  if (typeof value === 'string' && /^\d+$/.test(value)) {
+    return parseInt(value, 10);
+  }
+
+  return null;
+}
+
+function parseWebhookPayload(payload: unknown): DiditWebhookPayload | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const webhookPayload = payload as Record<string, unknown>;
+  const webhookType = webhookPayload['webhook_type'];
+  const sessionId = webhookPayload['session_id'];
+  const status = webhookPayload['status'];
+  const timestamp = parseUnixTimestamp(webhookPayload['timestamp']);
+  const createdAt = parseUnixTimestamp(webhookPayload['created_at']);
+
+  if (
+    typeof webhookType !== 'string' ||
+    !VALID_WEBHOOK_TYPES.has(webhookType as DiditWebhookType) ||
+    typeof sessionId !== 'string' ||
+    sessionId.trim().length === 0 ||
+    typeof status !== 'string' ||
+    !VALID_WEBHOOK_STATUSES.has(status as DiditWebhookStatus) ||
+    timestamp === null ||
+    createdAt === null
+  ) {
+    return null;
+  }
+
+  return {
+    ...(webhookPayload as Omit<DiditWebhookPayload, 'webhook_type' | 'session_id' | 'status' | 'timestamp' | 'created_at'>),
+    webhook_type: webhookType as DiditWebhookType,
+    session_id: sessionId,
+    status: status as DiditWebhookStatus,
+    timestamp,
+    created_at: createdAt,
+  };
+}
 
 /**
  * @swagger
@@ -378,47 +436,85 @@ router.post('/refresh/:verificationId', authMiddleware, validateUUID(['verificat
  *         description: Invalid signature
  */
 router.post('/webhook', async (req: Request, res: Response) => {
-  const signature = req.headers['x-signature'] as string;
-  const timestamp = req.headers['x-timestamp'] as string;
-  const payload = JSON.stringify(req.body);
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const signature = typeof req.headers['x-signature'] === 'string' ? req.headers['x-signature'] : '';
+  const timestamp = typeof req.headers['x-timestamp'] === 'string' ? req.headers['x-timestamp'] : '';
+  const payload = typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body ?? {});
+  const webhookPayload = parseWebhookPayload(req.body);
+
+  if (!webhookPayload) {
+    logger.security('Invalid Didit webhook payload', {
+      requestId,
+      ip: req.ip,
+      bodyType: typeof req.body,
+    });
+
+    res.status(400).json({
+      error: { code: 'INVALID_PAYLOAD', message: 'Invalid webhook payload' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
 
   // Verify webhook signature
   if (!verifyWebhookSignature(payload, signature, timestamp)) {
     logger.security('Invalid Didit webhook signature', {
+      requestId,
       timestamp,
       ip: req.ip,
-      webhookType: req.body?.webhook_type,
+      webhookType: webhookPayload.webhook_type,
     });
     
     res.status(401).json({
       error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' },
+      timestamp: new Date().toISOString(),
+      requestId,
     });
     return;
   }
 
-  const webhookPayload: DiditWebhookPayload = req.body;
+  try {
+    // Log webhook event
+    logger.info('Didit webhook received', {
+      requestId,
+      webhookType: webhookPayload.webhook_type,
+      status: webhookPayload.status,
+      sessionId: webhookPayload.session_id,
+    });
 
-  // Log webhook event
-  logger.info('Didit webhook received', {
-    webhookType: webhookPayload.webhook_type,
-    status: webhookPayload.status,
-    sessionId: webhookPayload.session_id,
-  });
+    const result = await processWebhook(webhookPayload);
 
-  const result = await processWebhook(webhookPayload);
+    if (!result.success) {
+      logger.error('Webhook processing error', undefined, {
+        requestId,
+        error: result.error,
+        webhookType: webhookPayload.webhook_type,
+        sessionId: webhookPayload.session_id,
+      });
 
-  if (!result.success) {
-    logger.error('Webhook processing error', undefined, {
-      error: result.error,
+      res.status(400).json({
+        error: result.error,
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    res.status(200).json({ message: 'Webhook processed', data: result.data });
+  } catch (error) {
+    logger.error('Unhandled Didit webhook processing error', error as Error, {
+      requestId,
       webhookType: webhookPayload.webhook_type,
       sessionId: webhookPayload.session_id,
     });
-    
-    res.status(400).json({ error: result.error });
-    return;
-  }
 
-  res.status(200).json({ message: 'Webhook processed', data: result.data });
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to process webhook' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
 });
 
 /**

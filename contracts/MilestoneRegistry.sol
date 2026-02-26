@@ -5,6 +5,10 @@ pragma solidity ^0.8.19;
  * @title MilestoneRegistry
  * @dev Records milestone completions on-chain for verifiable work history
  * Creates immutable proof of completed work
+ * 
+ * FIXED: Added access control - only designated parties can submit/approve/reject
+ * FIXED: Added zero-amount validation
+ * FIXED: Added employer address validation
  */
 contract MilestoneRegistry {
     address public owner;
@@ -50,6 +54,7 @@ contract MilestoneRegistry {
 
     /**
      * @dev Record milestone submission
+     * ACCESS CONTROL: Only the freelancer themselves or the contract owner can submit
      */
     function submitMilestone(
         bytes32 milestoneIdHash,
@@ -62,6 +67,11 @@ contract MilestoneRegistry {
     ) external {
         require(milestones[milestoneIdHash].submittedAt == 0, "Already submitted");
         require(freelancer != address(0), "Invalid freelancer");
+        require(employer != address(0), "Invalid employer");
+        require(freelancer != employer, "Freelancer and employer must be different");
+        require(amount > 0, "Amount must be greater than zero");
+        // Access control: only the freelancer or the contract owner (backend relayer) can submit
+        require(msg.sender == freelancer || msg.sender == owner, "Only freelancer or owner can submit");
 
         milestones[milestoneIdHash] = MilestoneRecord({
             contractId: contractId,
@@ -82,11 +92,14 @@ contract MilestoneRegistry {
 
     /**
      * @dev Approve milestone completion
+     * ACCESS CONTROL: Only the employer of the milestone or the contract owner can approve
      */
     function approveMilestone(bytes32 milestoneIdHash) external {
         MilestoneRecord storage m = milestones[milestoneIdHash];
         require(m.submittedAt > 0, "Not found");
         require(m.status == MilestoneStatus.Submitted || m.status == MilestoneStatus.Disputed, "Invalid status");
+        // Access control: only employer or contract owner can approve
+        require(msg.sender == m.employer || msg.sender == owner, "Only employer or owner can approve");
 
         m.status = MilestoneStatus.Approved;
         m.completedAt = block.timestamp;
@@ -99,11 +112,14 @@ contract MilestoneRegistry {
 
     /**
      * @dev Reject milestone
+     * ACCESS CONTROL: Only the employer of the milestone or the contract owner can reject
      */
     function rejectMilestone(bytes32 milestoneIdHash, string calldata reason) external {
         MilestoneRecord storage m = milestones[milestoneIdHash];
         require(m.submittedAt > 0, "Not found");
         require(m.status == MilestoneStatus.Submitted, "Invalid status");
+        // Access control: only employer or contract owner can reject
+        require(msg.sender == m.employer || msg.sender == owner, "Only employer or owner can reject");
 
         m.status = MilestoneStatus.Rejected;
         emit MilestoneRejected(milestoneIdHash, reason);

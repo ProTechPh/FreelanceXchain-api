@@ -2,9 +2,9 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
 import jwt from 'jsonwebtoken';
-import { config } from '../../config/env';
-import { UserEntity } from '../../repositories/user-repository';
-import { UserRole } from '../../models/user';
+import { config } from '../../config/env.js';
+import { UserEntity } from '../../repositories/user-repository.js';
+import { UserRole } from '../../models/user.js';
 import { RegisterInput, LoginInput, AuthResult, AuthError } from '../auth-types.js';
 import { generateId } from '../../utils/id.js';
 
@@ -113,6 +113,16 @@ jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
           error: null,
         };
       }),
+      mfa: {
+        listFactors: jest.fn(async () => ({ data: { all: [] }, error: null })),
+      },
+    },
+  })),
+  getSupabaseServiceClient: jest.fn(() => ({
+    auth: {
+      admin: {
+        generateLink: jest.fn(async () => ({ data: {}, error: null })),
+      },
     },
   })),
   TABLES: {

@@ -220,14 +220,14 @@ export async function addSkillsToProfile(
   for (const skillInput of skills) {
     const trimmedName = skillInput.name.trim();
     
-    // Check if skill already exists in profile (case-sensitive)
+    // Check if skill already exists in profile (case-insensitive to prevent duplicates)
     const existingSkillIndex = existingProfile.skills.findIndex(
-      s => s.name === trimmedName
+      s => s.name.toLowerCase() === trimmedName.toLowerCase()
     );
     
-    // Check if skill already exists in newSkills being built (case-sensitive)
+    // Check if skill already exists in newSkills being built (case-insensitive)
     const newSkillIndex = newSkills.findIndex(
-      s => s.name === trimmedName
+      s => s.name.toLowerCase() === trimmedName.toLowerCase()
     );
     
     if (existingSkillIndex === -1 && newSkillIndex === -1) {

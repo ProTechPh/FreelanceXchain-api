@@ -46,8 +46,16 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
 
     const { data, error, count } = await client
       .from(this.tableName)
-      .select('*', { count: 'exact' })
+      .select(`
+        *,
+        freelancer:users!proposals_freelancer_id_fkey(
+          id,
+          name,
+          email
+        )
+      `, { count: 'exact' })
       .eq('project_id', projectId)
+      .neq('status', 'withdrawn') // Exclude withdrawn proposals
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     
@@ -89,7 +97,8 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
     const { count, error } = await client
       .from(this.tableName)
       .select('*', { count: 'exact', head: true })
-      .eq('project_id', projectId);
+      .eq('project_id', projectId)
+      .neq('status', 'withdrawn'); // Exclude withdrawn proposals from count
     
     if (error) throw new Error(`Failed to get proposal count: ${error.message}`);
     return count ?? 0;
@@ -102,6 +111,7 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
       .select('*')
       .eq('project_id', projectId)
       .eq('freelancer_id', freelancerId)
+      .neq('status', 'withdrawn') // Exclude withdrawn proposals
       .single();
     
     if (error) {

@@ -3,8 +3,8 @@
  * Comprehensive security testing across all categories
  */
 
-import { sanitizeString, sanitizeObject } from '../utils/log-sanitizer';
-import { validateUrl, validateSessionId } from '../utils/url-validator';
+import { sanitizeString, sanitizeObject } from '../utils/log-sanitizer.js';
+import { validateUrl, validateSessionId } from '../utils/url-validator.js';
 
 describe('OWASP Top 10 2021 - Integration Tests', () => {
   describe('A01:2021 - Broken Access Control', () => {

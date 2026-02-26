@@ -12,6 +12,9 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
     getContractById: jest.fn(async (id: string) => {
       return contractStore.get(id) || null;
     }),
+    getContractByIdWithRelations: jest.fn(async (id: string) => {
+      return contractStore.get(id) || null;
+    }),
     getUserContracts: jest.fn(async (userId: string, options?: any) => {
       const contracts = Array.from(contractStore.values())
         .filter(c => c.freelancer_id === userId || c.employer_id === userId)
@@ -321,12 +324,12 @@ describe('Contract Service', () => {
         expect(result.data.status).toBe('cancelled');
       }
     });
-    it('should update status from disputed to active', async () => {
+    it('should fail status update from disputed to active', async () => {
       const contract = createTestContract({ status: 'disputed' });
       const result = await updateContractStatus(contract.id, 'active');
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.status).toBe('active');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_STATUS_TRANSITION');
       }
     });
     it('should update status from disputed to completed', async () => {
@@ -383,7 +386,6 @@ describe('Contract Service', () => {
         ['active', 'completed'],
         ['active', 'disputed'],
         ['active', 'cancelled'],
-        ['disputed', 'active'],
         ['disputed', 'completed'],
         ['disputed', 'cancelled'],
       ];
@@ -408,6 +410,7 @@ describe('Contract Service', () => {
         ['cancelled', 'disputed'],
         ['cancelled', 'completed'],
         ['cancelled', 'cancelled'],
+        ['disputed', 'active'],
         ['disputed', 'disputed'],
       ];
       for (const [fromStatus, toStatus] of invalidTransitions) {
@@ -525,7 +528,6 @@ describe('Contract Service', () => {
     it('should handle multiple status updates in sequence', async () => {
       const contract = createTestContract({ status: 'active' });
       await updateContractStatus(contract.id, 'disputed');
-      await updateContractStatus(contract.id, 'active');
       const result = await updateContractStatus(contract.id, 'completed');
       expect(result.success).toBe(true);
       if (result.success) {

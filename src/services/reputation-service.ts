@@ -100,6 +100,18 @@ export async function submitRating(
   }
   const contract = mapContractFromEntity(contractEntity);
 
+  // FIXED: Verify contract is completed before allowing ratings
+  // Users should not be able to rate on active, pending, or cancelled contracts
+  if (contract.status !== 'completed') {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_CONTRACT_STATUS',
+        message: `Can only submit ratings for completed contracts (current status: ${contract.status})`,
+      },
+    };
+  }
+
   // Verify rater is part of the contract
   if (contract.freelancerId !== input.raterId && contract.employerId !== input.raterId) {
     return {

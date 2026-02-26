@@ -13,6 +13,13 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
 jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
     __esModule: true,
     getSupabaseClient: jest.fn(),
+    getSupabaseServiceClient: jest.fn(() => ({
+        auth: {
+            admin: {
+                generateLink: jest.fn(async () => ({ data: {}, error: null })),
+            },
+        },
+    })),
 }));
 jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts'), () => ({
     getKycVerificationByUserId: jest.fn(async () => null),
@@ -46,6 +53,12 @@ describe('AuthService - OAuth Login', () => {
         auth: {
             getUser: jest.fn(),
             signInWithOAuth: jest.fn(),
+            mfa: {
+                listFactors: jest.fn().mockResolvedValue({
+                    data: { all: [] },
+                    error: null,
+                } as never),
+            },
             getSession: jest.fn().mockResolvedValue({
                 data: { session: { refresh_token: 'mock_refresh_token' } },
                 error: null,

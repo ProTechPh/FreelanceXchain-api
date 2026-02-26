@@ -735,6 +735,7 @@ jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
         userStore.set(userId, {
           id: userId,
           email: email.toLowerCase(),
+          name: (options?.data?.name as string) ?? 'Test User',
           passwordHash: '',
           role: (options?.data?.role as 'freelancer' | 'employer') ?? 'freelancer',
           walletAddress: (options?.data?.wallet_address as string) ?? '',
@@ -751,6 +752,13 @@ jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
         data: { user: null, session: null },
         error: { message: 'Not implemented in test' },
       })),
+    },
+  })),
+  getSupabaseServiceClient: jest.fn(() => ({
+    auth: {
+      admin: {
+        generateLink: jest.fn(async () => ({ data: {}, error: null })),
+      },
     },
   })),
   TABLES: {
@@ -956,6 +964,7 @@ describe('Integration Tests - Critical Flows', () => {
       const freelancerUser: User = {
         id: freelancerId,
         email: 'freelancer@test.com',
+        name: 'Test Freelancer',
         passwordHash: 'hash',
         role: 'freelancer',
         walletAddress: '0x' + 'f'.repeat(40),
@@ -966,6 +975,7 @@ describe('Integration Tests - Critical Flows', () => {
       const employerUser: User = {
         id: employerId,
         email: 'employer@test.com',
+        name: 'Test Employer',
         passwordHash: 'hash',
         role: 'employer',
         walletAddress: '0x' + 'e'.repeat(40),
@@ -1090,6 +1100,7 @@ describe('Integration Tests - Critical Flows', () => {
       const freelancerUser: User = {
         id: freelancerId,
         email: 'freelancer@test.com',
+        name: 'Test Freelancer',
         passwordHash: 'hash',
         role: 'freelancer',
         walletAddress: '0x' + 'f'.repeat(40),
@@ -1100,6 +1111,7 @@ describe('Integration Tests - Critical Flows', () => {
       const employerUser: User = {
         id: employerId,
         email: 'employer@test.com',
+        name: 'Test Employer',
         passwordHash: 'hash',
         role: 'employer',
         walletAddress: '0x' + 'e'.repeat(40),
@@ -1110,6 +1122,7 @@ describe('Integration Tests - Critical Flows', () => {
       userStore.set(adminId, {
         id: adminId,
         email: 'admin@test.com',
+        name: 'Test Admin',
         passwordHash: 'hash',
         role: 'admin',
         walletAddress: '0x' + 'a'.repeat(40),
@@ -1230,6 +1243,7 @@ describe('Integration Tests - Critical Flows', () => {
       userStore.set(freelancerId, {
         id: freelancerId,
         email: 'freelancer@test.com',
+        name: 'Test Freelancer',
         passwordHash: 'hash',
         role: 'freelancer',
         walletAddress: '0x' + 'f'.repeat(40),
@@ -1239,6 +1253,7 @@ describe('Integration Tests - Critical Flows', () => {
       userStore.set(employerId, {
         id: employerId,
         email: 'employer@test.com',
+        name: 'Test Employer',
         passwordHash: 'hash',
         role: 'employer',
         walletAddress: '0x' + 'e'.repeat(40),

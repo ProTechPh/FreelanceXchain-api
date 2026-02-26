@@ -1,53 +1,16 @@
-// Middleware barrel export
-// This file will export all middleware as they are created
-
-export { errorHandler } from './error-handler.js';
+export { errorHandler, AppError, errors } from './error-handler.js';
 export { requestLogger } from './request-logger.js';
 export { authMiddleware, requireRole } from './auth-middleware.js';
+export { rateLimiter, authRateLimiter, apiRateLimiter, sensitiveRateLimiter, fileUploadRateLimiter } from './rate-limiter.js';
+export { validate, validateRequest, validateUUID } from './validation-middleware.js';
+export { logAuditEvent, auditMiddleware, auditAllRequests, AUDITABLE_ACTIONS } from './audit-logger.js';
+export { csrfProtection } from './csrf-middleware.js';
+export { createFileUploadMiddleware, uploadProposalAttachments, uploadDisputeEvidence } from './file-upload-middleware.js';
+export { enforceMFAForAdmins, recommendMFA } from './mfa-enforcement.js';
 export {
-  validate,
-  validateRequest,
-  validateUUID,
-  isValidUUID,
-  // Auth schemas
-  registerSchema,
-  loginSchema,
-  refreshTokenSchema,
-  // Freelancer profile schemas
-  createFreelancerProfileSchema,
-  updateFreelancerProfileSchema,
-  addSkillsSchema,
-  addExperienceSchema,
-  // Employer profile schemas
-  createEmployerProfileSchema,
-  updateEmployerProfileSchema,
-  // Project schemas
-  createProjectSchema,
-  updateProjectSchema,
-  addMilestonesSchema,
-  // Proposal schemas
-  submitProposalSchema,
-  // Dispute schemas
-  createDisputeSchema,
-  submitEvidenceSchema,
-  resolveDisputeSchema,
-  // Reputation schemas
-  submitRatingSchema,
-  // Skill taxonomy schemas
-  createSkillCategorySchema,
-  createSkillSchema,
-  // Notification schemas
-  markNotificationReadSchema,
-  // Search schemas
-  searchProjectsSchema,
-  searchFreelancersSchema,
-  // Matching schemas
-  extractSkillsSchema,
-  // Payment schemas
-  milestoneActionSchema,
-  disputeMilestoneSchema,
-  // Common schemas
-  idParamSchema,
-  uuidParamSchema,
-} from './validation-middleware.js';
-export type { RequestSchema } from './validation-middleware.js';
+  securityHeaders,
+  requestIdMiddleware,
+  httpsEnforcement,
+  getAllowedOrigins,
+  validateCorsOrigin
+} from './security-middleware.js';

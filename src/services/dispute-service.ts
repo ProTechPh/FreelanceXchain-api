@@ -80,6 +80,18 @@ export async function createDispute(
   }
   const contract = mapContractFromEntity(contractEntity);
 
+  // FIXED: Verify contract is active before allowing disputes
+  // Cannot dispute milestones on completed, cancelled, or pending contracts
+  if (contract.status !== 'active') {
+    return {
+      success: false,
+      error: { 
+        code: 'INVALID_CONTRACT_STATUS', 
+        message: `Cannot create disputes on a ${contract.status} contract. Only active contracts can be disputed.` 
+      },
+    };
+  }
+
   // Verify initiator is part of this contract
   if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
     return {
@@ -372,20 +384,33 @@ export async function resolveDispute(
   };
 
   // Trigger payment based on decision (Requirements: 8.4, 8.5)
+  let paymentProcessed = false;
   try {
     const escrow = await getEscrowByContractId(disputeEntity.contract_id);
     if (escrow) {
       if (decision === 'freelancer_favor') {
-        // Release funds to freelancer
+        // Release full funds to freelancer
         await releaseEscrowMilestone(escrow.address, disputeEntity.milestone_id, resolvedBy);
         milestoneEntity.status = 'approved';
+        paymentProcessed = true;
       } else if (decision === 'employer_favor') {
-        // Refund funds to employer
+        // Refund full funds to employer - set to 'rejected' not 'pending'
+        // (pending implies work was never submitted, which is misleading)
         await refundEscrowMilestone(escrow.address, disputeEntity.milestone_id, resolvedBy);
-        milestoneEntity.status = 'pending';
+        milestoneEntity.status = 'rejected' as any;
+        paymentProcessed = true;
       } else if (decision === 'split') {
-        // For split decision, mark as approved (partial release would be handled separately)
+        // Split: release full amount to freelancer for now
+        // TODO: Implement actual percentage-based split when escrow contract supports it
+        // For now, treat split as freelancer_favor since partial release
+        // is not supported by the current escrow contract
+        await releaseEscrowMilestone(escrow.address, disputeEntity.milestone_id, resolvedBy);
         milestoneEntity.status = 'approved';
+        paymentProcessed = true;
+        logger.warn('Split decision defaulted to full freelancer release - partial split not yet supported', {
+          disputeId,
+          milestoneId: disputeEntity.milestone_id,
+        });
       }
     }
   } catch (error) {
@@ -393,8 +418,15 @@ export async function resolveDispute(
       disputeId,
       decision: input.decision,
     });
-    console.error('Failed to process payment for dispute resolution:', error);
-    // Continue with resolution even if payment fails
+    // IMPORTANT: If payment fails, do NOT mark the dispute as resolved
+    // The admin should retry the resolution after fixing the payment issue
+    return {
+      success: false,
+      error: { 
+        code: 'PAYMENT_FAILED', 
+        message: 'Payment processing failed during dispute resolution. Please retry.' 
+      },
+    };
   }
 
   // Update milestone status in project
@@ -542,34 +574,51 @@ export async function getAllDisputes(
   options?: { limit?: number; offset?: number; status?: string }
 ): Promise<DisputeServiceResult<{ items: Dispute[]; continuationToken: string | null }>> {
   try {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
+    // When filtering by status, we must fetch ALL results first, then paginate
+    // Otherwise the status filter applied after DB pagination returns wrong counts
+    const needsStatusFilter = !!options?.status;
+
     let result;
     
     if (userRole === 'admin') {
-      // Admin sees all disputes
-      result = await disputeRepository.getAllDisputes({
-        ...(options?.limit !== undefined && { limit: options.limit }),
-        ...(options?.offset !== undefined && { offset: options.offset }),
-      });
+      if (needsStatusFilter) {
+        // Fetch all, filter, then paginate in memory
+        result = await disputeRepository.getAllDisputes({});
+      } else {
+        result = await disputeRepository.getAllDisputes({ limit, offset });
+      }
     } else {
-      // Regular users see only their disputes
-      result = await disputeRepository.getDisputesByUserId(userId, {
-        ...(options?.limit !== undefined && { limit: options.limit }),
-        ...(options?.offset !== undefined && { offset: options.offset }),
-      });
+      if (needsStatusFilter) {
+        result = await disputeRepository.getDisputesByUserId(userId, {});
+      } else {
+        result = await disputeRepository.getDisputesByUserId(userId, { limit, offset });
+      }
     }
 
-    const disputes = result.items.map(mapDisputeFromEntity);
+    let disputes = result.items.map(mapDisputeFromEntity);
     
     // Filter by status if provided
-    const filteredDisputes = options?.status 
-      ? disputes.filter(d => d.status === options.status)
+    if (options?.status) {
+      disputes = disputes.filter(d => d.status === options.status);
+    }
+
+    // Apply pagination after filtering when status filter is active
+    const paginatedDisputes = needsStatusFilter
+      ? disputes.slice(offset, offset + limit)
       : disputes;
+
+    const hasMore = needsStatusFilter
+      ? (offset + limit) < disputes.length
+      : result.hasMore;
 
     return {
       success: true,
       data: {
-        items: filteredDisputes,
-        continuationToken: result.hasMore ? String(result.items.length) : null,
+        items: paginatedDisputes,
+        continuationToken: hasMore ? String(offset + limit) : null,
       },
     };
   } catch (error) {

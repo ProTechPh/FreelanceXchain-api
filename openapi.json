@@ -1,0 +1,6002 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Blockchain Freelance Marketplace API",
+    "version": "1.0.0",
+    "description": "A decentralized freelance marketplace with AI skill matching and blockchain payments",
+    "contact": {
+      "name": "API Support"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Development server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "details": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "field": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "value": {}
+                  }
+                }
+              }
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "freelancer",
+              "employer",
+              "admin"
+            ]
+          },
+          "walletAddress": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FreelancerProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "bio": {
+            "type": "string"
+          },
+          "hourlyRate": {
+            "type": "number"
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillReference"
+            }
+          },
+          "experience": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkExperience"
+            }
+          },
+          "availability": {
+            "type": "string",
+            "enum": [
+              "available",
+              "busy",
+              "unavailable"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SkillReference": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "skillName": {
+            "type": "string"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "yearsOfExperience": {
+            "type": "number"
+          }
+        }
+      },
+      "WorkExperience": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "company": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "startDate": {
+            "type": "string",
+            "format": "date"
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "nullable": true
+          }
+        }
+      },
+      "Project": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "requiredSkills": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillReference"
+            }
+          },
+          "budget": {
+            "type": "number"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "open",
+              "in_progress",
+              "completed",
+              "cancelled"
+            ]
+          },
+          "milestones": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Milestone"
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Milestone": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "dueDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "submitted",
+              "approved",
+              "disputed"
+            ]
+          }
+        }
+      },
+      "Proposal": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "freelancerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "coverLetter": {
+            "type": "string",
+            "nullable": true,
+            "description": "Legacy text cover letter (deprecated)"
+          },
+          "proposedRate": {
+            "type": "number"
+          },
+          "estimatedDuration": {
+            "type": "number",
+            "description": "Duration in days"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "rejected",
+              "withdrawn"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileAttachment"
+            },
+            "description": "File attachments (1-5 files)"
+          }
+        }
+      },
+      "Contract": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "proposalId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "freelancerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "employerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "escrowAddress": {
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "completed",
+              "disputed",
+              "cancelled"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Skill": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "categoryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SkillCategory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "isActive": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Notification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "proposal_received",
+              "proposal_accepted",
+              "proposal_rejected",
+              "milestone_submitted",
+              "milestone_approved",
+              "payment_released",
+              "dispute_created",
+              "dispute_resolved",
+              "rating_received"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "isRead": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "properties": {
+          "totalCount": {
+            "type": "number"
+          },
+          "pageSize": {
+            "type": "number"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "continuationToken": {
+            "type": "string"
+          }
+        }
+      },
+      "RegisterInput": {
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "role"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "description": "User's email address"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "description": "User's password (min 8 characters)"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "freelancer",
+              "employer"
+            ],
+            "description": "User's role on the platform"
+          },
+          "walletAddress": {
+            "type": "string",
+            "pattern": "^0x[a-fA-F0-9]{40}$",
+            "description": "Optional Ethereum wallet address"
+          }
+        }
+      },
+      "LoginInput": {
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string"
+          }
+        }
+      },
+      "RefreshInput": {
+        "type": "object",
+        "required": [
+          "refreshToken"
+        ],
+        "properties": {
+          "refreshToken": {
+            "type": "string",
+            "description": "The refresh token"
+          }
+        }
+      },
+      "AuthResult": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "email": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string",
+                "enum": [
+                  "freelancer",
+                  "employer",
+                  "admin"
+                ]
+              },
+              "walletAddress": {
+                "type": "string"
+              },
+              "createdAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "accessToken": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          }
+        }
+      },
+      "AuthError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requestId": {
+            "type": "string"
+          }
+        }
+      },
+      "KycVerification": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "user_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "in_progress",
+              "completed",
+              "approved",
+              "rejected",
+              "expired"
+            ]
+          },
+          "didit_session_id": {
+            "type": "string"
+          },
+          "didit_session_url": {
+            "type": "string",
+            "description": "URL to redirect user for verification"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approved",
+              "declined",
+              "review"
+            ]
+          },
+          "reviewed_by": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "admin_notes": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Evidence": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "submitterId": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "file",
+              "link"
+            ]
+          },
+          "content": {
+            "type": "string"
+          },
+          "submittedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "DisputeResolution": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "freelancer_favor",
+              "employer_favor",
+              "split"
+            ]
+          },
+          "reasoning": {
+            "type": "string"
+          },
+          "resolvedBy": {
+            "type": "string"
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "Dispute": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "contractId": {
+            "type": "string"
+          },
+          "milestoneId": {
+            "type": "string"
+          },
+          "initiatorId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            }
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "open",
+              "under_review",
+              "resolved"
+            ]
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/DisputeResolution"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreateDisputeRequest": {
+        "type": "object",
+        "required": [
+          "contractId",
+          "milestoneId",
+          "reason"
+        ],
+        "properties": {
+          "contractId": {
+            "type": "string"
+          },
+          "milestoneId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "SubmitEvidenceRequest": {
+        "type": "object",
+        "required": [
+          "type",
+          "content"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "text",
+              "file",
+              "link"
+            ]
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "ResolveDisputeRequest": {
+        "type": "object",
+        "required": [
+          "decision",
+          "reasoning"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "freelancer_favor",
+              "employer_favor",
+              "split"
+            ]
+          },
+          "reasoning": {
+            "type": "string"
+          }
+        }
+      },
+      "EmployerProfile": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "companyName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "industry": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "ProjectRecommendation": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "description": "ID of the recommended project"
+          },
+          "matchScore": {
+            "type": "number",
+            "description": "AI-computed match score (0-100)"
+          },
+          "matchedSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Skills that matched between freelancer and project"
+          },
+          "missingSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Required skills the freelancer is missing"
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "AI explanation for the match score"
+          }
+        }
+      },
+      "FreelancerRecommendation": {
+        "type": "object",
+        "properties": {
+          "freelancerId": {
+            "type": "string",
+            "description": "ID of the recommended freelancer"
+          },
+          "matchScore": {
+            "type": "number",
+            "description": "Skill match score (0-100)"
+          },
+          "reputationScore": {
+            "type": "number",
+            "description": "Blockchain-verified reputation score"
+          },
+          "combinedScore": {
+            "type": "number",
+            "description": "Combined score with reputation weighting"
+          },
+          "matchedSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Skills that matched project requirements"
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "AI explanation for the match"
+          }
+        }
+      },
+      "ExtractedSkill": {
+        "type": "object",
+        "properties": {
+          "skillId": {
+            "type": "string",
+            "description": "ID of the extracted skill in taxonomy"
+          },
+          "skillName": {
+            "type": "string",
+            "description": "Name of the extracted skill"
+          },
+          "confidence": {
+            "type": "number",
+            "description": "Confidence score (0-1)"
+          }
+        }
+      },
+      "SkillGapAnalysis": {
+        "type": "object",
+        "properties": {
+          "currentSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Freelancer's current skills"
+          },
+          "recommendedSkills": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Skills recommended to acquire"
+          },
+          "marketDemand": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "skillName": {
+                  "type": "string"
+                },
+                "demandLevel": {
+                  "type": "string",
+                  "enum": [
+                    "high",
+                    "medium",
+                    "low"
+                  ]
+                }
+              }
+            }
+          },
+          "reasoning": {
+            "type": "string",
+            "description": "AI analysis and recommendations"
+          }
+        }
+      },
+      "ExtractSkillsRequest": {
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "Text to extract skills from"
+          }
+        }
+      },
+      "MilestoneCompletionResult": {
+        "type": "object",
+        "properties": {
+          "milestoneId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "submitted"
+            ]
+          },
+          "notificationSent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MilestoneApprovalResult": {
+        "type": "object",
+        "properties": {
+          "milestoneId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "approved"
+            ]
+          },
+          "paymentReleased": {
+            "type": "boolean"
+          },
+          "transactionHash": {
+            "type": "string"
+          },
+          "contractCompleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MilestoneDisputeResult": {
+        "type": "object",
+        "properties": {
+          "milestoneId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disputed"
+            ]
+          },
+          "disputeId": {
+            "type": "string"
+          },
+          "disputeCreated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ContractPaymentStatus": {
+        "type": "object",
+        "properties": {
+          "contractId": {
+            "type": "string"
+          },
+          "escrowAddress": {
+            "type": "string"
+          },
+          "totalAmount": {
+            "type": "number"
+          },
+          "releasedAmount": {
+            "type": "number"
+          },
+          "pendingAmount": {
+            "type": "number"
+          },
+          "milestones": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "amount": {
+                  "type": "number"
+                },
+                "status": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "contractStatus": {
+            "type": "string"
+          }
+        }
+      },
+      "DisputeRequest": {
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Reason for disputing the milestone"
+          }
+        }
+      },
+      "FileAttachment": {
+        "type": "object",
+        "required": [
+          "url",
+          "filename",
+          "size",
+          "mimeType"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Supabase Storage URL of the uploaded file"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Original filename"
+          },
+          "size": {
+            "type": "number",
+            "description": "File size in bytes"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "MIME type of the file"
+          }
+        }
+      },
+      "BlockchainRating": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "contractId": {
+            "type": "string"
+          },
+          "raterId": {
+            "type": "string"
+          },
+          "rateeId": {
+            "type": "string"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "comment": {
+            "type": "string"
+          },
+          "timestamp": {
+            "type": "integer"
+          },
+          "transactionHash": {
+            "type": "string"
+          }
+        }
+      },
+      "ReputationScore": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "description": "Weighted average score with time decay"
+          },
+          "totalRatings": {
+            "type": "integer"
+          },
+          "averageRating": {
+            "type": "number",
+            "description": "Simple average without time decay"
+          },
+          "ratings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BlockchainRating"
+            }
+          }
+        }
+      },
+      "WorkHistoryEntry": {
+        "type": "object",
+        "properties": {
+          "contractId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "projectTitle": {
+            "type": "string"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "freelancer",
+              "employer"
+            ]
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "ratingComment": {
+            "type": "string"
+          }
+        }
+      },
+      "RatingInput": {
+        "type": "object",
+        "required": [
+          "contractId",
+          "rateeId",
+          "rating"
+        ],
+        "properties": {
+          "contractId": {
+            "type": "string"
+          },
+          "rateeId": {
+            "type": "string"
+          },
+          "rating": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "comment": {
+            "type": "string"
+          }
+        }
+      },
+      "SearchResultMetadata": {
+        "type": "object",
+        "properties": {
+          "pageSize": {
+            "type": "integer",
+            "description": "Number of items per page"
+          },
+          "hasMore": {
+            "type": "boolean",
+            "description": "Whether there are more results available"
+          },
+          "continuationToken": {
+            "type": "string",
+            "description": "Token for fetching the next page"
+          }
+        }
+      },
+      "ProjectSearchResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/SearchResultMetadata"
+          }
+        }
+      },
+      "FreelancerSearchResult": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FreelancerProfile"
+            }
+          },
+          "metadata": {
+            "$ref": "#/components/schemas/SearchResultMetadata"
+          }
+        }
+      },
+      "CreateSkillCategoryInput": {
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Category name",
+            "example": "Web Development"
+          },
+          "description": {
+            "type": "string",
+            "description": "Category description",
+            "example": "Skills related to web development technologies"
+          }
+        }
+      },
+      "CreateSkillInput": {
+        "type": "object",
+        "required": [
+          "categoryId",
+          "name",
+          "description"
+        ],
+        "properties": {
+          "categoryId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "ID of the category this skill belongs to"
+          },
+          "name": {
+            "type": "string",
+            "description": "Skill name",
+            "example": "TypeScript"
+          },
+          "description": {
+            "type": "string",
+            "description": "Skill description",
+            "example": "Typed superset of JavaScript"
+          }
+        }
+      },
+      "SkillTaxonomy": {
+        "type": "object",
+        "properties": {
+          "categories": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/SkillCategory"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "skills": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Skill"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "SkillWithCategory": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Skill"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "categoryName": {
+                "type": "string",
+                "description": "Name of the category this skill belongs to"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "paths": {
+    "/api/admin/users": {
+      "get": {
+        "summary": "Get all users (admin only)",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of all users"
+          }
+        }
+      }
+    },
+    "/api/admin/stats": {
+      "get": {
+        "summary": "Get admin dashboard statistics",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Admin statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalUsers": {
+                      "type": "number"
+                    },
+                    "totalProjects": {
+                      "type": "number"
+                    },
+                    "totalFreelancers": {
+                      "type": "number"
+                    },
+                    "totalEmployers": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/analytics": {
+      "get": {
+        "summary": "Get comprehensive analytics data for admin dashboard",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Comprehensive analytics data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalUsers": {
+                      "type": "number"
+                    },
+                    "totalProjects": {
+                      "type": "number"
+                    },
+                    "totalRevenue": {
+                      "type": "number"
+                    },
+                    "activeContracts": {
+                      "type": "number"
+                    },
+                    "userGrowth": {
+                      "type": "number"
+                    },
+                    "projectGrowth": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/platform-stats": {
+      "get": {
+        "summary": "Get public platform statistics (no auth required)",
+        "tags": [
+          "Platform"
+        ],
+        "responses": {
+          "200": {
+            "description": "Platform statistics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalFreelancers": {
+                      "type": "number"
+                    },
+                    "totalEmployers": {
+                      "type": "number"
+                    },
+                    "totalProjects": {
+                      "type": "number"
+                    },
+                    "totalPaidOut": {
+                      "type": "string"
+                    },
+                    "satisfactionRate": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/users/{id}": {
+      "patch": {
+        "summary": "Update user (admin only)",
+        "tags": [
+          "Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "User ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "freelancer",
+                      "employer",
+                      "admin"
+                    ]
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "isActive": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User updated successfully"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "403": {
+            "description": "Cannot edit own role"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "summary": "Register a new user",
+        "description": "Creates a new user account and returns authentication tokens",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Email already registered",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "summary": "Login user",
+        "description": "Authenticates a user and returns JWT tokens",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/login/mfa-verify": {
+      "post": {
+        "summary": "Complete MFA login",
+        "description": "Verifies MFA code and completes the login process",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "accessToken",
+                  "factorId",
+                  "code"
+                ],
+                "properties": {
+                  "accessToken": {
+                    "type": "string"
+                  },
+                  "factorId": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "6-digit TOTP code"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid code"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "summary": "Refresh authentication tokens",
+        "description": "Uses a refresh token to obtain new access and refresh tokens",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tokens refreshed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired refresh token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/callback": {
+      "get": {
+        "summary": "OAuth callback endpoint",
+        "description": "Handles OAuth redirect. For PKCE flow (code in query), exchanges code for tokens. For implicit flow (tokens in fragment), extracts and processes tokens.",
+        "tags": [
+          "Authentication"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "code",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Authorization code (PKCE flow)"
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Error code if OAuth failed"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success with tokens"
+          },
+          "202": {
+            "description": "Registration required"
+          },
+          "400": {
+            "description": "OAuth error"
+          },
+          "401": {
+            "description": "Authentication failed"
+          }
+        }
+      }
+    },
+    "/api/auth/oauth-login": {
+      "post": {
+        "summary": "Login with Supabase OAuth",
+        "description": "Authenticates a user using a Supabase access token calling our backend to sync user and get app tokens",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "accessToken"
+                ],
+                "properties": {
+                  "accessToken": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or expired token"
+          }
+        }
+      }
+    },
+    "/api/auth/oauth/{provider}": {
+      "get": {
+        "summary": "Initiate OAuth flow",
+        "description": "Redirects to Supabase OAuth provider",
+        "tags": [
+          "Authentication"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "google",
+                "github",
+                "azure",
+                "linkedin"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "302": {
+            "description": "Redirect to provider"
+          }
+        }
+      }
+    },
+    "/api/auth/oauth/callback": {
+      "post": {
+        "summary": "OAuth token callback (for implicit flow)",
+        "description": "Receives access_token from frontend after OAuth redirect (when tokens are in URL fragment)",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "access_token"
+                ],
+                "properties": {
+                  "access_token": {
+                    "type": "string",
+                    "description": "Supabase access token from OAuth redirect"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResult"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Registration required"
+          },
+          "401": {
+            "description": "Invalid token"
+          }
+        }
+      }
+    },
+    "/api/auth/oauth/register": {
+      "post": {
+        "summary": "Complete OAuth registration with role",
+        "description": "Finalize account creation for a new OAuth user by providing a role and optionally wallet address",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "accessToken",
+                  "role"
+                ],
+                "properties": {
+                  "accessToken": {
+                    "type": "string"
+                  },
+                  "role": {
+                    "type": "string",
+                    "enum": [
+                      "freelancer",
+                      "employer"
+                    ]
+                  },
+                  "walletAddress": {
+                    "type": "string",
+                    "pattern": "^0x[a-fA-F0-9]{40}$",
+                    "description": "Optional Ethereum wallet address"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or invalid role"
+          },
+          "401": {
+            "description": "Invalid token"
+          }
+        }
+      }
+    },
+    "/api/auth/resend-confirmation": {
+      "post": {
+        "summary": "Resend confirmation email",
+        "description": "Resends the email verification link to the user",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Confirmation email sent"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "summary": "Request password reset",
+        "description": "Sends a password reset email to the user",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "email"
+                ],
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "format": "email"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password reset email sent"
+          },
+          "400": {
+            "description": "Validation error"
+          }
+        }
+      }
+    },
+    "/api/auth/csrf-token": {
+      "get": {
+        "summary": "Get CSRF token",
+        "description": "Returns a CSRF token for use in subsequent state-changing requests",
+        "tags": [
+          "Authentication"
+        ],
+        "responses": {
+          "200": {
+            "description": "CSRF token generated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "csrfToken": {
+                      "type": "string",
+                      "description": "CSRF token to include in X-CSRF-Token header"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Failed to generate token"
+          }
+        }
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "summary": "Reset password",
+        "description": "Updates the user password using the reset token",
+        "tags": [
+          "Authentication"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "accessToken",
+                  "password"
+                ],
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "description": "Access token from password reset email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password updated successfully"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Invalid token"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "summary": "Logout user",
+        "description": "Invalidates the current user session and tokens",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Logout successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string",
+                      "example": "Logout successful"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/enroll": {
+      "post": {
+        "summary": "Enroll MFA for user",
+        "description": "Initiates MFA enrollment and returns QR code for authenticator app",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MFA enrollment initiated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "qrCode": {
+                      "type": "string",
+                      "description": "QR code data URL for authenticator app"
+                    },
+                    "secret": {
+                      "type": "string",
+                      "description": "Secret key for manual entry"
+                    },
+                    "factorId": {
+                      "type": "string",
+                      "description": "Factor ID for verification"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/verify-enrollment": {
+      "post": {
+        "summary": "Verify MFA enrollment",
+        "description": "Verifies the TOTP code to complete MFA enrollment",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "factorId",
+                  "code"
+                ],
+                "properties": {
+                  "factorId": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "6-digit TOTP code"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MFA enrollment verified"
+          },
+          "400": {
+            "description": "Invalid code"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/challenge": {
+      "post": {
+        "summary": "Create MFA challenge",
+        "description": "Creates an MFA challenge for login verification",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "factorId"
+                ],
+                "properties": {
+                  "factorId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Challenge created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "challengeId": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/verify": {
+      "post": {
+        "summary": "Verify MFA challenge",
+        "description": "Verifies the TOTP code for an MFA challenge",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "factorId",
+                  "challengeId",
+                  "code"
+                ],
+                "properties": {
+                  "factorId": {
+                    "type": "string"
+                  },
+                  "challengeId": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string",
+                    "description": "6-digit TOTP code"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MFA verified successfully"
+          },
+          "400": {
+            "description": "Invalid code"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/factors": {
+      "get": {
+        "summary": "Get MFA factors",
+        "description": "Returns list of enrolled MFA factors for the user",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "MFA factors retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "factors": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/mfa/disable": {
+      "post": {
+        "summary": "Disable MFA",
+        "description": "Disables MFA for the user",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "factorId"
+                ],
+                "properties": {
+                  "factorId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "MFA disabled successfully"
+          },
+          "400": {
+            "description": "Invalid request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "summary": "Get current user",
+        "description": "Returns the authenticated user's information including KYC status",
+        "tags": [
+          "Authentication"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "type": "string"
+                        },
+                        "walletAddress": {
+                          "type": "string"
+                        },
+                        "kycStatus": {
+                          "type": "string"
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/contracts": {
+      "get": {
+        "summary": "List user's contracts",
+        "description": "Retrieves all contracts for the authenticated user (as freelancer or employer)",
+        "tags": [
+          "Contracts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "in": "query",
+            "name": "continuationToken",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contracts retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Contract"
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "continuationToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}": {
+      "get": {
+        "summary": "Get contract details",
+        "description": "Retrieves details of a specific contract",
+        "tags": [
+          "Contracts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Contract ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Contract"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Contract not found"
+          }
+        }
+      }
+    },
+    "/api/kyc/initiate": {
+      "post": {
+        "summary": "Initiate KYC verification",
+        "description": "Creates a new Didit verification session and returns URL for user to complete verification",
+        "tags": [
+          "KYC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Verification session created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycVerification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or user already has active verification"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/kyc/status": {
+      "get": {
+        "summary": "Get current user's KYC verification status",
+        "tags": [
+          "KYC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "KYC verification status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycVerification"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No verification found"
+          }
+        }
+      }
+    },
+    "/api/kyc/verified": {
+      "get": {
+        "summary": "Check if current user is verified",
+        "tags": [
+          "KYC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verification status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "verified": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kyc/profile-data": {
+      "get": {
+        "summary": "Get KYC data for profile creation",
+        "description": "Returns verified KYC data that can be used to pre-populate user profile",
+        "tags": [
+          "KYC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile data from KYC",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "first_name": {
+                      "type": "string"
+                    },
+                    "last_name": {
+                      "type": "string"
+                    },
+                    "location": {
+                      "type": "string"
+                    },
+                    "nationality": {
+                      "type": "string"
+                    },
+                    "kyc_verified": {
+                      "type": "boolean"
+                    },
+                    "kyc_verified_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "KYC not approved or not found"
+          }
+        }
+      }
+    },
+    "/api/kyc/history": {
+      "get": {
+        "summary": "Get user's KYC verification history",
+        "tags": [
+          "KYC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verification history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KycVerification"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kyc/refresh/{verificationId}": {
+      "post": {
+        "summary": "Refresh verification status from Didit",
+        "description": "Manually fetch latest status from Didit API",
+        "tags": [
+          "KYC"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "verificationId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Status refreshed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KycVerification"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kyc/webhook": {
+      "post": {
+        "summary": "Didit webhook endpoint",
+        "description": "Receives verification status updates from Didit",
+        "tags": [
+          "KYC Webhooks"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook processed"
+          },
+          "401": {
+            "description": "Invalid signature"
+          }
+        }
+      }
+    },
+    "/api/kyc/admin/pending": {
+      "get": {
+        "summary": "Get verifications pending admin review",
+        "tags": [
+          "KYC Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pending verifications",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KycVerification"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/kyc/admin/status/{status}": {
+      "get": {
+        "summary": "Get verifications by status",
+        "tags": [
+          "KYC Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "status",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "in_progress",
+                "completed",
+                "approved",
+                "rejected",
+                "expired"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verifications list"
+          }
+        }
+      }
+    },
+    "/api/kyc/admin/review/{verificationId}": {
+      "post": {
+        "summary": "Admin review verification",
+        "description": "Approve or reject a completed verification",
+        "tags": [
+          "KYC Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "verificationId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "decision"
+                ],
+                "properties": {
+                  "decision": {
+                    "type": "string",
+                    "enum": [
+                      "approved",
+                      "rejected"
+                    ]
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Review completed"
+          }
+        }
+      }
+    },
+    "/api/kyc/admin/verification/{verificationId}": {
+      "get": {
+        "summary": "Get verification details (Admin)",
+        "tags": [
+          "KYC Admin"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "verificationId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Verification details"
+          }
+        }
+      }
+    },
+    "/api/disputes": {
+      "get": {
+        "summary": "List all disputes",
+        "description": "Get all disputes (admin sees all, users see only their own)",
+        "tags": [
+          "Disputes"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "under_review",
+                "resolved"
+              ]
+            },
+            "description": "Filter by dispute status"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 100
+            },
+            "description": "Maximum number of items to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of disputes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Dispute"
+                      }
+                    },
+                    "continuationToken": {
+                      "type": "string",
+                      "nullable": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a new dispute",
+        "description": "Create a dispute for a milestone, locking associated funds",
+        "tags": [
+          "Disputes"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDisputeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Dispute created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dispute"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or milestone already disputed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "User not authorized to create dispute"
+          },
+          "404": {
+            "description": "Contract or milestone not found"
+          }
+        }
+      }
+    },
+    "/api/disputes/{disputeId}": {
+      "get": {
+        "summary": "Get dispute details",
+        "description": "Get details of a specific dispute",
+        "tags": [
+          "Disputes"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "disputeId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The dispute ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dispute details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dispute"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Dispute not found"
+          }
+        }
+      }
+    },
+    "/api/disputes/{disputeId}/evidence": {
+      "post": {
+        "summary": "Submit evidence for a dispute",
+        "description": "Submit evidence to support a dispute case. Supports both multipart/form-data (server-side upload) and application/json (URL-reference pattern).",
+        "tags": [
+          "Disputes"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "disputeId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The dispute ID (UUID)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "type",
+                  "files"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "file"
+                    ],
+                    "description": "Must be 'file' for multipart uploads"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "minItems": 1,
+                    "maxItems": 1,
+                    "description": "Single file upload (max 10MB)"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitEvidenceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Evidence submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dispute"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, invalid UUID format, or dispute already resolved"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "User not authorized to submit evidence"
+          },
+          "404": {
+            "description": "Dispute not found"
+          }
+        }
+      }
+    },
+    "/api/disputes/{disputeId}/resolve": {
+      "post": {
+        "summary": "Resolve a dispute (admin only)",
+        "description": "Admin resolves a dispute, triggering payment based on decision",
+        "tags": [
+          "Disputes"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "disputeId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The dispute ID (UUID)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveDisputeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dispute resolved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dispute"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request, invalid UUID format, or dispute already resolved"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "User not authorized to resolve disputes"
+          },
+          "404": {
+            "description": "Dispute not found"
+          }
+        }
+      }
+    },
+    "/api/contracts/{contractId}/disputes": {
+      "get": {
+        "summary": "List disputes for a contract",
+        "description": "Get all disputes associated with a contract",
+        "tags": [
+          "Disputes"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The contract ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of disputes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Dispute"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "User not authorized to view disputes"
+          },
+          "404": {
+            "description": "Contract not found"
+          }
+        }
+      }
+    },
+    "/api/employers/projects": {
+      "get": {
+        "summary": "List employer's projects",
+        "description": "Retrieves all projects created by the authenticated employer with proposal counts",
+        "tags": [
+          "Employers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "in": "query",
+            "name": "continuationToken",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "allOf": [
+                          {
+                            "$ref": "#/components/schemas/Project"
+                          },
+                          {
+                            "type": "object",
+                            "properties": {
+                              "proposalCount": {
+                                "type": "integer"
+                              }
+                            }
+                          }
+                        ]
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "continuationToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/employers/profile": {
+      "get": {
+        "summary": "Get current user's employer profile",
+        "description": "Retrieves the authenticated user's employer profile",
+        "tags": [
+          "Employers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployerProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update employer profile",
+        "description": "Updates the authenticated user's employer profile",
+        "tags": [
+          "Employers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "companyName": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "industry": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployerProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/employers/{id}": {
+      "get": {
+        "summary": "Get employer profile by user ID",
+        "description": "Retrieves an employer's public profile",
+        "tags": [
+          "Employers"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID of the employer (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Employer profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmployerProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/freelancers/profile": {
+      "get": {
+        "summary": "Get current user's freelancer profile",
+        "description": "Retrieves the authenticated user's freelancer profile",
+        "tags": [
+          "Freelancers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreelancerProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update freelancer profile",
+        "description": "Updates the authenticated user's freelancer profile",
+        "tags": [
+          "Freelancers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "bio": {
+                    "type": "string"
+                  },
+                  "hourlyRate": {
+                    "type": "number"
+                  },
+                  "availability": {
+                    "type": "string",
+                    "enum": [
+                      "available",
+                      "busy",
+                      "unavailable"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Profile updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreelancerProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/freelancers/profile/skills": {
+      "post": {
+        "summary": "Add skills to freelancer profile",
+        "description": "Adds skills to the authenticated user's profile. Skills are stored as free-form text for AI matching.",
+        "tags": [
+          "Freelancers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "skills"
+                ],
+                "properties": {
+                  "skills": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "name",
+                        "yearsOfExperience"
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "description": "Skill name (e.g., \"React\", \"Node.js\", \"Solidity\")",
+                          "example": "React"
+                        },
+                        "yearsOfExperience": {
+                          "type": "number",
+                          "description": "Years of experience with this skill",
+                          "example": 3
+                        }
+                      }
+                    }
+                  }
+                }
+              },
+              "example": {
+                "skills": [
+                  {
+                    "name": "React",
+                    "yearsOfExperience": 3
+                  },
+                  {
+                    "name": "Node.js",
+                    "yearsOfExperience": 2
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Skills added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreelancerProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/freelancers/profile/experience": {
+      "post": {
+        "summary": "Add work experience to freelancer profile",
+        "description": "Adds a work experience entry to the authenticated user's profile",
+        "tags": [
+          "Freelancers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "company",
+                  "description",
+                  "startDate"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "company": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "startDate": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "endDate": {
+                    "type": "string",
+                    "format": "date",
+                    "nullable": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Experience added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreelancerProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or invalid date range"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/freelancers/profile/experience/{id}": {
+      "delete": {
+        "summary": "Delete work experience from freelancer profile",
+        "description": "Removes a work experience entry from the authenticated user's profile",
+        "tags": [
+          "Freelancers"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Experience ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Experience deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreelancerProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Profile or experience not found"
+          }
+        }
+      }
+    },
+    "/api/freelancers/{id}": {
+      "get": {
+        "summary": "Get freelancer profile by user ID",
+        "description": "Retrieves a freelancer's public profile",
+        "tags": [
+          "Freelancers"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID of the freelancer (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Freelancer profile retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreelancerProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "404": {
+            "description": "Profile not found"
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health check endpoint",
+        "description": "Returns the health status of the API",
+        "tags": [
+          "Health"
+        ],
+        "responses": {
+          "200": {
+            "description": "API is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "example": "ok"
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/matching/projects": {
+      "get": {
+        "summary": "Get project recommendations for freelancer",
+        "description": "Returns AI-powered project recommendations ranked by match score",
+        "tags": [
+          "Matching"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 50
+            },
+            "description": "Maximum number of recommendations to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project recommendations retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProjectRecommendation"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing token"
+          },
+          "404": {
+            "description": "Freelancer profile not found"
+          }
+        }
+      }
+    },
+    "/api/matching/freelancers/{projectId}": {
+      "get": {
+        "summary": "Get freelancer recommendations for a project",
+        "description": "Returns AI-powered freelancer recommendations ranked by combined skill and reputation score",
+        "tags": [
+          "Matching"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the project to find freelancers for (UUID)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 10,
+              "minimum": 1,
+              "maximum": 50
+            },
+            "description": "Maximum number of recommendations to return"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Freelancer recommendations retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FreelancerRecommendation"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing token"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      }
+    },
+    "/api/matching/extract-skills": {
+      "post": {
+        "summary": "Extract skills from text",
+        "description": "Uses AI to extract and map skills from text to the platform taxonomy",
+        "tags": [
+          "Matching"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExtractSkillsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Skills extracted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExtractedSkill"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request - text is required"
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing token"
+          }
+        }
+      }
+    },
+    "/api/matching/skill-gaps": {
+      "get": {
+        "summary": "Analyze skill gaps for freelancer",
+        "description": "Uses AI to analyze freelancer's skills and suggest improvements based on market demand",
+        "tags": [
+          "Matching"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Skill gap analysis completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillGapAnalysis"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing token"
+          },
+          "404": {
+            "description": "Freelancer profile not found"
+          }
+        }
+      }
+    },
+    "/api/notifications": {
+      "get": {
+        "summary": "Get user notifications",
+        "description": "Retrieves all notifications for the authenticated user, sorted by creation time (newest first)",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "maxItemCount",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Maximum number of notifications to return"
+          },
+          {
+            "in": "query",
+            "name": "continuationToken",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notifications retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Notification"
+                      }
+                    },
+                    "continuationToken": {
+                      "type": "string"
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/notifications/unread-count": {
+      "get": {
+        "summary": "Get unread notification count",
+        "description": "Returns the count of unread notifications for the authenticated user",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Unread count retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/notifications/{id}/read": {
+      "patch": {
+        "summary": "Mark notification as read",
+        "description": "Marks a specific notification as read",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Notification ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Notification marked as read successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Notification"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Notification not found"
+          }
+        }
+      }
+    },
+    "/api/notifications/read-all": {
+      "patch": {
+        "summary": "Mark all notifications as read",
+        "description": "Marks all notifications for the authenticated user as read",
+        "tags": [
+          "Notifications"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "All notifications marked as read successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "count": {
+                      "type": "integer",
+                      "description": "Number of notifications marked as read"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/payments/milestones/{milestoneId}/complete": {
+      "post": {
+        "summary": "Mark milestone as complete",
+        "description": "Freelancer marks a milestone as complete, triggering employer notification",
+        "tags": [
+          "Payments"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestoneId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The milestone ID (UUID)"
+          },
+          {
+            "in": "query",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The contract ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Milestone marked as complete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneCompletionResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Contract or milestone not found"
+          }
+        }
+      }
+    },
+    "/api/payments/milestones/{milestoneId}/approve": {
+      "post": {
+        "summary": "Approve milestone completion",
+        "description": "Employer approves milestone completion, triggering payment release",
+        "tags": [
+          "Payments"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestoneId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The milestone ID (UUID)"
+          },
+          {
+            "in": "query",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The contract ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Milestone approved and payment released",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneApprovalResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Contract or milestone not found"
+          }
+        }
+      }
+    },
+    "/api/payments/milestones/{milestoneId}/dispute": {
+      "post": {
+        "summary": "Dispute milestone",
+        "description": "Either party disputes a milestone, locking funds and creating a dispute record",
+        "tags": [
+          "Payments"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "milestoneId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The milestone ID (UUID)"
+          },
+          {
+            "in": "query",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The contract ID (UUID)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisputeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dispute created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MilestoneDisputeResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request or UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Contract or milestone not found"
+          }
+        }
+      }
+    },
+    "/api/payments/contracts/{contractId}/status": {
+      "get": {
+        "summary": "Get contract payment status",
+        "description": "Get detailed payment status for a contract including milestone statuses",
+        "tags": [
+          "Payments"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The contract ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract payment status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContractPaymentStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Contract not found"
+          }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "summary": "List projects with filters",
+        "description": "Retrieves a list of open projects with optional filters",
+        "tags": [
+          "Projects"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search keyword for title/description"
+          },
+          {
+            "in": "query",
+            "name": "skills",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated skill IDs"
+          },
+          {
+            "in": "query",
+            "name": "minBudget",
+            "schema": {
+              "type": "number"
+            },
+            "description": "Minimum budget filter"
+          },
+          {
+            "in": "query",
+            "name": "maxBudget",
+            "schema": {
+              "type": "number"
+            },
+            "description": "Maximum budget filter"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "in": "query",
+            "name": "continuationToken",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Project"
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "continuationToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create project",
+        "description": "Creates a new project (employer only)",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "title",
+                  "description",
+                  "requiredSkills",
+                  "budget",
+                  "deadline"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 5
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 20
+                  },
+                  "requiredSkills": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "skillId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "budget": {
+                    "type": "number",
+                    "minimum": 0,
+                    "exclusiveMinimum": true
+                  },
+                  "deadline": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Project created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/projects/my-projects": {
+      "get": {
+        "summary": "Get employer's own projects",
+        "description": "Retrieves all projects created by the authenticated employer",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "in": "query",
+            "name": "continuationToken",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Project"
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "continuationToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/projects/{id}": {
+      "get": {
+        "summary": "Get project details",
+        "description": "Retrieves details of a specific project",
+        "tags": [
+          "Projects"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Project ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Project retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update project",
+        "description": "Updates an existing project (employer only, project must not have accepted proposals)",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Project ID (UUID)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "requiredSkills": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "skillId": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "budget": {
+                    "type": "number"
+                  },
+                  "deadline": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "open",
+                      "in_progress",
+                      "completed",
+                      "cancelled"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Project updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "409": {
+            "description": "Project locked (has accepted proposals)"
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/milestones": {
+      "post": {
+        "summary": "Add milestones to project",
+        "description": "Sets milestones for a project (employer only, milestone amounts must sum to budget)",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Project ID (UUID)"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "milestones"
+                ],
+                "properties": {
+                  "milestones": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "title",
+                        "description",
+                        "amount",
+                        "dueDate"
+                      ],
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "number"
+                        },
+                        "dueDate": {
+                          "type": "string",
+                          "format": "date-time"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Milestones added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error, invalid UUID format, or milestone sum mismatch"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "409": {
+            "description": "Project locked (has accepted proposals)"
+          }
+        }
+      }
+    },
+    "/api/projects/{id}/proposals": {
+      "get": {
+        "summary": "List proposals for project",
+        "description": "Retrieves all proposals for a specific project (employer only)",
+        "tags": [
+          "Projects",
+          "Proposals"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Project ID (UUID)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "default": 20
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "in": "query",
+            "name": "continuationToken",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposals retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Proposal"
+                      }
+                    },
+                    "hasMore": {
+                      "type": "boolean"
+                    },
+                    "continuationToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Project not found"
+          }
+        }
+      }
+    },
+    "/api/proposals": {
+      "post": {
+        "summary": "Submit proposal",
+        "description": "Submit a proposal for a project with file attachments (freelancer only). Supports both multipart/form-data (server-side upload) and application/json (URL-reference pattern).",
+        "tags": [
+          "Proposals"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "projectId",
+                  "proposedRate",
+                  "estimatedDuration",
+                  "files"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "proposedRate": {
+                    "type": "number",
+                    "minimum": 1
+                  },
+                  "estimatedDuration": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "Duration in days"
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "description": "File attachments (1-5 files, max 10MB each, 25MB total)"
+                  }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "projectId",
+                  "attachments",
+                  "proposedRate",
+                  "estimatedDuration"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "items": {
+                      "$ref": "#/components/schemas/FileAttachment"
+                    },
+                    "description": "File attachments (URL-reference pattern for backward compatibility)"
+                  },
+                  "proposedRate": {
+                    "type": "number",
+                    "minimum": 1
+                  },
+                  "estimatedDuration": {
+                    "type": "number",
+                    "minimum": 1,
+                    "description": "Duration in days"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Proposal submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Project not found"
+          },
+          "409": {
+            "description": "Duplicate proposal"
+          }
+        }
+      }
+    },
+    "/api/proposals/{id}": {
+      "get": {
+        "summary": "Get proposal details",
+        "description": "Retrieves details of a specific proposal",
+        "tags": [
+          "Proposals"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Proposal ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Proposal not found"
+          }
+        }
+      }
+    },
+    "/api/proposals/freelancer/me": {
+      "get": {
+        "summary": "Get my proposals",
+        "description": "Retrieves all proposals submitted by the authenticated freelancer",
+        "tags": [
+          "Proposals"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposals retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Proposal"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/proposals/{id}/accept": {
+      "post": {
+        "summary": "Accept proposal",
+        "description": "Accept a proposal and create a contract (employer only)",
+        "tags": [
+          "Proposals"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Proposal ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal accepted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "proposal": {
+                      "$ref": "#/components/schemas/Proposal"
+                    },
+                    "contract": {
+                      "$ref": "#/components/schemas/Contract"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid proposal status or UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Proposal not found"
+          }
+        }
+      }
+    },
+    "/api/proposals/{id}/reject": {
+      "post": {
+        "summary": "Reject proposal",
+        "description": "Reject a proposal (employer only)",
+        "tags": [
+          "Proposals"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Proposal ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal rejected successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid proposal status or UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Proposal not found"
+          }
+        }
+      }
+    },
+    "/api/proposals/{id}/withdraw": {
+      "post": {
+        "summary": "Withdraw proposal",
+        "description": "Withdraw a pending proposal (freelancer only)",
+        "tags": [
+          "Proposals"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Proposal ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Proposal withdrawn successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Proposal"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid proposal status or UUID format"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Proposal not found"
+          }
+        }
+      }
+    },
+    "/api/reputation/can-rate": {
+      "get": {
+        "summary": "Check if user can rate",
+        "description": "Check if the authenticated user can rate another user for a specific contract",
+        "tags": [
+          "Reputation"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "contractId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Contract ID"
+          },
+          {
+            "in": "query",
+            "name": "rateeId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "User ID to rate"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Check completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "canRate": {
+                      "type": "boolean"
+                    },
+                    "reason": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        }
+      }
+    },
+    "/api/reputation/rate": {
+      "post": {
+        "summary": "Submit rating",
+        "description": "Submit a rating for another user after contract completion. Rating must be between 1 and 5.",
+        "tags": [
+          "Reputation"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RatingInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Rating submitted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "rating": {
+                      "$ref": "#/components/schemas/BlockchainRating"
+                    },
+                    "transactionHash": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid rating or validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Contract not found"
+          },
+          "409": {
+            "description": "Duplicate rating"
+          }
+        }
+      }
+    },
+    "/api/reputation/{userId}": {
+      "get": {
+        "summary": "Get user reputation",
+        "description": "Retrieves the reputation score and ratings for a user from the blockchain",
+        "tags": [
+          "Reputation"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID to get reputation for (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reputation retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReputationScore"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/reputation/{userId}/history": {
+      "get": {
+        "summary": "Get work history",
+        "description": "Retrieves the work history for a user including completed contracts and ratings",
+        "tags": [
+          "Reputation"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "userId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "User ID to get work history for (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Work history retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkHistoryEntry"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        }
+      }
+    },
+    "/api/search/projects": {
+      "get": {
+        "summary": "Search projects",
+        "description": "Search for projects with keyword, skill, and budget filters",
+        "tags": [
+          "Search"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search keyword for title/description"
+          },
+          {
+            "in": "query",
+            "name": "skills",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated skill IDs to filter by"
+          },
+          {
+            "in": "query",
+            "name": "minBudget",
+            "schema": {
+              "type": "number"
+            },
+            "description": "Minimum budget filter"
+          },
+          {
+            "in": "query",
+            "name": "maxBudget",
+            "schema": {
+              "type": "number"
+            },
+            "description": "Maximum budget filter"
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "in": "query",
+            "name": "continuationToken",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Projects retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectSearchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          }
+        }
+      }
+    },
+    "/api/search/freelancers": {
+      "get": {
+        "summary": "Search freelancers",
+        "description": "Search for freelancers with keyword and skill filters",
+        "tags": [
+          "Search"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Search keyword for bio"
+          },
+          {
+            "in": "query",
+            "name": "skills",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated skill IDs to filter by"
+          },
+          {
+            "in": "query",
+            "name": "pageSize",
+            "schema": {
+              "type": "integer",
+              "default": 20,
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Number of results per page"
+          },
+          {
+            "in": "query",
+            "name": "continuationToken",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Token for pagination"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Freelancers retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreelancerSearchResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request parameters"
+          }
+        }
+      }
+    },
+    "/api/skills": {
+      "get": {
+        "summary": "Get full skill taxonomy",
+        "description": "Returns all active skill categories with their associated active skills in hierarchical format",
+        "tags": [
+          "Skills"
+        ],
+        "responses": {
+          "200": {
+            "description": "Skill taxonomy retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillTaxonomy"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create a skill (admin)",
+        "description": "Creates a new skill within a category. Requires admin privileges.",
+        "tags": [
+          "Skills"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSkillInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Skill created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or category not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Skill with this name already exists in the category",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills/search": {
+      "get": {
+        "summary": "Search skills by keyword",
+        "description": "Returns skills matching the keyword in name or description, with category information",
+        "tags": [
+          "Skills"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "keyword",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Keyword to search for in skill names and descriptions"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SkillWithCategory"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Missing keyword parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills/categories/{categoryId}/skills": {
+      "get": {
+        "summary": "Get skills by category",
+        "description": "Returns all active skills for a specific category",
+        "tags": [
+          "Skills"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "categoryId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the category"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Skills retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Skill"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid category ID format",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills/categories": {
+      "post": {
+        "summary": "Create a skill category (admin)",
+        "description": "Creates a new skill category. Requires admin privileges.",
+        "tags": [
+          "Skills"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSkillCategoryInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Category created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillCategory"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Category with this name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/skills/{id}/deprecate": {
+      "patch": {
+        "summary": "Deprecate a skill (admin)",
+        "description": "Marks a skill as inactive/deprecated. Deprecated skills are excluded from new profile and project associations. Requires admin privileges.",
+        "tags": [
+          "Skills"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "ID of the skill to deprecate (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Skill deprecated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Skill"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid UUID format"
+          },
+          "404": {
+            "description": "Skill not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": []
+}

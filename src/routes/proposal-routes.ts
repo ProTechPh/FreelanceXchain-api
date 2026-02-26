@@ -13,6 +13,7 @@ import {
   rejectProposal,
   withdrawProposal,
 } from '../services/proposal-service.js';
+import { getProjectById } from '../services/project-service.js';
 
 const router = Router();
 
@@ -349,7 +350,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     errors.push({ field: 'projectId', message: 'Project ID must be a valid UUID' });
   }
   if (!attachments || !Array.isArray(attachments)) {
-    errors.push({ field: 'attachments', message: 'Attachments array is required' });
+    errors.push({ field: 'attachments', message: 'Attachments must be an array' });
   }
   if (!proposedRate || typeof proposedRate !== 'number' || proposedRate < 1) {
     errors.push({ field: 'proposedRate', message: 'Proposed rate must be at least 1' });
@@ -419,6 +420,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
 router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const userId = req.user?.userId;
 
   const result = await getProposalById(id);
 
@@ -429,6 +431,22 @@ router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Res
       requestId,
     });
     return;
+  }
+
+  // Authorization check - only the freelancer who submitted the proposal,
+  // the employer who owns the project, or an admin can view it
+  const proposal = result.data;
+  if (req.user?.role !== 'admin' && proposal.freelancerId !== userId) {
+    // Check if the user is the employer of the project
+    const projectResult = await getProjectById(proposal.projectId);
+    if (!projectResult.success || projectResult.data.employer_id !== userId) {
+      res.status(403).json({
+        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this proposal' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
   }
 
   res.status(200).json(result.data);

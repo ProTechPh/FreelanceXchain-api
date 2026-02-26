@@ -179,6 +179,29 @@ export async function updateProject(
     }
   }
 
+  // Validate project status transitions
+  if (input.status) {
+    const validTransitions: Record<string, string[]> = {
+      draft: ['open', 'cancelled'],
+      open: ['in_progress', 'cancelled'],
+      in_progress: ['completed', 'cancelled'],
+      completed: [],        // Terminal state - no transitions allowed
+      cancelled: [],        // Terminal state - no transitions allowed
+    };
+
+    const currentStatus = existingProject.status;
+    const allowedNextStatuses = validTransitions[currentStatus] ?? [];
+    if (!allowedNextStatuses.includes(input.status)) {
+      return {
+        success: false,
+        error: { 
+          code: 'INVALID_STATUS_TRANSITION', 
+          message: `Cannot transition project from "${currentStatus}" to "${input.status}". Allowed: ${allowedNextStatuses.join(', ') || 'none (terminal state)'}` 
+        },
+      };
+    }
+  }
+
   const updates: Partial<ProjectEntity> = {
     ...(input.title && { title: input.title }),
     ...(input.description && { description: input.description }),

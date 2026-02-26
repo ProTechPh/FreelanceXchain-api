@@ -21,7 +21,7 @@ function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): Paginat
 }
 
 export async function getContractById(contractId: string): Promise<ContractServiceResult<Contract>> {
-  const entity = await contractRepository.getContractById(contractId);
+  const entity = await contractRepository.getContractByIdWithRelations(contractId);
   if (!entity) {
     return {
       success: false,
@@ -76,7 +76,7 @@ export async function updateContractStatus(
 
   const validTransitions: Record<ContractStatus, ContractStatus[]> = {
     active: ['completed', 'disputed', 'cancelled'],
-    disputed: ['active', 'completed', 'cancelled'],
+    disputed: ['completed', 'cancelled'],  // FIXED: Removed 'active' - disputes must be resolved, not swept under the rug
     completed: [],
     cancelled: [],
   };

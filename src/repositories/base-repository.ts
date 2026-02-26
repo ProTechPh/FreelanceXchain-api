@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { getSupabaseClient, TableName } from '../config/supabase.js';
+import { getSupabaseServiceClient, TableName } from '../config/supabase.js';
 
 export type QueryOptions = {
   limit?: number;
@@ -31,7 +31,7 @@ export class BaseRepository<T extends BaseEntity> {
 
   protected getClient(): SupabaseClient {
     if (!this.client) {
-      this.client = getSupabaseClient();
+      this.client = getSupabaseServiceClient();
     }
     return this.client;
   }

@@ -2,6 +2,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from './env.js';
 
 let supabaseClient: SupabaseClient | null = null;
+let supabaseServiceClient: SupabaseClient | null = null;
 
 export const TABLES = {
   USERS: 'users',
@@ -18,6 +19,7 @@ export const TABLES = {
   REVIEWS: 'reviews',
   MESSAGES: 'messages',
   PAYMENTS: 'payments',
+  AUDIT_LOG_ENTRIES: 'audit_log_entries',
 } as const;
 
 export const STORAGE_BUCKETS = {
@@ -35,6 +37,21 @@ export function getSupabaseClient(): SupabaseClient {
     supabaseClient = createClient(config.supabase.url, config.supabase.anonKey);
   }
   return supabaseClient;
+}
+
+export function getSupabaseServiceClient(): SupabaseClient {
+  if (!supabaseServiceClient) {
+    if (!config.supabase.url || !config.supabase.serviceRoleKey) {
+      throw new Error('Supabase service role configuration is missing. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY environment variables.');
+    }
+    supabaseServiceClient = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    });
+  }
+  return supabaseServiceClient;
 }
 
 export async function initializeDatabase(): Promise<void> {

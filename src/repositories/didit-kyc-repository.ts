@@ -5,11 +5,11 @@
  * Note: We only store session info and decision - Didit handles all verification data.
  */
 
-import { getSupabaseClient } from '../config/supabase.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 import { KycVerification, UpdateKycVerificationInput } from '../models/didit-kyc.js';
 import { logger } from '../config/logger.js';
 
-const supabase = getSupabaseClient();
+const supabase = getSupabaseServiceClient();
 const TABLE_NAME = 'kyc_verifications';
 
 /**
