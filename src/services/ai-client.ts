@@ -21,7 +21,7 @@ import { generateId } from '../utils/id.js';
 // Constants
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
-const REQUEST_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses (can be slow)
 
 // Prompt templates
 export const SKILL_MATCH_PROMPT = `
@@ -136,8 +136,6 @@ async function makeAIRequest(
       headers: {
         'Authorization': `Bearer ${config.llm.apiKey}`,
         'Content-Type': 'application/json',
-        'Cache-Control': 'no-store, no-cache, must-revalidate',
-        'Pragma': 'no-cache',
       },
       body: JSON.stringify(openAIRequest),
       signal: controller.signal,

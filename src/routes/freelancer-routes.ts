@@ -5,6 +5,7 @@ import {
   getProfileByUserId,
   updateProfile,
   addSkillsToProfile,
+  removeSkillFromProfile,
   addExperience,
   removeExperience,
 } from '../services/freelancer-profile-service.js';
@@ -318,6 +319,74 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), async 
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
     res.status(statusCode).json({
       error: { code: result.error.code, message: result.error.message, details: result.error.details },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+
+/**
+ * @swagger
+ * /api/freelancers/profile/skills/{skillName}:
+ *   delete:
+ *     summary: Remove a skill from freelancer profile
+ *     description: Removes a skill from the authenticated user's profile by skill name
+ *     tags:
+ *       - Freelancers
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: skillName
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Name of the skill to remove
+ *     responses:
+ *       200:
+ *         description: Skill removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/FreelancerProfile'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Profile not found
+ */
+router.delete('/profile/skills/:skillName', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+  const skillName = req.params['skillName'] ?? '';
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!skillName || skillName.trim().length === 0) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Skill name is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await removeSkillFromProfile(userId, decodeURIComponent(skillName));
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
     });
