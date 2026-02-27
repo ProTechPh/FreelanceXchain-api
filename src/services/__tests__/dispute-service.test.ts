@@ -96,6 +96,33 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
   ProjectRepository: jest.fn(),
   ProjectEntity: {} as ProjectEntity,
 }));
+jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
+  getSupabaseServiceClient: jest.fn(() => ({
+    rpc: jest.fn(async (fnName: string, params: { p_dispute_id: string; p_evidence: EvidenceEntity[] }) => {
+      if (fnName !== 'append_dispute_evidence') {
+        return { data: null, error: { message: `Unsupported RPC function: ${fnName}` } };
+      }
+
+      const dispute = disputeStore.get(params.p_dispute_id);
+      if (!dispute) {
+        return { data: null, error: { message: 'Dispute not found' } };
+      }
+
+      const updatedEvidence = [...(dispute.evidence ?? []), ...params.p_evidence];
+      const nextStatus = dispute.status === 'open' ? 'under_review' : dispute.status;
+      const updated: DisputeEntity = {
+        ...dispute,
+        evidence: updatedEvidence,
+        status: nextStatus,
+        updated_at: new Date().toISOString(),
+      };
+      disputeStore.set(dispute.id, updated);
+
+      return { data: updatedEvidence, error: null };
+    }),
+  })),
+  TABLES: {},
+}));
 jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), () => ({
   notifyDisputeCreated: jest.fn(async (
     userId: string,
@@ -145,7 +172,11 @@ jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), 
 }));
 jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () => ({
   getEscrowByContractId: jest.fn(async (_contractId: string) => {
-    return { address: '0x' + 'a'.repeat(40) };
+    return {
+      address: '0x' + 'a'.repeat(40),
+      employerAddress: '0x' + 'f'.repeat(40),
+      freelancerAddress: '0x' + 'e'.repeat(40),
+    };
   }),
   releaseMilestone: jest.fn(async () => ({
     transactionHash: '0x' + 'b'.repeat(64),
@@ -191,7 +222,9 @@ const {
   createDispute,
   submitEvidence,
   getDisputeById,
+  resolveDispute,
 } = await import('../dispute-service.js');
+const escrowContractModule = await import('../escrow-contract.js');
 // Helper functions
 function createTestContract(
   id: string,
@@ -546,6 +579,78 @@ describe('Dispute Service - Property Tests', () => {
       ),
       { numRuns: 100 }
     );
+  });
+
+  it('should reject split dispute resolution as unsupported', async () => {
+    const contractId = generateId();
+    const projectId = generateId();
+    const milestoneId = generateId();
+    const freelancerId = generateId();
+    const employerId = generateId();
+    const adminId = generateId();
+
+    createTestProject(projectId, employerId, [createTestMilestone(milestoneId, 'submitted')]);
+    createTestContract(contractId, projectId, freelancerId, employerId);
+
+    const dispute = await createDispute({
+      contractId,
+      milestoneId,
+      initiatorId: employerId,
+      reason: 'Milestone quality dispute',
+    });
+    expect(dispute.success).toBe(true);
+    if (!dispute.success) return;
+
+    const result = await resolveDispute({
+      disputeId: dispute.data.id,
+      decision: 'split',
+      reasoning: 'Split recommended by admin',
+      resolvedBy: adminId,
+      resolverRole: 'admin',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UNSUPPORTED_DECISION');
+    }
+  });
+
+  it('should fail resolution when escrow is missing', async () => {
+    const contractId = generateId();
+    const projectId = generateId();
+    const milestoneId = generateId();
+    const freelancerId = generateId();
+    const employerId = generateId();
+    const adminId = generateId();
+
+    createTestProject(projectId, employerId, [createTestMilestone(milestoneId, 'submitted')]);
+    createTestContract(contractId, projectId, freelancerId, employerId);
+
+    const dispute = await createDispute({
+      contractId,
+      milestoneId,
+      initiatorId: freelancerId,
+      reason: 'Payment conflict',
+    });
+    expect(dispute.success).toBe(true);
+    if (!dispute.success) return;
+
+    const escrowSpy = jest.spyOn(escrowContractModule, 'getEscrowByContractId').mockResolvedValueOnce(null);
+
+    const result = await resolveDispute({
+      disputeId: dispute.data.id,
+      decision: 'freelancer_favor',
+      reasoning: 'Evidence validated',
+      resolvedBy: adminId,
+      resolverRole: 'admin',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('ESCROW_NOT_FOUND');
+    }
+
+    escrowSpy.mockRestore();
   });
 });
 

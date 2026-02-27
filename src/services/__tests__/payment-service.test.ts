@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import fc from 'fast-check';
 import {
   clearDisputes,
@@ -6,16 +6,19 @@ import {
   requestMilestoneCompletion,
   disputeMilestone,
   approveMilestone,
+  getContractPaymentStatus,
   isContractComplete,
+  setEscrowOpsForTesting,
 } from '../payment-service.js';
 import { clearTransactions } from '../blockchain-client.js';
-import { clearEscrows } from '../escrow-contract.js';
+import * as escrowContract from '../escrow-contract.js';
 import { ContractEntity } from '../../repositories/contract-repository.js';
 import { ProjectEntity, MilestoneEntity } from '../../repositories/project-repository.js';
 import { contractRepository } from '../../repositories/contract-repository.js';
 import { projectRepository } from '../../repositories/project-repository.js';
 import { notificationRepository } from '../../repositories/notification-repository.js';
 import { userRepository, UserEntity } from '../../repositories/user-repository.js';
+import { disputeRepository, DisputeEntity } from '../../repositories/dispute-repository.js';
 import { generateId } from '../../utils/id.js';
 // Test data generators
 const createTestMilestone = (overrides: Partial<MilestoneEntity> = {}): MilestoneEntity => ({
@@ -60,14 +63,88 @@ const createTestContract = (
 let mockContracts: Map<string, ContractEntity>;
 let mockProjects: Map<string, ProjectEntity>;
 let mockUsers: Map<string, UserEntity>;
+let mockDisputes: Map<string, DisputeEntity>;
 // Setup mock implementations
 beforeEach(() => {
   mockContracts = new Map();
   mockProjects = new Map();
   mockUsers = new Map();
+  mockDisputes = new Map();
   clearTransactions();
-  clearEscrows();
+  escrowContract.clearEscrows();
   clearDisputes();
+
+  const mockSupabaseClient = (globalThis as unknown as {
+    mockSupabaseClient: { rpc?: unknown };
+  }).mockSupabaseClient;
+
+  mockSupabaseClient.rpc = jest.fn(async (...args: unknown[]) => {
+    const [functionName, params] = args as [string, Record<string, string>];
+    const contractId = params.p_contract_id;
+    const milestoneId = params.p_milestone_id;
+
+    if (functionName !== 'approve_milestone_atomic') {
+      return { data: null, error: { message: `Unsupported RPC function: ${functionName}` } };
+    }
+
+    if (!contractId || !milestoneId) {
+      return { data: null, error: { message: 'Missing RPC parameters' } };
+    }
+
+    const contract = mockContracts.get(contractId);
+    if (!contract) {
+      return { data: null, error: { message: 'Contract not found' } };
+    }
+
+    const project = mockProjects.get(contract.project_id);
+    if (!project) {
+      return { data: null, error: { message: 'Project not found' } };
+    }
+
+    const milestone = project.milestones.find((item) => item.id === milestoneId);
+    if (!milestone) {
+      return { data: null, error: { message: 'Milestone not found' } };
+    }
+
+    if (milestone.status === 'approved') {
+      return { data: null, error: { message: 'Milestone already approved' } };
+    }
+
+    if (milestone.status === 'disputed') {
+      return { data: null, error: { message: 'Cannot approve milestone with active dispute' } };
+    }
+
+    if (milestone.status !== 'submitted') {
+      return {
+        data: null,
+        error: { message: `Milestone cannot be approved from status ${milestone.status}` },
+      };
+    }
+
+    const updatedMilestones = project.milestones.map((item) =>
+      item.id === milestoneId ? { ...item, status: 'approved' as const } : item,
+    );
+    const contractCompleted = updatedMilestones.every((item) => item.status === 'approved');
+    const now = new Date().toISOString();
+
+    mockProjects.set(project.id, {
+      ...project,
+      milestones: updatedMilestones,
+      status: contractCompleted ? 'completed' : project.status,
+      updated_at: now,
+    });
+
+    if (contractCompleted) {
+      mockContracts.set(contract.id, {
+        ...contract,
+        status: 'completed',
+        updated_at: now,
+      });
+    }
+
+    return { data: { contract_completed: contractCompleted }, error: null };
+  });
+
   // Mock contract repository
   jest.spyOn(contractRepository, 'getContractById').mockImplementation(async (id: string) => {
     return mockContracts.get(id) ?? null;
@@ -107,13 +184,59 @@ beforeEach(() => {
       email: `user-${id.slice(0, 8)}@test.com`,
       password_hash: '',
       role: 'freelancer',
-      wallet_address: '0x' + 'a'.repeat(40),
+      wallet_address: '0x' + 'f'.repeat(40),
       name: `Test User ${id.slice(0, 8)}`,
       created_at: now,
       updated_at: now,
     };
     return mockUser;
   });
+
+  setEscrowOpsForTesting({
+    getEscrowByContractId: async (contractId: string) => ({
+      address: '0x' + 'e'.repeat(40),
+      contractId,
+      employerAddress: '0x' + 'f'.repeat(40),
+      freelancerAddress: '0x' + 'a'.repeat(40),
+      totalAmount: BigInt(5000),
+      balance: BigInt(5000),
+      milestones: [],
+      deployedAt: Date.now(),
+      deploymentTxHash: '0x' + 'd'.repeat(64),
+    }),
+    releaseMilestone: async () => ({
+      transactionHash: '0x' + 'b'.repeat(64),
+      blockNumber: 12345,
+      status: 'success',
+      gasUsed: BigInt(21000),
+      timestamp: Date.now(),
+    }),
+  });
+
+  // Mock dispute repository to avoid database/Supabase calls
+  jest.spyOn(disputeRepository, 'createDispute').mockImplementation(async (dispute) => {
+    const now = new Date().toISOString();
+    const created: DisputeEntity = {
+      ...dispute,
+      created_at: now,
+      updated_at: now,
+    };
+    mockDisputes.set(created.id, created);
+    return created;
+  });
+
+  jest.spyOn(disputeRepository, 'getDisputeById').mockImplementation(async (id: string) => {
+    return mockDisputes.get(id) ?? null;
+  });
+
+  jest.spyOn(disputeRepository, 'getAllDisputesByContract').mockImplementation(async (contractId: string) => {
+    return Array.from(mockDisputes.values()).filter(d => d.contract_id === contractId);
+  });
+});
+
+afterEach(() => {
+  setEscrowOpsForTesting();
+  jest.restoreAllMocks();
 });
 describe('Payment Service - Payment Logic Properties', () => {
   /**
@@ -441,6 +564,70 @@ describe('Payment Service - Payment Logic Properties', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.contractCompleted).toBe(false);
+      }
+    });
+  });
+
+  describe('Critical payment invariants', () => {
+    it('should not approve milestone when escrow release fails', async () => {
+      const freelancerId = generateId();
+      const employerId = generateId();
+      const milestone = createTestMilestone({ status: 'submitted', amount: 1000 });
+      const project = createTestProject(employerId, [milestone]);
+      const contract = createTestContract(project.id, freelancerId, employerId);
+      mockContracts.set(contract.id, contract);
+      mockProjects.set(project.id, project);
+      setEscrowOpsForTesting({
+        getEscrowByContractId: async (contractId: string) => ({
+          address: '0x' + 'e'.repeat(40),
+          contractId,
+          employerAddress: '0x' + 'f'.repeat(40),
+          freelancerAddress: '0x' + 'a'.repeat(40),
+          totalAmount: BigInt(5000),
+          balance: BigInt(5000),
+          milestones: [],
+          deployedAt: Date.now(),
+          deploymentTxHash: '0x' + 'd'.repeat(64),
+        }),
+        releaseMilestone: async () => {
+          throw new Error('escrow tx failed');
+        },
+      });
+
+      const result = await approveMilestone(contract.id, milestone.id, employerId);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('PAYMENT_RELEASE_FAILED');
+      }
+
+      const updatedProject = mockProjects.get(project.id);
+      expect(updatedProject?.milestones[0]?.status).toBe('submitted');
+    });
+
+    it('should use contract totalAmount and exclude refunded milestones from pending amount', async () => {
+      const freelancerId = generateId();
+      const employerId = generateId();
+      const milestones = [
+        createTestMilestone({ status: 'approved', amount: 1000 }),
+        createTestMilestone({ status: 'refunded', amount: 500 }),
+        createTestMilestone({ status: 'submitted', amount: 800 }),
+      ];
+      const project = createTestProject(employerId, milestones);
+      project.budget = 9999;
+      const contract = createTestContract(project.id, freelancerId, employerId);
+      contract.total_amount = 2300;
+
+      mockContracts.set(contract.id, contract);
+      mockProjects.set(project.id, project);
+
+      const result = await getContractPaymentStatus(contract.id, employerId);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.totalAmount).toBe(2300);
+        expect(result.data.releasedAmount).toBe(1000);
+        expect(result.data.pendingAmount).toBe(800);
       }
     });
   });

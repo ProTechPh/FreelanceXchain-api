@@ -29,6 +29,24 @@ import {
 } from './milestone-registry.js';
 import { completeAgreement } from './agreement-contract.js';
 
+const escrowOps = {
+  deployEscrow,
+  depositToEscrow,
+  releaseMilestone: releaseEscrowMilestone,
+  getEscrowByContractId,
+};
+
+export function setEscrowOpsForTesting(overrides?: Partial<typeof escrowOps>): void {
+  if (process.env['NODE_ENV'] !== 'test') {
+    return;
+  }
+
+  escrowOps.deployEscrow = overrides?.deployEscrow ?? deployEscrow;
+  escrowOps.depositToEscrow = overrides?.depositToEscrow ?? depositToEscrow;
+  escrowOps.releaseMilestone = overrides?.releaseMilestone ?? releaseEscrowMilestone;
+  escrowOps.getEscrowByContractId = overrides?.getEscrowByContractId ?? getEscrowByContractId;
+}
+
 /**
  * Create a payment record for audit trail
  */
@@ -182,6 +200,13 @@ export async function requestMilestoneCompletion(
     };
   }
 
+  if (milestone.status === 'refunded') {
+    return {
+      success: false,
+      error: { code: 'INVALID_STATUS', message: 'Milestone has been refunded' },
+    };
+  }
+
   if (milestone.status === 'submitted') {
     return {
       success: false,
@@ -323,27 +348,58 @@ export async function approveMilestone(
   // Release payment from escrow - BLOCKCHAIN FIRST
   // Look up the employer's wallet address (NOT the UUID)
   let transactionHash: string | undefined;
-  let paymentReleased = false;
   try {
-    const escrow = await getEscrowByContractId(contractId);
-    const employer = await userRepository.getUserById(employerId);
-    if (escrow && employer?.wallet_address) {
-      const receipt = await releaseEscrowMilestone(
-        escrow.address,
-        milestoneId,
-        employer.wallet_address  // Use actual wallet address, not UUID
-      );
-      transactionHash = receipt.transactionHash;
-      paymentReleased = true;
+    const escrow = await escrowOps.getEscrowByContractId(contractId);
+    if (!escrow) {
+      return {
+        success: false,
+        error: {
+          code: 'ESCROW_NOT_FOUND',
+          message: 'Escrow not found for contract. Contract must be funded before milestone approval.',
+        },
+      };
     }
+
+    const employer = await userRepository.getUserById(employerId);
+    if (!employer?.wallet_address) {
+      return {
+        success: false,
+        error: {
+          code: 'MISSING_WALLET',
+          message: 'Employer wallet address is required to approve and release milestone payment.',
+        },
+      };
+    }
+
+    const receipt = await escrowOps.releaseMilestone(
+      escrow.address,
+      milestoneId,
+      employer.wallet_address  // Use actual wallet address, not UUID
+    );
+    transactionHash = receipt.transactionHash;
+
+    // Create payment record for audit trail
+    await createPaymentRecord({
+      contractId,
+      milestoneId,
+      payerId: employerId,
+      payeeId: contract.freelancerId,
+      amount: milestone.amount,
+      paymentType: 'milestone_release',
+      txHash: transactionHash,
+      status: 'completed',
+    });
   } catch (error) {
-    console.error('Failed to release escrow payment:', error);
-    // Payment release failed - still proceed with approval but mark paymentReleased as false
-    // The payment can be retried later
+    return {
+      success: false,
+      error: {
+        code: 'PAYMENT_RELEASE_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to release escrow payment',
+      },
+    };
   }
 
-  // Update milestone status to approved (proceed even if blockchain failed -
-  // the employer approved the work, payment release can be retried)
+  // Update milestone status to approved only after successful payment release
   const milestoneToApprove = projectEntity.milestones[milestoneIndex];
   if (milestoneToApprove) {
     milestoneToApprove.status = 'approved';
@@ -400,24 +456,22 @@ export async function approveMilestone(
   );
 
   // Only send payment notification if payment was actually released
-  if (paymentReleased) {
-    await notifyPaymentReleased(
-      contract.freelancerId,
-      milestone.amount,
-      milestoneId,
-      milestone.title,
-      project.id,
-      project.title,
-      contractId
-    );
-  }
+  await notifyPaymentReleased(
+    contract.freelancerId,
+    milestone.amount,
+    milestoneId,
+    milestone.title,
+    project.id,
+    project.title,
+    contractId
+  );
 
   return {
     success: true,
     data: {
       milestoneId,
       status: 'approved',
-      paymentReleased,  // Reflects actual blockchain result
+      paymentReleased: true,
       transactionHash,
       contractCompleted,
     },
@@ -603,11 +657,14 @@ export async function getContractPaymentStatus(
   const project = mapProjectFromEntity(projectEntity);
 
   // Calculate amounts
-  const totalAmount = project.budget;
+  const totalAmount = contract.totalAmount;
   const releasedAmount = project.milestones
     .filter(m => m.status === 'approved')
     .reduce((sum, m) => sum + m.amount, 0);
-  const pendingAmount = totalAmount - releasedAmount;
+  const refundedAmount = project.milestones
+    .filter(m => m.status === 'refunded')
+    .reduce((sum, m) => sum + m.amount, 0);
+  const pendingAmount = Math.max(totalAmount - releasedAmount - refundedAmount, 0);
 
   return {
     success: true,
@@ -629,7 +686,7 @@ export async function getContractPaymentStatus(
 }
 
 /**
- * Check if contract is complete (all milestones approved)
+ * Check if contract is complete (all milestones approved or refunded)
  * Requirements: 6.5
  */
 export async function isContractComplete(contractId: string): Promise<boolean> {
@@ -643,7 +700,7 @@ export async function isContractComplete(contractId: string): Promise<boolean> {
     return false;
   }
 
-  return projectEntity.milestones.every(m => m.status === 'approved');
+  return projectEntity.milestones.every(m => m.status === 'approved' || m.status === 'refunded');
 }
 
 /**
@@ -710,7 +767,7 @@ export async function initializeContractEscrow(
     const totalFromMilestones = escrowMilestones.reduce((sum, m) => sum + m.amount, 0n);
 
     // Deploy escrow contract
-    const deployment = await deployEscrow({
+    const deployment = await escrowOps.deployEscrow({
       contractId: contract.id,
       employerAddress: employerWalletAddress,
       freelancerAddress: freelancerWalletAddress,
@@ -719,16 +776,20 @@ export async function initializeContractEscrow(
     });
 
     // Deposit funds to escrow
-    await depositToEscrow(
+    await escrowOps.depositToEscrow(
       deployment.escrowAddress,
       totalFromMilestones,
       employerWalletAddress
     );
 
     // Update contract with escrow address
-    await contractRepository.updateContract(contract.id, {
+    const updatedContract = await contractRepository.updateContract(contract.id, {
       escrow_address: deployment.escrowAddress,
     });
+
+    if (!updatedContract) {
+      throw new Error('Failed to persist escrow address on contract');
+    }
 
     return {
       success: true,
