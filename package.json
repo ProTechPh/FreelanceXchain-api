@@ -53,7 +53,7 @@
   "devDependencies": {
     "@eslint/js": "^9.39.2",
     "@nomicfoundation/hardhat-ethers": "^3.0.8",
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-toolbox": "^7.0.0",
     "@types/bcrypt": "^5.0.2",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.17",
