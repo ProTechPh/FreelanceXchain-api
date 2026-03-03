@@ -21,7 +21,7 @@ import { generateId } from '../utils/id.js';
 // Constants
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
-const REQUEST_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses (can be slow)
 
 // Prompt templates
 export const SKILL_MATCH_PROMPT = `
@@ -79,11 +79,18 @@ export function isAIAvailable(): boolean {
   return Boolean(config.llm.apiKey);
 }
 
+const AI_RECOMMENDATIONS_ENDPOINT = '/FreelanceXchain/AI/Recommendations';
+
 /**
- * Build the AI API URL (OpenAI-compatible endpoint)
+ * Build the AI API URL for the recommendations endpoint.
+ * If LLM_API_URL already includes the endpoint, use it as-is.
  */
 function buildApiUrl(): string {
-  return `${config.llm.apiUrl}/v1/chat/completions`;
+  const baseUrl = config.llm.apiUrl.replace(/\/+$/, '');
+  if (baseUrl.toLowerCase().endsWith(AI_RECOMMENDATIONS_ENDPOINT.toLowerCase())) {
+    return baseUrl;
+  }
+  return `${baseUrl}${AI_RECOMMENDATIONS_ENDPOINT}`;
 }
 
 /**
@@ -115,8 +122,8 @@ async function makeAIRequest(
     // Convert to OpenAI-compatible format
     const openAIRequest = {
       model: config.llm.model,
-      messages: request.contents.map((content, i) => ({
-        role: i === 0 ? 'system' as const : 'user' as const,
+      messages: request.contents.map(content => ({
+        role: 'user',
         content: content.parts.map(part => part.text).join('\n')
       })),
       stream: false,
@@ -404,9 +411,7 @@ export function keywordExtractSkills(
     const skillNameLower = skill.skillName.toLowerCase();
     if (lowerText.includes(skillNameLower)) {
       // Calculate confidence based on exact match vs partial
-      // Escape regex metacharacters in skill names (e.g., "C++", "C#", ".NET")
-      const escapedSkillName = skillNameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const exactMatch = new RegExp(`\\b${escapedSkillName}\\b`, 'i').test(text);
+      const exactMatch = new RegExp(`\\b${skillNameLower}\\b`, 'i').test(text);
       extracted.push({
         skillId: skill.skillId,
         skillName: skill.skillName,
