@@ -21,6 +21,9 @@ const PASSWORD_MIN_LENGTH = 8;
 // survive server restarts. Previously used in-memory Map.
 // ============================================================
 const MFA_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const inMemoryMfaSessions = new Map<string, PendingMfaSession>();
+let useInMemoryMfaSessions = false;
+let missingMfaTableWarned = false;
 
 type PendingMfaSession = {
   accessToken: string;
@@ -34,14 +37,59 @@ function generateMfaSessionId(): string {
   return `mfa_${randomUUID()}`;
 }
 
+function isMissingMfaTableError(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false;
+
+  // Common PostgREST/supabase signatures when table is absent from schema cache
+  if (error.code === 'PGRST204') return true;
+
+  const message = (error.message || '').toLowerCase();
+  return (
+    message.includes('pending_mfa_sessions')
+    && (
+      message.includes('could not find the table')
+      || message.includes('relation')
+      || message.includes('does not exist')
+      || message.includes('schema cache')
+    )
+  );
+}
+
+function maybeEnableInMemoryMfaFallback(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!isMissingMfaTableError(error)) {
+    return false;
+  }
+
+  useInMemoryMfaSessions = true;
+  if (!missingMfaTableWarned) {
+    missingMfaTableWarned = true;
+    logger.warn('pending_mfa_sessions table not found; using in-memory MFA sessions fallback', {
+      error: error?.message,
+    });
+  }
+  return true;
+}
+
 /** Clean up expired MFA sessions periodically */
 async function cleanupExpiredMfaSessions(): Promise<void> {
   try {
+    if (useInMemoryMfaSessions) {
+      const now = Date.now();
+      for (const [sessionId, session] of inMemoryMfaSessions.entries()) {
+        if (session.expiresAt < now) {
+          inMemoryMfaSessions.delete(sessionId);
+        }
+      }
+      return;
+    }
+
     const supabase = getSupabaseServiceClient();
-    await supabase
+    const { error } = await supabase
       .from('pending_mfa_sessions')
       .delete()
       .lt('expires_at', Date.now());
+
+    maybeEnableInMemoryMfaFallback(error);
   } catch {
     // Silently ignore cleanup errors — next cycle will retry
   }
@@ -55,6 +103,11 @@ mfaCleanupTimer.unref(); // Don't prevent graceful shutdown
  * Store a pending MFA session in the database.
  */
 async function storeMfaSession(sessionId: string, session: PendingMfaSession): Promise<void> {
+  if (useInMemoryMfaSessions) {
+    inMemoryMfaSessions.set(sessionId, session);
+    return;
+  }
+
   const supabase = getSupabaseServiceClient();
   const { error } = await supabase
     .from('pending_mfa_sessions')
@@ -66,7 +119,13 @@ async function storeMfaSession(sessionId: string, session: PendingMfaSession): P
       factor_id: session.factorId,
       expires_at: session.expiresAt,
     });
+
   if (error) {
+    if (maybeEnableInMemoryMfaFallback(error)) {
+      inMemoryMfaSessions.set(sessionId, session);
+      return;
+    }
+
     throw new Error(`Failed to store MFA session: ${error.message}`);
   }
 }
@@ -77,6 +136,15 @@ async function storeMfaSession(sessionId: string, session: PendingMfaSession): P
  * Uses atomic DELETE ... RETURNING to prevent double-consumption.
  */
 export async function consumeMfaSession(mfaSessionId: string): Promise<PendingMfaSession | null> {
+  if (useInMemoryMfaSessions) {
+    const session = inMemoryMfaSessions.get(mfaSessionId);
+    if (!session) return null;
+
+    inMemoryMfaSessions.delete(mfaSessionId);
+    if (session.expiresAt < Date.now()) return null;
+    return session;
+  }
+
   const supabase = getSupabaseServiceClient();
   
   // Atomic delete-and-return: prevents two concurrent requests from both consuming the same session
@@ -86,6 +154,15 @@ export async function consumeMfaSession(mfaSessionId: string): Promise<PendingMf
     .eq('session_id', mfaSessionId)
     .select('*')
     .single();
+
+  if (maybeEnableInMemoryMfaFallback(error)) {
+    const session = inMemoryMfaSessions.get(mfaSessionId);
+    if (!session) return null;
+
+    inMemoryMfaSessions.delete(mfaSessionId);
+    if (session.expiresAt < Date.now()) return null;
+    return session;
+  }
 
   if (error || !data) return null;
 

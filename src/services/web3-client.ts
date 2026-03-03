@@ -33,6 +33,13 @@ export type WalletInfo = {
 // Singleton instances
 let provider: JsonRpcProvider | null = null;
 let wallet: Wallet | null = null;
+const GAS_PRICE_REDUCTION_PERCENT = BigInt(10);
+const HUNDRED_PERCENT = BigInt(100);
+
+function reduceGasPrice(gasPrice: bigint): bigint {
+  const reduced = (gasPrice * (HUNDRED_PERCENT - GAS_PRICE_REDUCTION_PERCENT)) / HUNDRED_PERCENT;
+  return reduced > BigInt(0) ? reduced : BigInt(1);
+}
 
 /**
  * Check if Web3 is configured and available
@@ -128,12 +135,21 @@ export async function sendTransaction(
   data?: string
 ): Promise<Web3TransactionResult> {
   const w = getWallet();
+  const gasPrice = await getGasPrice();
+  const txParams = gasPrice > BigInt(0)
+    ? {
+      to,
+      value: amountInWei,
+      data: data ?? '0x',
+      gasPrice,
+    }
+    : {
+      to,
+      value: amountInWei,
+      data: data ?? '0x',
+    };
 
-  const tx: TransactionResponse = await w.sendTransaction({
-    to,
-    value: amountInWei,
-    data: data ?? '0x',
-  });
+  const tx: TransactionResponse = await w.sendTransaction(txParams);
 
   // Wait for confirmation
   const receipt: EthersReceipt | null = await tx.wait();
@@ -217,7 +233,11 @@ export async function waitForTransaction(
 export async function getGasPrice(): Promise<bigint> {
   const p = getProvider();
   const feeData = await p.getFeeData();
-  return feeData.gasPrice ?? BigInt(0);
+  if (!feeData.gasPrice || feeData.gasPrice <= BigInt(0)) {
+    return BigInt(0);
+  }
+
+  return reduceGasPrice(feeData.gasPrice);
 }
 
 /**

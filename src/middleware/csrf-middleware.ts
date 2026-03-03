@@ -20,7 +20,8 @@ const {
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
     secure: process.env.NODE_ENV === 'production', // false in development
-    httpOnly: true,
+    // Double-submit CSRF requires client-side JS to read cookie and mirror value in X-CSRF-Token header.
+    httpOnly: false,
     domain: undefined, // Don't set domain for localhost
   },
   size: 64,
