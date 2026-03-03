@@ -48,6 +48,7 @@ const CSRF_EXEMPT_PATHS = [
   '/api/health',
   '/webhooks',
   '/auth/login', // Login endpoint
+  '/auth/login/mfa-verify', // MFA login verification endpoint
   '/auth/register', // Registration endpoint
   '/auth/callback', // OAuth callback
   '/auth/oauth/callback', // OAuth token callback

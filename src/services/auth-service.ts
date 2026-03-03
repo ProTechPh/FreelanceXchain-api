@@ -53,11 +53,24 @@ setInterval(cleanupExpiredMfaSessions, 60_000);
  * Returns null if the session doesn't exist or has expired.
  */
 export function consumeMfaSession(mfaSessionId: string): PendingMfaSession | null {
-  const session = pendingMfaSessions.get(mfaSessionId);
+  const session = getPendingMfaSession(mfaSessionId);
   if (!session) return null;
   pendingMfaSessions.delete(mfaSessionId);
-  if (session.expiresAt < Date.now()) return null;
   return session;
+}
+
+export function getPendingMfaSession(mfaSessionId: string): PendingMfaSession | null {
+  const session = pendingMfaSessions.get(mfaSessionId);
+  if (!session) return null;
+  if (session.expiresAt < Date.now()) {
+    pendingMfaSessions.delete(mfaSessionId);
+    return null;
+  }
+  return session;
+}
+
+export function deletePendingMfaSession(mfaSessionId: string): void {
+  pendingMfaSessions.delete(mfaSessionId);
 }
 
 /**

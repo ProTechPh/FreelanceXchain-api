@@ -22,6 +22,8 @@ import {
   disableMFA,
   validateToken,
   createAuthResult,
+  getPendingMfaSession,
+  deletePendingMfaSession,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
@@ -29,7 +31,6 @@ import { authRateLimiter } from '../middleware/rate-limiter.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
-import { getSupabaseClient } from '../config/supabase.js';
 import { userRepository } from '../repositories/user-repository.js';
 
 const router = Router();
@@ -318,7 +319,7 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
     if (result.code === 'MFA_REQUIRED') {
       res.status(200).json({
         mfaRequired: true,
-        accessToken: (result as any).accessToken,
+        mfaSessionId: (result as any).mfaSessionId,
         factorId: (result as any).factorId,
       });
       return;
@@ -353,11 +354,11 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
  *           schema:
  *             type: object
  *             required:
- *               - accessToken
+ *               - mfaSessionId
  *               - factorId
  *               - code
  *             properties:
- *               accessToken:
+ *               mfaSessionId:
  *                 type: string
  *               factorId:
  *                 type: string
@@ -377,14 +378,63 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
  *         description: Unauthorized
  */
 router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Response) => {
-  const { accessToken, factorId, code } = req.body;
+  const { mfaSessionId, accessToken: directAccessToken, factorId, code } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
-  if (!accessToken || !factorId || !code) {
+  // Debug logging
+  console.log('[MFA Login] Request body:', req.body);
+  console.log('[MFA Login] Content-Type:', req.headers['content-type']);
+  console.log('[MFA Login] Has mfaSessionId:', !!mfaSessionId);
+  console.log('[MFA Login] Has accessToken:', !!directAccessToken);
+  console.log('[MFA Login] Has factorId:', !!factorId);
+  console.log('[MFA Login] Has code:', !!code);
+
+  if ((!mfaSessionId && !directAccessToken) || !factorId || !code) {
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'accessToken, factorId, and code are required',
+        message: 'mfaSessionId or accessToken, factorId, and code are required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const pendingSession = mfaSessionId ? getPendingMfaSession(mfaSessionId) : null;
+
+  if (mfaSessionId && !pendingSession) {
+    res.status(401).json({
+      error: {
+        code: 'INVALID_TOKEN',
+        message: 'Invalid or expired MFA session',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (pendingSession && pendingSession.factorId !== factorId) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId does not match the pending MFA session',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const accessToken = pendingSession?.accessToken ?? directAccessToken;
+  const refreshToken = pendingSession?.refreshToken ?? '';
+
+  if (!accessToken) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Unable to resolve an access token for MFA verification',
       },
       timestamp: new Date().toISOString(),
       requestId,
@@ -451,15 +501,15 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
     return;
   }
 
-  // Get a fresh session after MFA verification
-  const supabase = getSupabaseClient();
-  const { data: sessionData } = await supabase.auth.getSession();
-  
   const authResult = await createAuthResult(
     publicUser, 
     accessToken, 
-    sessionData?.session?.refresh_token || ''
+    refreshToken
   );
+
+  if (mfaSessionId) {
+    deletePendingMfaSession(mfaSessionId);
+  }
 
   res.status(200).json(authResult);
 });
@@ -788,7 +838,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
       logger.info('OAuth user requires MFA', { requestId });
       res.status(200).json({
         mfaRequired: true,
-        accessToken: (result as any).accessToken,
+        mfaSessionId: (result as any).mfaSessionId,
         factorId: (result as any).factorId,
       });
       return;
