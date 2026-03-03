@@ -48,6 +48,25 @@ export async function createVerificationSession(
       body: JSON.stringify(request),
     });
 
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const responseText = await response.text();
+      logger.error('Didit API returned non-JSON response for session creation', undefined, {
+        contentType,
+        status: response.status,
+        responsePreview: responseText.substring(0, 200),
+      });
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'INVALID_RESPONSE',
+            message: 'Didit API returned an invalid response format.',
+          },
+        },
+      };
+    }
+
     const data = await response.json();
 
     if (!response.ok) {
@@ -90,6 +109,26 @@ export async function getVerificationDecision(
         'X-Api-Key': DIDIT_API_KEY ?? '',
       },
     });
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const responseText = await response.text();
+      logger.error('Didit API returned non-JSON response for verification decision', undefined, {
+        sessionId: sanitizedSessionId,
+        contentType,
+        status: response.status,
+        responsePreview: responseText.substring(0, 200),
+      });
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'INVALID_RESPONSE',
+            message: 'Didit API returned an invalid response format.',
+          },
+        },
+      };
+    }
 
     const data = await response.json();
 

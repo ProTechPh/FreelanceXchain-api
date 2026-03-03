@@ -115,8 +115,8 @@ async function makeAIRequest(
     // Convert to OpenAI-compatible format
     const openAIRequest = {
       model: config.llm.model,
-      messages: request.contents.map(content => ({
-        role: 'user',
+      messages: request.contents.map((content, i) => ({
+        role: i === 0 ? 'system' as const : 'user' as const,
         content: content.parts.map(part => part.text).join('\n')
       })),
       stream: false,
@@ -404,7 +404,9 @@ export function keywordExtractSkills(
     const skillNameLower = skill.skillName.toLowerCase();
     if (lowerText.includes(skillNameLower)) {
       // Calculate confidence based on exact match vs partial
-      const exactMatch = new RegExp(`\\b${skillNameLower}\\b`, 'i').test(text);
+      // Escape regex metacharacters in skill names (e.g., "C++", "C#", ".NET")
+      const escapedSkillName = skillNameLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const exactMatch = new RegExp(`\\b${escapedSkillName}\\b`, 'i').test(text);
       extracted.push({
         skillId: skill.skillId,
         skillName: skill.skillName,

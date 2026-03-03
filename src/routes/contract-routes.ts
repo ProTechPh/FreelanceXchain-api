@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import {
@@ -215,7 +215,7 @@ router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Res
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/fund', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/fund', authMiddleware, requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -312,7 +312,8 @@ router.post('/:id/fund', authMiddleware, validateUUID(), async (req: Request, re
     );
 
     if (!escrowResult.success) {
-      res.status(500).json({
+      const statusCode = escrowResult.error?.code === 'AMOUNT_MISMATCH' ? 400 : 500;
+      res.status(statusCode).json({
         error: { code: 'ESCROW_FAILED', message: escrowResult.error?.message || 'Failed to initialize escrow' },
         timestamp: new Date().toISOString(),
         requestId,
@@ -380,7 +381,7 @@ router.post('/:id/fund', authMiddleware, validateUUID(), async (req: Request, re
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/cancel', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

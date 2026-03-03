@@ -86,7 +86,17 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
   }
 
   async getDisputeByMilestone(milestoneId: string): Promise<DisputeEntity | null> {
-    return this.findOne('milestone_id', milestoneId);
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .eq('milestone_id', milestoneId)
+      .neq('status', 'resolved')
+      .limit(1)
+      .maybeSingle();
+
+    if (error) return null;
+    return (data as DisputeEntity) ?? null;
   }
 
   async getDisputesByStatus(status: DisputeStatus, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
@@ -131,14 +141,20 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
     };
   }
 
-  async getAllDisputes(options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
+  async getAllDisputes(options?: QueryOptions & { status?: string }): Promise<PaginatedResult<DisputeEntity>> {
     const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
+    let query = client
       .from(this.tableName)
-      .select('*', { count: 'exact' })
+      .select('*', { count: 'exact' });
+
+    if (options?.status) {
+      query = query.eq('status', options.status);
+    }
+
+    const { data, error, count } = await query
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     
@@ -151,19 +167,25 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
     };
   }
 
-  async getDisputesByUserId(userId: string, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
+  async getDisputesByUserId(userId: string, options?: QueryOptions & { status?: string }): Promise<PaginatedResult<DisputeEntity>> {
     const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
     // Get disputes where user is initiator OR part of the contract
-    const { data: disputes, error, count } = await client
+    let query = client
       .from(this.tableName)
       .select(`
         *,
         contracts!inner(employer_id, freelancer_id)
       `, { count: 'exact' })
-      .or(`initiator_id.eq.${userId},contracts.employer_id.eq.${userId},contracts.freelancer_id.eq.${userId}`)
+      .or(`initiator_id.eq.${userId},contracts.employer_id.eq.${userId},contracts.freelancer_id.eq.${userId}`);
+
+    if (options?.status) {
+      query = query.eq('status', options.status);
+    }
+
+    const { data: disputes, error, count } = await query
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     

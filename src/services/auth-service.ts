@@ -4,6 +4,7 @@ import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
 import { getSupabaseClient, getSupabaseServiceClient } from '../config/supabase.js';
 import { UserRole } from '../models/user.js';
+import { logger } from '../config/logger.js';
 import {
   RegisterInput,
   LoginInput,
@@ -16,8 +17,8 @@ const PASSWORD_MIN_LENGTH = 8;
 
 // ============================================================
 // MFA Session Management
-// Stores pending MFA sessions so we don't leak real access tokens
-// before MFA verification is complete.
+// Uses DB persistence (pending_mfa_sessions table) so sessions
+// survive server restarts. Previously used in-memory Map.
 // ============================================================
 const MFA_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
@@ -29,35 +30,84 @@ type PendingMfaSession = {
   expiresAt: number;
 };
 
-const pendingMfaSessions = new Map<string, PendingMfaSession>();
-
 function generateMfaSessionId(): string {
   return `mfa_${randomUUID()}`;
 }
 
 /** Clean up expired MFA sessions periodically */
-function cleanupExpiredMfaSessions(): void {
-  const now = Date.now();
-  for (const [key, session] of pendingMfaSessions) {
-    if (session.expiresAt < now) {
-      pendingMfaSessions.delete(key);
-    }
+async function cleanupExpiredMfaSessions(): Promise<void> {
+  try {
+    const supabase = getSupabaseServiceClient();
+    await supabase
+      .from('pending_mfa_sessions')
+      .delete()
+      .lt('expires_at', Date.now());
+  } catch {
+    // Silently ignore cleanup errors — next cycle will retry
   }
 }
 
 // Clean up expired sessions every 60 seconds
-setInterval(cleanupExpiredMfaSessions, 60_000);
+const mfaCleanupTimer = setInterval(cleanupExpiredMfaSessions, 60_000);
+mfaCleanupTimer.unref(); // Don't prevent graceful shutdown
+
+/**
+ * Store a pending MFA session in the database.
+ */
+async function storeMfaSession(sessionId: string, session: PendingMfaSession): Promise<void> {
+  const supabase = getSupabaseServiceClient();
+  const { error } = await supabase
+    .from('pending_mfa_sessions')
+    .insert({
+      session_id: sessionId,
+      access_token: session.accessToken,
+      refresh_token: session.refreshToken,
+      user_id: session.userId,
+      factor_id: session.factorId,
+      expires_at: session.expiresAt,
+    });
+  if (error) {
+    throw new Error(`Failed to store MFA session: ${error.message}`);
+  }
+}
 
 /**
  * Retrieve and consume a pending MFA session after successful MFA verification.
  * Returns null if the session doesn't exist or has expired.
+ * Uses atomic DELETE ... RETURNING to prevent double-consumption.
  */
-export function consumeMfaSession(mfaSessionId: string): PendingMfaSession | null {
-  const session = pendingMfaSessions.get(mfaSessionId);
-  if (!session) return null;
-  pendingMfaSessions.delete(mfaSessionId);
-  if (session.expiresAt < Date.now()) return null;
-  return session;
+export async function consumeMfaSession(mfaSessionId: string): Promise<PendingMfaSession | null> {
+  const supabase = getSupabaseServiceClient();
+  
+  // Atomic delete-and-return: prevents two concurrent requests from both consuming the same session
+  const { data, error } = await supabase
+    .from('pending_mfa_sessions')
+    .delete()
+    .eq('session_id', mfaSessionId)
+    .select('*')
+    .single();
+
+  if (error || !data) return null;
+
+  const row = data as {
+    session_id: string;
+    access_token: string;
+    refresh_token: string;
+    user_id: string;
+    factor_id: string;
+    expires_at: number;
+  };
+
+  // Check expiry after consumption — session is already deleted so a replay returns null
+  if (row.expires_at < Date.now()) return null;
+
+  return {
+    accessToken: row.access_token,
+    refreshToken: row.refresh_token,
+    userId: row.user_id,
+    factorId: row.factor_id,
+    expiresAt: row.expires_at,
+  };
 }
 
 /**
@@ -273,7 +323,7 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
     // User has MFA enabled - store session temporarily and return opaque MFA session ID
     // Do NOT return the real access token - it would allow bypassing MFA
     const mfaSessionId = generateMfaSessionId();
-    pendingMfaSessions.set(mfaSessionId, {
+    await storeMfaSession(mfaSessionId, {
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,
       userId: data.user.id,
@@ -404,13 +454,13 @@ export async function loginWithSupabase(accessToken: string): Promise<AuthResult
   const { data: factorsData } = await mfaClient.auth.mfa.listFactors();
   const hasVerifiedMFA = factorsData?.all?.some(f => f.status === 'verified') || false;
 
-  console.log('[OAuth] MFA check:', { hasVerifiedMFA });
+  logger.debug('[OAuth] MFA check', { hasVerifiedMFA });
 
   if (hasVerifiedMFA) {
     // User has MFA enabled - store session and return opaque MFA session ID
     // Do NOT return the real access token - it would allow bypassing MFA
     const mfaSessionId = generateMfaSessionId();
-    pendingMfaSessions.set(mfaSessionId, {
+    await storeMfaSession(mfaSessionId, {
       accessToken,
       refreshToken: '', // OAuth flow doesn't have refresh token at this point
       userId: publicUser.id,
@@ -507,9 +557,7 @@ export async function registerWithSupabase(
     };
   }
 
-  console.log('[OAuth] registerWithSupabase - Got user from auth.users:', {
-    id: user.id,
-  });
+  logger.debug('[OAuth] registerWithSupabase - Got user from auth.users');
 
   const normalizedEmail = user.email.toLowerCase().trim();
 
@@ -519,7 +567,7 @@ export async function registerWithSupabase(
     return await createAuthResult(existingUser, accessToken, '');
   }
 
-  console.log('[OAuth] registerWithSupabase - Creating new user in public.users for role:', role);
+  logger.debug('[OAuth] registerWithSupabase - Creating new user in public.users', { role });
 
   // Update user metadata in Supabase Auth
   const { error: updateError } = await supabase.auth.updateUser({
@@ -530,7 +578,7 @@ export async function registerWithSupabase(
   });
 
   if (updateError) {
-    console.error('[OAuth] registerWithSupabase - Failed to update user metadata:', updateError);
+    logger.error('[OAuth] registerWithSupabase - Failed to update user metadata', { error: updateError });
   }
 
   // Create user in public.users
@@ -543,10 +591,7 @@ export async function registerWithSupabase(
     name: '',
   });
 
-  console.log('[OAuth] registerWithSupabase - Successfully created user:', {
-    id: newUser.id,
-    role: newUser.role
-  });
+  logger.debug('[OAuth] registerWithSupabase - Successfully created user');
 
   return await createAuthResult(newUser, accessToken, '');
 }
@@ -629,7 +674,7 @@ export async function updatePassword(accessToken: string, newPassword: string): 
     }
   } catch (revokeError) {
     // Log but don't fail - password was already changed successfully
-    console.error('[Auth] Failed to revoke sessions after password change:', revokeError);
+    logger.error('[Auth] Failed to revoke sessions after password change', { error: revokeError });
   }
 
   return { success: true };
@@ -691,7 +736,7 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
     // Get user email first
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user?.email) {
-      console.error('[MFA] Failed to get user:', userError);
+      logger.error('[MFA] Failed to get user', { error: userError });
       return {
         code: 'INVALID_TOKEN',
         message: 'Failed to get user information',
@@ -702,20 +747,20 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
     const { data: existingFactors, error: listError } = await supabase.auth.mfa.listFactors();
     
     if (listError) {
-      console.error('[MFA] Failed to list existing factors:', listError);
+      logger.error('[MFA] Failed to list existing factors', { error: listError });
     } else if (existingFactors?.all && existingFactors.all.length > 0) {
-      console.log('[MFA] Found existing factors, count:', existingFactors.all.length);
+      logger.debug('[MFA] Found existing factors', { count: existingFactors.all.length });
       
       // Remove any unverified factors to allow re-enrollment
       // Check the 'all' array since unverified factors appear there, not in 'totp'
       for (const factor of existingFactors.all) {
         if (factor.status === 'unverified') {
-          console.log('[MFA] Removing unverified factor:', factor.id);
+          logger.debug('[MFA] Removing unverified factor');
           const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
           if (unenrollError) {
-            console.error('[MFA] Failed to remove unverified factor:', unenrollError);
+            logger.error('[MFA] Failed to remove unverified factor', { error: unenrollError });
           } else {
-            console.log('[MFA] Successfully removed unverified factor');
+            logger.debug('[MFA] Successfully removed unverified factor');
           }
         }
       }
@@ -731,7 +776,7 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
     });
 
     if (error) {
-      console.error('[MFA] Enrollment failed:', error);
+      logger.error('[MFA] Enrollment failed', { error });
       return {
         code: error.status === 401 ? 'INVALID_TOKEN' : 'MFA_ENROLLMENT_FAILED',
         message: error.message || 'Failed to enroll MFA',
@@ -750,7 +795,7 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
     const otpauthUrl = `otpauth://totp/FreelanceXchain:${encodeURIComponent(user.email)}?secret=${data.totp.secret}&issuer=FreelanceXchain&algorithm=SHA1&digits=6&period=30`;
     
     // FIXED: Never log TOTP secrets or OTPAuth URLs - they contain the MFA secret key
-    console.log('[MFA] Enrollment successful for user');
+    logger.debug('[MFA] Enrollment successful for user');
     
     return {
       qrCode: otpauthUrl,
@@ -758,7 +803,7 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
       factorId: data.id,
     };
   } catch (err: any) {
-    console.error('[MFA] Exception in enrollMFA:', err);
+    logger.error('[MFA] Exception in enrollMFA', { error: err });
     return {
       code: 'MFA_ENROLLMENT_FAILED',
       message: err.message || 'Failed to enroll MFA',
@@ -790,7 +835,7 @@ export async function verifyMFAEnrollment(
     });
 
     if (challengeError || !challengeData?.id) {
-      console.error('[MFA] Challenge creation failed:', challengeError);
+      logger.error('[MFA] Challenge creation failed', { error: challengeError });
       return {
         code: challengeError?.status === 401 ? 'INVALID_TOKEN' : 'MFA_VERIFICATION_FAILED',
         message: challengeError?.message || 'Failed to create challenge',
@@ -805,17 +850,17 @@ export async function verifyMFAEnrollment(
     });
 
     if (verifyError) {
-      console.error('[MFA] Verification failed:', verifyError);
+      logger.error('[MFA] Verification failed', { error: verifyError });
       return {
         code: 'MFA_VERIFICATION_FAILED',
         message: verifyError.message || 'Invalid verification code',
       };
     }
 
-    console.log('[MFA] Enrollment verification successful');
+    logger.debug('[MFA] Enrollment verification successful');
     return { success: true };
   } catch (err: any) {
-    console.error('[MFA] Exception in verifyMFAEnrollment:', err);
+    logger.error('[MFA] Exception in verifyMFAEnrollment', { error: err });
     return {
       code: 'MFA_VERIFICATION_FAILED',
       message: err.message || 'Failed to verify MFA',
@@ -842,17 +887,17 @@ export async function challengeMFA(accessToken: string, factorId: string): Promi
     });
 
     if (error || !data?.id) {
-      console.error('[MFA] Challenge creation failed:', error);
+      logger.error('[MFA] Challenge creation failed', { error });
       return {
         code: error?.status === 401 ? 'INVALID_TOKEN' : 'MFA_CHALLENGE_FAILED',
         message: error?.message || 'Failed to create MFA challenge',
       };
     }
 
-    console.log('[MFA] Challenge created successfully');
+    logger.debug('[MFA] Challenge created successfully');
     return { challengeId: data.id };
   } catch (err: any) {
-    console.error('[MFA] Exception in challengeMFA:', err);
+    logger.error('[MFA] Exception in challengeMFA', { error: err });
     return {
       code: 'MFA_CHALLENGE_FAILED',
       message: err.message || 'Failed to create MFA challenge',
@@ -886,17 +931,17 @@ export async function verifyMFAChallenge(
     });
 
     if (error) {
-      console.error('[MFA] Challenge verification failed:', error);
+      logger.error('[MFA] Challenge verification failed', { error });
       return {
         code: error.status === 401 ? 'INVALID_TOKEN' : 'MFA_VERIFICATION_FAILED',
         message: error.message || 'Invalid verification code',
       };
     }
 
-    console.log('[MFA] Challenge verification successful');
+    logger.debug('[MFA] Challenge verification successful');
     return { success: true };
   } catch (err: any) {
-    console.error('[MFA] Exception in verifyMFAChallenge:', err);
+    logger.error('[MFA] Exception in verifyMFAChallenge', { error: err });
     return {
       code: 'MFA_VERIFICATION_FAILED',
       message: err.message || 'Failed to verify MFA challenge',
@@ -922,21 +967,21 @@ export async function getMFAFactors(accessToken: string): Promise<{ factors: any
     const { data, error } = await supabase.auth.mfa.listFactors();
 
     if (error) {
-      console.error('[MFA] Failed to list factors:', error);
+      logger.error('[MFA] Failed to list factors', { error });
       return {
         code: error.status === 401 ? 'INVALID_TOKEN' : 'MFA_LIST_FAILED',
         message: error.message || 'Failed to list MFA factors',
       };
     }
 
-    console.log('[MFA] Factors retrieved successfully:', data);
+    logger.debug('[MFA] Factors retrieved successfully');
     
     // Return only verified TOTP factors from the 'all' array
     // Unverified factors appear in 'all' but not in 'totp'
     const verifiedFactors = data?.all?.filter(f => f.factor_type === 'totp' && f.status === 'verified') || [];
     return { factors: verifiedFactors };
   } catch (err: any) {
-    console.error('[MFA] Exception in getMFAFactors:', err);
+    logger.error('[MFA] Exception in getMFAFactors', { error: err });
     return {
       code: 'MFA_LIST_FAILED',
       message: err.message || 'Failed to list MFA factors',

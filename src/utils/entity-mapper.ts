@@ -17,10 +17,9 @@ export type User = {
   id: string;
   email: string;
   name: string;
-  passwordHash: string;
   role: 'freelancer' | 'employer' | 'admin';
   walletAddress: string;
-  kycStatus?: KycStatus;
+  kycStatus?: KycStatus | undefined;
   createdAt: string;
   updatedAt: string;
 };
@@ -30,10 +29,9 @@ export function mapUserFromEntity(entity: UserEntity, kycStatus?: string): User 
     id: entity.id,
     email: entity.email,
     name: entity.name ?? '',
-    passwordHash: entity.password_hash,
     role: entity.role,
     walletAddress: entity.wallet_address,
-    kycStatus: kycStatus as any,
+    kycStatus: kycStatus as KycStatus | undefined,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };
@@ -43,7 +41,7 @@ export function mapUserToEntity(user: Omit<User, 'createdAt' | 'updatedAt'>): Om
   return {
     id: user.id,
     email: user.email,
-    password_hash: user.passwordHash,
+    password_hash: '',
     role: user.role,
     wallet_address: user.walletAddress,
     name: user.name,
@@ -126,9 +124,10 @@ export type ProjectSkillReference = {
   skillId?: string;
   skillName: string;
   categoryId?: string;
+  yearsOfExperience?: number;
 };
 
-type ProjectSkillRefEntity = { skill_id?: string; skill_name: string; category_id?: string };
+type ProjectSkillRefEntity = { skill_id?: string; skill_name: string; category_id?: string; years_of_experience?: number };
 
 function mapProjectSkillRefFromEntity(entity: ProjectSkillRefEntity): ProjectSkillReference {
   const result: ProjectSkillReference = {
@@ -136,6 +135,7 @@ function mapProjectSkillRefFromEntity(entity: ProjectSkillRefEntity): ProjectSki
   };
   if (entity.skill_id) result.skillId = entity.skill_id;
   if (entity.category_id) result.categoryId = entity.category_id;
+  if (entity.years_of_experience !== undefined) result.yearsOfExperience = entity.years_of_experience;
   return result;
 }
 
@@ -222,7 +222,7 @@ export function mapEmployerProfileFromEntity(entity: EmployerProfileEntity): Emp
 }
 
 // Project mapping
-export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed';
+export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed' | 'refunded';
 export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
 
 export type Milestone = {
@@ -315,7 +315,7 @@ export function mapProposalFromEntity(entity: ProposalEntity): Proposal {
 }
 
 // Contract mapping
-export type ContractStatus = 'active' | 'completed' | 'disputed' | 'cancelled';
+export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'cancelled';
 
 export type Contract = {
   id: string;
@@ -344,21 +344,24 @@ export function mapContractFromEntity(entity: ContractEntity & { project?: any; 
     throw new Error('Cannot map null or undefined ContractEntity');
   }
   
-  // Map freelancer data
+  // Map freelancer data (properly camelCase, no raw snake_case spread)
   const freelancerData = entity.freelancer ? {
     id: entity.freelancer.id,
     name: entity.freelancer.name,
     email: entity.freelancer.email,
-    ...entity.freelancer.freelancer_profile?.[0]
+    bio: entity.freelancer.freelancer_profile?.[0]?.bio,
+    hourlyRate: entity.freelancer.freelancer_profile?.[0]?.hourly_rate,
+    availability: entity.freelancer.freelancer_profile?.[0]?.availability,
   } : undefined;
   
-  // Map employer data
+  // Map employer data (properly camelCase, no raw snake_case spread)
   const employerData = entity.employer ? {
     id: entity.employer.id,
     name: entity.employer.name,
     email: entity.employer.email,
     companyName: entity.employer.employer_profile?.[0]?.company_name,
-    ...entity.employer.employer_profile?.[0]
+    industry: entity.employer.employer_profile?.[0]?.industry,
+    description: entity.employer.employer_profile?.[0]?.description,
   } : undefined;
   
   return {

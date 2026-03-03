@@ -9,6 +9,17 @@ import multer from 'multer';
 import fileType from 'file-type';
 import { logger } from '../config/logger.js';
 
+const EICAR_SIGNATURE = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
+
+const MALICIOUS_MAGIC_NUMBERS: Array<{ label: string; bytes: number[] }> = [
+  { label: 'PE executable', bytes: [0x4d, 0x5a] },
+  { label: 'ELF executable', bytes: [0x7f, 0x45, 0x4c, 0x46] },
+  { label: 'Mach-O executable', bytes: [0xfe, 0xed, 0xfa, 0xce] },
+  { label: 'Mach-O executable', bytes: [0xfe, 0xed, 0xfa, 0xcf] },
+  { label: 'Mach-O executable', bytes: [0xcf, 0xfa, 0xed, 0xfe] },
+  { label: 'Mach-O executable', bytes: [0xce, 0xfa, 0xed, 0xfe] },
+];
+
 // File size limits
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 export const MAX_TOTAL_SIZE = 25 * 1024 * 1024; // 25MB total
@@ -240,6 +251,26 @@ export function createFileUploadMiddleware(
 
             // Store detected MIME type for later use
             (file as any).detectedMimeType = validation.detectedType;
+
+            const scanResult = await scanFileForViruses(file.buffer, file.originalname);
+            if (!scanResult.clean) {
+              logger.warn('File upload rejected - malware/threat detected', {
+                filename: file.originalname,
+                threat: scanResult.threat,
+              });
+
+              res.status(400).json({
+                error: {
+                  code: 'MALICIOUS_FILE_DETECTED',
+                  message: 'File failed antivirus security scan',
+                  details: {
+                    filename: file.originalname,
+                    threat: scanResult.threat,
+                  },
+                },
+              });
+              return;
+            }
           }
         }
 
@@ -321,15 +352,28 @@ export const uploadDisputeEvidence = createFileUploadMiddleware('files', {
 });
 
 /**
- * Placeholder for future antivirus scanning integration
- * TODO: Integrate with antivirus service (e.g., ClamAV, VirusTotal API)
+ * Lightweight signature-based malware scan.
+ * This is a baseline defense layer and can be augmented with an external AV service.
  */
 export async function scanFileForViruses(buffer: Buffer, filename: string): Promise<{ clean: boolean; threat?: string }> {
-  // Placeholder implementation
-  // In production, this should call an antivirus service
-  logger.debug('Antivirus scan placeholder', { filename, size: buffer.length });
-  
-  // For now, always return clean
-  // TODO: Implement actual virus scanning
+  const sample = buffer.subarray(0, Math.min(buffer.length, 4096));
+  const sampleText = sample.toString('latin1');
+
+  if (sampleText.includes(EICAR_SIGNATURE)) {
+    return { clean: false, threat: 'EICAR test signature detected' };
+  }
+
+  for (const signature of MALICIOUS_MAGIC_NUMBERS) {
+    const matches = signature.bytes.every((value, index) => sample[index] === value);
+    if (matches) {
+      return { clean: false, threat: `${signature.label} signature detected` };
+    }
+  }
+
+  if (filename.toLowerCase().endsWith('.txt') && sample.includes(0x00)) {
+    return { clean: false, threat: 'Binary content detected in text file' };
+  }
+
+  logger.debug('File passed antivirus signature scan', { filename, size: buffer.length });
   return { clean: true };
 }

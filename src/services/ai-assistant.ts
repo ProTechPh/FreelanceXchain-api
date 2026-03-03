@@ -213,15 +213,15 @@ export async function generateProposal(
   }
 
   const prompt = PROPOSAL_WRITER_PROMPT
-    .replace('{projectTitle}', project.title)
-    .replace('{projectDescription}', project.description ?? 'No description provided')
-    .replace('{requiredSkills}', project.requiredSkills.map(s => s.skillName).join(', '))
-    .replace('{budget}', String(project.budget))
-    .replace('{deadline}', project.deadline ?? 'Flexible')
-    .replace('{freelancerSkills}', profileEntity.skills.map(s => s.name).join(', '))
-    .replace('{experience}', JSON.stringify(profileEntity.experience.slice(0, 3)))
-    .replace('{highlights}', input.highlights?.join(', ') ?? 'None specified')
-    .replace('{tone}', input.tone ?? 'professional');
+    .replaceAll('{projectTitle}', project.title)
+    .replaceAll('{projectDescription}', project.description ?? 'No description provided')
+    .replaceAll('{requiredSkills}', project.requiredSkills.map(s => s.skillName).join(', '))
+    .replaceAll('{budget}', String(project.budget))
+    .replaceAll('{deadline}', project.deadline ?? 'Flexible')
+    .replaceAll('{freelancerSkills}', profileEntity.skills.map(s => s.name).join(', '))
+    .replaceAll('{experience}', JSON.stringify(profileEntity.experience.slice(0, 3)))
+    .replaceAll('{highlights}', input.highlights?.join(', ') ?? 'None specified')
+    .replaceAll('{tone}', input.tone ?? 'professional');
 
   const response = await generateContent(prompt);
 
@@ -257,12 +257,12 @@ export async function generateProjectDescription(
   }
 
   const prompt = PROJECT_DESCRIPTION_PROMPT
-    .replace('{title}', input.title)
-    .replace('{category}', input.category)
-    .replace('{skills}', input.skills.join(', '))
-    .replace('{budget}', String(input.budget))
-    .replace('{deadline}', input.deadline ?? 'Flexible')
-    .replace('{additionalInfo}', input.additionalInfo ?? 'None');
+    .replaceAll('{title}', input.title)
+    .replaceAll('{category}', input.category)
+    .replaceAll('{skills}', input.skills.join(', '))
+    .replaceAll('{budget}', String(input.budget))
+    .replaceAll('{deadline}', input.deadline ?? 'Flexible')
+    .replaceAll('{additionalInfo}', input.additionalInfo ?? 'None');
 
   const response = await generateContent(prompt);
 
@@ -340,14 +340,14 @@ export async function analyzeDispute(
     .join('\n') || 'No evidence submitted';
 
   const prompt = DISPUTE_ANALYSIS_PROMPT
-    .replace('{reason}', disputeEntity.reason)
-    .replace('{milestoneTitle}', milestone?.title ?? 'Unknown')
-    .replace('{milestoneAmount}', String(milestone?.amount ?? 0))
-    .replace('{contractTotal}', String(contractEntity.total_amount))
-    .replace('{freelancerEvidence}', freelancerEvidence)
-    .replace('{employerEvidence}', employerEvidence)
-    .replace('{projectTitle}', project.title)
-    .replace('{projectDescription}', project.description ?? 'No description');
+    .replaceAll('{reason}', disputeEntity.reason)
+    .replaceAll('{milestoneTitle}', milestone?.title ?? 'Unknown')
+    .replaceAll('{milestoneAmount}', String(milestone?.amount ?? 0))
+    .replaceAll('{contractTotal}', String(contractEntity.total_amount))
+    .replaceAll('{freelancerEvidence}', freelancerEvidence)
+    .replaceAll('{employerEvidence}', employerEvidence)
+    .replaceAll('{projectTitle}', project.title)
+    .replaceAll('{projectDescription}', project.description ?? 'No description');
 
   const response = await generateContent(prompt);
 

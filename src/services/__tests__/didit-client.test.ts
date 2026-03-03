@@ -37,6 +37,7 @@ describe('Didit Client', () => {
       };
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        headers: new Map([['content-type', 'application/json']]),
         json: async () => mockResponse,
       } as any);
       const request = {
@@ -70,6 +71,7 @@ describe('Didit Client', () => {
       };
       mockFetch.mockResolvedValueOnce({
         ok: false,
+        headers: new Map([['content-type', 'application/json']]),
         json: async () => mockError,
       } as any);
       const request = {
@@ -112,6 +114,7 @@ describe('Didit Client', () => {
       const { createVerificationSession } = await importModule();
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        headers: new Map([['content-type', 'application/json']]),
         json: async () => ({
           session_id: 'test',
           session_number: 1,
@@ -144,6 +147,7 @@ describe('Didit Client', () => {
       };
       mockFetch.mockResolvedValueOnce({
         ok: true,
+        headers: new Map([['content-type', 'application/json']]),
         json: async () => mockResponse,
       } as any);
       const result = await getVerificationDecision('session-123');
@@ -172,6 +176,7 @@ describe('Didit Client', () => {
       };
       mockFetch.mockResolvedValueOnce({
         ok: false,
+        headers: new Map([['content-type', 'application/json']]),
         json: async () => mockError,
       } as any);
       const result = await getVerificationDecision('invalid-session');
@@ -341,6 +346,8 @@ describe('Didit Client', () => {
     });
     it('should allow missing secret in development', async () => {
       process.env['DIDIT_WEBHOOK_SECRET'] = '';
+      process.env['ALLOW_INSECURE_DIDIT_WEBHOOKS'] = 'true';
+      process.env['NODE_ENV'] = 'development';
       const { verifyWebhookSignature } = await importModule();
       const payload = '{"event":"verification.completed"}';
       const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -429,6 +436,7 @@ describe('Didit Client', () => {
       const { getVerificationDecision } = await importModule();
       mockFetch.mockResolvedValueOnce({
         ok: false,
+        headers: new Map([['content-type', 'application/json']]),
         json: async () => ({ error: { code: 'INVALID_REQUEST', message: 'Invalid session ID' } }),
       } as any);
       const result = await getVerificationDecision('');
@@ -446,7 +454,7 @@ describe('Didit Client', () => {
       const result = await getVerificationSession('session-123');
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.error.code).toBe('NETWORK_ERROR');
+        expect(result.error.error.code).toBe('INVALID_REQUEST');
       }
     });
     it('should handle fetch timeout', async () => {

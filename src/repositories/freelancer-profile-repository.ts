@@ -79,25 +79,28 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    // Use overlaps for array containment check
-    const { data, error, count } = await client
+    // Fetch ALL profiles, filter by skill, then paginate in memory.
+    // This ensures total/hasMore reflect actual matched results.
+    const { data, error } = await client
       .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .select('*')
+      .order('created_at', { ascending: false });
     
     if (error) throw new Error(`Failed to search by skills: ${error.message}`);
     
     // Filter in memory for complex array matching (case-insensitive skill name search)
     const lowerSkillNames = skillNames.map(s => s.toLowerCase());
-    const filtered = (data ?? []).filter((profile: FreelancerProfileEntity) =>
+    const allMatched = (data ?? []).filter((profile: FreelancerProfileEntity) =>
       profile.skills.some(skill => lowerSkillNames.includes(skill.name.toLowerCase()))
     );
 
+    const total = allMatched.length;
+    const paginatedItems = allMatched.slice(offset, offset + limit);
+
     return {
-      items: filtered as FreelancerProfileEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
+      items: paginatedItems as FreelancerProfileEntity[],
+      hasMore: offset + limit < total,
+      total,
     };
   }
 
@@ -106,10 +109,16 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
+    // Sanitize keyword for PostgREST LIKE pattern to prevent injection
+    const sanitizedKeyword = keyword
+      .replace(/\\/g, '\\\\')
+      .replace(/%/g, '\\%')
+      .replace(/_/g, '\\_');
+
     const { data, error, count } = await client
       .from(this.tableName)
       .select('*', { count: 'exact' })
-      .ilike('bio', `%${keyword}%`)
+      .ilike('bio', `%${sanitizedKeyword}%`)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     

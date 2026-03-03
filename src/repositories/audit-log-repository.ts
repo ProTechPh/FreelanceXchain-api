@@ -16,12 +16,11 @@ export interface AuditLogEntry extends BaseEntity {
   error_message: string | null;
 }
 
-export type CreateAuditLogEntry = Omit<AuditLogEntry, 'id' | 'created_at' | 'updated_at'>;
+export type CreateAuditLogEntry = Omit<AuditLogEntry, 'id' | 'created_at'>;
 
 export type BaseEntity = {
   id: string;
   created_at: string;
-  updated_at: string;
 };
 
 export class AuditLogRepository {
@@ -37,7 +36,7 @@ export class AuditLogRepository {
 
   async logAction(entry: Partial<CreateAuditLogEntry>): Promise<AuditLogEntry> {
     const now = new Date().toISOString();
-    const logEntry: CreateAuditLogEntry & { created_at: string; updated_at: string } = {
+    const logEntry = {
       user_id: entry.user_id || null,
       actor_id: entry.actor_id || null,
       action: entry.action || 'unknown_action',
@@ -49,7 +48,6 @@ export class AuditLogRepository {
       status: entry.status || 'success',
       error_message: entry.error_message || null,
       created_at: now,
-      updated_at: now,
     };
 
     const { data, error } = await this.client

@@ -389,11 +389,31 @@ router.get('/history', authMiddleware, async (req: Request, res: Response) => {
  */
 router.post('/refresh/:verificationId', authMiddleware, validateUUID(['verificationId']), async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
+  const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
   if (!verificationId) {
     res.status(400).json({
       error: { code: 'INVALID_ID', message: 'Verification ID required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Ownership check: verify this verification belongs to the requesting user
+  const verification = await getKycById(verificationId);
+  if (!verification || !verification.success || !verification.data) {
+    res.status(404).json({
+      error: { code: 'VERIFICATION_NOT_FOUND', message: 'Verification not found' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+  if (verification.data.user_id !== userId && req.user?.role !== 'admin') {
+    res.status(403).json({
+      error: { code: 'FORBIDDEN', message: 'You can only refresh your own verifications' },
       timestamp: new Date().toISOString(),
       requestId,
     });

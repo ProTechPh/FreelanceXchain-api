@@ -25,10 +25,15 @@ export async function createApp(): Promise<Express> {
   app.use(httpsEnforcement);
 
   // Body parsing middleware
+  // Only store rawBody for webhook paths to avoid doubling memory on every request
+  const WEBHOOK_PATHS = ['/api/kyc/webhook', '/api/webhooks'];
   app.use(express.json({
     limit: '10mb',
     verify: (req, _res, buf) => {
-      (req as Request).rawBody = buf.toString('utf8');
+      const reqPath = (req as Request).path || (req as Request).url;
+      if (WEBHOOK_PATHS.some(p => reqPath?.startsWith(p))) {
+        (req as Request).rawBody = buf.toString('utf8');
+      }
     },
   }));
   app.use(express.urlencoded({ extended: true }));

@@ -1,3 +1,4 @@
+import { getSupabaseServiceClient } from '../config/supabase.js';
 import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
@@ -75,8 +76,9 @@ export async function updateContractStatus(
   }
 
   const validTransitions: Record<ContractStatus, ContractStatus[]> = {
+    pending: ['active', 'cancelled'],
     active: ['completed', 'disputed', 'cancelled'],
-    disputed: ['completed', 'cancelled'],  // FIXED: Removed 'active' - disputes must be resolved, not swept under the rug
+    disputed: ['active', 'completed', 'cancelled'],  // 'active' allowed after all disputes resolved
     completed: [],
     cancelled: [],
   };
@@ -136,4 +138,50 @@ export async function getContractByProposalId(
     };
   }
   return { success: true, data: mapContractFromEntity(entity) };
+}
+
+/**
+ * Cancel a pending contract
+ * Only allowed for contracts that haven't been funded yet (status = 'pending')
+ */
+export async function cancelPendingContract(contractId: string, userId: string): Promise<{ success: boolean; error?: any }> {
+  const contract = await contractRepository.getContractById(contractId);
+  
+  if (!contract) {
+    return { success: false, error: { code: 'NOT_FOUND', message: 'Contract not found' } };
+  }
+
+  if (contract.status !== 'pending') {
+    return { 
+      success: false, 
+      error: { code: 'INVALID_STATUS', message: `Only pending contracts can be cancelled. Current status: ${contract.status}` } 
+    };
+  }
+
+  if (contract.employer_id !== userId && contract.freelancer_id !== userId) {
+    return { 
+      success: false, 
+      error: { code: 'UNAUTHORIZED', message: 'Only the employer or freelancer can cancel this contract' } 
+    };
+  }
+
+  // RACE CONDITION FIX: Use atomic Supabase RPC to prevent cancellation while being funded
+  const { data: result, error: rpcError } = await getSupabaseServiceClient()
+    .rpc('cancel_pending_contract', {
+      p_contract_id: contractId,
+      p_user_id: userId
+    });
+
+  if (rpcError) {
+    console.error('Failed to cancel pending contract (RPC):', rpcError);
+    return {
+      success: false,
+      error: { 
+        code: 'UPDATE_FAILED', 
+        message: rpcError.message 
+      },
+    };
+  }
+
+  return { success: true };
 }

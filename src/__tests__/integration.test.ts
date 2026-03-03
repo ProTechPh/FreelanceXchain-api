@@ -736,7 +736,6 @@ jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
           id: userId,
           email: email.toLowerCase(),
           name: (options?.data?.name as string) ?? 'Test User',
-          passwordHash: '',
           role: (options?.data?.role as 'freelancer' | 'employer') ?? 'freelancer',
           walletAddress: (options?.data?.wallet_address as string) ?? '',
           createdAt: now,
@@ -755,6 +754,126 @@ jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
     },
   })),
   getSupabaseServiceClient: jest.fn(() => ({
+    from: jest.fn(() => {
+      const queryBuilder: any = {
+        select: jest.fn(() => queryBuilder),
+        insert: jest.fn(() => queryBuilder),
+        update: jest.fn(() => queryBuilder),
+        delete: jest.fn(() => queryBuilder),
+        eq: jest.fn(() => queryBuilder),
+        neq: jest.fn(() => queryBuilder),
+        order: jest.fn(() => queryBuilder),
+        limit: jest.fn(() => queryBuilder),
+        single: jest.fn(async () => ({ data: null, error: null })),
+        maybeSingle: jest.fn(async () => ({ data: null, error: null })),
+        then: (resolve: (value: { data: any[]; error: null }) => unknown) =>
+          Promise.resolve(resolve({ data: [], error: null })),
+      };
+      return queryBuilder;
+    }),
+    rpc: jest.fn(async (functionName: string, params: Record<string, any>) => {
+      if (functionName === 'accept_proposal_atomic') {
+        const proposal = proposalStore.get(params.p_proposal_id);
+        if (!proposal) {
+          return { data: null, error: { message: 'Proposal not found' } };
+        }
+
+        const projectId = (proposal as any).project_id || proposal.projectId;
+        const project = projectStore.get(projectId);
+        if (!project) {
+          return { data: null, error: { message: 'Project not found' } };
+        }
+
+        const now = new Date().toISOString();
+        proposalStore.set(params.p_proposal_id, {
+          ...proposal,
+          status: 'accepted',
+          updated_at: now,
+        } as any);
+
+        const proposalRate = (proposal as any).proposed_rate ?? proposal.proposedRate;
+        const contractId = generateId();
+        contractStore.set(contractId, {
+          id: contractId,
+          project_id: projectId,
+          proposal_id: params.p_proposal_id,
+          freelancer_id: (proposal as any).freelancer_id || proposal.freelancerId,
+          employer_id: params.p_employer_id,
+          escrow_address: '',
+          total_amount: proposalRate ?? project.budget,
+          status: 'active',
+          created_at: now,
+          updated_at: now,
+        } as any);
+
+        return { data: { contract_id: contractId }, error: null };
+      }
+
+      if (functionName === 'approve_milestone_atomic') {
+        const contract = contractStore.get(params.p_contract_id);
+        if (!contract) {
+          return { data: null, error: { message: 'Contract not found' } };
+        }
+
+        const contractEmployerId = (contract as any).employer_id || contract.employerId;
+        if (contractEmployerId !== params.p_employer_id) {
+          return { data: null, error: { message: 'Unauthorized' } };
+        }
+
+        const projectId = (contract as any).project_id || contract.projectId;
+        const project = projectStore.get(projectId);
+        if (!project) {
+          return { data: null, error: { message: 'Project not found' } };
+        }
+
+        const milestones = (project.milestones || []).map((milestone: any) =>
+          milestone.id === params.p_milestone_id
+            ? { ...milestone, status: 'approved', updatedAt: new Date().toISOString() }
+            : milestone,
+        );
+        const contractCompleted = milestones.length > 0 && milestones.every((m: any) => m.status === 'approved');
+        projectStore.set(projectId, {
+          ...project,
+          milestones,
+          status: contractCompleted ? 'completed' : project.status,
+          updated_at: new Date().toISOString(),
+        } as any);
+
+        if (contractCompleted) {
+          contractStore.set(params.p_contract_id, {
+            ...contract,
+            status: 'completed',
+            updated_at: new Date().toISOString(),
+          } as any);
+        }
+
+        return { data: { contract_completed: contractCompleted }, error: null };
+      }
+
+      if (functionName === 'append_dispute_evidence') {
+        const dispute = disputeStore.get(params.p_dispute_id);
+        if (!dispute) {
+          return { data: null, error: { message: 'Dispute not found' } };
+        }
+
+        const incomingEvidence = Array.isArray(params.p_evidence) ? params.p_evidence : [];
+        const updatedEvidence = [...(dispute.evidence ?? []), ...incomingEvidence];
+        const nextStatus = dispute.status === 'open' ? 'under_review' : dispute.status;
+        const now = new Date().toISOString();
+
+        disputeStore.set(params.p_dispute_id, {
+          ...dispute,
+          evidence: updatedEvidence,
+          status: nextStatus,
+          updated_at: now,
+          updatedAt: now,
+        } as any);
+
+        return { data: updatedEvidence, error: null };
+      }
+
+      return { data: null, error: null };
+    }),
     auth: {
       admin: {
         generateLink: jest.fn(async () => ({ data: {}, error: null })),
@@ -900,16 +1019,18 @@ describe('Integration Tests - Critical Flows', () => {
       expect((project as any).employer_id || (project as any).employerId).toBe(employerId);
       expect(project.status).toBe('open');
       // Step 6: Add milestones to project
-      const milestonesResult = await addMilestones(project.id, employerId, [
+      const milestoneInputs = [
         { title: 'API Design', description: 'Design the API', amount: 1500, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() },
         { title: 'Implementation', description: 'Implement the API', amount: 2500, dueDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString() },
         { title: 'Testing', description: 'Test the API', amount: 1000, dueDate: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString() },
-      ]);
+      ];
+      const milestonesResult = await addMilestones(project.id, employerId, milestoneInputs);
       expect(milestonesResult.success).toBe(true);
       if (milestonesResult.success) {
         expect(milestonesResult.data.milestones.length).toBe(3);
       }
       // Step 7: Freelancer submits a proposal
+      const milestoneTotal = milestoneInputs.reduce((sum, milestone) => sum + milestone.amount, 0);
       const proposalResult = await submitProposal(freelancerId, {
         projectId: project.id,
         attachments: [
@@ -920,7 +1041,7 @@ describe('Integration Tests - Critical Flows', () => {
             mimeType: 'application/pdf',
           },
         ],
-        proposedRate: 70,
+        proposedRate: milestoneTotal,
         estimatedDuration: 30,
       });
       expect(proposalResult.success).toBe(true);
@@ -965,7 +1086,6 @@ describe('Integration Tests - Critical Flows', () => {
         id: freelancerId,
         email: 'freelancer@test.com',
         name: 'Test Freelancer',
-        passwordHash: 'hash',
         role: 'freelancer',
         walletAddress: '0x' + 'f'.repeat(40),
         createdAt: new Date().toISOString(),
@@ -976,7 +1096,6 @@ describe('Integration Tests - Critical Flows', () => {
         id: employerId,
         email: 'employer@test.com',
         name: 'Test Employer',
-        passwordHash: 'hash',
         role: 'employer',
         walletAddress: '0x' + 'e'.repeat(40),
         createdAt: new Date().toISOString(),
@@ -1101,7 +1220,6 @@ describe('Integration Tests - Critical Flows', () => {
         id: freelancerId,
         email: 'freelancer@test.com',
         name: 'Test Freelancer',
-        passwordHash: 'hash',
         role: 'freelancer',
         walletAddress: '0x' + 'f'.repeat(40),
         createdAt: new Date().toISOString(),
@@ -1112,7 +1230,6 @@ describe('Integration Tests - Critical Flows', () => {
         id: employerId,
         email: 'employer@test.com',
         name: 'Test Employer',
-        passwordHash: 'hash',
         role: 'employer',
         walletAddress: '0x' + 'e'.repeat(40),
         createdAt: new Date().toISOString(),
@@ -1123,7 +1240,6 @@ describe('Integration Tests - Critical Flows', () => {
         id: adminId,
         email: 'admin@test.com',
         name: 'Test Admin',
-        passwordHash: 'hash',
         role: 'admin',
         walletAddress: '0x' + 'a'.repeat(40),
         createdAt: new Date().toISOString(),
@@ -1244,7 +1360,6 @@ describe('Integration Tests - Critical Flows', () => {
         id: freelancerId,
         email: 'freelancer@test.com',
         name: 'Test Freelancer',
-        passwordHash: 'hash',
         role: 'freelancer',
         walletAddress: '0x' + 'f'.repeat(40),
         createdAt: new Date().toISOString(),
@@ -1254,7 +1369,6 @@ describe('Integration Tests - Critical Flows', () => {
         id: employerId,
         email: 'employer@test.com',
         name: 'Test Employer',
-        passwordHash: 'hash',
         role: 'employer',
         walletAddress: '0x' + 'e'.repeat(40),
         createdAt: new Date().toISOString(),

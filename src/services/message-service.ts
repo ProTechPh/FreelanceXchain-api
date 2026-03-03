@@ -15,15 +15,31 @@ export type ConversationSummary = {
   unreadCount: number;
 };
 
+async function ensureContractParticipant(contractId: string, userId: string) {
+  const contract = await contractRepository.getContractById(contractId);
+  if (!contract) {
+    throw new Error('Contract not found');
+  }
+
+  const isParticipant = contract.freelancer_id === userId || contract.employer_id === userId;
+  if (!isParticipant) {
+    throw new Error('User is not part of this contract');
+  }
+
+  return contract;
+}
+
 async function sendMessage(input: SendMessageInput): Promise<MessageEntity> {
   const { contractId, senderId, content } = input;
 
   // Verify contract exists and user is part of it
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) throw new Error('Contract not found');
+  const contract = await ensureContractParticipant(contractId, senderId);
 
-  const isParticipant = contract.freelancer_id === senderId || contract.employer_id === senderId;
-  if (!isParticipant) throw new Error('User is not part of this contract');
+  // FIXED: Only allow messaging on active or disputed contracts
+  const messagingAllowedStatuses = ['active', 'disputed'];
+  if (!messagingAllowedStatuses.includes(contract.status)) {
+    throw new Error('Messages can only be sent on active or disputed contracts');
+  }
 
   const messageData: CreateMessageInput = {
     contract_id: contractId,
@@ -47,25 +63,25 @@ async function sendMessage(input: SendMessageInput): Promise<MessageEntity> {
 }
 
 async function getMessages(contractId: string, userId: string, options?: QueryOptions): Promise<PaginatedResult<MessageEntity>> {
-  // Verify user is part of the contract
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) throw new Error('Contract not found');
-
-  const isParticipant = contract.freelancer_id === userId || contract.employer_id === userId;
-  if (!isParticipant) throw new Error('User is not part of this contract');
+  await ensureContractParticipant(contractId, userId);
 
   return MessageRepository.findByContractId(contractId, options);
 }
 
 async function markAsRead(contractId: string, userId: string): Promise<void> {
+  await ensureContractParticipant(contractId, userId);
+
   await MessageRepository.markAsRead(contractId, userId);
 }
 
 async function getUnreadCount(contractId: string, userId: string): Promise<number> {
+  await ensureContractParticipant(contractId, userId);
   return MessageRepository.getUnreadCount(contractId, userId);
 }
 
 async function getConversationSummary(contractId: string, userId: string): Promise<ConversationSummary> {
+  await ensureContractParticipant(contractId, userId);
+
   const [lastMessage, unreadCount] = await Promise.all([
     MessageRepository.getLatestMessage(contractId),
     MessageRepository.getUnreadCount(contractId, userId),

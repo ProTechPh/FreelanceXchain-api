@@ -25,7 +25,6 @@ export const ALLOWED_MIME_TYPES = [
   // Images
   'image/png',
   'image/jpeg',
-  'image/jpg',
   'image/gif',
 ] as const;
 
@@ -211,7 +210,7 @@ function validateFileUrl(url: string): string[] {
     // Check if URL is from Supabase Storage domain
     // Supabase storage URLs typically follow pattern: https://<project-ref>.supabase.co/storage/v1/object/...
     const hostname = parsedUrl.hostname;
-    if (!hostname.includes('supabase.co')) {
+    if (hostname !== 'supabase.co' && !hostname.endsWith('.supabase.co')) {
       errors.push('File URL must be from Supabase Storage domain');
     }
 

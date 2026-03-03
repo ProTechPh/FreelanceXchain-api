@@ -24,6 +24,7 @@ export const TABLES = {
 
 export const STORAGE_BUCKETS = {
   PROPOSAL_ATTACHMENTS: 'proposal-attachments',
+  DISPUTE_EVIDENCE: 'dispute-evidence',
 } as const;
 
 export type TableName = typeof TABLES[keyof typeof TABLES];
@@ -52,6 +53,28 @@ export function getSupabaseServiceClient(): SupabaseClient {
     });
   }
   return supabaseServiceClient;
+}
+
+/**
+ * Creates a Supabase client scoped to a specific user's access token.
+ * Use this when you need to perform operations in the context of the
+ * authenticated user (e.g., after MFA verification to get their session).
+ */
+export function createPerRequestClient(accessToken: string): SupabaseClient {
+  if (!config.supabase.url || !config.supabase.anonKey) {
+    throw new Error('Supabase configuration is missing.');
+  }
+  return createClient(config.supabase.url, config.supabase.anonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false,
+    },
+  });
 }
 
 export async function initializeDatabase(): Promise<void> {

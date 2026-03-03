@@ -46,7 +46,8 @@ function cleanupExpiredEntries(): void {
 }
 
 // Run cleanup every 5 minutes to prevent memory leaks from expired entries
-setInterval(cleanupExpiredEntries, 5 * 60 * 1000);
+// FIXED: .unref() prevents this timer from blocking graceful Node.js shutdown
+setInterval(cleanupExpiredEntries, 5 * 60 * 1000).unref();
 
 export function rateLimiter(name: string, config: RateLimitConfig) {
   const { windowMs, maxRequests, message } = config;

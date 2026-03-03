@@ -22,14 +22,15 @@ import {
   disableMFA,
   validateToken,
   createAuthResult,
+  consumeMfaSession,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
-import { authRateLimiter } from '../middleware/rate-limiter.js';
+import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limiter.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
-import { getSupabaseClient } from '../config/supabase.js';
+import { createPerRequestClient } from '../config/supabase.js';
 import { userRepository } from '../repositories/user-repository.js';
 
 const router = Router();
@@ -177,7 +178,7 @@ function validateRole(role: unknown): role is UserRole {
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/register', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/register', registerRateLimiter, async (req: Request, res: Response) => {
   const { email, password, role, walletAddress } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -318,7 +319,7 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
     if (result.code === 'MFA_REQUIRED') {
       res.status(200).json({
         mfaRequired: true,
-        accessToken: (result as any).accessToken,
+        mfaSessionId: (result as any).mfaSessionId,
         factorId: (result as any).factorId,
       });
       return;
@@ -377,14 +378,14 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
  *         description: Unauthorized
  */
 router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Response) => {
-  const { accessToken, factorId, code } = req.body;
+  const { mfaSessionId, factorId, code } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
-  if (!accessToken || !factorId || !code) {
+  if (!mfaSessionId || !factorId || !code) {
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'accessToken, factorId, and code are required',
+        message: 'mfaSessionId, factorId, and code are required',
       },
       timestamp: new Date().toISOString(),
       requestId,
@@ -392,8 +393,25 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
     return;
   }
 
-  // Create challenge
-  const challengeResult = await challengeMFA(accessToken, factorId);
+  // Consume the pending MFA session to retrieve the real access token
+  const mfaSession = await consumeMfaSession(mfaSessionId);
+
+  if (!mfaSession) {
+    res.status(401).json({
+      error: {
+        code: 'MFA_SESSION_EXPIRED',
+        message: 'MFA session has expired or is invalid. Please log in again.',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const realAccessToken = mfaSession.accessToken;
+
+  // Create challenge using the real access token
+  const challengeResult = await challengeMFA(realAccessToken, factorId);
   
   if (isAuthError(challengeResult)) {
     res.status(400).json({
@@ -408,7 +426,7 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
   }
 
   // Verify the code
-  const verifyResult = await verifyMFAChallenge(accessToken, factorId, challengeResult.challengeId, code);
+  const verifyResult = await verifyMFAChallenge(realAccessToken, factorId, challengeResult.challengeId, code);
   
   if (isAuthError(verifyResult)) {
     res.status(400).json({
@@ -423,7 +441,7 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
   }
 
   // MFA verified - get user and return full auth result
-  const tokenValidation = await validateToken(accessToken);
+  const tokenValidation = await validateToken(realAccessToken);
   
   if (isAuthError(tokenValidation)) {
     res.status(401).json({
@@ -452,13 +470,13 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
   }
 
   // Get a fresh session after MFA verification
-  const supabase = getSupabaseClient();
+  const supabase = createPerRequestClient(realAccessToken);
   const { data: sessionData } = await supabase.auth.getSession();
   
   const authResult = await createAuthResult(
     publicUser, 
-    accessToken, 
-    sessionData?.session?.refresh_token || ''
+    realAccessToken, 
+    mfaSession.refreshToken || sessionData?.session?.refresh_token || ''
   );
 
   res.status(200).json(authResult);
@@ -788,7 +806,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
       logger.info('OAuth user requires MFA', { requestId });
       res.status(200).json({
         mfaRequired: true,
-        accessToken: (result as any).accessToken,
+        mfaSessionId: (result as any).mfaSessionId,
         factorId: (result as any).factorId,
       });
       return;
@@ -869,7 +887,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
  *       401:
  *         description: Invalid token
  */
-router.post('/oauth/register', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Response) => {
   const { accessToken, role, walletAddress } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -962,7 +980,7 @@ router.post('/oauth/register', authRateLimiter, async (req: Request, res: Respon
  *       400:
  *         description: Validation error
  */
-router.post('/resend-confirmation', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/resend-confirmation', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -1015,7 +1033,7 @@ router.post('/resend-confirmation', authRateLimiter, async (req: Request, res: R
  *       400:
  *         description: Validation error
  */
-router.post('/forgot-password', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -1108,7 +1126,7 @@ router.post('/csrf-token', (req: Request, res: Response) => {
  *       401:
  *         description: Invalid token
  */
-router.post('/reset-password', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/reset-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { accessToken, password } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

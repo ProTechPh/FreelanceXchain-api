@@ -39,16 +39,32 @@ async function main(): Promise<void> {
       process.exit(0);
     });
 
-    // Force close after 10 seconds
-    setTimeout(() => {
+    // Force close after 10 seconds (unref so it doesn't keep the event loop alive)
+    const forceTimer = setTimeout(() => {
       console.error('Could not close connections in time, forcefully shutting down');
       process.exit(1);
     }, 10000);
+    forceTimer.unref();
   };
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
+
+// Handle unhandled promise rejections — prevents silent crashes
+process.on('unhandledRejection', (reason: unknown) => {
+  console.error('Unhandled promise rejection:', reason);
+  // In production, exit to let the process manager restart
+  if (process.env['NODE_ENV'] === 'production') {
+    process.exit(1);
+  }
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error: Error) => {
+  console.error('Uncaught exception:', error);
+  process.exit(1);
+});
 
 main().catch((error) => {
   console.error('Failed to start server:', error);

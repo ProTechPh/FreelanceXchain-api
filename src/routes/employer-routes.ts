@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { clampLimit } from '../utils/index.js';
 import {
   getEmployerProfileByUserId,
   updateEmployerProfile,
@@ -83,7 +84,7 @@ const router = Router();
 router.get('/projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
+  const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const continuationToken = req.query['continuationToken'] as string | undefined;
 
   if (!userId) {

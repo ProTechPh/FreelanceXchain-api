@@ -6,6 +6,8 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
+
 import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 
@@ -229,15 +231,6 @@ export async function acceptProposal(
     };
   }
 
-  // RACE CONDITION FIX: Check if another proposal was already accepted for this project
-  const hasAccepted = await proposalRepository.hasAcceptedProposal(proposalEntity.project_id);
-  if (hasAccepted) {
-    return {
-      success: false,
-      error: { code: 'ALREADY_ACCEPTED', message: 'Another proposal has already been accepted for this project' },
-    };
-  }
-
   // Check that the project has milestones defined
   if (!project.milestones || project.milestones.length === 0) {
     return {
@@ -246,47 +239,52 @@ export async function acceptProposal(
     };
   }
 
-  // Update proposal status
-  const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
-    status: 'accepted',
-  });
-
-  if (!updatedProposalEntity) {
+  const proposalRate = proposalEntity.proposed_rate;
+  if (proposalRate === null || proposalRate === undefined || proposalRate <= 0) {
     return {
       success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update proposal status' },
+      error: { code: 'INVALID_PROPOSAL_RATE', message: 'Accepted proposal must have a valid positive rate' },
     };
   }
-  const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
 
-  // BULK REJECT: Reject all other pending proposals for this project
-  try {
-    const otherProposals = await proposalRepository.getProposalsByProject(proposalEntity.project_id);
-    for (const otherProposal of otherProposals.items) {
-      if (otherProposal.id !== proposalId && otherProposal.status === 'pending') {
-        await proposalRepository.updateProposal(otherProposal.id, { status: 'rejected' });
-      }
-    }
-  } catch (error) {
-    console.error('Failed to bulk-reject other proposals:', error);
-    // Non-critical - continue with contract creation
+  const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
+  if (Math.abs(milestoneTotal - proposalRate) > 0.01) {
+    return {
+      success: false,
+      error: {
+        code: 'AMOUNT_MISMATCH',
+        message: 'Proposal rate must match the total project milestone amount before contract creation',
+      },
+    };
   }
 
-  // Create contract entity
-  // FIX: Use the freelancer's proposed rate, not the project budget
-  const contractEntity: Omit<ContractEntity, 'created_at' | 'updated_at'> = {
-    id: generateId(),
-    project_id: proposalEntity.project_id,
-    proposal_id: proposalEntity.id,
-    freelancer_id: proposalEntity.freelancer_id,
-    employer_id: project.employerId,
-    escrow_address: '', // Will be set when smart contract is deployed
-    total_amount: proposalEntity.proposed_rate ?? project.budget,
-    status: 'active',
-  };
+  // RACE CONDITION FIX: Use atomic Supabase RPC to prevent double-accepting proposals
+  const { data: result, error: rpcError } = await getSupabaseServiceClient()
+    .rpc('accept_proposal_atomic', {
+      p_proposal_id: proposalId,
+      p_employer_id: employerId
+    });
 
-  const createdContractEntity = await contractRepository.createContract(contractEntity);
-  const createdContract = mapContractFromEntity(createdContractEntity);
+  if (rpcError) {
+    console.error('Failed to accept proposal (RPC):', rpcError);
+    return {
+      success: false,
+      error: { 
+        code: rpcError.message.includes('already been accepted') ? 'ALREADY_ACCEPTED' : 'UPDATE_FAILED', 
+        message: rpcError.message 
+      },
+    };
+  }
+
+  // Map the new values returned from the RPC
+  const createdContractId = result.contract_id;
+
+  // Get the updated entities
+  const updatedProposalEntity = await proposalRepository.findProposalById(proposalId);
+  const updatedProposal = mapProposalFromEntity(updatedProposalEntity!);
+  
+  const createdContractEntity = await contractRepository.getContractById(createdContractId);
+  const createdContract = mapContractFromEntity(createdContractEntity!);
 
   // Create agreement on blockchain
   try {
@@ -299,7 +297,7 @@ export async function acceptProposal(
         contractId: createdContract.id,
         employerWallet: employer.wallet_address,
         freelancerWallet: freelancer.wallet_address,
-        totalAmount: proposalEntity.proposed_rate ?? project.budget,
+        totalAmount: proposalRate,
         milestoneCount: project.milestones.length,
         terms: {
           projectTitle: project.title,

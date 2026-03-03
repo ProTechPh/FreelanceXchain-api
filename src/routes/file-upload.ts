@@ -2,37 +2,40 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { uploadFile, deleteFile, getSignedUrl, listUserFiles } from '../utils/file-upload.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
+import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
+import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
+import { logger } from '../config/logger.js';
 
 const router = Router();
 
-// Configure multer for memory storage
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 20 * 1024 * 1024, // 20MB max
-  },
+// Allowed storage buckets — reject any bucket not in this list
+const ALLOWED_BUCKETS = new Set([
+  'profile-images',
+  'contract-documents',
+  'proposal-attachments',
+  'dispute-evidence',
+]);
+
+// Use secure file upload middleware (validates magic numbers, sanitizes filenames, enforces limits)
+const secureUpload = createFileUploadMiddleware('file', {
+  minFiles: 1,
+  maxFiles: 1,
+  validateMagicNumbers: true,
 });
 
 /**
  * Upload a file
  * POST /api/files/upload
  */
-router.post('/upload', authMiddleware, upload.single('file'), async (req: Request, res: Response): Promise<void> => {
+// FIXED: Added fileUploadRateLimiter to prevent abuse (20 uploads/hour)
+// FIXED: Switched from raw multer to createFileUploadMiddleware for magic number & AV validation
+router.post('/upload', authMiddleware, fileUploadRateLimiter, ...secureUpload, async (req: Request, res: Response): Promise<void> => {
   try {
     const { bucket, folder } = req.body;
-    const file = req.file;
+    // createFileUploadMiddleware parses into req.files array
+    const files = req.files as Express.Multer.File[] | undefined;
+    const file = files?.[0];
     const userId = req.user?.id; // Use the new id field
-
-    console.log('[FILE UPLOAD] Request received:', {
-      bucket,
-      folder,
-      hasFile: !!file,
-      fileName: file?.originalname,
-      fileSize: file?.size,
-      userId,
-      hasUser: !!req.user,
-      userObject: req.user, // Debug the full user object
-    });
 
     if (!file) {
       res.status(400).json({ error: 'No file provided' });
@@ -44,20 +47,21 @@ router.post('/upload', authMiddleware, upload.single('file'), async (req: Reques
       return;
     }
 
+    // Validate bucket against allowlist to prevent bucket injection
+    if (!ALLOWED_BUCKETS.has(bucket)) {
+      res.status(400).json({ error: `Invalid bucket. Allowed: ${[...ALLOWED_BUCKETS].join(', ')}` });
+      return;
+    }
+
     if (!userId) {
-      console.log('[FILE UPLOAD] Authentication failed:', { 
-        user: req.user, 
-        headers: req.headers.authorization,
-        userId: req.user?.userId, // Check both id and userId
-        id: req.user?.id,
-      });
+      logger.warn('[FILE UPLOAD] Authentication failed - no userId on request');
       res.status(401).json({ error: 'User not authenticated' });
       return;
     }
 
     // Upload using the updated uploadFile function
     const result = await uploadFile({
-      bucket: bucket as any,
+      bucket: bucket as 'profile-images' | 'contract-documents' | 'proposal-attachments' | 'dispute-evidence',
       userId,
       file: file.buffer, // Use the buffer directly
       filename: file.originalname,
@@ -96,13 +100,19 @@ router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response):
       return;
     }
 
+    // Validate bucket against allowlist
+    if (!ALLOWED_BUCKETS.has(bucket)) {
+      res.status(400).json({ error: `Invalid bucket. Allowed: ${[...ALLOWED_BUCKETS].join(', ')}` });
+      return;
+    }
+
     if (!path) {
       res.status(400).json({ error: 'File path is required' });
       return;
     }
 
-    // Verify the file belongs to the user
-    if (!path.startsWith(userId)) {
+    // Verify the file belongs to the user (boundary-safe check with '/' separator)
+    if (!path.startsWith(`${userId}/`) && path !== userId) {
       res.status(403).json({ error: 'Unauthorized to delete this file' });
       return;
     }
@@ -137,18 +147,27 @@ router.get('/signed-url/:bucket/*', authMiddleware, async (req: Request, res: Re
       return;
     }
 
+    // Validate bucket against allowlist
+    if (!ALLOWED_BUCKETS.has(bucket)) {
+      res.status(400).json({ error: `Invalid bucket. Allowed: ${[...ALLOWED_BUCKETS].join(', ')}` });
+      return;
+    }
+
     if (!path) {
       res.status(400).json({ error: 'File path is required' });
       return;
     }
 
-    // Verify the file belongs to the user
-    if (!path.startsWith(userId)) {
+    // Cap expiresIn to a reasonable maximum (24 hours)
+    const clampedExpiresIn = Math.min(Math.max(expiresIn, 60), 86400);
+
+    // Verify the file belongs to the user (boundary-safe check with '/' separator)
+    if (!path.startsWith(`${userId}/`) && path !== userId) {
       res.status(403).json({ error: 'Unauthorized to access this file' });
       return;
     }
 
-    const result = await getSignedUrl(bucket, path, expiresIn);
+    const result = await getSignedUrl(bucket, path, clampedExpiresIn);
 
     if (!result.success) {
       res.status(400).json({ error: result.error });
@@ -177,6 +196,12 @@ router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response):
 
     if (!userId) {
       res.status(401).json({ error: 'User not authenticated' });
+      return;
+    }
+
+    // Validate bucket against allowlist
+    if (!ALLOWED_BUCKETS.has(bucket)) {
+      res.status(400).json({ error: `Invalid bucket. Allowed: ${[...ALLOWED_BUCKETS].join(', ')}` });
       return;
     }
 

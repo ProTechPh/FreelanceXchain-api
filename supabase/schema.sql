@@ -92,9 +92,13 @@ CREATE TABLE IF NOT EXISTS proposals (
   estimated_duration INTEGER DEFAULT 0,
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'withdrawn')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(project_id, freelancer_id)
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Partial unique index: only one active (non-withdrawn) proposal per freelancer per project
+CREATE UNIQUE INDEX IF NOT EXISTS idx_proposals_unique_active
+  ON proposals(project_id, freelancer_id)
+  WHERE status != 'withdrawn';
 
 COMMENT ON COLUMN proposals.attachments IS 'Array of file attachments with metadata: [{url, filename, size, mimeType}]';
 COMMENT ON COLUMN proposals.cover_letter IS 'Legacy text cover letter field - nullable for backward compatibility';
@@ -108,7 +112,7 @@ CREATE TABLE IF NOT EXISTS contracts (
   employer_id UUID REFERENCES users(id) ON DELETE CASCADE,
   escrow_address VARCHAR(255),
   total_amount DECIMAL(12, 2) DEFAULT 0,
-  status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'disputed', 'cancelled')),
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'completed', 'disputed', 'cancelled')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -440,3 +444,65 @@ CREATE POLICY "Payments parties read" ON payments FOR SELECT
 CREATE POLICY "Admin full access payments" ON payments FOR ALL
   USING (auth.jwt() ->> 'role' = 'admin')
   WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+
+-- Audit log entries table (used by audit-log-repository)
+CREATE TABLE IF NOT EXISTS audit_log_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(50) NOT NULL,
+  resource_id UUID,
+  details JSONB DEFAULT '{}',
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_log_user_id ON audit_log_entries(user_id);
+CREATE INDEX idx_audit_log_created_at ON audit_log_entries(created_at);
+CREATE INDEX idx_audit_log_action ON audit_log_entries(action);
+
+ALTER TABLE audit_log_entries ENABLE ROW LEVEL SECURITY;
+
+-- Only admins can read audit logs
+CREATE POLICY "Admin read audit logs" ON audit_log_entries FOR SELECT
+  USING (auth.jwt() ->> 'role' = 'admin');
+-- Service role inserts audit logs (no user-level insert)
+CREATE POLICY "Service insert audit logs" ON audit_log_entries FOR INSERT
+  WITH CHECK (true);
+
+-- RPC for atomic evidence appending to avoid race conditions
+CREATE OR REPLACE FUNCTION append_dispute_evidence(p_dispute_id UUID, p_evidence JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_current_evidence JSONB;
+  v_new_evidence JSONB;
+BEGIN
+  -- Get current evidence with row lock
+  SELECT evidence INTO v_current_evidence
+  FROM disputes
+  WHERE id = p_dispute_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Dispute not found';
+  END IF;
+
+  -- Append new evidence
+  v_new_evidence := COALESCE(v_current_evidence, '[]'::jsonb) || p_evidence;
+
+  -- Update dispute
+  UPDATE disputes
+  SET 
+    evidence = v_new_evidence,
+    status = CASE WHEN status = 'open' THEN 'under_review' ELSE status END,
+    updated_at = NOW()
+  WHERE id = p_dispute_id;
+
+  RETURN v_new_evidence;
+END;
+$$;
+  WITH CHECK (true);

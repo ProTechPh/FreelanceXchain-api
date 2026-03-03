@@ -5,9 +5,10 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadDisputeEvidence } from '../middleware/file-upload-middleware.js';
+import { clampLimit } from '../utils/index.js';
 import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadFileToStorage, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
@@ -47,7 +48,7 @@ const router = Router();
  *       properties:
  *         decision:
  *           type: string
- *           enum: [freelancer_favor, employer_favor, split]
+ *           enum: [freelancer_favor, employer_favor]
  *         reasoning:
  *           type: string
  *         resolvedBy:
@@ -115,7 +116,7 @@ const router = Router();
  *       properties:
  *         decision:
  *           type: string
- *           enum: [freelancer_favor, employer_favor, split]
+ *           enum: [freelancer_favor, employer_favor]
  *         reasoning:
  *           type: string
  */
@@ -164,12 +165,13 @@ const router = Router();
 router.get(
   '/',
   authMiddleware,
+  requireVerifiedKyc,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const userRole = req.user?.role;
       const status = req.query['status'] as string | undefined;
-      const limit = req.query['limit'] ? parseInt(req.query['limit'] as string) : 100;
+      const limit = clampLimit(req.query['limit'] ? parseInt(req.query['limit'] as string) : undefined);
 
       if (!userId || !userRole) {
         res.status(401).json({
@@ -229,6 +231,7 @@ router.get(
 router.post(
   '/',
   authMiddleware,
+  requireVerifiedKyc,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -449,6 +452,7 @@ router.get(
 router.post(
   '/:disputeId/evidence',
   authMiddleware,
+  requireVerifiedKyc,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     const contentType = req.headers['content-type'] || '';
@@ -548,7 +552,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
       file.buffer,
       file.originalname,
       mimeType,
-      STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS, // Reuse proposal attachments bucket
+      STORAGE_BUCKETS.DISPUTE_EVIDENCE,
       `evidence/${disputeId}`
     );
     
@@ -573,7 +577,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
     if (!result.success) {
       // Cleanup uploaded file if evidence submission fails
       if (uploadResult.metadata) {
-        await cleanupUploadedFiles([uploadResult.metadata], STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS);
+        await cleanupUploadedFiles([uploadResult.metadata], STORAGE_BUCKETS.DISPUTE_EVIDENCE);
       }
       
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
@@ -686,6 +690,7 @@ async function handleJsonEvidenceSubmission(req: Request, res: Response, next: N
 router.post(
   '/:disputeId/resolve',
   authMiddleware,
+  requireVerifiedKyc,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -693,7 +698,7 @@ router.post(
       const userRole = req.user?.role;
       const disputeId = req.params['disputeId'] ?? '';
       const { decision, reasoning } = req.body as {
-        decision?: 'freelancer_favor' | 'employer_favor' | 'split';
+        decision?: 'freelancer_favor' | 'employer_favor';
         reasoning?: string;
       };
 
@@ -712,9 +717,9 @@ router.post(
         return;
       }
 
-      if (!decision || !['freelancer_favor', 'employer_favor', 'split'].includes(decision)) {
+      if (!decision || !['freelancer_favor', 'employer_favor'].includes(decision)) {
         res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'decision must be one of: freelancer_favor, employer_favor, split' },
+          error: { code: 'VALIDATION_ERROR', message: 'decision must be one of: freelancer_favor, employer_favor' },
         });
         return;
       }
@@ -748,72 +753,5 @@ router.post(
   }
 );
 
-
-/**
- * @swagger
- * /api/contracts/{contractId}/disputes:
- *   get:
- *     summary: List disputes for a contract
- *     description: Get all disputes associated with a contract
- *     tags: [Disputes]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *         description: The contract ID (UUID)
- *     responses:
- *       200:
- *         description: List of disputes
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Dispute'
- *       400:
- *         description: Invalid UUID format
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: User not authorized to view disputes
- *       404:
- *         description: Contract not found
- */
-router.get(
-  '/contracts/:contractId/disputes',
-  authMiddleware,
-  validateUUID(['contractId']),
-  async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      const userId = req.user?.userId;
-      const contractId = req.params['contractId'] ?? '';
-
-      if (!userId) {
-        res.status(401).json({
-          error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        });
-        return;
-      }
-
-      const result = await getDisputesByContract(contractId, userId);
-
-      if (!result.success) {
-        const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
-                          result.error.code === 'UNAUTHORIZED' ? 403 : 400;
-        res.status(statusCode).json({ error: result.error });
-        return;
-      }
-
-      res.json(result.data);
-    } catch (error) {
-      next(error);
-    }
-  }
-);
 
 export default router;

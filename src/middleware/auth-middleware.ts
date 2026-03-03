@@ -150,13 +150,20 @@ export async function requireMFA(req: Request, res: Response, next: NextFunction
     const { data: aalData, error: aalError } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
 
     if (aalError) {
-      logger.auth('Failed to check AAL level', req.user.userId, {
+      logger.auth('Failed to check AAL level — blocking request (fail-closed)', req.user.userId, {
         requestId,
         path: req.path,
         error: aalError.message,
       });
-      // If we can't check AAL, allow through (MFA may not be set up)
-      next();
+      // Fail-closed: if we can't verify MFA status, deny access to sensitive operations
+      res.status(403).json({
+        error: {
+          code: 'MFA_CHECK_FAILED',
+          message: 'Unable to verify MFA status. Please try again.',
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
 
@@ -181,12 +188,21 @@ export async function requireMFA(req: Request, res: Response, next: NextFunction
       return;
     }
   } catch (err) {
-    // If AAL check fails entirely, log and allow through
-    logger.auth('AAL check exception', req.user?.userId, {
+    // Fail-closed: if AAL check throws, deny access to sensitive operations
+    logger.auth('AAL check exception — blocking request (fail-closed)', req.user?.userId, {
       requestId,
       path: req.path,
       error: err instanceof Error ? err.message : 'Unknown error',
     });
+    res.status(403).json({
+      error: {
+        code: 'MFA_CHECK_FAILED',
+        message: 'Unable to verify MFA status. Please try again.',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
   }
 
   next();
@@ -236,4 +252,57 @@ export function requireRole(...roles: UserRole[]) {
 
     next();
   };
+}
+
+export async function requireVerifiedKyc(req: Request, res: Response, next: NextFunction): Promise<void> {
+  const requestId = req.headers['x-request-id'] ?? 'unknown';
+
+  if (!req.user) {
+    res.status(401).json({
+      error: {
+        code: 'AUTH_UNAUTHORIZED',
+        message: 'Authentication required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  try {
+    const verified = await isUserVerified(req.user.userId);
+    if (!verified) {
+      logger.authzFailure(req.user.userId, req.path, req.method, {
+        requestId,
+        reason: 'KYC_NOT_VERIFIED',
+      });
+
+      res.status(403).json({
+        error: {
+          code: 'KYC_REQUIRED',
+          message: 'Identity verification is required for this operation',
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+  } catch (error) {
+    logger.error('Failed to verify KYC status', error as Error, {
+      requestId,
+      userId: req.user.userId,
+    });
+
+    res.status(500).json({
+      error: {
+        code: 'KYC_CHECK_FAILED',
+        message: 'Failed to verify KYC status',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  next();
 }

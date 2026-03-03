@@ -11,20 +11,29 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const require = createRequire(import.meta.url);
 
-const FreelanceReputationArtifact = require(join(__dirname, '../../artifacts/contracts/FreelanceReputation.sol/FreelanceReputation.json'));
-const FreelanceEscrowArtifact = require(join(__dirname, '../../artifacts/contracts/FreelanceEscrow.sol/FreelanceEscrow.json'));
-const ContractAgreementArtifact = require(join(__dirname, '../../artifacts/contracts/ContractAgreement.sol/ContractAgreement.json'));
-const DisputeResolutionArtifact = require(join(__dirname, '../../artifacts/contracts/DisputeResolution.sol/DisputeResolution.json'));
-const MilestoneRegistryArtifact = require(join(__dirname, '../../artifacts/contracts/MilestoneRegistry.sol/MilestoneRegistry.json'));
+function tryLoadArtifact(contractPath: string): { abi: any; bytecode: string } | null {
+  try {
+    return require(join(__dirname, '../../artifacts/contracts', contractPath));
+  } catch {
+    console.warn(`[contract-abis] Could not load artifact: ${contractPath}. Smart contract features will be unavailable.`);
+    return null;
+  }
+}
 
-export const FreelanceReputationABI = FreelanceReputationArtifact.abi;
-export const FreelanceEscrowABI = FreelanceEscrowArtifact.abi;
-export const ContractAgreementABI = ContractAgreementArtifact.abi;
-export const DisputeResolutionABI = DisputeResolutionArtifact.abi;
-export const MilestoneRegistryABI = MilestoneRegistryArtifact.abi;
+const FreelanceReputationArtifact = tryLoadArtifact('FreelanceReputation.sol/FreelanceReputation.json');
+const FreelanceEscrowArtifact = tryLoadArtifact('FreelanceEscrow.sol/FreelanceEscrow.json');
+const ContractAgreementArtifact = tryLoadArtifact('ContractAgreement.sol/ContractAgreement.json');
+const DisputeResolutionArtifact = tryLoadArtifact('DisputeResolution.sol/DisputeResolution.json');
+const MilestoneRegistryArtifact = tryLoadArtifact('MilestoneRegistry.sol/MilestoneRegistry.json');
 
-export const FreelanceReputationBytecode = FreelanceReputationArtifact.bytecode;
-export const FreelanceEscrowBytecode = FreelanceEscrowArtifact.bytecode;
-export const ContractAgreementBytecode = ContractAgreementArtifact.bytecode;
-export const DisputeResolutionBytecode = DisputeResolutionArtifact.bytecode;
-export const MilestoneRegistryBytecode = MilestoneRegistryArtifact.bytecode;
+export const FreelanceReputationABI = FreelanceReputationArtifact?.abi ?? null;
+export const FreelanceEscrowABI = FreelanceEscrowArtifact?.abi ?? null;
+export const ContractAgreementABI = ContractAgreementArtifact?.abi ?? null;
+export const DisputeResolutionABI = DisputeResolutionArtifact?.abi ?? null;
+export const MilestoneRegistryABI = MilestoneRegistryArtifact?.abi ?? null;
+
+export const FreelanceReputationBytecode = FreelanceReputationArtifact?.bytecode ?? '';
+export const FreelanceEscrowBytecode = FreelanceEscrowArtifact?.bytecode ?? '';
+export const ContractAgreementBytecode = ContractAgreementArtifact?.bytecode ?? '';
+export const DisputeResolutionBytecode = DisputeResolutionArtifact?.bytecode ?? '';
+export const MilestoneRegistryBytecode = MilestoneRegistryArtifact?.bytecode ?? '';

@@ -2,10 +2,13 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import {
+  createProfile,
   getProfileByUserId,
   updateProfile,
   addSkillsToProfile,
+  removeSkillFromProfile,
   addExperience,
+  updateExperience,
   removeExperience,
 } from '../services/freelancer-profile-service.js';
 
@@ -73,6 +76,94 @@ const router = Router();
  *           type: string
  *           format: date-time
  */
+
+
+/**
+ * @swagger
+ * /api/freelancers/profile:
+ *   post:
+ *     summary: Create freelancer profile
+ *     description: Creates a new freelancer profile for the authenticated user
+ *     tags:
+ *       - Freelancers
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - bio
+ *               - hourlyRate
+ *             properties:
+ *               bio:
+ *                 type: string
+ *               hourlyRate:
+ *                 type: number
+ *               availability:
+ *                 type: string
+ *                 enum: [available, busy, unavailable]
+ *     responses:
+ *       201:
+ *         description: Profile created successfully
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ *       409:
+ *         description: Profile already exists
+ */
+router.post('/profile', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+  const { bio, hourlyRate, availability } = req.body;
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Validate input
+  const errors: { field: string; message: string }[] = [];
+  if (!bio || typeof bio !== 'string' || bio.trim().length < 10) {
+    errors.push({ field: 'bio', message: 'Bio must be at least 10 characters' });
+  }
+  if (hourlyRate === undefined || typeof hourlyRate !== 'number' || hourlyRate < 1) {
+    errors.push({ field: 'hourlyRate', message: 'Hourly rate must be a positive number' });
+  }
+  if (availability !== undefined && !['available', 'busy', 'unavailable'].includes(availability)) {
+    errors.push({ field: 'availability', message: 'Invalid availability value' });
+  }
+
+  if (errors.length > 0) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await createProfile(userId, { bio, hourlyRate, availability });
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'PROFILE_EXISTS' ? 409 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(201).json(result.data);
+});
 
 
 /**
@@ -330,6 +421,74 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), async 
 
 /**
  * @swagger
+ * /api/freelancers/profile/skills/{name}:
+ *   delete:
+ *     summary: Remove a skill from freelancer profile
+ *     description: Removes a skill by name from the authenticated user's profile (case-insensitive)
+ *     tags:
+ *       - Freelancers
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: name
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Skill name to remove
+ *     responses:
+ *       200:
+ *         description: Skill removed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/FreelancerProfile'
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Profile not found or skill not found
+ */
+router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+  const skillName = decodeURIComponent(req.params['name'] ?? '');
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!skillName || skillName.trim().length === 0) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Skill name is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await removeSkillFromProfile(userId, skillName);
+
+  if (!result.success) {
+    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+
+/**
+ * @swagger
  * /api/freelancers/profile/experience:
  *   post:
  *     summary: Add work experience to freelancer profile
@@ -419,6 +578,121 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), as
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+
+/**
+ * @swagger
+ * /api/freelancers/profile/experience/{id}:
+ *   patch:
+ *     summary: Update work experience entry
+ *     description: Updates a work experience entry on the authenticated user's profile
+ *     tags:
+ *       - Freelancers
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Experience ID
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *               company:
+ *                 type: string
+ *               description:
+ *                 type: string
+ *               startDate:
+ *                 type: string
+ *                 format: date
+ *               endDate:
+ *                 type: string
+ *                 format: date
+ *                 nullable: true
+ *     responses:
+ *       200:
+ *         description: Experience updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/FreelancerProfile'
+ *       400:
+ *         description: Validation error or invalid date range
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: Profile or experience not found
+ */
+router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+  const experienceId = req.params['id'] ?? '';
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const { title, company, description, startDate, endDate } = req.body;
+
+  // Validate at least one field is provided
+  if (title === undefined && company === undefined && description === undefined && startDate === undefined && endDate === undefined) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'At least one field must be provided for update' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Validate provided fields
+  const errors: { field: string; message: string }[] = [];
+  if (title !== undefined && (typeof title !== 'string' || title.trim().length < 2)) {
+    errors.push({ field: 'title', message: 'Title must be at least 2 characters' });
+  }
+  if (company !== undefined && (typeof company !== 'string' || company.trim().length < 2)) {
+    errors.push({ field: 'company', message: 'Company must be at least 2 characters' });
+  }
+  if (description !== undefined && (typeof description !== 'string' || description.trim().length < 10)) {
+    errors.push({ field: 'description', message: 'Description must be at least 10 characters' });
+  }
+
+  if (errors.length > 0) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await updateExperience(userId, experienceId, { title, company, description, startDate, endDate });
+
+  if (!result.success) {
+    const statusCode =
+      result.error.code === 'PROFILE_NOT_FOUND' || result.error.code === 'EXPERIENCE_NOT_FOUND' ? 404 : 400;
     res.status(statusCode).json({
       error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),

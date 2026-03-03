@@ -324,12 +324,12 @@ describe('Contract Service', () => {
         expect(result.data.status).toBe('cancelled');
       }
     });
-    it('should fail status update from disputed to active', async () => {
+    it('should update status from disputed to active', async () => {
       const contract = createTestContract({ status: 'disputed' });
       const result = await updateContractStatus(contract.id, 'active');
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe('INVALID_STATUS_TRANSITION');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.status).toBe('active');
       }
     });
     it('should update status from disputed to completed', async () => {
@@ -386,6 +386,7 @@ describe('Contract Service', () => {
         ['active', 'completed'],
         ['active', 'disputed'],
         ['active', 'cancelled'],
+        ['disputed', 'active'],
         ['disputed', 'completed'],
         ['disputed', 'cancelled'],
       ];
@@ -410,7 +411,6 @@ describe('Contract Service', () => {
         ['cancelled', 'disputed'],
         ['cancelled', 'completed'],
         ['cancelled', 'cancelled'],
-        ['disputed', 'active'],
         ['disputed', 'disputed'],
       ];
       for (const [fromStatus, toStatus] of invalidTransitions) {

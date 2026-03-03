@@ -46,6 +46,7 @@ const CSRF_EXEMPT_PATHS = [
   '/api/health',
   '/api/webhooks',
   '/api/auth/login', // Login endpoint
+  '/api/auth/login/mfa-verify', // MFA verification during login (no CSRF cookie yet)
   '/api/auth/register', // Registration endpoint
   '/api/auth/callback', // OAuth callback
   '/api/auth/oauth/callback', // OAuth token callback
@@ -55,6 +56,7 @@ const CSRF_EXEMPT_PATHS = [
   '/api/auth/reset-password', // Password reset
   '/api/auth/resend-confirmation', // Email confirmation
   '/api/auth/csrf-token', // CSRF token generation endpoint
+  '/api/kyc/webhook', // External Didit KYC webhook
 ];
 
 /**
@@ -146,19 +148,17 @@ export function generateCsrfToken(req: Request, res: Response): void {
       requestId,
     });
   } catch (error) {
-    console.error('[CSRF DEBUG] Error in generateCsrfToken:', error);
-    
     logger.error('Failed to generate CSRF token', {
       requestId,
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
     });
 
+    // FIXED: Removed 'details' field that leaked internal error.message to clients
     res.status(500).json({
       error: {
         code: 'CSRF_TOKEN_GENERATION_FAILED',
         message: 'Failed to generate CSRF token',
-        details: error instanceof Error ? error.message : 'Unknown error',
       },
       timestamp: new Date().toISOString(),
       requestId,

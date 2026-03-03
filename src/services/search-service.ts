@@ -183,10 +183,10 @@ export async function searchFreelancers(
     // No filters - return all profiles
     entityResult = await freelancerProfileRepository.getAllProfilesPaginated(queryOptions);
   } else {
-    // Multiple filters - get all profiles and filter in memory
-    entityResult = await freelancerProfileRepository.getAllProfilesPaginated(queryOptions);
+    // Multiple filters - fetch broad set, filter in memory, then paginate
+    const allProfiles = await freelancerProfileRepository.getAllProfilesPaginated({ limit: 1000, offset: 0 });
     
-    let filteredItems = entityResult.items;
+    let filteredItems = allProfiles.items;
 
     // Apply keyword filter
     if (hasKeyword) {
@@ -196,7 +196,7 @@ export async function searchFreelancers(
       );
     }
 
-    // Apply skill filter (now using skill names instead of IDs)
+    // Apply skill filter using case-insensitive skill name matching
     if (hasSkills) {
       const skillNameSet = new Set(filters.skillIds?.map(s => s.toLowerCase()));
       filteredItems = filteredItems.filter(profile =>
@@ -204,7 +204,11 @@ export async function searchFreelancers(
       );
     }
 
-    entityResult = { items: filteredItems, hasMore: entityResult.hasMore };
+    const offset = pagination?.offset ?? 0;
+    const paginatedItems = filteredItems.slice(offset, offset + pageSize);
+    const hasMore = offset + pageSize < filteredItems.length;
+
+    entityResult = { items: paginatedItems, hasMore, total: filteredItems.length };
   }
 
   // Map entities to models

@@ -1,6 +1,9 @@
 /**
  * Milestone Registry Blockchain Service
  * Records milestone completions on-chain for verifiable work history
+ *
+ * ARCHITECTURE: Uses Supabase (blockchain_milestones table)
+ * for persistent storage instead of in-memory Maps.
  */
 
 import {
@@ -10,6 +13,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 
 export type BlockchainMilestoneStatus = 'submitted' | 'approved' | 'rejected' | 'disputed';
 
@@ -45,9 +49,39 @@ export type SubmitMilestoneInput = {
 };
 
 const MILESTONE_REGISTRY_ADDRESS = generateWalletAddress();
-const milestoneStore = new Map<string, BlockchainMilestoneRecord>();
-const freelancerMilestonesMap = new Map<string, string[]>();
-const freelancerStatsMap = new Map<string, FreelancerStats>();
+
+// DB row type
+type MilestoneRow = {
+  milestone_id_hash: string;
+  contract_id_hash: string;
+  work_hash: string;
+  freelancer_wallet: string;
+  employer_wallet: string;
+  amount: number;
+  status: string;
+  submitted_at: number;
+  completed_at: number | null;
+  title: string;
+  transaction_hash: string;
+  block_number: number;
+};
+
+function rowToRecord(row: MilestoneRow): BlockchainMilestoneRecord {
+  return {
+    milestoneIdHash: row.milestone_id_hash,
+    contractIdHash: row.contract_id_hash,
+    workHash: row.work_hash,
+    freelancerWallet: row.freelancer_wallet,
+    employerWallet: row.employer_wallet,
+    amount: Number(row.amount),
+    status: row.status as BlockchainMilestoneStatus,
+    submittedAt: row.submitted_at,
+    completedAt: row.completed_at,
+    title: row.title,
+    transactionHash: row.transaction_hash,
+    blockNumber: row.block_number,
+  };
+}
 
 export function generateMilestoneIdHash(milestoneId: string): string {
   return '0x' + createHash('sha256').update(milestoneId).digest('hex');
@@ -67,7 +101,15 @@ export async function submitMilestoneToRegistry(
   const contractIdHash = '0x' + createHash('sha256').update(input.contractId).digest('hex');
   const workHash = generateWorkHash(input.deliverables);
 
-  if (milestoneStore.has(milestoneIdHash)) {
+  // Check if already exists
+  const supabase = getSupabaseServiceClient();
+  const { data: existing } = await supabase
+    .from('blockchain_milestones')
+    .select('milestone_id_hash')
+    .eq('milestone_id_hash', milestoneIdHash)
+    .single();
+
+  if (existing) {
     throw new Error('Milestone already submitted');
   }
 
@@ -107,20 +149,21 @@ export async function submitMilestoneToRegistry(
     blockNumber: confirmed.blockNumber!,
   };
 
-  milestoneStore.set(milestoneIdHash, record);
-
-  // Track by freelancer
-  const freelancerMilestones = freelancerMilestonesMap.get(input.freelancerWallet) ?? [];
-  freelancerMilestones.push(milestoneIdHash);
-  freelancerMilestonesMap.set(input.freelancerWallet, freelancerMilestones);
-
-  // Initialize stats if needed
-  if (!freelancerStatsMap.has(input.freelancerWallet)) {
-    freelancerStatsMap.set(input.freelancerWallet, { completedCount: 0, totalEarned: 0, totalMilestones: 0 });
-  }
-  const stats = freelancerStatsMap.get(input.freelancerWallet)!;
-  stats.totalMilestones++;
-  freelancerStatsMap.set(input.freelancerWallet, stats);
+  // Persist to DB
+  await supabase.from('blockchain_milestones').insert({
+    milestone_id_hash: record.milestoneIdHash,
+    contract_id_hash: record.contractIdHash,
+    work_hash: record.workHash,
+    freelancer_wallet: record.freelancerWallet,
+    employer_wallet: record.employerWallet,
+    amount: record.amount,
+    status: record.status,
+    submitted_at: record.submittedAt,
+    completed_at: record.completedAt,
+    title: record.title,
+    transaction_hash: record.transactionHash,
+    block_number: record.blockNumber,
+  });
 
   return {
     record,
@@ -142,9 +185,17 @@ export async function approveMilestoneOnRegistry(
   approverWallet: string
 ): Promise<{ record: BlockchainMilestoneRecord; receipt: TransactionReceipt }> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  const record = milestoneStore.get(milestoneIdHash);
+  const supabase = getSupabaseServiceClient();
 
-  if (!record) throw new Error('Milestone not found');
+  const { data: row, error } = await supabase
+    .from('blockchain_milestones')
+    .select('*')
+    .eq('milestone_id_hash', milestoneIdHash)
+    .single();
+
+  if (error || !row) throw new Error('Milestone not found');
+  const record = rowToRecord(row as MilestoneRow);
+
   if (record.status !== 'submitted' && record.status !== 'disputed') {
     throw new Error('Invalid milestone status');
   }
@@ -161,17 +212,23 @@ export async function approveMilestoneOnRegistry(
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
   const now = Date.now();
+
+  // Update in DB
+  await supabase
+    .from('blockchain_milestones')
+    .update({
+      status: 'approved',
+      completed_at: now,
+      transaction_hash: confirmed.hash!,
+      block_number: confirmed.blockNumber!,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('milestone_id_hash', milestoneIdHash);
+
   record.status = 'approved';
   record.completedAt = now;
   record.transactionHash = confirmed.hash!;
   record.blockNumber = confirmed.blockNumber!;
-  milestoneStore.set(milestoneIdHash, record);
-
-  // Update freelancer stats
-  const stats = freelancerStatsMap.get(record.freelancerWallet)!;
-  stats.completedCount++;
-  stats.totalEarned += record.amount;
-  freelancerStatsMap.set(record.freelancerWallet, stats);
 
   return {
     record,
@@ -194,9 +251,17 @@ export async function rejectMilestoneOnRegistry(
   reason: string
 ): Promise<{ record: BlockchainMilestoneRecord; receipt: TransactionReceipt }> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  const record = milestoneStore.get(milestoneIdHash);
+  const supabase = getSupabaseServiceClient();
 
-  if (!record) throw new Error('Milestone not found');
+  const { data: row, error } = await supabase
+    .from('blockchain_milestones')
+    .select('*')
+    .eq('milestone_id_hash', milestoneIdHash)
+    .single();
+
+  if (error || !row) throw new Error('Milestone not found');
+  const record = rowToRecord(row as MilestoneRow);
+
   if (record.status !== 'submitted') throw new Error('Invalid milestone status');
 
   const tx = await submitTransaction({
@@ -210,10 +275,20 @@ export async function rejectMilestoneOnRegistry(
   const confirmed = await confirmTransaction(tx.id);
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
+  // Update in DB
+  await supabase
+    .from('blockchain_milestones')
+    .update({
+      status: 'rejected',
+      transaction_hash: confirmed.hash!,
+      block_number: confirmed.blockNumber!,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('milestone_id_hash', milestoneIdHash);
+
   record.status = 'rejected';
   record.transactionHash = confirmed.hash!;
   record.blockNumber = confirmed.blockNumber!;
-  milestoneStore.set(milestoneIdHash, record);
 
   return {
     record,
@@ -232,24 +307,63 @@ export async function rejectMilestoneOnRegistry(
  */
 export async function getMilestoneFromRegistry(milestoneId: string): Promise<BlockchainMilestoneRecord | null> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  return milestoneStore.get(milestoneIdHash) ?? null;
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from('blockchain_milestones')
+    .select('*')
+    .eq('milestone_id_hash', milestoneIdHash)
+    .single();
+
+  if (error || !data) return null;
+  return rowToRecord(data as MilestoneRow);
 }
 
 /**
- * Get freelancer stats from blockchain
+ * Get freelancer stats from blockchain (derived via SQL aggregates)
  */
 export async function getFreelancerStatsFromRegistry(walletAddress: string): Promise<FreelancerStats> {
-  return freelancerStatsMap.get(walletAddress) ?? { completedCount: 0, totalEarned: 0, totalMilestones: 0 };
+  const supabase = getSupabaseServiceClient();
+
+  // Total milestones for this freelancer
+  const { count: totalMilestones } = await supabase
+    .from('blockchain_milestones')
+    .select('*', { count: 'exact', head: true })
+    .eq('freelancer_wallet', walletAddress);
+
+  // Approved milestones (completed) with sum of amounts
+  const { data: approvedRows } = await supabase
+    .from('blockchain_milestones')
+    .select('amount')
+    .eq('freelancer_wallet', walletAddress)
+    .eq('status', 'approved');
+
+  const completedCount = approvedRows?.length ?? 0;
+  let totalEarned = 0;
+  for (const row of (approvedRows ?? []) as { amount: number }[]) {
+    totalEarned += Number(row.amount);
+  }
+
+  return {
+    completedCount,
+    totalEarned,
+    totalMilestones: totalMilestones ?? 0,
+  };
 }
 
 /**
  * Get freelancer's completed milestones (portfolio)
  */
 export async function getFreelancerPortfolio(walletAddress: string): Promise<BlockchainMilestoneRecord[]> {
-  const milestoneHashes = freelancerMilestonesMap.get(walletAddress) ?? [];
-  return milestoneHashes
-    .map(hash => milestoneStore.get(hash))
-    .filter((m): m is BlockchainMilestoneRecord => m !== undefined && m.status === 'approved');
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from('blockchain_milestones')
+    .select('*')
+    .eq('freelancer_wallet', walletAddress)
+    .eq('status', 'approved')
+    .order('completed_at', { ascending: false });
+
+  if (error || !data) return [];
+  return (data as MilestoneRow[]).map(rowToRecord);
 }
 
 /**
@@ -257,17 +371,22 @@ export async function getFreelancerPortfolio(walletAddress: string): Promise<Blo
  */
 export async function verifyMilestoneWork(milestoneId: string, deliverables: string): Promise<boolean> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  const record = milestoneStore.get(milestoneIdHash);
-  if (!record) return false;
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from('blockchain_milestones')
+    .select('work_hash')
+    .eq('milestone_id_hash', milestoneIdHash)
+    .single();
+
+  if (error || !data) return false;
 
   const computedHash = generateWorkHash(deliverables);
-  return record.workHash === computedHash;
+  return (data as { work_hash: string }).work_hash === computedHash;
 }
 
-export function clearMilestoneRegistry(): void {
-  milestoneStore.clear();
-  freelancerMilestonesMap.clear();
-  freelancerStatsMap.clear();
+export async function clearMilestoneRegistry(): Promise<void> {
+  const supabase = getSupabaseServiceClient();
+  await supabase.from('blockchain_milestones').delete().neq('milestone_id_hash', '');
 }
 
 export function getMilestoneRegistryAddress(): string {

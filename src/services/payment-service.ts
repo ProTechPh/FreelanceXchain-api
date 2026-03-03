@@ -755,6 +755,16 @@ export async function initializeContractEscrow(
   freelancerWalletAddress: string
 ): Promise<PaymentServiceResult<{ escrowAddress: string }>> {
   try {
+    if (contract.totalAmount <= 0) {
+      return {
+        success: false,
+        error: {
+          code: 'INVALID_CONTRACT_AMOUNT',
+          message: 'Contract total amount must be greater than zero',
+        },
+      };
+    }
+
     // Prepare milestone data for escrow
     // FIXED: Use toWei() instead of BigInt(Math.floor(amount * 1e18)) to avoid floating-point precision loss
     const escrowMilestones: EscrowMilestone[] = project.milestones.map(m => ({
@@ -765,20 +775,31 @@ export async function initializeContractEscrow(
 
     // Calculate total from milestones to ensure consistency
     const totalFromMilestones = escrowMilestones.reduce((sum, m) => sum + m.amount, 0n);
+    const contractTotalAmount = toWei(contract.totalAmount);
+
+    if (totalFromMilestones !== contractTotalAmount) {
+      return {
+        success: false,
+        error: {
+          code: 'AMOUNT_MISMATCH',
+          message: 'Contract total amount does not match total milestone amount',
+        },
+      };
+    }
 
     // Deploy escrow contract
     const deployment = await escrowOps.deployEscrow({
       contractId: contract.id,
       employerAddress: employerWalletAddress,
       freelancerAddress: freelancerWalletAddress,
-      totalAmount: totalFromMilestones,
+      totalAmount: contractTotalAmount,
       milestones: escrowMilestones,
     });
 
     // Deposit funds to escrow
     await escrowOps.depositToEscrow(
       deployment.escrowAddress,
-      totalFromMilestones,
+      contractTotalAmount,
       employerWalletAddress
     );
 

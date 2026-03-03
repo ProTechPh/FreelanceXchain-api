@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { enforceMFAForAdmins } from '../middleware/mfa-enforcement.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { ReviewRepository } from '../repositories/review-repository.js';
 import { getKycVerificationByUserId } from '../repositories/didit-kyc-repository.js';
 import { logger } from '../config/logger.js';
+import { auditMiddleware } from '../middleware/audit-logger.js';
 
 const router = Router();
 
@@ -21,7 +23,7 @@ const router = Router();
  *       200:
  *         description: List of all users
  */
-router.get('/users', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+router.get('/users', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
     const allUsers = await userRepository.getAllUsers();
     
@@ -96,7 +98,7 @@ router.get('/users', authMiddleware, requireRole('admin'), async (_req: Request,
  *                 totalEmployers:
  *                   type: number
  */
-router.get('/stats', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+router.get('/stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
     // Get total users count
     const allUsers = await userRepository.getAllUsers();
@@ -154,7 +156,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), async (_req: Request,
  *                 projectGrowth:
  *                   type: number
  */
-router.get('/analytics', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+router.get('/analytics', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
     // Get all users
     const allUsers = await userRepository.getAllUsers();
@@ -216,8 +218,10 @@ router.get('/analytics', authMiddleware, requireRole('admin'), async (_req: Requ
  * @swagger
  * /api/admin/platform-stats:
  *   get:
- *     summary: Get public platform statistics (no auth required)
- *     tags: [Platform]
+ *     summary: Get platform statistics (admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Platform statistics
@@ -237,7 +241,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), async (_req: Requ
  *                 satisfactionRate:
  *                   type: number
  */
-router.get('/platform-stats', async (_req: Request, res: Response) => {
+router.get('/platform-stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
     // Get total users count
     const allUsers = await userRepository.getAllUsers();
@@ -320,7 +324,7 @@ router.get('/platform-stats', async (_req: Request, res: Response) => {
  *       404:
  *         description: User not found
  */
-router.patch('/users/:id', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+router.patch('/users/:id', authMiddleware, requireRole('admin'), enforceMFAForAdmins, auditMiddleware('admin_update_user', 'user'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { role, name, isActive } = req.body;
@@ -347,6 +351,30 @@ router.patch('/users/:id', authMiddleware, requireRole('admin'), async (req: Req
       return;
     }
 
+    // Validate role value if provided
+    const validRoles = ['freelancer', 'employer', 'admin'];
+    if (role !== undefined && !validRoles.includes(role)) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_ROLE',
+          message: `Invalid role. Must be one of: ${validRoles.join(', ')}`,
+        },
+      });
+      return;
+    }
+
+    // Validate UUID format for user ID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid user ID format',
+        },
+      });
+      return;
+    }
+
     const user = await userRepository.getUserById(id);
     if (!user) {
       res.status(404).json({
@@ -368,18 +396,27 @@ router.patch('/users/:id', authMiddleware, requireRole('admin'), async (req: Req
 
     // Get updated user with KYC status
     const updatedUser = await userRepository.getUserById(id);
+    if (!updatedUser) {
+      res.status(404).json({
+        error: {
+          code: 'USER_NOT_FOUND',
+          message: 'User not found after update',
+        },
+      });
+      return;
+    }
     const kycVerification = await getKycVerificationByUserId(id);
     const isKycVerified = updatedUser?.role === 'admin' || 
                          (kycVerification?.status === 'approved' && 
                           (!kycVerification.expires_at || new Date(kycVerification.expires_at) > new Date()));
 
     res.json({
-      id: updatedUser!.id,
-      email: updatedUser!.email,
-      role: updatedUser!.role,
-      walletAddress: updatedUser!.wallet_address || '',
-      createdAt: updatedUser!.created_at,
-      name: updatedUser!.name || '',
+      id: updatedUser.id,
+      email: updatedUser.email,
+      role: updatedUser.role,
+      walletAddress: updatedUser.wallet_address || '',
+      createdAt: updatedUser.created_at,
+      name: updatedUser.name || '',
       kycVerified: isKycVerified,
       isActive: true,
     });

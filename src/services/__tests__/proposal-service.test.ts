@@ -149,6 +149,75 @@ describe('Proposal Service - Property Tests', () => {
     proposalStore.clear();
     contractStore.clear();
     projectStore.clear();
+
+    const mockSupabaseClient = (globalThis as unknown as {
+      mockSupabaseClient: { rpc?: unknown };
+    }).mockSupabaseClient;
+
+    mockSupabaseClient.rpc = jest.fn(async (...args: unknown[]) => {
+      const [functionName, params] = args as [string, Record<string, string>];
+      const proposalId = params.p_proposal_id;
+      const employerId = params.p_employer_id;
+
+      if (functionName !== 'accept_proposal_atomic') {
+        return { data: null, error: { message: `Unsupported RPC function: ${functionName}` } };
+      }
+
+      if (!proposalId || !employerId) {
+        return { data: null, error: { message: 'Missing RPC parameters' } };
+      }
+
+      const proposal = proposalStore.get(proposalId);
+      if (!proposal) {
+        return { data: null, error: { message: 'Proposal not found' } };
+      }
+
+      const project = projectStore.get(proposal.project_id);
+      if (!project) {
+        return { data: null, error: { message: 'Project not found' } };
+      }
+
+      if (proposal.status === 'accepted') {
+        return { data: null, error: { message: 'This proposal has already been accepted' } };
+      }
+
+      const hasAcceptedProposal = Array.from(proposalStore.values()).some((item) => {
+        return item.project_id === proposal.project_id && item.status === 'accepted' && item.id !== proposal.id;
+      });
+
+      if (hasAcceptedProposal) {
+        return { data: null, error: { message: 'Another proposal has already been accepted for this project' } };
+      }
+
+      const now = new Date().toISOString();
+      proposalStore.set(proposal.id, {
+        ...proposal,
+        status: 'accepted',
+        updated_at: now,
+      });
+
+      const contractId = generateId();
+      contractStore.set(contractId, {
+        id: contractId,
+        project_id: proposal.project_id,
+        proposal_id: proposal.id,
+        freelancer_id: proposal.freelancer_id,
+        employer_id: employerId,
+        escrow_address: `0x${'0'.repeat(40)}`,
+        total_amount: proposal.proposed_rate,
+        status: 'active',
+        created_at: now,
+        updated_at: now,
+      });
+
+      projectStore.set(project.id, {
+        ...project,
+        status: 'in_progress',
+        updated_at: now,
+      });
+
+      return { data: { contract_id: contractId }, error: null };
+    });
   });
   /**
    * **Feature: blockchain-freelance-marketplace, Property 14: Proposal creation**
@@ -285,10 +354,11 @@ describe('Proposal Service - Property Tests', () => {
           projectStore.clear();
           // Create a project for the employer
           const project = createTestProject(employerId);
+          const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
           // Submit a proposal
           const input = {
             projectId: project.id,
-            proposedRate,
+            proposedRate: milestoneTotal,
             estimatedDuration,
             attachments: [],
           };
@@ -310,7 +380,7 @@ describe('Proposal Service - Property Tests', () => {
             expect(contract.proposalId).toBe(proposalId);
             expect(contract.freelancerId).toBe(freelancerId);
             expect(contract.employerId).toBe(employerId);
-            expect(contract.totalAmount).toBe(proposedRate);
+            expect(contract.totalAmount).toBe(milestoneTotal);
             expect(contract.status).toBe('active');
             // Verify contract exists in store
             expect(contractStore.has(contract.id)).toBe(true);

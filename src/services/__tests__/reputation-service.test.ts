@@ -93,10 +93,10 @@ function createRatingWithTimestamp(
   };
 }
 describe('Reputation Service - Property Tests', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     contractStore.clear();
     projectStore.clear();
-    clearBlockchainRatings();
+    await clearBlockchainRatings();
   });
   /**
    * **Feature: blockchain-freelance-marketplace, Property 22: Rating validation bounds**
@@ -115,7 +115,7 @@ describe('Reputation Service - Property Tests', () => {
             // Clear stores
             contractStore.clear();
             projectStore.clear();
-            clearBlockchainRatings();
+            await clearBlockchainRatings();
             // Set up contract
             const contract: ContractEntity = contractData;
             contractStore.set(contract.id, contract);
@@ -163,7 +163,7 @@ describe('Reputation Service - Property Tests', () => {
             // Clear stores
             contractStore.clear();
             projectStore.clear();
-            clearBlockchainRatings();
+            await clearBlockchainRatings();
             // Set up contract
             const contract: ContractEntity = contractData;
             contractStore.set(contract.id, contract);

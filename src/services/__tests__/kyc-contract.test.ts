@@ -29,8 +29,8 @@ describe('KYC Blockchain Contract', () => {
     documentType: 'passport',
     documentNumber: 'P1234567',
   };
-  beforeEach(() => {
-    clearBlockchainKyc();
+  beforeEach(async () => {
+    await clearBlockchainKyc();
     clearTransactions();
   });
   describe('generateKycDataHash', () => {

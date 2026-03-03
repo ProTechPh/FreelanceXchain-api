@@ -1,10 +1,12 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadProposalAttachments } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
+import { notificationRepository } from '../repositories/notification-repository.js';
+import { generateId } from '../utils/id.js';
 import {
   submitProposal,
   getProposalById,
@@ -158,7 +160,7 @@ const router = Router();
  *       409:
  *         description: Duplicate proposal
  */
-router.post('/', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response, next) => {
+router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, async (req: Request, res: Response, next) => {
   const contentType = req.headers['content-type'] || '';
   
   // Route to appropriate handler based on Content-Type
@@ -323,6 +325,22 @@ async function processMultipartProposal(req: Request, res: Response) {
     });
   }
   
+  // Persist notification
+    try {
+      const { notification } = result.data;
+      await notificationRepository.createNotification({
+        id: generateId(),
+        user_id: notification.userId,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: notification.data,
+        is_read: false,
+      });
+    } catch (err) {
+    console.error('Failed to persist proposal notification:', err);
+  }
+
   return res.status(201).json(result.data.proposal);
 }
 
@@ -381,6 +399,22 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     });
   }
 
+  // Persist notification
+    try {
+      const { notification } = result.data;
+      await notificationRepository.createNotification({
+        id: generateId(),
+        user_id: notification.userId,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: notification.data,
+        is_read: false,
+      });
+    } catch (err) {
+    console.error('Failed to persist proposal notification:', err);
+  }
+
   return res.status(201).json(result.data.proposal);
 }
 
@@ -418,38 +452,43 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
  *         description: Proposal not found
  */
 router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
-  const id = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const userId = req.user?.userId;
+  try {
+    const id = req.params['id'] ?? '';
+    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const userId = req.user?.userId;
 
-  const result = await getProposalById(id);
+    const result = await getProposalById(id);
 
-  if (!result.success) {
-    res.status(404).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  // Authorization check - only the freelancer who submitted the proposal,
-  // the employer who owns the project, or an admin can view it
-  const proposal = result.data;
-  if (req.user?.role !== 'admin' && proposal.freelancerId !== userId) {
-    // Check if the user is the employer of the project
-    const projectResult = await getProjectById(proposal.projectId);
-    if (!projectResult.success || projectResult.data.employer_id !== userId) {
-      res.status(403).json({
-        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this proposal' },
+    if (!result.success) {
+      res.status(404).json({
+        error: { code: result.error.code, message: result.error.message },
         timestamp: new Date().toISOString(),
         requestId,
       });
       return;
     }
-  }
 
-  res.status(200).json(result.data);
+    // Authorization check - only the freelancer who submitted the proposal,
+    // the employer who owns the project, or an admin can view it
+    const proposal = result.data;
+    if (req.user?.role !== 'admin' && proposal.freelancerId !== userId) {
+      // Check if the user is the employer of the project
+      const projectResult = await getProjectById(proposal.projectId);
+      if (!projectResult.success || projectResult.data.employer_id !== userId) {
+        res.status(403).json({
+          error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this proposal' },
+          timestamp: new Date().toISOString(),
+          requestId,
+        });
+        return;
+      }
+    }
+
+    res.status(200).json(result.data);
+  } catch (error) {
+    console.error('Error fetching proposal:', error);
+    res.status(500).json({ error: 'Failed to fetch proposal' });
+  }
 });
 
 /**
@@ -539,39 +578,60 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (r
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/accept', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
-  const proposalId = req.params['id'] ?? '';
-  const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+  try {
+    const proposalId = req.params['id'] ?? '';
+    const userId = req.user?.userId;
+    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
-  if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
+    if (!userId) {
+      res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const result = await acceptProposal(proposalId, userId);
+
+    if (!result.success) {
+      let statusCode = 400;
+      if (result.error.code === 'NOT_FOUND') statusCode = 404;
+      if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+      
+      res.status(statusCode).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    // Persist notification
+    try {
+      const { notification } = result.data;
+      await notificationRepository.createNotification({
+        id: generateId(),
+        user_id: notification.userId,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: notification.data,
+        is_read: false,
+      });
+    } catch (err) {
+      console.error('Failed to persist proposal accept notification:', err);
+    }
+
+    res.status(200).json({
+      proposal: result.data.proposal,
+      contract: result.data.contract,
     });
-    return;
+  } catch (error) {
+    console.error('Error accepting proposal:', error);
+    res.status(500).json({ error: 'Failed to accept proposal' });
   }
-
-  const result = await acceptProposal(proposalId, userId);
-
-  if (!result.success) {
-    let statusCode = 400;
-    if (result.error.code === 'NOT_FOUND') statusCode = 404;
-    if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
-    
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  res.status(200).json({
-    proposal: result.data.proposal,
-    contract: result.data.contract,
-  });
 });
 
 /**
@@ -606,36 +666,57 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), validateUUID
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
-  const proposalId = req.params['id'] ?? '';
-  const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+  try {
+    const proposalId = req.params['id'] ?? '';
+    const userId = req.user?.userId;
+    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
-  if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
+    if (!userId) {
+      res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const result = await rejectProposal(proposalId, userId);
+
+    if (!result.success) {
+      let statusCode = 400;
+      if (result.error.code === 'NOT_FOUND') statusCode = 404;
+      if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+      
+      res.status(statusCode).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    // Persist notification
+    try {
+      const { notification } = result.data;
+      await notificationRepository.createNotification({
+        id: generateId(),
+        user_id: notification.userId,
+        type: notification.type,
+        title: notification.title,
+        message: notification.message,
+        data: notification.data,
+        is_read: false,
+      });
+    } catch (err) {
+      console.error('Failed to persist proposal reject notification:', err);
+    }
+
+    res.status(200).json(result.data.proposal);
+  } catch (error) {
+    console.error('Error rejecting proposal:', error);
+    res.status(500).json({ error: 'Failed to reject proposal' });
   }
-
-  const result = await rejectProposal(proposalId, userId);
-
-  if (!result.success) {
-    let statusCode = 400;
-    if (result.error.code === 'NOT_FOUND') statusCode = 404;
-    if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
-    
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  res.status(200).json(result.data.proposal);
 });
 
 
@@ -671,36 +752,41 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), validateUUID(), async (req: Request, res: Response) => {
-  const proposalId = req.params['id'] ?? '';
-  const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+  try {
+    const proposalId = req.params['id'] ?? '';
+    const userId = req.user?.userId;
+    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
-  if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
+    if (!userId) {
+      res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const result = await withdrawProposal(proposalId, userId);
+
+    if (!result.success) {
+      let statusCode = 400;
+      if (result.error.code === 'NOT_FOUND') statusCode = 404;
+      if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+      
+      res.status(statusCode).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    res.status(200).json(result.data);
+  } catch (error) {
+    console.error('Error withdrawing proposal:', error);
+    res.status(500).json({ error: 'Failed to withdraw proposal' });
   }
-
-  const result = await withdrawProposal(proposalId, userId);
-
-  if (!result.success) {
-    let statusCode = 400;
-    if (result.error.code === 'NOT_FOUND') statusCode = 404;
-    if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
-    
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  res.status(200).json(result.data);
 });
 
 export default router;

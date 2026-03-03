@@ -52,13 +52,20 @@ export async function enforceMFAForAdmins(req: Request, res: Response, next: Nex
   const factorsResult = await getMFAFactors(token);
 
   if ('code' in factorsResult) {
-    // Error getting factors - log and allow through (fail open for now)
-    logger.warn('Failed to check MFA factors for admin user', {
+    // Fail-closed: if we can't check MFA factors, deny admin access
+    logger.warn('Failed to check MFA factors for admin user — blocking request (fail-closed)', {
       userId: user.userId,
       error: factorsResult.message,
       requestId,
     });
-    next();
+    res.status(403).json({
+      error: {
+        code: 'MFA_CHECK_FAILED',
+        message: 'Unable to verify MFA enrollment status. Please try again.',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 

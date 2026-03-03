@@ -2,7 +2,7 @@ import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository
 import { TABLES } from '../config/supabase.js';
 
 export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
-export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed';
+export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed' | 'refunded';
 
 export type MilestoneEntity = {
   id: string;
@@ -120,24 +120,28 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
+    // Fetch ALL open projects (no range), filter by skill, then paginate in memory.
+    // This ensures total/hasMore reflect actual matched results, not all open projects.
+    const { data, error } = await client
       .from(this.tableName)
-      .select('*', { count: 'exact' })
+      .select('*')
       .eq('status', 'open')
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order('created_at', { ascending: false });
     
     if (error) throw new Error(`Failed to get projects by skills: ${error.message}`);
     
     // Filter for skill matching in memory
-    const filtered = (data ?? []).filter((project: ProjectEntity) =>
+    const allMatched = (data ?? []).filter((project: ProjectEntity) =>
       project.required_skills.some(skill => skillIds.includes(skill.skill_id))
     );
 
+    const total = allMatched.length;
+    const paginatedItems = allMatched.slice(offset, offset + limit);
+
     return {
-      items: filtered as ProjectEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
+      items: paginatedItems as ProjectEntity[],
+      hasMore: offset + limit < total,
+      total,
     };
   }
 
@@ -169,11 +173,21 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
+    // Sanitize keyword for PostgREST filter: escape characters that have special
+    // meaning in PostgREST filter strings (commas, dots, parentheses, backslashes, percent)
+    const sanitized = keyword
+      .replace(/\\/g, '\\\\')
+      .replace(/%/g, '\\%')
+      .replace(/,/g, '\\,')
+      .replace(/\./g, '\\.')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)');
+
     const { data, error, count } = await client
       .from(this.tableName)
       .select('*', { count: 'exact' })
       .eq('status', 'open')
-      .or(`title.ilike.%${keyword}%,description.ilike.%${keyword}%`)
+      .or(`title.ilike.%${sanitized}%,description.ilike.%${sanitized}%`)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
     
