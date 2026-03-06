@@ -13,7 +13,7 @@ pragma solidity 0.8.26;
  * - Custom errors replace require strings
  * - Loop optimizations: cached length, unchecked ++i
  * - Cached milestone.amount in local variable to avoid repeated SLOADs
- * - Extracted _checkCompletion to reduce bytecode duplication
+ * - Inlined completion checks to follow checks-effects-interactions pattern
  */
 contract FreelanceEscrow {
     // Custom errors
@@ -183,13 +183,20 @@ contract FreelanceEscrow {
         uint256 amt = milestone.amount;
         releasedAmount += amt;
         
+        // Check completion and update state BEFORE external call
+        if (releasedAmount + refundedAmount >= totalAmount) {
+            isActive = false;
+        }
+        
         // Transfer funds to freelancer
         (bool success, ) = freelancer.call{value: amt}("");
         if (!success) revert TransferFailed();
         
         emit MilestoneApproved(milestoneIndex, amt);
         
-        _checkCompletion();
+        if (!isActive) {
+            emit ContractCompleted();
+        }
     }
     
     /**
@@ -221,6 +228,11 @@ contract FreelanceEscrow {
             milestone.status = MilestoneStatus.Approved;
             releasedAmount += amt;
             
+            // Check completion and update state BEFORE external call
+            if (releasedAmount + refundedAmount >= totalAmount) {
+                isActive = false;
+            }
+            
             (bool success, ) = freelancer.call{value: amt}("");
             if (!success) revert TransferFailed();
             
@@ -228,6 +240,11 @@ contract FreelanceEscrow {
         } else {
             milestone.status = MilestoneStatus.Refunded;
             refundedAmount += amt;
+            
+            // Check completion and update state BEFORE external call
+            if (releasedAmount + refundedAmount >= totalAmount) {
+                isActive = false;
+            }
             
             (bool success, ) = employer.call{value: amt}("");
             if (!success) revert RefundFailed();
@@ -237,7 +254,9 @@ contract FreelanceEscrow {
         
         emit DisputeResolved(milestoneIndex, inFavorOfFreelancer);
 
-        _checkCompletion();
+        if (!isActive) {
+            emit ContractCompleted();
+        }
     }
     
     /**
@@ -252,12 +271,19 @@ contract FreelanceEscrow {
         uint256 amt = milestone.amount;
         refundedAmount += amt;
         
+        // Check completion and update state BEFORE external call
+        if (releasedAmount + refundedAmount >= totalAmount) {
+            isActive = false;
+        }
+        
         (bool success, ) = employer.call{value: amt}("");
         if (!success) revert RefundFailed();
         
         emit MilestoneRefunded(milestoneIndex, amt);
 
-        _checkCompletion();
+        if (!isActive) {
+            emit ContractCompleted();
+        }
     }
     
     /**
@@ -283,16 +309,6 @@ contract FreelanceEscrow {
         }
         
         emit ContractCancelled();
-    }
-
-    /**
-     * @dev Internal helper to check if all milestones are completed/refunded
-     */
-    function _checkCompletion() internal {
-        if (releasedAmount + refundedAmount >= totalAmount) {
-            isActive = false;
-            emit ContractCompleted();
-        }
     }
     
     // View functions

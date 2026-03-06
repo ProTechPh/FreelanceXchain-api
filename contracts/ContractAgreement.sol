@@ -184,6 +184,8 @@ contract ContractAgreement {
     }
 
     function verifyTerms(bytes32 contractIdHash, bytes32 termsHash) external view returns (bool) {
+        // slither-disable-next-line incorrect-equality
+        // Note: Strict equality is intentional and safe for cryptographic hash comparison
         return agreements[contractIdHash].termsHash == termsHash;
     }
 
