@@ -5,7 +5,6 @@ import { uploadProposalAttachments } from '../middleware/file-upload-middleware.
 import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
-import { notificationRepository } from '../repositories/notification-repository.js';
 import { generateId } from '../utils/id.js';
 import {
   submitProposal,
@@ -324,22 +323,6 @@ async function processMultipartProposal(req: Request, res: Response) {
       requestId,
     });
   }
-  
-  // Persist notification
-    try {
-      const { notification } = result.data;
-      await notificationRepository.createNotification({
-        id: generateId(),
-        user_id: notification.userId,
-        type: notification.type,
-        title: notification.title,
-        message: notification.message,
-        data: notification.data,
-        is_read: false,
-      });
-    } catch (err) {
-    console.error('Failed to persist proposal notification:', err);
-  }
 
   return res.status(201).json(result.data.proposal);
 }
@@ -397,22 +380,6 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
       timestamp: new Date().toISOString(),
       requestId,
     });
-  }
-
-  // Persist notification
-    try {
-      const { notification } = result.data;
-      await notificationRepository.createNotification({
-        id: generateId(),
-        user_id: notification.userId,
-        type: notification.type,
-        title: notification.title,
-        message: notification.message,
-        data: notification.data,
-        is_read: false,
-      });
-    } catch (err) {
-    console.error('Failed to persist proposal notification:', err);
   }
 
   return res.status(201).json(result.data.proposal);
@@ -608,22 +575,6 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
       return;
     }
 
-    // Persist notification
-    try {
-      const { notification } = result.data;
-      await notificationRepository.createNotification({
-        id: generateId(),
-        user_id: notification.userId,
-        type: notification.type,
-        title: notification.title,
-        message: notification.message,
-        data: notification.data,
-        is_read: false,
-      });
-    } catch (err) {
-      console.error('Failed to persist proposal accept notification:', err);
-    }
-
     res.status(200).json({
       proposal: result.data.proposal,
       contract: result.data.contract,
@@ -694,22 +645,6 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
         requestId,
       });
       return;
-    }
-
-    // Persist notification
-    try {
-      const { notification } = result.data;
-      await notificationRepository.createNotification({
-        id: generateId(),
-        user_id: notification.userId,
-        type: notification.type,
-        title: notification.title,
-        message: notification.message,
-        data: notification.data,
-        is_read: false,
-      });
-    } catch (err) {
-      console.error('Failed to persist proposal reject notification:', err);
     }
 
     res.status(200).json(result.data.proposal);

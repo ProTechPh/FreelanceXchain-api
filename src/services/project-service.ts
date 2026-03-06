@@ -135,10 +135,17 @@ export async function updateProject(
   input: UpdateProjectInput
 ): Promise<ProjectServiceResult<ProjectEntity>> {
   const existingProject = await projectRepository.getProjectById(projectId);
-  if (!existingProject || existingProject.employer_id !== employerId) {
+  if (!existingProject) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
+    };
+  }
+  
+  if (existingProject.employer_id !== employerId) {
+    return {
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Not authorized to update this project' },
     };
   }
 

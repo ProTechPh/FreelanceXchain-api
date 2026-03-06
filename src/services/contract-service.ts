@@ -1,6 +1,7 @@
 import { getSupabaseServiceClient } from '../config/supabase.js';
 import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 
 export type ContractServiceError = {
@@ -184,4 +185,41 @@ export async function cancelPendingContract(contractId: string, userId: string):
   }
 
   return { success: true };
+}
+
+/**
+ * Get wallet addresses for contract parties
+ * Used for blockchain escrow deployment
+ */
+export async function getContractWalletAddresses(
+  contractId: string
+): Promise<ContractServiceResult<{ employerWallet: string; freelancerWallet: string }>> {
+  const entity = await contractRepository.getContractById(contractId);
+  if (!entity) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Contract not found' },
+    };
+  }
+
+  const employer = await userRepository.getUserById(entity.employer_id);
+  const freelancer = await userRepository.getUserById(entity.freelancer_id);
+
+  if (!employer?.wallet_address || !freelancer?.wallet_address) {
+    return {
+      success: false,
+      error: { 
+        code: 'MISSING_WALLET', 
+        message: 'Both employer and freelancer must have wallet addresses configured' 
+      },
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      employerWallet: employer.wallet_address,
+      freelancerWallet: freelancer.wallet_address,
+    },
+  };
 }

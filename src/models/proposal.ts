@@ -1,2 +1,17 @@
-// Re-export types from entity-mapper for backward compatibility
-export type { Proposal, ProposalStatus } from '../utils/entity-mapper.js';
+// Proposal domain types
+import type { FileAttachment } from '../utils/file-validator.js';
+
+export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
+
+export type Proposal = {
+  id: string;
+  projectId: string;
+  freelancerId: string;
+  coverLetter: string | null;
+  attachments: FileAttachment[];
+  proposedRate: number;
+  estimatedDuration: number;
+  status: ProposalStatus;
+  createdAt: string;
+  updatedAt: string;
+};

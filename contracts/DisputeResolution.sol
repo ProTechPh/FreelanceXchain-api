@@ -1,50 +1,66 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.26;
 
 /**
  * @title DisputeResolution
  * @dev Records dispute outcomes on-chain for transparency
  * Creates immutable record of arbitration decisions
- * 
- * FIXED: Added access control - only designated parties can create/resolve disputes
- * FIXED: Split outcome now updates stats for both parties
- * FIXED: Only contract parties can update evidence
+ *
+ * Gas optimizations:
+ * - owner is immutable (saves ~2100 gas per onlyOwner call)
+ * - Removed redundant disputeId from struct (saves 1 storage slot)
+ * - Packed outcome + createdAt + resolvedAt with initiator (saves 3 storage slots)
+ * - Packed disputesWon/Lost/Split into single DisputeStats struct (saves 2 slots per user)
+ * - Custom errors replace require strings
+ * - Cached storage reads in resolveDispute
  */
 contract DisputeResolution {
-    address public owner;
+    // Custom errors
+    error OnlyOwner();
+    error DisputeAlreadyExists();
+    error InvalidInitiator();
+    error InvalidFreelancer();
+    error InvalidEmployer();
+    error OnlyInitiatorOrOwner();
+    error InitiatorMustBeParty();
+    error DisputeNotFound();
+    error AlreadyResolved();
+    error OnlyPartiesOrOwner();
+    error InvalidOutcome();
+
+    address public immutable owner;
 
     enum DisputeOutcome { Pending, FreelancerFavor, EmployerFavor, Split, Cancelled }
 
     struct DisputeRecord {
-        bytes32 disputeId;
-        bytes32 contractId;
-        bytes32 milestoneId;
-        bytes32 evidenceHash;       // Hash of all evidence
-        address initiator;
-        address freelancer;
-        address employer;
-        address arbiter;
-        uint256 amount;
-        DisputeOutcome outcome;
-        string reasoning;
-        uint256 createdAt;
-        uint256 resolvedAt;
+        bytes32 contractId;         // slot 0
+        bytes32 milestoneId;        // slot 1
+        bytes32 evidenceHash;       // slot 2
+        address initiator;          // slot 3 — 20 bytes
+        DisputeOutcome outcome;     // slot 3 — 1 byte (packed)
+        uint48 createdAt;           // slot 3 — 6 bytes (packed)
+        uint40 resolvedAt;          // slot 3 — 5 bytes (packed)
+        address freelancer;         // slot 4
+        address employer;           // slot 5
+        address arbiter;            // slot 6
+        uint256 amount;             // slot 7
+        string reasoning;           // slot 8
     }
 
     mapping(bytes32 => DisputeRecord) public disputes;
     mapping(address => bytes32[]) public userDisputes;
-    mapping(address => uint256) public disputesWon;
-    mapping(address => uint256) public disputesLost;
-    mapping(address => uint256) public disputesSplit;
+
+    // Packed dispute stats per user (3 values in 1 slot instead of 3 slots)
+    struct DisputeStats {
+        uint64 won;
+        uint64 lost;
+        uint64 split;
+    }
+    mapping(address => DisputeStats) public disputeStats;
 
     event DisputeCreated(bytes32 indexed disputeIdHash, bytes32 indexed contractId, address indexed initiator);
     event EvidenceSubmitted(bytes32 indexed disputeIdHash, bytes32 evidenceHash);
     event DisputeResolved(bytes32 indexed disputeIdHash, DisputeOutcome outcome, address arbiter, uint256 timestamp);
-
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner");
-        _;
-    }
 
     constructor() {
         owner = msg.sender;
@@ -52,7 +68,7 @@ contract DisputeResolution {
 
     /**
      * @dev Create dispute record on-chain
-     * ACCESS CONTROL: Only the initiator themselves or the contract owner (backend relayer) can create
+     * Only the initiator themselves or the contract owner (backend relayer) can create
      */
     function createDispute(
         bytes32 disputeIdHash,
@@ -63,35 +79,26 @@ contract DisputeResolution {
         address employer,
         uint256 amount
     ) external {
-        require(disputes[disputeIdHash].createdAt == 0, "Dispute exists");
-        require(initiator != address(0), "Invalid initiator");
-        require(freelancer != address(0), "Invalid freelancer");
-        require(employer != address(0), "Invalid employer");
-        // Access control: only the initiator or the contract owner can create disputes
-        require(
-            msg.sender == initiator || msg.sender == owner,
-            "Only initiator or owner can create disputes"
-        );
-        // Verify initiator is a party to the contract
-        require(
-            initiator == freelancer || initiator == employer,
-            "Initiator must be a contract party"
-        );
+        if (disputes[disputeIdHash].createdAt != 0) revert DisputeAlreadyExists();
+        if (initiator == address(0)) revert InvalidInitiator();
+        if (freelancer == address(0)) revert InvalidFreelancer();
+        if (employer == address(0)) revert InvalidEmployer();
+        if (msg.sender != initiator && msg.sender != owner) revert OnlyInitiatorOrOwner();
+        if (initiator != freelancer && initiator != employer) revert InitiatorMustBeParty();
 
         disputes[disputeIdHash] = DisputeRecord({
-            disputeId: disputeIdHash,
             contractId: contractId,
             milestoneId: milestoneId,
             evidenceHash: bytes32(0),
             initiator: initiator,
+            outcome: DisputeOutcome.Pending,
+            createdAt: uint48(block.timestamp),
+            resolvedAt: 0,
             freelancer: freelancer,
             employer: employer,
             arbiter: address(0),
             amount: amount,
-            outcome: DisputeOutcome.Pending,
-            reasoning: "",
-            createdAt: block.timestamp,
-            resolvedAt: 0
+            reasoning: ""
         });
 
         userDisputes[freelancer].push(disputeIdHash);
@@ -102,17 +109,13 @@ contract DisputeResolution {
 
     /**
      * @dev Update evidence hash (aggregated hash of all evidence)
-     * ACCESS CONTROL: Only dispute parties or the contract owner can update evidence
+     * Only dispute parties or the contract owner can update evidence
      */
     function updateEvidence(bytes32 disputeIdHash, bytes32 evidenceHash) external {
         DisputeRecord storage d = disputes[disputeIdHash];
-        require(d.createdAt > 0, "Not found");
-        require(d.outcome == DisputeOutcome.Pending, "Already resolved");
-        // Access control: only parties to the dispute or owner can submit evidence
-        require(
-            msg.sender == d.freelancer || msg.sender == d.employer || msg.sender == owner,
-            "Only dispute parties or owner can update evidence"
-        );
+        if (d.createdAt == 0) revert DisputeNotFound();
+        if (d.outcome != DisputeOutcome.Pending) revert AlreadyResolved();
+        if (msg.sender != d.freelancer && msg.sender != d.employer && msg.sender != owner) revert OnlyPartiesOrOwner();
 
         d.evidenceHash = evidenceHash;
         emit EvidenceSubmitted(disputeIdHash, evidenceHash);
@@ -120,35 +123,39 @@ contract DisputeResolution {
 
     /**
      * @dev Resolve dispute with outcome
-     * ACCESS CONTROL: Only the contract owner (acting as arbiter/admin) can resolve disputes
+     * Only the contract owner (acting as arbiter/admin) can resolve disputes
      */
     function resolveDispute(
         bytes32 disputeIdHash,
         DisputeOutcome outcome,
         string calldata reasoning,
         address arbiter
-    ) external onlyOwner {
+    ) external {
+        if (msg.sender != owner) revert OnlyOwner();
         DisputeRecord storage d = disputes[disputeIdHash];
-        require(d.createdAt > 0, "Not found");
-        require(d.outcome == DisputeOutcome.Pending, "Already resolved");
-        require(outcome != DisputeOutcome.Pending, "Invalid outcome");
+        if (d.createdAt == 0) revert DisputeNotFound();
+        if (d.outcome != DisputeOutcome.Pending) revert AlreadyResolved();
+        if (outcome == DisputeOutcome.Pending) revert InvalidOutcome();
 
         d.outcome = outcome;
         d.reasoning = reasoning;
         d.arbiter = arbiter;
-        d.resolvedAt = block.timestamp;
+        d.resolvedAt = uint40(block.timestamp);
+
+        // Cache addresses to avoid repeated SLOADs
+        address _freelancer = d.freelancer;
+        address _employer = d.employer;
 
         // Update win/loss/split stats
         if (outcome == DisputeOutcome.FreelancerFavor) {
-            disputesWon[d.freelancer]++;
-            disputesLost[d.employer]++;
+            disputeStats[_freelancer].won++;
+            disputeStats[_employer].lost++;
         } else if (outcome == DisputeOutcome.EmployerFavor) {
-            disputesWon[d.employer]++;
-            disputesLost[d.freelancer]++;
+            disputeStats[_employer].won++;
+            disputeStats[_freelancer].lost++;
         } else if (outcome == DisputeOutcome.Split) {
-            // FIXED: Split now updates stats for both parties
-            disputesSplit[d.freelancer]++;
-            disputesSplit[d.employer]++;
+            disputeStats[_freelancer].split++;
+            disputeStats[_employer].split++;
         }
 
         emit DisputeResolved(disputeIdHash, outcome, arbiter, block.timestamp);
@@ -169,11 +176,12 @@ contract DisputeResolution {
         uint256 resolvedAt
     ) {
         DisputeRecord storage d = disputes[disputeIdHash];
-        return (d.contractId, d.milestoneId, d.evidenceHash, d.initiator, d.freelancer, d.employer, d.amount, d.outcome, d.createdAt, d.resolvedAt);
+        return (d.contractId, d.milestoneId, d.evidenceHash, d.initiator, d.freelancer, d.employer, d.amount, d.outcome, uint256(d.createdAt), uint256(d.resolvedAt));
     }
 
     function getUserDisputeStats(address user) external view returns (uint256 won, uint256 lost, uint256 split, uint256 total) {
-        return (disputesWon[user], disputesLost[user], disputesSplit[user], userDisputes[user].length);
+        DisputeStats storage s = disputeStats[user];
+        return (uint256(s.won), uint256(s.lost), uint256(s.split), userDisputes[user].length);
     }
 
     function isResolved(bytes32 disputeIdHash) external view returns (bool) {

@@ -8,6 +8,209 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+#### Configuration and Build System Improvements (2026-03-06)
+- **Package Manager**: Standardized all commands to use `pnpm` with `--frozen-lockfile` for reproducible builds
+- **Build Script**: Simplified `build` script to use `tsc` directly without workarounds
+- **Security Audit**: Updated security audit commands to use `pnpm audit` instead of `npm audit`
+- **Port Configuration**: Updated default port from 3000 to 7860 across all documentation
+- **Docker Configuration**: Updated Dockerfile to use pnpm 10.28.1 with proper multi-stage build
+- **TypeScript Config**: Documented actual tsconfig.json settings (NodeNext module resolution, ES2022 target)
+- **Jest Config**: Documented ESM preset configuration with proper ts-jest setup
+- **ESLint Config**: Documented flat config format with separate rules for test files
+- **Hardhat Config**: Documented all network configurations (hardhat, ganache, sepolia, polygon, amoy)
+
+#### GitHub Actions Workflows (2026-03-06)
+- **CI Workflow**: Added proper `permissions: contents: read` to all jobs
+- **Frozen Lockfile**: Changed all workflows from `--no-frozen-lockfile` to `--frozen-lockfile` for reproducibility
+- **Consistency**: Applied frozen-lockfile to ci.yml, security.yml, smart-contracts.yml, and release.yml
+- **PR Labeler**: Enhanced with additional labels (blockchain, security, middleware, database)
+- **Label Patterns**: Updated to match pnpm-lock.yaml and added more specific file patterns
+
+### Documentation
+
+#### Updated Documentation (2026-03-06)
+- **CONFIGURATION.md**: Completely updated with accurate configurations for all tools
+  - Updated package.json scripts section with actual commands
+  - Fixed TypeScript configuration examples
+  - Updated Jest configuration to reflect ESM setup
+  - Corrected ESLint flat config format
+  - Updated Hardhat networks and Solidity settings
+  - Fixed Docker multi-stage build documentation
+  - Updated port numbers throughout (7860 instead of 3000)
+- **README.md**: Updated with correct setup instructions
+  - Changed default port to 7860
+  - Updated pnpm install command to use --frozen-lockfile
+  - Added production mode command (pnpm run prod)
+  - Fixed Docker run command port mapping
+- **CONTRIBUTING.md**: Updated development workflow commands
+  - Changed to use --frozen-lockfile for dependency installation
+  - Updated test commands to match actual package.json scripts
+  - Fixed type-check command to use pnpm exec tsc --noEmit
+- **.github/README.md**: Rewrote workflow documentation
+  - Updated CI workflow description to match actual implementation
+  - Fixed PR checks workflow description
+  - Corrected security workflow jobs and tools
+  - Updated MegaLinter enabled linters list
+  - Fixed smart contracts workflow description
+  - Updated Docker Hub workflow details
+  - Corrected Hugging Face sync workflow
+  - Updated release workflow description
+  - Fixed secrets table with actual required secrets
+
+#### Documentation Improvements - Getting Started (2026-03-06)
+- **docs/getting-started/Developer Setup Guide.md**: Comprehensive updates
+  - Updated prerequisites (Node.js 20+, pnpm 8+)
+  - Changed all commands to use `pnpm install --frozen-lockfile`
+  - Updated port numbers from 3000 to 7860 throughout
+  - Fixed Hardhat configuration details (Solidity 0.8.26, optimizer settings)
+  - Updated deployment commands to match actual scripts
+  - Added production mode command (pnpm run prod)
+  - Updated troubleshooting section with correct versions
+- **docs/getting-started/Technology Stack & Dependencies.md**: Technical accuracy improvements
+  - Updated Dockerfile documentation with pnpm 10.28.1 details
+  - Corrected Solidity version to 0.8.26 with viaIR enabled
+  - Updated dependency management section to emphasize frozen-lockfile
+  - Fixed Docker multi-stage build process description
+
+#### Documentation Improvements - Security (2026-03-06)
+- **docs/security/SECURITY_IMPLEMENTATION.md**: Command and port updates
+  - Updated all curl examples from localhost:3000 to localhost:7860
+  - Changed npm commands to pnpm commands throughout
+  - Fixed security audit commands (pnpm run security:audit)
+  - Updated testing procedures with correct ports
+- **docs/security/MFA_TESTING_GUIDE.md**: Port standardization
+  - Updated all API endpoint URLs to use port 7860
+  - Maintained consistency across all curl examples
+
+#### Documentation Improvements - Guides (2026-03-06)
+- **docs/guides/Deployment Configuration.md**: Configuration accuracy
+  - Updated default PORT from 3000 to 7860
+  - Added builder stage pnpm install details
+  - Fixed CORS origin examples
+- **docs/guides/DEMO-TROUBLESHOOTING.md**: Command modernization
+  - Changed npm commands to pnpm with frozen-lockfile
+  - Updated port checks from 3000 to 7860
+  - Fixed all curl examples with correct port
+- **docs/guides/IAS-DEMO-GUIDE.md**: Demo script updates
+  - Updated startup commands to use pnpm
+  - Changed all test URLs to port 7860
+  - Fixed Swagger UI URL references
+- **docs/guides/MAINTENANCE.md**: Maintenance command updates
+  - Updated security audit commands to pnpm
+  - Fixed migration management commands
+  - Updated blockchain monitoring commands
+- **docs/guides/VISUAL-CHECKLIST.md**: Checklist modernization
+  - Updated server startup command to pnpm run dev
+  - Fixed security audit command
+- **docs/guides/TROUBLESHOOTING.md**: Troubleshooting accuracy
+  - Updated security audit command to pnpm
+
+#### Documentation Improvements - Features & Blockchain (2026-03-06)
+- **docs/features/proposal-uploads/PROPOSAL_FILE_UPLOAD_QUICKSTART.md**: API endpoint updates
+  - Updated all curl examples to use port 7860
+- **docs/features/proposal-uploads/PROPOSAL_FILE_UPLOAD_IMPLEMENTATION.md**: Build command fix
+  - Updated build verification command to pnpm
+- **docs/blockchain/BLOCKCHAIN_INTEGRATION.md**: Blockchain setup updates
+  - Updated Ganache installation to use pnpm
+  - Fixed deployment commands to match actual scripts
+  - Updated development workflow commands
+
+### Changed
+
+#### Documentation Restructuring (2026-03-06)
+- **Simplified folder structure**: Removed redundant nested folders and flattened documentation hierarchy
+- **Clean naming convention**: Renamed all files to use simple, kebab-case names without redundant prefixes
+- **Total files**: 145 markdown files organized into clean structure
+
+**Getting Started** (✓ Complete)
+- Already cleaned: `overview.md`, `setup.md`, `tech-stack.md`
+
+**Guides Folder** (✓ Complete)
+- `Deployment Configuration.md` → `deployment.md`
+- `MAINTENANCE.md` → `maintenance.md`
+- `Testing Strategy.md` → `testing.md`
+- `TROUBLESHOOTING.md` → `troubleshooting.md`
+
+**Blockchain Folder** (✓ Complete - Flattened)
+- Main files: `integration.md`, `testing.md`, `test-results.md`, `overview.md`
+- Component files: `client.md`, `contracts.md`, `disputes.md`, `escrow.md`, `kyc.md`, `milestones.md`, `reputation.md`
+- Removed `Blockchain Integration/` subfolder
+
+**Security Folder** (✓ Complete - Flattened)
+- Files: `api-security.md`, `authentication.md`, `csrf.md`, `database-security.md`, `mfa.md`, `overview.md`, `privacy-kyc.md`, `rbac.md`, `smart-contracts.md`
+- Removed `Security Considerations/` subfolder
+
+**Features Folder** (✓ Complete)
+- `proposal-uploads/`: `overview.md`, `implementation.md`, `quickstart.md`
+- `audit-logs/`: `overview.md`, `examples.md`, `guide.md`
+
+**Architecture Folder** (✓ Complete - Reorganized)
+- Flattened 38 main files to parent folder with clean prefixes:
+  - AI components: `ai-overview.md`, `ai-matching.md`, `ai-assistant.md`, `ai-client.md`
+  - API components: `api-overview.md`, `api-contract.md`
+  - Services: `services-overview.md`, `service-auth.md`, `service-contract.md`, `service-dispute.md`, `service-kyc.md`, `service-matching.md`, `service-notification.md`, `service-payment.md`, `service-project.md`, `service-proposal.md`, `service-reputation.md`
+  - Models: `models-overview.md`, `model-user.md`, `model-project.md`, `model-proposal.md`, `model-contract.md`, `model-dispute.md`, `model-notification.md`, `model-skill.md`, `model-kyc.md`
+  - Database: `database-overview.md`, `database-indexes.md`, `database-rls.md`, `database-seeding.md`
+  - Middleware: `middleware-overview.md`, `middleware-auth.md`, `middleware-errors.md`, `middleware-logging.md`, `middleware-rate-limit.md`, `middleware-security.md`, `middleware-validation.md`
+- Removed nested subfolders: `AI-Powered Matching System/`, `API Endpoints Reference/`, `Business Logic Layer/`, `Data Models & ORM Mapping/`, `Database Schema Design/`, `Middleware & Interceptors/`
+
+#### Documentation Index Updates (2026-03-06)
+- **docs/README.md**: Complete rewrite with new structure
+  - Updated all links to use new kebab-case filenames
+  - Organized architecture section with clear subsections (AI, API, Services, Models, Database, Middleware)
+  - Updated security, blockchain, features, guides, and getting-started sections
+  - Fixed quick links to point to new file locations
+- **docs/architecture/README.md**: Restructured to match new file organization
+  - Added comprehensive sections for all architecture components
+  - Updated all links to new kebab-case filenames
+- **docs/security/README.md**: Simplified with new structure
+  - Updated all links to new security documentation files
+  - Streamlined security checklist
+- **docs/blockchain/README.md**: Enhanced with smart contract details
+  - Added smart contracts subsection with all component files
+  - Updated all links to new blockchain documentation
+- **docs/features/README.md**: Updated feature documentation links
+  - Fixed audit-logs links (overview.md, examples.md, guide.md)
+  - Fixed proposal-uploads links (overview.md, implementation.md, quickstart.md)
+- **docs/getting-started/README.md**: Simplified getting started links
+  - Updated to overview.md, setup.md, tech-stack.md
+- **docs/guides/README.md**: Streamlined operational guides
+  - Updated to deployment.md, maintenance.md, testing.md, troubleshooting.md
+
+#### Cross-Reference Updates (2026-03-06)
+- **docs/guides/troubleshooting.md**: Updated 50+ internal links to new file structure
+  - Fixed all blockchain component references
+  - Updated service and model references
+  - Fixed middleware and API endpoint links
+  - Updated AI system references
+- **docs/blockchain/test-results.md**: Updated integration guide link
+- **docs/features/**: Updated all cross-references in audit-logs and proposal-uploads
+- **docs/guides/maintenance.md**: Updated security documentation references
+
+**Final Structure**: 145 markdown files in clean kebab-case naming convention across 21 subdirectories
+  - AI files: `ai-assistant.md`, `ai-client.md`, `ai-overview.md`, `ai-matching.md`
+  - Middleware files: `middleware-auth.md`, `middleware-errors.md`, `middleware-logging.md`, `middleware-overview.md`, `middleware-rate-limit.md`, `middleware-security.md`, `middleware-validation.md`
+  - Service files: `service-auth.md`, `service-contract.md`, `service-dispute.md`, `service-kyc.md`, `service-matching.md`, `service-notification.md`, `service-payment.md`, `service-project.md`, `service-proposal.md`, `service-reputation.md`, `services-overview.md`
+  - Model files: `model-contract.md`, `model-dispute.md`, `model-kyc.md`, `model-notification.md`, `model-project.md`, `model-proposal.md`, `model-skill.md`, `model-user.md`, `models-overview.md`
+  - Database files: `database-indexes.md`, `database-overview.md`, `database-rls.md`, `database-seeding.md`, `tables-overview.md`
+  - API files: `api-contract.md`, `api-overview.md`
+- Kept organized subdirectories for detailed API documentation:
+  - `api-ai-matching/`, `api-auth/`, `api-dispute/`, `api-kyc/`, `api-notification/`, `api-payment/`, `api-project/`, `api-proposal/`, `api-reputation/`, `api-search/`
+  - `database-tables/` (contains 14 table documentation files)
+- Removed empty folders: `AI-Powered Matching System/`, `API Endpoints Reference/`, `Business Logic Layer/`, `Data Models & ORM Mapping/`, `Database Schema Design/`, `Middleware & Interceptors/`
+- **.github/README.md**: Rewrote workflow documentation
+  - Updated CI workflow description to match actual implementation
+  - Fixed PR checks workflow description
+  - Corrected security workflow jobs and tools
+  - Updated MegaLinter enabled linters list
+  - Fixed smart contracts workflow description
+  - Updated Docker Hub workflow details
+  - Corrected Hugging Face sync workflow
+  - Updated release workflow description
+  - Fixed secrets table with actual required secrets
+
 ### Added
 
 #### Server-Side File Upload Validation (IAS Checklist Completion)

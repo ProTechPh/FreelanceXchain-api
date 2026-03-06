@@ -78,6 +78,7 @@ export const config = {
   blockchain: {
     rpcUrl: getEnvVarOptional('BLOCKCHAIN_RPC_URL'),
     privateKey: getEnvVarOptional('BLOCKCHAIN_PRIVATE_KEY'),
+    mode: getEnvVar('BLOCKCHAIN_MODE', 'simulated') as 'real' | 'simulated',
   },
 } as const;
 

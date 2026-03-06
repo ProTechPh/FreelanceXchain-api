@@ -10,20 +10,34 @@ import { DisputeEntity, EvidenceEntity } from '../repositories/dispute-repositor
 import { SkillEntity, SkillCategoryEntity } from '../repositories/skill-repository.js';
 import { NotificationEntity } from '../repositories/notification-repository.js';
 
-// User mapping
-export type KycStatus = 'pending' | 'in_progress' | 'completed' | 'approved' | 'rejected' | 'expired';
+// Import domain types from models
+import type { User, KycStatus } from '../models/user.js';
+import type { Skill, SkillCategory, SkillReference, ProjectSkillReference } from '../models/skill.js';
+import type { FreelancerProfile, WorkExperience } from '../models/freelancer-profile.js';
+import type { EmployerProfile } from '../models/employer-profile.js';
+import type { Project, Milestone } from '../models/project.js';
+import type { Proposal } from '../models/proposal.js';
+import type { Contract } from '../models/contract.js';
+import type { Dispute, Evidence } from '../models/dispute.js';
+import type { Notification } from '../models/notification.js';
 
-export type User = {
-  id: string;
-  email: string;
-  name: string;
-  role: 'freelancer' | 'employer' | 'admin';
-  walletAddress: string;
-  kycStatus?: KycStatus | undefined;
-  createdAt: string;
-  updatedAt: string;
-};
+// Re-export types for backward compatibility
+export type { User, KycStatus } from '../models/user.js';
+export type { Skill, SkillCategory, SkillReference, ProjectSkillReference } from '../models/skill.js';
+export type { FreelancerProfile, WorkExperience } from '../models/freelancer-profile.js';
+export type { EmployerProfile } from '../models/employer-profile.js';
+export type { Project, Milestone, MilestoneStatus, ProjectStatus } from '../models/project.js';
+export type { Proposal, ProposalStatus } from '../models/proposal.js';
+export type { Contract, ContractStatus } from '../models/contract.js';
+export type { Dispute, Evidence, DisputeResolution, DisputeStatus } from '../models/dispute.js';
+export type { Notification, NotificationType } from '../models/notification.js';
 
+// Internal helper types
+type SkillRefEntity = { name: string; years_of_experience: number };
+type ProjectSkillRefEntity = { skill_id?: string; skill_name: string; category_id?: string; years_of_experience?: number };
+type ExpEntity = { id: string; title: string; company: string; description: string; start_date: string; end_date: string | null };
+
+// User mapping functions
 export function mapUserFromEntity(entity: UserEntity, kycStatus?: string): User {
   return {
     id: entity.id,
@@ -48,26 +62,7 @@ export function mapUserToEntity(user: Omit<User, 'createdAt' | 'updatedAt'>): Om
   };
 }
 
-// Skill mapping
-export type SkillCategory = {
-  id: string;
-  name: string;
-  description: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type Skill = {
-  id: string;
-  categoryId: string;
-  name: string;
-  description: string;
-  isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
-
+// Skill mapping functions
 export function mapSkillCategoryFromEntity(entity: SkillCategoryEntity): SkillCategory {
   if (!entity) {
     throw new Error('Cannot map null or undefined SkillCategoryEntity');
@@ -97,14 +92,6 @@ export function mapSkillFromEntity(entity: SkillEntity): Skill {
   };
 }
 
-// SkillReference for profiles (simplified - just name and experience)
-export type SkillReference = {
-  name: string;
-  yearsOfExperience: number;
-};
-
-type SkillRefEntity = { name: string; years_of_experience: number };
-
 function mapSkillRefFromEntity(entity: SkillRefEntity): SkillReference {
   return {
     name: entity.name,
@@ -119,16 +106,6 @@ function mapSkillRefToEntity(ref: SkillReference): SkillRefEntity {
   };
 }
 
-// ProjectSkillReference for projects (can be more detailed if needed)
-export type ProjectSkillReference = {
-  skillId?: string;
-  skillName: string;
-  categoryId?: string;
-  yearsOfExperience?: number;
-};
-
-type ProjectSkillRefEntity = { skill_id?: string; skill_name: string; category_id?: string; years_of_experience?: number };
-
 function mapProjectSkillRefFromEntity(entity: ProjectSkillRefEntity): ProjectSkillReference {
   const result: ProjectSkillReference = {
     skillName: entity.skill_name,
@@ -139,32 +116,7 @@ function mapProjectSkillRefFromEntity(entity: ProjectSkillRefEntity): ProjectSki
   return result;
 }
 
-// FreelancerProfile mapping
-export type WorkExperience = {
-  id: string;
-  title: string;
-  company: string;
-  description: string;
-  startDate: string;
-  endDate: string | null;
-};
-
-export type FreelancerProfile = {
-  id: string;
-  userId: string;
-  name: string | null;
-  nationality: string | null;
-  bio: string;
-  hourlyRate: number;
-  skills: SkillReference[];
-  experience: WorkExperience[];
-  availability: 'available' | 'busy' | 'unavailable';
-  createdAt: string;
-  updatedAt: string;
-};
-
-type ExpEntity = { id: string; title: string; company: string; description: string; start_date: string; end_date: string | null };
-
+// FreelancerProfile mapping functions
 export function mapFreelancerProfileFromEntity(entity: FreelancerProfileEntity): FreelancerProfile {
   if (!entity) {
     throw new Error('Cannot map null or undefined FreelancerProfileEntity');
@@ -191,19 +143,7 @@ export function mapFreelancerProfileFromEntity(entity: FreelancerProfileEntity):
   };
 }
 
-// EmployerProfile mapping
-export type EmployerProfile = {
-  id: string;
-  userId: string;
-  name: string | null;
-  nationality: string | null;
-  companyName: string;
-  description: string;
-  industry: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
+// EmployerProfile mapping functions
 export function mapEmployerProfileFromEntity(entity: EmployerProfileEntity): EmployerProfile {
   if (!entity) {
     throw new Error('Cannot map null or undefined EmployerProfileEntity');
@@ -221,33 +161,7 @@ export function mapEmployerProfileFromEntity(entity: EmployerProfileEntity): Emp
   };
 }
 
-// Project mapping
-export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed' | 'refunded';
-export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
-
-export type Milestone = {
-  id: string;
-  title: string;
-  description: string;
-  amount: number;
-  dueDate: string;
-  status: MilestoneStatus;
-};
-
-export type Project = {
-  id: string;
-  employerId: string;
-  title: string;
-  description: string;
-  requiredSkills: ProjectSkillReference[];
-  budget: number;
-  deadline: string;
-  status: ProjectStatus;
-  milestones: Milestone[];
-  createdAt: string;
-  updatedAt: string;
-};
-
+// Project mapping functions
 export function mapMilestoneFromEntity(entity: MilestoneEntity): Milestone {
   return {
     id: entity.id,
@@ -278,24 +192,7 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
   };
 }
 
-// Proposal mapping
-import { FileAttachment } from './file-validator.js';
-
-export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
-
-export type Proposal = {
-  id: string;
-  projectId: string;
-  freelancerId: string;
-  coverLetter: string | null;
-  attachments: FileAttachment[];
-  proposedRate: number;
-  estimatedDuration: number;
-  status: ProposalStatus;
-  createdAt: string;
-  updatedAt: string;
-};
-
+// Proposal mapping functions
 export function mapProposalFromEntity(entity: ProposalEntity): Proposal {
   if (!entity) {
     throw new Error('Cannot map null or undefined ProposalEntity');
@@ -314,37 +211,12 @@ export function mapProposalFromEntity(entity: ProposalEntity): Proposal {
   };
 }
 
-// Contract mapping
-export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'cancelled';
-
-export type Contract = {
-  id: string;
-  projectId: string;
-  proposalId: string;
-  freelancerId: string;
-  employerId: string;
-  escrowAddress: string;
-  totalAmount: number;
-  status: ContractStatus;
-  title?: string;
-  description?: string;
-  startDate?: string;
-  endDate?: string;
-  milestones?: any[];
-  createdAt: string;
-  updatedAt: string;
-  // Extended fields
-  project?: any;
-  freelancer?: any;
-  employer?: any;
-};
-
+// Contract mapping functions
 export function mapContractFromEntity(entity: ContractEntity & { project?: any; freelancer?: any; employer?: any }): Contract {
   if (!entity) {
     throw new Error('Cannot map null or undefined ContractEntity');
   }
   
-  // Map freelancer data (properly camelCase, no raw snake_case spread)
   const freelancerData = entity.freelancer ? {
     id: entity.freelancer.id,
     name: entity.freelancer.name,
@@ -354,7 +226,6 @@ export function mapContractFromEntity(entity: ContractEntity & { project?: any; 
     availability: entity.freelancer.freelancer_profile?.[0]?.availability,
   } : undefined;
   
-  // Map employer data (properly camelCase, no raw snake_case spread)
   const employerData = entity.employer ? {
     id: entity.employer.id,
     name: entity.employer.name,
@@ -375,7 +246,7 @@ export function mapContractFromEntity(entity: ContractEntity & { project?: any; 
     status: entity.status,
     title: entity.project?.title,
     description: entity.project?.description,
-    startDate: entity.created_at, // Use contract creation as start date
+    startDate: entity.created_at,
     endDate: entity.project?.deadline,
     milestones: entity.project?.milestones || [],
     createdAt: entity.created_at,
@@ -386,37 +257,7 @@ export function mapContractFromEntity(entity: ContractEntity & { project?: any; 
   };
 }
 
-// Dispute mapping
-export type DisputeStatus = 'open' | 'under_review' | 'resolved';
-
-export type Evidence = {
-  id: string;
-  submitterId: string;
-  type: 'text' | 'file' | 'link';
-  content: string;
-  submittedAt: string;
-};
-
-export type DisputeResolution = {
-  decision: 'freelancer_favor' | 'employer_favor' | 'split';
-  reasoning: string;
-  resolvedBy: string;
-  resolvedAt: string;
-};
-
-export type Dispute = {
-  id: string;
-  contractId: string;
-  milestoneId: string;
-  initiatorId: string;
-  reason: string;
-  evidence: Evidence[];
-  status: DisputeStatus;
-  resolution: DisputeResolution | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
+// Dispute mapping functions
 export function mapEvidenceFromEntity(entity: EvidenceEntity): Evidence {
   return {
     id: entity.id,
@@ -447,30 +288,7 @@ export function mapDisputeFromEntity(entity: DisputeEntity): Dispute {
   };
 }
 
-// Notification mapping
-export type NotificationType =
-  | 'proposal_received'
-  | 'proposal_accepted'
-  | 'proposal_rejected'
-  | 'milestone_submitted'
-  | 'milestone_approved'
-  | 'payment_released'
-  | 'dispute_created'
-  | 'dispute_resolved'
-  | 'rating_received'
-  | 'message';
-
-export type Notification = {
-  id: string;
-  userId: string;
-  type: NotificationType;
-  title: string;
-  message: string;
-  data: Record<string, unknown>;
-  isRead: boolean;
-  createdAt: string;
-};
-
+// Notification mapping functions
 export function mapNotificationFromEntity(entity: NotificationEntity): Notification {
   return {
     id: entity.id,
@@ -481,6 +299,7 @@ export function mapNotificationFromEntity(entity: NotificationEntity): Notificat
     data: entity.data,
     isRead: entity.is_read,
     createdAt: entity.created_at,
+    updatedAt: entity.updated_at,
   };
 }
 

@@ -126,6 +126,30 @@ export async function createApp(): Promise<Express> {
     });
   });
 
+  // Robots.txt endpoint
+  app.get('/robots.txt', async (_req, res) => {
+    try {
+      const robotsPath = resolve(process.cwd(), 'robots.txt');
+      const robotsContent = await readFile(robotsPath, 'utf8');
+      res.type('text/plain');
+      res.send(robotsContent);
+    } catch (error) {
+      res.status(404).send('Not found');
+    }
+  });
+
+  // Sitemap.xml endpoint
+  app.get('/sitemap.xml', async (_req, res) => {
+    try {
+      const sitemapPath = resolve(process.cwd(), 'sitemap.xml');
+      const sitemapContent = await readFile(sitemapPath, 'utf8');
+      res.type('application/xml');
+      res.send(sitemapContent);
+    } catch (error) {
+      res.status(404).send('Not found');
+    }
+  });
+
   // API routes
   app.use('/api', routes);
 

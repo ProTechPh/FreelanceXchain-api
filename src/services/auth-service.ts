@@ -491,6 +491,33 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
 }
 
 /**
+ * Validate token and get full user with AuthResult
+ */
+export async function validateTokenAndGetUser(accessToken: string): Promise<AuthResult | AuthError> {
+  const tokenResult = await validateToken(accessToken);
+  
+  if ('code' in tokenResult) {
+    return tokenResult; // Return AuthError
+  }
+
+  const userEntity = await userRepository.getUserById(tokenResult.userId);
+  
+  if (!userEntity) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'User not found',
+    };
+  }
+
+  // Get a fresh refresh token from Supabase
+  const supabase = createClient(config.supabase.url, config.supabase.anonKey);
+  const { data: { session } } = await supabase.auth.getSession();
+  const refreshToken = session?.refresh_token || '';
+
+  return createAuthResult(userEntity, accessToken, refreshToken);
+}
+
+/**
  * Login with existing Supabase session (for OAuth users)
  */
 export async function loginWithSupabase(accessToken: string): Promise<AuthResult | AuthError> {

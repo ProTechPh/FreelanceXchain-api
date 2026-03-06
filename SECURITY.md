@@ -143,10 +143,10 @@ This project aims to comply with:
 
 ## Security Resources
 
-- [Security Setup Guide](docs/SECURITY_SETUP_GUIDE.md)
-- [OWASP Validation Report](docs/OWASP_TOP_10_VALIDATION_REPORT.md)
-- [Security Implementation Details](docs/SECURITY_IMPLEMENTATION.md)
-- [Blockchain Security](docs/BLOCKCHAIN_INTEGRATION.md)
+- [Security Setup Guide](docs/security/overview.md)
+- [OWASP Validation Report](docs/security/overview.md)
+- [Security Implementation Details](docs/security/overview.md)
+- [Blockchain Security](docs/blockchain/integration.md)
 
 ## Contact
 

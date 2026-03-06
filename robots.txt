@@ -1,0 +1,5 @@
+# robots.txt for FreelanceXchain API
+# This is an API service - disallow all crawlers
+
+User-agent: *
+Disallow: /

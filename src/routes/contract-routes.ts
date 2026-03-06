@@ -7,9 +7,9 @@ import {
   getUserContracts,
   updateContractStatus,
   cancelPendingContract,
+  getContractWalletAddresses,
 } from '../services/contract-service.js';
 import { initializeContractEscrow } from '../services/payment-service.js';
-import { UserRepository } from '../repositories/index.js';
 import { getProjectById } from '../services/project-service.js';
 import { getDisputesByContract } from '../services/dispute-service.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
@@ -283,18 +283,18 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, validateUUID(), asy
   }
 
   // Get wallet addresses
-  const userRepository = new UserRepository();
-  const employer = await userRepository.getUserById(contract.employerId);
-  const freelancer = await userRepository.getUserById(contract.freelancerId);
-
-  if (!employer?.wallet_address || !freelancer?.wallet_address) {
+  const walletResult = await getContractWalletAddresses(contractId);
+  
+  if (!walletResult.success) {
     res.status(400).json({
-      error: { code: 'MISSING_WALLET', message: 'Both employer and freelancer must have wallet addresses configured' },
+      error: { code: walletResult.error.code, message: walletResult.error.message },
       timestamp: new Date().toISOString(),
       requestId,
     });
     return;
   }
+
+  const { employerWallet, freelancerWallet } = walletResult.data;
 
   // Map project entity to Project type for the service
   const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
@@ -307,8 +307,8 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, validateUUID(), asy
     const escrowResult = await initializeContractEscrow(
       contract,
       project,
-      employer.wallet_address,
-      freelancer.wallet_address
+      employerWallet,
+      freelancerWallet
     );
 
     if (!escrowResult.success) {

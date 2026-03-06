@@ -4,6 +4,7 @@ import { proposalRepository, ProposalEntity } from '../repositories/proposal-rep
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { notificationRepository } from '../repositories/notification-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
 import { getSupabaseServiceClient } from '../config/supabase.js';
@@ -32,34 +33,17 @@ export type ProposalWithNotification = {
   proposal: Proposal;
   notification: {
     userId: string;
-    type: 'proposal_received' | 'proposal_accepted' | 'proposal_rejected';
-    title: string;
-    message: string;
-    data: Record<string, unknown>;
+    type: string;
   };
 };
 
 export type AcceptProposalResult = {
   proposal: Proposal;
   contract: Contract;
-  notification: {
-    userId: string;
-    type: 'proposal_accepted';
-    title: string;
-    message: string;
-    data: Record<string, unknown>;
-  };
 };
 
 export type RejectProposalResult = {
   proposal: Proposal;
-  notification: {
-    userId: string;
-    type: 'proposal_rejected';
-    title: string;
-    message: string;
-    data: Record<string, unknown>;
-  };
 };
 
 
@@ -123,22 +107,37 @@ export async function submitProposal(
   const created = mapProposalFromEntity(createdEntity);
 
   // Create notification for employer
-  const notification = {
-    userId: project.employerId,
-    type: 'proposal_received' as const,
-    title: 'New Proposal Received',
-    message: `A freelancer has submitted a proposal for your project "${project.title}"`,
-    data: {
-      proposalId: created.id,
-      projectId: project.id,
-      projectTitle: project.title,
-      freelancerId,
-    },
-  };
+  let notificationId = '';
+  try {
+    const notification = await notificationRepository.createNotification({
+      id: generateId(),
+      user_id: project.employerId,
+      type: 'proposal_received',
+      title: 'New Proposal Received',
+      message: `A freelancer has submitted a proposal for your project "${project.title}"`,
+      data: {
+        proposalId: created.id,
+        projectId: project.id,
+        projectTitle: project.title,
+        freelancerId,
+      },
+      is_read: false,
+    });
+    notificationId = notification.id;
+  } catch (error) {
+    console.error('Failed to create notification:', error);
+    // Continue - notification is secondary
+  }
 
   return {
     success: true,
-    data: { proposal: created, notification },
+    data: { 
+      proposal: created,
+      notification: {
+        userId: project.employerId,
+        type: 'proposal_received',
+      },
+    },
   };
 }
 
@@ -323,25 +322,31 @@ export async function acceptProposal(
   });
 
   // Create notification for freelancer
-  const notification = {
-    userId: proposalEntity.freelancer_id,
-    type: 'proposal_accepted' as const,
-    title: 'Proposal Accepted',
-    message: `Your proposal for "${project.title}" has been accepted!`,
-    data: {
-      proposalId: proposalEntity.id,
-      projectId: project.id,
-      projectTitle: project.title,
-      contractId: createdContract.id,
-    },
-  };
+  try {
+    await notificationRepository.createNotification({
+      id: generateId(),
+      user_id: proposalEntity.freelancer_id,
+      type: 'proposal_accepted',
+      title: 'Proposal Accepted',
+      message: `Your proposal for "${project.title}" has been accepted!`,
+      data: {
+        proposalId: proposalEntity.id,
+        projectId: project.id,
+        projectTitle: project.title,
+        contractId: createdContract.id,
+      },
+      is_read: false,
+    });
+  } catch (error) {
+    console.error('Failed to create notification:', error);
+    // Continue - notification is secondary
+  }
 
   return {
     success: true,
     data: {
       proposal: updatedProposal,
       contract: createdContract,
-      notification,
     },
   };
 }
@@ -399,23 +404,29 @@ export async function rejectProposal(
   const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
 
   // Create notification for freelancer
-  const notification = {
-    userId: proposalEntity.freelancer_id,
-    type: 'proposal_rejected' as const,
-    title: 'Proposal Rejected',
-    message: `Your proposal for "${project.title}" was not accepted.`,
-    data: {
-      proposalId: proposalEntity.id,
-      projectId: project.id,
-      projectTitle: project.title,
-    },
-  };
+  try {
+    await notificationRepository.createNotification({
+      id: generateId(),
+      user_id: proposalEntity.freelancer_id,
+      type: 'proposal_rejected',
+      title: 'Proposal Rejected',
+      message: `Your proposal for "${project.title}" was not accepted.`,
+      data: {
+        proposalId: proposalEntity.id,
+        projectId: project.id,
+        projectTitle: project.title,
+      },
+      is_read: false,
+    });
+  } catch (error) {
+    console.error('Failed to create notification:', error);
+    // Continue - notification is secondary
+  }
 
   return {
     success: true,
     data: {
       proposal: updatedProposal,
-      notification,
     },
   };
 }

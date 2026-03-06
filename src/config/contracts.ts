@@ -5,7 +5,7 @@
 
 import { config } from './env.js';
 
-export type NetworkName = 'hardhat' | 'ganache' | 'sepolia' | 'polygon' | 'mumbai' | 'mainnet';
+export type NetworkName = 'hardhat' | 'ganache' | 'sepolia' | 'polygon' | 'amoy' | 'mainnet';
 
 export type ContractAddresses = {
   reputation?: string;
@@ -21,7 +21,7 @@ const contractAddresses: Record<NetworkName, ContractAddresses> = {
   ganache: {},
   sepolia: {},
   polygon: {},
-  mumbai: {},
+  amoy: {},
   mainnet: {},
 };
 
@@ -50,11 +50,11 @@ if (process.env.POLYGON_AGREEMENT_ADDRESS) contractAddresses.polygon.agreement =
 if (process.env.POLYGON_DISPUTE_ADDRESS) contractAddresses.polygon.disputeResolution = process.env.POLYGON_DISPUTE_ADDRESS;
 if (process.env.POLYGON_MILESTONE_ADDRESS) contractAddresses.polygon.milestoneRegistry = process.env.POLYGON_MILESTONE_ADDRESS;
 
-if (process.env.MUMBAI_REPUTATION_ADDRESS) contractAddresses.mumbai.reputation = process.env.MUMBAI_REPUTATION_ADDRESS;
-if (process.env.MUMBAI_ESCROW_ADDRESS) contractAddresses.mumbai.escrow = process.env.MUMBAI_ESCROW_ADDRESS;
-if (process.env.MUMBAI_AGREEMENT_ADDRESS) contractAddresses.mumbai.agreement = process.env.MUMBAI_AGREEMENT_ADDRESS;
-if (process.env.MUMBAI_DISPUTE_ADDRESS) contractAddresses.mumbai.disputeResolution = process.env.MUMBAI_DISPUTE_ADDRESS;
-if (process.env.MUMBAI_MILESTONE_ADDRESS) contractAddresses.mumbai.milestoneRegistry = process.env.MUMBAI_MILESTONE_ADDRESS;
+if (process.env.AMOY_REPUTATION_ADDRESS) contractAddresses.amoy.reputation = process.env.AMOY_REPUTATION_ADDRESS;
+if (process.env.AMOY_ESCROW_ADDRESS) contractAddresses.amoy.escrow = process.env.AMOY_ESCROW_ADDRESS;
+if (process.env.AMOY_AGREEMENT_ADDRESS) contractAddresses.amoy.agreement = process.env.AMOY_AGREEMENT_ADDRESS;
+if (process.env.AMOY_DISPUTE_ADDRESS) contractAddresses.amoy.disputeResolution = process.env.AMOY_DISPUTE_ADDRESS;
+if (process.env.AMOY_MILESTONE_ADDRESS) contractAddresses.amoy.milestoneRegistry = process.env.AMOY_MILESTONE_ADDRESS;
 
 if (process.env.MAINNET_REPUTATION_ADDRESS) contractAddresses.mainnet.reputation = process.env.MAINNET_REPUTATION_ADDRESS;
 if (process.env.MAINNET_ESCROW_ADDRESS) contractAddresses.mainnet.escrow = process.env.MAINNET_ESCROW_ADDRESS;
@@ -70,7 +70,7 @@ export function getCurrentNetwork(): NetworkName {
   
   if (rpcUrl.includes('sepolia')) return 'sepolia';
   if (rpcUrl.includes('polygon-mainnet')) return 'polygon';
-  if (rpcUrl.includes('mumbai')) return 'mumbai';
+  if (rpcUrl.includes('amoy')) return 'amoy';
   if (rpcUrl.includes('127.0.0.1:7545') || rpcUrl.includes('localhost:7545')) return 'ganache';
   if (rpcUrl.includes('127.0.0.1:8545') || rpcUrl.includes('localhost:8545')) return 'hardhat';
   if (rpcUrl.includes('mainnet')) return 'mainnet';

@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { enforceMFAForAdmins } from '../middleware/mfa-enforcement.js';
-import { userRepository } from '../repositories/user-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { ReviewRepository } from '../repositories/review-repository.js';
+import { getAllUsersWithKyc, getAdminStats, getAdminAnalytics } from '../services/admin-service.js';
 import { getKycVerificationByUserId } from '../repositories/didit-kyc-repository.js';
+import { UserRepository } from '../repositories/index.js';
 import { logger } from '../config/logger.js';
 import { auditMiddleware } from '../middleware/audit-logger.js';
+
+const userRepository = new UserRepository();
 
 const router = Router();
 
@@ -25,42 +25,7 @@ const router = Router();
  */
 router.get('/users', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
-    const allUsers = await userRepository.getAllUsers();
-    
-    // Check KYC status for each user
-    const usersWithKyc = await Promise.all(
-      allUsers.map(async (user) => {
-        // Admins are automatically considered KYC verified (exempt from KYC requirement)
-        if (user.role === 'admin') {
-          return {
-            id: user.id,
-            email: user.email,
-            role: user.role,
-            walletAddress: user.wallet_address || '',
-            createdAt: user.created_at,
-            name: user.name || '',
-            kycVerified: true, // Admins bypass KYC requirement
-            isActive: true,
-          };
-        }
-        
-        const kycVerification = await getKycVerificationByUserId(user.id);
-        const isKycVerified = kycVerification?.status === 'approved' && 
-                             (!kycVerification.expires_at || new Date(kycVerification.expires_at) > new Date());
-        
-        return {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          walletAddress: user.wallet_address || '',
-          createdAt: user.created_at,
-          name: user.name || '',
-          kycVerified: isKycVerified,
-          isActive: true, // All users are active by default
-        };
-      })
-    );
-
+    const usersWithKyc = await getAllUsersWithKyc();
     res.json(usersWithKyc);
   } catch (error) {
     logger.error('Error fetching users', error);
@@ -100,22 +65,8 @@ router.get('/users', authMiddleware, requireRole('admin'), enforceMFAForAdmins, 
  */
 router.get('/stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
-    // Get total users count
-    const allUsers = await userRepository.getAllUsers();
-    const totalUsers = allUsers.length;
-    const totalFreelancers = allUsers.filter(u => u.role === 'freelancer').length;
-    const totalEmployers = allUsers.filter(u => u.role === 'employer').length;
-
-    // Get total projects count
-    const allProjects = await projectRepository.getAllProjects();
-    const totalProjects = allProjects.length;
-
-    res.json({
-      totalUsers,
-      totalProjects,
-      totalFreelancers,
-      totalEmployers,
-    });
+    const stats = await getAdminStats();
+    res.json(stats);
   } catch (error) {
     logger.error('Error fetching admin stats', error);
     res.status(500).json({
@@ -135,22 +86,8 @@ router.get('/stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, 
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Comprehensive analytics data
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 totalUsers:
- *                   type: number
- *                 totalProjects:
- *                   type: number
- *                 totalRevenue:
- *                   type: number
- *                 activeContracts:
- *                   type: number
+ *  const stats = await getAdminStats();
+    res.json(stats                type: number
  *                 userGrowth:
  *                   type: number
  *                 projectGrowth:
@@ -158,50 +95,14 @@ router.get('/stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, 
  */
 router.get('/analytics', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
-    // Get all users
-    const allUsers = await userRepository.getAllUsers();
-    const totalUsers = allUsers.length;
-
-    // Get all projects
-    const allProjects = await projectRepository.getAllProjects();
-    const totalProjects = allProjects.length;
-
-    // Get all contracts
-    const allContracts = await contractRepository.getAllContracts();
-    const activeContracts = allContracts.filter(c => c.status === 'active').length;
-
-    // Calculate total revenue from completed contracts
-    const completedContracts = allContracts.filter(c => c.status === 'completed');
-    const totalRevenue = completedContracts.reduce((sum, contract) => sum + contract.total_amount, 0);
-
-    // Calculate growth rates (comparing last 30 days vs previous 30 days)
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-
-    // User growth
-    const recentUsers = allUsers.filter(u => new Date(u.created_at) >= thirtyDaysAgo).length;
-    const previousUsers = allUsers.filter(u => {
-      const createdAt = new Date(u.created_at);
-      return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
-    }).length;
-    const userGrowth = previousUsers > 0 ? ((recentUsers - previousUsers) / previousUsers) * 100 : 0;
-
-    // Project growth
-    const recentProjects = allProjects.filter(p => new Date(p.created_at) >= thirtyDaysAgo).length;
-    const previousProjects = allProjects.filter(p => {
-      const createdAt = new Date(p.created_at);
-      return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
-    }).length;
-    const projectGrowth = previousProjects > 0 ? ((recentProjects - previousProjects) / previousProjects) * 100 : 0;
-
+    const analytics = await getAdminAnalytics();
     res.json({
-      totalUsers,
-      totalProjects,
-      totalRevenue: parseFloat(totalRevenue.toFixed(4)),
-      activeContracts,
-      userGrowth: parseFloat(userGrowth.toFixed(1)),
-      projectGrowth: parseFloat(projectGrowth.toFixed(1)),
+      totalUsers: analytics.totalUsers,
+      totalProjects: analytics.totalProjects,
+      totalRevenue: parseFloat(analytics.totalRevenue.toFixed(4)),
+      activeContracts: analytics.activeContracts,
+      userGrowth: parseFloat(analytics.userGrowth.toFixed(1)),
+      projectGrowth: parseFloat(analytics.projectGrowth.toFixed(1)),
     });
   } catch (error) {
     logger.error('Error fetching analytics', error);
@@ -243,37 +144,8 @@ router.get('/analytics', authMiddleware, requireRole('admin'), enforceMFAForAdmi
  */
 router.get('/platform-stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
-    // Get total users count
-    const allUsers = await userRepository.getAllUsers();
-    const totalFreelancers = allUsers.filter(u => u.role === 'freelancer').length;
-    const totalEmployers = allUsers.filter(u => u.role === 'employer').length;
-
-    // Get total projects count
-    const allProjects = await projectRepository.getAllProjects();
-    const totalProjects = allProjects.length;
-
-    // Calculate total paid out from completed contracts
-    const allContracts = await contractRepository.getAllContracts();
-    const completedContracts = allContracts.filter(c => c.status === 'completed');
-    const totalPaidOut = completedContracts.reduce((sum, contract) => sum + contract.total_amount, 0);
-
-    // Calculate satisfaction rate from reviews
-    let satisfactionRate = 0;
-    const allReviews = await ReviewRepository.getAllReviews();
-
-    if (allReviews.length > 0) {
-      const totalRating = allReviews.reduce((sum, review) => sum + review.rating, 0);
-      const averageRating = totalRating / allReviews.length;
-      satisfactionRate = Math.round((averageRating / 5) * 100);
-    }
-
-    res.json({
-      totalFreelancers,
-      totalEmployers,
-      totalProjects,
-      totalPaidOut: totalPaidOut.toFixed(2),
-      satisfactionRate,
-    });
+    const analytics = await getAdminAnalytics();
+    res.json(analytics);
   } catch (error) {
     logger.error('Error fetching platform stats', error);
     res.status(500).json({

@@ -1,27 +1,48 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.26;
 
 /**
  * @title ContractAgreement
  * @dev Stores contract agreement signatures and terms hash on-chain
  * Creates immutable proof that both parties agreed to specific terms
+ *
+ * Gas optimizations:
+ * - owner is immutable (saves ~2100 gas per onlyOwner call)
+ * - Removed redundant contractId from struct (saves 1 storage slot per agreement)
+ * - Packed status + milestoneCount with employer address (saves 2 storage slots)
+ * - Custom errors replace require strings (saves ~200 gas per revert + deploy size)
+ * - Inlined modifier checks to avoid redundant SLOADs
  */
 contract ContractAgreement {
-    address public owner;
+    // Custom errors
+    error OnlyOwner();
+    error AgreementNotFound();
+    error AgreementAlreadyExists();
+    error InvalidAddresses();
+    error SameParty();
+    error NotParty();
+    error NotPending();
+    error AlreadySigned();
+    error NotSigned();
+    error NotActive();
+    error CannotCancel();
+    error Unauthorized();
+    error IndexOutOfBounds();
+
+    address public immutable owner;
 
     enum AgreementStatus { Pending, Signed, Completed, Disputed, Cancelled }
 
     struct Agreement {
-        bytes32 contractId;         // Hash of off-chain contract ID
-        bytes32 termsHash;          // Hash of contract terms
-        address employer;
-        address freelancer;
-        uint256 totalAmount;
-        uint256 milestoneCount;
-        AgreementStatus status;
-        uint256 employerSignedAt;
-        uint256 freelancerSignedAt;
-        uint256 createdAt;
+        bytes32 termsHash;          // slot 0 — 32 bytes
+        address employer;           // slot 1 — 20 bytes
+        AgreementStatus status;     // slot 1 — 1 byte (packed)
+        uint32 milestoneCount;      // slot 1 — 4 bytes (packed)
+        address freelancer;         // slot 2 — 20 bytes
+        uint256 totalAmount;        // slot 3 — 32 bytes
+        uint256 employerSignedAt;   // slot 4
+        uint256 freelancerSignedAt; // slot 5
+        uint256 createdAt;          // slot 6
     }
 
     // Mapping from contract ID hash to agreement
@@ -37,30 +58,13 @@ contract ContractAgreement {
     event AgreementDisputed(bytes32 indexed contractIdHash, uint256 timestamp);
     event AgreementCancelled(bytes32 indexed contractIdHash, uint256 timestamp);
 
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner");
-        _;
-    }
-
-    modifier agreementExists(bytes32 contractIdHash) {
-        require(agreements[contractIdHash].createdAt > 0, "Agreement not found");
-        _;
-    }
-
-    modifier onlyParty(bytes32 contractIdHash) {
-        Agreement storage a = agreements[contractIdHash];
-        require(msg.sender == a.employer || msg.sender == a.freelancer, "Not a party");
-        _;
-    }
-
     constructor() {
         owner = msg.sender;
     }
 
     /**
      * @dev Create a new contract agreement (called when proposal is accepted)
-     * FIXED: Added access control - only the contract owner (backend relayer) can create agreements
-     * This prevents anyone from creating fake agreements with arbitrary employer/freelancer addresses
+     * Only the contract owner (backend relayer) can create agreements
      */
     function createAgreement(
         bytes32 contractIdHash,
@@ -69,19 +73,19 @@ contract ContractAgreement {
         address freelancer,
         uint256 totalAmount,
         uint256 milestoneCount
-    ) external onlyOwner {
-        require(agreements[contractIdHash].createdAt == 0, "Agreement exists");
-        require(employer != address(0) && freelancer != address(0), "Invalid addresses");
-        require(employer != freelancer, "Same party");
+    ) external {
+        if (msg.sender != owner) revert OnlyOwner();
+        if (agreements[contractIdHash].createdAt != 0) revert AgreementAlreadyExists();
+        if (employer == address(0) || freelancer == address(0)) revert InvalidAddresses();
+        if (employer == freelancer) revert SameParty();
 
         agreements[contractIdHash] = Agreement({
-            contractId: contractIdHash,
             termsHash: termsHash,
             employer: employer,
+            status: AgreementStatus.Pending,
+            milestoneCount: uint32(milestoneCount),
             freelancer: freelancer,
             totalAmount: totalAmount,
-            milestoneCount: milestoneCount,
-            status: AgreementStatus.Pending,
             employerSignedAt: 0,
             freelancerSignedAt: 0,
             createdAt: block.timestamp
@@ -96,15 +100,17 @@ contract ContractAgreement {
     /**
      * @dev Sign the agreement (both parties must sign)
      */
-    function signAgreement(bytes32 contractIdHash) external agreementExists(contractIdHash) onlyParty(contractIdHash) {
+    function signAgreement(bytes32 contractIdHash) external {
         Agreement storage a = agreements[contractIdHash];
-        require(a.status == AgreementStatus.Pending, "Not pending");
+        if (a.createdAt == 0) revert AgreementNotFound();
+        if (msg.sender != a.employer && msg.sender != a.freelancer) revert NotParty();
+        if (a.status != AgreementStatus.Pending) revert NotPending();
 
         if (msg.sender == a.employer) {
-            require(a.employerSignedAt == 0, "Already signed");
+            if (a.employerSignedAt != 0) revert AlreadySigned();
             a.employerSignedAt = block.timestamp;
         } else {
-            require(a.freelancerSignedAt == 0, "Already signed");
+            if (a.freelancerSignedAt != 0) revert AlreadySigned();
             a.freelancerSignedAt = block.timestamp;
         }
 
@@ -119,10 +125,11 @@ contract ContractAgreement {
     /**
      * @dev Mark agreement as completed
      */
-    function completeAgreement(bytes32 contractIdHash) external agreementExists(contractIdHash) {
+    function completeAgreement(bytes32 contractIdHash) external {
         Agreement storage a = agreements[contractIdHash];
-        require(a.status == AgreementStatus.Signed, "Not signed");
-        require(msg.sender == a.employer || msg.sender == owner, "Unauthorized");
+        if (a.createdAt == 0) revert AgreementNotFound();
+        if (a.status != AgreementStatus.Signed) revert NotSigned();
+        if (msg.sender != a.employer && msg.sender != owner) revert Unauthorized();
 
         a.status = AgreementStatus.Completed;
         emit AgreementCompleted(contractIdHash, block.timestamp);
@@ -131,9 +138,11 @@ contract ContractAgreement {
     /**
      * @dev Mark agreement as disputed
      */
-    function disputeAgreement(bytes32 contractIdHash) external agreementExists(contractIdHash) onlyParty(contractIdHash) {
+    function disputeAgreement(bytes32 contractIdHash) external {
         Agreement storage a = agreements[contractIdHash];
-        require(a.status == AgreementStatus.Signed, "Not active");
+        if (a.createdAt == 0) revert AgreementNotFound();
+        if (msg.sender != a.employer && msg.sender != a.freelancer) revert NotParty();
+        if (a.status != AgreementStatus.Signed) revert NotActive();
 
         a.status = AgreementStatus.Disputed;
         emit AgreementDisputed(contractIdHash, block.timestamp);
@@ -142,9 +151,11 @@ contract ContractAgreement {
     /**
      * @dev Cancel agreement (only if not yet signed by both)
      */
-    function cancelAgreement(bytes32 contractIdHash) external agreementExists(contractIdHash) onlyParty(contractIdHash) {
+    function cancelAgreement(bytes32 contractIdHash) external {
         Agreement storage a = agreements[contractIdHash];
-        require(a.status == AgreementStatus.Pending, "Cannot cancel");
+        if (a.createdAt == 0) revert AgreementNotFound();
+        if (msg.sender != a.employer && msg.sender != a.freelancer) revert NotParty();
+        if (a.status != AgreementStatus.Pending) revert CannotCancel();
 
         a.status = AgreementStatus.Cancelled;
         emit AgreementCancelled(contractIdHash, block.timestamp);
@@ -164,7 +175,7 @@ contract ContractAgreement {
         uint256 createdAt
     ) {
         Agreement storage a = agreements[contractIdHash];
-        return (a.termsHash, a.employer, a.freelancer, a.totalAmount, a.milestoneCount, a.status, a.employerSignedAt, a.freelancerSignedAt, a.createdAt);
+        return (a.termsHash, a.employer, a.freelancer, a.totalAmount, uint256(a.milestoneCount), a.status, a.employerSignedAt, a.freelancerSignedAt, a.createdAt);
     }
 
     function isFullySigned(bytes32 contractIdHash) external view returns (bool) {
@@ -181,7 +192,7 @@ contract ContractAgreement {
     }
 
     function getUserAgreementAt(address user, uint256 index) external view returns (bytes32) {
-        require(index < userAgreements[user].length, "Index out of bounds");
+        if (index >= userAgreements[user].length) revert IndexOutOfBounds();
         return userAgreements[user][index];
     }
 }

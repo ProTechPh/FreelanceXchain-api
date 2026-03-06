@@ -80,23 +80,40 @@ This platform addresses key challenges in the gig economy:
 └── dist/                     # Compiled TypeScript
 ```
 
+## 📚 Documentation Hub
+
+### Quick Access Guides
+- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 10 minutes ⚡
+- **[Project Structure](PROJECT_STRUCTURE.md)** - Complete project organization overview
+- **[Configuration Guide](CONFIGURATION.md)** - All configuration files explained
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
+
+### Complete Documentation
+- **[Full Documentation Index](docs/README.md)** - Browse all documentation by category
+
+---
+
 ## Installation
 
 ### Prerequisites
-- Node.js 18+ (20 recommended)
-- pnpm (fast, disk space efficient package manager)
+- Node.js 20+
+- pnpm 8+ (fast, disk space efficient package manager)
 - Supabase account (https://supabase.com)
 - Ethereum wallet (for blockchain features)
 - LLM API key (for AI features)
 - Docker (optional, for containerized deployment)
+
+### Quick Setup
+
+**See [Quick Start Guide](QUICKSTART.md) for detailed 10-minute setup.**
 
 ### Local Development Setup
 
 1. **Clone and install dependencies**
 ```bash
 git clone <repository-url>
-cd blockchain-freelance-marketplace
-pnpm install
+cd FreelanceXchain-api
+pnpm install --frozen-lockfile
 ```
 
 2. **Configure environment variables**
@@ -125,6 +142,8 @@ pnpm run build
 pnpm start
 # Or for development with hot reload:
 pnpm run dev
+# Or for production mode:
+pnpm run prod
 ```
 
 ### Docker Deployment
@@ -136,15 +155,15 @@ docker build -t freelancexchain-api:latest .
 
 2. **Run locally with Docker**
 ```bash
-docker run -p 3000:3000 --env-file .env freelancexchain-api:latest
+docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```
 
 ## Environment Variables
 
 | Variable | Description |
 |----------|-------------|
-| `PORT` | Server port (default: 3000) |
-| `NODE_ENV` | Environment (development/production) |
+| `PORT` | Server port (default: 7860) |
+| `NODE_ENV` | Environment (development/production/test) |
 | `SUPABASE_URL` | Supabase project URL |
 | `SUPABASE_ANON_KEY` | Supabase anonymous key |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (optional) |
@@ -164,7 +183,7 @@ docker run -p 3000:3000 --env-file .env freelancexchain-api:latest
 
 Interactive API documentation available at:
 ```
-http://localhost:3000/api-docs
+http://localhost:7860/api-docs
 ```
 
 ### API Endpoints Overview
@@ -241,16 +260,79 @@ pnpm run test:watch
 
 ## Documentation
 
-| Document | Description |
-|----------|-------------|
-| [Architecture](docs/ARCHITECTURE.md) | System architecture diagrams |
-| [API Documentation](docs/API-DOCUMENTATION.md) | Complete API endpoint reference |
-| [Didit KYC Integration](docs/DIDIT-KYC-INTEGRATION.md) | KYC verification setup and usage |
-| [User Manual](docs/USER-MANUAL.md) | Guide for freelancers and employers |
-| [Admin Manual](docs/ADMIN-MANUAL.md) | System administration guide |
-| [Technical Specs](docs/TECHNICAL-SPECS.md) | Technical specifications |
-| [Testing](docs/TESTING.md) | Test cases and results |
-| [Changelog](CHANGELOG.md) | Version history |
+### 📚 Complete Documentation Index
+**[View Full Documentation →](docs/README.md)**
+
+### Quick Links by Category
+
+#### 🚀 Getting Started
+- [Project Overview](docs/getting-started/overview.md) - Platform overview and goals
+- [Developer Setup Guide](docs/getting-started/setup.md) - Complete setup instructions
+- [Technology Stack](docs/getting-started/tech-stack.md) - Technologies used
+
+#### 🏗️ Architecture & API
+- [API Endpoints Reference](docs/architecture/api-overview.md) - Complete API documentation
+- [Business Logic Layer](docs/architecture/services-overview.md) - Service layer architecture
+- [Database Schema Design](docs/architecture/database-overview.md) - Database structure
+- [Data Models & ORM](docs/architecture/models-overview.md) - Entity models
+
+#### 🔐 Security
+- [Security Implementation](docs/security/overview.md) - Security architecture
+- [MFA Implementation](docs/security/MFA_IMPLEMENTATION.md) - Multi-factor authentication
+- [OWASP Validation Report](docs/security/OWASP_TOP_10_VALIDATION_REPORT.md) - Security compliance
+
+#### ⛓️ Blockchain
+- [Blockchain Integration](docs/blockchain/integration.md) - Smart contract setup
+- [Blockchain Testing](docs/blockchain/testing.md) - Testing guide
+- [Smart Contracts Documentation](contracts/README.md) - Contract details
+
+#### ✨ Features
+- [Audit Logs](docs/features/audit-logs/) - Audit logging system
+- [Proposal File Uploads](docs/features/proposal-uploads/) - File upload feature
+
+#### 📖 Guides & Operations
+- [Deployment Configuration](docs/guides/deployment.md) - Deployment guide
+- [Testing Strategy](docs/guides/testing.md) - Testing approach
+- [Troubleshooting](docs/guides/TROUBLESHOOTING.md) - Common issues and solutions
+- [Maintenance](docs/guides/MAINTENANCE.md) - System maintenance
+
+#### 🔧 Additional Resources
+- [Scripts Documentation](scripts/README.md) - Utility scripts guide
+- [Database Documentation](supabase/README.md) - Database schema and migrations
+- [Email Templates](email-templates/README.md) - Email template setup
+- [Project Structure](PROJECT_STRUCTURE.md) - Complete project organization
+- [Changelog](CHANGELOG.md) - Version history
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+- Code of conduct
+- Development workflow
+- Coding standards
+- Commit guidelines
+- Pull request process
+
+## 📖 Additional Resources
+
+- **[Configuration Guide](CONFIGURATION.md)** - Detailed configuration documentation
+- **[Quick Start](QUICKSTART.md)** - Fast setup guide
+- **[Project Structure](PROJECT_STRUCTURE.md)** - Complete project overview
+- **[Changelog](CHANGELOG.md)** - Version history and changes
+
+## 🆘 Support & Help
+
+- **Issues:** Report bugs or request features via GitHub Issues
+- **Documentation:** Check [docs/](docs/) for comprehensive guides
+- **Troubleshooting:** See [Troubleshooting Guide](docs/guides/TROUBLESHOOTING.md)
+
+## 📊 Project Status
+
+- ✅ Core API functionality
+- ✅ Blockchain integration
+- ✅ AI-powered matching
+- ✅ KYC verification
+- ✅ Comprehensive testing
+- ✅ Complete documentation
 
 ## License
 

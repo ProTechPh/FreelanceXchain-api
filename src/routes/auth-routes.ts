@@ -23,6 +23,7 @@ import {
   validateToken,
   createAuthResult,
   consumeMfaSession,
+  validateTokenAndGetUser,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
@@ -441,13 +442,13 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
   }
 
   // MFA verified - get user and return full auth result
-  const tokenValidation = await validateToken(realAccessToken);
+  const authResult = await validateTokenAndGetUser(realAccessToken);
   
-  if (isAuthError(tokenValidation)) {
+  if (isAuthError(authResult)) {
     res.status(401).json({
       error: {
-        code: tokenValidation.code,
-        message: tokenValidation.message,
+        code: authResult.code,
+        message: authResult.message,
       },
       timestamp: new Date().toISOString(),
       requestId,
@@ -455,31 +456,17 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
     return;
   }
 
-  const publicUser = await userRepository.getUserById(tokenValidation.userId);
-  
-  if (!publicUser) {
-    res.status(401).json({
-      error: {
-        code: 'USER_NOT_FOUND',
-        message: 'User not found',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  // Get a fresh session after MFA verification
+  // Get a fresh session after MFA verification to update refresh token
   const supabase = createPerRequestClient(realAccessToken);
   const { data: sessionData } = await supabase.auth.getSession();
   
-  const authResult = await createAuthResult(
-    publicUser, 
-    realAccessToken, 
-    mfaSession.refreshToken || sessionData?.session?.refresh_token || ''
-  );
+  // Update refresh token if available
+  const finalResult = {
+    ...authResult,
+    refreshToken: mfaSession.refreshToken || sessionData?.session?.refresh_token || authResult.refreshToken,
+  };
 
-  res.status(200).json(authResult);
+  res.status(200).json(finalResult);
 });
 
 

@@ -8,12 +8,13 @@ const accounts = isValidPrivateKey ? [privateKey] : [];
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
   solidity: {
-    version: "0.8.19",
+    version: "0.8.26",
     settings: {
       optimizer: {
         enabled: true,
-        runs: 200,
+        runs: 1000,
       },
+      viaIR: true,
     },
   },
   networks: {
@@ -30,14 +31,15 @@ module.exports = {
       chainId: 11155111,
     },
     polygon: {
-      url: `https://polygon-mainnet.infura.io/v3/${process.env.INFURA_API_KEY || ""}`,
+      url: process.env.POLYGON_RPC_URL || `https://polygon-mainnet.infura.io/v3/${process.env.POLYGON_API_KEY || ""}`,
       accounts: accounts,
       chainId: 137,
     },
-    mumbai: {
-      url: `https://polygon-mumbai.infura.io/v3/${process.env.INFURA_API_KEY || ""}`,
+    amoy: {
+      url: process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology",
       accounts: accounts,
-      chainId: 80001,
+      chainId: 80002,
+      gasPrice: 30000000000, // 30 gwei - Amoy default
     },
   },
   paths: {
