@@ -5,7 +5,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { getSupabaseClient, STORAGE_BUCKETS, StorageBucketName } from '../config/supabase.js';
+import { getSupabaseServiceClient, STORAGE_BUCKETS, StorageBucketName } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import { sanitizeFilename } from '../middleware/file-upload-middleware.js';
 
@@ -59,7 +59,7 @@ export async function uploadFileToStorage(
   folder?: string
 ): Promise<UploadResult> {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     
     // Generate unique filename
     const uniqueFilename = generateUniqueFilename(originalFilename);
@@ -184,7 +184,7 @@ export async function deleteFileFromStorage(
   bucket: StorageBucketName = STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     
     const { error } = await supabase.storage
       .from(bucket)

@@ -93,48 +93,78 @@ const router = Router();
  */
 
 
+// ============================================================
+// IMPORTANT: Specific routes MUST be registered BEFORE parameterized routes
+// Otherwise Express matches "can-rate" as a :userId parameter
+// ============================================================
+
 /**
  * @swagger
- * /api/reputation/{userId}:
+ * /api/reputation/can-rate:
  *   get:
- *     summary: Get user reputation
- *     description: Retrieves the reputation score and ratings for a user from the blockchain
+ *     summary: Check if user can rate
+ *     description: Check if the authenticated user can rate another user for a specific contract
  *     tags:
  *       - Reputation
+ *     security:
+ *       - bearerAuth: []
  *     parameters:
- *       - in: path
- *         name: userId
+ *       - in: query
+ *         name: contractId
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: User ID to get reputation for (UUID)
+ *         description: Contract ID
+ *       - in: query
+ *         name: rateeId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: User ID to rate
  *     responses:
  *       200:
- *         description: Reputation retrieved successfully
+ *         description: Check completed successfully
  *         content:
  *           application/json:
  *             schema:
- *               $ref: '#/components/schemas/ReputationScore'
- *       400:
- *         description: Invalid UUID format
- *       404:
- *         description: User not found
+ *               type: object
+ *               properties:
+ *                 canRate:
+ *                   type: boolean
+ *                 reason:
+ *                   type: string
+ *       401:
+ *         description: Unauthorized
  */
-router.get('/:userId', validateUUID(['userId']), async (req: Request, res: Response) => {
-  const userId = req.params['userId'] ?? '';
+router.get('/can-rate', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
   if (!userId) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'User ID is required' },
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
       timestamp: new Date().toISOString(),
       requestId,
     });
     return;
   }
 
-  const result = await getReputation(userId);
+  const contractId = req.query['contractId'] as string | undefined;
+  const rateeId = req.query['rateeId'] as string | undefined;
+
+  if (!contractId || !rateeId) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'contractId and rateeId are required query parameters',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await canUserRate(userId, rateeId, contractId);
 
   if (!result.success) {
     res.status(400).json({
@@ -272,6 +302,65 @@ router.post('/rate', authMiddleware, async (req: Request, res: Response) => {
 });
 
 
+// ============================================================
+// Parameterized routes AFTER specific routes
+// ============================================================
+
+/**
+ * @swagger
+ * /api/reputation/{userId}:
+ *   get:
+ *     summary: Get user reputation
+ *     description: Retrieves the reputation score and ratings for a user from the blockchain
+ *     tags:
+ *       - Reputation
+ *     parameters:
+ *       - in: path
+ *         name: userId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: User ID to get reputation for (UUID)
+ *     responses:
+ *       200:
+ *         description: Reputation retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ReputationScore'
+ *       400:
+ *         description: Invalid UUID format
+ *       404:
+ *         description: User not found
+ */
+router.get('/:userId', validateUUID(['userId']), async (req: Request, res: Response) => {
+  const userId = req.params['userId'] ?? '';
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'User ID is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await getReputation(userId);
+
+  if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
 /**
  * @swagger
  * /api/reputation/{userId}/history:
@@ -316,86 +405,6 @@ router.get('/:userId/history', validateUUID(['userId']), async (req: Request, re
   }
 
   const result = await getWorkHistory(userId);
-
-  if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  res.status(200).json(result.data);
-});
-
-/**
- * @swagger
- * /api/reputation/can-rate:
- *   get:
- *     summary: Check if user can rate
- *     description: Check if the authenticated user can rate another user for a specific contract
- *     tags:
- *       - Reputation
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: query
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *         description: Contract ID
- *       - in: query
- *         name: rateeId
- *         required: true
- *         schema:
- *           type: string
- *         description: User ID to rate
- *     responses:
- *       200:
- *         description: Check completed successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 canRate:
- *                   type: boolean
- *                 reason:
- *                   type: string
- *       401:
- *         description: Unauthorized
- */
-router.get('/can-rate', authMiddleware, async (req: Request, res: Response) => {
-  const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-
-  if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  const contractId = req.query['contractId'] as string | undefined;
-  const rateeId = req.query['rateeId'] as string | undefined;
-
-  if (!contractId || !rateeId) {
-    res.status(400).json({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'contractId and rateeId are required query parameters',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  const result = await canUserRate(userId, rateeId, contractId);
 
   if (!result.success) {
     res.status(400).json({

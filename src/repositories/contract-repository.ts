@@ -1,7 +1,7 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { TABLES } from '../config/supabase.js';
 
-export type ContractStatus = 'active' | 'completed' | 'disputed' | 'cancelled';
+export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'cancelled';
 
 export type ContractEntity = {
   id: string;
@@ -27,6 +27,39 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
 
   async getContractById(id: string): Promise<ContractEntity | null> {
     return this.getById(id);
+  }
+
+  async getContractByIdWithRelations(id: string): Promise<any | null> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select(`
+        *,
+        project:projects(id, title, description, deadline, milestones),
+        freelancer:users!contracts_freelancer_id_fkey(
+          id, 
+          email, 
+          role, 
+          name,
+          freelancer_profile:freelancer_profiles(bio, hourly_rate, skills, experience, availability)
+        ),
+        employer:users!contracts_employer_id_fkey(
+          id, 
+          email, 
+          role, 
+          name,
+          employer_profile:employer_profiles(company_name, description, industry)
+        )
+      `)
+      .eq('id', id)
+      .single();
+    
+    if (error) {
+      if (error.code === 'PGRST116') return null; // Not found
+      throw new Error(`Failed to get contract with relations: ${error.message}`);
+    }
+    
+    return data;
   }
 
   async updateContract(id: string, updates: Partial<ContractEntity>): Promise<ContractEntity | null> {

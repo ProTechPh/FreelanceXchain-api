@@ -1,5 +1,7 @@
+import { getSupabaseServiceClient } from '../config/supabase.js';
 import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 
 export type ContractServiceError = {
@@ -21,7 +23,7 @@ function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): Paginat
 }
 
 export async function getContractById(contractId: string): Promise<ContractServiceResult<Contract>> {
-  const entity = await contractRepository.getContractById(contractId);
+  const entity = await contractRepository.getContractByIdWithRelations(contractId);
   if (!entity) {
     return {
       success: false,
@@ -75,8 +77,9 @@ export async function updateContractStatus(
   }
 
   const validTransitions: Record<ContractStatus, ContractStatus[]> = {
+    pending: ['active', 'cancelled'],
     active: ['completed', 'disputed', 'cancelled'],
-    disputed: ['active', 'completed', 'cancelled'],
+    disputed: ['active', 'completed', 'cancelled'],  // 'active' allowed after all disputes resolved
     completed: [],
     cancelled: [],
   };
@@ -136,4 +139,87 @@ export async function getContractByProposalId(
     };
   }
   return { success: true, data: mapContractFromEntity(entity) };
+}
+
+/**
+ * Cancel a pending contract
+ * Only allowed for contracts that haven't been funded yet (status = 'pending')
+ */
+export async function cancelPendingContract(contractId: string, userId: string): Promise<{ success: boolean; error?: any }> {
+  const contract = await contractRepository.getContractById(contractId);
+  
+  if (!contract) {
+    return { success: false, error: { code: 'NOT_FOUND', message: 'Contract not found' } };
+  }
+
+  if (contract.status !== 'pending') {
+    return { 
+      success: false, 
+      error: { code: 'INVALID_STATUS', message: `Only pending contracts can be cancelled. Current status: ${contract.status}` } 
+    };
+  }
+
+  if (contract.employer_id !== userId && contract.freelancer_id !== userId) {
+    return { 
+      success: false, 
+      error: { code: 'UNAUTHORIZED', message: 'Only the employer or freelancer can cancel this contract' } 
+    };
+  }
+
+  // RACE CONDITION FIX: Use atomic Supabase RPC to prevent cancellation while being funded
+  const { data: result, error: rpcError } = await getSupabaseServiceClient()
+    .rpc('cancel_pending_contract', {
+      p_contract_id: contractId,
+      p_user_id: userId
+    });
+
+  if (rpcError) {
+    console.error('Failed to cancel pending contract (RPC):', rpcError);
+    return {
+      success: false,
+      error: { 
+        code: 'UPDATE_FAILED', 
+        message: rpcError.message 
+      },
+    };
+  }
+
+  return { success: true };
+}
+
+/**
+ * Get wallet addresses for contract parties
+ * Used for blockchain escrow deployment
+ */
+export async function getContractWalletAddresses(
+  contractId: string
+): Promise<ContractServiceResult<{ employerWallet: string; freelancerWallet: string }>> {
+  const entity = await contractRepository.getContractById(contractId);
+  if (!entity) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Contract not found' },
+    };
+  }
+
+  const employer = await userRepository.getUserById(entity.employer_id);
+  const freelancer = await userRepository.getUserById(entity.freelancer_id);
+
+  if (!employer?.wallet_address || !freelancer?.wallet_address) {
+    return {
+      success: false,
+      error: { 
+        code: 'MISSING_WALLET', 
+        message: 'Both employer and freelancer must have wallet addresses configured' 
+      },
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      employerWallet: employer.wallet_address,
+      freelancerWallet: freelancer.wallet_address,
+    },
+  };
 }

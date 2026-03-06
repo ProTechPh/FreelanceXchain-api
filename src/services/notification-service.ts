@@ -63,9 +63,10 @@ export async function createNotifications(
 }
 
 // Get notification by ID
+// FIXED: Now actually verifies that the requesting user owns the notification
 export async function getNotificationById(
   notificationId: string,
-  _userId: string
+  userId: string
 ): Promise<NotificationServiceResult<Notification>> {
   const notificationEntity = await notificationRepository.getNotificationById(notificationId);
   if (!notificationEntity) {
@@ -74,6 +75,15 @@ export async function getNotificationById(
       error: { code: 'NOT_FOUND', message: 'Notification not found' },
     };
   }
+
+  // Verify the notification belongs to the requesting user
+  if (notificationEntity.user_id !== userId) {
+    return {
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'You do not have access to this notification' },
+    };
+  }
+
   return { success: true, data: mapNotificationFromEntity(notificationEntity) };
 }
 

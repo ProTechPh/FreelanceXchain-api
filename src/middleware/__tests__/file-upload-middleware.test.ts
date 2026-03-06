@@ -4,7 +4,12 @@
  */
 
 import { Request, Response } from 'express';
-import { sanitizeFilename, MAX_FILE_SIZE, MAX_TOTAL_SIZE } from '../file-upload-middleware.js';
+import {
+  sanitizeFilename,
+  MAX_FILE_SIZE,
+  MAX_TOTAL_SIZE,
+  scanFileForViruses,
+} from '../file-upload-middleware.js';
 
 describe('File Upload Middleware', () => {
   describe('sanitizeFilename', () => {
@@ -83,6 +88,35 @@ describe('File Upload Middleware', () => {
     it('should reject script files', () => {
       // This would be tested through integration tests with actual file uploads
       expect(true).toBe(true);
+    });
+  });
+
+  describe('Antivirus scanning', () => {
+    it('should detect EICAR test signature', async () => {
+      const payload = Buffer.from(
+        'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*',
+        'latin1'
+      );
+
+      const result = await scanFileForViruses(payload, 'eicar.txt');
+      expect(result.clean).toBe(false);
+      expect(result.threat).toContain('EICAR');
+    });
+
+    it('should detect executable magic number signatures', async () => {
+      const payload = Buffer.from([0x4d, 0x5a, 0x90, 0x00, 0x03, 0x00]);
+      const result = await scanFileForViruses(payload, 'invoice.pdf');
+
+      expect(result.clean).toBe(false);
+      expect(result.threat).toContain('executable');
+    });
+
+    it('should allow benign text payloads', async () => {
+      const payload = Buffer.from('Project milestone report', 'utf8');
+      const result = await scanFileForViruses(payload, 'report.txt');
+
+      expect(result.clean).toBe(true);
+      expect(result.threat).toBeUndefined();
     });
   });
 

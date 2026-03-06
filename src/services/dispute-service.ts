@@ -11,6 +11,7 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity, mapProjectFromEntity, mapMilestoneFromEntity } from '../utils/entity-mapper.js';
 import { generateId } from '../utils/id.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 import {
   notifyDisputeCreated,
   notifyDisputeResolved,
@@ -80,6 +81,18 @@ export async function createDispute(
   }
   const contract = mapContractFromEntity(contractEntity);
 
+  // FIXED: Verify contract is active before allowing disputes
+  // Cannot dispute milestones on completed, cancelled, or pending contracts
+  if (contract.status !== 'active') {
+    return {
+      success: false,
+      error: { 
+        code: 'INVALID_CONTRACT_STATUS', 
+        message: `Cannot create disputes on a ${contract.status} contract. Only active contracts can be disputed.` 
+      },
+    };
+  }
+
   // Verify initiator is part of this contract
   if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
     return {
@@ -108,7 +121,7 @@ export async function createDispute(
   }
   const milestone = mapMilestoneFromEntity(milestoneEntity);
 
-  // Check if milestone is already disputed
+  // Only submitted milestones can be disputed
   if (milestone.status === 'disputed') {
     return {
       success: false,
@@ -116,11 +129,14 @@ export async function createDispute(
     };
   }
 
-  // Check if milestone is already approved (cannot dispute approved milestones)
-  if (milestone.status === 'approved') {
+  if (milestone.status !== 'submitted') {
+    const message = milestone.status === 'approved'
+      ? 'Cannot dispute an approved milestone'
+      : `Milestone must be submitted before it can be disputed (current status: ${milestone.status})`;
+
     return {
       success: false,
-      error: { code: 'INVALID_STATUS', message: 'Cannot dispute an approved milestone' },
+      error: { code: 'INVALID_STATUS', message },
     };
   }
 
@@ -261,26 +277,31 @@ export async function submitEvidence(
     submitted_at: new Date().toISOString(),
   };
 
-  // Add evidence to dispute
-  const updatedEvidence = [...disputeEntity.evidence, evidenceEntity];
+  // Add evidence to dispute atomically to prevent race condition (Requirement 8.3)
+  const { data: newEvidenceArray, error: rpcError } = await getSupabaseServiceClient()
+    .rpc('append_dispute_evidence', {
+      p_dispute_id: disputeId,
+      p_evidence: [evidenceEntity] // Passed as an array to append
+    });
 
-  // Update dispute status to under_review if it was open
-  const newStatus = disputeEntity.status === 'open' ? 'under_review' : disputeEntity.status;
+  if (rpcError) {
+    logger.error('Failed to append evidence via RPC', rpcError, { disputeId });
+    return {
+      success: false,
+      error: { code: 'UPDATE_FAILED', message: 'Failed to update dispute evidence' },
+    };
+  }
 
-  const updatedDisputeEntity = await disputeRepository.updateDispute(
-    disputeId,
-    {
-      evidence: updatedEvidence,
-      status: newStatus,
-    }
-  );
-
+  // Get the fully updated entity
+  const updatedDisputeEntity = await disputeRepository.findDisputeById(disputeId);
   if (!updatedDisputeEntity) {
     return {
       success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update dispute' },
+      error: { code: 'UPDATE_FAILED', message: 'Failed to retrieve updated dispute' },
     };
   }
+
+  const updatedEvidence = updatedDisputeEntity.evidence;
 
   // Update evidence hash on blockchain
   try {
@@ -372,29 +393,57 @@ export async function resolveDispute(
   };
 
   // Trigger payment based on decision (Requirements: 8.4, 8.5)
+  // CRITICAL FIX: Use the employer's wallet address for escrow operations,
+  // not the admin's resolvedBy ID. The escrow contract checks that the
+  // approver is the employer.
   try {
+    if (decision === 'split') {
+      return {
+        success: false,
+        error: {
+          code: 'UNSUPPORTED_DECISION',
+          message: 'Split decisions are not supported until partial escrow settlements are implemented.',
+        },
+      };
+    }
+
     const escrow = await getEscrowByContractId(disputeEntity.contract_id);
-    if (escrow) {
-      if (decision === 'freelancer_favor') {
-        // Release funds to freelancer
-        await releaseEscrowMilestone(escrow.address, disputeEntity.milestone_id, resolvedBy);
-        milestoneEntity.status = 'approved';
-      } else if (decision === 'employer_favor') {
-        // Refund funds to employer
-        await refundEscrowMilestone(escrow.address, disputeEntity.milestone_id, resolvedBy);
-        milestoneEntity.status = 'pending';
-      } else if (decision === 'split') {
-        // For split decision, mark as approved (partial release would be handled separately)
-        milestoneEntity.status = 'approved';
-      }
+    if (!escrow) {
+      return {
+        success: false,
+        error: {
+          code: 'ESCROW_NOT_FOUND',
+          message: 'Escrow not found for contract. Cannot resolve dispute payment.',
+        },
+      };
+    }
+
+    // Use the employer's address stored in the escrow for authorization
+    const employerAddress = escrow.employerAddress;
+
+    if (decision === 'freelancer_favor') {
+      // Release full funds to freelancer
+      await releaseEscrowMilestone(escrow.address, disputeEntity.milestone_id, employerAddress);
+      milestoneEntity.status = 'approved';
+    } else if (decision === 'employer_favor') {
+      // Refund full funds to employer
+      await refundEscrowMilestone(escrow.address, disputeEntity.milestone_id, employerAddress);
+      milestoneEntity.status = 'refunded';
     }
   } catch (error) {
     logger.error('Failed to process payment for dispute resolution', error as Error, {
       disputeId,
       decision: input.decision,
     });
-    console.error('Failed to process payment for dispute resolution:', error);
-    // Continue with resolution even if payment fails
+    // IMPORTANT: If payment fails, do NOT mark the dispute as resolved
+    // The admin should retry the resolution after fixing the payment issue
+    return {
+      success: false,
+      error: { 
+        code: 'PAYMENT_FAILED', 
+        message: 'Payment processing failed during dispute resolution. Please retry.' 
+      },
+    };
   }
 
   // Update milestone status in project
@@ -407,7 +456,15 @@ export async function resolveDispute(
     m => m.status === 'disputed' && m.id !== disputeEntity.milestone_id
   );
   if (!hasOtherDisputes) {
-    await contractRepository.updateContract(disputeEntity.contract_id, { status: 'active' });
+    // Check if all milestones are now completed (approved or refunded)
+    const allMilestonesDone = projectEntity.milestones.every(
+      m => m.status === 'approved' || m.status === 'refunded'
+    );
+    if (allMilestonesDone) {
+      await contractRepository.updateContract(disputeEntity.contract_id, { status: 'completed' });
+    } else {
+      await contractRepository.updateContract(disputeEntity.contract_id, { status: 'active' });
+    }
   }
 
   const updatedDisputeEntity = await disputeRepository.updateDispute(
@@ -516,11 +573,16 @@ export async function getDisputesByContract(
 }
 
 /**
- * Get all open disputes (for admin)
+ * Get all open disputes (for admin) — includes both 'open' and 'under_review' status
  */
 export async function getOpenDisputes(): Promise<DisputeServiceResult<Dispute[]>> {
-  const result = await disputeRepository.getDisputesByStatus('open');
-  return { success: true, data: result.items.map(mapDisputeFromEntity) };
+  const openResult = await disputeRepository.getDisputesByStatus('open');
+  const reviewResult = await disputeRepository.getDisputesByStatus('under_review');
+  const allActive = [
+    ...openResult.items.map(mapDisputeFromEntity),
+    ...reviewResult.items.map(mapDisputeFromEntity),
+  ];
+  return { success: true, data: allActive };
 }
 
 /**
@@ -542,34 +604,29 @@ export async function getAllDisputes(
   options?: { limit?: number; offset?: number; status?: string }
 ): Promise<DisputeServiceResult<{ items: Dispute[]; continuationToken: string | null }>> {
   try {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+    const status = options?.status;
+
+    const queryOptions: { limit: number; offset: number; status?: string } = { limit, offset };
+    if (status) queryOptions.status = status;
+
     let result;
     
     if (userRole === 'admin') {
-      // Admin sees all disputes
-      result = await disputeRepository.getAllDisputes({
-        ...(options?.limit !== undefined && { limit: options.limit }),
-        ...(options?.offset !== undefined && { offset: options.offset }),
-      });
+      result = await disputeRepository.getAllDisputes(queryOptions);
     } else {
-      // Regular users see only their disputes
-      result = await disputeRepository.getDisputesByUserId(userId, {
-        ...(options?.limit !== undefined && { limit: options.limit }),
-        ...(options?.offset !== undefined && { offset: options.offset }),
-      });
+      result = await disputeRepository.getDisputesByUserId(userId, queryOptions);
     }
 
     const disputes = result.items.map(mapDisputeFromEntity);
-    
-    // Filter by status if provided
-    const filteredDisputes = options?.status 
-      ? disputes.filter(d => d.status === options.status)
-      : disputes;
+    const hasMore = result.hasMore;
 
     return {
       success: true,
       data: {
-        items: filteredDisputes,
-        continuationToken: result.hasMore ? String(result.items.length) : null,
+        items: disputes,
+        continuationToken: hasMore ? String(offset + limit) : null,
       },
     };
   } catch (error) {

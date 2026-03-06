@@ -24,6 +24,7 @@ import {
 import { projectRepository } from '../repositories/project-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
 import { getActiveSkills } from './skill-service.js';
+import { getReputation } from './reputation-service.js';
 
 // Types
 export type MatchingServiceError = {
@@ -110,7 +111,7 @@ export async function getProjectRecommendations(
       const aiResult = await analyzeSkillMatch({
         freelancerSkills,
         projectRequirements,
-        reputationScore: 0, // TODO: Get from reputation service
+        reputationScore: 0, // Project recommendations don't weight reputation
       });
       
       if (isAIError(aiResult)) {
@@ -173,8 +174,16 @@ export async function getFreelancerRecommendations(
   for (const freelancerEntity of freelancerEntities) {
     const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
     
-    // TODO: Get actual reputation score from blockchain
-    const reputationScore = 50; // Default reputation score
+    // Get actual reputation score from reputation service
+    let reputationScore = 50; // Default if lookup fails
+    try {
+      const repResult = await getReputation(freelancerEntity.user_id);
+      if (repResult.success && repResult.data.score > 0) {
+        reputationScore = repResult.data.score;
+      }
+    } catch {
+      // Use default score on failure
+    }
     
     let matchResult: SkillMatchResult;
     

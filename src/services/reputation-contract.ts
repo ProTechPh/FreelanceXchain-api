@@ -2,6 +2,9 @@
  * Reputation Smart Contract Interface
  * Handles reputation record submission, retrieval, and aggregate score computation on blockchain
  * Requirements: 7.1, 7.2, 7.3
+ *
+ * ARCHITECTURE: Uses Supabase (blockchain_ratings table)
+ * for persistent storage instead of in-memory Maps.
  */
 
 import {
@@ -11,6 +14,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { generateId } from '../utils/id.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 
 // Blockchain rating record type
 export type BlockchainRating = {
@@ -48,9 +52,30 @@ export type RatingSubmissionParams = {
 // Reputation contract address (simulated)
 const REPUTATION_CONTRACT_ADDRESS = generateWalletAddress();
 
-// In-memory blockchain rating store (simulates blockchain storage)
-const blockchainRatingStore = new Map<string, BlockchainRating>();
+// DB row type
+type RatingRow = {
+  id: string;
+  contract_id: string;
+  rater_id: string;
+  ratee_id: string;
+  rating: number;
+  comment: string | null;
+  timestamp: number;
+  transaction_hash: string;
+};
 
+function rowToRating(row: RatingRow): BlockchainRating {
+  return {
+    id: row.id,
+    contractId: row.contract_id,
+    raterId: row.rater_id,
+    rateeId: row.ratee_id,
+    rating: row.rating,
+    comment: row.comment ?? undefined,
+    timestamp: row.timestamp,
+    transactionHash: row.transaction_hash,
+  };
+}
 
 /**
  * Serialize a BlockchainRating to JSON-compatible format
@@ -134,8 +159,18 @@ export async function submitRatingToBlockchain(
     transactionHash: confirmed.hash!,
   };
 
-  // Store in blockchain (simulated)
-  blockchainRatingStore.set(ratingId, blockchainRating);
+  // Persist to DB
+  const supabase = getSupabaseServiceClient();
+  await supabase.from('blockchain_ratings').insert({
+    id: blockchainRating.id,
+    contract_id: blockchainRating.contractId,
+    rater_id: blockchainRating.raterId,
+    ratee_id: blockchainRating.rateeId,
+    rating: blockchainRating.rating,
+    comment: blockchainRating.comment ?? null,
+    timestamp: blockchainRating.timestamp,
+    transaction_hash: blockchainRating.transactionHash,
+  });
 
   const receipt: TransactionReceipt = {
     transactionHash: confirmed.hash!,
@@ -153,53 +188,60 @@ export async function submitRatingToBlockchain(
  * Get all ratings for a user from the blockchain
  */
 export async function getRatingsFromBlockchain(userId: string): Promise<BlockchainRating[]> {
-  const ratings: BlockchainRating[] = [];
-  
-  for (const rating of blockchainRatingStore.values()) {
-    if (rating.rateeId === userId) {
-      ratings.push(rating);
-    }
-  }
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from('blockchain_ratings')
+    .select('*')
+    .eq('ratee_id', userId)
+    .order('timestamp', { ascending: false });
 
-  // Sort by timestamp descending (newest first)
-  return ratings.sort((a, b) => b.timestamp - a.timestamp);
+  if (error || !data) return [];
+  return (data as RatingRow[]).map(rowToRating);
 }
 
 /**
  * Get ratings given by a user from the blockchain
  */
 export async function getRatingsGivenByUser(userId: string): Promise<BlockchainRating[]> {
-  const ratings: BlockchainRating[] = [];
-  
-  for (const rating of blockchainRatingStore.values()) {
-    if (rating.raterId === userId) {
-      ratings.push(rating);
-    }
-  }
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from('blockchain_ratings')
+    .select('*')
+    .eq('rater_id', userId)
+    .order('timestamp', { ascending: false });
 
-  return ratings.sort((a, b) => b.timestamp - a.timestamp);
+  if (error || !data) return [];
+  return (data as RatingRow[]).map(rowToRating);
 }
 
 /**
  * Get a specific rating by ID from the blockchain
  */
 export async function getRatingById(ratingId: string): Promise<BlockchainRating | null> {
-  return blockchainRatingStore.get(ratingId) ?? null;
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from('blockchain_ratings')
+    .select('*')
+    .eq('id', ratingId)
+    .single();
+
+  if (error || !data) return null;
+  return rowToRating(data as RatingRow);
 }
 
 /**
  * Get ratings for a specific contract
  */
 export async function getRatingsByContract(contractId: string): Promise<BlockchainRating[]> {
-  const ratings: BlockchainRating[] = [];
-  
-  for (const rating of blockchainRatingStore.values()) {
-    if (rating.contractId === contractId) {
-      ratings.push(rating);
-    }
-  }
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from('blockchain_ratings')
+    .select('*')
+    .eq('contract_id', contractId)
+    .order('timestamp', { ascending: false });
 
-  return ratings.sort((a, b) => b.timestamp - a.timestamp);
+  if (error || !data) return [];
+  return (data as RatingRow[]).map(rowToRating);
 }
 
 /**
@@ -260,23 +302,23 @@ export async function hasUserRatedForContract(
   rateeId: string,
   contractId: string
 ): Promise<boolean> {
-  for (const rating of blockchainRatingStore.values()) {
-    if (
-      rating.raterId === raterId &&
-      rating.rateeId === rateeId &&
-      rating.contractId === contractId
-    ) {
-      return true;
-    }
-  }
-  return false;
+  const supabase = getSupabaseServiceClient();
+  const { count } = await supabase
+    .from('blockchain_ratings')
+    .select('*', { count: 'exact', head: true })
+    .eq('rater_id', raterId)
+    .eq('ratee_id', rateeId)
+    .eq('contract_id', contractId);
+
+  return (count ?? 0) > 0;
 }
 
 /**
  * Clear all ratings (for testing)
  */
-export function clearBlockchainRatings(): void {
-  blockchainRatingStore.clear();
+export async function clearBlockchainRatings(): Promise<void> {
+  const supabase = getSupabaseServiceClient();
+  await supabase.from('blockchain_ratings').delete().neq('id', '');
 }
 
 /**

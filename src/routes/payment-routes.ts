@@ -6,12 +6,13 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import {
+  initializeContractEscrow,
   requestMilestoneCompletion,
   approveMilestone,
-  disputeMilestone,
   getContractPaymentStatus,
 } from '../services/payment-service.js';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+import { createDispute } from '../services/dispute-service.js';
+import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 
 const router = Router();
@@ -136,6 +137,7 @@ const router = Router();
 router.post(
   '/milestones/:milestoneId/complete',
   authMiddleware,
+  requireVerifiedKyc,
   validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -219,6 +221,7 @@ router.post(
 router.post(
   '/milestones/:milestoneId/approve',
   authMiddleware,
+  requireVerifiedKyc,
   validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -308,6 +311,7 @@ router.post(
 router.post(
   '/milestones/:milestoneId/dispute',
   authMiddleware,
+  requireVerifiedKyc,
   validateUUID(['milestoneId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -337,12 +341,12 @@ router.post(
         return;
       }
 
-      const result = await disputeMilestone(
+      const result = await createDispute({
         contractId,
         milestoneId,
-        userId,
+        initiatorId: userId,
         reason
-      );
+      });
 
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
@@ -351,7 +355,10 @@ router.post(
         return;
       }
 
-      res.json(result.data);
+      res.json({
+        status: 'disputed',
+        disputeId: result.data.id,
+      });
     } catch (error) {
       next(error);
     }

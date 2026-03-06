@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS skills (
 CREATE TABLE IF NOT EXISTS freelancer_profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255),
+  nationality VARCHAR(100),
   bio TEXT,
   hourly_rate DECIMAL(10, 2) DEFAULT 0,
   skills JSONB DEFAULT '[]',
@@ -54,6 +56,8 @@ CREATE TABLE IF NOT EXISTS freelancer_profiles (
 CREATE TABLE IF NOT EXISTS employer_profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  name VARCHAR(255),
+  nationality VARCHAR(100),
   company_name VARCHAR(255),
   description TEXT,
   industry VARCHAR(255),
@@ -88,9 +92,13 @@ CREATE TABLE IF NOT EXISTS proposals (
   estimated_duration INTEGER DEFAULT 0,
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'withdrawn')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(project_id, freelancer_id)
+  updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Partial unique index: only one active (non-withdrawn) proposal per freelancer per project
+CREATE UNIQUE INDEX IF NOT EXISTS idx_proposals_unique_active
+  ON proposals(project_id, freelancer_id)
+  WHERE status != 'withdrawn';
 
 COMMENT ON COLUMN proposals.attachments IS 'Array of file attachments with metadata: [{url, filename, size, mimeType}]';
 COMMENT ON COLUMN proposals.cover_letter IS 'Legacy text cover letter field - nullable for backward compatibility';
@@ -104,7 +112,7 @@ CREATE TABLE IF NOT EXISTS contracts (
   employer_id UUID REFERENCES users(id) ON DELETE CASCADE,
   escrow_address VARCHAR(255),
   total_amount DECIMAL(12, 2) DEFAULT 0,
-  status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'completed', 'disputed', 'cancelled')),
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'completed', 'disputed', 'cancelled')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -137,29 +145,65 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 -- KYC Verifications table
+-- FIXED: Aligned with code's KycVerification type in models/didit-kyc.ts
+-- Added all columns the code writes to, fixed CHECK constraint to match KycStatus type
 CREATE TABLE IF NOT EXISTS kyc_verifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id UUID REFERENCES users(id) ON DELETE CASCADE,
-  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'submitted', 'under_review', 'approved', 'rejected')),
-  tier INTEGER DEFAULT 1,
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'in_progress', 'completed', 'approved', 'rejected', 'expired')),
+
+  -- Didit session info
+  didit_session_id VARCHAR(255),
+  didit_session_token TEXT,
+  didit_session_url TEXT,
+  didit_workflow_id VARCHAR(255),
+
+  -- Verification decision from Didit
+  decision VARCHAR(20) CHECK (decision IN ('approved', 'declined') OR decision IS NULL),
+  decline_reasons JSONB DEFAULT '[]',
+  review_reasons JSONB DEFAULT '[]',
+
+  -- Document info (from Didit)
+  document_type VARCHAR(100),
+  document_number VARCHAR(255),
+  issuing_country VARCHAR(100),
+
+  -- Personal info (from Didit)
   first_name VARCHAR(255),
-  middle_name VARCHAR(255),
   last_name VARCHAR(255),
   date_of_birth DATE,
-  place_of_birth VARCHAR(255),
   nationality VARCHAR(100),
-  secondary_nationality VARCHAR(100),
-  tax_residence_country VARCHAR(100),
-  tax_identification_number VARCHAR(100),
-  address JSONB DEFAULT '{}',
-  documents JSONB DEFAULT '[]',
-  liveness_check JSONB,
-  submitted_at TIMESTAMPTZ,
-  reviewed_at TIMESTAMPTZ,
+
+  -- Verification results
+  document_verified BOOLEAN,
+  liveness_passed BOOLEAN,
+  liveness_confidence_score VARCHAR(50),
+  spoofing_detected BOOLEAN,
+  face_matched BOOLEAN,
+  face_similarity_score VARCHAR(50),
+
+  -- IP analysis
+  ip_address VARCHAR(45),
+  ip_country_code VARCHAR(10),
+  ip_risk_score VARCHAR(50),
+  is_vpn BOOLEAN,
+  is_proxy BOOLEAN,
+  threat_level VARCHAR(50),
+
+  -- Additional data
+  vendor_data TEXT,
+  metadata JSONB DEFAULT '{}',
+
+  -- Admin review
   reviewed_by UUID REFERENCES users(id),
-  rejection_reason TEXT,
+  reviewed_at TIMESTAMPTZ,
+  admin_notes TEXT,
+
+  -- Timestamps
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
+  expires_at TIMESTAMPTZ
 );
 
 -- Reviews table (for ratings and feedback)
@@ -211,13 +255,19 @@ CREATE INDEX IF NOT EXISTS idx_projects_employer_id ON projects(employer_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_proposals_project_id ON proposals(project_id);
 CREATE INDEX IF NOT EXISTS idx_proposals_freelancer_id ON proposals(freelancer_id);
+CREATE INDEX IF NOT EXISTS idx_proposals_status ON proposals(status);
 CREATE INDEX IF NOT EXISTS idx_contracts_freelancer_id ON contracts(freelancer_id);
 CREATE INDEX IF NOT EXISTS idx_contracts_employer_id ON contracts(employer_id);
+CREATE INDEX IF NOT EXISTS idx_contracts_project_id ON contracts(project_id);
 CREATE INDEX IF NOT EXISTS idx_disputes_contract_id ON disputes(contract_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read);
 CREATE INDEX IF NOT EXISTS idx_kyc_user_id ON kyc_verifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_kyc_didit_session_id ON kyc_verifications(didit_session_id);
+CREATE INDEX IF NOT EXISTS idx_kyc_status ON kyc_verifications(status);
 CREATE INDEX IF NOT EXISTS idx_skills_category_id ON skills(category_id);
+CREATE INDEX IF NOT EXISTS idx_skills_name ON skills(name);
+CREATE INDEX IF NOT EXISTS idx_projects_budget ON projects(budget);
 CREATE INDEX IF NOT EXISTS idx_reviews_contract_id ON reviews(contract_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_reviewee_id ON reviews(reviewee_id);
 CREATE INDEX IF NOT EXISTS idx_messages_contract_id ON messages(contract_id);
@@ -225,6 +275,12 @@ CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages(sender_id);
 CREATE INDEX IF NOT EXISTS idx_payments_contract_id ON payments(contract_id);
 CREATE INDEX IF NOT EXISTS idx_payments_payer_id ON payments(payer_id);
 CREATE INDEX IF NOT EXISTS idx_payments_payee_id ON payments(payee_id);
+CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+
+-- Unique constraints to prevent data inconsistencies
+-- FIXED: These were missing, allowing duplicate entries via race conditions
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_skill_category_name ON skill_categories(name);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_skill_name_category ON skills(name, category_id);
 
 -- Enable Row Level Security (RLS) on all tables
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -242,23 +298,211 @@ ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 
--- Create policies for public read access (adjust as needed for your security requirements)
+-- ============================================================
+-- RLS Policies
+-- NOTE: The backend uses the SERVICE_ROLE_KEY which bypasses RLS entirely.
+-- These policies protect data when using the ANON_KEY or user JWTs directly
+-- (e.g., from a frontend Supabase client).
+-- ============================================================
+
+-- Skill categories & skills: public read, admin write
 CREATE POLICY "Allow public read on skill_categories" ON skill_categories FOR SELECT USING (true);
 CREATE POLICY "Allow public read on skills" ON skills FOR SELECT USING (true);
-CREATE POLICY "Allow public read on open projects" ON projects FOR SELECT USING (status = 'open');
+CREATE POLICY "Admin manage skill_categories" ON skill_categories FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+CREATE POLICY "Admin manage skills" ON skills FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
 
--- Service role bypass for backend operations
-CREATE POLICY "Service role full access users" ON users FOR ALL USING (true);
-CREATE POLICY "Service role full access freelancer_profiles" ON freelancer_profiles FOR ALL USING (true);
-CREATE POLICY "Service role full access employer_profiles" ON employer_profiles FOR ALL USING (true);
-CREATE POLICY "Service role full access projects" ON projects FOR ALL USING (true);
-CREATE POLICY "Service role full access proposals" ON proposals FOR ALL USING (true);
-CREATE POLICY "Service role full access contracts" ON contracts FOR ALL USING (true);
-CREATE POLICY "Service role full access disputes" ON disputes FOR ALL USING (true);
-CREATE POLICY "Service role full access notifications" ON notifications FOR ALL USING (true);
-CREATE POLICY "Service role full access kyc_verifications" ON kyc_verifications FOR ALL USING (true);
-CREATE POLICY "Service role full access skills" ON skills FOR ALL USING (true);
-CREATE POLICY "Service role full access skill_categories" ON skill_categories FOR ALL USING (true);
-CREATE POLICY "Service role full access reviews" ON reviews FOR ALL USING (true);
-CREATE POLICY "Service role full access messages" ON messages FOR ALL USING (true);
-CREATE POLICY "Service role full access payments" ON payments FOR ALL USING (true);
+-- Users: read own data, admins read all
+CREATE POLICY "Users read own data" ON users FOR SELECT
+  USING (auth.uid() = id OR auth.jwt() ->> 'role' = 'admin');
+CREATE POLICY "Users update own data" ON users FOR UPDATE
+  USING (auth.uid() = id)
+  WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users insert own record" ON users FOR INSERT
+  WITH CHECK (auth.uid() = id);
+CREATE POLICY "Admin full access users" ON users FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+
+-- Freelancer profiles: owner read/write, public read for discovery
+CREATE POLICY "Freelancer profiles public read" ON freelancer_profiles FOR SELECT USING (true);
+CREATE POLICY "Freelancer profiles owner update" ON freelancer_profiles FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Freelancer profiles owner insert" ON freelancer_profiles FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Freelancer profiles owner delete" ON freelancer_profiles FOR DELETE
+  USING (user_id = auth.uid());
+
+-- Employer profiles: owner read/write, public read for discovery
+CREATE POLICY "Employer profiles public read" ON employer_profiles FOR SELECT USING (true);
+CREATE POLICY "Employer profiles owner update" ON employer_profiles FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Employer profiles owner insert" ON employer_profiles FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Employer profiles owner delete" ON employer_profiles FOR DELETE
+  USING (user_id = auth.uid());
+
+-- Projects: public read for open, owner read/write for all statuses
+CREATE POLICY "Projects public read open" ON projects FOR SELECT
+  USING (status = 'open' OR employer_id = auth.uid());
+CREATE POLICY "Projects employer insert" ON projects FOR INSERT
+  WITH CHECK (employer_id = auth.uid());
+CREATE POLICY "Projects employer update" ON projects FOR UPDATE
+  USING (employer_id = auth.uid())
+  WITH CHECK (employer_id = auth.uid());
+CREATE POLICY "Projects employer delete" ON projects FOR DELETE
+  USING (employer_id = auth.uid());
+CREATE POLICY "Admin full access projects" ON projects FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+
+-- Proposals: freelancer owns theirs, employer sees proposals on their projects
+CREATE POLICY "Proposals freelancer read own" ON proposals FOR SELECT
+  USING (
+    freelancer_id = auth.uid()
+    OR project_id IN (SELECT id FROM projects WHERE employer_id = auth.uid())
+    OR auth.jwt() ->> 'role' = 'admin'
+  );
+CREATE POLICY "Proposals freelancer insert" ON proposals FOR INSERT
+  WITH CHECK (freelancer_id = auth.uid());
+CREATE POLICY "Proposals freelancer update own" ON proposals FOR UPDATE
+  USING (
+    freelancer_id = auth.uid()
+    OR project_id IN (SELECT id FROM projects WHERE employer_id = auth.uid())
+  );
+
+-- Contracts: only contract parties can read
+CREATE POLICY "Contracts parties read" ON contracts FOR SELECT
+  USING (
+    freelancer_id = auth.uid()
+    OR employer_id = auth.uid()
+    OR auth.jwt() ->> 'role' = 'admin'
+  );
+CREATE POLICY "Admin full access contracts" ON contracts FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+
+-- Disputes: only contract parties and admins
+CREATE POLICY "Disputes parties read" ON disputes FOR SELECT
+  USING (
+    initiator_id = auth.uid()
+    OR contract_id IN (
+      SELECT id FROM contracts WHERE freelancer_id = auth.uid() OR employer_id = auth.uid()
+    )
+    OR auth.jwt() ->> 'role' = 'admin'
+  );
+CREATE POLICY "Disputes parties insert" ON disputes FOR INSERT
+  WITH CHECK (initiator_id = auth.uid());
+CREATE POLICY "Admin full access disputes" ON disputes FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+
+-- Notifications: user reads only their own
+CREATE POLICY "Notifications user read own" ON notifications FOR SELECT
+  USING (user_id = auth.uid());
+CREATE POLICY "Notifications user update own" ON notifications FOR UPDATE
+  USING (user_id = auth.uid())
+  WITH CHECK (user_id = auth.uid());
+
+-- KYC verifications: user reads only their own, admin reads all
+CREATE POLICY "KYC user read own" ON kyc_verifications FOR SELECT
+  USING (user_id = auth.uid() OR auth.jwt() ->> 'role' = 'admin');
+CREATE POLICY "KYC user insert own" ON kyc_verifications FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+CREATE POLICY "Admin full access kyc" ON kyc_verifications FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+
+-- Reviews: public read (reputation transparency), parties write
+CREATE POLICY "Reviews public read" ON reviews FOR SELECT USING (true);
+CREATE POLICY "Reviews reviewer insert" ON reviews FOR INSERT
+  WITH CHECK (reviewer_id = auth.uid());
+
+-- Messages: only contract parties
+CREATE POLICY "Messages parties read" ON messages FOR SELECT
+  USING (
+    sender_id = auth.uid()
+    OR contract_id IN (
+      SELECT id FROM contracts WHERE freelancer_id = auth.uid() OR employer_id = auth.uid()
+    )
+  );
+CREATE POLICY "Messages sender insert" ON messages FOR INSERT
+  WITH CHECK (sender_id = auth.uid());
+
+-- Payments: only contract parties and admins
+CREATE POLICY "Payments parties read" ON payments FOR SELECT
+  USING (
+    payer_id = auth.uid()
+    OR payee_id = auth.uid()
+    OR auth.jwt() ->> 'role' = 'admin'
+  );
+CREATE POLICY "Admin full access payments" ON payments FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+
+-- Audit log entries table (used by audit-log-repository)
+CREATE TABLE IF NOT EXISTS audit_log_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id),
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(50) NOT NULL,
+  resource_id UUID,
+  details JSONB DEFAULT '{}',
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_log_user_id ON audit_log_entries(user_id);
+CREATE INDEX idx_audit_log_created_at ON audit_log_entries(created_at);
+CREATE INDEX idx_audit_log_action ON audit_log_entries(action);
+
+ALTER TABLE audit_log_entries ENABLE ROW LEVEL SECURITY;
+
+-- Only admins can read audit logs
+CREATE POLICY "Admin read audit logs" ON audit_log_entries FOR SELECT
+  USING (auth.jwt() ->> 'role' = 'admin');
+-- Service role inserts audit logs (no user-level insert)
+CREATE POLICY "Service insert audit logs" ON audit_log_entries FOR INSERT
+  WITH CHECK (true);
+
+-- RPC for atomic evidence appending to avoid race conditions
+CREATE OR REPLACE FUNCTION append_dispute_evidence(p_dispute_id UUID, p_evidence JSONB)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_current_evidence JSONB;
+  v_new_evidence JSONB;
+BEGIN
+  -- Get current evidence with row lock
+  SELECT evidence INTO v_current_evidence
+  FROM disputes
+  WHERE id = p_dispute_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Dispute not found';
+  END IF;
+
+  -- Append new evidence
+  v_new_evidence := COALESCE(v_current_evidence, '[]'::jsonb) || p_evidence;
+
+  -- Update dispute
+  UPDATE disputes
+  SET 
+    evidence = v_new_evidence,
+    status = CASE WHEN status = 'open' THEN 'under_review' ELSE status END,
+    updated_at = NOW()
+  WHERE id = p_dispute_id;
+
+  RETURN v_new_evidence;
+END;
+$$;
+  WITH CHECK (true);

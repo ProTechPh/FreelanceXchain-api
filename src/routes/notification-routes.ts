@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { clampLimit } from '../utils/index.js';
 import {
   getNotificationsByUser,
   markNotificationAsRead,
@@ -93,9 +94,9 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
     return;
   }
 
-  const maxItemCount = req.query['maxItemCount'] 
+  const maxItemCount = clampLimit(req.query['maxItemCount'] 
     ? parseInt(req.query['maxItemCount'] as string, 10) 
-    : undefined;
+    : undefined);
   const continuationToken = req.query['continuationToken'] as string | undefined;
 
   const options = {

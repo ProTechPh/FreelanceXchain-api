@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { clampLimit, clampOffset } from '../utils/index.js';
 import {
   createProject,
   getProjectById,
@@ -131,17 +132,15 @@ const router = Router();
  *                   type: string
  */
 router.get('/', async (req: Request, res: Response) => {
-  const keyword = req.query['keyword'] as string | undefined;
-  const skillsParam = req.query['skills'] as string | undefined;
-  const minBudget = req.query['minBudget'] ? Number(req.query['minBudget']) : undefined;
-  const maxBudget = req.query['maxBudget'] ? Number(req.query['maxBudget']) : undefined;
-  const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
-  const continuationToken = req.query['continuationToken'] as string | undefined;
+   const keyword = req.query['keyword'] as string | undefined;
+   const skillsParam = req.query['skills'] as string | undefined;
+   const minBudget = req.query['minBudget'] ? Number(req.query['minBudget']) : undefined;
+   const maxBudget = req.query['maxBudget'] ? Number(req.query['maxBudget']) : undefined;
+   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
+   const continuationToken = req.query['continuationToken'] as string | undefined;
 
-  const options: { maxItemCount: number; continuationToken?: string } = { maxItemCount: limit };
-  if (continuationToken) {
-    options.continuationToken = continuationToken;
-  }
+  const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
+  const options = { limit, offset };
 
   let result;
 
@@ -213,8 +212,8 @@ router.get('/', async (req: Request, res: Response) => {
 router.get('/my-projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
-  const continuationToken = req.query['continuationToken'] as string | undefined;
+  const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
+  const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
 
   if (!userId) {
     res.status(401).json({
@@ -225,10 +224,7 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), async (req: 
     return;
   }
 
-  const options: { maxItemCount: number; continuationToken?: string } = { maxItemCount: limit };
-  if (continuationToken) {
-    options.continuationToken = continuationToken;
-  }
+  const options = { limit, offset };
 
   const result = await listProjectsByEmployer(userId, options);
 
@@ -345,7 +341,7 @@ router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, async (req: Request, res: Response) => {
   const { title, description, requiredSkills, budget, deadline } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -469,7 +465,7 @@ router.post('/', authMiddleware, requireRole('employer'), async (req: Request, r
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.patch('/:id', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { title, description, requiredSkills, budget, deadline, status } = req.body;
   const userId = req.user?.userId;
@@ -586,7 +582,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), validateUUID(), as
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.post('/:id/milestones', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { milestones } = req.body;
   const userId = req.user?.userId;
@@ -706,8 +702,8 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), validateUU
   const projectId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const limit = req.query['limit'] ? Number(req.query['limit']) : 20;
-  const continuationToken = req.query['continuationToken'] as string | undefined;
+  const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
+  const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
 
   if (!userId) {
     res.status(401).json({
@@ -738,10 +734,7 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), validateUU
     return;
   }
 
-  const options: { maxItemCount: number; continuationToken?: string } = { maxItemCount: limit };
-  if (continuationToken) {
-    options.continuationToken = continuationToken;
-  }
+  const options = { limit, offset };
 
   const result = await getProposalsByProject(projectId, options);
 

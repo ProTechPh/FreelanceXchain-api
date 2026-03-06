@@ -21,7 +21,7 @@ import { generateId } from '../utils/id.js';
 // Constants
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
-const REQUEST_TIMEOUT_MS = 30000;
+const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses (can be slow)
 
 // Prompt templates
 export const SKILL_MATCH_PROMPT = `
@@ -79,11 +79,18 @@ export function isAIAvailable(): boolean {
   return Boolean(config.llm.apiKey);
 }
 
+const AI_RECOMMENDATIONS_ENDPOINT = '/FreelanceXchain/AI/Recommendations';
+
 /**
- * Build the AI API URL (OpenAI-compatible endpoint)
+ * Build the AI API URL for the recommendations endpoint.
+ * If LLM_API_URL already includes the endpoint, use it as-is.
  */
 function buildApiUrl(): string {
-  return `${config.llm.apiUrl}/v1/chat/completions`;
+  const baseUrl = config.llm.apiUrl.replace(/\/+$/, '');
+  if (baseUrl.toLowerCase().endsWith(AI_RECOMMENDATIONS_ENDPOINT.toLowerCase())) {
+    return baseUrl;
+  }
+  return `${baseUrl}${AI_RECOMMENDATIONS_ENDPOINT}`;
 }
 
 /**
@@ -243,7 +250,7 @@ function parseJsonResponse<T>(text: string): T | null {
 function buildPrompt(template: string, variables: Record<string, string>): string {
   let prompt = template;
   for (const [key, value] of Object.entries(variables)) {
-    prompt = prompt.replace(`{${key}}`, value);
+    prompt = prompt.replaceAll(`{${key}}`, value);
   }
   return prompt;
 }

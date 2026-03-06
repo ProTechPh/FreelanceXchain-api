@@ -1,2 +1,24 @@
-// Re-export types from entity-mapper for backward compatibility
-export type { Notification, NotificationType } from '../utils/entity-mapper.js';
+// Notification domain types
+export type NotificationType =
+  | 'proposal_received'
+  | 'proposal_accepted'
+  | 'proposal_rejected'
+  | 'milestone_submitted'
+  | 'milestone_approved'
+  | 'payment_released'
+  | 'dispute_created'
+  | 'dispute_resolved'
+  | 'rating_received'
+  | 'message';
+
+export type Notification = {
+  id: string;
+  userId: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  data: Record<string, unknown>;
+  isRead: boolean;
+  createdAt: string;
+  updatedAt: string;
+};

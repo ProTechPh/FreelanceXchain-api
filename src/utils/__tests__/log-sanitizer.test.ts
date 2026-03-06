@@ -10,7 +10,7 @@ import {
   sanitizeLogData,
   sanitizeError,
   containsSensitiveData,
-} from '../log-sanitizer';
+} from '../log-sanitizer.js';
 
 describe('Log Sanitizer - OWASP A02 & A09', () => {
   describe('sanitizeString', () => {

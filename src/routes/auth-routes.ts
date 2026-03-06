@@ -20,13 +20,19 @@ import {
   verifyMFAChallenge,
   getMFAFactors,
   disableMFA,
+  validateToken,
+  createAuthResult,
+  consumeMfaSession,
+  validateTokenAndGetUser,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
-import { authRateLimiter } from '../middleware/rate-limiter.js';
+import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limiter.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
+import { createPerRequestClient } from '../config/supabase.js';
+import { userRepository } from '../repositories/user-repository.js';
 
 const router = Router();
 
@@ -121,8 +127,17 @@ const router = Router();
  *           type: string
  */
 
+/**
+ * Validate email format
+ * FIXED: Previous validation accepted strings like "@@@@@" or "a@b c"
+ * Now checks for proper local@domain.tld format with maximum length
+ */
 function validateEmail(email: unknown): email is string {
-  return typeof email === 'string' && email.includes('@') && email.length >= 5;
+  if (typeof email !== 'string') return false;
+  if (email.length < 5 || email.length > 254) return false;
+  // RFC 5322 simplified: local-part@domain.tld
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
 }
 
 function validateRole(role: unknown): role is UserRole {
@@ -164,7 +179,7 @@ function validateRole(role: unknown): role is UserRole {
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/register', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/register', registerRateLimiter, async (req: Request, res: Response) => {
   const { email, password, role, walletAddress } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -301,6 +316,16 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   const result = await login(input);
 
   if (isAuthError(result)) {
+    // Check if MFA is required
+    if (result.code === 'MFA_REQUIRED') {
+      res.status(200).json({
+        mfaRequired: true,
+        mfaSessionId: (result as any).mfaSessionId,
+        factorId: (result as any).factorId,
+      });
+      return;
+    }
+    
     res.status(401).json({
       error: {
         code: 'AUTH_INVALID_CREDENTIALS',
@@ -313,6 +338,135 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   }
 
   res.status(200).json(result);
+});
+
+/**
+ * @swagger
+ * /api/auth/login/mfa-verify:
+ *   post:
+ *     summary: Complete MFA login
+ *     description: Verifies MFA code and completes the login process
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - accessToken
+ *               - factorId
+ *               - code
+ *             properties:
+ *               accessToken:
+ *                 type: string
+ *               factorId:
+ *                 type: string
+ *               code:
+ *                 type: string
+ *                 description: 6-digit TOTP code
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/AuthResult'
+ *       400:
+ *         description: Invalid code
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Response) => {
+  const { mfaSessionId, factorId, code } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!mfaSessionId || !factorId || !code) {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'mfaSessionId, factorId, and code are required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Consume the pending MFA session to retrieve the real access token
+  const mfaSession = await consumeMfaSession(mfaSessionId);
+
+  if (!mfaSession) {
+    res.status(401).json({
+      error: {
+        code: 'MFA_SESSION_EXPIRED',
+        message: 'MFA session has expired or is invalid. Please log in again.',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const realAccessToken = mfaSession.accessToken;
+
+  // Create challenge using the real access token
+  const challengeResult = await challengeMFA(realAccessToken, factorId);
+  
+  if (isAuthError(challengeResult)) {
+    res.status(400).json({
+      error: {
+        code: challengeResult.code,
+        message: challengeResult.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Verify the code
+  const verifyResult = await verifyMFAChallenge(realAccessToken, factorId, challengeResult.challengeId, code);
+  
+  if (isAuthError(verifyResult)) {
+    res.status(400).json({
+      error: {
+        code: verifyResult.code,
+        message: verifyResult.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // MFA verified - get user and return full auth result
+  const authResult = await validateTokenAndGetUser(realAccessToken);
+  
+  if (isAuthError(authResult)) {
+    res.status(401).json({
+      error: {
+        code: authResult.code,
+        message: authResult.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Get a fresh session after MFA verification to update refresh token
+  const supabase = createPerRequestClient(realAccessToken);
+  const { data: sessionData } = await supabase.auth.getSession();
+  
+  // Update refresh token if available
+  const finalResult = {
+    ...authResult,
+    refreshToken: mfaSession.refreshToken || sessionData?.session?.refresh_token || authResult.refreshToken,
+  };
+
+  res.status(200).json(finalResult);
 });
 
 
@@ -473,13 +627,24 @@ router.get('/callback', async (req: Request, res: Response) => {
     return;
   }
 
-  // Implicit flow: tokens in URL fragment - serve minimal HTML to extract and display as JSON
-  res.send(`<script>
-var p=new URLSearchParams(location.hash.slice(1));
-var t=p.get('access_token'),r=p.get('refresh_token');
-if(t){fetch('/api/auth/oauth/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:t})}).then(r=>r.json()).then(d=>document.write('<pre>'+JSON.stringify({success:true,access_token:t,refresh_token:r,...d},null,2)+'</pre>')).catch(e=>document.write(JSON.stringify({success:false,error:e.message})));}
-else document.write(JSON.stringify({success:false,error:'No tokens found'}));
-</script>`);
+  // Implicit flow: tokens in URL fragment - serve minimal HTML to extract and POST to callback
+  // Uses textContent instead of document.write to prevent XSS via untrusted URL fragment data
+  res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
+<pre id="result">Processing OAuth callback...</pre>
+<script>
+(function(){
+  var el=document.getElementById('result');
+  try{
+    var p=new URLSearchParams(location.hash.slice(1));
+    var t=p.get('access_token'),r=p.get('refresh_token');
+    if(!t){el.textContent=JSON.stringify({success:false,error:'No tokens found in URL fragment'},null,2);return;}
+    fetch('/api/auth/oauth/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:t})})
+      .then(function(resp){return resp.json();})
+      .then(function(d){el.textContent=JSON.stringify({success:true,access_token:t,refresh_token:r,user:d.user},null,2);})
+      .catch(function(e){el.textContent=JSON.stringify({success:false,error:e.message},null,2);});
+  }catch(e){el.textContent=JSON.stringify({success:false,error:'Failed to process OAuth callback'},null,2);}
+})();
+</script></body></html>`);
 });
 
 /**
@@ -623,6 +788,17 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
       errorCode: result.code,
     });
     
+    // Check if MFA is required
+    if (result.code === 'MFA_REQUIRED') {
+      logger.info('OAuth user requires MFA', { requestId });
+      res.status(200).json({
+        mfaRequired: true,
+        mfaSessionId: (result as any).mfaSessionId,
+        factorId: (result as any).factorId,
+      });
+      return;
+    }
+    
     if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
       logger.info('OAuth user requires registration', { requestId });
       res.status(202).json({
@@ -698,7 +874,7 @@ router.post('/oauth/callback', async (req: Request, res: Response) => {
  *       401:
  *         description: Invalid token
  */
-router.post('/oauth/register', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Response) => {
   const { accessToken, role, walletAddress } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -791,7 +967,7 @@ router.post('/oauth/register', authRateLimiter, async (req: Request, res: Respon
  *       400:
  *         description: Validation error
  */
-router.post('/resend-confirmation', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/resend-confirmation', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -844,7 +1020,7 @@ router.post('/resend-confirmation', authRateLimiter, async (req: Request, res: R
  *       400:
  *         description: Validation error
  */
-router.post('/forgot-password', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -857,18 +1033,21 @@ router.post('/forgot-password', authRateLimiter, async (req: Request, res: Respo
     return;
   }
 
-  const result = await requestPasswordReset(email);
-
-  if (isAuthError(result)) {
-    res.status(400).json({
-      error: { code: result.code, message: result.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
+  // FIXED: Always return the same response regardless of whether the email exists
+  // This prevents account enumeration via timing/error differences
+  try {
+    await requestPasswordReset(email);
+  } catch (error) {
+    // Swallow errors intentionally - don't reveal if the email exists
+    logger.info('Password reset requested', { requestId });
   }
 
-  res.status(200).json({ message: 'Password reset email sent' });
+  // Always return success message regardless of whether email exists
+  res.status(200).json({
+    message: 'If this email is registered, a password reset link has been sent',
+    timestamp: new Date().toISOString(),
+    requestId,
+  });
 });
 
 /**
@@ -898,7 +1077,7 @@ router.post('/forgot-password', authRateLimiter, async (req: Request, res: Respo
  *       500:
  *         description: Failed to generate token
  */
-router.get('/csrf-token', (req: Request, res: Response) => {
+router.post('/csrf-token', (req: Request, res: Response) => {
   generateCsrfToken(req, res);
 });
 
@@ -934,7 +1113,7 @@ router.get('/csrf-token', (req: Request, res: Response) => {
  *       401:
  *         description: Invalid token
  */
-router.post('/reset-password', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/reset-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { accessToken, password } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -1010,7 +1189,13 @@ router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
 
   logger.info('User logout initiated', { userId, requestId });
 
-  const result = await logout();
+  // FIXED: Extract the access token from the Authorization header and pass it to logout()
+  // Previously logout() was called with no arguments, signing out the server-side session
+  // instead of the user's actual session
+  const authHeader = req.headers.authorization;
+  const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
+
+  const result = await logout(accessToken);
 
   if (isAuthError(result)) {
     logger.error('Logout failed', { userId, requestId, error: result.message });
@@ -1426,7 +1611,7 @@ router.get('/mfa/factors', authMiddleware, async (req: Request, res: Response) =
  *         description: Unauthorized
  */
 router.post('/mfa/disable', authMiddleware, async (req: Request, res: Response) => {
-  const { factorId } = req.body;
+  const { factorId, totpCode } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const authHeader = req.headers.authorization;
   const token = authHeader?.split(' ')[1];
@@ -1455,7 +1640,19 @@ router.post('/mfa/disable', authMiddleware, async (req: Request, res: Response) 
     return;
   }
 
-  const result = await disableMFA(token, factorId);
+  if (!totpCode || typeof totpCode !== 'string') {
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'totpCode is required for re-authentication',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await disableMFA(token, factorId, totpCode);
 
   if (isAuthError(result)) {
     res.status(400).json({

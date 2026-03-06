@@ -6,23 +6,27 @@ frontend:
 
 backend:
   - changed-files:
-      - any-glob-to-any-file: ['src/services/**/*', 'src/repositories/**/*']
+      - any-glob-to-any-file: ['src/services/**/*', 'src/repositories/**/*', 'src/models/**/*']
 
 smart-contracts:
   - changed-files:
-      - any-glob-to-any-file: 'contracts/**/*'
+      - any-glob-to-any-file: ['contracts/**/*', 'hardhat.config.cjs']
+
+blockchain:
+  - changed-files:
+      - any-glob-to-any-file: ['contracts/**/*', 'scripts/deployment/**/*']
 
 config:
   - changed-files:
-      - any-glob-to-any-file: ['src/config/**/*', '*.json', '*.yml', '*.yaml']
+      - any-glob-to-any-file: ['src/config/**/*', '*.json', '*.yml', '*.yaml', 'tsconfig*.json']
 
 documentation:
   - changed-files:
-      - any-glob-to-any-file: ['docs/**/*', '*.md']
+      - any-glob-to-any-file: ['docs/**/*', '*.md', 'README.md']
 
 tests:
   - changed-files:
-      - any-glob-to-any-file: ['**/*.test.ts', '**/*.spec.ts', '__tests__/**/*']
+      - any-glob-to-any-file: ['**/*.test.ts', '**/*.spec.ts', '__tests__/**/*', 'test/**/*']
 
 ci:
   - changed-files:
@@ -30,4 +34,16 @@ ci:
 
 dependencies:
   - changed-files:
-      - any-glob-to-any-file: ['package.json', 'package-lock.json']
+      - any-glob-to-any-file: ['package.json', 'pnpm-lock.yaml']
+
+security:
+  - changed-files:
+      - any-glob-to-any-file: ['src/middleware/auth-middleware.ts', 'src/middleware/csrf-middleware.ts', 'docs/security/**/*']
+
+middleware:
+  - changed-files:
+      - any-glob-to-any-file: 'src/middleware/**/*'
+
+database:
+  - changed-files:
+      - any-glob-to-any-file: ['supabase/**/*', 'src/repositories/**/*']

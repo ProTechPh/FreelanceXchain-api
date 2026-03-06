@@ -4,8 +4,11 @@ import { proposalRepository, ProposalEntity } from '../repositories/proposal-rep
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { notificationRepository } from '../repositories/notification-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
+
 import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 
@@ -30,34 +33,17 @@ export type ProposalWithNotification = {
   proposal: Proposal;
   notification: {
     userId: string;
-    type: 'proposal_received' | 'proposal_accepted' | 'proposal_rejected';
-    title: string;
-    message: string;
-    data: Record<string, unknown>;
+    type: string;
   };
 };
 
 export type AcceptProposalResult = {
   proposal: Proposal;
   contract: Contract;
-  notification: {
-    userId: string;
-    type: 'proposal_accepted';
-    title: string;
-    message: string;
-    data: Record<string, unknown>;
-  };
 };
 
 export type RejectProposalResult = {
   proposal: Proposal;
-  notification: {
-    userId: string;
-    type: 'proposal_rejected';
-    title: string;
-    message: string;
-    data: Record<string, unknown>;
-  };
 };
 
 
@@ -121,22 +107,37 @@ export async function submitProposal(
   const created = mapProposalFromEntity(createdEntity);
 
   // Create notification for employer
-  const notification = {
-    userId: project.employerId,
-    type: 'proposal_received' as const,
-    title: 'New Proposal Received',
-    message: `A freelancer has submitted a proposal for your project "${project.title}"`,
-    data: {
-      proposalId: created.id,
-      projectId: project.id,
-      projectTitle: project.title,
-      freelancerId,
-    },
-  };
+  let notificationId = '';
+  try {
+    const notification = await notificationRepository.createNotification({
+      id: generateId(),
+      user_id: project.employerId,
+      type: 'proposal_received',
+      title: 'New Proposal Received',
+      message: `A freelancer has submitted a proposal for your project "${project.title}"`,
+      data: {
+        proposalId: created.id,
+        projectId: project.id,
+        projectTitle: project.title,
+        freelancerId,
+      },
+      is_read: false,
+    });
+    notificationId = notification.id;
+  } catch (error) {
+    console.error('Failed to create notification:', error);
+    // Continue - notification is secondary
+  }
 
   return {
     success: true,
-    data: { proposal: created, notification },
+    data: { 
+      proposal: created,
+      notification: {
+        userId: project.employerId,
+        type: 'proposal_received',
+      },
+    },
   };
 }
 
@@ -187,6 +188,11 @@ export async function getProposalsByFreelancer(
 
 
 // Accept a proposal - creates a contract
+// FIXED:
+// - Checks if another proposal was already accepted (prevents race condition)
+// - Uses freelancer's proposedRate for contract amount (not project.budget)
+// - Rejects all other pending proposals for the same project
+// - Checks that project has milestones before creating contract
 export async function acceptProposal(
   proposalId: string,
   employerId: string
@@ -224,33 +230,60 @@ export async function acceptProposal(
     };
   }
 
-  // Update proposal status
-  const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
-    status: 'accepted',
-  });
-
-  if (!updatedProposalEntity) {
+  // Check that the project has milestones defined
+  if (!project.milestones || project.milestones.length === 0) {
     return {
       success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update proposal status' },
+      error: { code: 'NO_MILESTONES', message: 'Project must have milestones defined before accepting a proposal' },
     };
   }
-  const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
 
-  // Create contract entity
-  const contractEntity: Omit<ContractEntity, 'created_at' | 'updated_at'> = {
-    id: generateId(),
-    project_id: proposalEntity.project_id,
-    proposal_id: proposalEntity.id,
-    freelancer_id: proposalEntity.freelancer_id,
-    employer_id: project.employerId,
-    escrow_address: '', // Will be set when smart contract is deployed
-    total_amount: project.budget,
-    status: 'active',
-  };
+  const proposalRate = proposalEntity.proposed_rate;
+  if (proposalRate === null || proposalRate === undefined || proposalRate <= 0) {
+    return {
+      success: false,
+      error: { code: 'INVALID_PROPOSAL_RATE', message: 'Accepted proposal must have a valid positive rate' },
+    };
+  }
 
-  const createdContractEntity = await contractRepository.createContract(contractEntity);
-  const createdContract = mapContractFromEntity(createdContractEntity);
+  const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
+  if (Math.abs(milestoneTotal - proposalRate) > 0.01) {
+    return {
+      success: false,
+      error: {
+        code: 'AMOUNT_MISMATCH',
+        message: 'Proposal rate must match the total project milestone amount before contract creation',
+      },
+    };
+  }
+
+  // RACE CONDITION FIX: Use atomic Supabase RPC to prevent double-accepting proposals
+  const { data: result, error: rpcError } = await getSupabaseServiceClient()
+    .rpc('accept_proposal_atomic', {
+      p_proposal_id: proposalId,
+      p_employer_id: employerId
+    });
+
+  if (rpcError) {
+    console.error('Failed to accept proposal (RPC):', rpcError);
+    return {
+      success: false,
+      error: { 
+        code: rpcError.message.includes('already been accepted') ? 'ALREADY_ACCEPTED' : 'UPDATE_FAILED', 
+        message: rpcError.message 
+      },
+    };
+  }
+
+  // Map the new values returned from the RPC
+  const createdContractId = result.contract_id;
+
+  // Get the updated entities
+  const updatedProposalEntity = await proposalRepository.findProposalById(proposalId);
+  const updatedProposal = mapProposalFromEntity(updatedProposalEntity!);
+  
+  const createdContractEntity = await contractRepository.getContractById(createdContractId);
+  const createdContract = mapContractFromEntity(createdContractEntity!);
 
   // Create agreement on blockchain
   try {
@@ -263,7 +296,7 @@ export async function acceptProposal(
         contractId: createdContract.id,
         employerWallet: employer.wallet_address,
         freelancerWallet: freelancer.wallet_address,
-        totalAmount: project.budget,
+        totalAmount: proposalRate,
         milestoneCount: project.milestones.length,
         terms: {
           projectTitle: project.title,
@@ -273,7 +306,9 @@ export async function acceptProposal(
         },
       });
 
-      // Freelancer auto-signs since they accepted the proposal
+      // Note: Freelancer should explicitly sign the agreement, not auto-sign
+      // The employer accepted the proposal; the freelancer submitted it.
+      // Auto-signing is kept for now but should be replaced with explicit consent flow.
       await signAgreement(createdContract.id, freelancer.wallet_address);
     }
   } catch (error) {
@@ -287,25 +322,31 @@ export async function acceptProposal(
   });
 
   // Create notification for freelancer
-  const notification = {
-    userId: proposalEntity.freelancer_id,
-    type: 'proposal_accepted' as const,
-    title: 'Proposal Accepted',
-    message: `Your proposal for "${project.title}" has been accepted!`,
-    data: {
-      proposalId: proposalEntity.id,
-      projectId: project.id,
-      projectTitle: project.title,
-      contractId: createdContract.id,
-    },
-  };
+  try {
+    await notificationRepository.createNotification({
+      id: generateId(),
+      user_id: proposalEntity.freelancer_id,
+      type: 'proposal_accepted',
+      title: 'Proposal Accepted',
+      message: `Your proposal for "${project.title}" has been accepted!`,
+      data: {
+        proposalId: proposalEntity.id,
+        projectId: project.id,
+        projectTitle: project.title,
+        contractId: createdContract.id,
+      },
+      is_read: false,
+    });
+  } catch (error) {
+    console.error('Failed to create notification:', error);
+    // Continue - notification is secondary
+  }
 
   return {
     success: true,
     data: {
       proposal: updatedProposal,
       contract: createdContract,
-      notification,
     },
   };
 }
@@ -363,23 +404,29 @@ export async function rejectProposal(
   const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
 
   // Create notification for freelancer
-  const notification = {
-    userId: proposalEntity.freelancer_id,
-    type: 'proposal_rejected' as const,
-    title: 'Proposal Rejected',
-    message: `Your proposal for "${project.title}" was not accepted.`,
-    data: {
-      proposalId: proposalEntity.id,
-      projectId: project.id,
-      projectTitle: project.title,
-    },
-  };
+  try {
+    await notificationRepository.createNotification({
+      id: generateId(),
+      user_id: proposalEntity.freelancer_id,
+      type: 'proposal_rejected',
+      title: 'Proposal Rejected',
+      message: `Your proposal for "${project.title}" was not accepted.`,
+      data: {
+        proposalId: proposalEntity.id,
+        projectId: project.id,
+        projectTitle: project.title,
+      },
+      is_read: false,
+    });
+  } catch (error) {
+    console.error('Failed to create notification:', error);
+    // Continue - notification is secondary
+  }
 
   return {
     success: true,
     data: {
       proposal: updatedProposal,
-      notification,
     },
   };
 }

@@ -1,25 +1,59 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.19;
+pragma solidity 0.8.26;
 
 /**
  * @title FreelanceEscrow
  * @dev Escrow contract for freelance marketplace milestone payments
  * Holds funds and releases them upon milestone approval
  * Includes reentrancy protection for all payment functions
+ *
+ * Gas optimizations:
+ * - employer, freelancer, arbiter, totalAmount are immutable (saves ~2100 gas per modifier)
+ * - Packed _status (uint8) and isActive (bool) into same slot
+ * - Custom errors replace require strings
+ * - Loop optimizations: cached length, unchecked ++i
+ * - Cached milestone.amount in local variable to avoid repeated SLOADs
+ * - Inlined completion checks to follow checks-effects-interactions pattern
  */
 contract FreelanceEscrow {
-    address public employer;
-    address public freelancer;
-    address public arbiter; // For dispute resolution
-    
-    uint256 public totalAmount;
+    // Custom errors
+    error InvalidFreelancerAddress();
+    error InvalidArbiterAddress();
+    error ArbiterCannotBeEmployer();
+    error ArbiterCannotBeFreelancer();
+    error MustHaveAtLeastOneMilestone();
+    error AmountsDescriptionsMismatch();
+    error MilestoneAmountMustBePositive();
+    error InsufficientFunds();
+    error ExcessRefundFailed();
+    error OnlyEmployer();
+    error OnlyFreelancer();
+    error OnlyArbiter();
+    error OnlyParties();
+    error ContractNotActive();
+    error ReentrantCall();
+    error InvalidMilestoneIndex();
+    error MilestoneNotPending();
+    error MilestoneNotSubmitted();
+    error MilestoneNotDisputed();
+    error TransferFailed();
+    error RefundFailed();
+    error CannotCancelSubmittedOrDisputed();
+
+    address public immutable employer;
+    address public immutable freelancer;
+    address public immutable arbiter;
+    uint256 public immutable totalAmount;
+
     uint256 public releasedAmount;
-    
-    // Reentrancy guard
-    uint256 private constant NOT_ENTERED = 1;
-    uint256 private constant ENTERED = 2;
-    uint256 private _status;
-    
+    uint256 public refundedAmount;
+
+    // Reentrancy guard (packed with isActive in same slot)
+    uint8 private constant NOT_ENTERED = 1;
+    uint8 private constant ENTERED = 2;
+    uint8 private _status;
+    bool public isActive;
+
     enum MilestoneStatus { Pending, Submitted, Approved, Disputed, Refunded }
     
     struct Milestone {
@@ -29,8 +63,6 @@ contract FreelanceEscrow {
     }
     
     Milestone[] public milestones;
-    
-    bool public isActive;
     string public contractId; // Off-chain contract reference
     
     // Events
@@ -42,42 +74,37 @@ contract FreelanceEscrow {
     event DisputeResolved(uint256 indexed milestoneIndex, bool inFavorOfFreelancer);
     event ContractCompleted();
     event ContractCancelled();
+    event ExcessRefunded(address indexed to, uint256 amount);
     
-    /**
-     * @dev Prevents reentrancy attacks
-     */
     modifier nonReentrant() {
-        require(_status != ENTERED, "ReentrancyGuard: reentrant call");
+        if (_status == ENTERED) revert ReentrantCall();
         _status = ENTERED;
         _;
         _status = NOT_ENTERED;
     }
     
     modifier onlyEmployer() {
-        require(msg.sender == employer, "Only employer can call this");
+        if (msg.sender != employer) revert OnlyEmployer();
         _;
     }
     
     modifier onlyFreelancer() {
-        require(msg.sender == freelancer, "Only freelancer can call this");
+        if (msg.sender != freelancer) revert OnlyFreelancer();
         _;
     }
     
     modifier onlyArbiter() {
-        require(msg.sender == arbiter, "Only arbiter can call this");
+        if (msg.sender != arbiter) revert OnlyArbiter();
         _;
     }
     
     modifier onlyParties() {
-        require(
-            msg.sender == employer || msg.sender == freelancer,
-            "Only contract parties can call this"
-        );
+        if (msg.sender != employer && msg.sender != freelancer) revert OnlyParties();
         _;
     }
     
     modifier contractActive() {
-        require(isActive, "Contract is not active");
+        if (!isActive) revert ContractNotActive();
         _;
     }
     
@@ -88,12 +115,12 @@ contract FreelanceEscrow {
         uint256[] memory _milestoneAmounts,
         string[] memory _milestoneDescriptions
     ) payable {
-        require(_freelancer != address(0), "Invalid freelancer address");
-        require(_milestoneAmounts.length > 0, "Must have at least one milestone");
-        require(
-            _milestoneAmounts.length == _milestoneDescriptions.length,
-            "Amounts and descriptions length mismatch"
-        );
+        if (_freelancer == address(0)) revert InvalidFreelancerAddress();
+        if (_arbiter == address(0)) revert InvalidArbiterAddress();
+        if (_arbiter == msg.sender) revert ArbiterCannotBeEmployer();
+        if (_arbiter == _freelancer) revert ArbiterCannotBeFreelancer();
+        if (_milestoneAmounts.length == 0) revert MustHaveAtLeastOneMilestone();
+        if (_milestoneAmounts.length != _milestoneDescriptions.length) revert AmountsDescriptionsMismatch();
         
         employer = msg.sender;
         freelancer = _freelancer;
@@ -102,22 +129,33 @@ contract FreelanceEscrow {
         isActive = true;
         
         uint256 total = 0;
-        for (uint256 i = 0; i < _milestoneAmounts.length; i++) {
+        uint256 len = _milestoneAmounts.length;
+        for (uint256 i = 0; i < len; ) {
+            if (_milestoneAmounts[i] == 0) revert MilestoneAmountMustBePositive();
             milestones.push(Milestone({
                 amount: _milestoneAmounts[i],
                 status: MilestoneStatus.Pending,
                 description: _milestoneDescriptions[i]
             }));
             total += _milestoneAmounts[i];
+            unchecked { ++i; }
         }
         
         totalAmount = total;
-        require(msg.value >= total, "Insufficient funds sent");
+        if (msg.value < total) revert InsufficientFunds();
         
         // Initialize reentrancy guard
         _status = NOT_ENTERED;
         
         emit FundsDeposited(msg.sender, msg.value);
+
+        // Refund excess ETH immediately
+        if (msg.value > total) {
+            uint256 excess = msg.value - total;
+            (bool refundSuccess, ) = msg.sender.call{value: excess}("");
+            if (!refundSuccess) revert ExcessRefundFailed();
+            emit ExcessRefunded(msg.sender, excess);
+        }
     }
 
     
@@ -125,9 +163,9 @@ contract FreelanceEscrow {
      * @dev Freelancer submits milestone for approval
      */
     function submitMilestone(uint256 milestoneIndex) external onlyFreelancer contractActive {
-        require(milestoneIndex < milestones.length, "Invalid milestone index");
+        if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage milestone = milestones[milestoneIndex];
-        require(milestone.status == MilestoneStatus.Pending, "Milestone not pending");
+        if (milestone.status != MilestoneStatus.Pending) revert MilestoneNotPending();
         
         milestone.status = MilestoneStatus.Submitted;
         emit MilestoneSubmitted(milestoneIndex);
@@ -137,25 +175,26 @@ contract FreelanceEscrow {
      * @dev Employer approves milestone and releases payment
      */
     function approveMilestone(uint256 milestoneIndex) external onlyEmployer contractActive nonReentrant {
-        require(milestoneIndex < milestones.length, "Invalid milestone index");
+        if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage milestone = milestones[milestoneIndex];
-        require(
-            milestone.status == MilestoneStatus.Submitted,
-            "Milestone not submitted"
-        );
+        if (milestone.status != MilestoneStatus.Submitted) revert MilestoneNotSubmitted();
         
         milestone.status = MilestoneStatus.Approved;
-        releasedAmount += milestone.amount;
+        uint256 amt = milestone.amount;
+        releasedAmount += amt;
+        
+        // Check completion and update state BEFORE external call
+        if (releasedAmount + refundedAmount >= totalAmount) {
+            isActive = false;
+        }
         
         // Transfer funds to freelancer
-        (bool success, ) = freelancer.call{value: milestone.amount}("");
-        require(success, "Transfer failed");
+        (bool success, ) = freelancer.call{value: amt}("");
+        if (!success) revert TransferFailed();
         
-        emit MilestoneApproved(milestoneIndex, milestone.amount);
+        emit MilestoneApproved(milestoneIndex, amt);
         
-        // Check if all milestones are complete
-        if (releasedAmount >= totalAmount) {
-            isActive = false;
+        if (!isActive) {
             emit ContractCompleted();
         }
     }
@@ -164,12 +203,9 @@ contract FreelanceEscrow {
      * @dev Either party can dispute a submitted milestone
      */
     function disputeMilestone(uint256 milestoneIndex) external onlyParties contractActive {
-        require(milestoneIndex < milestones.length, "Invalid milestone index");
+        if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage milestone = milestones[milestoneIndex];
-        require(
-            milestone.status == MilestoneStatus.Submitted,
-            "Can only dispute submitted milestones"
-        );
+        if (milestone.status != MilestoneStatus.Submitted) revert MilestoneNotSubmitted();
         
         milestone.status = MilestoneStatus.Disputed;
         emit MilestoneDisputed(milestoneIndex);
@@ -182,56 +218,94 @@ contract FreelanceEscrow {
         uint256 milestoneIndex,
         bool inFavorOfFreelancer
     ) external onlyArbiter contractActive nonReentrant {
-        require(milestoneIndex < milestones.length, "Invalid milestone index");
+        if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage milestone = milestones[milestoneIndex];
-        require(milestone.status == MilestoneStatus.Disputed, "Milestone not disputed");
+        if (milestone.status != MilestoneStatus.Disputed) revert MilestoneNotDisputed();
+        
+        uint256 amt = milestone.amount;
         
         if (inFavorOfFreelancer) {
             milestone.status = MilestoneStatus.Approved;
-            releasedAmount += milestone.amount;
+            releasedAmount += amt;
             
-            (bool success, ) = freelancer.call{value: milestone.amount}("");
-            require(success, "Transfer failed");
+            // Check completion and update state BEFORE external call
+            if (releasedAmount + refundedAmount >= totalAmount) {
+                isActive = false;
+            }
             
-            emit MilestoneApproved(milestoneIndex, milestone.amount);
+            (bool success, ) = freelancer.call{value: amt}("");
+            if (!success) revert TransferFailed();
+            
+            emit MilestoneApproved(milestoneIndex, amt);
         } else {
             milestone.status = MilestoneStatus.Refunded;
+            refundedAmount += amt;
             
-            (bool success, ) = employer.call{value: milestone.amount}("");
-            require(success, "Refund failed");
+            // Check completion and update state BEFORE external call
+            if (releasedAmount + refundedAmount >= totalAmount) {
+                isActive = false;
+            }
             
-            emit MilestoneRefunded(milestoneIndex, milestone.amount);
+            (bool success, ) = employer.call{value: amt}("");
+            if (!success) revert RefundFailed();
+            
+            emit MilestoneRefunded(milestoneIndex, amt);
         }
         
         emit DisputeResolved(milestoneIndex, inFavorOfFreelancer);
+
+        if (!isActive) {
+            emit ContractCompleted();
+        }
     }
     
     /**
      * @dev Employer can refund a pending milestone
      */
     function refundMilestone(uint256 milestoneIndex) external onlyEmployer contractActive nonReentrant {
-        require(milestoneIndex < milestones.length, "Invalid milestone index");
+        if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage milestone = milestones[milestoneIndex];
-        require(milestone.status == MilestoneStatus.Pending, "Milestone not pending");
+        if (milestone.status != MilestoneStatus.Pending) revert MilestoneNotPending();
         
         milestone.status = MilestoneStatus.Refunded;
+        uint256 amt = milestone.amount;
+        refundedAmount += amt;
         
-        (bool success, ) = employer.call{value: milestone.amount}("");
-        require(success, "Refund failed");
+        // Check completion and update state BEFORE external call
+        if (releasedAmount + refundedAmount >= totalAmount) {
+            isActive = false;
+        }
         
-        emit MilestoneRefunded(milestoneIndex, milestone.amount);
+        (bool success, ) = employer.call{value: amt}("");
+        if (!success) revert RefundFailed();
+        
+        emit MilestoneRefunded(milestoneIndex, amt);
+
+        if (!isActive) {
+            emit ContractCompleted();
+        }
     }
     
     /**
      * @dev Cancel contract and refund remaining funds to employer
+     * Cannot cancel if any milestones are Submitted or Disputed
      */
     function cancelContract() external onlyEmployer contractActive nonReentrant {
+        uint256 len = milestones.length;
+        for (uint256 i = 0; i < len; ) {
+            MilestoneStatus s = milestones[i].status;
+            if (s == MilestoneStatus.Submitted || s == MilestoneStatus.Disputed) {
+                revert CannotCancelSubmittedOrDisputed();
+            }
+            unchecked { ++i; }
+        }
+
         uint256 remainingFunds = address(this).balance;
         isActive = false;
         
         if (remainingFunds > 0) {
             (bool success, ) = employer.call{value: remainingFunds}("");
-            require(success, "Refund failed");
+            if (!success) revert RefundFailed();
         }
         
         emit ContractCancelled();
@@ -248,7 +322,7 @@ contract FreelanceEscrow {
         MilestoneStatus status,
         string memory description
     ) {
-        require(index < milestones.length, "Invalid index");
+        if (index >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage m = milestones[index];
         return (m.amount, m.status, m.description);
     }
@@ -258,6 +332,6 @@ contract FreelanceEscrow {
     }
     
     function getRemainingAmount() external view returns (uint256) {
-        return totalAmount - releasedAmount;
+        return totalAmount - releasedAmount - refundedAmount;
     }
 }

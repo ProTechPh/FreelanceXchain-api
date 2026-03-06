@@ -48,6 +48,25 @@ export async function createVerificationSession(
       body: JSON.stringify(request),
     });
 
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const responseText = await response.text();
+      logger.error('Didit API returned non-JSON response for session creation', undefined, {
+        contentType,
+        status: response.status,
+        responsePreview: responseText.substring(0, 200),
+      });
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'INVALID_RESPONSE',
+            message: 'Didit API returned an invalid response format.',
+          },
+        },
+      };
+    }
+
     const data = await response.json();
 
     if (!response.ok) {
@@ -90,6 +109,26 @@ export async function getVerificationDecision(
         'X-Api-Key': DIDIT_API_KEY ?? '',
       },
     });
+
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      const responseText = await response.text();
+      logger.error('Didit API returned non-JSON response for verification decision', undefined, {
+        sessionId: sanitizedSessionId,
+        contentType,
+        status: response.status,
+        responsePreview: responseText.substring(0, 200),
+      });
+      return {
+        success: false,
+        error: {
+          error: {
+            code: 'INVALID_RESPONSE',
+            message: 'Didit API returned an invalid response format.',
+          },
+        },
+      };
+    }
 
     const data = await response.json();
 
@@ -204,10 +243,18 @@ export function verifyWebhookSignature(
   timestamp: string
 ): boolean {
   const secret = process.env['DIDIT_WEBHOOK_SECRET'];
+  const allowInsecureDevWebhooks = process.env['ALLOW_INSECURE_DIDIT_WEBHOOKS'] === 'true';
   
   if (!secret) {
-    logger.warn('DIDIT_WEBHOOK_SECRET not configured - skipping signature verification');
-    return true; // Allow in development if not configured
+    if (allowInsecureDevWebhooks && process.env['NODE_ENV'] !== 'production') {
+      logger.warn('DIDIT_WEBHOOK_SECRET not configured - insecure webhook bypass enabled for development');
+      return true;
+    }
+
+    logger.security('DIDIT_WEBHOOK_SECRET not configured - rejecting webhook', {
+      nodeEnv: process.env['NODE_ENV'],
+    });
+    return false;
   }
 
   if (!signature || !timestamp) {
@@ -216,11 +263,20 @@ export function verifyWebhookSignature(
       hasTimestamp: !!timestamp,
       nodeEnv: process.env['NODE_ENV'],
     });
-    return process.env['NODE_ENV'] !== 'production';
+    // FIXED: Always reject missing signatures, even in non-production
+    // This prevents trivial forgery in staging environments
+    return false;
   }
 
   // Verify timestamp is within 5 minutes to prevent replay attacks
   const timestampNum = parseInt(timestamp, 10);
+  if (!Number.isFinite(timestampNum)) {
+    logger.security('Webhook timestamp is not a valid unix timestamp', {
+      timestamp,
+    });
+    return false;
+  }
+
   const now = Math.floor(Date.now() / 1000);
   const fiveMinutes = 5 * 60;
   
@@ -246,8 +302,16 @@ export function verifyWebhookSignature(
       .update(signedPayload)
       .digest('hex');
 
+    const normalizedSignature = signature.startsWith('sha256=')
+      ? signature.slice('sha256='.length)
+      : signature;
+
     try {
-      if (crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature))) {
+      if (
+        /^[a-fA-F0-9]+$/.test(normalizedSignature) &&
+        normalizedSignature.length === expectedSignature.length &&
+        crypto.timingSafeEqual(Buffer.from(normalizedSignature, 'hex'), Buffer.from(expectedSignature, 'hex'))
+      ) {
         return true;
       }
     } catch {

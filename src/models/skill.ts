@@ -1,6 +1,34 @@
-// Re-export types from entity-mapper for backward compatibility
-export type { Skill, SkillCategory, SkillReference } from '../utils/entity-mapper.js';
-import type { Skill, SkillCategory } from '../utils/entity-mapper.js';
+// Skill domain types
+export type SkillCategory = {
+  id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type Skill = {
+  id: string;
+  categoryId: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SkillReference = {
+  name: string;
+  yearsOfExperience: number;
+};
+
+export type ProjectSkillReference = {
+  skillId?: string;
+  skillName: string;
+  categoryId?: string;
+  yearsOfExperience?: number;
+};
 
 export type CreateSkillCategoryInput = {
   name: string;

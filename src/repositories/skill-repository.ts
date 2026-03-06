@@ -95,11 +95,21 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
 
   async searchSkillsByKeyword(keyword: string): Promise<SkillEntity[]> {
     const client = this.getClient();
+
+    // Sanitize keyword for PostgREST filter: escape special characters
+    const sanitized = keyword
+      .replace(/\\/g, '\\\\')
+      .replace(/%/g, '\\%')
+      .replace(/,/g, '\\,')
+      .replace(/\./g, '\\.')
+      .replace(/\(/g, '\\(')
+      .replace(/\)/g, '\\)');
+
     const { data, error } = await client
       .from(this.tableName)
       .select('*')
       .eq('is_active', true)
-      .or(`name.ilike.%${keyword}%,description.ilike.%${keyword}%`)
+      .or(`name.ilike.%${sanitized}%,description.ilike.%${sanitized}%`)
       .order('name', { ascending: true });
     
     if (error) throw new Error(`Failed to search skills: ${error.message}`);

@@ -16,6 +16,10 @@ import reputationRoutes from './reputation-routes.js';
 import disputeRoutes from './dispute-routes.js';
 import kycRoutes from './didit-kyc-routes.js';
 import adminRoutes from './admin-routes.js';
+import auditLogRoutes from './audit-logs.js';
+import fileUploadRoutes from './file-upload.js';
+import messageRoutes from './message-routes.js';
+import reviewRoutes from './review-routes.js';
 
 const router = Router();
 
@@ -90,5 +94,17 @@ router.use('/kyc', kycRoutes);
 
 // Admin routes
 router.use('/admin', adminRoutes);
+
+// Audit log routes
+router.use('/audit-logs', auditLogRoutes);
+
+// File upload routes
+router.use('/files', fileUploadRoutes);
+
+// Message routes
+router.use('/messages', messageRoutes);
+
+// Review routes
+router.use('/reviews', reviewRoutes);
 
 export default router;

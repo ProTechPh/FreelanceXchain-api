@@ -202,5 +202,11 @@ export function containsSensitiveData(input: string): boolean {
     return false;
   }
 
-  return Object.values(SENSITIVE_PATTERNS).some(pattern => pattern.test(input));
+  // Reset lastIndex on all patterns before testing to avoid stateful regex bug.
+  // Regexes with the 'g' flag maintain internal state via lastIndex, causing
+  // alternating true/false results on repeated .test() calls with the same input.
+  return Object.values(SENSITIVE_PATTERNS).some(pattern => {
+    pattern.lastIndex = 0;
+    return pattern.test(input);
+  });
 }

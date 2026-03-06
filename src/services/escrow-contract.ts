@@ -2,6 +2,9 @@
  * Escrow Smart Contract Interface
  * Handles escrow deployment, deposits, milestone releases, and refunds
  * Requirements: 6.1, 6.3
+ *
+ * ARCHITECTURE: Uses Supabase (blockchain_escrows + blockchain_escrow_milestones)
+ * for persistent storage instead of in-memory Maps.
  */
 
 import {
@@ -15,8 +18,9 @@ import {
   EscrowDeployment,
   TransactionReceipt,
 } from './blockchain-types.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 
-// In-memory escrow store for simulation
+// Escrow state type (same interface, now backed by DB)
 type EscrowState = {
   address: string;
   contractId: string;
@@ -29,7 +33,88 @@ type EscrowState = {
   deploymentTxHash: string;
 };
 
-const escrowStore = new Map<string, EscrowState>();
+// DB row types
+type EscrowRow = {
+  address: string;
+  contract_id: string;
+  employer_address: string;
+  freelancer_address: string;
+  total_amount: string;
+  balance: string;
+  deployed_at: number;
+  deployment_tx_hash: string;
+};
+
+type MilestoneRow = {
+  id: string;
+  escrow_address: string;
+  amount: string;
+  status: 'pending' | 'released' | 'refunded';
+};
+
+async function loadEscrow(address: string): Promise<EscrowState | null> {
+  const supabase = getSupabaseServiceClient();
+  const { data: escrowRow, error } = await supabase
+    .from('blockchain_escrows')
+    .select('*')
+    .eq('address', address)
+    .single();
+
+  if (error || !escrowRow) return null;
+
+  const { data: milestoneRows } = await supabase
+    .from('blockchain_escrow_milestones')
+    .select('*')
+    .eq('escrow_address', address);
+
+  const row = escrowRow as EscrowRow;
+  return {
+    address: row.address,
+    contractId: row.contract_id,
+    employerAddress: row.employer_address,
+    freelancerAddress: row.freelancer_address,
+    totalAmount: BigInt(row.total_amount),
+    balance: BigInt(row.balance),
+    milestones: (milestoneRows as MilestoneRow[] ?? []).map(m => ({
+      id: m.id,
+      amount: BigInt(m.amount),
+      status: m.status,
+    })),
+    deployedAt: row.deployed_at,
+    deploymentTxHash: row.deployment_tx_hash,
+  };
+}
+
+async function saveEscrow(escrow: EscrowState): Promise<void> {
+  const supabase = getSupabaseServiceClient();
+  await supabase
+    .from('blockchain_escrows')
+    .upsert({
+      address: escrow.address,
+      contract_id: escrow.contractId,
+      employer_address: escrow.employerAddress,
+      freelancer_address: escrow.freelancerAddress,
+      total_amount: escrow.totalAmount.toString(),
+      balance: escrow.balance.toString(),
+      deployed_at: escrow.deployedAt,
+      deployment_tx_hash: escrow.deploymentTxHash,
+      updated_at: new Date().toISOString(),
+    });
+
+  // Upsert milestones
+  if (escrow.milestones.length > 0) {
+    await supabase
+      .from('blockchain_escrow_milestones')
+      .upsert(
+        escrow.milestones.map(m => ({
+          id: m.id,
+          escrow_address: escrow.address,
+          amount: m.amount.toString(),
+          status: m.status,
+        }))
+      );
+  }
+}
 
 /**
  * Deploy a new escrow contract
@@ -56,7 +141,7 @@ export async function deployEscrow(params: EscrowParams): Promise<EscrowDeployme
   // Confirm the transaction (in production, would wait for blockchain confirmation)
   await confirmTransaction(tx.id);
 
-  // Store escrow state
+  // Store escrow state in DB
   const escrowState: EscrowState = {
     address: escrowAddress,
     contractId: params.contractId,
@@ -72,7 +157,7 @@ export async function deployEscrow(params: EscrowParams): Promise<EscrowDeployme
     deploymentTxHash: tx.hash!,
   };
 
-  escrowStore.set(escrowAddress, escrowState);
+  await saveEscrow(escrowState);
 
   return {
     escrowAddress,
@@ -92,7 +177,7 @@ export async function depositToEscrow(
   amount: bigint,
   fromAddress: string
 ): Promise<TransactionReceipt> {
-  const escrow = escrowStore.get(escrowAddress);
+  const escrow = await loadEscrow(escrowAddress);
   if (!escrow) {
     throw new Error('Escrow contract not found');
   }
@@ -118,9 +203,9 @@ export async function depositToEscrow(
     throw new Error('Failed to confirm deposit transaction');
   }
 
-  // Update escrow balance
+  // Update escrow balance in DB
   escrow.balance += amount;
-  escrowStore.set(escrowAddress, escrow);
+  await saveEscrow(escrow);
 
   return {
     transactionHash: confirmed.hash!,
@@ -140,7 +225,7 @@ export async function releaseMilestone(
   milestoneId: string,
   approverAddress: string
 ): Promise<TransactionReceipt> {
-  const escrow = escrowStore.get(escrowAddress);
+  const escrow = await loadEscrow(escrowAddress);
   if (!escrow) {
     throw new Error('Escrow contract not found');
   }
@@ -184,10 +269,10 @@ export async function releaseMilestone(
     throw new Error('Failed to confirm release transaction');
   }
 
-  // Update escrow state
+  // Update escrow state in DB
   milestone.status = 'released';
   escrow.balance -= milestone.amount;
-  escrowStore.set(escrowAddress, escrow);
+  await saveEscrow(escrow);
 
   return {
     transactionHash: confirmed.hash!,
@@ -208,9 +293,14 @@ export async function refundMilestone(
   milestoneId: string,
   resolverAddress: string
 ): Promise<TransactionReceipt> {
-  const escrow = escrowStore.get(escrowAddress);
+  const escrow = await loadEscrow(escrowAddress);
   if (!escrow) {
     throw new Error('Escrow contract not found');
+  }
+
+  // Authorization: only employer or designated resolver can trigger refund
+  if (resolverAddress !== escrow.employerAddress) {
+    throw new Error('Only the employer or authorized resolver can refund a milestone');
   }
 
   const milestone = escrow.milestones.find(m => m.id === milestoneId);
@@ -249,10 +339,10 @@ export async function refundMilestone(
     throw new Error('Failed to confirm refund transaction');
   }
 
-  // Update escrow state
+  // Update escrow state in DB
   milestone.status = 'refunded';
   escrow.balance -= milestone.amount;
-  escrowStore.set(escrowAddress, escrow);
+  await saveEscrow(escrow);
 
   return {
     transactionHash: confirmed.hash!,
@@ -267,7 +357,7 @@ export async function refundMilestone(
  * Get escrow balance
  */
 export async function getEscrowBalance(escrowAddress: string): Promise<bigint> {
-  const escrow = escrowStore.get(escrowAddress);
+  const escrow = await loadEscrow(escrowAddress);
   if (!escrow) {
     throw new Error('Escrow contract not found');
   }
@@ -278,7 +368,7 @@ export async function getEscrowBalance(escrowAddress: string): Promise<bigint> {
  * Get escrow state
  */
 export async function getEscrowState(escrowAddress: string): Promise<EscrowState | null> {
-  return escrowStore.get(escrowAddress) ?? null;
+  return loadEscrow(escrowAddress);
 }
 
 /**
@@ -288,7 +378,7 @@ export async function getMilestoneStatus(
   escrowAddress: string,
   milestoneId: string
 ): Promise<EscrowMilestone | null> {
-  const escrow = escrowStore.get(escrowAddress);
+  const escrow = await loadEscrow(escrowAddress);
   if (!escrow) {
     return null;
   }
@@ -299,7 +389,7 @@ export async function getMilestoneStatus(
  * Check if all milestones are released
  */
 export async function areAllMilestonesReleased(escrowAddress: string): Promise<boolean> {
-  const escrow = escrowStore.get(escrowAddress);
+  const escrow = await loadEscrow(escrowAddress);
   if (!escrow) {
     return false;
   }
@@ -309,18 +399,24 @@ export async function areAllMilestonesReleased(escrowAddress: string): Promise<b
 /**
  * Clear all escrows (for testing)
  */
-export function clearEscrows(): void {
-  escrowStore.clear();
+export async function clearEscrows(): Promise<void> {
+  const supabase = getSupabaseServiceClient();
+  await supabase.from('blockchain_escrow_milestones').delete().neq('id', '');
+  await supabase.from('blockchain_escrows').delete().neq('address', '');
 }
 
 /**
  * Get escrow by contract ID
  */
 export async function getEscrowByContractId(contractId: string): Promise<EscrowState | null> {
-  for (const escrow of escrowStore.values()) {
-    if (escrow.contractId === contractId) {
-      return escrow;
-    }
-  }
-  return null;
+  const supabase = getSupabaseServiceClient();
+  const { data, error } = await supabase
+    .from('blockchain_escrows')
+    .select('address')
+    .eq('contract_id', contractId)
+    .limit(1)
+    .single();
+
+  if (error || !data) return null;
+  return loadEscrow((data as { address: string }).address);
 }

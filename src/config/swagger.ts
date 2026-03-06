@@ -1,7 +1,7 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 import { config } from './env.js';
 
-const options: swaggerJsdoc.Options = {
+export const swaggerOptions: swaggerJsdoc.Options = {
   definition: {
     openapi: '3.0.0',
     info: {
@@ -229,4 +229,6 @@ const options: swaggerJsdoc.Options = {
     : ['./src/routes/**/*.ts'],
 };
 
-export const swaggerSpec = swaggerJsdoc(options);
+export function generateSwaggerSpec(): Record<string, unknown> {
+  return swaggerJsdoc(swaggerOptions) as Record<string, unknown>;
+}

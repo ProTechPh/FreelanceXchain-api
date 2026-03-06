@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { getSupabaseClient, TableName } from '../config/supabase.js';
+import { getSupabaseServiceClient, TableName } from '../config/supabase.js';
 
 export type QueryOptions = {
   limit?: number;
@@ -31,7 +31,7 @@ export class BaseRepository<T extends BaseEntity> {
 
   protected getClient(): SupabaseClient {
     if (!this.client) {
-      this.client = getSupabaseClient();
+      this.client = getSupabaseServiceClient();
     }
     return this.client;
   }
@@ -87,13 +87,17 @@ export class BaseRepository<T extends BaseEntity> {
 
   async delete(id: string): Promise<boolean> {
     const client = this.getClient();
+    // First check if the entity exists, since Supabase delete() returns
+    // success with 0 affected rows when no match is found (no PGRST116).
+    const existing = await this.getById(id);
+    if (!existing) return false;
+
     const { error } = await client
       .from(this.tableName)
       .delete()
       .eq('id', id);
     
     if (error) {
-      if (error.code === 'PGRST116') return false;
       throw new Error(`Failed to delete: ${error.message}`);
     }
     return true;

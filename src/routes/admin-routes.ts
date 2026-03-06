@@ -1,11 +1,13 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { userRepository } from '../repositories/user-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { ReviewRepository } from '../repositories/review-repository.js';
+import { enforceMFAForAdmins } from '../middleware/mfa-enforcement.js';
+import { getAllUsersWithKyc, getAdminStats, getAdminAnalytics } from '../services/admin-service.js';
 import { getKycVerificationByUserId } from '../repositories/didit-kyc-repository.js';
+import { UserRepository } from '../repositories/index.js';
 import { logger } from '../config/logger.js';
+import { auditMiddleware } from '../middleware/audit-logger.js';
+
+const userRepository = new UserRepository();
 
 const router = Router();
 
@@ -21,44 +23,9 @@ const router = Router();
  *       200:
  *         description: List of all users
  */
-router.get('/users', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+router.get('/users', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
-    const allUsers = await userRepository.getAllUsers();
-    
-    // Check KYC status for each user
-    const usersWithKyc = await Promise.all(
-      allUsers.map(async (user) => {
-        // Admins are automatically considered KYC verified (exempt from KYC requirement)
-        if (user.role === 'admin') {
-          return {
-            id: user.id,
-            email: user.email,
-            role: user.role,
-            walletAddress: user.wallet_address || '',
-            createdAt: user.created_at,
-            name: user.name || '',
-            kycVerified: true, // Admins bypass KYC requirement
-            isActive: true,
-          };
-        }
-        
-        const kycVerification = await getKycVerificationByUserId(user.id);
-        const isKycVerified = kycVerification?.status === 'approved' && 
-                             (!kycVerification.expires_at || new Date(kycVerification.expires_at) > new Date());
-        
-        return {
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          walletAddress: user.wallet_address || '',
-          createdAt: user.created_at,
-          name: user.name || '',
-          kycVerified: isKycVerified,
-          isActive: true, // All users are active by default
-        };
-      })
-    );
-
+    const usersWithKyc = await getAllUsersWithKyc();
     res.json(usersWithKyc);
   } catch (error) {
     logger.error('Error fetching users', error);
@@ -96,24 +63,10 @@ router.get('/users', authMiddleware, requireRole('admin'), async (_req: Request,
  *                 totalEmployers:
  *                   type: number
  */
-router.get('/stats', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+router.get('/stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
-    // Get total users count
-    const allUsers = await userRepository.getAllUsers();
-    const totalUsers = allUsers.length;
-    const totalFreelancers = allUsers.filter(u => u.role === 'freelancer').length;
-    const totalEmployers = allUsers.filter(u => u.role === 'employer').length;
-
-    // Get total projects count
-    const allProjects = await projectRepository.getAllProjects();
-    const totalProjects = allProjects.length;
-
-    res.json({
-      totalUsers,
-      totalProjects,
-      totalFreelancers,
-      totalEmployers,
-    });
+    const stats = await getAdminStats();
+    res.json(stats);
   } catch (error) {
     logger.error('Error fetching admin stats', error);
     res.status(500).json({
@@ -133,73 +86,23 @@ router.get('/stats', authMiddleware, requireRole('admin'), async (_req: Request,
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: Comprehensive analytics data
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 totalUsers:
- *                   type: number
- *                 totalProjects:
- *                   type: number
- *                 totalRevenue:
- *                   type: number
- *                 activeContracts:
- *                   type: number
+ *  const stats = await getAdminStats();
+    res.json(stats                type: number
  *                 userGrowth:
  *                   type: number
  *                 projectGrowth:
  *                   type: number
  */
-router.get('/analytics', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+router.get('/analytics', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
-    // Get all users
-    const allUsers = await userRepository.getAllUsers();
-    const totalUsers = allUsers.length;
-
-    // Get all projects
-    const allProjects = await projectRepository.getAllProjects();
-    const totalProjects = allProjects.length;
-
-    // Get all contracts
-    const allContracts = await contractRepository.getAllContracts();
-    const activeContracts = allContracts.filter(c => c.status === 'active').length;
-
-    // Calculate total revenue from completed contracts
-    const completedContracts = allContracts.filter(c => c.status === 'completed');
-    const totalRevenue = completedContracts.reduce((sum, contract) => sum + contract.total_amount, 0);
-
-    // Calculate growth rates (comparing last 30 days vs previous 30 days)
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const sixtyDaysAgo = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
-
-    // User growth
-    const recentUsers = allUsers.filter(u => new Date(u.created_at) >= thirtyDaysAgo).length;
-    const previousUsers = allUsers.filter(u => {
-      const createdAt = new Date(u.created_at);
-      return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
-    }).length;
-    const userGrowth = previousUsers > 0 ? ((recentUsers - previousUsers) / previousUsers) * 100 : 0;
-
-    // Project growth
-    const recentProjects = allProjects.filter(p => new Date(p.created_at) >= thirtyDaysAgo).length;
-    const previousProjects = allProjects.filter(p => {
-      const createdAt = new Date(p.created_at);
-      return createdAt >= sixtyDaysAgo && createdAt < thirtyDaysAgo;
-    }).length;
-    const projectGrowth = previousProjects > 0 ? ((recentProjects - previousProjects) / previousProjects) * 100 : 0;
-
+    const analytics = await getAdminAnalytics();
     res.json({
-      totalUsers,
-      totalProjects,
-      totalRevenue: parseFloat(totalRevenue.toFixed(4)),
-      activeContracts,
-      userGrowth: parseFloat(userGrowth.toFixed(1)),
-      projectGrowth: parseFloat(projectGrowth.toFixed(1)),
+      totalUsers: analytics.totalUsers,
+      totalProjects: analytics.totalProjects,
+      totalRevenue: parseFloat(analytics.totalRevenue.toFixed(4)),
+      activeContracts: analytics.activeContracts,
+      userGrowth: parseFloat(analytics.userGrowth.toFixed(1)),
+      projectGrowth: parseFloat(analytics.projectGrowth.toFixed(1)),
     });
   } catch (error) {
     logger.error('Error fetching analytics', error);
@@ -216,8 +119,10 @@ router.get('/analytics', authMiddleware, requireRole('admin'), async (_req: Requ
  * @swagger
  * /api/admin/platform-stats:
  *   get:
- *     summary: Get public platform statistics (no auth required)
- *     tags: [Platform]
+ *     summary: Get platform statistics (admin only)
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
  *     responses:
  *       200:
  *         description: Platform statistics
@@ -237,39 +142,10 @@ router.get('/analytics', authMiddleware, requireRole('admin'), async (_req: Requ
  *                 satisfactionRate:
  *                   type: number
  */
-router.get('/platform-stats', async (_req: Request, res: Response) => {
+router.get('/platform-stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
   try {
-    // Get total users count
-    const allUsers = await userRepository.getAllUsers();
-    const totalFreelancers = allUsers.filter(u => u.role === 'freelancer').length;
-    const totalEmployers = allUsers.filter(u => u.role === 'employer').length;
-
-    // Get total projects count
-    const allProjects = await projectRepository.getAllProjects();
-    const totalProjects = allProjects.length;
-
-    // Calculate total paid out from completed contracts
-    const allContracts = await contractRepository.getAllContracts();
-    const completedContracts = allContracts.filter(c => c.status === 'completed');
-    const totalPaidOut = completedContracts.reduce((sum, contract) => sum + contract.total_amount, 0);
-
-    // Calculate satisfaction rate from reviews
-    let satisfactionRate = 0;
-    const allReviews = await ReviewRepository.getAllReviews();
-
-    if (allReviews.length > 0) {
-      const totalRating = allReviews.reduce((sum, review) => sum + review.rating, 0);
-      const averageRating = totalRating / allReviews.length;
-      satisfactionRate = Math.round((averageRating / 5) * 100);
-    }
-
-    res.json({
-      totalFreelancers,
-      totalEmployers,
-      totalProjects,
-      totalPaidOut: totalPaidOut.toFixed(2),
-      satisfactionRate,
-    });
+    const analytics = await getAdminAnalytics();
+    res.json(analytics);
   } catch (error) {
     logger.error('Error fetching platform stats', error);
     res.status(500).json({
@@ -320,7 +196,7 @@ router.get('/platform-stats', async (_req: Request, res: Response) => {
  *       404:
  *         description: User not found
  */
-router.patch('/users/:id', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+router.patch('/users/:id', authMiddleware, requireRole('admin'), enforceMFAForAdmins, auditMiddleware('admin_update_user', 'user'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { role, name, isActive } = req.body;
@@ -347,6 +223,30 @@ router.patch('/users/:id', authMiddleware, requireRole('admin'), async (req: Req
       return;
     }
 
+    // Validate role value if provided
+    const validRoles = ['freelancer', 'employer', 'admin'];
+    if (role !== undefined && !validRoles.includes(role)) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_ROLE',
+          message: `Invalid role. Must be one of: ${validRoles.join(', ')}`,
+        },
+      });
+      return;
+    }
+
+    // Validate UUID format for user ID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(id)) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_ID',
+          message: 'Invalid user ID format',
+        },
+      });
+      return;
+    }
+
     const user = await userRepository.getUserById(id);
     if (!user) {
       res.status(404).json({
@@ -368,18 +268,27 @@ router.patch('/users/:id', authMiddleware, requireRole('admin'), async (req: Req
 
     // Get updated user with KYC status
     const updatedUser = await userRepository.getUserById(id);
+    if (!updatedUser) {
+      res.status(404).json({
+        error: {
+          code: 'USER_NOT_FOUND',
+          message: 'User not found after update',
+        },
+      });
+      return;
+    }
     const kycVerification = await getKycVerificationByUserId(id);
     const isKycVerified = updatedUser?.role === 'admin' || 
                          (kycVerification?.status === 'approved' && 
                           (!kycVerification.expires_at || new Date(kycVerification.expires_at) > new Date()));
 
     res.json({
-      id: updatedUser!.id,
-      email: updatedUser!.email,
-      role: updatedUser!.role,
-      walletAddress: updatedUser!.wallet_address || '',
-      createdAt: updatedUser!.created_at,
-      name: updatedUser!.name || '',
+      id: updatedUser.id,
+      email: updatedUser.email,
+      role: updatedUser.role,
+      walletAddress: updatedUser.wallet_address || '',
+      createdAt: updatedUser.created_at,
+      name: updatedUser.name || '',
       kycVerified: isKycVerified,
       isActive: true,
     });

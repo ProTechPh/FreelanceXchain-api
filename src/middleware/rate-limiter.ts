@@ -17,12 +17,37 @@ function getStore(name: string): RateLimitStore {
   return stores.get(name)!;
 }
 
+/**
+ * Get client IP for rate limiting.
+ * FIXED: Only trust X-Forwarded-For when Express trust proxy is configured.
+ * Using req.ip which respects the trust proxy setting, falling back to socket address.
+ * This prevents attackers from spoofing X-Forwarded-For to bypass rate limits.
+ */
 function getClientKey(req: Request): string {
-  // Use X-Forwarded-For if behind proxy, otherwise use IP
-  const forwarded = req.headers['x-forwarded-for'];
-  const ip = typeof forwarded === 'string' ? forwarded.split(',')[0]?.trim() : req.ip;
-  return ip ?? 'unknown';
+  // req.ip respects Express 'trust proxy' setting
+  // If trust proxy is not configured, req.ip = socket remote address (safe)
+  // If trust proxy is configured, req.ip = leftmost untrusted X-Forwarded-For entry (safe)
+  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
 }
+
+/**
+ * Periodic cleanup of expired rate limit entries to prevent memory leaks.
+ * Runs every 5 minutes.
+ */
+function cleanupExpiredEntries(): void {
+  const now = Date.now();
+  for (const [, store] of stores) {
+    for (const [key, record] of store) {
+      if (now > record.resetTime) {
+        store.delete(key);
+      }
+    }
+  }
+}
+
+// Run cleanup every 5 minutes to prevent memory leaks from expired entries
+// FIXED: .unref() prevents this timer from blocking graceful Node.js shutdown
+setInterval(cleanupExpiredEntries, 5 * 60 * 1000).unref();
 
 export function rateLimiter(name: string, config: RateLimitConfig) {
   const { windowMs, maxRequests, message } = config;
@@ -61,11 +86,28 @@ export function rateLimiter(name: string, config: RateLimitConfig) {
 }
 
 // Preset rate limiters
-export const authRateLimiter = rateLimiter('auth', {
+// FIXED: Separated auth rate limiters by operation to prevent
+// login exhaustion from blocking password reset
+export const loginRateLimiter = rateLimiter('login', {
   windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 10, // 10 attempts per 15 minutes
-  message: 'Too many authentication attempts, please try again later',
+  maxRequests: 10, // 10 login attempts per 15 minutes
+  message: 'Too many login attempts, please try again later',
 });
+
+export const registerRateLimiter = rateLimiter('register', {
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 5, // 5 registration attempts per hour
+  message: 'Too many registration attempts, please try again later',
+});
+
+export const passwordResetRateLimiter = rateLimiter('password-reset', {
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 5, // 5 reset attempts per 15 minutes
+  message: 'Too many password reset attempts, please try again later',
+});
+
+// Keep backward compatible export
+export const authRateLimiter = loginRateLimiter;
 
 export const apiRateLimiter = rateLimiter('api', {
   windowMs: 60 * 1000, // 1 minute
