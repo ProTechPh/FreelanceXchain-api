@@ -45,8 +45,9 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.29.0
+        uses: aquasecurity/trivy-action@master
         with:
           image-ref: jericko134/freelancexchain-api:latest
           format: 'table'
           severity: 'CRITICAL,HIGH'
+          trivy-version: 'latest'
