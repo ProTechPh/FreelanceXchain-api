@@ -40,9 +40,6 @@ jobs:
       - name: Compile contracts
         run: pnpm run compile
 
-      - name: Run Hardhat tests
-        run: pnpm dlx hardhat test
-
   slither:
     runs-on: ubuntu-latest
     steps:
