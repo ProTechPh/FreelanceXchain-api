@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import {
   getContractById,
@@ -215,7 +216,7 @@ router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Res
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/fund', authMiddleware, requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -381,7 +382,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, validateUUID(), asy
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
