@@ -57,7 +57,7 @@
     "uuid": "^10.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.2",
+    "@eslint/js": "^9.39.4",
     "@jest/globals": "^30.2.0",
     "@nomicfoundation/hardhat-ethers": "^4.0.6",
     "@nomicfoundation/hardhat-toolbox": "^7.0.0",
