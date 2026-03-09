@@ -545,6 +545,7 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateL
  *       404:
  *         description: Proposal not found
  */
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
 router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
@@ -617,6 +618,7 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
  *       404:
  *         description: Proposal not found
  */
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
 router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
@@ -687,6 +689,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
  *       404:
  *         description: Proposal not found
  */
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via withdrawalRateLimiter middleware
 router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, withdrawalRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
