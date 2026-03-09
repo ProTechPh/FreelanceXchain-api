@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import {
   createCategory,
   createSkill,
@@ -407,7 +408,7 @@ router.post('/', authMiddleware, requireRole('admin'), async (req: Request, res:
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const { id } = req.params;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
