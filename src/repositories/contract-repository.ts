@@ -153,7 +153,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
 
     const { data, error, count } = await client
       .from(this.tableName)
-      .select('*', { count: 'exact' })
+      .select('*, project:projects(id, title, description, deadline, milestones)', { count: 'exact' })
       .or(`freelancer_id.eq.${userId},employer_id.eq.${userId}`)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
