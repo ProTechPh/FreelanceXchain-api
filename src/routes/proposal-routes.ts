@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadProposalAttachments } from '../middleware/file-upload-middleware.js';
-import { fileUploadRateLimiter, apiRateLimiter } from '../middleware/rate-limiter.js';
+import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
 import { generateId } from '../utils/id.js';
@@ -418,7 +418,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
  *       404:
  *         description: Proposal not found
  */
-router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
     const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -480,7 +480,7 @@ router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Res
  *       401:
  *         description: Unauthorized
  */
-router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -687,7 +687,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, withdrawalRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
