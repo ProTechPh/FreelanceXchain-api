@@ -5,6 +5,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -22,6 +25,30 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile smart contracts
+        run: pnpm run compile
+
+      - name: Commit compiled artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f artifacts cache
+          git diff --staged --quiet || git commit -m "chore: add compiled contract artifacts"
 
       - name: Push to HuggingFace Space
         env:

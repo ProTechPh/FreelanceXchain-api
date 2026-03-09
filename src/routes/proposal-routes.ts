@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadProposalAttachments } from '../middleware/file-upload-middleware.js';
-import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
+import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
 import { generateId } from '../utils/id.js';
@@ -159,7 +159,8 @@ const router = Router();
  *       409:
  *         description: Duplicate proposal
  */
-router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, async (req: Request, res: Response, next) => {
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via fileUploadRateLimiter middleware
+router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, fileUploadRateLimiter, async (req: Request, res: Response, next) => {
   const contentType = req.headers['content-type'] || '';
   
   // Route to appropriate handler based on Content-Type
@@ -176,48 +177,43 @@ router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, 
  * Handle proposal submission with multipart/form-data (server-side upload)
  */
 async function handleMultipartProposalSubmission(req: Request, res: Response, next: any) {
-  // Apply rate limiting for file uploads
-  fileUploadRateLimiter(req, res, async (err?: any) => {
-    if (err || res.headersSent) return;
-    
-    // Apply file upload middleware
-    const middleware = uploadProposalAttachments;
-  
-    // Execute middleware array
-    let index = 0;
-    const executeMiddleware = async () => {
-      if (index >= middleware.length) {
-        // All middleware executed, now process the upload
-        return processMultipartProposal(req, res);
-      }
-      
-      const currentMiddleware = middleware[index++];
-      if (!currentMiddleware) return;
-      await new Promise<void>((resolve, reject) => {
-        currentMiddleware(req, res, (err?: any) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      return executeMiddleware();
-    };
-    
-    try {
-      await executeMiddleware();
-    } catch (error: any) {
-      // Middleware already sent response for validation errors
-      if (res.headersSent) return;
-      
-      // Handle unexpected errors
-      const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-      res.status(500).json({
-        error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+  // Apply file upload middleware
+  const middleware = uploadProposalAttachments;
+
+  // Execute middleware array
+  let index = 0;
+  const executeMiddleware = async () => {
+    if (index >= middleware.length) {
+      // All middleware executed, now process the upload
+      return processMultipartProposal(req, res);
     }
-  });
+    
+    const currentMiddleware = middleware[index++];
+    if (!currentMiddleware) return;
+    await new Promise<void>((resolve, reject) => {
+      currentMiddleware(req, res, (err?: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    return executeMiddleware();
+  };
+  
+  try {
+    await executeMiddleware();
+  } catch (error: any) {
+    // Middleware already sent response for validation errors
+    if (res.headersSent) return;
+    
+    // Handle unexpected errors
+    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
 }
 
 /**
@@ -418,7 +414,8 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
  *       404:
  *         description: Proposal not found
  */
-router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
+router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
     const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -480,7 +477,8 @@ router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Res
  *       401:
  *         description: Unauthorized
  */
-router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
+router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -545,7 +543,8 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), async (r
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
+router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -617,7 +616,8 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
+router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -687,7 +687,8 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
  *       404:
  *         description: Proposal not found
  */
-router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via withdrawalRateLimiter middleware
+router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, withdrawalRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;

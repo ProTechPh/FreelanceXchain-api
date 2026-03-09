@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit } from '../utils/index.js';
 import {
   getEmployerProfileByUserId,
@@ -81,7 +82,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
@@ -137,7 +138,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), async (req: Req
  *       404:
  *         description: Profile not found
  */
-router.get('/profile', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -202,7 +203,7 @@ router.get('/profile', authMiddleware, requireRole('employer'), async (req: Requ
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { companyName, description, industry } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -280,7 +281,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), async (req: Re
  *       404:
  *         description: Profile not found
  */
-router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

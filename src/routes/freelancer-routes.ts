@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import {
   createProfile,
   getProfileByUserId,
@@ -115,7 +116,7 @@ const router = Router();
  *       409:
  *         description: Profile already exists
  */
-router.post('/profile', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { bio, hourlyRate, availability } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -188,7 +189,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), async (req: R
  *       404:
  *         description: Profile not found
  */
-router.get('/profile', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -254,7 +255,7 @@ router.get('/profile', authMiddleware, requireRole('freelancer'), async (req: Re
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { bio, hourlyRate, availability } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -359,7 +360,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), async (req: 
  *       404:
  *         description: Profile not found
  */
-router.post('/profile/skills', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { skills } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -448,7 +449,7 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), async 
  *       404:
  *         description: Profile not found or skill not found
  */
-router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const skillName = decodeURIComponent(req.params['name'] ?? '');
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -536,7 +537,7 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
  *       404:
  *         description: Profile not found
  */
-router.post('/profile/experience', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.post('/profile/experience', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { title, company, description, startDate, endDate } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -641,7 +642,7 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), as
  *       404:
  *         description: Profile or experience not found
  */
-router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const experienceId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -734,7 +735,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
  *       404:
  *         description: Profile or experience not found
  */
-router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer'), async (req: Request, res: Response) => {
+router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const experienceId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -792,7 +793,7 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
  *       404:
  *         description: Profile not found
  */
-router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

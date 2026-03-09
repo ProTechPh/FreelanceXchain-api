@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import { ReviewService } from '../services/review-service.js';
 
@@ -48,7 +49,7 @@ const router = Router();
  *       404:
  *         description: Contract not found
  */
-router.post('/:contractId', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.post('/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const reviewerId = req.user!.id;
     const contractId = req.params.contractId as string;
@@ -103,7 +104,7 @@ router.post('/:contractId', authMiddleware, validateUUID(['contractId']), async 
  *       404:
  *         description: Contract not found
  */
-router.get('/:contractId', validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/:contractId', apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const contractId = req.params.contractId as string;
     const reviews = await ReviewService.getReviewsByContract(contractId);
@@ -141,7 +142,7 @@ router.get('/:contractId', validateUUID(['contractId']), async (req: Request, re
  *       200:
  *         description: List of user reviews
  */
-router.get('/user/:userId', validateUUID(['userId']), async (req: Request, res: Response) => {
+router.get('/user/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   try {
     const userId = req.params.userId as string;
     const limit = clampLimit(Number(req.query.limit));
@@ -172,7 +173,7 @@ router.get('/user/:userId', validateUUID(['userId']), async (req: Request, res: 
  *       200:
  *         description: User rating summary
  */
-router.get('/user/:userId/summary', validateUUID(['userId']), async (req: Request, res: Response) => {
+router.get('/user/:userId/summary', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   try {
     const userId = req.params.userId as string;
     const summary = await ReviewService.getUserRatingSummary(userId);
@@ -202,7 +203,7 @@ router.get('/user/:userId/summary', validateUUID(['userId']), async (req: Reques
  *       200:
  *         description: Check result
  */
-router.get('/:contractId/can-review', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/:contractId/can-review', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const contractId = req.params.contractId as string;

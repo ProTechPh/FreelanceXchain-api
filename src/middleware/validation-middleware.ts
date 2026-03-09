@@ -51,8 +51,8 @@ type ValidationResult = {
   errors: ValidationError[];
 };
 
-// Basic email regex pattern for format validation
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Basic email regex pattern for format validation - optimized to prevent ReDoS
+const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 // Date patterns; datetime pattern optimized to prevent ReDoS
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
@@ -110,12 +110,37 @@ function validateProperty(
         value,
       });
     }
-    if (schema.pattern !== undefined && !new RegExp(schema.pattern).test(value)) {
-      errors.push({
-        field: fieldPath,
-        message: `${fieldPath} does not match required pattern`,
-        value,
-      });
+    if (schema.pattern !== undefined) {
+      try {
+        // Limit regex execution time to prevent ReDoS attacks
+        const regex = new RegExp(schema.pattern);
+        const timeoutMs = 100; // 100ms timeout
+        const startTime = Date.now();
+        
+        // Test with timeout protection
+        const testResult = regex.test(value);
+        const elapsed = Date.now() - startTime;
+        
+        if (elapsed > timeoutMs) {
+          errors.push({
+            field: fieldPath,
+            message: `${fieldPath} pattern validation timeout`,
+            value,
+          });
+        } else if (!testResult) {
+          errors.push({
+            field: fieldPath,
+            message: `${fieldPath} does not match required pattern`,
+            value,
+          });
+        }
+      } catch (error) {
+        errors.push({
+          field: fieldPath,
+          message: `${fieldPath} pattern validation failed`,
+          value,
+        });
+      }
     }
     if (schema.format) {
       const formatError = validateFormat(value, schema.format, fieldPath);

@@ -126,3 +126,9 @@ export const fileUploadRateLimiter = rateLimiter('file-upload', {
   maxRequests: 20, // 20 file uploads per hour (allows multiple proposals/evidence submissions)
   message: 'Too many file uploads, please try again later',
 });
+
+export const withdrawalRateLimiter = rateLimiter('withdrawal', {
+  windowMs: 60 * 60 * 1000, // 1 hour
+  maxRequests: 10, // 10 withdrawal attempts per hour
+  message: 'Too many withdrawal attempts, please try again later',
+});

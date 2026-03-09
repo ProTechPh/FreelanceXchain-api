@@ -89,7 +89,7 @@ router.post('/upload', authMiddleware, fileUploadRateLimiter, ...secureUpload, a
  * Delete a file
  * DELETE /api/files/:bucket/:path
  */
-router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.delete('/:bucket/*', authMiddleware, fileUploadRateLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const bucket = req.params.bucket!; // Route param is always defined
     const path = req.params[0]; // Get the rest of the path
@@ -135,7 +135,7 @@ router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response):
  * Get signed URL for a private file
  * GET /api/files/signed-url/:bucket/:path
  */
-router.get('/signed-url/:bucket/*', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get('/signed-url/:bucket/*', authMiddleware, fileUploadRateLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const bucket = req.params.bucket!; // Route param is always defined
     const path = req.params[0];

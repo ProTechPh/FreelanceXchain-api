@@ -38,8 +38,7 @@ async function resetAdminPassword(email, newPassword) {
 
     console.log('✅ Password reset successfully!');
     console.log('Email:', email);
-    console.log('New password:', newPassword);
-    console.log('Hash:', passwordHash);
+    // Password and hash are sensitive - do not log them
   } catch (err) {
     console.error('Error:', err);
   }
