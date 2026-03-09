@@ -6,7 +6,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
-import fileType from 'file-type';
+import { fromBuffer } from 'file-type';
 import { logger } from '../config/logger.js';
 
 const EICAR_SIGNATURE = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
@@ -97,7 +97,7 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
     }
 
     // Use file-type for magic number detection
-    const detectedType = await fileType.fromBuffer(buffer);
+    const detectedType = await fromBuffer(buffer);
     
     if (!detectedType) {
       // If no magic number detected, might be a text file or unsupported format
