@@ -19,23 +19,28 @@ module.exports = {
   },
   networks: {
     hardhat: {
+      type: "edr-simulated",
       chainId: 31337,
     },
     ganache: {
+      type: "http",
       url: "http://127.0.0.1:7545",
       chainId: 1337,
     },
     sepolia: {
+      type: "http",
       url: process.env.BLOCKCHAIN_RPC_URL || "https://sepolia.infura.io/v3/YOUR_PROJECT_ID",
       accounts: accounts,
       chainId: 11155111,
     },
     polygon: {
+      type: "http",
       url: process.env.POLYGON_RPC_URL || `https://polygon-mainnet.infura.io/v3/${process.env.POLYGON_API_KEY || ""}`,
       accounts: accounts,
       chainId: 137,
     },
     amoy: {
+      type: "http",
       url: process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology",
       accounts: accounts,
       chainId: 80002,
