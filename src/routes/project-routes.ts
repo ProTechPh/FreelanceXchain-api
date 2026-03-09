@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import {
   createProject,
@@ -582,7 +583,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { milestones } = req.body;
   const userId = req.user?.userId;
@@ -698,7 +699,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
  *       404:
  *         description: Project not found
  */
-router.get('/:id/proposals', authMiddleware, requireRole('employer'), validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

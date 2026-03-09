@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import { MessageService } from '../services/message-service.js';
 
@@ -107,7 +108,7 @@ router.get('/:contractId', authMiddleware, validateUUID(['contractId']), async (
  *       404:
  *         description: Contract not found
  */
-router.post('/:contractId', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.post('/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const senderId = req.user!.id;
     const contractId = req.params.contractId as string;
@@ -238,7 +239,7 @@ router.get('/:contractId/summary', authMiddleware, validateUUID(['contractId']),
  *       401:
  *         description: Unauthorized
  */
-router.post('/:contractId/read', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.post('/:contractId/read', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const contractId = req.params.contractId as string;

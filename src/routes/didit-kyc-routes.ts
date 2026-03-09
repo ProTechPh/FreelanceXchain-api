@@ -8,6 +8,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { verifyWebhookSignature } from '../services/didit-client.js';
 import { logger } from '../config/logger.js';
 import {
@@ -150,7 +151,7 @@ function parseWebhookPayload(payload: unknown): DiditWebhookPayload | null {
  *       401:
  *         description: Unauthorized
  */
-router.post('/initiate', authMiddleware, async (req: Request, res: Response) => {
+router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -387,7 +388,7 @@ router.get('/history', authMiddleware, async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/KycVerification'
  */
-router.post('/refresh/:verificationId', authMiddleware, validateUUID(['verificationId']), async (req: Request, res: Response) => {
+router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validateUUID(['verificationId']), async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -682,7 +683,7 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), async 
  *       200:
  *         description: Review completed
  */
-router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'), validateUUID(['verificationId']), async (req: Request, res: Response) => {
+router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const adminUserId = req.user?.userId;
   const { decision, notes } = req.body;

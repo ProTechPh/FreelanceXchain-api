@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { TokenPayload } from '../services/auth-types.js';
 import {
   getProjectRecommendations,
@@ -297,7 +298,7 @@ router.get('/freelancers/:projectId', authMiddleware, validateUUID(['projectId']
  *       401:
  *         description: Unauthorized - Invalid or missing token
  */
-router.post('/extract-skills', authMiddleware, async (req: Request, res: Response) => {
+router.post('/extract-skills', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const { text } = req.body as { text?: string };
 

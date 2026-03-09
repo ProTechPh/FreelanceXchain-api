@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import {
   submitRating,
   getReputation,
@@ -215,7 +216,7 @@ router.get('/can-rate', authMiddleware, async (req: Request, res: Response) => {
  *       409:
  *         description: Duplicate rating
  */
-router.post('/rate', authMiddleware, async (req: Request, res: Response) => {
+router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

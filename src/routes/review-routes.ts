@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import { ReviewService } from '../services/review-service.js';
 
@@ -48,7 +49,7 @@ const router = Router();
  *       404:
  *         description: Contract not found
  */
-router.post('/:contractId', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.post('/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const reviewerId = req.user!.id;
     const contractId = req.params.contractId as string;
