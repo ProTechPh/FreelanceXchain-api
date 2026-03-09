@@ -9,7 +9,7 @@ import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middlewar
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadDisputeEvidence } from '../middleware/file-upload-middleware.js';
 import { clampLimit } from '../utils/index.js';
-import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
+import { fileUploadRateLimiter, apiRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadFileToStorage, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
 import {
@@ -166,6 +166,7 @@ router.get(
   '/',
   authMiddleware,
   requireVerifiedKyc,
+  apiRateLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -232,6 +233,7 @@ router.post(
   '/',
   authMiddleware,
   requireVerifiedKyc,
+  apiRateLimiter,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
@@ -341,6 +343,7 @@ router.post(
 router.get(
   '/:disputeId',
   authMiddleware,
+  apiRateLimiter,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -453,6 +456,7 @@ router.post(
   '/:disputeId/evidence',
   authMiddleware,
   requireVerifiedKyc,
+  apiRateLimiter,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     const contentType = req.headers['content-type'] || '';
@@ -691,6 +695,7 @@ router.post(
   '/:disputeId/resolve',
   authMiddleware,
   requireVerifiedKyc,
+  apiRateLimiter,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

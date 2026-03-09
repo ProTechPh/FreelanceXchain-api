@@ -1,0 +1,5 @@
+# CodeQL Query Pack for FreelanceXchain API
+name: freelancexchain/rate-limiter-pack
+version: 1.0.0
+library: false
+suites: codeql-suites

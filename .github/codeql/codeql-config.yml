@@ -1,0 +1,20 @@
+name: "CodeQL Config"
+
+# Define custom queries and configurations
+queries:
+  - uses: security-and-quality
+
+# Paths to exclude from analysis
+paths-ignore:
+  - '**/node_modules/**'
+  - '**/dist/**'
+  - '**/build/**'
+  - '**/coverage/**'
+  - '**/*.test.ts'
+  - '**/*.spec.ts'
+
+# Disable the built-in missing rate limiting query
+# We have custom rate limiters that CodeQL doesn't recognize
+query-filters:
+  - exclude:
+      id: js/missing-rate-limiting
