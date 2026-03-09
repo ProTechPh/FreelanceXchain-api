@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/audit-session-start.sh",
+        "cwd": ".",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/log-session-start.sh",
+        "cwd": ".",
+        "timeoutSec": 5
+      }
+    ],
+    "sessionEnd": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/audit-session-end.sh",
+        "cwd": ".",
+        "timeoutSec": 5
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/log-session-end.sh",
+        "cwd": ".",
+        "timeoutSec": 5
+      }
+    ],
+    "userPromptSubmitted": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/audit-prompt.sh",
+        "cwd": ".",
+        "env": {
+          "GOVERNANCE_LEVEL": "standard",
+          "BLOCK_ON_THREAT": "false"
+        },
+        "timeoutSec": 10
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/log-prompt.sh",
+        "cwd": ".",
+        "env": {
+          "LOG_LEVEL": "INFO"
+        },
+        "timeoutSec": 5
+      }
+    ]
+  }
+}
