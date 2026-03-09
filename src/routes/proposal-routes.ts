@@ -159,7 +159,8 @@ const router = Router();
  *       409:
  *         description: Duplicate proposal
  */
-router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, async (req: Request, res: Response, next) => {
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via fileUploadRateLimiter middleware
+router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, fileUploadRateLimiter, async (req: Request, res: Response, next) => {
   const contentType = req.headers['content-type'] || '';
   
   // Route to appropriate handler based on Content-Type
@@ -176,48 +177,43 @@ router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, 
  * Handle proposal submission with multipart/form-data (server-side upload)
  */
 async function handleMultipartProposalSubmission(req: Request, res: Response, next: any) {
-  // Apply rate limiting for file uploads
-  fileUploadRateLimiter(req, res, async (err?: any) => {
-    if (err || res.headersSent) return;
-    
-    // Apply file upload middleware
-    const middleware = uploadProposalAttachments;
-  
-    // Execute middleware array
-    let index = 0;
-    const executeMiddleware = async () => {
-      if (index >= middleware.length) {
-        // All middleware executed, now process the upload
-        return processMultipartProposal(req, res);
-      }
-      
-      const currentMiddleware = middleware[index++];
-      if (!currentMiddleware) return;
-      await new Promise<void>((resolve, reject) => {
-        currentMiddleware(req, res, (err?: any) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-      
-      return executeMiddleware();
-    };
-    
-    try {
-      await executeMiddleware();
-    } catch (error: any) {
-      // Middleware already sent response for validation errors
-      if (res.headersSent) return;
-      
-      // Handle unexpected errors
-      const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-      res.status(500).json({
-        error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+  // Apply file upload middleware
+  const middleware = uploadProposalAttachments;
+
+  // Execute middleware array
+  let index = 0;
+  const executeMiddleware = async () => {
+    if (index >= middleware.length) {
+      // All middleware executed, now process the upload
+      return processMultipartProposal(req, res);
     }
-  });
+    
+    const currentMiddleware = middleware[index++];
+    if (!currentMiddleware) return;
+    await new Promise<void>((resolve, reject) => {
+      currentMiddleware(req, res, (err?: any) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    return executeMiddleware();
+  };
+  
+  try {
+    await executeMiddleware();
+  } catch (error: any) {
+    // Middleware already sent response for validation errors
+    if (res.headersSent) return;
+    
+    // Handle unexpected errors
+    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
 }
 
 /**
