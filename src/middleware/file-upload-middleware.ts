@@ -207,7 +207,7 @@ export function createFileUploadMiddleware(
           res.status(400).json({
             error: {
               code: 'INSUFFICIENT_FILES',
-              message: `At least ${minFiles} file(s) required, received ${files.length}`,
+              message: `At least ${minFiles} file(s) required, received ${String(files.length)}`,
             },
           });
           return;
@@ -218,7 +218,7 @@ export function createFileUploadMiddleware(
           res.status(400).json({
             error: {
               code: 'TOO_MANY_FILES',
-              message: `Maximum ${maxFiles} file(s) allowed, received ${files.length}`,
+              message: `Maximum ${maxFiles} file(s) allowed, received ${String(files.length)}`,
             },
           });
           return;
@@ -293,7 +293,7 @@ export function createFileUploadMiddleware(
 
         // Log successful upload
         logger.info('Files uploaded successfully', {
-          count: files.length,
+          count: Number(files.length),
           totalSize,
           filenames: files.map(f => f.originalname),
         });
