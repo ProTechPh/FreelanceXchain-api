@@ -128,7 +128,7 @@ router.get('/', async (_req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/search', async (req: Request, res: Response) => {
+router.get('/search', apiRateLimiter, async (req: Request, res: Response) => {
   const { keyword } = req.query;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -235,7 +235,7 @@ router.get('/categories/:categoryId/skills', validateUUID(['categoryId']), async
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/categories', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
   const { name, description } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -318,7 +318,7 @@ router.post('/categories', authMiddleware, requireRole('admin'), async (req: Req
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
   const { categoryId, name, description } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
