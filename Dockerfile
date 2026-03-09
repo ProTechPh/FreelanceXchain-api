@@ -20,13 +20,8 @@ COPY src ./src
 COPY contracts ./contracts
 COPY hardhat.config.cjs ./
 
-# Copy pre-compiled artifacts if they exist (for faster builds)
-COPY artifacts ./artifacts 2>/dev/null || true
-COPY cache ./cache 2>/dev/null || true
-
 # Compile smart contracts and build TypeScript
-# Skip compilation if artifacts already exist
-RUN if [ ! -d "artifacts/contracts" ]; then pnpm run compile; fi && pnpm run build
+RUN pnpm run compile && pnpm run build
 
 # Production stage
 FROM node:20-alpine AS production
