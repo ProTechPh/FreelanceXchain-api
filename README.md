@@ -10,6 +10,8 @@ pinned: false
 
 # Blockchain-Based Freelance Marketplace with AI Skill Matching
 
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ProTechPh/FreelanceXchain-api?utm_source=oss&utm_medium=github&utm_campaign=ProTechPh%2FFreelanceXchain-api&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+
 A decentralized freelance marketplace that leverages AI for intelligent skill matching and blockchain for secure, transparent transactions.
 
 ## Overview
