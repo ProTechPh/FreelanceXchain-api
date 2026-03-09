@@ -24,7 +24,7 @@ CREATE INDEX IF NOT EXISTS idx_blockchain_transactions_status ON blockchain_tran
 -- 2. Blockchain Escrows
 CREATE TABLE IF NOT EXISTS blockchain_escrows (
   address TEXT PRIMARY KEY,
-  contract_id TEXT NOT NULL REFERENCES contracts(id),
+  contract_id UUID NOT NULL REFERENCES contracts(id),
   employer_address TEXT NOT NULL,
   freelancer_address TEXT NOT NULL,
   total_amount TEXT NOT NULL, -- bigint stored as string
