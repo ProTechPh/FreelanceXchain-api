@@ -54,7 +54,7 @@ type ValidationResult = {
 // Basic email regex pattern for format validation
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-// Date patterns - optimized to prevent ReDoS
+// Date patterns; datetime pattern optimized to prevent ReDoS
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?(?:Z|[+-]\d{2}:\d{2})?$/;
 
