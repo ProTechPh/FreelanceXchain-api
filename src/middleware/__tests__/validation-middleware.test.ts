@@ -378,8 +378,14 @@ describe('Validation Middleware - Property Tests', () => {
     it('should return empty errors for valid complete data', () => {
       fc.assert(
         fc.property(
-          fc.emailAddress(),
-          fc.string({ minLength: 8, maxLength: 128 }),
+          // Generate emails that match our validation pattern: [a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}
+          fc.tuple(
+            fc.stringMatching(/^[a-zA-Z0-9][a-zA-Z0-9._%+-]{2,20}$/),
+            fc.stringMatching(/^[a-zA-Z0-9][a-zA-Z0-9.-]{1,10}$/),
+            fc.stringMatching(/^[a-zA-Z]{2,6}$/)
+          ).map(([local, domain, tld]) => `${local}@${domain}.${tld}`),
+          // Generate passwords with at least one non-whitespace character
+          fc.string({ minLength: 8, maxLength: 128 }).filter(s => s.trim().length > 0),
           fc.constantFrom('freelancer', 'employer'),
           (email, password, role) => {
             const data = { email, password, role };

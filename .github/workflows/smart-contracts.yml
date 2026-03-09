@@ -12,6 +12,9 @@ on:
       - 'contracts/**'
       - 'hardhat.config.cjs'
 
+permissions:
+  contents: read
+
 jobs:
   compile-and-test:
     runs-on: ubuntu-latest

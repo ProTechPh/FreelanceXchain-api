@@ -198,7 +198,7 @@ router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, re
  *       404:
  *         description: No verification found
  */
-router.get('/status', authMiddleware, async (req: Request, res: Response) => {
+router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -254,7 +254,7 @@ router.get('/status', authMiddleware, async (req: Request, res: Response) => {
  *                 verified:
  *                   type: boolean
  */
-router.get('/verified', authMiddleware, async (req: Request, res: Response) => {
+router.get('/verified', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
 
   if (!userId) {
@@ -304,7 +304,7 @@ router.get('/verified', authMiddleware, async (req: Request, res: Response) => {
  *       400:
  *         description: KYC not approved or not found
  */
-router.get('/profile-data', authMiddleware, async (req: Request, res: Response) => {
+router.get('/profile-data', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
 
   if (!userId) {
@@ -343,7 +343,7 @@ router.get('/profile-data', authMiddleware, async (req: Request, res: Response) 
  *               items:
  *                 $ref: '#/components/schemas/KycVerification'
  */
-router.get('/history', authMiddleware, async (req: Request, res: Response) => {
+router.get('/history', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
 
   if (!userId) {
@@ -557,7 +557,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
  *               items:
  *                 $ref: '#/components/schemas/KycVerification'
  */
-router.get('/admin/pending', authMiddleware, requireRole('admin'), async (_req: Request, res: Response) => {
+router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimiter, async (_req: Request, res: Response) => {
   const result = await getPendingAdminReviews();
 
   if (!result.success) {
@@ -588,7 +588,7 @@ router.get('/admin/pending', authMiddleware, requireRole('admin'), async (_req: 
  *       200:
  *         description: Verifications list
  */
-router.get('/admin/status/:status', authMiddleware, requireRole('admin'), async (req: Request, res: Response) => {
+router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
   const status = req.params['status'] as KycStatus;
   const validStatuses: KycStatus[] = ['pending', 'in_progress', 'completed', 'approved', 'rejected', 'expired'];
 
@@ -733,7 +733,7 @@ router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'
  *       200:
  *         description: Verification details
  */
-router.get('/admin/verification/:verificationId', authMiddleware, requireRole('admin'), validateUUID(['verificationId']), async (req: Request, res: Response) => {
+router.get('/admin/verification/:verificationId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
 
   if (!verificationId) {

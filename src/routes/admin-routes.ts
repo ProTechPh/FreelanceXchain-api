@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { enforceMFAForAdmins } from '../middleware/mfa-enforcement.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getAllUsersWithKyc, getAdminStats, getAdminAnalytics } from '../services/admin-service.js';
 import { getKycVerificationByUserId } from '../repositories/didit-kyc-repository.js';
 import { UserRepository } from '../repositories/index.js';
@@ -23,7 +24,7 @@ const router = Router();
  *       200:
  *         description: List of all users
  */
-router.get('/users', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
+router.get('/users', authMiddleware, requireRole('admin'), enforceMFAForAdmins, apiRateLimiter, async (_req: Request, res: Response) => {
   try {
     const usersWithKyc = await getAllUsersWithKyc();
     res.json(usersWithKyc);
@@ -63,7 +64,7 @@ router.get('/users', authMiddleware, requireRole('admin'), enforceMFAForAdmins, 
  *                 totalEmployers:
  *                   type: number
  */
-router.get('/stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
+router.get('/stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, apiRateLimiter, async (_req: Request, res: Response) => {
   try {
     const stats = await getAdminStats();
     res.json(stats);
@@ -93,7 +94,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, 
  *                 projectGrowth:
  *                   type: number
  */
-router.get('/analytics', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
+router.get('/analytics', authMiddleware, requireRole('admin'), enforceMFAForAdmins, apiRateLimiter, async (_req: Request, res: Response) => {
   try {
     const analytics = await getAdminAnalytics();
     res.json({
@@ -142,7 +143,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), enforceMFAForAdmi
  *                 satisfactionRate:
  *                   type: number
  */
-router.get('/platform-stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, async (_req: Request, res: Response) => {
+router.get('/platform-stats', authMiddleware, requireRole('admin'), enforceMFAForAdmins, apiRateLimiter, async (_req: Request, res: Response) => {
   try {
     const analytics = await getAdminAnalytics();
     res.json(analytics);
@@ -196,7 +197,7 @@ router.get('/platform-stats', authMiddleware, requireRole('admin'), enforceMFAFo
  *       404:
  *         description: User not found
  */
-router.patch('/users/:id', authMiddleware, requireRole('admin'), enforceMFAForAdmins, auditMiddleware('admin_update_user', 'user'), async (req: Request, res: Response) => {
+router.patch('/users/:id', authMiddleware, requireRole('admin'), enforceMFAForAdmins, apiRateLimiter, auditMiddleware('admin_update_user', 'user'), async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const { role, name, isActive } = req.body;

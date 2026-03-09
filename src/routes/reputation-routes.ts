@@ -137,7 +137,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/can-rate', authMiddleware, async (req: Request, res: Response) => {
+router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -335,7 +335,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
  *       404:
  *         description: User not found
  */
-router.get('/:userId', validateUUID(['userId']), async (req: Request, res: Response) => {
+router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -392,7 +392,7 @@ router.get('/:userId', validateUUID(['userId']), async (req: Request, res: Respo
  *       404:
  *         description: User not found
  */
-router.get('/:userId/history', validateUUID(['userId']), async (req: Request, res: Response) => {
+router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 

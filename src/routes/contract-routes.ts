@@ -90,7 +90,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/', authMiddleware, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
@@ -154,7 +154,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
  *       404:
  *         description: Contract not found
  */
-router.get('/:id', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const userId = req.user?.userId;
@@ -442,7 +442,7 @@ router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, v
  *       404:
  *         description: Contract not found
  */
-router.get('/:contractId/disputes', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';

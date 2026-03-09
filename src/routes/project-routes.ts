@@ -132,7 +132,7 @@ const router = Router();
  *                 continuationToken:
  *                   type: string
  */
-router.get('/', async (req: Request, res: Response) => {
+router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
    const keyword = req.query['keyword'] as string | undefined;
    const skillsParam = req.query['skills'] as string | undefined;
    const minBudget = req.query['minBudget'] ? Number(req.query['minBudget']) : undefined;
@@ -210,7 +210,7 @@ router.get('/', async (req: Request, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/my-projects', authMiddleware, requireRole('employer'), async (req: Request, res: Response) => {
+router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
@@ -269,7 +269,7 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), async (req: 
  *       404:
  *         description: Project not found
  */
-router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -342,7 +342,7 @@ router.get('/:id', validateUUID(), async (req: Request, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, async (req: Request, res: Response) => {
   const { title, description, requiredSkills, budget, deadline } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -466,7 +466,7 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, as
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { title, description, requiredSkills, budget, deadline, status } = req.body;
   const userId = req.user?.userId;
