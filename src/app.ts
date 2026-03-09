@@ -39,7 +39,6 @@ export async function createApp(): Promise<Express> {
   app.use(express.urlencoded({ extended: true }));
 
   // Cookie parsing middleware (required for CSRF protection)
-  // Note: CSRF protection is applied after CORS and logging middleware (see below)
   app.use(cookieParser());
 
   // CORS middleware with restricted origins
