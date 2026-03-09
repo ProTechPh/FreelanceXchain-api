@@ -283,6 +283,13 @@ export async function acceptProposal(
   const updatedProposal = mapProposalFromEntity(updatedProposalEntity!);
   
   const createdContractEntity = await contractRepository.getContractById(createdContractId);
+
+  // Ensure contract status is 'active' (RPC may create it as 'pending')
+  if (createdContractEntity && createdContractEntity.status !== 'active') {
+    await contractRepository.updateContract(createdContractId, { status: 'active' });
+    createdContractEntity!.status = 'active';
+  }
+
   const createdContract = mapContractFromEntity(createdContractEntity!);
 
   // Create agreement on blockchain
