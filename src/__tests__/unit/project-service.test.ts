@@ -95,10 +95,16 @@ const validDescriptionArbitrary = () => fc.stringMatching(/^[A-Za-z][A-Za-z0-9 .
 const validBudgetArbitrary = () => fc.integer({ min: 100, max: 100000 });
 const validDeadlineArbitrary = () =>
   fc.date({ min: new Date(), max: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000) })
+    .filter(d => !isNaN(d.getTime()))
     .map(d => d.toISOString());
 
 // Generate milestones that sum to a specific budget
-const validMilestonesArbitrary = (totalBudget: number, count: number) => {
+const validMilestonesArbitrary = (totalBudget: number, count: number): fc.Arbitrary<Array<{
+  title: string;
+  description: string;
+  amount: number;
+  dueDate: string;
+}>> => {
   if (count <= 0) return fc.constant([]);
   return fc.array(
     fc.record({
@@ -118,7 +124,12 @@ const validMilestonesArbitrary = (totalBudget: number, count: number) => {
 };
 
 // Generate milestones that DON'T sum to budget
-const invalidMilestonesArbitrary = (totalBudget: number) =>
+const invalidMilestonesArbitrary = (totalBudget: number): fc.Arbitrary<Array<{
+  title: string;
+  description: string;
+  amount: number;
+  dueDate: string;
+}>> =>
   fc.array(
     fc.record({
       title: fc.stringMatching(/^Milestone [0-9]+$/),
@@ -298,8 +309,7 @@ describe('Project Service - Property-Based Tests', () => {
 
           const project = createResult.data;
 
-          const milestonesGen = validMilestonesArbitrary(budget, milestoneCount);
-          const milestones = fc.sample(milestonesGen, 1)[0];
+          const milestones = fc.sample(validMilestonesArbitrary(budget, milestoneCount), 1)[0];
           if (!milestones || milestones.length === 0) return;
 
           const addResult = await setMilestones(project.id, employerId, milestones);
@@ -344,8 +354,7 @@ describe('Project Service - Property-Based Tests', () => {
 
           const project = createResult.data;
 
-          const invalidMilestonesGen = invalidMilestonesArbitrary(budget);
-          const samples = fc.sample(invalidMilestonesGen, 1);
+          const samples = fc.sample(invalidMilestonesArbitrary(budget), 1);
           if (!samples || samples.length === 0) return;
           const milestones = samples[0];
           if (!milestones || milestones.length === 0) return;

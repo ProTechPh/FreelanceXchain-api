@@ -61,25 +61,31 @@ const validPastDateArbitrary = () =>
   fc.date({
     min: new Date('2000-01-01'),
     max: new Date('2024-12-31'),
-  }).map(d => d.toISOString().split('T')[0]);
+  })
+    .filter(d => !isNaN(d.getTime()))
+    .map(d => d.toISOString().split('T')[0]);
 
 const validDateRangeArbitrary = () =>
   fc.tuple(
     fc.date({ min: new Date('2000-01-01'), max: new Date('2020-12-31') }),
     fc.date({ min: new Date('2021-01-01'), max: new Date('2024-12-31') })
-  ).map(([start, end]) => ({
-    startDate: start.toISOString().split('T')[0] as string,
-    endDate: end.toISOString().split('T')[0] as string,
-  }));
+  )
+    .filter(([start, end]) => !isNaN(start.getTime()) && !isNaN(end.getTime()))
+    .map(([start, end]) => ({
+      startDate: start.toISOString().split('T')[0] as string,
+      endDate: end.toISOString().split('T')[0] as string,
+    }));
 
 const invalidDateRangeArbitrary = () =>
   fc.tuple(
     fc.date({ min: new Date('2021-01-01'), max: new Date('2024-12-31') }),
     fc.date({ min: new Date('2000-01-01'), max: new Date('2020-12-31') })
-  ).map(([start, end]) => ({
-    startDate: start.toISOString().split('T')[0] as string,
-    endDate: end.toISOString().split('T')[0] as string,
-  }));
+  )
+    .filter(([start, end]) => !isNaN(start.getTime()) && !isNaN(end.getTime()))
+    .map(([start, end]) => ({
+      startDate: start.toISOString().split('T')[0] as string,
+      endDate: end.toISOString().split('T')[0] as string,
+    }));
 
 const validExperienceInputArbitrary = () =>
   fc.record({
