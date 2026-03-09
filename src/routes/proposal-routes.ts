@@ -418,6 +418,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
  *       404:
  *         description: Proposal not found
  */
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
 router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
@@ -480,6 +481,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
  *       401:
  *         description: Unauthorized
  */
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
 router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
