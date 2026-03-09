@@ -404,6 +404,7 @@ router.post(
 router.get(
   '/contracts/:contractId/status',
   authMiddleware,
+  apiRateLimiter,
   validateUUID(['contractId']),
   async (req: Request, res: Response, next: NextFunction) => {
     try {

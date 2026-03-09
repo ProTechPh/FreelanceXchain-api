@@ -16,7 +16,7 @@ jobs:
         with:
           egress-policy: audit
 
-      - uses: actions/labeler@v5
+      - uses: actions/labeler@v6
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 

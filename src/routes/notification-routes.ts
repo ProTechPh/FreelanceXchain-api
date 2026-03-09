@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
+import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit } from '../utils/index.js';
 import {
   getNotificationsByUser,
@@ -81,7 +82,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/', authMiddleware, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -142,7 +143,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/unread-count', authMiddleware, async (req: Request, res: Response) => {
+router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -202,7 +203,7 @@ router.get('/unread-count', authMiddleware, async (req: Request, res: Response) 
  *       404:
  *         description: Notification not found
  */
-router.patch('/:id/read', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const notificationId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -259,7 +260,7 @@ router.patch('/:id/read', authMiddleware, validateUUID(), async (req: Request, r
  *       401:
  *         description: Unauthorized
  */
-router.patch('/read-all', authMiddleware, async (req: Request, res: Response) => {
+router.patch('/read-all', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
