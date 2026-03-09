@@ -259,7 +259,9 @@ describe('Reputation Service - Property-Based Tests', () => {
           rating: fc.integer({ min: 1, max: 5 }),
           comment: fc.option(fc.string({ minLength: 1, maxLength: 200 }), { nil: undefined }),
           timestamp: fc.integer({ min: 0, max: Date.now() }),
-          transactionHash: fc.hexaString({ minLength: 64, maxLength: 64 }).map(s => '0x' + s),
+          transactionHash: fc.string({ minLength: 32, maxLength: 32, unit: 'binary-ascii' }).map(s => 
+            `0x${Array.from(s).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('')}`
+          ),
         }),
         async (ratingRecord) => {
           const original: BlockchainRating = ratingRecord;

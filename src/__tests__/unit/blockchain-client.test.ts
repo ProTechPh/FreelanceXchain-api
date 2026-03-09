@@ -28,7 +28,9 @@ const {
 
 // Custom arbitraries for property-based testing
 const walletAddressArbitrary = () =>
-  fc.hexaString({ minLength: 40, maxLength: 40 }).map(hex => `0x${hex}`);
+  fc.string({ minLength: 40, maxLength: 40, unit: 'binary-ascii' }).map(s => 
+    `0x${Array.from(s).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('').slice(0, 40)}`
+  );
 
 const transactionTypeArbitrary = () =>
   fc.constantFrom('escrow_deploy', 'escrow_deposit', 'milestone_release', 'refund');
@@ -40,7 +42,9 @@ const transactionArbitrary = () =>
     from: walletAddressArbitrary(),
     to: walletAddressArbitrary(),
     amount: fc.bigInt({ min: 0n, max: 1000000000000000000n }),
-    hash: fc.option(fc.hexaString({ minLength: 64, maxLength: 64 }).map(h => `0x${h}`), { nil: undefined }),
+    hash: fc.option(fc.string({ minLength: 32, maxLength: 32, unit: 'binary-ascii' }).map(s => 
+      `0x${Array.from(s).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('')}`
+    ), { nil: undefined }),
     status: fc.constantFrom('pending', 'confirmed', 'failed'),
     blockNumber: fc.option(fc.integer({ min: 1, max: 1000000 }), { nil: undefined }),
     gasUsed: fc.option(fc.bigInt({ min: 21000n, max: 500000n }), { nil: undefined }),
@@ -55,7 +59,9 @@ const paymentTransactionArbitrary = () =>
     amount: fc.bigInt({ min: 0n, max: 1000000000000000000n }),
     recipient: walletAddressArbitrary(),
     timestamp: fc.integer({ min: 1000000000, max: 2000000000 }),
-    transactionHash: fc.hexaString({ minLength: 64, maxLength: 64 }).map(h => `0x${h}`),
+    transactionHash: fc.string({ minLength: 32, maxLength: 32, unit: 'binary-ascii' }).map(s => 
+      `0x${Array.from(s).map(c => c.charCodeAt(0).toString(16).padStart(2, '0')).join('')}`
+    ),
   }) as fc.Arbitrary<PaymentTransaction>;
 
 describe('Blockchain Client - Refactored', () => {
