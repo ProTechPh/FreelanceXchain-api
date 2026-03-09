@@ -43,6 +43,10 @@ Thumbs.db
 !contracts
 !hardhat.config.cjs
 
+# Build artifacts - include for faster Docker builds
+!artifacts
+!cache
+
 # Infrastructure/Cloud configs
 infra
 .azure
