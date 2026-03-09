@@ -188,7 +188,7 @@ router.get('/signed-url/:bucket/*', authMiddleware, fileUploadRateLimiter, async
  * List user's files
  * GET /api/files/list/:bucket
  */
-router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get('/list/:bucket', authMiddleware, fileUploadRateLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const bucket = req.params.bucket!; // Route param is always defined
     const { folder } = req.query;
