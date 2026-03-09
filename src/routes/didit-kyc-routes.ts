@@ -456,7 +456,7 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
  *       401:
  *         description: Invalid signature
  */
-router.post('/webhook', async (req: Request, res: Response) => {
+router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const signature = typeof req.headers['x-signature'] === 'string' ? req.headers['x-signature'] : '';
   const timestamp = typeof req.headers['x-timestamp'] === 'string' ? req.headers['x-timestamp'] : '';
