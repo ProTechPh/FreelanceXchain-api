@@ -27,10 +27,10 @@ export default {
     '!src/index.ts',
   ],
   coverageDirectory: 'coverage',
+  coverageProvider: 'v8',
   verbose: true,
   testTimeout: 30000,
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
-  // Handle module resolution more aggressively
   transformIgnorePatterns: [
     'node_modules/(?!(.*\\.mjs$))'
   ],
