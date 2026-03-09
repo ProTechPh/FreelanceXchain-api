@@ -51,8 +51,8 @@ type ValidationResult = {
   errors: ValidationError[];
 };
 
-// Basic email regex pattern for format validation
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Basic email regex pattern for format validation - optimized to prevent ReDoS
+const EMAIL_PATTERN = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
 
 // Date patterns; datetime pattern optimized to prevent ReDoS
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;

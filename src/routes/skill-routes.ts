@@ -92,7 +92,7 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/SkillTaxonomy'
  */
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', apiRateLimiter, async (_req: Request, res: Response) => {
   const taxonomy = await getFullTaxonomy();
   res.status(200).json(taxonomy);
 });
@@ -128,7 +128,7 @@ router.get('/', async (_req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/search', async (req: Request, res: Response) => {
+router.get('/search', apiRateLimiter, async (req: Request, res: Response) => {
   const { keyword } = req.query;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -181,7 +181,7 @@ router.get('/search', async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/categories/:categoryId/skills', validateUUID(['categoryId']), async (req: Request, res: Response) => {
+router.get('/categories/:categoryId/skills', apiRateLimiter, validateUUID(['categoryId']), async (req: Request, res: Response) => {
   const { categoryId } = req.params;
   
   if (!categoryId) {

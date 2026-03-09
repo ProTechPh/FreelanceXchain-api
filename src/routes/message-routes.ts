@@ -44,7 +44,7 @@ const router = Router();
  *       404:
  *         description: Contract not found
  */
-router.get('/:contractId', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const contractId = req.params.contractId as string;
@@ -159,7 +159,7 @@ router.post('/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contr
  *       401:
  *         description: Unauthorized
  */
-router.get('/:contractId/unread', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/:contractId/unread', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const contractId = req.params.contractId as string;
@@ -199,7 +199,7 @@ router.get('/:contractId/unread', authMiddleware, validateUUID(['contractId']), 
  *       401:
  *         description: Unauthorized
  */
-router.get('/:contractId/summary', authMiddleware, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/:contractId/summary', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const contractId = req.params.contractId as string;

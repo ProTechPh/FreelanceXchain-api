@@ -568,7 +568,7 @@ router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => 
  *       401:
  *         description: Authentication failed
  */
-router.get('/callback', async (req: Request, res: Response) => {
+router.get('/callback', authRateLimiter, async (req: Request, res: Response) => {
   const { code, error, error_description } = req.query;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -695,7 +695,7 @@ router.get('/callback', async (req: Request, res: Response) => {
  *       302:
  *         description: Redirect to provider
  */
-router.get('/oauth/:provider', async (req: Request, res: Response) => {
+router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Response) => {
   const { provider } = req.params as { provider: string };
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -760,7 +760,7 @@ router.get('/oauth/:provider', async (req: Request, res: Response) => {
  *       401:
  *         description: Invalid token
  */
-router.post('/oauth/callback', async (req: Request, res: Response) => {
+router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Response) => {
   const { access_token } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -1077,7 +1077,7 @@ router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, r
  *       500:
  *         description: Failed to generate token
  */
-router.post('/csrf-token', (req: Request, res: Response) => {
+router.post('/csrf-token', authRateLimiter, (req: Request, res: Response) => {
   generateCsrfToken(req, res);
 });
 
@@ -1183,7 +1183,7 @@ router.post('/reset-password', passwordResetRateLimiter, async (req: Request, re
  *       500:
  *         description: Internal server error
  */
-router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
+router.post('/logout', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const userId = req.user?.userId;
 
@@ -1244,7 +1244,7 @@ router.post('/logout', authMiddleware, async (req: Request, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/enroll', authMiddleware, async (req: Request, res: Response) => {
+router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const authHeader = req.headers.authorization;
   const token = authHeader?.split(' ')[1];
@@ -1311,7 +1311,7 @@ router.post('/mfa/enroll', authMiddleware, async (req: Request, res: Response) =
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/verify-enrollment', authMiddleware, async (req: Request, res: Response) => {
+router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, code } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const authHeader = req.headers.authorization;
@@ -1392,7 +1392,7 @@ router.post('/mfa/verify-enrollment', authMiddleware, async (req: Request, res: 
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/challenge', authMiddleware, async (req: Request, res: Response) => {
+router.post('/mfa/challenge', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const authHeader = req.headers.authorization;
@@ -1475,7 +1475,7 @@ router.post('/mfa/challenge', authMiddleware, async (req: Request, res: Response
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/verify', authMiddleware, async (req: Request, res: Response) => {
+router.post('/mfa/verify', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, challengeId, code } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const authHeader = req.headers.authorization;
@@ -1547,7 +1547,7 @@ router.post('/mfa/verify', authMiddleware, async (req: Request, res: Response) =
  *       401:
  *         description: Unauthorized
  */
-router.get('/mfa/factors', authMiddleware, async (req: Request, res: Response) => {
+router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const authHeader = req.headers.authorization;
   const token = authHeader?.split(' ')[1];
@@ -1610,7 +1610,7 @@ router.get('/mfa/factors', authMiddleware, async (req: Request, res: Response) =
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/disable', authMiddleware, async (req: Request, res: Response) => {
+router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, totpCode } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
   const authHeader = req.headers.authorization;
@@ -1705,7 +1705,7 @@ router.post('/mfa/disable', authMiddleware, async (req: Request, res: Response) 
  *       401:
  *         description: Unauthorized
  */
-router.get('/me', authMiddleware, async (req: Request, res: Response) => {
+router.get('/me', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
