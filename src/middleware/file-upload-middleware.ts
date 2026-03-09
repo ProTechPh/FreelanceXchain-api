@@ -177,10 +177,22 @@ export function createFileUploadMiddleware(
     // Then, perform additional validation
     async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
-        const files = req.files as Express.Multer.File[] | undefined;
+        // Sanitize and validate the type of req.files
+        const files = req.files;
+        
+        // Type guard: ensure files is an array, not a dictionary or other type
+        if (!files || !Array.isArray(files)) {
+          res.status(400).json({
+            error: {
+              code: 'NO_FILES_UPLOADED',
+              message: `At least ${minFiles} file(s) required`,
+            },
+          });
+          return;
+        }
 
         // Check if files were uploaded
-        if (!files || files.length === 0) {
+        if (files.length === 0) {
           res.status(400).json({
             error: {
               code: 'NO_FILES_UPLOADED',
@@ -195,7 +207,7 @@ export function createFileUploadMiddleware(
           res.status(400).json({
             error: {
               code: 'INSUFFICIENT_FILES',
-              message: `At least ${minFiles} file(s) required, received ${files.length}`,
+              message: `At least ${minFiles} file(s) required, received ${String(files.length)}`,
             },
           });
           return;
@@ -206,7 +218,7 @@ export function createFileUploadMiddleware(
           res.status(400).json({
             error: {
               code: 'TOO_MANY_FILES',
-              message: `Maximum ${maxFiles} file(s) allowed, received ${files.length}`,
+              message: `Maximum ${maxFiles} file(s) allowed, received ${String(files.length)}`,
             },
           });
           return;
@@ -281,7 +293,7 @@ export function createFileUploadMiddleware(
 
         // Log successful upload
         logger.info('Files uploaded successfully', {
-          count: files.length,
+          count: Number(files.length),
           totalSize,
           filenames: files.map(f => f.originalname),
         });

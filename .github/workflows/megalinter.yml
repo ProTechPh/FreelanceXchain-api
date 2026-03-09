@@ -32,7 +32,7 @@ jobs:
           ENABLE_LINTERS: TYPESCRIPT_ES,JSON_JSONLINT,YAML_YAMLLINT,MARKDOWN_MARKDOWNLINT,DOCKERFILE_HADOLINT,SOLIDITY_SOLHINT
           DISABLE_TELEMETRY: true
           SHOW_ELAPSED_TIME: true
-          VALIDATE_ALL_CODEBASE: false
+          VALIDATE_ALL_CODEBASE: true
 
       - name: Upload MegaLinter artifacts
         if: always()
