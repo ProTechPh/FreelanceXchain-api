@@ -285,11 +285,12 @@ export async function acceptProposal(
   const createdContractEntity = await contractRepository.getContractById(createdContractId);
   const createdContract = mapContractFromEntity(createdContractEntity!);
 
+  // Get wallet addresses for escrow initialization
+  const employer = await userRepository.getUserById(project.employerId);
+  const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
+
   // Create agreement on blockchain
   try {
-    const employer = await userRepository.getUserById(project.employerId);
-    const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
-    
     if (employer?.wallet_address && freelancer?.wallet_address) {
       // Create agreement on blockchain (employer signs on creation)
       await createAgreementOnBlockchain({
@@ -314,6 +315,38 @@ export async function acceptProposal(
   } catch (error) {
     console.error('Failed to create blockchain agreement:', error);
     // Continue - blockchain is secondary
+  }
+
+  // Initialize escrow and activate contract automatically
+  if (employer?.wallet_address && freelancer?.wallet_address) {
+    try {
+      const { initializeContractEscrow } = await import('./payment-service.js');
+      const escrowResult = await initializeContractEscrow(
+        createdContract,
+        project,
+        employer.wallet_address,
+        freelancer.wallet_address
+      );
+
+      if (escrowResult.success) {
+        // Update contract to active status
+        const { updateContractStatus } = await import('./contract-service.js');
+        await updateContractStatus(createdContract.id, 'active');
+        
+        // Refresh contract data to get updated status and escrow address
+        const updatedContractEntity = await contractRepository.getContractById(createdContract.id);
+        if (updatedContractEntity) {
+          createdContract.status = updatedContractEntity.status;
+          createdContract.escrowAddress = updatedContractEntity.escrow_address;
+        }
+      } else {
+        console.error('Failed to initialize escrow:', escrowResult.error);
+        // Contract remains in 'pending' status - employer can manually fund later
+      }
+    } catch (error) {
+      console.error('Failed to auto-initialize escrow:', error);
+      // Contract remains in 'pending' status - employer can manually fund later
+    }
   }
 
   // Update project status to in_progress
