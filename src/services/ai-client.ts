@@ -25,50 +25,80 @@ const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses 
 
 // Prompt templates
 export const SKILL_MATCH_PROMPT = `
-Analyze the compatibility between a freelancer's skills and project requirements.
-Return a JSON object with matchScore (0-100) and reasoning.
+ROLE: You are a precise skill matching AI for a freelance platform. Your expertise is analyzing skill compatibility between freelancers and projects.
 
+TASK: Analyze how well the freelancer's skills match the project requirements.
+1. Compare skills case-insensitively (e.g., "React" = "react" = "ReactJS")
+2. Calculate matchScore = (matched skills / required skills) × 100
+3. List matched_skills (freelancer has AND project needs)
+4. List missing_skills (project needs BUT freelancer lacks)
+5. Factor in reputation score for overall assessment
+
+CONSTRAINTS:
+- matchScore must be 0-100 integer
+- Only include skills that actually appear in the inputs
+- Do NOT invent skills or assume related skills match
+- Return ONLY valid JSON, no markdown or explanation outside JSON
+
+TONE: Objective, analytical, fact-based
+
+INPUT:
 Freelancer Skills: {freelancerSkills}
 Project Requirements: {projectRequirements}
 Freelancer Reputation Score: {reputationScore}
 
-Response format (return ONLY valid JSON, no markdown):
-{
-  "matchScore": number,
-  "matchedSkills": string[],
-  "missingSkills": string[],
-  "reasoning": string
-}
+OUTPUT FORMAT (JSON only):
+{"matchScore":85,"matchedSkills":["Python","FastAPI"],"missingSkills":["Docker"],"reasoning":"Strong backend match with 85% overlap. Missing containerization skills."}
 `;
 
 export const SKILL_EXTRACTION_PROMPT = `
-Extract skills from the following text and map them to the provided skill taxonomy.
-Return a JSON array of extracted skills with confidence scores.
+ROLE: You are a technical skill extraction AI. Your job is to identify and normalize technical skills from text.
 
+TASK: Extract ALL technical skills mentioned in the text.
+1. Identify programming languages, frameworks, libraries, tools, databases, cloud platforms
+2. Normalize skill names (e.g., "react.js" → "React", "postgres" → "PostgreSQL", "k8s" → "Kubernetes")
+3. Map to provided taxonomy when available, otherwise use standard industry names
+4. Assign confidence score (0.0-1.0) based on how explicitly the skill is mentioned
+
+CONSTRAINTS:
+- Extract ONLY technical/hard skills (NO soft skills like "teamwork", "communication")
+- Do NOT extract job titles ("Senior Developer") or generic terms ("coding")
+- confidence: 0.9+ for explicit mentions, 0.7-0.9 for implied, 0.5-0.7 for uncertain
+- Return ONLY valid JSON array, no markdown
+
+TONE: Precise, technical, conservative (when uncertain, lower confidence)
+
+INPUT:
 Text: {text}
-Available Skills: {taxonomy}
+Available Skills Taxonomy: {taxonomy}
 
-Response format (return ONLY valid JSON array, no markdown):
-[
-  { "skillId": "string", "skillName": "string", "confidence": number }
-]
+OUTPUT FORMAT (JSON array only):
+[{"skillId":"react-001","skillName":"React","confidence":0.95},{"skillId":"node-002","skillName":"Node.js","confidence":0.85}]
 `;
 
 export const SKILL_GAP_PROMPT = `
-Analyze the freelancer's current skills and suggest skills they should acquire based on market demand.
-Return a JSON object with recommendations.
+ROLE: You are a career development AI specializing in tech skill market analysis. You help freelancers identify skills to learn for career growth.
 
+TASK: Analyze the freelancer's skills and recommend additions based on market demand.
+1. Acknowledge their current skills
+2. Identify complementary skills that increase marketability
+3. Prioritize by current market demand (high/medium/low)
+4. Focus on skills that pair well with their existing stack
+
+CONSTRAINTS:
+- recommendedSkills should be 3-5 actionable suggestions
+- demandLevel must be "high", "medium", or "low"
+- Base recommendations on realistic 2024-2026 tech market trends
+- Do NOT recommend skills they already have
+- Return ONLY valid JSON, no markdown
+
+TONE: Encouraging, practical, market-aware
+
+INPUT:
 Current Skills: {currentSkills}
 
-Response format (return ONLY valid JSON, no markdown):
-{
-  "currentSkills": string[],
-  "recommendedSkills": string[],
-  "marketDemand": [
-    { "skillName": "string", "demandLevel": "high" | "medium" | "low" }
-  ],
-  "reasoning": string
-}
+OUTPUT FORMAT (JSON only):
+{"currentSkills":["Python","FastAPI"],"recommendedSkills":["Docker","AWS","React"],"marketDemand":[{"skillName":"Docker","demandLevel":"high"},{"skillName":"AWS","demandLevel":"high"},{"skillName":"React","demandLevel":"medium"}],"reasoning":"Strong backend foundation. Adding containerization and cloud skills will significantly increase full-stack opportunities
 `;
 
 
