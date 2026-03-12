@@ -392,6 +392,22 @@ export async function listProjectsByBudgetRange(
   return { success: true, data: result };
 }
 
+export async function listProjectsByCategory(
+  categoryId: string,
+  options?: QueryOptions
+): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+  const result = await projectRepository.getProjectsByCategory(categoryId, options);
+  return { success: true, data: result };
+}
+
+export async function listProjectsByMultipleCategories(
+  categoryIds: string[],
+  options?: QueryOptions
+): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+  const result = await projectRepository.getProjectsByMultipleCategories(categoryIds, options);
+  return { success: true, data: result };
+}
+
 export async function deleteProject(
   projectId: string,
   employerId: string

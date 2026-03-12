@@ -209,6 +209,65 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     if (error) throw new Error(`Failed to get all projects: ${error.message}`);
     return (data ?? []) as ProjectEntity[];
   }
+
+  async getProjectsByCategory(categoryId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    // Fetch ALL open projects (no range), filter by category, then paginate in memory.
+    // This ensures total/hasMore reflect actual matched results, not all open projects.
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw new Error(`Failed to get projects by category: ${error.message}`);
+    
+    // Filter for category matching in memory
+    const allMatched = (data ?? []).filter((project: ProjectEntity) =>
+      project.required_skills.some(skill => skill.category_id === categoryId)
+    );
+
+    const total = allMatched.length;
+    const paginatedItems = allMatched.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems as ProjectEntity[],
+      hasMore: offset + limit < total,
+      total,
+    };
+  }
+
+  async getProjectsByMultipleCategories(categoryIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
+    const client = this.getClient();
+    const limit = options?.limit ?? 100;
+    const offset = options?.offset ?? 0;
+
+    // Fetch ALL open projects (no range), filter by categories, then paginate in memory.
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false });
+    
+    if (error) throw new Error(`Failed to get projects by categories: ${error.message}`);
+    
+    // Filter for category matching in memory
+    const allMatched = (data ?? []).filter((project: ProjectEntity) =>
+      project.required_skills.some(skill => categoryIds.includes(skill.category_id))
+    );
+
+    const total = allMatched.length;
+    const paginatedItems = allMatched.slice(offset, offset + limit);
+
+    return {
+      items: paginatedItems as ProjectEntity[],
+      hasMore: offset + limit < total,
+      total,
+    };
+  }
 }
 
 export const projectRepository = new ProjectRepository();

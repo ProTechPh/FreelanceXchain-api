@@ -13,6 +13,8 @@ import {
   listProjectsBySkills,
   listProjectsByBudgetRange,
   listProjectsByEmployer,
+  listProjectsByCategory,
+  listProjectsByMultipleCategories,
 } from '../services/project-service.js';
 import { getProposalsByProject } from '../services/proposal-service.js';
 
@@ -105,6 +107,16 @@ const router = Router();
  *           type: number
  *         description: Maximum budget filter
  *       - in: query
+ *         name: category
+ *         schema:
+ *           type: string
+ *         description: Single category ID filter
+ *       - in: query
+ *         name: categories
+ *         schema:
+ *           type: string
+ *         description: Comma-separated category IDs
+ *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
@@ -137,6 +149,8 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
    const skillsParam = req.query['skills'] as string | undefined;
    const minBudget = req.query['minBudget'] ? Number(req.query['minBudget']) : undefined;
    const maxBudget = req.query['maxBudget'] ? Number(req.query['maxBudget']) : undefined;
+   const categoryParam = req.query['category'] as string | undefined;
+   const categoriesParam = req.query['categories'] as string | undefined;
    const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
    const continuationToken = req.query['continuationToken'] as string | undefined;
 
@@ -150,6 +164,11 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
   } else if (skillsParam) {
     const skillIds = skillsParam.split(',').map(s => s.trim());
     result = await listProjectsBySkills(skillIds, options);
+  } else if (categoriesParam) {
+    const categoryIds = categoriesParam.split(',').map(c => c.trim());
+    result = await listProjectsByMultipleCategories(categoryIds, options);
+  } else if (categoryParam) {
+    result = await listProjectsByCategory(categoryParam, options);
   } else if (minBudget !== undefined && maxBudget !== undefined) {
     result = await listProjectsByBudgetRange(minBudget, maxBudget, options);
   } else {
@@ -749,6 +768,94 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
   }
 
   res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/projects/stats/categories:
+ *   get:
+ *     summary: Get project statistics by category
+ *     description: Retrieves project counts grouped by skill categories
+ *     tags:
+ *       - Projects
+ *       - Statistics
+ *     parameters:
+ *       - in: query
+ *         name: includeInactive
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Include inactive categories in results
+ *     responses:
+ *       200:
+ *         description: Category statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 categories:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       categoryId:
+ *                         type: string
+ *                       categoryName:
+ *                         type: string
+ *                       projectCount:
+ *                         type: integer
+ *                       totalBudget:
+ *                         type: number
+ */
+router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Response) => {
+  const includeInactive = req.query['includeInactive'] === 'true';
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  try {
+    // This is a simplified implementation - in production you'd want to optimize this query
+    const result = await listOpenProjects({ limit: 10000, offset: 0 });
+    
+    if (!result.success) {
+      res.status(500).json({
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    // Group projects by categories
+    const categoryStats = new Map<string, { categoryId: string; categoryName: string; projectCount: number; totalBudget: number }>();
+    
+    result.data.items.forEach(project => {
+      project.required_skills.forEach(skill => {
+        const key = skill.category_id;
+        if (!categoryStats.has(key)) {
+          categoryStats.set(key, {
+            categoryId: skill.category_id,
+            categoryName: skill.category_id, // In production, you'd fetch the actual category name
+            projectCount: 0,
+            totalBudget: 0
+          });
+        }
+        
+        const stats = categoryStats.get(key)!;
+        stats.projectCount += 1;
+        stats.totalBudget += project.budget;
+      });
+    });
+
+    res.status(200).json({
+      categories: Array.from(categoryStats.values()).sort((a, b) => b.projectCount - a.projectCount)
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
 });
 
 export default router;

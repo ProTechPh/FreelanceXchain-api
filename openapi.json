@@ -4564,6 +4564,22 @@
           },
           {
             "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Single category ID filter"
+          },
+          {
+            "in": "query",
+            "name": "categories",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Comma-separated category IDs"
+          },
+          {
+            "in": "query",
             "name": "limit",
             "schema": {
               "type": "integer",
@@ -5047,6 +5063,64 @@
           },
           "404": {
             "description": "Project not found"
+          }
+        }
+      }
+    },
+    "/api/projects/stats/categories": {
+      "get": {
+        "summary": "Get project statistics by category",
+        "description": "Retrieves project counts grouped by skill categories",
+        "tags": [
+          "Projects",
+          "Statistics"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "includeInactive",
+            "schema": {
+              "type": "boolean",
+              "default": false
+            },
+            "description": "Include inactive categories in results"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Category statistics retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "categoryId": {
+                            "type": "string"
+                          },
+                          "categoryName": {
+                            "type": "string"
+                          },
+                          "projectCount": {
+                            "type": "integer"
+                          },
+                          "totalBudget": {
+                            "type": "number"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
           }
         }
       }

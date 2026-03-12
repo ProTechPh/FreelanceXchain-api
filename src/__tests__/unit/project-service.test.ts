@@ -531,3 +531,270 @@ describe('Project Service - Unit Tests', () => {
     }
   });
 });
+
+describe('Project Service - Category Filtering Tests', () => {
+  beforeEach(() => {
+    projectStore.clear();
+    proposalStore.clear();
+    skillStore.clear();
+  });
+
+  // Mock the new category filtering functions
+  const mockListProjectsByCategory = jest.fn<any>();
+  const mockListProjectsByMultipleCategories = jest.fn<any>();
+
+  beforeEach(() => {
+    // Add category filtering methods to mock repository
+    mockProjectRepo.getProjectsByCategory = jest.fn<any>(async (categoryId: string, options?: any) => {
+      const items = Array.from(projectStore.values()).filter((p: any) => 
+        p.status === 'open' && 
+        p.required_skills.some((skill: any) => skill.category_id === categoryId)
+      );
+      const limit = options?.limit ?? 100;
+      const offset = options?.offset ?? 0;
+      const paginatedItems = items.slice(offset, offset + limit);
+      return {
+        items: paginatedItems,
+        hasMore: offset + limit < items.length,
+        total: items.length,
+      };
+    });
+
+    mockProjectRepo.getProjectsByMultipleCategories = jest.fn<any>(async (categoryIds: string[], options?: any) => {
+      const items = Array.from(projectStore.values()).filter((p: any) => 
+        p.status === 'open' && 
+        p.required_skills.some((skill: any) => categoryIds.includes(skill.category_id))
+      );
+      const limit = options?.limit ?? 100;
+      const offset = options?.offset ?? 0;
+      const paginatedItems = items.slice(offset, offset + limit);
+      return {
+        items: paginatedItems,
+        hasMore: offset + limit < items.length,
+        total: items.length,
+      };
+    });
+  });
+
+  it('should filter projects by single category', async () => {
+    // Import the new functions
+    const { listProjectsByCategory } = await import('../../services/project-service.js');
+
+    // Create test projects with different categories
+    const webDevCategoryId = 'web-dev-category';
+    const mobileCategoryId = 'mobile-category';
+
+    const project1 = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill1', skill_name: 'React', category_id: webDevCategoryId, years_of_experience: 2 }
+      ]
+    });
+
+    const project2 = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill2', skill_name: 'Flutter', category_id: mobileCategoryId, years_of_experience: 1 }
+      ]
+    });
+
+    const project3 = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill3', skill_name: 'Vue.js', category_id: webDevCategoryId, years_of_experience: 3 }
+      ]
+    });
+
+    projectStore.set(project1.id, project1);
+    projectStore.set(project2.id, project2);
+    projectStore.set(project3.id, project3);
+
+    const result = await listProjectsByCategory(webDevCategoryId);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBe(2);
+      expect(result.data.total).toBe(2);
+      expect(result.data.items.map(p => p.id)).toContain(project1.id);
+      expect(result.data.items.map(p => p.id)).toContain(project3.id);
+      expect(result.data.items.map(p => p.id)).not.toContain(project2.id);
+    }
+  });
+
+  it('should filter projects by multiple categories', async () => {
+    const { listProjectsByMultipleCategories } = await import('../../services/project-service.js');
+
+    const webDevCategoryId = 'web-dev-category';
+    const mobileCategoryId = 'mobile-category';
+    const backendCategoryId = 'backend-category';
+
+    const project1 = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill1', skill_name: 'React', category_id: webDevCategoryId, years_of_experience: 2 }
+      ]
+    });
+
+    const project2 = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill2', skill_name: 'Flutter', category_id: mobileCategoryId, years_of_experience: 1 }
+      ]
+    });
+
+    const project3 = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill3', skill_name: 'Node.js', category_id: backendCategoryId, years_of_experience: 3 }
+      ]
+    });
+
+    projectStore.set(project1.id, project1);
+    projectStore.set(project2.id, project2);
+    projectStore.set(project3.id, project3);
+
+    const result = await listProjectsByMultipleCategories([webDevCategoryId, mobileCategoryId]);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBe(2);
+      expect(result.data.total).toBe(2);
+      expect(result.data.items.map(p => p.id)).toContain(project1.id);
+      expect(result.data.items.map(p => p.id)).toContain(project2.id);
+      expect(result.data.items.map(p => p.id)).not.toContain(project3.id);
+    }
+  });
+
+  it('should handle pagination for category filtering', async () => {
+    const { listProjectsByCategory } = await import('../../services/project-service.js');
+
+    const categoryId = 'test-category';
+
+    // Create 5 projects with the same category
+    for (let i = 0; i < 5; i++) {
+      const project = createTestProject({
+        status: 'open',
+        required_skills: [
+          { skill_id: `skill${i}`, skill_name: `Skill ${i}`, category_id: categoryId, years_of_experience: 1 }
+        ]
+      });
+      projectStore.set(project.id, project);
+    }
+
+    // Test first page
+    const firstPage = await listProjectsByCategory(categoryId, { limit: 2, offset: 0 });
+    expect(firstPage.success).toBe(true);
+    if (firstPage.success) {
+      expect(firstPage.data.items.length).toBe(2);
+      expect(firstPage.data.hasMore).toBe(true);
+      expect(firstPage.data.total).toBe(5);
+    }
+
+    // Test second page
+    const secondPage = await listProjectsByCategory(categoryId, { limit: 2, offset: 2 });
+    expect(secondPage.success).toBe(true);
+    if (secondPage.success) {
+      expect(secondPage.data.items.length).toBe(2);
+      expect(secondPage.data.hasMore).toBe(true);
+    }
+
+    // Test last page
+    const lastPage = await listProjectsByCategory(categoryId, { limit: 2, offset: 4 });
+    expect(lastPage.success).toBe(true);
+    if (lastPage.success) {
+      expect(lastPage.data.items.length).toBe(1);
+      expect(lastPage.data.hasMore).toBe(false);
+    }
+  });
+
+  it('should return empty results for non-existent category', async () => {
+    const { listProjectsByCategory } = await import('../../services/project-service.js');
+
+    const project = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill1', skill_name: 'React', category_id: 'existing-category', years_of_experience: 2 }
+      ]
+    });
+    projectStore.set(project.id, project);
+
+    const result = await listProjectsByCategory('non-existent-category');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBe(0);
+      expect(result.data.total).toBe(0);
+      expect(result.data.hasMore).toBe(false);
+    }
+  });
+
+  it('should only return open projects for category filtering', async () => {
+    const { listProjectsByCategory } = await import('../../services/project-service.js');
+
+    const categoryId = 'test-category';
+
+    const openProject = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill1', skill_name: 'React', category_id: categoryId, years_of_experience: 2 }
+      ]
+    });
+
+    const completedProject = createTestProject({
+      status: 'completed',
+      required_skills: [
+        { skill_id: 'skill2', skill_name: 'Vue.js', category_id: categoryId, years_of_experience: 1 }
+      ]
+    });
+
+    const draftProject = createTestProject({
+      status: 'draft',
+      required_skills: [
+        { skill_id: 'skill3', skill_name: 'Angular', category_id: categoryId, years_of_experience: 3 }
+      ]
+    });
+
+    projectStore.set(openProject.id, openProject);
+    projectStore.set(completedProject.id, completedProject);
+    projectStore.set(draftProject.id, draftProject);
+
+    const result = await listProjectsByCategory(categoryId);
+
+    expect(result.success).toBe(true);
+    if (result.success && result.data && Array.isArray(result.data.items) && result.data.items.length > 0) {
+      expect(result.data.items[0]!.id).toBe(openProject.id);
+      expect(result.data.items[0]!.status).toBe('open');
+    }
+  });
+
+  it('should handle projects with multiple skills from different categories', async () => {
+    const { listProjectsByCategory } = await import('../../services/project-service.js');
+
+    const webDevCategoryId = 'web-dev-category';
+    const backendCategoryId = 'backend-category';
+
+    const project = createTestProject({
+      status: 'open',
+      required_skills: [
+        { skill_id: 'skill1', skill_name: 'React', category_id: webDevCategoryId, years_of_experience: 2 },
+        { skill_id: 'skill2', skill_name: 'Node.js', category_id: backendCategoryId, years_of_experience: 3 }
+      ]
+    });
+
+    projectStore.set(project.id, project);
+
+    // Should be found when filtering by web dev category
+    const webDevResult = await listProjectsByCategory(webDevCategoryId);
+    expect(webDevResult.success).toBe(true);
+    if (webDevResult.success && webDevResult.data && Array.isArray(webDevResult.data.items) && webDevResult.data.items.length > 0) {
+      expect(webDevResult.data.items[0]!.id).toBe(project.id);
+    }
+
+    // Should also be found when filtering by backend category
+    const backendResult = await listProjectsByCategory(backendCategoryId);
+    expect(backendResult.success).toBe(true);
+    if (backendResult.success && backendResult.data && Array.isArray(backendResult.data.items) && backendResult.data.items.length > 0) {
+      expect(backendResult.data.items[0]!.id).toBe(project.id);
+    }
+  });
+});

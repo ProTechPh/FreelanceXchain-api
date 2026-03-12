@@ -154,6 +154,37 @@ export function createMockProjectRepository(store: Map<string, any>) {
         total: filtered.length,
       };
     }),
+    getProjectsByCategory: jest.fn(async (categoryId: string, options?: any) => {
+      const filtered = Array.from(store.values()).filter(project =>
+        project.status === 'open' &&
+        project.required_skills?.some((skill: any) => skill.category_id === categoryId)
+      );
+      const limit = options?.limit || filtered.length;
+      const offset = options?.offset || 0;
+      const items = filtered.slice(offset, offset + limit);
+      return {
+        items,
+        hasMore: offset + limit < filtered.length,
+        total: filtered.length,
+      };
+    }),
+    getProjectsByMultipleCategories: jest.fn(async (categoryIds: string[], options?: any) => {
+      if (categoryIds.length === 0) {
+        return { items: [], hasMore: false, total: 0 };
+      }
+      const filtered = Array.from(store.values()).filter(project =>
+        project.status === 'open' &&
+        project.required_skills?.some((skill: any) => categoryIds.includes(skill.category_id))
+      );
+      const limit = options?.limit || filtered.length;
+      const offset = options?.offset || 0;
+      const items = filtered.slice(offset, offset + limit);
+      return {
+        items,
+        hasMore: offset + limit < filtered.length,
+        total: filtered.length,
+      };
+    }),
   };
 }
 
