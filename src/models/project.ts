@@ -23,6 +23,7 @@ export type Project = {
   deadline: string;
   status: ProjectStatus;
   milestones: Milestone[];
+  tags: string[];
   createdAt: string;
   updatedAt: string;
 };

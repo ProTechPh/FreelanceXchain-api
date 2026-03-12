@@ -23,6 +23,7 @@ export type ProjectEntity = {
   deadline: string;
   status: ProjectStatus;
   milestones: MilestoneEntity[];
+  tags: string[];
   created_at: string;
   updated_at: string;
 };

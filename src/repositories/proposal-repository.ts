@@ -13,7 +13,6 @@ export type ProposalEntity = {
   attachments: FileAttachment[];
   proposed_rate: number;
   estimated_duration: number;
-  tags: string[];
   status: ProposalStatus;
   created_at: string;
   updated_at: string;

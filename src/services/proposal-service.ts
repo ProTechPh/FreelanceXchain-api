@@ -17,7 +17,6 @@ export type CreateProposalInput = {
   attachments: FileAttachment[];
   proposedRate: number;
   estimatedDuration: number;
-  tags?: string[];
 };
 
 export type ProposalServiceError = {
@@ -101,7 +100,6 @@ export async function submitProposal(
     attachments: input.attachments,
     proposed_rate: input.proposedRate,
     estimated_duration: input.estimatedDuration,
-    tags: input.tags ?? [],
     status: 'pending',
   };
 
@@ -154,6 +152,56 @@ export async function getProposalById(proposalId: string): Promise<ProposalServi
     };
   }
   return { success: true, data: mapProposalFromEntity(proposalEntity) };
+}
+
+// Get proposal by ID with employer history (rating and completed projects)
+export async function getProposalWithEmployerHistory(proposalId: string): Promise<ProposalServiceResult<any>> {
+  const proposalEntity = await proposalRepository.findProposalById(proposalId);
+  if (!proposalEntity) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Proposal not found' },
+    };
+  }
+
+  const proposal = mapProposalFromEntity(proposalEntity);
+
+  // Get project to find employer
+  const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
+  if (!projectEntity) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Project not found' },
+    };
+  }
+  const project = mapProjectFromEntity(projectEntity);
+
+  // Get employer's completed contracts
+  const { items: allContracts } = await contractRepository.getContractsByEmployer(project.employerId);
+  const completedContracts = allContracts.filter(c => c.status === 'completed');
+
+  // Get employer's average rating and review count
+  const { ReviewRepository } = await import('../repositories/review-repository.js');
+  const { average: averageRating, count: reviewCount } = await ReviewRepository.getAverageRating(project.employerId);
+
+  // Get employer profile
+  const { employerProfileRepository } = await import('../repositories/employer-profile-repository.js');
+  const employerProfile = await employerProfileRepository.getProfileByUserId(project.employerId);
+
+  return {
+    success: true,
+    data: {
+      proposal,
+      project,
+      employerHistory: {
+        completedProjectsCount: completedContracts.length,
+        averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
+        reviewCount,
+        companyName: employerProfile?.company_name,
+        industry: employerProfile?.industry,
+      },
+    },
+  };
 }
 
 // Get proposals for a project

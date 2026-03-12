@@ -362,7 +362,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
  *         description: Unauthorized
  */
 router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, async (req: Request, res: Response) => {
-  const { title, description, requiredSkills, budget, deadline } = req.body;
+  const { title, description, requiredSkills, budget, deadline, tags } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -400,6 +400,17 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
   if (!deadline || typeof deadline !== 'string') {
     errors.push({ field: 'deadline', message: 'Deadline is required' });
   }
+  
+  // Validate tags
+  if (tags !== undefined) {
+    if (!Array.isArray(tags)) {
+      errors.push({ field: 'tags', message: 'Tags must be an array' });
+    } else if (tags.some(tag => typeof tag !== 'string')) {
+      errors.push({ field: 'tags', message: 'All tags must be strings' });
+    } else if (tags.length > 10) {
+      errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
+    }
+  }
 
   if (errors.length > 0) {
     res.status(400).json({
@@ -410,7 +421,14 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
     return;
   }
 
-  const result = await createProject(userId, { title, description, requiredSkills, budget, deadline });
+  const result = await createProject(userId, { 
+    title, 
+    description, 
+    requiredSkills, 
+    budget, 
+    deadline,
+    tags: tags ? [...new Set(tags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0))] : undefined
+  });
 
   if (!result.success) {
     res.status(400).json({

@@ -10,6 +10,7 @@ export type CreateProjectInput = {
   requiredSkills: { skillId: string }[];
   budget: number;
   deadline: string;
+  tags?: string[];
 };
 
 export type UpdateProjectInput = {
@@ -19,6 +20,7 @@ export type UpdateProjectInput = {
   budget?: number;
   deadline?: string;
   status?: ProjectStatus;
+  tags?: string[];
 };
 
 export type AddMilestoneInput = {
@@ -112,6 +114,7 @@ export async function createProject(
     deadline: input.deadline,
     status: 'open' as ProjectStatus,
     milestones: [],
+    tags: input.tags ?? [],
   };
 
   const created = await projectRepository.createProject(projectInput);

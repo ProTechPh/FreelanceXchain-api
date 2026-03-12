@@ -9,6 +9,7 @@ import { generateId } from '../utils/id.js';
 import {
   submitProposal,
   getProposalById,
+  getProposalWithEmployerHistory,
   getProposalsByFreelancer,
   acceptProposal,
   rejectProposal,
@@ -232,7 +233,7 @@ async function processMultipartProposal(req: Request, res: Response) {
   }
   
   const files = req.files as Express.Multer.File[] | undefined;
-  const { projectId, proposedRate, estimatedDuration, tags } = req.body;
+  const { projectId, proposedRate, estimatedDuration } = req.body;
   
   // Validate input
   const errors: { field: string; message: string }[] = [];
@@ -250,26 +251,6 @@ async function processMultipartProposal(req: Request, res: Response) {
   }
   if (isNaN(duration) || duration < 1) {
     errors.push({ field: 'estimatedDuration', message: 'Estimated duration must be at least 1 day' });
-  }
-  
-  // Parse and validate tags
-  let parsedTags: string[] = [];
-  if (tags) {
-    try {
-      parsedTags = typeof tags === 'string' ? JSON.parse(tags) : tags;
-      if (!Array.isArray(parsedTags)) {
-        errors.push({ field: 'tags', message: 'Tags must be an array' });
-      } else if (parsedTags.some(tag => typeof tag !== 'string')) {
-        errors.push({ field: 'tags', message: 'All tags must be strings' });
-      } else if (parsedTags.length > 10) {
-        errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
-      } else {
-        // Clean tags: trim whitespace, remove empty strings, remove duplicates
-        parsedTags = [...new Set(parsedTags.map(tag => tag.trim()).filter(tag => tag.length > 0))];
-      }
-    } catch {
-      errors.push({ field: 'tags', message: 'Invalid tags format' });
-    }
   }
   
   if (errors.length > 0) {
@@ -322,8 +303,7 @@ async function processMultipartProposal(req: Request, res: Response) {
     projectId, 
     attachments, 
     proposedRate: rate, 
-    estimatedDuration: duration,
-    tags: parsedTags.length > 0 ? parsedTags : undefined
+    estimatedDuration: duration
   });
   
   if (!result.success) {
@@ -348,7 +328,7 @@ async function processMultipartProposal(req: Request, res: Response) {
  * Handle proposal submission with application/json (URL-reference pattern)
  */
 async function handleJsonProposalSubmission(req: Request, res: Response) {
-  const { projectId, attachments, proposedRate, estimatedDuration, tags } = req.body;
+  const { projectId, attachments, proposedRate, estimatedDuration } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -376,17 +356,6 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
   if (!estimatedDuration || typeof estimatedDuration !== 'number' || estimatedDuration < 1) {
     errors.push({ field: 'estimatedDuration', message: 'Estimated duration must be at least 1 day' });
   }
-  
-  // Validate tags
-  if (tags !== undefined) {
-    if (!Array.isArray(tags)) {
-      errors.push({ field: 'tags', message: 'Tags must be an array' });
-    } else if (tags.some(tag => typeof tag !== 'string')) {
-      errors.push({ field: 'tags', message: 'All tags must be strings' });
-    } else if (tags.length > 10) {
-      errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
-    }
-  }
 
   if (errors.length > 0) {
     return res.status(400).json({
@@ -400,8 +369,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     projectId, 
     attachments, 
     proposedRate, 
-    estimatedDuration,
-    tags: tags ? [...new Set(tags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0))] : undefined
+    estimatedDuration
   });
 
   if (!result.success) {
@@ -490,6 +458,109 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
   } catch (error) {
     console.error('Error fetching proposal:', error);
     res.status(500).json({ error: 'Failed to fetch proposal' });
+  }
+});
+
+/**
+ * @swagger
+ * /api/proposals/{id}/with-employer-history:
+ *   get:
+ *     summary: Get proposal with employer history
+ *     description: Retrieves proposal details along with employer's rating and completed projects count (freelancer only)
+ *     tags:
+ *       - Proposals
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *         description: Proposal ID (UUID)
+ *     responses:
+ *       200:
+ *         description: Proposal with employer history retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 proposal:
+ *                   $ref: '#/components/schemas/Proposal'
+ *                 project:
+ *                   type: object
+ *                   description: Project details
+ *                 employerHistory:
+ *                   type: object
+ *                   properties:
+ *                     completedProjectsCount:
+ *                       type: number
+ *                       description: Number of completed projects by employer
+ *                     averageRating:
+ *                       type: number
+ *                       description: Average rating of employer (0-5)
+ *                     reviewCount:
+ *                       type: number
+ *                       description: Total number of reviews received
+ *                     companyName:
+ *                       type: string
+ *                       description: Employer's company name
+ *                     industry:
+ *                       type: string
+ *                       description: Employer's industry
+ *       400:
+ *         description: Invalid UUID format
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Forbidden - only freelancers can view employer history
+ *       404:
+ *         description: Proposal not found
+ */
+// lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
+router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+  try {
+    const id = req.params['id'] ?? '';
+    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const result = await getProposalWithEmployerHistory(id);
+
+    if (!result.success) {
+      const statusCode = result.error.code === 'NOT_FOUND' ? 404 : 400;
+      res.status(statusCode).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    // Authorization check - only the freelancer who submitted the proposal can view employer history
+    if (result.data.proposal.freelancerId !== userId) {
+      res.status(403).json({
+        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this proposal' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    res.status(200).json(result.data);
+  } catch (error) {
+    console.error('Error fetching proposal with employer history:', error);
+    res.status(500).json({ error: 'Failed to fetch proposal with employer history' });
   }
 });
 

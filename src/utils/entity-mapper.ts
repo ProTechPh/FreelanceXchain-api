@@ -187,6 +187,7 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
     deadline: entity.deadline,
     status: entity.status,
     milestones: (entity.milestones || []).map(mapMilestoneFromEntity),
+    tags: entity.tags || [],
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };
@@ -205,7 +206,6 @@ export function mapProposalFromEntity(entity: ProposalEntity): Proposal {
     attachments: entity.attachments || [],
     proposedRate: entity.proposed_rate,
     estimatedDuration: entity.estimated_duration,
-    tags: entity.tags || [],
     status: entity.status,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
