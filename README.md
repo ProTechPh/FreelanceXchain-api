@@ -14,18 +14,27 @@ pinned: false
 
 A decentralized freelance marketplace that leverages AI for intelligent skill matching and blockchain for secure, transparent transactions.
 
-## Overview
+## Product Overview
 
-This platform addresses key challenges in the gig economy:
-- **Fair Payments**: Blockchain smart contracts guarantee secure, automated milestone-based payments
-- **Transparent Reputation**: Immutable on-chain work histories prevent fraud and build trust
-- **Intelligent Matching**: AI-powered skill matching connects freelancers with suitable projects
-- **Reduced Exploitation**: Decentralized architecture eliminates high platform fees
+FreelanceXchain is a decentralized freelance marketplace that combines AI-powered skill matching with blockchain-based secure payments. The platform addresses key challenges in the gig economy through:
+
+- **Fair Payments**: Smart contract escrow system with milestone-based payments
+- **Transparent Reputation**: Immutable on-chain work histories and ratings
+- **Intelligent Matching**: AI-powered skill extraction and project-freelancer recommendations
+- **Reduced Exploitation**: Decentralized architecture eliminating high platform fees
+
+### Target Users
+
+- **Freelancers**: Seeking fair payment terms and transparent reputation building
+- **Employers**: Looking for skilled freelancers with secure payment guarantees
+- **Platform Administrators**: Managing disputes and platform operations
 
 ### SDG Alignment
-- **SDG 8** – Decent Work and Economic Growth
-- **SDG 9** – Industry, Innovation, and Infrastructure
-- **SDG 16** – Peace, Justice, and Strong Institutions
+
+The platform supports UN Sustainable Development Goals:
+- **SDG 8**: Decent Work and Economic Growth
+- **SDG 9**: Industry, Innovation, and Infrastructure  
+- **SDG 16**: Peace, Justice, and Strong Institutions
 
 ## Tech Stack
 
@@ -37,30 +46,38 @@ This platform addresses key challenges in the gig economy:
 | AI/ML | LLM API |
 | Documentation | Swagger/OpenAPI |
 
-## Features
+## Core Features
 
-### Core Modules
-- **Authentication** - JWT-based auth with role-based access (freelancer/employer/admin)
-- **Profile Management** - Freelancer and employer profiles with skills, experience, portfolio
-- **Project Management** - Create projects with milestones, budgets, deadlines
-- **Proposal System** - Submit, accept, reject proposals with notifications
-- **Contract Management** - Automated contract creation upon proposal acceptance
+### User Management
+- JWT-based authentication with role-based access (freelancer/employer/admin)
+- Comprehensive profile management with skills, experience, and portfolios
+- KYC verification through Didit integration (220+ countries supported)
 
-### Blockchain Features
-- **Escrow Smart Contract** - Milestone-based fund holding with dispute resolution
-- **Reputation Contract** - Immutable on-chain ratings and reviews
-- **Payment Processing** - Automated ETH transfers upon milestone approval
+### Project & Contract Management
+- Project creation with milestones, budgets, and deadlines
+- Proposal submission and acceptance system
+- Automated contract creation upon proposal acceptance
+- Milestone-based payment tracking
+
+### Blockchain Integration
+- Escrow smart contracts for secure fund holding
+- Automated payment release upon milestone approval
+- Immutable reputation system on-chain
+- Dispute resolution mechanism with arbiter support
+
+### AI-Powered Features
+- Skill matching between freelancers and projects
+- Automatic skill extraction from text descriptions
+- Gap analysis to identify skill mismatches
+- Intelligent project recommendations
+
+## Additional Features
 
 ### KYC Verification (Didit Integration)
 - **ID Verification** - Document verification for 220+ countries
 - **Passive Liveness Detection** - Anti-spoofing and fraud prevention
 - **Face Match 1:1** - Selfie to document photo matching
 - **IP Analysis** - Location verification and risk assessment
-
-### AI Features
-- **Skill Matching** - AI-powered project-freelancer recommendations
-- **Skill Extraction** - Automatic skill detection from text descriptions
-- **Gap Analysis** - Identify skill gaps between freelancer and project requirements
 
 ## Project Structure
 

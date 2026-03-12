@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS proposals (
   attachments JSONB DEFAULT '[]'::jsonb,
   proposed_rate DECIMAL(10, 2) DEFAULT 0,
   estimated_duration INTEGER DEFAULT 0,
+  tags TEXT[] DEFAULT ARRAY[]::TEXT[],
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'rejected', 'withdrawn')),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -102,6 +103,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_proposals_unique_active
 
 COMMENT ON COLUMN proposals.attachments IS 'Array of file attachments with metadata: [{url, filename, size, mimeType}]';
 COMMENT ON COLUMN proposals.cover_letter IS 'Legacy text cover letter field - nullable for backward compatibility';
+COMMENT ON COLUMN proposals.tags IS 'Array of tags/hashtags for categorizing and filtering proposals';
 
 -- Contracts table
 CREATE TABLE IF NOT EXISTS contracts (

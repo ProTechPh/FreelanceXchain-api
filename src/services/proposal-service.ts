@@ -17,6 +17,7 @@ export type CreateProposalInput = {
   attachments: FileAttachment[];
   proposedRate: number;
   estimatedDuration: number;
+  tags?: string[];
 };
 
 export type ProposalServiceError = {
@@ -100,6 +101,7 @@ export async function submitProposal(
     attachments: input.attachments,
     proposed_rate: input.proposedRate,
     estimated_duration: input.estimatedDuration,
+    tags: input.tags ?? [],
     status: 'pending',
   };
 

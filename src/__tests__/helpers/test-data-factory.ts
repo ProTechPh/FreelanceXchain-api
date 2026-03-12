@@ -79,6 +79,7 @@ export function createTestProposal(overrides: Partial<ProposalEntity> = {}): Pro
     cover_letter: 'Test cover letter',
     proposed_rate: 50,
     estimated_duration: 30,
+    tags: [],
     status: 'pending',
     attachments: [],
     created_at: now(),

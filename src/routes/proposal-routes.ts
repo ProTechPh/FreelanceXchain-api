@@ -232,7 +232,7 @@ async function processMultipartProposal(req: Request, res: Response) {
   }
   
   const files = req.files as Express.Multer.File[] | undefined;
-  const { projectId, proposedRate, estimatedDuration } = req.body;
+  const { projectId, proposedRate, estimatedDuration, tags } = req.body;
   
   // Validate input
   const errors: { field: string; message: string }[] = [];
@@ -250,6 +250,26 @@ async function processMultipartProposal(req: Request, res: Response) {
   }
   if (isNaN(duration) || duration < 1) {
     errors.push({ field: 'estimatedDuration', message: 'Estimated duration must be at least 1 day' });
+  }
+  
+  // Parse and validate tags
+  let parsedTags: string[] = [];
+  if (tags) {
+    try {
+      parsedTags = typeof tags === 'string' ? JSON.parse(tags) : tags;
+      if (!Array.isArray(parsedTags)) {
+        errors.push({ field: 'tags', message: 'Tags must be an array' });
+      } else if (parsedTags.some(tag => typeof tag !== 'string')) {
+        errors.push({ field: 'tags', message: 'All tags must be strings' });
+      } else if (parsedTags.length > 10) {
+        errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
+      } else {
+        // Clean tags: trim whitespace, remove empty strings, remove duplicates
+        parsedTags = [...new Set(parsedTags.map(tag => tag.trim()).filter(tag => tag.length > 0))];
+      }
+    } catch {
+      errors.push({ field: 'tags', message: 'Invalid tags format' });
+    }
   }
   
   if (errors.length > 0) {
@@ -302,7 +322,8 @@ async function processMultipartProposal(req: Request, res: Response) {
     projectId, 
     attachments, 
     proposedRate: rate, 
-    estimatedDuration: duration 
+    estimatedDuration: duration,
+    tags: parsedTags.length > 0 ? parsedTags : undefined
   });
   
   if (!result.success) {
@@ -327,7 +348,7 @@ async function processMultipartProposal(req: Request, res: Response) {
  * Handle proposal submission with application/json (URL-reference pattern)
  */
 async function handleJsonProposalSubmission(req: Request, res: Response) {
-  const { projectId, attachments, proposedRate, estimatedDuration } = req.body;
+  const { projectId, attachments, proposedRate, estimatedDuration, tags } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -355,6 +376,17 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
   if (!estimatedDuration || typeof estimatedDuration !== 'number' || estimatedDuration < 1) {
     errors.push({ field: 'estimatedDuration', message: 'Estimated duration must be at least 1 day' });
   }
+  
+  // Validate tags
+  if (tags !== undefined) {
+    if (!Array.isArray(tags)) {
+      errors.push({ field: 'tags', message: 'Tags must be an array' });
+    } else if (tags.some(tag => typeof tag !== 'string')) {
+      errors.push({ field: 'tags', message: 'All tags must be strings' });
+    } else if (tags.length > 10) {
+      errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
+    }
+  }
 
   if (errors.length > 0) {
     return res.status(400).json({
@@ -364,7 +396,13 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     });
   }
 
-  const result = await submitProposal(userId, { projectId, attachments, proposedRate, estimatedDuration });
+  const result = await submitProposal(userId, { 
+    projectId, 
+    attachments, 
+    proposedRate, 
+    estimatedDuration,
+    tags: tags ? [...new Set(tags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0))] : undefined
+  });
 
   if (!result.success) {
     let statusCode = 400;

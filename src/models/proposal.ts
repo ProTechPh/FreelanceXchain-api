@@ -11,6 +11,7 @@ export type Proposal = {
   attachments: FileAttachment[];
   proposedRate: number;
   estimatedDuration: number;
+  tags: string[];
   status: ProposalStatus;
   createdAt: string;
   updatedAt: string;
