@@ -9,6 +9,7 @@ import {
   markAllNotificationsAsRead,
   getUnreadCount,
 } from '../services/notification-service.js';
+import { initializeSSEConnection, getSSEStats } from '../services/notification-delivery-service.js';
 
 const router = Router();
 
@@ -25,7 +26,7 @@ const router = Router();
  *           type: string
  *         type:
  *           type: string
- *           enum: [proposal_received, proposal_accepted, proposal_rejected, milestone_submitted, milestone_approved, payment_released, dispute_created, dispute_resolved, rating_received]
+ *           enum: [proposal_received, proposal_accepted, proposal_rejected, milestone_submitted, milestone_approved, milestone_rejected, payment_released, dispute_created, dispute_resolved, dispute_evidence_submitted, refund_requested, refund_approved, refund_rejected, rating_received, message]
  *         title:
  *           type: string
  *         message:
@@ -285,6 +286,65 @@ router.patch('/read-all', authMiddleware, apiRateLimiter, async (req: Request, r
   }
 
   res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/notifications/stream:
+ *   get:
+ *     summary: Real-time notification stream (SSE)
+ *     description: Server-Sent Events endpoint for real-time notifications
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: SSE connection established
+ *         content:
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *       401:
+ *         description: Unauthorized
+ */
+router.get('/stream', authMiddleware, (req: Request, res: Response) => {
+  const userId = req.user?.id ?? '';
+  
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const result = initializeSSEConnection(userId, res);
+  
+  if (!result.success) {
+    res.status(500).json({ error: result.error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /api/notifications/sse-stats:
+ *   get:
+ *     summary: Get SSE connection statistics
+ *     description: Returns statistics about active SSE connections (admin only)
+ *     tags:
+ *       - Notifications
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: SSE statistics
+ */
+router.get('/sse-stats', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+  const result = getSSEStats();
+  
+  if (!result.success) {
+    return res.status(500).json({ error: result.error.message });
+  }
+  
+  return res.json(result.data);
 });
 
 export default router;
