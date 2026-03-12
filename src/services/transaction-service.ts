@@ -1,124 +1,279 @@
-import { PaymentRepository, PaymentEntity, CreatePaymentInput, PaymentStatus, PaymentType } from '../repositories/payment-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import { getSupabaseClient } from '../config/supabase.js';
+import { logger } from '../config/logger.js';
 
-export type RecordPaymentInput = {
-  contractId: string;
-  milestoneId?: string;
-  payerId: string;
-  payeeId: string;
-  amount: number;
-  currency?: string;
-  txHash?: string | undefined;
-  paymentType: PaymentType;
-};
+const supabase = getSupabaseClient();
 
-export type PaymentSummary = {
-  userId: string;
-  totalEarnings: number;
-  totalSpent: number;
-  pendingPayments: number;
-};
-
-async function recordPayment(input: RecordPaymentInput): Promise<PaymentEntity> {
-  const paymentData: CreatePaymentInput = {
-    contract_id: input.contractId,
-    milestone_id: input.milestoneId ?? null,
-    payer_id: input.payerId,
-    payee_id: input.payeeId,
-    amount: input.amount,
-    currency: input.currency ?? 'ETH',
-    tx_hash: input.txHash ?? null,
-    status: input.txHash ? 'completed' : 'pending',
-    payment_type: input.paymentType,
+export interface ServiceResult<T> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
   };
-
-  return PaymentRepository.create({ ...paymentData, id: crypto.randomUUID() });
 }
 
-async function updatePaymentStatus(paymentId: string, status: PaymentStatus, txHash?: string): Promise<PaymentEntity | null> {
-  return PaymentRepository.updateStatus(paymentId, status, txHash);
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  hasMore: boolean;
 }
 
-async function getPaymentsByContract(contractId: string): Promise<PaymentEntity[]> {
-  return PaymentRepository.findByContractId(contractId);
+export interface Transaction {
+  id: string;
+  contract_id?: string;
+  milestone_id?: string;
+  from_user_id?: string;
+  to_user_id?: string;
+  amount: number;
+  type: string;
+  status: string;
+  transaction_hash?: string;
+  metadata?: any;
+  created_at: string;
+  updated_at: string;
 }
 
-async function getUserPayments(userId: string, options?: QueryOptions): Promise<PaginatedResult<PaymentEntity>> {
-  return PaymentRepository.findByUserId(userId, options);
+export interface TransactionOptions {
+  page?: number;
+  limit?: number;
+  type?: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
-async function getPaymentByTxHash(txHash: string): Promise<PaymentEntity | null> {
-  return PaymentRepository.findByTxHash(txHash);
+export interface TransactionInput {
+  contract_id?: string;
+  milestone_id?: string;
+  from_user_id?: string;
+  to_user_id?: string;
+  amount: number;
+  type: string;
+  status: string;
+  transaction_hash?: string;
+  metadata?: any;
 }
 
-async function getPaymentSummary(userId: string): Promise<PaymentSummary> {
-  const [totalEarnings, totalSpent, userPayments] = await Promise.all([
-    PaymentRepository.getTotalEarnings(userId),
-    PaymentRepository.getTotalSpent(userId),
-    PaymentRepository.findByUserId(userId, { limit: 100 }),
-  ]);
+/**
+ * Get user's transactions with filters and pagination
+ */
+export async function getUserTransactions(
+  userId: string,
+  options: TransactionOptions = {}
+): Promise<ServiceResult<PaginatedResult<Transaction>>> {
+  try {
+    const page = options.page || 1;
+    const limit = options.limit || 20;
+    const offset = (page - 1) * limit;
 
-  const pendingPayments = userPayments.items
-    .filter(p => p.status === 'pending' || p.status === 'processing')
-    .reduce((sum, p) => sum + Number(p.amount), 0);
+    let query = supabase
+      .from('transactions')
+      .select('*', { count: 'exact' })
+      .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-  return { userId, totalEarnings, totalSpent, pendingPayments };
+    // Apply filters
+    if (options.type) {
+      query = query.eq('type', options.type);
+    }
+    if (options.status) {
+      query = query.eq('status', options.status);
+    }
+    if (options.startDate) {
+      query = query.gte('created_at', options.startDate);
+    }
+    if (options.endDate) {
+      query = query.lte('created_at', options.endDate);
+    }
+
+    const { data, error, count } = await query;
+
+    if (error) {
+      logger.error('Failed to fetch user transactions', { error, userId, options });
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Failed to fetch transactions',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        items: (data || []) as Transaction[],
+        total: count || 0,
+        hasMore: offset + limit < (count || 0),
+      },
+    };
+  } catch (error) {
+    logger.error('Unexpected error in getUserTransactions', { error, userId, options });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
 }
 
-async function recordEscrowDeposit(contractId: string, payerId: string, payeeId: string, amount: number, txHash?: string): Promise<PaymentEntity> {
-  return recordPayment({
-    contractId,
-    payerId,
-    payeeId,
-    amount,
-    txHash,
-    paymentType: 'escrow_deposit',
-  });
+/**
+ * Get transaction by ID
+ */
+export async function getTransactionById(
+  transactionId: string,
+  userId: string
+): Promise<ServiceResult<Transaction>> {
+  try {
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('id', transactionId)
+      .single();
+
+    if (error || !data) {
+      return {
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Transaction not found',
+        },
+      };
+    }
+
+    // Verify user is involved in transaction
+    if (data.from_user_id !== userId && data.to_user_id !== userId) {
+      return {
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'You are not authorized to view this transaction',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: data as Transaction,
+    };
+  } catch (error) {
+    logger.error('Unexpected error in getTransactionById', { error, transactionId, userId });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
 }
 
-async function recordMilestoneRelease(contractId: string, milestoneId: string, payerId: string, payeeId: string, amount: number, txHash?: string): Promise<PaymentEntity> {
-  return recordPayment({
-    contractId,
-    milestoneId,
-    payerId,
-    payeeId,
-    amount,
-    txHash,
-    paymentType: 'milestone_release',
-  });
+/**
+ * Get transactions for a specific contract
+ */
+export async function getTransactionsByContract(
+  contractId: string,
+  userId: string
+): Promise<ServiceResult<Transaction[]>> {
+  try {
+    // Verify user is party to the contract
+    const { data: contract, error: contractError } = await supabase
+      .from('contracts')
+      .select('freelancer_id, employer_id')
+      .eq('id', contractId)
+      .single();
+
+    if (contractError || !contract) {
+      return {
+        success: false,
+        error: {
+          code: 'CONTRACT_NOT_FOUND',
+          message: 'Contract not found',
+        },
+      };
+    }
+
+    if (contract.freelancer_id !== userId && contract.employer_id !== userId) {
+      return {
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'You are not authorized to view these transactions',
+        },
+      };
+    }
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('contract_id', contractId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error('Failed to fetch contract transactions', { error, contractId });
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Failed to fetch transactions',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: (data || []) as Transaction[],
+    };
+  } catch (error) {
+    logger.error('Unexpected error in getTransactionsByContract', { error, contractId, userId });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
 }
 
-async function recordRefund(contractId: string, payerId: string, payeeId: string, amount: number, txHash?: string): Promise<PaymentEntity> {
-  return recordPayment({
-    contractId,
-    payerId,
-    payeeId,
-    amount,
-    txHash,
-    paymentType: 'refund',
-  });
-}
+/**
+ * Record a new transaction
+ */
+export async function recordTransaction(data: TransactionInput): Promise<ServiceResult<Transaction>> {
+  try {
+    const { data: transaction, error } = await supabase
+      .from('transactions')
+      .insert(data)
+      .select('*')
+      .single();
 
-async function recordDisputeResolution(contractId: string, payerId: string, payeeId: string, amount: number, txHash?: string): Promise<PaymentEntity> {
-  return recordPayment({
-    contractId,
-    payerId,
-    payeeId,
-    amount,
-    txHash,
-    paymentType: 'dispute_resolution',
-  });
-}
+    if (error) {
+      logger.error('Failed to record transaction', { error, data });
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Failed to record transaction',
+        },
+      };
+    }
 
-export const TransactionService = {
-  recordPayment,
-  updatePaymentStatus,
-  getPaymentsByContract,
-  getUserPayments,
-  getPaymentByTxHash,
-  getPaymentSummary,
-  recordEscrowDeposit,
-  recordMilestoneRelease,
-  recordRefund,
-  recordDisputeResolution,
-};
+    return {
+      success: true,
+      data: transaction as Transaction,
+    };
+  } catch (error) {
+    logger.error('Unexpected error in recordTransaction', { error, data });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
+}

@@ -421,13 +421,17 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
     return;
   }
 
+  const processedTags: string[] | undefined = tags 
+    ? Array.from(new Set(tags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0))) as string[]
+    : undefined;
+  
   const result = await createProject(userId, { 
     title, 
     description, 
     requiredSkills, 
     budget, 
     deadline,
-    tags: tags ? [...new Set(tags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0))] : undefined
+    ...(processedTags && { tags: processedTags })
   });
 
   if (!result.success) {

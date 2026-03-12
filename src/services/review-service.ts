@@ -1,106 +1,337 @@
-import { ReviewRepository, ReviewEntity, CreateReviewInput } from '../repositories/review-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { createNotification } from './notification-service.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import { getSupabaseClient } from '../config/supabase.js';
+import { logger } from '../config/logger.js';
+import { Review, SubmitReviewInput } from '../models/review.js';
 
-export type SubmitReviewInput = {
-  contractId: string;
-  reviewerId: string;
-  rating: number;
-  comment?: string;
-};
+const supabase = getSupabaseClient();
 
-export type UserRatingSummary = {
-  userId: string;
-  averageRating: number;
-  totalReviews: number;
-  reviews: ReviewEntity[];
-};
-
-async function submitReview(input: SubmitReviewInput): Promise<ReviewEntity> {
-  const { contractId, reviewerId, rating, comment } = input;
-
-  // Validate rating
-  if (rating < 1 || rating > 5) throw new Error('Rating must be between 1 and 5');
-
-  // Verify contract exists and is completed
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract) throw new Error('Contract not found');
-  if (contract.status !== 'completed') throw new Error('Can only review completed contracts');
-
-  // Verify reviewer is part of the contract
-  const isFreelancer = contract.freelancer_id === reviewerId;
-  const isEmployer = contract.employer_id === reviewerId;
-  if (!isFreelancer && !isEmployer) throw new Error('User is not part of this contract');
-
-  // Check if already reviewed
-  const hasReviewed = await ReviewRepository.hasReviewed(contractId, reviewerId);
-  if (hasReviewed) throw new Error('You have already reviewed this contract');
-
-  // Determine reviewee
-  const revieweeId = isFreelancer ? contract.employer_id : contract.freelancer_id;
-  const reviewerRole = isFreelancer ? 'freelancer' : 'employer';
-
-  const reviewData: CreateReviewInput = {
-    contract_id: contractId,
-    reviewer_id: reviewerId,
-    reviewee_id: revieweeId,
-    rating,
-    comment: comment ?? null,
-    reviewer_role: reviewerRole,
-  };
-
-  const review = await ReviewRepository.create({ ...reviewData, id: crypto.randomUUID() });
-
-  // Notify the reviewee
-  await createNotification({
-    userId: revieweeId,
-    type: 'rating_received',
-    title: 'New Review Received',
-    message: `You received a ${rating}-star review`,
-    data: { contractId, reviewId: review.id, rating },
-  });
-
-  return review;
-}
-
-async function getReviewsByContract(contractId: string): Promise<ReviewEntity[]> {
-  return ReviewRepository.findByContractId(contractId);
-}
-
-async function getUserReviews(userId: string, options?: QueryOptions): Promise<PaginatedResult<ReviewEntity>> {
-  return ReviewRepository.findByRevieweeId(userId, options);
-}
-
-async function getUserRatingSummary(userId: string): Promise<UserRatingSummary> {
-  const [ratingStats, reviewsResult] = await Promise.all([
-    ReviewRepository.getAverageRating(userId),
-    ReviewRepository.findByRevieweeId(userId, { limit: 10 }),
-  ]);
-
-  return {
-    userId,
-    averageRating: Math.round(ratingStats.average * 10) / 10,
-    totalReviews: ratingStats.count,
-    reviews: reviewsResult.items,
+export interface ServiceResult<T> {
+  success: boolean;
+  data?: T;
+  error?: {
+    code: string;
+    message: string;
+    details?: any;
   };
 }
 
-async function canReview(contractId: string, userId: string): Promise<boolean> {
-  const contract = await contractRepository.getContractById(contractId);
-  if (!contract || contract.status !== 'completed') return false;
+/**
+ * Submit a review for a completed contract
+ */
+export async function submitReview(data: SubmitReviewInput): Promise<ServiceResult<Review>> {
+  try {
+    const { contractId, reviewerId, rating, comment, workQuality, communication, professionalism, wouldWorkAgain } = data;
 
-  const isParticipant = contract.freelancer_id === userId || contract.employer_id === userId;
-  if (!isParticipant) return false;
+    // Validate rating
+    if (rating < 1 || rating > 5) {
+      return {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Rating must be between 1 and 5',
+        },
+      };
+    }
 
-  const hasReviewed = await ReviewRepository.hasReviewed(contractId, userId);
-  return !hasReviewed;
+    // Get contract details
+    const { data: contract, error: contractError } = await supabase
+      .from('contracts')
+      .select('id, project_id, freelancer_id, employer_id, status')
+      .eq('id', contractId)
+      .single();
+
+    if (contractError || !contract) {
+      return {
+        success: false,
+        error: {
+          code: 'CONTRACT_NOT_FOUND',
+          message: 'Contract not found',
+        },
+      };
+    }
+
+    // Verify contract is completed
+    if (contract.status !== 'completed') {
+      return {
+        success: false,
+        error: {
+          code: 'CONTRACT_NOT_COMPLETED',
+          message: 'Can only review completed contracts',
+        },
+      };
+    }
+
+    // Verify reviewer is a party to the contract
+    if (reviewerId !== contract.freelancer_id && reviewerId !== contract.employer_id) {
+      return {
+        success: false,
+        error: {
+          code: 'UNAUTHORIZED',
+          message: 'You are not authorized to review this contract',
+        },
+      };
+    }
+
+    // Determine reviewee
+    const revieweeId = reviewerId === contract.freelancer_id ? contract.employer_id : contract.freelancer_id;
+
+    // Check for duplicate review
+    const { data: existingReview } = await supabase
+      .from('reviews')
+      .select('id')
+      .eq('contract_id', contractId)
+      .eq('reviewer_id', reviewerId)
+      .single();
+
+    if (existingReview) {
+      return {
+        success: false,
+        error: {
+          code: 'DUPLICATE_REVIEW',
+          message: 'You have already reviewed this contract',
+        },
+      };
+    }
+
+    // Create review
+    const { data: review, error: reviewError } = await supabase
+      .from('reviews')
+      .insert({
+        contract_id: contractId,
+        project_id: contract.project_id,
+        reviewer_id: reviewerId,
+        reviewee_id: revieweeId,
+        rating,
+        comment,
+        work_quality: workQuality,
+        communication,
+        professionalism,
+        would_work_again: wouldWorkAgain,
+      })
+      .select('*')
+      .single();
+
+    if (reviewError) {
+      logger.error('Failed to create review', { error: reviewError, data });
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Failed to create review',
+        },
+      };
+    }
+
+    // TODO: Update blockchain reputation system
+    logger.debug('Review submitted successfully', { reviewId: review.id, contractId });
+
+    return {
+      success: true,
+      data: review as Review,
+    };
+  } catch (error) {
+    logger.error('Unexpected error in submitReview', { error, data });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
 }
 
-export const ReviewService = {
-  submitReview,
-  getReviewsByContract,
-  getUserReviews,
-  getUserRatingSummary,
-  canReview,
-};
+/**
+ * Get review by ID
+ */
+export async function getReviewById(reviewId: string): Promise<ServiceResult<Review>> {
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('id', reviewId)
+      .single();
+
+    if (error || !data) {
+      return {
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Review not found',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: data as Review,
+    };
+  } catch (error) {
+    logger.error('Unexpected error in getReviewById', { error, reviewId });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
+}
+
+/**
+ * Get reviews for a user (as reviewee)
+ */
+export async function getUserReviews(userId: string): Promise<ServiceResult<Review[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('reviewee_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error('Failed to get user reviews', { error, userId });
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Failed to fetch reviews',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: (data || []) as Review[],
+    };
+  } catch (error) {
+    logger.error('Unexpected error in getUserReviews', { error, userId });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
+}
+
+/**
+ * Get reviews for a project
+ */
+export async function getProjectReviews(projectId: string): Promise<ServiceResult<Review[]>> {
+  try {
+    const { data, error } = await supabase
+      .from('reviews')
+      .select('*')
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error('Failed to get project reviews', { error, projectId });
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Failed to fetch reviews',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: (data || []) as Review[],
+    };
+  } catch (error) {
+    logger.error('Unexpected error in getProjectReviews', { error, projectId });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
+}
+
+/**
+ * Check if user can review a contract
+ */
+export async function canUserReview(
+  userId: string,
+  contractId: string
+): Promise<ServiceResult<{ canReview: boolean; reason?: string }>> {
+  try {
+    // Get contract details
+    const { data: contract, error: contractError } = await supabase
+      .from('contracts')
+      .select('id, freelancer_id, employer_id, status')
+      .eq('id', contractId)
+      .single();
+
+    if (contractError || !contract) {
+      return {
+        success: true,
+        data: {
+          canReview: false,
+          reason: 'Contract not found',
+        },
+      };
+    }
+
+    // Check if user is a party to the contract
+    if (userId !== contract.freelancer_id && userId !== contract.employer_id) {
+      return {
+        success: true,
+        data: {
+          canReview: false,
+          reason: 'You are not a party to this contract',
+        },
+      };
+    }
+
+    // Check if contract is completed
+    if (contract.status !== 'completed') {
+      return {
+        success: true,
+        data: {
+          canReview: false,
+          reason: 'Contract must be completed before reviewing',
+        },
+      };
+    }
+
+    // Check for existing review
+    const { data: existingReview } = await supabase
+      .from('reviews')
+      .select('id')
+      .eq('contract_id', contractId)
+      .eq('reviewer_id', userId)
+      .single();
+
+    if (existingReview) {
+      return {
+        success: true,
+        data: {
+          canReview: false,
+          reason: 'You have already reviewed this contract',
+        },
+      };
+    }
+
+    return {
+      success: true,
+      data: {
+        canReview: true,
+      },
+    };
+  } catch (error) {
+    logger.error('Unexpected error in canUserReview', { error, userId, contractId });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
+}

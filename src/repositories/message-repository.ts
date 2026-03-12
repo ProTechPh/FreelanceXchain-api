@@ -1,82 +1,114 @@
-import { BaseRepository, BaseEntity, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { getSupabaseClient } from '../config/supabase.js';
+import { MessageEntity, ConversationEntity } from '../models/message.js';
 
-export type MessageEntity = BaseEntity & {
-  contract_id: string;
-  sender_id: string;
-  content: string;
-  is_read: boolean;
-};
-
-export type CreateMessageInput = Omit<MessageEntity, 'id' | 'created_at' | 'updated_at' | 'is_read'>;
-
-class MessageRepositoryClass extends BaseRepository<MessageEntity> {
-  constructor() {
-    super(TABLES.MESSAGES);
-  }
-
-  async findByContractId(contractId: string, options?: QueryOptions): Promise<PaginatedResult<MessageEntity>> {
-    const client = this.getClient();
-    const limit = options?.limit ?? 50;
-    const offset = options?.offset ?? 0;
-
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('contract_id', contractId)
-      .order('created_at', { ascending: true })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw new Error(`Failed to find messages: ${error.message}`);
-
-    return {
-      items: (data ?? []) as MessageEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
-  }
-
-  async getUnreadCount(contractId: string, userId: string): Promise<number> {
-    const client = this.getClient();
-    const { count, error } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact', head: true })
-      .eq('contract_id', contractId)
-      .neq('sender_id', userId)
-      .eq('is_read', false);
-
-    if (error) throw new Error(`Failed to get unread count: ${error.message}`);
-    return count ?? 0;
-  }
-
-  async markAsRead(contractId: string, userId: string): Promise<void> {
-    const client = this.getClient();
-    const { error } = await client
-      .from(this.tableName)
-      .update({ is_read: true, updated_at: new Date().toISOString() })
-      .eq('contract_id', contractId)
-      .neq('sender_id', userId)
-      .eq('is_read', false);
-
-    if (error) throw new Error(`Failed to mark as read: ${error.message}`);
-  }
-
-  async getLatestMessage(contractId: string): Promise<MessageEntity | null> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('contract_id', contractId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+export const messageRepository = {
+  async createConversation(participant1Id: string, participant2Id: string): Promise<ConversationEntity> {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('conversations')
+      .insert({
+        participant1_id: participant1Id,
+        participant2_id: participant2Id,
+        last_message_at: new Date().toISOString(),
+        unread_count_1: 0,
+        unread_count_2: 0,
+      })
+      .select()
       .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') return null;
-      throw new Error(`Failed to get latest message: ${error.message}`);
-    }
-    return data as MessageEntity;
-  }
-}
+    if (error) throw error;
+    return data;
+  },
 
-export const MessageRepository = new MessageRepositoryClass();
+  async findConversation(user1Id: string, user2Id: string): Promise<ConversationEntity | null> {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('*')
+      .or(`and(participant1_id.eq.${user1Id},participant2_id.eq.${user2Id}),and(participant1_id.eq.${user2Id},participant2_id.eq.${user1Id})`)
+      .single();
+
+    if (error && error.code !== 'PGRST116') throw error;
+    return data || null;
+  },
+
+  async getUserConversations(userId: string, limit: number, offset: number) {
+    const supabase = getSupabaseClient();
+    const { data, error, count } = await supabase
+      .from('conversations')
+      .select('*', { count: 'exact' })
+      .or(`participant1_id.eq.${userId},participant2_id.eq.${userId}`)
+      .order('last_message_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw error;
+    return { items: data || [], total: count || 0 };
+  },
+
+  async createMessage(messageData: Omit<MessageEntity, 'id' | 'created_at' | 'updated_at'>): Promise<MessageEntity> {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('messages')
+      .insert(messageData)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async getConversationMessages(conversationId: string, limit: number, offset: number) {
+    const supabase = getSupabaseClient();
+    const { data, error, count } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact' })
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+
+    if (error) throw error;
+    return { items: data || [], total: count || 0 };
+  },
+
+  async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('messages')
+      .update({ is_read: true })
+      .eq('conversation_id', conversationId)
+      .eq('receiver_id', userId)
+      .eq('is_read', false);
+
+    if (error) throw error;
+  },
+
+  async updateConversation(conversationId: string, updates: Partial<ConversationEntity>): Promise<void> {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase
+      .from('conversations')
+      .update(updates)
+      .eq('id', conversationId);
+
+    if (error) throw error;
+  },
+
+  async getUnreadCount(userId: string): Promise<number> {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('conversations')
+      .select('participant1_id, participant2_id, unread_count_1, unread_count_2')
+      .or(`participant1_id.eq.${userId},participant2_id.eq.${userId}`);
+
+    if (error) throw error;
+    
+    let total = 0;
+    for (const conv of data || []) {
+      if (conv.participant1_id === userId) {
+        total += conv.unread_count_1;
+      } else {
+        total += conv.unread_count_2;
+      }
+    }
+    return total;
+  },
+};

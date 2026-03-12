@@ -20,35 +20,19 @@ import auditLogRoutes from './audit-logs.js';
 import fileUploadRoutes from './file-upload.js';
 import messageRoutes from './message-routes.js';
 import reviewRoutes from './review-routes.js';
+import healthRoutes from './health-routes.js';
+import favoriteRoutes from './favorite-routes.js';
+import transactionRoutes from './transaction-routes.js';
+import analyticsRoutes from './analytics-routes.js';
+import portfolioRoutes from './portfolio-routes.js';
+import emailPreferenceRoutes from './email-preference-routes.js';
+import savedSearchRoutes from './saved-search-routes.js';
+import fileRoutes from './file-routes.js';
 
 const router = Router();
 
-/**
- * @swagger
- * /api/health:
- *   get:
- *     summary: Health check endpoint
- *     description: Returns the health status of the API
- *     tags:
- *       - Health
- *     responses:
- *       200:
- *         description: API is healthy
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: ok
- *                 timestamp:
- *                   type: string
- *                   format: date-time
- */
-router.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
+// Health check routes
+router.use('/health', healthRoutes);
 
 // Auth routes
 router.use('/auth', authRoutes);
@@ -106,5 +90,26 @@ router.use('/messages', messageRoutes);
 
 // Review routes
 router.use('/reviews', reviewRoutes);
+
+// Transaction routes
+router.use('/transactions', transactionRoutes);
+
+// Analytics routes
+router.use('/analytics', analyticsRoutes);
+
+// Favorite routes
+router.use('/favorites', favoriteRoutes);
+
+// Portfolio routes
+router.use('/portfolio', portfolioRoutes);
+
+// Email preference routes
+router.use('/email-preferences', emailPreferenceRoutes);
+
+// Saved search routes
+router.use('/saved-searches', savedSearchRoutes);
+
+// File management routes
+router.use('/file-management', fileRoutes);
 
 export default router;

@@ -3,259 +3,212 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
-import { MessageService } from '../services/message-service.js';
+import {
+  sendMessage,
+  getConversations,
+  getConversationMessages,
+  markConversationAsRead,
+  getUnreadMessageCount,
+} from '../services/message-service.js';
 
 const router = Router();
 
 /**
  * @swagger
- * /api/messages/{contractId}:
+ * /api/messages/conversations:
  *   get:
- *     summary: Get messages for a contract
+ *     summary: Get user conversations
  *     tags: [Messages]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 20
- *       - in: query
- *         name: offset
- *         schema:
- *           type: integer
- *           default: 0
- *     responses:
- *       200:
- *         description: List of messages
- *       400:
- *         description: Invalid input
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden (not part of contract)
- *       404:
- *         description: Contract not found
  */
-router.get('/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const contractId = req.params.contractId as string;
-    
-    const limit = clampLimit(Number(req.query.limit as string));
-    const offset = clampOffset(Number(req.query.offset as string));
+router.get('/conversations', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
+  const page = req.query['page'] ? Number(req.query['page']) : 1;
 
-    const messages = await MessageService.getMessages(contractId, userId, { limit, offset });
-    
-    // As a bonus, mark messages as read since they are being fetched
-    await MessageService.markAsRead(contractId, userId).catch(console.error);
-
-    res.json(messages);
-  } catch (error: any) {
-    if (error.message === 'Contract not found') {
-      res.status(404).json({ error: error.message });
-    } else if (error.message === 'User is not part of this contract') {
-      res.status(403).json({ error: error.message });
-    } else {
-      console.error('Error fetching messages:', error);
-      res.status(500).json({ error: 'Failed to fetch messages' });
-    }
-  }
-});
-
-/**
- * @swagger
- * /api/messages/{contractId}:
- *   post:
- *     summary: Send a message in a contract
- *     tags: [Messages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - content
- *             properties:
- *               content:
- *                 type: string
- *     responses:
- *       201:
- *         description: Message sent
- *       400:
- *         description: Invalid input
- *       401:
- *         description: Unauthorized
- *       403:
- *         description: Forbidden (not part of contract)
- *       404:
- *         description: Contract not found
- */
-router.post('/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
-  try {
-    const senderId = req.user!.id;
-    const contractId = req.params.contractId as string;
-    const { content } = req.body;
-
-    if (!content || typeof content !== 'string' || content.trim().length === 0) {
-       res.status(400).json({ error: 'Message content is required' });
-       return;
-    }
-
-    const message = await MessageService.sendMessage({
-      contractId,
-      senderId,
-      content: content.trim()
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
     });
-
-    res.status(201).json(message);
-  } catch (error: any) {
-    if (error.message === 'Contract not found') {
-      res.status(404).json({ error: error.message });
-    } else if (error.message === 'User is not part of this contract') {
-      res.status(403).json({ error: error.message });
-    } else {
-      console.error('Error sending message:', error);
-      res.status(500).json({ error: 'Failed to send message' });
-    }
+    return;
   }
+
+  const result = await getConversations(userId, { page, limit });
+
+  if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
 });
 
 /**
  * @swagger
- * /api/messages/{contractId}/unread:
- *   get:
- *     summary: Get unread message count for a contract
- *     tags: [Messages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Unread message count
- *       401:
- *         description: Unauthorized
- */
-router.get('/:contractId/unread', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const contractId = req.params.contractId as string;
-
-    const count = await MessageService.getUnreadCount(contractId, userId);
-    res.json({ count });
-  } catch (error: any) {
-    if (error.message === 'Contract not found') {
-      res.status(404).json({ error: error.message });
-    } else if (error.message === 'User is not part of this contract') {
-      res.status(403).json({ error: error.message });
-    } else {
-      console.error('Error fetching unread count:', error);
-      res.status(500).json({ error: 'Failed to fetch unread count' });
-    }
-  }
-});
-
-/**
- * @swagger
- * /api/messages/{contractId}/summary:
- *   get:
- *     summary: Get conversation summary (latest message, unread count)
- *     tags: [Messages]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Conversation summary
- *       401:
- *         description: Unauthorized
- */
-router.get('/:contractId/summary', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const contractId = req.params.contractId as string;
-
-    const summary = await MessageService.getConversationSummary(contractId, userId);
-    res.json(summary);
-  } catch (error: any) {
-    if (error.message === 'Contract not found') {
-      res.status(404).json({ error: error.message });
-    } else if (error.message === 'User is not part of this contract') {
-      res.status(403).json({ error: error.message });
-    } else {
-      console.error('Error fetching conversation summary:', error);
-      res.status(500).json({ error: 'Failed to fetch conversation summary' });
-    }
-  }
-});
-
-/**
- * @swagger
- * /api/messages/{contractId}/read:
+ * /api/messages/send:
  *   post:
- *     summary: Mark all messages in a contract as read
+ *     summary: Send message
  *     tags: [Messages]
  *     security:
  *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: contractId
- *         required: true
- *         schema:
- *           type: string
- *           format: uuid
- *     responses:
- *       200:
- *         description: Messages marked as read
- *       401:
- *         description: Unauthorized
  */
-router.post('/:contractId/read', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const contractId = req.params.contractId as string;
+router.post('/send', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
-    await MessageService.markAsRead(contractId, userId);
-    res.json({ success: true });
-  } catch (error: any) {
-    if (error.message === 'Contract not found') {
-      res.status(404).json({ error: error.message });
-    } else if (error.message === 'User is not part of this contract') {
-      res.status(403).json({ error: error.message });
-    } else {
-      console.error('Error marking messages as read:', error);
-      res.status(500).json({ error: 'Failed to mark messages as read' });
-    }
+  const { receiverId, content, attachments } = req.body;
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
   }
+
+  if (!receiverId || !content) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'receiverId and content are required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await sendMessage({ senderId: userId, receiverId, content, attachments });
+
+  if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(201).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/messages/conversations/{conversationId}:
+ *   get:
+ *     summary: Get conversation messages
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, validateUUID(['conversationId']), async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const conversationId = req.params['conversationId'] ?? '';
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
+  const page = req.query['page'] ? Number(req.query['page']) : 1;
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await getConversationMessages(conversationId, userId, { page, limit });
+
+  if (!result.success) {
+    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/messages/conversations/{conversationId}/read:
+ *   patch:
+ *     summary: Mark conversation as read
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimiter, validateUUID(['conversationId']), async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const conversationId = req.params['conversationId'] ?? '';
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await markConversationAsRead(conversationId, userId);
+
+  if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ message: 'Conversation marked as read' });
+});
+
+/**
+ * @swagger
+ * /api/messages/unread-count:
+ *   get:
+ *     summary: Get unread message count
+ *     tags: [Messages]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await getUnreadMessageCount(userId);
+
+  if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json({ count: result.data });
 });
 
 export default router;

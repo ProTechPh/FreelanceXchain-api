@@ -364,6 +364,15 @@ export const uploadDisputeEvidence = createFileUploadMiddleware('files', {
 });
 
 /**
+ * Middleware for portfolio images (1-5 files)
+ */
+export const uploadPortfolioImages = createFileUploadMiddleware('files', {
+  minFiles: 1,
+  maxFiles: 5,
+  validateMagicNumbers: true,
+});
+
+/**
  * Lightweight signature-based malware scan.
  * This is a baseline defense layer and can be augmented with an external AV service.
  */
