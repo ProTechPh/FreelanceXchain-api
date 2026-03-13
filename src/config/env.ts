@@ -54,6 +54,7 @@ export const config = {
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     baseUrl: getBaseUrl(),
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
+    disableRateLimit: getEnvVarBoolean('DISABLE_RATE_LIMIT', false),
   },
   supabase: {
     url: getEnvVar('SUPABASE_URL'),

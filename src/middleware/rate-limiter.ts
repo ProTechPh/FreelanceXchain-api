@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
+import { config } from '../config/env';
 
 type RateLimitStore = Map<string, { count: number; resetTime: number }>;
 
@@ -49,10 +50,15 @@ function cleanupExpiredEntries(): void {
 // FIXED: .unref() prevents this timer from blocking graceful Node.js shutdown
 setInterval(cleanupExpiredEntries, 5 * 60 * 1000).unref();
 
-export function rateLimiter(name: string, config: RateLimitConfig) {
-  const { windowMs, maxRequests, message } = config;
+export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
+  const { windowMs, maxRequests, message } = rateLimitConfig;
 
   return (req: Request, res: Response, next: NextFunction): void => {
+    // Skip rate limiting if disabled in development
+    if (config.server.disableRateLimit && config.server.nodeEnv === 'development') {
+      next();
+      return;
+    }
     const store = getStore(name);
     const key = getClientKey(req);
     const now = Date.now();
