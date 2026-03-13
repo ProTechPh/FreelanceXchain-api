@@ -405,3 +405,17 @@ export {
   getUserVerificationHistory,
   isUserVerified,
 } from './didit-kyc-service.js';
+
+// User custom skills service exports
+export {
+  createUserCustomSkill,
+  getUserCustomSkills,
+  getUserCustomSkillById,
+  updateUserCustomSkill,
+  deleteUserCustomSkill,
+  searchUserCustomSkills,
+} from './user-custom-skill-service.js';
+
+export type {
+  UserCustomSkillServiceError,
+} from './user-custom-skill-service.js';

@@ -11,6 +11,7 @@ import {
   getActiveSkillsByCategory
 } from '../services/skill-service.js';
 import { CreateSkillCategoryInput, CreateSkillInput } from '../models/skill.js';
+import userCustomSkillRoutes from './user-custom-skill-routes.js';
 
 const router = Router();
 
@@ -442,5 +443,8 @@ router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimi
 
   res.status(200).json(result.data);
 });
+
+// Mount user custom skill routes
+router.use('/', userCustomSkillRoutes);
 
 export default router;
