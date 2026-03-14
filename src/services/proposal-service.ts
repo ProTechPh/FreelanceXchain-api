@@ -389,9 +389,18 @@ export async function acceptProposal(
     // Continue - blockchain is secondary, contract remains pending
   }
 
-  // Update project status to in_progress
+  // Update project status to in_progress and activate the first milestone
+  const updatedMilestones = project.milestones?.map((milestone, index) => {
+    // Automatically set the first milestone to in_progress so the freelancer can begin
+    if (index === 0) {
+      return { ...milestone, status: 'in_progress' as any };
+    }
+    return milestone;
+  }) || [];
+
   await projectRepository.updateProject(project.id, {
     status: 'in_progress',
+    milestones: updatedMilestones,
   });
 
   // Create notification for freelancer
