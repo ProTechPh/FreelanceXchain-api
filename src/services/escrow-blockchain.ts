@@ -53,6 +53,7 @@ export async function deployEscrowContract(
   const contract = await factory.deploy(
     params.freelancerAddress,
     params.arbiterAddress,
+    wallet.address, // platform = server wallet (can approve milestones on employer's behalf)
     params.contractId,
     params.milestoneAmounts,
     params.milestoneDescriptions,

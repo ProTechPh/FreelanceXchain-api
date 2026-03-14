@@ -43,6 +43,7 @@ contract FreelanceEscrow {
     address public immutable employer;
     address public immutable freelancer;
     address public immutable arbiter;
+    address public immutable platform; // Server wallet that can act on employer's behalf
     uint256 public immutable totalAmount;
 
     uint256 public releasedAmount;
@@ -84,7 +85,7 @@ contract FreelanceEscrow {
     }
     
     modifier onlyEmployer() {
-        if (msg.sender != employer) revert OnlyEmployer();
+        if (msg.sender != employer && msg.sender != platform) revert OnlyEmployer();
         _;
     }
     
@@ -111,6 +112,7 @@ contract FreelanceEscrow {
     constructor(
         address _freelancer,
         address _arbiter,
+        address _platform,
         string memory _contractId,
         uint256[] memory _milestoneAmounts,
         string[] memory _milestoneDescriptions
@@ -121,10 +123,11 @@ contract FreelanceEscrow {
         if (_arbiter == _freelancer) revert ArbiterCannotBeFreelancer();
         if (_milestoneAmounts.length == 0) revert MustHaveAtLeastOneMilestone();
         if (_milestoneAmounts.length != _milestoneDescriptions.length) revert AmountsDescriptionsMismatch();
-        
+
         employer = msg.sender;
         freelancer = _freelancer;
         arbiter = _arbiter;
+        platform = _platform;
         contractId = _contractId;
         isActive = true;
         
@@ -177,7 +180,9 @@ contract FreelanceEscrow {
     function approveMilestone(uint256 milestoneIndex) external onlyEmployer contractActive nonReentrant {
         if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
         Milestone storage milestone = milestones[milestoneIndex];
-        if (milestone.status != MilestoneStatus.Submitted) revert MilestoneNotSubmitted();
+        // Allow approval of both Pending and Submitted milestones
+        // DB is source of truth for submission status; on-chain tracks fund release
+        if (milestone.status != MilestoneStatus.Submitted && milestone.status != MilestoneStatus.Pending) revert MilestoneNotSubmitted();
         
         milestone.status = MilestoneStatus.Approved;
         uint256 amt = milestone.amount;

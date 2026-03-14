@@ -272,39 +272,37 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     return;
   }
 
-  // Get project for milestones
-  const projectResult = await getProjectById(contract.projectId);
-  if (!projectResult.success) {
-    res.status(400).json({
-      error: { code: 'PROJECT_NOT_FOUND', message: 'Associated project not found' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
+  // Accept frontend-deployed escrow address (MetaMask flow)
+  const { escrowAddress: frontendEscrowAddress, transactionHash: frontendTxHash } = req.body || {};
 
-  // Get wallet addresses
-  const walletResult = await getContractWalletAddresses(contractId);
-  
-  if (!walletResult.success) {
-    res.status(400).json({
-      error: { code: walletResult.error.code, message: walletResult.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
+  let escrowAddress = contract.escrowAddress || frontendEscrowAddress;
 
-  const { employerWallet, freelancerWallet } = walletResult.data;
-
-  // Map project entity to Project type for the service
-  const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
-  const project = mapProjectFromEntity(projectResult.data);
-
-  // Initialize escrow unless an escrow address is already persisted.
-  // This supports idempotent retries after partial failures.
-  let escrowAddress = contract.escrowAddress;
   if (!escrowAddress) {
+    // No escrow from frontend — fall back to server-side deployment
+    const projectResult = await getProjectById(contract.projectId);
+    if (!projectResult.success) {
+      res.status(400).json({
+        error: { code: 'PROJECT_NOT_FOUND', message: 'Associated project not found' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const walletResult = await getContractWalletAddresses(contractId);
+    if (!walletResult.success) {
+      res.status(400).json({
+        error: { code: walletResult.error.code, message: walletResult.error.message },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const { employerWallet, freelancerWallet } = walletResult.data;
+    const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
+    const project = mapProjectFromEntity(projectResult.data);
+
     const escrowResult = await initializeContractEscrow(
       contract,
       project,
@@ -324,6 +322,10 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
 
     escrowAddress = escrowResult.data.escrowAddress;
   }
+
+  // Save escrow address on the contract record
+  const { contractRepository } = await import('../repositories/contract-repository.js');
+  await contractRepository.updateContract(contractId, { escrow_address: escrowAddress });
 
   // Activate the contract
   const statusResult = await updateContractStatus(contractId, 'active');
@@ -352,6 +354,63 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     message: 'Contract funded and activated',
     escrowAddress,
     contractStatus: 'active',
+  });
+});
+
+// Get contract funding info (for frontend MetaMask deployment)
+router.get('/:id/fund-info', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+  const contractId = req.params['id'] ?? '';
+  const userId = req.user?.userId;
+
+  if (!userId) {
+    res.status(401).json({ error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' } });
+    return;
+  }
+
+  const contractResult = await getContractById(contractId);
+  if (!contractResult.success) {
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Contract not found' } });
+    return;
+  }
+
+  const contract = contractResult.data;
+  if (contract.employerId !== userId) {
+    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Only the employer can view fund info' } });
+    return;
+  }
+
+  const walletResult = await getContractWalletAddresses(contractId);
+  if (!walletResult.success) {
+    res.status(400).json({ error: { code: walletResult.error.code, message: walletResult.error.message } });
+    return;
+  }
+
+  const projectResult = await getProjectById(contract.projectId);
+  if (!projectResult.success) {
+    res.status(400).json({ error: { code: 'PROJECT_NOT_FOUND', message: 'Associated project not found' } });
+    return;
+  }
+
+  const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
+  const project = mapProjectFromEntity(projectResult.data);
+
+  // Build milestone amounts in wei (ETH string -> wei)
+  const { ethers } = await import('ethers');
+  const milestoneAmounts = project.milestones.map(m => ethers.parseEther(m.amount.toString()).toString());
+  const milestoneDescriptions = project.milestones.map(m => m.title || `Milestone ${m.id}`);
+  const totalAmount = ethers.parseEther(contract.totalAmount.toString()).toString();
+
+  // Server wallet address = platform that can approve milestones on employer's behalf
+  const { getWallet } = await import('../services/web3-client.js');
+  const platformWallet = getWallet().address;
+
+  res.json({
+    contractId,
+    freelancerWallet: walletResult.data.freelancerWallet,
+    platformWallet,
+    milestoneAmounts,
+    milestoneDescriptions,
+    totalAmount,
   });
 });
 

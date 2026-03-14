@@ -7,12 +7,12 @@ import { uploadFile } from '../utils/file-upload.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository, type MilestoneEntity, type ProjectEntity } from '../repositories/project-repository.js';
 import {
-  approveMilestone,
+  approveMilestone as approveMilestoneDB,
   rejectMilestone,
   getMilestoneById,
   getContractMilestones,
 } from '../services/milestone-service.js';
-import { requestMilestoneCompletion } from '../services/payment-service.js';
+import { requestMilestoneCompletion, approveMilestone as approveMilestoneWithPayment } from '../services/payment-service.js';
 
 const router = Router();
 
@@ -553,17 +553,34 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.id ?? '';
-    const { feedback } = req.body;
 
-    const result = await approveMilestone({
-      milestoneId,
-      employerId: userId,
-      feedback,
-    });
+    // Find the contract containing this milestone by scanning employer's contracts
+    const contractsResult = await contractRepository.getContractsByEmployer(userId, { limit: 1000, offset: 0 });
+    let contractId: string | null = null;
+
+    for (const contract of contractsResult.items) {
+      const project = await projectRepository.findProjectById(contract.project_id);
+      if (!project) continue;
+      const found = (project.milestones || []).some((m) => m.id === milestoneId);
+      if (found) {
+        contractId = contract.id;
+        break;
+      }
+    }
+
+    if (!contractId) {
+      return res.status(404).json({ error: 'Milestone not found in any of your contracts' });
+    }
+
+    // Use payment-service approveMilestone which handles blockchain escrow release + project milestone update
+    const result = await approveMilestoneWithPayment(contractId, milestoneId, userId);
 
     if (!result.success) {
       const message = 'error' in result ? result.error.message : 'Failed to approve milestone';
-      return res.status(400).json({ error: message });
+      const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
+        result.error.code === 'UNAUTHORIZED' ? 403 :
+        result.error.code === 'ESCROW_NOT_FOUND' || result.error.code === 'MISSING_WALLET' ? 422 : 400;
+      return res.status(statusCode).json({ error: message, code: result.error.code });
     }
 
     return res.json(result.data);

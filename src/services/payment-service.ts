@@ -8,6 +8,7 @@ import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, map
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
+import { getSupabaseClient } from '../config/supabase.js';
 import { PaymentRepository, PaymentType } from '../repositories/payment-repository.js';
 import { generateId } from '../utils/id.js';
 import {
@@ -28,6 +29,9 @@ import {
   approveMilestoneOnRegistry,
 } from './milestone-registry.js';
 import { completeAgreement } from './agreement-contract.js';
+import { approveMilestone as approveOnChainMilestone, deployEscrowContract as deployRealEscrow } from './escrow-blockchain.js';
+import { isWeb3Available } from './web3-client.js';
+import { getBlockchainMode } from './blockchain/factory.js';
 
 const escrowOps = {
   deployEscrow,
@@ -349,17 +353,6 @@ export async function approveMilestone(
   // Look up the employer's wallet address (NOT the UUID)
   let transactionHash: string | undefined;
   try {
-    const escrow = await escrowOps.getEscrowByContractId(contractId);
-    if (!escrow) {
-      return {
-        success: false,
-        error: {
-          code: 'ESCROW_NOT_FOUND',
-          message: 'Escrow not found for contract. Contract must be funded before milestone approval.',
-        },
-      };
-    }
-
     const employer = await userRepository.getUserById(employerId);
     if (!employer?.wallet_address) {
       return {
@@ -371,12 +364,45 @@ export async function approveMilestone(
       };
     }
 
-    const receipt = await escrowOps.releaseMilestone(
-      escrow.address,
-      milestoneId,
-      employer.wallet_address  // Use actual wallet address, not UUID
-    );
-    transactionHash = receipt.transactionHash;
+    // Call real blockchain escrow if in real mode and Web3 is available
+    if (getBlockchainMode() === 'real' && isWeb3Available()) {
+      const realEscrowAddress = contract.escrowAddress;
+      if (!realEscrowAddress) {
+        return {
+          success: false,
+          error: {
+            code: 'ESCROW_NOT_FOUND',
+            message: 'No escrow contract address found on this contract.',
+          },
+        };
+      }
+
+      // Call the real smart contract on Ganache - use milestone index (0-based)
+      const onChainResult = await approveOnChainMilestone(realEscrowAddress, milestoneIndex);
+      transactionHash = onChainResult.transactionHash;
+      console.log(`Real blockchain milestone release tx: ${transactionHash}`);
+    }
+
+    // Also update simulated escrow state in DB for tracking
+    try {
+      const escrow = await escrowOps.getEscrowByContractId(contractId);
+      if (escrow) {
+        const simReceipt = await escrowOps.releaseMilestone(
+          escrow.address,
+          milestoneId,
+          employer.wallet_address
+        );
+        if (!transactionHash) {
+          transactionHash = simReceipt.transactionHash;
+        }
+      }
+    } catch (simError) {
+      // If real blockchain succeeded, simulated failure is non-critical
+      if (!transactionHash) {
+        throw simError;
+      }
+      console.error('Simulated escrow update failed (non-critical):', simError);
+    }
 
     // Create payment record for audit trail
     await createPaymentRecord({
@@ -386,7 +412,7 @@ export async function approveMilestone(
       payeeId: contract.freelancerId,
       amount: milestone.amount,
       paymentType: 'milestone_release',
-      txHash: transactionHash,
+      txHash: transactionHash || null,
       status: 'completed',
     });
   } catch (error) {
@@ -409,6 +435,21 @@ export async function approveMilestone(
   await projectRepository.updateProject(project.id, {
     milestones: projectEntity.milestones,
   });
+
+  // Also update the separate milestones table so the UI reflects the change
+  try {
+    const supabase = getSupabaseClient();
+    await supabase
+      .from('milestones')
+      .update({
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', milestoneId);
+  } catch (milestoneTableError) {
+    console.error('Failed to update milestones table (non-critical):', milestoneTableError);
+  }
 
   // Approve milestone on blockchain registry
   try {
@@ -787,25 +828,71 @@ export async function initializeContractEscrow(
       };
     }
 
-    // Deploy escrow contract
-    const deployment = await escrowOps.deployEscrow({
-      contractId: contract.id,
-      employerAddress: employerWalletAddress,
-      freelancerAddress: freelancerWalletAddress,
-      totalAmount: contractTotalAmount,
-      milestones: escrowMilestones,
-    });
+    let escrowAddress: string;
 
-    // Deposit funds to escrow
-    await escrowOps.depositToEscrow(
-      deployment.escrowAddress,
-      contractTotalAmount,
-      employerWalletAddress
-    );
+    // Use real blockchain if available, otherwise fall back to simulated
+    if (getBlockchainMode() === 'real' && isWeb3Available()) {
+      // Deploy real escrow smart contract on Ganache with ETH
+      const milestoneAmounts = escrowMilestones.map(m => m.amount);
+      const milestoneDescriptions = project.milestones.map(m => m.title || `Milestone ${m.id}`);
+
+      // Use a dedicated platform arbiter address.
+      // The server wallet (msg.sender) is the on-chain "employer" (deployer).
+      // The arbiter must differ from both the deployer and the freelancer.
+      const platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS']
+        || '0x0000000000000000000000000000000000000001';
+
+      const realDeployment = await deployRealEscrow({
+        contractId: contract.id,
+        freelancerAddress: freelancerWalletAddress,
+        arbiterAddress: platformArbiterAddress,
+        milestoneAmounts,
+        milestoneDescriptions,
+        totalAmount: contractTotalAmount,
+      });
+
+      escrowAddress = realDeployment.escrowAddress;
+      console.log(`Real escrow deployed at ${escrowAddress} with ${contractTotalAmount} wei`);
+
+      // Also save to simulated escrow DB for status tracking
+      try {
+        const simDeployment = await escrowOps.deployEscrow({
+          contractId: contract.id,
+          employerAddress: employerWalletAddress,
+          freelancerAddress: freelancerWalletAddress,
+          totalAmount: contractTotalAmount,
+          milestones: escrowMilestones,
+        });
+        await escrowOps.depositToEscrow(
+          simDeployment.escrowAddress,
+          contractTotalAmount,
+          employerWalletAddress
+        );
+      } catch (simError) {
+        console.error('Failed to save simulated escrow state (non-critical):', simError);
+      }
+    } else {
+      // Simulated mode: deploy escrow in Supabase tables
+      const deployment = await escrowOps.deployEscrow({
+        contractId: contract.id,
+        employerAddress: employerWalletAddress,
+        freelancerAddress: freelancerWalletAddress,
+        totalAmount: contractTotalAmount,
+        milestones: escrowMilestones,
+      });
+
+      await escrowOps.depositToEscrow(
+        deployment.escrowAddress,
+        contractTotalAmount,
+        employerWalletAddress
+      );
+
+      escrowAddress = deployment.escrowAddress;
+    }
 
     // Update contract with escrow address
     const updatedContract = await contractRepository.updateContract(contract.id, {
-      escrow_address: deployment.escrowAddress,
+      escrow_address: escrowAddress,
     });
 
     if (!updatedContract) {
@@ -814,7 +901,7 @@ export async function initializeContractEscrow(
 
     return {
       success: true,
-      data: { escrowAddress: deployment.escrowAddress },
+      data: { escrowAddress },
     };
   } catch (error) {
     return {
