@@ -1,9 +1,9 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 import { MessageEntity, ConversationEntity } from '../models/message.js';
 
 export const messageRepository = {
   async createConversation(participant1Id: string, participant2Id: string): Promise<ConversationEntity> {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     const { data, error } = await supabase
       .from('conversations')
       .insert({
@@ -21,7 +21,7 @@ export const messageRepository = {
   },
 
   async findConversation(user1Id: string, user2Id: string): Promise<ConversationEntity | null> {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     const { data, error } = await supabase
       .from('conversations')
       .select('*')
@@ -33,7 +33,7 @@ export const messageRepository = {
   },
 
   async getUserConversations(userId: string, limit: number, offset: number) {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     const { data, error, count } = await supabase
       .from('conversations')
       .select('*', { count: 'exact' })
@@ -46,7 +46,7 @@ export const messageRepository = {
   },
 
   async createMessage(messageData: Omit<MessageEntity, 'id' | 'created_at' | 'updated_at'>): Promise<MessageEntity> {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     const { data, error } = await supabase
       .from('messages')
       .insert(messageData)
@@ -58,7 +58,7 @@ export const messageRepository = {
   },
 
   async getConversationMessages(conversationId: string, limit: number, offset: number) {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     const { data, error, count } = await supabase
       .from('messages')
       .select('*', { count: 'exact' })
@@ -71,7 +71,7 @@ export const messageRepository = {
   },
 
   async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     const { error } = await supabase
       .from('messages')
       .update({ is_read: true })
@@ -83,7 +83,7 @@ export const messageRepository = {
   },
 
   async updateConversation(conversationId: string, updates: Partial<ConversationEntity>): Promise<void> {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     const { error } = await supabase
       .from('conversations')
       .update(updates)
@@ -93,7 +93,7 @@ export const messageRepository = {
   },
 
   async getUnreadCount(userId: string): Promise<number> {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
     const { data, error } = await supabase
       .from('conversations')
       .select('participant1_id, participant2_id, unread_count_1, unread_count_2')

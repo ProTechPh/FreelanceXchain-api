@@ -1,9 +1,9 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import { messageRepository } from '../repositories/message-repository.js';
 import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/message.js';
 
-const supabase = getSupabaseClient();
+const supabase = getSupabaseServiceClient();
 
 export interface ServiceResult<T> {
   success: boolean;
@@ -35,6 +35,52 @@ export interface ConversationWithDetails extends ConversationEntity {
 }
 
 /**
+ * Resolve recipient IDs from either:
+ * - users.id (preferred, documented API contract)
+ * - freelancer_profiles.id / employer_profiles.id (compat fallback)
+ */
+async function resolveReceiverUserId(receiverId: string): Promise<string | null> {
+  const { data: user, error: userLookupError } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', receiverId)
+    .maybeSingle();
+
+  if (userLookupError) {
+    logger.error('Failed receiver lookup in users table', { receiverId, error: userLookupError });
+    return null;
+  }
+
+  if (user?.id) {
+    return user.id;
+  }
+
+  // Backward-compatibility path: support profile IDs by mapping to user_id
+  for (const profileTable of ['freelancer_profiles', 'employer_profiles'] as const) {
+    const { data: profile, error: profileLookupError } = await supabase
+      .from(profileTable)
+      .select('user_id')
+      .eq('id', receiverId)
+      .maybeSingle();
+
+    if (profileLookupError) {
+      logger.error('Failed receiver lookup in profile table', {
+        receiverId,
+        profileTable,
+        error: profileLookupError,
+      });
+      continue;
+    }
+
+    if (profile?.user_id) {
+      return profile.user_id;
+    }
+  }
+
+  return null;
+}
+
+/**
  * Send a message to another user
  */
 export async function sendMessage(data: SendMessageInput): Promise<ServiceResult<MessageEntity>> {
@@ -52,14 +98,8 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
       };
     }
 
-    // Check if receiver exists
-    const { data: receiver, error: receiverError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', receiverId)
-      .single();
-
-    if (receiverError || !receiver) {
+    const resolvedReceiverId = await resolveReceiverUserId(receiverId);
+    if (!resolvedReceiverId) {
       return {
         success: false,
         error: {
@@ -70,17 +110,17 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
     }
 
     // Find or create conversation
-    let conversation = await messageRepository.findConversation(senderId, receiverId);
+    let conversation = await messageRepository.findConversation(senderId, resolvedReceiverId);
     
     if (!conversation) {
-      conversation = await messageRepository.createConversation(senderId, receiverId);
+      conversation = await messageRepository.createConversation(senderId, resolvedReceiverId);
     }
 
     // Create message
     const message = await messageRepository.createMessage({
       conversation_id: conversation.id,
       sender_id: senderId,
-      receiver_id: receiverId,
+      receiver_id: resolvedReceiverId,
       content: content.trim(),
       is_read: false,
       ...(attachments !== undefined ? { attachments } : {}),
