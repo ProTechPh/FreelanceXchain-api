@@ -1127,6 +1127,7 @@ describe('Integration Tests - Critical Flows', () => {
         status: 'in_progress',
         milestones: [milestone1, milestone2],
         tags: [],
+        attachments: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1263,6 +1264,7 @@ describe('Integration Tests - Critical Flows', () => {
         status: 'in_progress',
         milestones: [milestone],
         tags: [],
+        attachments: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };
@@ -1392,6 +1394,7 @@ describe('Integration Tests - Critical Flows', () => {
         status: 'in_progress',
         milestones: [milestone],
         tags: [],
+        attachments: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

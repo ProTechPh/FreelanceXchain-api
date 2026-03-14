@@ -48,6 +48,7 @@ export function createTestProject(overrides: Partial<ProjectEntity> = {}): Proje
     status: 'open',
     milestones: [],
     tags: [],
+    attachments: [],
     created_at: now(),
     updated_at: now(),
     ...overrides,

@@ -4,6 +4,47 @@ import { fileURLToPath } from 'url';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Mock Supabase config
+jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
+  getSupabaseServiceClient: jest.fn(() => ({
+    storage: {
+      from: jest.fn(() => ({
+        upload: jest.fn(async () => ({ data: { path: 'test/path' }, error: null })),
+        remove: jest.fn(async () => ({ data: null, error: null })),
+        createSignedUrl: jest.fn(async () => ({ data: { signedUrl: 'https://example.com/signed' }, error: null })),
+        getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://example.com/public' } })),
+      })),
+    },
+  })),
+  getSupabaseClient: jest.fn(() => ({})),
+  createPerRequestClient: jest.fn(() => ({})),
+  initializeDatabase: jest.fn(async () => {}),
+  TABLES: {
+    USERS: 'users',
+    FREELANCER_PROFILES: 'freelancer_profiles',
+    EMPLOYER_PROFILES: 'employer_profiles',
+    PROJECTS: 'projects',
+    PROPOSALS: 'proposals',
+    CONTRACTS: 'contracts',
+    DISPUTES: 'disputes',
+    SKILLS: 'skills',
+    SKILL_CATEGORIES: 'skill_categories',
+    NOTIFICATIONS: 'notifications',
+    KYC_VERIFICATIONS: 'kyc_verifications',
+    REVIEWS: 'reviews',
+    MESSAGES: 'messages',
+    PAYMENTS: 'payments',
+    AUDIT_LOG_ENTRIES: 'audit_log_entries',
+  },
+  STORAGE_BUCKETS: {
+    PROPOSAL_ATTACHMENTS: 'proposal-attachments',
+    PROJECT_ATTACHMENTS: 'project-attachments',
+    DISPUTE_EVIDENCE: 'dispute-evidence',
+    MILESTONE_DELIVERABLES: 'milestone-deliverables',
+    PROFILE_IMAGES: 'profile-images',
+  },
+}));
+
 // Mock the auth-middleware to bypass authentication
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, res: any, next: any) => {
@@ -20,37 +61,52 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
     }
     next();
   },
+  requireVerifiedKyc: (req: any, res: any, next: any) => {
+    next();
+  },
 }));
 
 // Mock rate limiter middleware
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+  rateLimiter: jest.fn(() => (req: any, res: any, next: any) => next()),
   apiRateLimiter: (req: any, res: any, next: any) => next(),
   fileUploadRateLimiter: (req: any, res: any, next: any) => next(),
+  loginRateLimiter: (req: any, res: any, next: any) => next(),
+  registerRateLimiter: (req: any, res: any, next: any) => next(),
+  passwordResetRateLimiter: (req: any, res: any, next: any) => next(),
+  authRateLimiter: (req: any, res: any, next: any) => next(),
+  sensitiveRateLimiter: (req: any, res: any, next: any) => next(),
+  withdrawalRateLimiter: (req: any, res: any, next: any) => next(),
 }));
 
-// Mock file upload middleware
+// Mock file upload middleware - use multer to handle actual file uploads
+const multerModule = await import('multer');
+const multer = multerModule.default;
+const upload = multer({ storage: multer.memoryStorage() });
+
 jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
-  createFileUploadMiddleware: jest.fn(() => [
-    (req: any, res: any, next: any) => {
-      // Mock file upload - simulate files being attached
-      if (req.method === 'POST' && req.url?.includes('upload')) {
-        req.files = [
-          {
-            originalname: 'test-file.pdf',
-            mimetype: 'application/pdf',
-            size: 1024,
-            buffer: Buffer.from('test content'),
-          },
-        ];
-      }
-      next();
-    },
-  ]),
+  createFileUploadMiddleware: jest.fn((fieldName: string, options?: any) => {
+    return [upload.array(fieldName, options?.maxFiles || 10)];
+  }),
+  uploadProposalAttachments: [upload.array('files', 10)],
+  uploadProjectAttachments: [upload.array('files', 10)],
+  uploadDisputeEvidence: [upload.array('files', 10)],
+  uploadPortfolioImages: [upload.array('files', 10)],
+  sanitizeFilename: jest.fn((filename: string) => filename),
+  scanFileForViruses: jest.fn(async () => ({ clean: true })),
+  MAX_FILE_SIZE: 10 * 1024 * 1024,
+  MAX_TOTAL_SIZE: 25 * 1024 * 1024,
+  MIN_FILE_COUNT: 1,
+  MAX_FILE_COUNT: 10,
+  ALLOWED_MIME_TYPES: {},
 }));
 
 // Mock validation middleware
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: () => (req: any, res: any, next: any) => next(),
+  validate: () => (req: any, res: any, next: any) => next(),
+  validateRequest: jest.fn((req: any, res: any, next: any) => next()),
+  isValidUUID: jest.fn((value: string) => true),
 }));
 
 // Mock milestone service
@@ -88,6 +144,24 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () 
       updatedAt: new Date(),
     },
   })),
+  approveMilestone: jest.fn(async (input: any) => ({
+    success: true,
+    data: {
+      id: input.milestoneId,
+      status: 'approved',
+    },
+  })),
+  rejectMilestone: jest.fn(async (input: any) => ({
+    success: true,
+    data: {
+      id: input.milestoneId,
+      status: 'rejected',
+    },
+  })),
+  getContractMilestones: jest.fn(async (contractId: string) => ({
+    success: true,
+    data: [],
+  })),
 }));
 
 // Mock file upload utility
@@ -97,6 +171,39 @@ jest.unstable_mockModule(resolveModule('src/utils/file-upload.ts'), () => ({
     url: `https://example.supabase.co/storage/v1/object/public/milestone-deliverables/${options.userId}/${options.folder}/${options.filename}`,
     path: `${options.userId}/${options.folder}/${options.filename}`,
   })),
+  deleteFile: jest.fn(async (bucket: string, path: string) => ({
+    success: true,
+  })),
+  getSignedUrl: jest.fn(async (bucket: string, path: string, expiresIn?: number) => ({
+    success: true,
+    url: `https://example.supabase.co/storage/v1/object/sign/${bucket}/${path}`,
+  })),
+  listUserFiles: jest.fn(async (bucket: string, userId: string, folder?: string) => ({
+    success: true,
+    files: [],
+  })),
+}));
+
+// Mock storage uploader utility
+jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+  uploadFileToStorage: jest.fn(async (file: any, bucket: string, metadata: any) => ({
+    success: true,
+    url: `https://example.supabase.co/storage/v1/object/public/${bucket}/${metadata.userId}/${file.originalname}`,
+    path: `${metadata.userId}/${file.originalname}`,
+  })),
+  uploadMultipleFiles: jest.fn(async (files: any[], bucket: string, metadata: any) => ({
+    success: true,
+    files: files.map(f => ({
+      url: `https://example.supabase.co/storage/v1/object/public/${bucket}/${metadata.userId}/${f.originalname}`,
+      path: `${metadata.userId}/${f.originalname}`,
+      filename: f.originalname,
+    })),
+  })),
+  deleteFileFromStorage: jest.fn(async (bucket: string, path: string) => ({
+    success: true,
+  })),
+  extractFilePathFromUrl: jest.fn((url: string) => 'test/path'),
+  cleanupUploadedFiles: jest.fn(async (urls: string[]) => ({ success: true })),
 }));
 
 // Dynamically import everything after the mock is set up
@@ -105,7 +212,6 @@ let request: any, createApp: any, generateId: any, fs: any;
 beforeAll(async () => {
   request = (await import('supertest')).default;
   const appModule = await import('../../app.js');
-  console.log('App module:', appModule);
   createApp = appModule.createApp;
   ({ generateId } = await import('../../utils/id.js'));
   fs = await import('fs');

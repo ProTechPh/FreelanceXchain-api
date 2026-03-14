@@ -87,15 +87,15 @@ async function sendWeeklyDigests(): Promise<void> {
           .order('created_at', { ascending: false })
           .limit(5);
 
-        await sendWeeklyDigestEmail(user.users.email, {
-          userName: user.users.full_name || 'User',
+        await sendWeeklyDigestEmail((user.users as any).email, {
+          userName: (user.users as any).full_name || 'User',
           newProjects: newProjects || 0,
           newMessages: newMessages || 0,
           pendingMilestones: pendingMilestones || 0,
           topProjects: (topProjects || []).map(p => ({
             title: p.title,
             budget: `$${p.budget}`,
-            url: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${p.id}`,
+            url: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${(p as any).id}`,
           })),
         });
 
