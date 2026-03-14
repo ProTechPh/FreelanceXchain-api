@@ -21,6 +21,7 @@ import {
   listProjectsByMultipleCategories,
 } from '../services/project-service.js';
 import { getProposalsByProject } from '../services/proposal-service.js';
+import { mapProjectFromEntity } from '../utils/entity-mapper.js';
 
 const router = Router();
 
@@ -188,7 +189,12 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
     return;
   }
 
-  res.status(200).json(result.data);
+  // Map entities to API models (snake_case to camelCase)
+  const mappedItems = result.data.items.map(mapProjectFromEntity);
+  res.status(200).json({
+    ...result.data,
+    items: mappedItems
+  });
 });
 
 
@@ -261,7 +267,12 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
     return;
   }
 
-  res.status(200).json(result.data);
+  // Map entities to API models (snake_case to camelCase)
+  const mappedItems = result.data.items.map(mapProjectFromEntity);
+  res.status(200).json({
+    ...result.data,
+    items: mappedItems
+  });
 });
 
 /**
@@ -307,7 +318,9 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
     return;
   }
 
-  res.status(200).json(result.data);
+  // Map entity to API model (snake_case to camelCase)
+  const projectModel = mapProjectFromEntity(result.data);
+  res.status(200).json(projectModel);
 });
 
 /**
