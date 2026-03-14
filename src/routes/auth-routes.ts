@@ -1738,4 +1738,111 @@ router.get('/me', authMiddleware, authRateLimiter, async (req: Request, res: Res
   res.status(200).json({ user: result });
 });
 
+/**
+ * @swagger
+ * /api/auth/wallet:
+ *   patch:
+ *     tags:
+ *       - Authentication
+ *     summary: Update wallet address
+ *     description: Updates the authenticated user's wallet address
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - walletAddress
+ *             properties:
+ *               walletAddress:
+ *                 type: string
+ *                 pattern: '^0x[a-fA-F0-9]{40}$'
+ *                 description: Ethereum wallet address
+ *                 example: "0x1234567890123456789012345678901234567890"
+ *     responses:
+ *       200:
+ *         description: Wallet address updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Wallet address updated successfully"
+ *                 walletAddress:
+ *                   type: string
+ *                   example: "0x1234567890123456789012345678901234567890"
+ *       400:
+ *         description: Invalid wallet address format
+ *       401:
+ *         description: Unauthorized
+ *       404:
+ *         description: User not found
+ */
+router.patch('/wallet', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+  const { walletAddress } = req.body;
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Validate wallet address format
+  if (!walletAddress || typeof walletAddress !== 'string' || walletAddress.trim() === '') {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Wallet address is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid Ethereum wallet address format' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  try {
+    // Update wallet address in database
+    const updatedUser = await userRepository.updateUser(userId, { wallet_address: walletAddress });
+    
+    if (!updatedUser) {
+      res.status(404).json({
+        error: { code: 'USER_NOT_FOUND', message: 'User not found' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    res.status(200).json({
+      message: 'Wallet address updated successfully',
+      walletAddress: updatedUser.wallet_address,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  } catch (error) {
+    logger.error('Failed to update wallet address:', error);
+    res.status(500).json({
+      error: { code: 'UPDATE_FAILED', message: 'Failed to update wallet address' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
+});
+
 export default router;

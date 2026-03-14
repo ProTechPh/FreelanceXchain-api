@@ -27,7 +27,7 @@ export interface PaginationOptions {
 }
 
 export interface ConversationWithDetails extends ConversationEntity {
-  otherUser?: {
+  otherUser: {
     id: string;
     name: string;
     email: string;
@@ -64,7 +64,7 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
         success: false,
         error: {
           code: 'RECEIVER_NOT_FOUND',
-          message: 'Receiver not found',
+          message: 'Unable to resolve receiver user. This contract/conversation has inconsistent participant data.',
         },
       };
     }
@@ -135,29 +135,42 @@ export async function getConversations(
 
     const { items, total } = await messageRepository.getUserConversations(userId, limit, offset);
 
-    // Enrich with other user details
-    const enrichedConversations = await Promise.all(
-      items.map(async (conv) => {
-        const otherUserId = conv.participant1_id === userId ? conv.participant2_id : conv.participant1_id;
-        
-        const { data: otherUser } = await supabase
-          .from('users')
-          .select('id, name, email')
-          .eq('id', otherUserId)
-          .single();
+    // Enrich with other user details and filter out conversations with missing participants
+    const enrichedConversations: ConversationWithDetails[] = [];
+    
+    for (const conv of items) {
+      const otherUserId = conv.participant1_id === userId ? conv.participant2_id : conv.participant1_id;
+      
+      const { data: otherUser, error: userError } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('id', otherUserId)
+        .single();
 
-        return {
-          ...conv,
-          otherUser: otherUser || undefined,
-        } as ConversationWithDetails;
-      })
-    );
+      // If the other user doesn't exist, this conversation has inconsistent data
+      if (userError || !otherUser) {
+        logger.warn('Conversation has missing participant, skipping from results', { 
+          conversationId: conv.id, 
+          missingUserId: otherUserId,
+          error: userError 
+        });
+        
+        // Optionally, we could mark this conversation for cleanup
+        // For now, we'll just skip it from the results
+        continue;
+      }
+
+      enrichedConversations.push({
+        ...conv,
+        otherUser,
+      } as ConversationWithDetails);
+    }
 
     return {
       success: true,
       data: {
         items: enrichedConversations,
-        total,
+        total: enrichedConversations.length, // Adjust total to reflect filtered results
         hasMore: offset + limit < total,
       },
     };
@@ -309,6 +322,65 @@ export async function getUnreadMessageCount(userId: string): Promise<ServiceResu
     };
   } catch (error) {
     logger.error('Unexpected error in getUnreadMessageCount', { error, userId });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
+}
+
+/**
+ * Validate conversation participants and identify orphaned conversations
+ * This can be used for cleanup or debugging purposes
+ */
+export async function validateConversationParticipants(userId: string): Promise<ServiceResult<{
+  validConversations: ConversationEntity[];
+  orphanedConversations: ConversationEntity[];
+}>> {
+  try {
+    const { items: conversations } = await messageRepository.getUserConversations(userId, 1000, 0);
+    const validConversations: ConversationEntity[] = [];
+    const orphanedConversations: ConversationEntity[] = [];
+
+    for (const conv of conversations) {
+      const participant1Exists = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', conv.participant1_id)
+        .single();
+
+      const participant2Exists = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', conv.participant2_id)
+        .single();
+
+      if (participant1Exists.error || participant2Exists.error) {
+        orphanedConversations.push(conv);
+        logger.warn('Found orphaned conversation', {
+          conversationId: conv.id,
+          participant1Id: conv.participant1_id,
+          participant2Id: conv.participant2_id,
+          participant1Exists: !participant1Exists.error,
+          participant2Exists: !participant2Exists.error,
+        });
+      } else {
+        validConversations.push(conv);
+      }
+    }
+
+    return {
+      success: true,
+      data: {
+        validConversations,
+        orphanedConversations,
+      },
+    };
+  } catch (error) {
+    logger.error('Unexpected error in validateConversationParticipants', { error, userId });
     return {
       success: false,
       error: {

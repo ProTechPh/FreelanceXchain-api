@@ -206,6 +206,90 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => (
   cleanupUploadedFiles: jest.fn(async (urls: string[]) => ({ success: true })),
 }));
 
+// Mock contract repository
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: {
+    getContractsByFreelancer: jest.fn(async (freelancerId: string, options?: any) => ({
+      items: [{
+        id: 'mock-contract-id',
+        project_id: 'mock-project-id',
+        freelancer_id: freelancerId,
+        employer_id: 'mock-employer-id',
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }],
+      hasMore: false,
+    })),
+    findById: jest.fn(async (id: string) => ({
+      id,
+      project_id: 'mock-project-id',
+      freelancer_id: 'mock-freelancer-id',
+      employer_id: 'mock-employer-id',
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })),
+  },
+}));
+
+// Mock project repository
+const mockProjectRepository = {
+  findProjectById: jest.fn(async (projectId: string) => {
+    // Get the current test's milestone ID from the test context
+    const testMilestoneId = (global as any).currentTestMilestoneId || 'default-milestone-id';
+    return {
+      id: projectId,
+      title: 'Mock Project',
+      description: 'Mock project description',
+      milestones: [{
+        id: testMilestoneId,
+        title: 'Test Milestone',
+        description: 'Test milestone description',
+        amount: 1000,
+        due_date: new Date('2026-12-31').toISOString(),
+        status: 'pending',
+        deliverable_files: [],
+        revision_count: 0,
+      }],
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }),
+  updateProject: jest.fn(async (projectId: string, updates: any) => ({
+    id: projectId,
+    title: 'Mock Project',
+    description: 'Mock project description',
+    ...updates,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  })),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
+  projectRepository: mockProjectRepository,
+}));
+
+// Mock payment service
+jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+  requestMilestoneCompletion: jest.fn(async (contractId: string, milestoneId: string, freelancerId: string) => ({
+    success: true,
+    data: {
+      id: milestoneId,
+      status: 'submitted',
+    },
+  })),
+  approveMilestone: jest.fn(async () => ({ success: true })),
+  disputeMilestone: jest.fn(async () => ({ success: true })),
+  getContractPaymentStatus: jest.fn(async () => ({ success: true, data: {} })),
+  isContractComplete: jest.fn(async () => false),
+  getDisputeById: jest.fn(async () => null),
+  getDisputesByContract: jest.fn(async () => []),
+  clearDisputes: jest.fn(),
+  initializeContractEscrow: jest.fn(async () => ({ success: true })),
+  setEscrowOpsForTesting: jest.fn(),
+}));
+
 // Dynamically import everything after the mock is set up
 let request: any, createApp: any, generateId: any, fs: any;
 
@@ -231,6 +315,9 @@ describe('Milestone Attachments API', () => {
     freelancerId = generateId();
     milestoneId = generateId();
     authToken = 'Bearer test-token-' + freelancerId;
+    
+    // Set the milestone ID for the mock to use
+    (global as any).currentTestMilestoneId = milestoneId;
   });
 
   describe('POST /api/milestones/:id/upload-deliverables', () => {
