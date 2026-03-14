@@ -26,7 +26,7 @@ export const MAX_TOTAL_SIZE = 25 * 1024 * 1024; // 25MB total
 
 // File count limits
 export const MIN_FILE_COUNT = 1;
-export const MAX_FILE_COUNT = 5;
+export const MAX_FILE_COUNT = 10; // Increased for milestone deliverables
 
 // Allowed MIME types with their magic number signatures
 export const ALLOWED_MIME_TYPES = {
@@ -34,12 +34,31 @@ export const ALLOWED_MIME_TYPES = {
   'application/pdf': true,
   'application/msword': true,
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': true,
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': true,
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': true,
   'text/plain': true,
+  'text/csv': true,
   // Images
   'image/png': true,
   'image/jpeg': true,
   'image/jpg': true,
   'image/gif': true,
+  'image/webp': true,
+  'image/svg+xml': true,
+  // Archives
+  'application/zip': true,
+  'application/x-rar-compressed': true,
+  'application/x-7z-compressed': true,
+  // Code files
+  'text/html': true,
+  'text/css': true,
+  'text/javascript': true,
+  'application/json': true,
+  'text/xml': true,
+  // Video (for demos/presentations)
+  'video/mp4': true,
+  'video/webm': true,
+  'video/quicktime': true,
 } as const;
 
 // Allowed file extensions
@@ -47,11 +66,27 @@ const ALLOWED_EXTENSIONS = [
   '.pdf',
   '.doc',
   '.docx',
+  '.xlsx',
+  '.pptx',
   '.txt',
+  '.csv',
   '.png',
   '.jpg',
   '.jpeg',
   '.gif',
+  '.webp',
+  '.svg',
+  '.zip',
+  '.rar',
+  '.7z',
+  '.html',
+  '.css',
+  '.js',
+  '.json',
+  '.xml',
+  '.mp4',
+  '.webm',
+  '.mov',
 ];
 
 /**

@@ -1,6 +1,3 @@
-
-
-
 import { describe, it, expect, jest, beforeAll } from '@jest/globals';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -23,6 +20,37 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
     }
     next();
   },
+}));
+
+// Mock rate limiter middleware
+jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+  apiRateLimiter: (req: any, res: any, next: any) => next(),
+  fileUploadRateLimiter: (req: any, res: any, next: any) => next(),
+}));
+
+// Mock file upload middleware
+jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
+  createFileUploadMiddleware: jest.fn(() => [
+    (req: any, res: any, next: any) => {
+      // Mock file upload - simulate files being attached
+      if (req.method === 'POST' && req.url?.includes('upload')) {
+        req.files = [
+          {
+            originalname: 'test-file.pdf',
+            mimetype: 'application/pdf',
+            size: 1024,
+            buffer: Buffer.from('test content'),
+          },
+        ];
+      }
+      next();
+    },
+  ]),
+}));
+
+// Mock validation middleware
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+  validateUUID: () => (req: any, res: any, next: any) => next(),
 }));
 
 // Mock milestone service
@@ -76,7 +104,9 @@ let request: any, createApp: any, generateId: any, fs: any;
 
 beforeAll(async () => {
   request = (await import('supertest')).default;
-  ({ createApp } = await import('../../app.js'));
+  const appModule = await import('../../app.js');
+  console.log('App module:', appModule);
+  createApp = appModule.createApp;
   ({ generateId } = await import('../../utils/id.js'));
   fs = await import('fs');
 });
@@ -294,142 +324,6 @@ describe('Milestone Attachments API', () => {
       });
 
       expect(response.body.deliverableFiles).toEqual([]);
-    });
-  });
-});
-      const testExePath = path.join(__dirname, 'test-file.exe');
-      const testExeBuffer = Buffer.from([0x4d, 0x5a, 0x90, 0x00]); // PE header
-      fs.writeFileSync(testExePath, testExeBuffer);
-
-      const projectData = {
-        title: 'Test Project With Invalid File',
-        description: 'This project should fail due to invalid file type',
-        requiredSkills: JSON.stringify([{ skillId }]),
-        budget: '1000',
-        deadline: '2026-12-31T23:59:59Z'
-      };
-
-      const response = await request(app)
-        .post('/api/projects/with-attachments')
-        .set('Authorization', authToken)
-        .field('title', projectData.title)
-        .field('description', projectData.description)
-        .field('requiredSkills', projectData.requiredSkills)
-        .field('budget', projectData.budget)
-        .field('deadline', projectData.deadline)
-        .attach('files', testExePath)
-        .expect(400);
-
-      expect(response.body.error.code).toBe('INVALID_FILE_TYPE');
-
-      // Clean up test file
-      fs.unlinkSync(testExePath);
-    });
-
-    it('should reject too many files', async () => {
-      const projectData = {
-        title: 'Test Project With Too Many Files',
-        description: 'This project should fail due to too many files',
-        requiredSkills: JSON.stringify([{ skillId }]),
-        budget: '1000',
-        deadline: '2026-12-31T23:59:59Z'
-      };
-
-      // Create 11 test files (exceeds limit of 10)
-      const testFiles: string[] = [];
-      for (let i = 0; i < 11; i++) {
-        const testFilePath = path.join(__dirname, `test-file-${i}.txt`);
-        fs.writeFileSync(testFilePath, `Test content ${i}`);
-        testFiles.push(testFilePath);
-      }
-
-      let requestBuilder = request(app)
-        .post('/api/projects/with-attachments')
-        .set('Authorization', authToken)
-        .field('title', projectData.title)
-        .field('description', projectData.description)
-        .field('requiredSkills', projectData.requiredSkills)
-        .field('budget', projectData.budget)
-        .field('deadline', projectData.deadline);
-
-      // Attach all files
-      testFiles.forEach(filePath => {
-        requestBuilder = requestBuilder.attach('files', filePath);
-      });
-
-      const response = await requestBuilder.expect(400);
-
-      expect(response.body.error.code).toBe('TOO_MANY_FILES');
-
-      // Clean up test files
-      testFiles.forEach(filePath => fs.unlinkSync(filePath));
-    });
-
-    it('should validate required fields', async () => {
-      const response = await request(app)
-        .post('/api/projects/with-attachments')
-        .set('Authorization', authToken)
-        .field('title', 'Short') // Too short
-        .field('description', 'Short desc') // Too short
-        .field('requiredSkills', 'invalid json')
-        .field('budget', '0') // Invalid budget
-        .expect(400);
-
-      expect(response.body.error.code).toBe('VALIDATION_ERROR');
-      expect(response.body.error.details).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ field: 'title' }),
-          expect.objectContaining({ field: 'description' }),
-          expect.objectContaining({ field: 'requiredSkills' }),
-          expect.objectContaining({ field: 'budget' })
-        ])
-      );
-    });
-
-    it('should require authentication', async () => {
-      const response = await request(app)
-        .post('/api/projects/with-attachments')
-        .field('title', 'Test Project')
-        .field('description', 'This is a test project description')
-        .field('requiredSkills', JSON.stringify([{ skillId }]))
-        .field('budget', '1000')
-        .field('deadline', '2026-12-31T23:59:59Z')
-        .expect(401);
-
-      expect(response.body.error.code).toBe('AUTH_UNAUTHORIZED');
-    });
-  });
-
-  describe('File Upload Security', () => {
-    it('should detect malicious files', async () => {
-      // Create EICAR test file
-      const testVirusPath = path.join(__dirname, 'test-virus.txt');
-      const eicarSignature = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
-      fs.writeFileSync(testVirusPath, eicarSignature);
-
-      const projectData = {
-        title: 'Test Project With Malicious File',
-        description: 'This project should fail due to malicious file detection',
-        requiredSkills: JSON.stringify([{ skillId }]),
-        budget: '1000',
-        deadline: '2026-12-31T23:59:59Z'
-      };
-
-      const response = await request(app)
-        .post('/api/projects/with-attachments')
-        .set('Authorization', authToken)
-        .field('title', projectData.title)
-        .field('description', projectData.description)
-        .field('requiredSkills', projectData.requiredSkills)
-        .field('budget', projectData.budget)
-        .field('deadline', projectData.deadline)
-        .attach('files', testVirusPath)
-        .expect(400);
-
-      expect(response.body.error.code).toBe('MALICIOUS_FILE_DETECTED');
-
-      // Clean up test file
-      fs.unlinkSync(testVirusPath);
     });
   });
 });

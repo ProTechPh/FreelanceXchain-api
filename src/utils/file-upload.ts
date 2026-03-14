@@ -14,7 +14,7 @@ const supabase = createClient(
 );
 
 export interface UploadOptions {
-  bucket: 'profile-images' | 'contract-documents' | 'proposal-attachments' | 'dispute-evidence';
+  bucket: 'profile-images' | 'contract-documents' | 'proposal-attachments' | 'dispute-evidence' | 'milestone-deliverables';
   userId: string;
   file: File | Buffer; // Support both File (browser) and Buffer (Node.js)
   filename: string;
@@ -45,6 +45,7 @@ export async function uploadFile(options: UploadOptions): Promise<UploadResult> 
       'contract-documents': 10 * 1024 * 1024, // 10MB
       'proposal-attachments': 10 * 1024 * 1024, // 10MB
       'dispute-evidence': 20 * 1024 * 1024, // 20MB
+      'milestone-deliverables': 25 * 1024 * 1024, // 25MB
     };
 
     if (fileSize > maxSizes[bucket]) {

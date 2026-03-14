@@ -14,6 +14,7 @@ const ALLOWED_BUCKETS = new Set([
   'contract-documents',
   'proposal-attachments',
   'dispute-evidence',
+  'milestone-deliverables',
 ]);
 
 // Use secure file upload middleware (validates magic numbers, sanitizes filenames, enforces limits)
