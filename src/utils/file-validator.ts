@@ -47,13 +47,26 @@ export const MAX_TOTAL_SIZE = 25 * 1024 * 1024; // 25MB total per proposal
 export const MIN_FILE_COUNT = 0;
 export const MAX_FILE_COUNT = 5;
 
+// Project-specific limits
+export const MAX_PROJECT_FILES = 10;
+
+export type ValidationOptions = {
+  maxFiles?: number;
+  minFiles?: number;
+  maxTotalSize?: number;
+};
+
 /**
  * Validates an array of file attachments
  * @param attachments - Array of file attachment objects
+ * @param options - Optional validation parameters
  * @returns Array of validation errors (empty if valid)
  */
-export function validateAttachments(attachments: unknown): FileValidationError[] {
+export function validateAttachments(attachments: unknown, options?: ValidationOptions): FileValidationError[] {
   const errors: FileValidationError[] = [];
+  const maxFiles = options?.maxFiles ?? MAX_FILE_COUNT;
+  const minFiles = options?.minFiles ?? MIN_FILE_COUNT;
+  const maxTotalSize = options?.maxTotalSize ?? MAX_TOTAL_SIZE;
 
   // Check if attachments is an array
   if (!Array.isArray(attachments)) {
@@ -65,17 +78,17 @@ export function validateAttachments(attachments: unknown): FileValidationError[]
   }
 
   // Check file count
-  if (attachments.length < MIN_FILE_COUNT) {
+  if (attachments.length < minFiles) {
     errors.push({
       field: 'attachments',
-      message: `At least ${MIN_FILE_COUNT} file is required`,
+      message: `At least ${minFiles} file is required`,
     });
   }
 
-  if (attachments.length > MAX_FILE_COUNT) {
+  if (attachments.length > maxFiles) {
     errors.push({
       field: 'attachments',
-      message: `Maximum ${MAX_FILE_COUNT} files allowed`,
+      message: `Maximum ${maxFiles} files allowed`,
     });
   }
 
@@ -92,10 +105,10 @@ export function validateAttachments(attachments: unknown): FileValidationError[]
   });
 
   // Check total size
-  if (totalSize > MAX_TOTAL_SIZE) {
+  if (totalSize > maxTotalSize) {
     errors.push({
       field: 'attachments',
-      message: `Total file size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`,
+      message: `Total file size exceeds ${maxTotalSize / (1024 * 1024)}MB limit`,
     });
   }
 

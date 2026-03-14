@@ -1,5 +1,6 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { TABLES } from '../config/supabase.js';
+import { FileAttachment } from '../utils/file-validator.js';
 
 export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
 export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed' | 'refunded';
@@ -24,6 +25,7 @@ export type ProjectEntity = {
   status: ProjectStatus;
   milestones: MilestoneEntity[];
   tags: string[];
+  attachments: FileAttachment[];
   created_at: string;
   updated_at: string;
 };

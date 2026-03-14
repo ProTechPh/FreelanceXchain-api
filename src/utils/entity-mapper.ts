@@ -188,6 +188,7 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
     status: entity.status,
     milestones: (entity.milestones || []).map(mapMilestoneFromEntity),
     tags: entity.tags || [],
+    attachments: entity.attachments || [],
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };

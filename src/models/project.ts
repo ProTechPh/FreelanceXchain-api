@@ -1,5 +1,6 @@
 // Project domain types
 import type { ProjectSkillReference } from './skill.js';
+import type { FileAttachment } from '../utils/file-validator.js';
 
 export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed' | 'refunded';
 export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
@@ -24,6 +25,7 @@ export type Project = {
   status: ProjectStatus;
   milestones: Milestone[];
   tags: string[];
+  attachments: FileAttachment[];
   createdAt: string;
   updatedAt: string;
 };

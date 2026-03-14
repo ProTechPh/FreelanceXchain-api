@@ -24,6 +24,7 @@ export const TABLES = {
 
 export const STORAGE_BUCKETS = {
   PROPOSAL_ATTACHMENTS: 'proposal-attachments',
+  PROJECT_ATTACHMENTS: 'project-attachments',
   DISPUTE_EVIDENCE: 'dispute-evidence',
   PORTFOLIO_IMAGES: 'portfolio-images',
 } as const;

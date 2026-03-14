@@ -3,6 +3,7 @@ import { proposalRepository } from '../repositories/proposal-repository.js';
 import { skillRepository } from '../repositories/skill-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
+import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 
 export type CreateProjectInput = {
   title: string;
@@ -11,6 +12,7 @@ export type CreateProjectInput = {
   budget: number;
   deadline: string;
   tags?: string[];
+  attachments?: FileAttachment[];
 };
 
 export type UpdateProjectInput = {
@@ -21,6 +23,7 @@ export type UpdateProjectInput = {
   deadline?: string;
   status?: ProjectStatus;
   tags?: string[];
+  attachments?: FileAttachment[];
 };
 
 export type AddMilestoneInput = {
@@ -88,6 +91,21 @@ export async function createProject(
   employerId: string,
   input: CreateProjectInput
 ): Promise<ProjectServiceResult<ProjectEntity>> {
+  // Validate attachments if provided
+  if (input.attachments && input.attachments.length > 0) {
+    const attachmentErrors = validateAttachments(input.attachments, { maxFiles: 10 });
+    if (attachmentErrors.length > 0) {
+      return {
+        success: false,
+        error: { 
+          code: 'VALIDATION_ERROR', 
+          message: 'Invalid attachments',
+          details: attachmentErrors.map(e => e.message),
+        },
+      };
+    }
+  }
+
   const skillIds = input.requiredSkills.map(s => s.skillId);
   const skillValidation = await validateSkills(skillIds);
   
@@ -115,6 +133,7 @@ export async function createProject(
     status: 'open' as ProjectStatus,
     milestones: [],
     tags: input.tags ?? [],
+    attachments: input.attachments ?? [],
   };
 
   const created = await projectRepository.createProject(projectInput);

@@ -171,34 +171,80 @@ export function createFileUploadMiddleware(
   } = options;
 
   return [
-    // First, use multer to parse multipart/form-data
-    upload.array(fieldName, maxFiles),
-    
-    // Then, perform additional validation
-    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-      try {
-        // Sanitize and validate the type of req.files
-        const files = req.files;
-        
-        // Type guard: ensure files is an array, not a dictionary or other type
-        if (!files || !Array.isArray(files)) {
+    // First, use multer to parse multipart/form-data, catching multer errors
+    (req: Request, res: Response, next: NextFunction): void => {
+      upload.array(fieldName, maxFiles)(req, res, (err: any) => {
+        if (!err) return next();
+
+        if (err.code === 'LIMIT_FILE_SIZE') {
           res.status(400).json({
             error: {
-              code: 'NO_FILES_UPLOADED',
-              message: `At least ${minFiles} file(s) required`,
+              code: 'FILE_TOO_LARGE',
+              message: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`,
             },
           });
           return;
         }
 
-        // Check if files were uploaded
-        if (files.length === 0) {
+        if (err.code === 'LIMIT_FILE_COUNT') {
           res.status(400).json({
             error: {
-              code: 'NO_FILES_UPLOADED',
-              message: `At least ${minFiles} file(s) required`,
+              code: 'TOO_MANY_FILES',
+              message: `Maximum ${maxFiles} files allowed`,
             },
           });
+          return;
+        }
+
+        if (err.code === 'INVALID_FILE_TYPE') {
+          res.status(400).json({
+            error: {
+              code: 'INVALID_FILE_TYPE',
+              message: err.message,
+            },
+          });
+          return;
+        }
+
+        next(err);
+      });
+    },
+
+    // Then, perform additional validation
+    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+      try {
+        // Sanitize and validate the type of req.files
+        const files = req.files;
+
+        // Type guard: ensure files is an array, not a dictionary or other type
+        if (!files || !Array.isArray(files)) {
+          if (minFiles > 0) {
+            res.status(400).json({
+              error: {
+                code: 'NO_FILES_UPLOADED',
+                message: `At least ${minFiles} file(s) required`,
+              },
+            });
+            return;
+          }
+          // minFiles === 0: files are optional, proceed
+          next();
+          return;
+        }
+
+        // Check if files were uploaded
+        if (files.length === 0) {
+          if (minFiles > 0) {
+            res.status(400).json({
+              error: {
+                code: 'NO_FILES_UPLOADED',
+                message: `At least ${minFiles} file(s) required`,
+              },
+            });
+            return;
+          }
+          // minFiles === 0: no files is fine
+          next();
           return;
         }
 
@@ -300,37 +346,6 @@ export function createFileUploadMiddleware(
 
         next();
       } catch (error: any) {
-        // Handle multer errors
-        if (error.code === 'LIMIT_FILE_SIZE') {
-          res.status(400).json({
-            error: {
-              code: 'FILE_TOO_LARGE',
-              message: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`,
-            },
-          });
-          return;
-        }
-
-        if (error.code === 'LIMIT_FILE_COUNT') {
-          res.status(400).json({
-            error: {
-              code: 'TOO_MANY_FILES',
-              message: `Maximum ${maxFiles} files allowed`,
-            },
-          });
-          return;
-        }
-
-        if (error.code === 'INVALID_FILE_TYPE') {
-          res.status(400).json({
-            error: {
-              code: 'INVALID_FILE_TYPE',
-              message: error.message,
-            },
-          });
-          return;
-        }
-
         // Log unexpected errors
         logger.error('File upload error', { error: error.message, stack: error.stack });
 
@@ -351,6 +366,15 @@ export function createFileUploadMiddleware(
 export const uploadProposalAttachments = createFileUploadMiddleware('files', {
   minFiles: 1,
   maxFiles: 5,
+  validateMagicNumbers: true,
+});
+
+/**
+ * Middleware for project attachments (0-10 files, optional reference materials)
+ */
+export const uploadProjectAttachments = createFileUploadMiddleware('files', {
+  minFiles: 0,
+  maxFiles: 10,
   validateMagicNumbers: true,
 });
 

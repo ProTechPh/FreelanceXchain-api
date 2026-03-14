@@ -1,7 +1,11 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
-import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { uploadProjectAttachments } from '../middleware/file-upload-middleware.js';
+import { fileUploadRateLimiter, apiRateLimiter } from '../middleware/rate-limiter.js';
+import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
+import { STORAGE_BUCKETS } from '../config/supabase.js';
+import { generateId } from '../utils/id.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import {
   createProject,
@@ -435,6 +439,214 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
   });
 
   if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message, details: result.error.details },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(201).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/projects/with-attachments:
+ *   post:
+ *     summary: Create project with file attachments
+ *     description: Create a new project with optional file attachments (images, documents) for reference materials (employer only)
+ *     tags:
+ *       - Projects
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - title
+ *               - description
+ *               - requiredSkills
+ *               - budget
+ *               - deadline
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 minLength: 5
+ *               description:
+ *                 type: string
+ *                 minLength: 20
+ *               requiredSkills:
+ *                 type: string
+ *                 description: JSON string array of skill objects with skillId
+ *               budget:
+ *                 type: number
+ *                 minimum: 0
+ *                 exclusiveMinimum: true
+ *               deadline:
+ *                 type: string
+ *                 format: date-time
+ *               tags:
+ *                 type: string
+ *                 description: JSON string array of tags (optional)
+ *               files:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                   format: binary
+ *                 maxItems: 10
+ *                 description: Reference files/images (optional, max 10 files, 10MB each)
+ *     responses:
+ *       201:
+ *         description: Project created successfully with attachments
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Project'
+ *       400:
+ *         description: Validation error
+ *       401:
+ *         description: Unauthorized
+ */
+router.post('/with-attachments', authMiddleware, requireRole('employer'), requireVerifiedKyc, fileUploadRateLimiter, uploadProjectAttachments, async (req: Request, res: Response) => {
+  const { title, description, requiredSkills, budget, deadline, tags } = req.body;
+  const files = req.files as Express.Multer.File[];
+  const userId = req.user?.userId;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  if (!userId) {
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Validate input
+  const errors: { field: string; message: string }[] = [];
+  if (!title || typeof title !== 'string' || title.trim().length <= 5) {
+    errors.push({ field: 'title', message: 'Title must be at least 5 characters' });
+  }
+  if (!description || typeof description !== 'string' || description.trim().length < 20) {
+    errors.push({ field: 'description', message: 'Description must be at least 20 characters' });
+  }
+
+  // Parse requiredSkills from JSON string
+  let parsedRequiredSkills;
+  try {
+    parsedRequiredSkills = JSON.parse(requiredSkills);
+    if (!Array.isArray(parsedRequiredSkills) || parsedRequiredSkills.length === 0) {
+      errors.push({ field: 'requiredSkills', message: 'At least one skill is required' });
+    } else {
+      // Validate skillId UUIDs in requiredSkills array
+      for (let i = 0; i < parsedRequiredSkills.length; i++) {
+        const skill = parsedRequiredSkills[i];
+        if (skill.skillId && !isValidUUID(skill.skillId)) {
+          errors.push({ field: `requiredSkills[${i}].skillId`, message: 'skillId must be a valid UUID' });
+        }
+      }
+    }
+  } catch (e) {
+    errors.push({ field: 'requiredSkills', message: 'requiredSkills must be a valid JSON array' });
+  }
+
+  if (!budget || isNaN(Number(budget)) || Number(budget) <= 0) {
+    errors.push({ field: 'budget', message: 'Budget must be greater than 0' });
+  }
+  if (!deadline || typeof deadline !== 'string') {
+    errors.push({ field: 'deadline', message: 'Deadline is required' });
+  }
+  
+  // Parse tags from JSON string if provided
+  let parsedTags;
+  if (tags) {
+    try {
+      parsedTags = JSON.parse(tags);
+      if (!Array.isArray(parsedTags)) {
+        errors.push({ field: 'tags', message: 'Tags must be an array' });
+      } else if (parsedTags.some(tag => typeof tag !== 'string')) {
+        errors.push({ field: 'tags', message: 'All tags must be strings' });
+      } else if (parsedTags.length > 10) {
+        errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
+      }
+    } catch (e) {
+      errors.push({ field: 'tags', message: 'Tags must be a valid JSON array' });
+    }
+  }
+
+  if (errors.length > 0) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  let attachments: any[] = [];
+  
+  // Upload files if provided
+  if (files && files.length > 0) {
+    try {
+      const uploadResults = await uploadMultipleFiles(
+        files,
+        STORAGE_BUCKETS.PROJECT_ATTACHMENTS,
+        `projects/${generateId()}`
+      );
+
+      // Check for upload failures
+      const failedUploads = uploadResults.filter(result => !result.success);
+      if (failedUploads.length > 0) {
+        const errors = failedUploads.map(result => result.error).join(', ');
+        throw new Error(`Upload failed: ${errors}`);
+      }
+
+      attachments = uploadResults
+        .filter(result => result.success && result.metadata)
+        .map(result => result.metadata!);
+    } catch (uploadError: any) {
+      // Clean up any partially uploaded files
+      if (attachments.length > 0) {
+        await cleanupUploadedFiles(attachments, STORAGE_BUCKETS.PROJECT_ATTACHMENTS);
+      }
+      
+      res.status(500).json({
+        error: { 
+          code: 'FILE_UPLOAD_ERROR', 
+          message: 'Failed to upload attachments',
+          details: uploadError.message 
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+  }
+
+  const processedTags: string[] | undefined = parsedTags 
+    ? Array.from(new Set(parsedTags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0))) as string[]
+    : undefined;
+  
+  const result = await createProject(userId, { 
+    title, 
+    description, 
+    requiredSkills: parsedRequiredSkills, 
+    budget: Number(budget), 
+    deadline,
+    ...(processedTags && { tags: processedTags }),
+    ...(attachments.length > 0 && { attachments })
+  });
+
+  if (!result.success) {
+    // Clean up uploaded files on project creation failure
+    if (attachments.length > 0) {
+      await cleanupUploadedFiles(attachments, STORAGE_BUCKETS.PROJECT_ATTACHMENTS);
+    }
+    
     res.status(400).json({
       error: { code: result.error.code, message: result.error.message, details: result.error.details },
       timestamp: new Date().toISOString(),
