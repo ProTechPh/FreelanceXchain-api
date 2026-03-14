@@ -12,6 +12,15 @@ export type Milestone = {
   amount: number;
   dueDate: string;
   status: MilestoneStatus;
+  contractId?: string;
+  deliverableFiles?: FileAttachment[];
+  submittedAt?: string;
+  approvedAt?: string;
+  rejectedAt?: string;
+  completedAt?: string;
+  rejectionReason?: string | null;
+  revisionCount?: number;
+  notes?: string;
 };
 
 export type Project = {

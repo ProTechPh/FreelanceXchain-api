@@ -12,6 +12,24 @@ export type MilestoneEntity = {
   amount: number;
   due_date: string;
   status: MilestoneStatus;
+  dueDate?: string;
+  contract_id?: string;
+  contractId?: string;
+  deliverable_files?: FileAttachment[];
+  deliverableFiles?: FileAttachment[];
+  submitted_at?: string;
+  submittedAt?: string;
+  approved_at?: string;
+  approvedAt?: string;
+  rejected_at?: string;
+  rejectedAt?: string;
+  completed_at?: string;
+  completedAt?: string;
+  rejection_reason?: string | null;
+  rejectionReason?: string | null;
+  revision_count?: number;
+  revisionCount?: number;
+  notes?: string;
 };
 
 export type ProjectEntity = {

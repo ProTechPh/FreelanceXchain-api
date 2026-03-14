@@ -4,15 +4,178 @@ import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
 import { uploadFile } from '../utils/file-upload.js';
+import { contractRepository } from '../repositories/contract-repository.js';
+import { projectRepository, type MilestoneEntity, type ProjectEntity } from '../repositories/project-repository.js';
 import {
-  submitMilestone,
   approveMilestone,
   rejectMilestone,
   getMilestoneById,
   getContractMilestones,
 } from '../services/milestone-service.js';
+import { requestMilestoneCompletion } from '../services/payment-service.js';
 
 const router = Router();
+
+type MilestoneContext = {
+  contractId: string;
+  project: ProjectEntity;
+  milestone: MilestoneEntity;
+  milestoneIndex: number;
+};
+
+async function findFreelancerMilestoneContext(
+  freelancerId: string,
+  milestoneId: string
+): Promise<MilestoneContext | null> {
+  const contractsResult = await contractRepository.getContractsByFreelancer(freelancerId, { limit: 1000, offset: 0 });
+
+  // Prefer active contracts first, then fall back to others.
+  const contracts = [...contractsResult.items].sort((a, b) => {
+    if (a.status === 'active' && b.status !== 'active') return -1;
+    if (a.status !== 'active' && b.status === 'active') return 1;
+    return b.created_at.localeCompare(a.created_at);
+  });
+
+  for (const contract of contracts) {
+    const project = await projectRepository.findProjectById(contract.project_id);
+    if (!project) continue;
+
+    const milestoneIndex = (project.milestones || []).findIndex((m) => m.id === milestoneId);
+    if (milestoneIndex === -1) continue;
+
+    const milestone = project.milestones[milestoneIndex];
+    if (!milestone) continue;
+
+    return {
+      contractId: contract.id,
+      project,
+      milestone,
+      milestoneIndex,
+    };
+  }
+
+  return null;
+}
+
+function mapMilestoneResponse(
+  milestone: MilestoneEntity,
+  contractId: string,
+  project: ProjectEntity,
+  submittedAtIso?: string
+) {
+  const deliverableFiles = (milestone as any).deliverableFiles || (milestone as any).deliverable_files || [];
+  const revisionCount = (milestone as any).revisionCount ?? (milestone as any).revision_count ?? 0;
+  const submittedAt = (milestone as any).submittedAt || (milestone as any).submitted_at || submittedAtIso;
+  const approvedAt = (milestone as any).approvedAt || (milestone as any).approved_at;
+  const rejectedAt = (milestone as any).rejectedAt || (milestone as any).rejected_at;
+  const completedAt = (milestone as any).completedAt || (milestone as any).completed_at;
+  const rejectionReason = (milestone as any).rejectionReason || (milestone as any).rejection_reason;
+
+  return {
+    id: milestone.id,
+    contractId,
+    title: milestone.title,
+    description: milestone.description,
+    amount: milestone.amount,
+    dueDate: (milestone as any).dueDate || milestone.due_date,
+    status: milestone.status,
+    submittedAt,
+    approvedAt,
+    rejectedAt,
+    completedAt,
+    deliverableFiles,
+    rejectionReason,
+    revisionCount,
+    notes: (milestone as any).notes,
+    createdAt: project.created_at,
+    updatedAt: project.updated_at,
+  };
+}
+
+async function submitMilestoneFromProjectContext(
+  milestoneId: string,
+  freelancerId: string,
+  deliverables: Array<{ filename: string; url: string; size: number; mimeType: string }>,
+  notes?: string
+): Promise<{ success: true; data: any } | { success: false; error: { code: string; message: string } }> {
+  const context = await findFreelancerMilestoneContext(freelancerId, milestoneId);
+  if (!context) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
+    };
+  }
+
+  const completion = await requestMilestoneCompletion(context.contractId, milestoneId, freelancerId);
+  if (!completion.success) {
+    const completionError = 'error' in completion
+      ? completion.error
+      : { code: 'SUBMIT_FAILED', message: 'Failed to submit milestone' };
+    return { success: false, error: completionError };
+  }
+
+  const reloadedProject = await projectRepository.findProjectById(context.project.id);
+  if (!reloadedProject) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Project not found' },
+    };
+  }
+
+  const milestoneIndex = (reloadedProject.milestones || []).findIndex((m) => m.id === milestoneId);
+  if (milestoneIndex === -1) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
+    };
+  }
+
+  const existing = reloadedProject.milestones[milestoneIndex];
+  if (!existing) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
+    };
+  }
+
+  const now = new Date().toISOString();
+  const currentRevisionCount = Number((existing as any).revisionCount ?? (existing as any).revision_count ?? 0);
+  const existingStatus = String((existing as any).status ?? '');
+  const nextRevisionCount = existingStatus === 'rejected' ? currentRevisionCount + 1 : currentRevisionCount;
+
+  const updatedMilestone: MilestoneEntity = {
+    ...existing,
+    status: 'submitted',
+    submitted_at: now,
+    submittedAt: now,
+    deliverable_files: deliverables,
+    deliverableFiles: deliverables,
+    notes: notes ?? (existing as any).notes,
+    revision_count: nextRevisionCount,
+    revisionCount: nextRevisionCount,
+    rejection_reason: null,
+    rejectionReason: null,
+  } as any;
+
+  const updatedMilestones = [...reloadedProject.milestones];
+  updatedMilestones[milestoneIndex] = updatedMilestone;
+
+  const updatedProject = await projectRepository.updateProject(reloadedProject.id, {
+    milestones: updatedMilestones,
+  });
+
+  if (!updatedProject) {
+    return {
+      success: false,
+      error: { code: 'UPDATE_FAILED', message: 'Failed to update milestone submission data' },
+    };
+  }
+
+  return {
+    success: true,
+    data: mapMilestoneResponse(updatedMilestone, context.contractId, updatedProject, now),
+  };
+}
 
 /**
  * @swagger
@@ -39,7 +202,8 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: R
     const result = await getMilestoneById(milestoneId);
 
     if (!result.success) {
-      return res.status(404).json({ error: result.error.message });
+      const message = 'error' in result ? result.error.message : 'Milestone not found';
+      return res.status(404).json({ error: message });
     }
 
     return res.json(result.data);
@@ -72,7 +236,8 @@ router.get('/contract/:contractId', authMiddleware, validateUUID(), apiRateLimit
     const result = await getContractMilestones(contractId);
 
     if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
+      const message = 'error' in result ? result.error.message : 'Failed to get milestones';
+      return res.status(400).json({ error: message });
     }
 
     return res.json(result.data);
@@ -136,9 +301,9 @@ router.post('/:id/upload-deliverables',
         return res.status(400).json({ error: 'No files provided' });
       }
 
-      // Verify milestone ownership
-      const milestoneResult = await getMilestoneById(milestoneId);
-      if (!milestoneResult.success) {
+      // Verify milestone ownership via freelancer's contracts/projects
+      const context = await findFreelancerMilestoneContext(userId, milestoneId);
+      if (!context) {
         return res.status(404).json({ error: 'Milestone not found' });
       }
 
@@ -224,15 +389,15 @@ router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUU
     const userId = req.user?.id ?? '';
     const { deliverables, notes } = req.body;
 
-    const result = await submitMilestone({
-      milestoneId,
-      freelancerId: userId,
-      deliverables: deliverables || [],
-      notes,
-    });
+    const result = await submitMilestoneFromProjectContext(milestoneId, userId, deliverables || [], notes);
 
     if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
+      const errorResult = 'error' in result
+        ? result.error
+        : { code: 'SUBMIT_FAILED', message: 'Failed to submit milestone' };
+      const statusCode = errorResult.code === 'NOT_FOUND' ? 404 :
+        errorResult.code === 'UNAUTHORIZED' ? 403 : 400;
+      return res.status(statusCode).json({ error: errorResult.message });
     }
 
     return res.json(result.data);
@@ -336,15 +501,15 @@ router.post('/:id/submit-with-files',
       const allDeliverables = [...existingFiles, ...newFiles];
 
       // Submit milestone with all deliverables
-      const result = await submitMilestone({
-        milestoneId,
-        freelancerId: userId,
-        deliverables: allDeliverables,
-        notes,
-      });
+      const result = await submitMilestoneFromProjectContext(milestoneId, userId, allDeliverables, notes);
 
       if (!result.success) {
-        return res.status(400).json({ error: result.error.message });
+        const errorResult = 'error' in result
+          ? result.error
+          : { code: 'SUBMIT_FAILED', message: 'Failed to submit milestone' };
+        const statusCode = errorResult.code === 'NOT_FOUND' ? 404 :
+          errorResult.code === 'UNAUTHORIZED' ? 403 : 400;
+        return res.status(statusCode).json({ error: errorResult.message });
       }
 
       return res.json({
@@ -397,7 +562,8 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
     });
 
     if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
+      const message = 'error' in result ? result.error.message : 'Failed to approve milestone';
+      return res.status(400).json({ error: message });
     }
 
     return res.json(result.data);
@@ -455,7 +621,8 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID
     });
 
     if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
+      const message = 'error' in result ? result.error.message : 'Failed to reject milestone';
+      return res.status(400).json({ error: message });
     }
 
     return res.json(result.data);

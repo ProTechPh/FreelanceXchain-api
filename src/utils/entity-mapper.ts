@@ -163,13 +163,29 @@ export function mapEmployerProfileFromEntity(entity: EmployerProfileEntity): Emp
 
 // Project mapping functions
 export function mapMilestoneFromEntity(entity: MilestoneEntity): Milestone {
+  const contractId = entity.contractId || entity.contract_id;
+  const submittedAt = entity.submittedAt || entity.submitted_at;
+  const approvedAt = entity.approvedAt || entity.approved_at;
+  const rejectedAt = entity.rejectedAt || entity.rejected_at;
+  const completedAt = entity.completedAt || entity.completed_at;
+  const rejectionReason = entity.rejectionReason || entity.rejection_reason || null;
+
   return {
     id: entity.id,
     title: entity.title,
     description: entity.description,
     amount: entity.amount,
-    dueDate: entity.due_date,
+    dueDate: entity.dueDate || entity.due_date,
     status: entity.status,
+    deliverableFiles: entity.deliverableFiles || entity.deliverable_files || [],
+    revisionCount: entity.revisionCount ?? entity.revision_count ?? 0,
+    notes: (entity as any).notes,
+    ...(contractId !== undefined ? { contractId } : {}),
+    ...(submittedAt !== undefined ? { submittedAt } : {}),
+    ...(approvedAt !== undefined ? { approvedAt } : {}),
+    ...(rejectedAt !== undefined ? { rejectedAt } : {}),
+    ...(completedAt !== undefined ? { completedAt } : {}),
+    ...(rejectionReason !== undefined ? { rejectionReason } : {}),
   };
 }
 
