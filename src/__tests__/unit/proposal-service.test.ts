@@ -66,6 +66,20 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () 
   deployEscrowContract: mockBlockchainService.deployEscrow,
 }));
 
+// Mock payment service
+jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+  initializeContractEscrow: jest.fn<any>().mockResolvedValue({
+    success: true,
+    data: { escrowAddress: '0x1234567890123456789012345678901234567890' }
+  }),
+}));
+
+// Mock agreement contract service
+jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({
+  createAgreementOnBlockchain: jest.fn<any>().mockResolvedValue(undefined),
+  signAgreement: jest.fn<any>().mockResolvedValue(undefined),
+}));
+
 // Import after mocking
 const {
   submitProposal,
@@ -98,7 +112,7 @@ describe('Proposal Service - Property-Based Tests', () => {
         proposal.status = 'accepted';
         proposalStore.set(proposalId, proposal);
         
-        // Create contract
+        // Create contract with pending status (will be activated by proposal service)
         const contractId = 'contract-' + Date.now();
         const now = new Date().toISOString();
         const contract = {
@@ -108,7 +122,7 @@ describe('Proposal Service - Property-Based Tests', () => {
           freelancer_id: proposal.freelancer_id,
           employer_id: params.p_employer_id,
           total_amount: proposal.proposed_rate,
-          status: 'active',
+          status: 'pending',
           escrow_address: null,
           created_at: now,
           updated_at: now,
@@ -381,7 +395,7 @@ describe('Proposal Service - Unit Tests', () => {
         proposal.status = 'accepted';
         proposalStore.set(proposalId, proposal);
         
-        // Create contract
+        // Create contract with pending status (will be activated by proposal service)
         const contractId = 'contract-' + Date.now();
         const now = new Date().toISOString();
         const contract = {
@@ -391,7 +405,7 @@ describe('Proposal Service - Unit Tests', () => {
           freelancer_id: proposal.freelancer_id,
           employer_id: params.p_employer_id,
           total_amount: proposal.proposed_rate,
-          status: 'active',
+          status: 'pending',
           escrow_address: null,
           created_at: now,
           updated_at: now,
@@ -602,6 +616,12 @@ describe('Proposal Service - Unit Tests', () => {
     });
     userStore.set(employer.id, employer);
 
+    const freelancer = createTestUser({ 
+      id: freelancerId,
+      wallet_address: '0x9876543210987654321098765432109876543210'
+    });
+    userStore.set(freelancer.id, freelancer);
+
     const proposal = createTestProposal({ 
       project_id: projectId,
       freelancer_id: freelancerId,
@@ -612,12 +632,14 @@ describe('Proposal Service - Unit Tests', () => {
 
     const result = await acceptProposal(proposal.id, employerId);
 
-    // Verify proposal was accepted and contract created
+    // Verify proposal was accepted and contract created with active status
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.proposal.status).toBe('accepted');
       expect(result.data.contract).toBeDefined();
       expect(result.data.contract.proposalId).toBe(proposal.id);
+      expect(result.data.contract.status).toBe('active');
+      expect(result.data.contract.escrowAddress).toBeDefined();
     }
   });
 });

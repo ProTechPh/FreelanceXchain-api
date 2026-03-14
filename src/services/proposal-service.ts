@@ -335,7 +335,7 @@ export async function acceptProposal(
   const createdContractEntity = await contractRepository.getContractById(createdContractId);
   const createdContract = mapContractFromEntity(createdContractEntity!);
 
-  // Create agreement on blockchain
+  // Create agreement on blockchain and initialize escrow
   try {
     const employer = await userRepository.getUserById(project.employerId);
     const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
@@ -360,10 +360,33 @@ export async function acceptProposal(
       // The employer accepted the proposal; the freelancer submitted it.
       // Auto-signing is kept for now but should be replaced with explicit consent flow.
       await signAgreement(createdContract.id, freelancer.wallet_address);
+
+      // Initialize escrow and activate contract
+      const { initializeContractEscrow } = await import('./payment-service.js');
+      const escrowResult = await initializeContractEscrow(
+        createdContract,
+        project,
+        employer.wallet_address,
+        freelancer.wallet_address
+      );
+
+      if (escrowResult.success) {
+        // Update contract status to active
+        const updatedContractEntity = await contractRepository.updateContract(createdContract.id, {
+          status: 'active',
+        });
+        if (updatedContractEntity) {
+          createdContract.status = 'active';
+          createdContract.escrowAddress = escrowResult.data.escrowAddress;
+        }
+      } else {
+        console.error('Failed to initialize escrow:', escrowResult.error);
+        // Continue - contract remains pending, employer can manually fund it later
+      }
     }
   } catch (error) {
-    console.error('Failed to create blockchain agreement:', error);
-    // Continue - blockchain is secondary
+    console.error('Failed to create blockchain agreement or initialize escrow:', error);
+    // Continue - blockchain is secondary, contract remains pending
   }
 
   // Update project status to in_progress
