@@ -34,7 +34,7 @@ async function main() {
   // Read compiled contract
   const escrowArtifact = JSON.parse(
     fs.readFileSync(
-      path.join(__dirname, "../artifacts/contracts/FreelanceEscrow.sol/FreelanceEscrow.json"),
+      path.join(__dirname, "../../artifacts/contracts/FreelanceEscrow.sol/FreelanceEscrow.json"),
       "utf8"
     )
   );

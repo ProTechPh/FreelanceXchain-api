@@ -44,7 +44,7 @@ async function main() {
   console.log(`Balance: ${ethers.formatEther(balance)} ETH\n`);
 
   const deployedContracts = {};
-  const artifactsDir = path.join(__dirname, "../artifacts/contracts");
+  const artifactsDir = path.join(__dirname, "../../artifacts/contracts");
 
   // Deploy contracts sequentially with fresh providers
   console.log("1. Deploying FreelanceReputation...");

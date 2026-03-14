@@ -15,6 +15,7 @@ module.exports = {
         runs: 1000,
       },
       viaIR: true,
+      evmVersion: "paris",
     },
   },
   networks: {
