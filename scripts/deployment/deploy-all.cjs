@@ -6,8 +6,8 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:7545";
-const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY;
+const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:8545";
+const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY || "0xbb1d4e6caa880da750f88987bc8191e5af15bb84a080ee627488cd574fdfc25a";
 
 async function deployContract(name, artifactPath) {
   // Create fresh provider and wallet for each deployment
