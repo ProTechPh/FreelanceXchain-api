@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import type {
   RefundRequest,
@@ -20,12 +20,12 @@ export async function createRefundRequest(
   input: CreateRefundRequestInput
 ): Promise<ServiceResult<RefundRequest>> {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
 
     // Get contract details
     const { data: contract, error: contractError } = await supabase
       .from('contracts')
-      .select('*, projects!inner(employer_id)')
+      .select('*')
       .eq('id', input.contractId)
       .single();
 
@@ -36,15 +36,37 @@ export async function createRefundRequest(
       };
     }
 
+    // Only allow refund on active contracts
+    if (contract.status !== 'active') {
+      return {
+        success: false,
+        error: { code: 'INVALID_STATUS', message: `Cannot request refund on a ${contract.status} contract` },
+      };
+    }
+
     // Verify requester is involved
-    const isInvolved = 
-      contract.freelancer_id === input.requestedBy || 
-      contract.projects.employer_id === input.requestedBy;
+    const isInvolved =
+      contract.freelancer_id === input.requestedBy ||
+      contract.employer_id === input.requestedBy;
 
     if (!isInvolved) {
       return {
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'You are not involved in this contract' },
+      };
+    }
+
+    // Check for existing pending refund request
+    const { data: existingRefunds } = await supabase
+      .from('refund_requests')
+      .select('id')
+      .eq('contract_id', input.contractId)
+      .eq('status', 'pending');
+
+    if (existingRefunds && existingRefunds.length > 0) {
+      return {
+        success: false,
+        error: { code: 'DUPLICATE_REQUEST', message: 'There is already a pending refund request for this contract' },
       };
     }
 
@@ -70,8 +92,8 @@ export async function createRefundRequest(
     }
 
     // Notify other party
-    const otherPartyId = contract.freelancer_id === input.requestedBy 
-      ? contract.projects.employer_id 
+    const otherPartyId = contract.freelancer_id === input.requestedBy
+      ? contract.employer_id
       : contract.freelancer_id;
 
     const notificationResult = await createNotification({
@@ -111,12 +133,12 @@ export async function approveRefund(
   input: ApproveRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
 
     // Get refund request
     const { data: refund, error: refundError } = await supabase
       .from('refund_requests')
-      .select('*, contracts!inner(*, projects!inner(employer_id))')
+      .select('*, contracts!inner(*)')
       .eq('id', input.refundId)
       .single();
 
@@ -130,8 +152,8 @@ export async function approveRefund(
     const contract = refund.contracts;
 
     // Verify approver is the other party
-    const otherPartyId = contract.freelancer_id === refund.requested_by 
-      ? contract.projects.employer_id 
+    const otherPartyId = contract.freelancer_id === refund.requested_by
+      ? contract.employer_id
       : contract.freelancer_id;
 
     if (otherPartyId !== input.approvedBy) {
@@ -172,8 +194,7 @@ export async function approveRefund(
         const { refundMilestone } = await import('./escrow-blockchain.js');
 
         // Get milestone index from refund data or default to 0
-        // In a full implementation, you'd track which milestone this refund is for
-        const milestoneIndex = 0; // This should be passed in the input or determined from the refund
+        const milestoneIndex = 0;
 
         await refundMilestone(contract.escrow_address, milestoneIndex);
         logger.info('Blockchain refund executed', {
@@ -192,6 +213,26 @@ export async function approveRefund(
         refundId: input.refundId
       });
     }
+
+    // Update contract status to cancelled after refund approval
+    await supabase
+      .from('contracts')
+      .update({
+        status: 'cancelled',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', refund.contract_id);
+
+    // Cancel any other pending refund requests for this contract
+    await supabase
+      .from('refund_requests')
+      .update({
+        status: 'cancelled',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('contract_id', refund.contract_id)
+      .eq('status', 'pending')
+      .neq('id', input.refundId);
 
     // Notify requester
     const notificationResult = await createNotification({
@@ -231,12 +272,12 @@ export async function rejectRefund(
   input: RejectRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
 
     // Get refund request
     const { data: refund, error: refundError } = await supabase
       .from('refund_requests')
-      .select('*, contracts!inner(*, projects!inner(employer_id))')
+      .select('*, contracts!inner(*)')
       .eq('id', input.refundId)
       .single();
 
@@ -250,8 +291,8 @@ export async function rejectRefund(
     const contract = refund.contracts;
 
     // Verify rejector is the other party
-    const otherPartyId = contract.freelancer_id === refund.requested_by 
-      ? contract.projects.employer_id 
+    const otherPartyId = contract.freelancer_id === refund.requested_by
+      ? contract.employer_id
       : contract.freelancer_id;
 
     if (otherPartyId !== input.rejectedBy) {
@@ -326,12 +367,12 @@ export async function getContractRefunds(
   userId: string
 ): Promise<ServiceResult<RefundRequest[]>> {
   try {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseServiceClient();
 
     // Verify user is involved
     const { data: contract, error: contractError } = await supabase
       .from('contracts')
-      .select('*, projects!inner(employer_id)')
+      .select('*')
       .eq('id', contractId)
       .single();
 
@@ -342,9 +383,9 @@ export async function getContractRefunds(
       };
     }
 
-    const isInvolved = 
-      contract.freelancer_id === userId || 
-      contract.projects.employer_id === userId;
+    const isInvolved =
+      contract.freelancer_id === userId ||
+      contract.employer_id === userId;
 
     if (!isInvolved) {
       return {
