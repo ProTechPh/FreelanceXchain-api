@@ -27,6 +27,7 @@ export type AuthResult = {
     walletAddress: string;
     kycStatus?: string;
     createdAt: string;
+    authProvider?: 'email' | 'oauth';
   };
   accessToken: string;
   refreshToken: string;
