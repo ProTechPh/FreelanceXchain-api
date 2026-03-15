@@ -12,6 +12,7 @@ import {
   getDisputeManagement,
   getSystemHealth,
 } from '../services/admin-service.js';
+import { getAdminAnalytics } from '../services/analytics-service.js';
 
 const router = Router();
 
@@ -28,6 +29,32 @@ router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
   const result = await getPlatformStats();
+
+  if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(200).json(result.data);
+});
+
+/**
+ * @swagger
+ * /api/admin/analytics:
+ *   get:
+ *     summary: Get admin analytics dashboard metrics
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  const result = await getAdminAnalytics();
 
   if (!result.success) {
     res.status(400).json({

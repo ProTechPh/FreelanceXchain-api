@@ -421,6 +421,45 @@ router.get(
       const result = await getContractPaymentStatus(contractId, userId);
 
       if (!result.success) {
+        // Admin exception: Check if it threw an unauthorized error but the user is an admin
+        if (result.error.code === 'UNAUTHORIZED' && req.user?.role === 'admin') {
+          // If the user is an admin, we bypass this exact error and manually fetch the info.
+          // In an ideal system we'd pass the role directly to `getContractPaymentStatus`,
+          // but doing it directly via the same queries here saves refactoring the service payload type
+
+          const { getContractById } = await import('../services/contract-service.js');
+          const { getProjectById } = await import('../services/project-service.js');
+          const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
+
+          const contractRes = await getContractById(contractId);
+          if (contractRes.success && contractRes.data) {
+            const projectRes = await getProjectById(contractRes.data.projectId);
+            if (projectRes.success && projectRes.data) {
+              const project = mapProjectFromEntity(projectRes.data);
+
+              const totalAmount = contractRes.data.totalAmount;
+              const releasedAmount = project.milestones
+                .filter(m => m.status === 'approved')
+                .reduce((sum, m) => sum + m.amount, 0);
+
+              return res.json({
+                contractId: contractRes.data.id,
+                escrowAddress: contractRes.data.escrowAddress,
+                totalAmount,
+                releasedAmount,
+                pendingAmount: totalAmount - releasedAmount,
+                milestones: project.milestones.map(m => ({
+                  id: m.id,
+                  title: m.title,
+                  amount: m.amount,
+                  status: m.status,
+                })),
+                contractStatus: contractRes.data.status,
+              });
+            }
+          }
+        }
+
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                           result.error.code === 'UNAUTHORIZED' ? 403 : 400;
         res.status(statusCode).json({ error: result.error });

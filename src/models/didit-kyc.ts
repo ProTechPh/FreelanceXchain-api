@@ -164,8 +164,8 @@ export type KycVerification = {
   
   // Didit session info
   didit_session_id: string;
-  didit_session_token: string;
-  didit_session_url: string;
+  didit_session_token: string | null;
+  didit_session_url: string | null;
   didit_workflow_id: string;
   
   // Verification decision from Didit

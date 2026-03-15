@@ -861,16 +861,16 @@ router.post(
       return;
     }
 
-    const idFrontImage = files['id_front'][0].buffer;
+    const idFrontImage = files['id_front'][0]!.buffer;
     const idBackImage = files['id_back']?.[0]?.buffer;
-    const selfieImage = files['selfie'][0].buffer;
+    const selfieImage = files['selfie'][0]!.buffer;
 
     try {
       const result = await manualKycVerification({
         userId,
         adminUserId,
         idFrontImage,
-        idBackImage,
+        ...(idBackImage && { idBackImage }),
         selfieImage,
       });
 

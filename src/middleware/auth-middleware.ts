@@ -269,6 +269,12 @@ export async function requireVerifiedKyc(req: Request, res: Response, next: Next
     return;
   }
 
+  // Exempt admins from KYC requirement since they manage the platform
+  if (req.user.role === 'admin') {
+    next();
+    return;
+  }
+
   try {
     const verified = await isUserVerified(req.user.userId);
     if (!verified) {

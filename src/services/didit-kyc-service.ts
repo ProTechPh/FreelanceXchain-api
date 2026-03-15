@@ -133,7 +133,6 @@ export async function initiateKycVerification(
       didit_session_token: session.session_token,
       didit_session_url: session.url,
       didit_workflow_id: session.workflow_id,
-      created_at: new Date().toISOString(), // Reset creation time for new cooldown
       updated_at: new Date().toISOString(),
     });
   } else {
@@ -699,14 +698,24 @@ export async function manualKycVerification(params: {
     let amlClean = true;
     if (idData.first_name && idData.last_name) {
       logger.info('Manual KYC: Running AML screening', { userId });
-      const amlResult = await screenAml({
+      const amlParams: {
+        full_name: string;
+        entity_type: 'person' | 'company';
+        date_of_birth?: string;
+        nationality?: string;
+        document_number?: string;
+        vendor_data?: string;
+      } = {
         full_name: `${idData.first_name} ${idData.last_name}`,
         entity_type: 'person',
-        date_of_birth: idData.date_of_birth,
-        nationality: idData.nationality,
-        document_number: idData.document_number,
         vendor_data: userId,
-      });
+      };
+
+      if (idData.date_of_birth) amlParams.date_of_birth = idData.date_of_birth;
+      if (idData.nationality) amlParams.nationality = idData.nationality;
+      if (idData.document_number) amlParams.document_number = idData.document_number;
+
+      const amlResult = await screenAml(amlParams);
 
       if (amlResult.success && amlResult.data.aml.status === 'Declined') {
         amlClean = false;
@@ -750,7 +759,10 @@ export async function manualKycVerification(params: {
     if (existingVerification) {
       verification = await updateKycVerification(existingVerification.id, verificationData);
     } else {
-      verification = await createKycVerification(verificationData as CreateKycVerificationInput);
+      verification = await createKycVerification({
+        ...verificationData,
+        id: generateId(),
+      } as Omit<KycVerification, 'created_at' | 'updated_at'>);
     }
 
     if (!verification) {

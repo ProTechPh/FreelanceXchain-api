@@ -368,7 +368,7 @@ export async function verifyIdDocument(
         'x-api-key': DIDIT_API_KEY ?? '',
         ...form.getHeaders(),
       },
-      body: form,
+      body: form as any,
     });
 
     const data = await response.json();
@@ -426,7 +426,7 @@ export async function checkPassiveLiveness(
         'x-api-key': DIDIT_API_KEY ?? '',
         ...form.getHeaders(),
       },
-      body: form,
+      body: form as any,
     });
 
     const data = await response.json();
@@ -485,7 +485,7 @@ export async function matchFaces(
         'x-api-key': DIDIT_API_KEY ?? '',
         ...form.getHeaders(),
       },
-      body: form,
+      body: form as any,
     });
 
     const data = await response.json();

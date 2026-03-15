@@ -68,6 +68,17 @@ export class UserRepository extends BaseRepository<UserEntity> {
   async updateUserName(id: string, name: string): Promise<UserEntity | null> {
     return this.update(id, { name });
   }
+
+  async getUsersByRole(role: 'freelancer' | 'employer' | 'admin'): Promise<UserEntity[]> {
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('*')
+      .eq('role', role);
+
+    if (error) throw new Error(`Failed to get users by role: ${error.message}`);
+    return (data ?? []) as UserEntity[];
+  }
 }
 
 export const userRepository = new UserRepository();
