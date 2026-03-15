@@ -121,7 +121,33 @@ export async function submitReview(data: SubmitReviewInput): Promise<ServiceResu
       };
     }
 
-    // TODO: Update blockchain reputation system
+    // Update blockchain reputation system
+    try {
+      // Get reviewee wallet address
+      const { data: revieweeUser } = await supabase
+        .from('users')
+        .select('wallet_address')
+        .eq('id', revieweeId)
+        .single();
+
+      if (revieweeUser?.wallet_address) {
+        const { submitRatingToBlockchain } = await import('./reputation-blockchain.js');
+        await submitRatingToBlockchain({
+          contractId,
+          rateeAddress: revieweeUser.wallet_address,
+          rating,
+          comment: comment || '',
+          isEmployerRating: reviewerId === contract.employer_id,
+        });
+        logger.info('Review synced to blockchain', { reviewId: review.id, contractId });
+      } else {
+        logger.warn('Reviewee has no wallet address, skipping blockchain sync', { revieweeId });
+      }
+    } catch (blockchainError) {
+      // Don't fail the review if blockchain sync fails
+      logger.error('Failed to sync review to blockchain', { error: blockchainError, reviewId: review.id });
+    }
+
     logger.debug('Review submitted successfully', { reviewId: review.id, contractId });
 
     return {

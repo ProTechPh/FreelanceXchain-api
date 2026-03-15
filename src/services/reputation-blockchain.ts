@@ -63,13 +63,19 @@ export async function submitRatingToBlockchain(
     throw new Error('Rating must be an integer between 1 and 5');
   }
 
+  // Validate ratee address
+  if (!params.rateeAddress || params.rateeAddress === '0x0000000000000000000000000000000000000000') {
+    throw new Error('Invalid ratee address');
+  }
+
   const contract = getReputationContractWithSigner();
 
   // Submit rating transaction
+  // Contract signature: submitRating(address ratee, uint8 score, string comment, string contractId, bool isEmployerRating)
   const tx = await (contract as any).submitRating(
     params.rateeAddress,
     params.rating,
-    params.comment,
+    params.comment || '',
     params.contractId,
     params.isEmployerRating
   );
@@ -110,8 +116,8 @@ export async function getRatingsFromBlockchain(userAddress: string): Promise<Blo
 
   const contract = getReputationContract();
 
-  // Get rating indices for user
-  const indices = await (contract as any).getUserRatingIndices(userAddress);
+  // Get rating indices for user (with pagination - contract requires offset and limit)
+  const indices = await (contract as any).getUserRatingIndices(userAddress, 0, 100);
 
   // Fetch all ratings
   const ratings: BlockchainRating[] = [];
@@ -141,8 +147,8 @@ export async function getRatingsGivenByUser(userAddress: string): Promise<Blockc
 
   const contract = getReputationContract();
 
-  // Get rating indices given by user
-  const indices = await (contract as any).getGivenRatingIndices(userAddress);
+  // Get rating indices given by user (with pagination - contract requires offset and limit)
+  const indices = await (contract as any).getGivenRatingIndices(userAddress, 0, 100);
 
   // Fetch all ratings
   const ratings: BlockchainRating[] = [];

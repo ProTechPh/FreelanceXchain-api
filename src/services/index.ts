@@ -275,8 +275,6 @@ export {
   getWorkHistory,
   getContractRatings,
   canUserRate,
-  serializeReputationRecord,
-  deserializeReputationRecord,
 } from './reputation-service.js';
 
 export type {

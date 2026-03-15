@@ -246,8 +246,45 @@ export async function approveMilestone(
       });
     }
 
-    // TODO: Trigger blockchain payment release
-    // await releasePaymentForMilestone(milestone.contractId, input.milestoneId);
+    // Trigger blockchain payment release
+    try {
+      // Get contract escrow address
+      const { data: contractData } = await supabase
+        .from('contracts')
+        .select('escrow_address')
+        .eq('id', milestone.contractId)
+        .single();
+
+      if (contractData?.escrow_address) {
+        const { approveMilestone: approveBlockchainMilestone } = await import('./escrow-blockchain.js');
+
+        // Get milestone index - need to find the order of this milestone in the contract
+        const { data: allMilestones } = await supabase
+          .from('milestones')
+          .select('id')
+          .eq('contract_id', milestone.contractId)
+          .order('due_date', { ascending: true });
+
+        const milestoneIndex = allMilestones?.findIndex(m => m.id === input.milestoneId) ?? 0;
+
+        await approveBlockchainMilestone(contractData.escrow_address, milestoneIndex);
+        logger.info('Blockchain payment released', {
+          milestoneId: input.milestoneId,
+          escrowAddress: contractData.escrow_address,
+          milestoneIndex
+        });
+      } else {
+        logger.warn('Contract has no escrow address, skipping blockchain payment release', {
+          contractId: milestone.contractId
+        });
+      }
+    } catch (blockchainError) {
+      // Log error but don't fail the approval - milestone is approved in DB
+      logger.error('Failed to release blockchain payment', {
+        error: blockchainError,
+        milestoneId: input.milestoneId
+      });
+    }
 
     logger.info(`Milestone ${input.milestoneId} approved by employer ${input.employerId}`);
 

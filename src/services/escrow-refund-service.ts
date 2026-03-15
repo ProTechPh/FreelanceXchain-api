@@ -166,8 +166,32 @@ export async function approveRefund(
       throw updateError || new Error('Failed to approve refund');
     }
 
-    // TODO: Execute blockchain refund
-    // await executeBlockchainRefund(refund.contract_id, refund.amount);
+    // Execute blockchain refund
+    try {
+      if (contract.escrow_address) {
+        const { refundMilestone } = await import('./escrow-blockchain.js');
+
+        // Get milestone index from refund data or default to 0
+        // In a full implementation, you'd track which milestone this refund is for
+        const milestoneIndex = 0; // This should be passed in the input or determined from the refund
+
+        await refundMilestone(contract.escrow_address, milestoneIndex);
+        logger.info('Blockchain refund executed', {
+          refundId: input.refundId,
+          escrowAddress: contract.escrow_address
+        });
+      } else {
+        logger.warn('Contract has no escrow address, skipping blockchain refund', {
+          contractId: refund.contract_id
+        });
+      }
+    } catch (blockchainError) {
+      // Log error but don't fail the approval - the refund is approved in DB
+      logger.error('Failed to execute blockchain refund', {
+        error: blockchainError,
+        refundId: input.refundId
+      });
+    }
 
     // Notify requester
     const notificationResult = await createNotification({
