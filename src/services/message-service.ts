@@ -2,6 +2,8 @@ import { getSupabaseServiceClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import { messageRepository } from '../repositories/message-repository.js';
 import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/message.js';
+import { notificationEmitter } from './notification-delivery-service.js';
+import { generateId } from '../utils/id.js';
 
 const supabase = getSupabaseServiceClient();
 
@@ -142,7 +144,23 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
 
     await messageRepository.updateConversation(conversation.id, updates);
 
-    // TODO: Trigger notification for receiver
+    // Push real-time message event to the receiver only via SSE.
+    // The sender already has the message from the API response, so we do NOT
+    // emit to them here to avoid duplication in their chat UI.
+    const now = new Date().toISOString();
+    const messageEvent = {
+      id: generateId(),
+      userId: resolvedReceiverId,
+      type: 'message' as const,
+      title: 'New message',
+      message: content.substring(0, 100),
+      data: { message } as Record<string, unknown>,
+      isRead: false,
+      createdAt: now,
+      updatedAt: now,
+    };
+    notificationEmitter.emitToUser(resolvedReceiverId, messageEvent);
+
     logger.debug('Message sent successfully', { messageId: message.id, conversationId: conversation.id });
 
     return {
