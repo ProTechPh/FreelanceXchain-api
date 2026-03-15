@@ -11,6 +11,7 @@ import {
   isAIAvailable,
   isAIError,
   generateContent,
+  parseJsonResponse,
   SKILL_GAP_PROMPT,
 } from './ai-client.js';
 import {
@@ -312,8 +313,12 @@ export async function analyzeSkillGaps(
 
   const response = await generateContent(prompt);
 
+  console.log('[SkillGap] generateContent returned type:', typeof response);
+  console.log('[SkillGap] generateContent returned value:', JSON.stringify(response).substring(0, 300));
+
   if (typeof response !== 'string') {
     // AI error, return basic analysis
+    console.error('[SkillGap] AI returned non-string:', response);
     return {
       success: true,
       data: {
@@ -325,37 +330,62 @@ export async function analyzeSkillGaps(
     };
   }
 
-  // Parse response
+  // Parse response using shared robust parser
   try {
-    let cleanResponse = response.trim();
-    if (cleanResponse.startsWith('```json')) {
-      cleanResponse = cleanResponse.slice(7);
-    } else if (cleanResponse.startsWith('```')) {
-      cleanResponse = cleanResponse.slice(3);
+    const parsedAnalysis = parseJsonResponse<SkillGapAnalysis>(response, 'SkillGap');
+    if (!parsedAnalysis) {
+      throw new Error('parseJsonResponse returned null');
     }
-    if (cleanResponse.endsWith('```')) {
-      cleanResponse = cleanResponse.slice(0, -3);
-    }
-    cleanResponse = cleanResponse.trim();
 
-    const analysis = JSON.parse(cleanResponse) as SkillGapAnalysis;
+    const analysis = parsedAnalysis;
+    
+    // Be lenient - accept marketDemand items and fix missing fields
+    const sanitizedMarketDemand = (analysis.marketDemand ?? [])
+      .map(item => {
+        // Skip completely invalid items
+        if (!item || typeof item.skillName !== 'string' || !item.skillName.trim()) {
+          return null;
+        }
+        
+        // Fix missing or invalid demandLevel
+        const validLevels = ['high', 'medium', 'low'];
+        const demandLevel = validLevels.includes(item.demandLevel) 
+          ? item.demandLevel 
+          : 'medium'; // Default to medium if missing/invalid
+        
+        return {
+          skillName: item.skillName.trim(),
+          demandLevel: demandLevel as 'high' | 'medium' | 'low'
+        };
+      })
+      .filter(item => item !== null) as Array<{ skillName: string; demandLevel: 'high' | 'medium' | 'low' }>;
+    
+    console.log('[SkillGap] Successfully parsed:', {
+      currentSkills: analysis.currentSkills?.length ?? 0,
+      recommendedSkills: analysis.recommendedSkills?.length ?? 0,
+      marketDemand: sanitizedMarketDemand.length
+    });
+    
     return {
       success: true,
       data: {
         currentSkills: analysis.currentSkills ?? currentSkills,
         recommendedSkills: analysis.recommendedSkills ?? [],
-        marketDemand: analysis.marketDemand ?? [],
-        reasoning: analysis.reasoning ?? '',
+        marketDemand: sanitizedMarketDemand,
+        reasoning: analysis.reasoning ?? 'Analysis completed.',
       },
     };
-  } catch {
+  } catch (error) {
+    console.error('[SkillGap] Failed to parse AI response:', error);
+    console.error('[SkillGap] Response was:', response.substring(0, 1000));
+    
     return {
       success: true,
       data: {
         currentSkills,
         recommendedSkills: [],
         marketDemand: [],
-        reasoning: 'Failed to parse AI response.',
+        reasoning: 'Failed to parse AI response. The AI may need to be reconfigured.',
       },
     };
   }

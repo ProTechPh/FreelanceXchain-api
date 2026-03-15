@@ -25,18 +25,20 @@ const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses 
 
 // Prompt templates
 export const SKILL_MATCH_PROMPT = `
-Analyze the compatibility between a freelancer's skills and project requirements.
-Return a JSON object with matchScore (0-100) and reasoning.
+You are a skill matching assistant. Given a freelancer's skills and a project's required skills, identify which of the freelancer's skills match the project requirements.
 
 Freelancer Skills: {freelancerSkills}
 Project Requirements: {projectRequirements}
-Freelancer Reputation Score: {reputationScore}
 
-Response format (return ONLY valid JSON, no markdown):
+Rules:
+- matchedSkills: list ONLY skills that exist in BOTH the freelancer's skills AND the project requirements. Use the exact names from the project requirements list.
+- matchScore: 0-100. Score = (number of matched required skills / total required skills) * 100.
+- Do NOT include skills that are not in the provided lists.
+
+Return ONLY valid JSON, no markdown, no extra text:
 {
   "matchScore": number,
   "matchedSkills": string[],
-  "missingSkills": string[],
   "reasoning": string
 }
 `;
@@ -222,12 +224,40 @@ function extractResponseText(response: AIResponse): string | null {
 }
 
 /**
+ * Find the index of the closing brace that matches the opening brace at startIndex.
+ * Correctly handles braces inside JSON string values.
+ */
+function findMatchingBrace(text: string, startIndex: number): number {
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = startIndex; i < text.length; i++) {
+    const ch = text[i];
+    if (escape) { escape = false; continue; }
+    if (ch === '\\' && inString) { escape = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+/**
  * Parse JSON from AI response, handling markdown code blocks
  */
-function parseJsonResponse<T>(text: string): T | null {
+export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
+  console.log(`[${label}] Raw response length:`, text.length);
+  console.log(`[${label}] Raw response:`, text.substring(0, 800));
+  console.log(`[${label}] Raw response (end):`, text.substring(Math.max(0, text.length - 200)));
+
   try {
-    // Remove markdown code blocks if present
     let cleanText = text.trim();
+
+    // Remove markdown code blocks if present
     if (cleanText.startsWith('```json')) {
       cleanText = cleanText.slice(7);
     } else if (cleanText.startsWith('```')) {
@@ -237,9 +267,68 @@ function parseJsonResponse<T>(text: string): T | null {
       cleanText = cleanText.slice(0, -3);
     }
     cleanText = cleanText.trim();
-    
-    return JSON.parse(cleanText) as T;
-  } catch {
+
+    // Check for double-encoded JSON string
+    if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
+      try {
+        cleanText = JSON.parse(cleanText);
+      } catch { /* not double-encoded, continue */ }
+    }
+
+    // Find the first JSON object with quoted keys (skip plain-text preamble).
+    // Use \{\s*" to handle both compact {"key" and pretty-printed {\n  "key" formats.
+    const jsonStart = cleanText.search(/\{\s*"/);
+    if (jsonStart >= 0) {
+      // Use brace-matching to find the exact closing } for this JSON object,
+      // avoiding lastIndexOf which picks up braces in any duplicated trailing text.
+      const matchingBrace = findMatchingBrace(cleanText, jsonStart);
+      if (matchingBrace !== -1) {
+        if (jsonStart > 0) {
+          console.log(`[${label}] Stripping ${jsonStart} chars of preamble before JSON`);
+        }
+        cleanText = cleanText.substring(jsonStart, matchingBrace + 1);
+      } else if (jsonStart > 0) {
+        console.log(`[${label}] Stripping ${jsonStart} chars of preamble before JSON`);
+        cleanText = cleanText.substring(jsonStart);
+      }
+    }
+
+    console.log(`[${label}] Cleaned response:`, cleanText.substring(0, 800));
+
+    // First try direct parse
+    try {
+      const result = JSON.parse(cleanText) as T;
+      console.log(`[${label}] Parse succeeded`);
+      return result;
+    } catch (parseError) {
+      console.log(`[${label}] Direct parse failed, attempting repair:`, (parseError as Error).message);
+
+      // Repair: close any open strings, brackets, braces
+      let repaired = cleanText;
+      const openBraces = (repaired.match(/\{/g) || []).length;
+      const closeBraces = (repaired.match(/\}/g) || []).length;
+      const openBrackets = (repaired.match(/\[/g) || []).length;
+      const closeBrackets = (repaired.match(/\]/g) || []).length;
+
+      // Trim trailing incomplete token (e.g. partial string value)
+      const lastQuote = repaired.lastIndexOf('"');
+      if (lastQuote > 0) {
+        const afterLastQuote = repaired.substring(lastQuote + 1).trim();
+        if (afterLastQuote && !afterLastQuote.match(/^[,\]\}]/)) {
+          repaired = repaired.substring(0, lastQuote + 1);
+        }
+      }
+
+      for (let i = 0; i < openBrackets - closeBrackets; i++) repaired += ']';
+      for (let i = 0; i < openBraces - closeBraces; i++) repaired += '}';
+
+      console.log(`[${label}] Repaired response:`, repaired.substring(0, 500));
+      const result = JSON.parse(repaired) as T;
+      console.log(`[${label}] Repair succeeded`);
+      return result;
+    }
+  } catch (err) {
+    console.error(`[${label}] Failed to parse response:`, (err as Error).message);
     return null;
   }
 }
@@ -293,9 +382,8 @@ export async function analyzeSkillMatch(
   request: SkillMatchRequest
 ): Promise<SkillMatchResult | AIError> {
   const prompt = buildPrompt(SKILL_MATCH_PROMPT, {
-    freelancerSkills: JSON.stringify(request.freelancerSkills),
-    projectRequirements: JSON.stringify(request.projectRequirements),
-    reputationScore: String(request.reputationScore ?? 0),
+    freelancerSkills: JSON.stringify(request.freelancerSkills.map(s => s.skillName)),
+    projectRequirements: JSON.stringify(request.projectRequirements.map(s => s.skillName)),
   });
 
   const response = await generateContent(prompt);
@@ -304,7 +392,7 @@ export async function analyzeSkillMatch(
     return response;
   }
 
-  const result = parseJsonResponse<SkillMatchResult>(response);
+  const result = parseJsonResponse<SkillMatchResult>(response, 'SkillMatch');
   if (!result) {
     return {
       code: 'AI_PARSE_ERROR',
@@ -314,10 +402,35 @@ export async function analyzeSkillMatch(
   }
 
   // Validate and normalize the result
+  const freelancerSkillNames = request.freelancerSkills.map(s => s.skillName.toLowerCase());
+  const requiredSkillNames = request.projectRequirements.map(s => s.skillName.toLowerCase());
+
+  // Validate AI matchedSkills against actual data - must exist in both lists
+  const validatedMatchedSkills = (result.matchedSkills ?? []).filter(skill =>
+    freelancerSkillNames.some(f => f.includes(skill.toLowerCase()) || skill.toLowerCase().includes(f)) &&
+    requiredSkillNames.some(r => r.includes(skill.toLowerCase()) || skill.toLowerCase().includes(r))
+  );
+
+  // Compute missingSkills server-side: required skills the freelancer doesn't have
+  const computedMissingSkills = request.projectRequirements
+    .filter(req => !freelancerSkillNames.some(f =>
+      f.includes(req.skillName.toLowerCase()) || req.skillName.toLowerCase().includes(f)
+    ))
+    .map(req => req.skillName);
+
+  // Recalculate score from validated data
+  const calculatedScore = requiredSkillNames.length > 0
+    ? Math.round((validatedMatchedSkills.length / requiredSkillNames.length) * 100)
+    : 0;
+
+  // Use AI score only if close to calculated score, otherwise use calculated
+  const aiScore = Math.max(0, Math.min(100, result.matchScore ?? 0));
+  const finalScore = Math.abs(aiScore - calculatedScore) > 40 ? calculatedScore : aiScore;
+
   return {
-    matchScore: Math.max(0, Math.min(100, result.matchScore)),
-    matchedSkills: result.matchedSkills ?? [],
-    missingSkills: result.missingSkills ?? [],
+    matchScore: finalScore,
+    matchedSkills: validatedMatchedSkills,
+    missingSkills: computedMissingSkills,
     reasoning: result.reasoning ?? '',
   };
 }
@@ -339,7 +452,7 @@ export async function extractSkills(
     return response;
   }
 
-  const result = parseJsonResponse<ExtractedSkill[]>(response);
+  const result = parseJsonResponse<ExtractedSkill[]>(response, 'SkillExtract');
   if (!result || !Array.isArray(result)) {
     return {
       code: 'AI_PARSE_ERROR',
