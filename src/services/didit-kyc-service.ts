@@ -23,6 +23,10 @@ import {
 import {
   createVerificationSession,
   getVerificationSession,
+  verifyIdDocument,
+  checkPassiveLiveness,
+  matchFaces,
+  screenAml,
 } from './didit-client.js';
 import {
   KycVerification,
@@ -34,11 +38,14 @@ import { logger } from '../config/logger.js';
 
 const DIDIT_WORKFLOW_ID = process.env['DIDIT_WORKFLOW_ID'];
 
+// Retry cooldown period in hours (24 hours = 1 day)
+const KYC_RETRY_COOLDOWN_HOURS = 24;
+
 if (!DIDIT_WORKFLOW_ID) {
   logger.warn('DIDIT_WORKFLOW_ID not configured. Using default workflow.');
 }
 
-type ServiceResult<T> = { success: true; data: T } | { success: false; error: { code: string; message: string } };
+type ServiceResult<T> = { success: true; data: T } | { success: false; error: { code: string; message: string; retryAfter?: string } };
 
 /**
  * Initiate KYC verification for a user
@@ -55,18 +62,10 @@ export async function initiateKycVerification(
     };
   }
 
-  // Check if user already has an active verification
+  // Check if user already has a verification
   const existingKyc = await getKycVerificationByUserId(input.user_id);
-  if (existingKyc && ['pending', 'in_progress'].includes(existingKyc.status)) {
-    return {
-      success: false,
-      error: {
-        code: 'VERIFICATION_IN_PROGRESS',
-        message: 'User already has an active verification session',
-      },
-    };
-  }
 
+  // If already approved, don't allow retry
   if (existingKyc && existingKyc.status === 'approved') {
     return {
       success: false,
@@ -75,6 +74,34 @@ export async function initiateKycVerification(
         message: 'User is already verified',
       },
     };
+  }
+
+  // Check cooldown for pending/in_progress/rejected/expired verifications
+  if (existingKyc && ['pending', 'in_progress', 'rejected', 'expired'].includes(existingKyc.status)) {
+    const createdAt = new Date(existingKyc.created_at);
+    const now = new Date();
+    const hoursSinceCreation = (now.getTime() - createdAt.getTime()) / (1000 * 60 * 60);
+
+    if (hoursSinceCreation < KYC_RETRY_COOLDOWN_HOURS) {
+      const hoursRemaining = Math.ceil(KYC_RETRY_COOLDOWN_HOURS - hoursSinceCreation);
+      const retryAfter = new Date(createdAt.getTime() + KYC_RETRY_COOLDOWN_HOURS * 60 * 60 * 1000).toISOString();
+
+      return {
+        success: false,
+        error: {
+          code: 'RETRY_COOLDOWN',
+          message: `Please wait ${hoursRemaining} hour(s) before retrying KYC verification`,
+          retryAfter,
+        },
+      };
+    }
+
+    // Cooldown passed, allow retry by creating new session
+    logger.info('KYC retry allowed after cooldown', {
+      userId: input.user_id,
+      previousStatus: existingKyc.status,
+      hoursSinceCreation,
+    });
   }
 
   // Create Didit session
@@ -96,16 +123,31 @@ export async function initiateKycVerification(
 
   const session = sessionResult.data;
 
-  // Create KYC verification record
-  const verification = await createKycVerification({
-    id: generateId(),
-    user_id: input.user_id,
-    status: 'pending',
-    didit_session_id: session.session_id,
-    didit_session_token: session.session_token,
-    didit_session_url: session.url,
-    didit_workflow_id: session.workflow_id,
-  });
+  let verification: KycVerification | null;
+
+  // Update existing record or create new one
+  if (existingKyc) {
+    verification = await updateKycVerification(existingKyc.id, {
+      status: 'pending',
+      didit_session_id: session.session_id,
+      didit_session_token: session.session_token,
+      didit_session_url: session.url,
+      didit_workflow_id: session.workflow_id,
+      created_at: new Date().toISOString(), // Reset creation time for new cooldown
+      updated_at: new Date().toISOString(),
+    });
+  } else {
+    // Create new KYC verification record
+    verification = await createKycVerification({
+      id: generateId(),
+      user_id: input.user_id,
+      status: 'pending',
+      didit_session_id: session.session_id,
+      didit_session_token: session.session_token,
+      didit_session_url: session.url,
+      didit_workflow_id: session.workflow_id,
+    });
+  }
 
   if (!verification) {
     return {
@@ -564,3 +606,187 @@ function mapDiditStatusToKycStatus(diditStatus: string): KycStatus {
       return 'pending';
   }
 }
+
+/**
+ * Manual KYC Verification - Admin uploads documents for a user
+ */
+export async function manualKycVerification(params: {
+  userId: string;
+  adminUserId: string;
+  idFrontImage: Buffer;
+  idBackImage?: Buffer;
+  selfieImage: Buffer;
+}): Promise<ServiceResult<KycVerification>> {
+  const { userId, adminUserId, idFrontImage, idBackImage, selfieImage } = params;
+
+  // Check if user exists
+  const user = await userRepository.getUserById(userId);
+  if (!user) {
+    return {
+      success: false,
+      error: { code: 'USER_NOT_FOUND', message: 'User not found' },
+    };
+  }
+
+  // Check if user already has an active verification
+  const existingVerification = await getKycVerificationByUserId(userId);
+  if (existingVerification && existingVerification.status === 'approved') {
+    return {
+      success: false,
+      error: { code: 'ALREADY_VERIFIED', message: 'User is already verified' },
+    };
+  }
+
+  try {
+    // Step 1: Verify ID document
+    logger.info('Manual KYC: Verifying ID document', { userId });
+    const idResult = await verifyIdDocument(idFrontImage, idBackImage, userId);
+
+    if (!idResult.success) {
+      return {
+        success: false,
+        error: { code: 'ID_VERIFICATION_FAILED', message: 'ID verification failed' },
+      };
+    }
+
+    const idData = idResult.data.id_verification;
+    if (idData.status !== 'Approved') {
+      return {
+        success: false,
+        error: { code: 'ID_DECLINED', message: 'ID document was declined by Didit' },
+      };
+    }
+
+    // Step 2: Check liveness
+    logger.info('Manual KYC: Checking liveness', { userId });
+    const livenessResult = await checkPassiveLiveness(selfieImage, userId);
+
+    if (!livenessResult.success) {
+      return {
+        success: false,
+        error: { code: 'LIVENESS_CHECK_FAILED', message: 'Liveness check failed' },
+      };
+    }
+
+    const livenessData = livenessResult.data.passive_liveness;
+    if (livenessData.status !== 'Approved') {
+      return {
+        success: false,
+        error: { code: 'LIVENESS_DECLINED', message: 'Liveness check declined - possible spoof detected' },
+      };
+    }
+
+    // Step 3: Face match (compare selfie with ID photo)
+    logger.info('Manual KYC: Matching faces', { userId });
+    const faceMatchResult = await matchFaces(selfieImage, idFrontImage, userId);
+
+    if (!faceMatchResult.success) {
+      return {
+        success: false,
+        error: { code: 'FACE_MATCH_FAILED', message: 'Face match failed' },
+      };
+    }
+
+    const faceMatchData = faceMatchResult.data.face_match;
+    if (faceMatchData.status !== 'Approved') {
+      return {
+        success: false,
+        error: { code: 'FACE_MISMATCH', message: 'Face does not match ID photo' },
+      };
+    }
+
+    // Step 4: Optional AML screening
+    let amlClean = true;
+    if (idData.first_name && idData.last_name) {
+      logger.info('Manual KYC: Running AML screening', { userId });
+      const amlResult = await screenAml({
+        full_name: `${idData.first_name} ${idData.last_name}`,
+        entity_type: 'person',
+        date_of_birth: idData.date_of_birth,
+        nationality: idData.nationality,
+        document_number: idData.document_number,
+        vendor_data: userId,
+      });
+
+      if (amlResult.success && amlResult.data.aml.status === 'Declined') {
+        amlClean = false;
+        logger.warn('Manual KYC: AML screening found hits', {
+          userId,
+          hits: amlResult.data.aml.total_hits
+        });
+      }
+    }
+
+    // Create or update KYC verification record
+    const verificationData: Partial<KycVerification> = {
+      user_id: userId,
+      status: amlClean ? 'approved' : 'completed', // Auto-approve if AML clean, otherwise needs review
+      didit_session_id: `manual-${generateId()}`,
+      didit_session_token: null,
+      didit_session_url: null,
+      didit_workflow_id: 'manual-verification',
+      decision: amlClean ? 'approved' : 'review',
+      document_type: idData.document_type || null,
+      document_number: idData.document_number || null,
+      issuing_country: idData.issuing_state || null,
+      first_name: idData.first_name || null,
+      last_name: idData.last_name || null,
+      date_of_birth: idData.date_of_birth || null,
+      nationality: idData.nationality || null,
+      document_verified: true,
+      liveness_passed: true,
+      liveness_confidence_score: livenessData.score?.toString() || '100',
+      face_matched: true,
+      face_similarity_score: faceMatchData.score?.toString() || '100',
+      reviewed_by: amlClean ? adminUserId : null,
+      reviewed_at: amlClean ? new Date().toISOString() : null,
+      admin_notes: amlClean ? 'Manual verification - all checks passed' : 'Manual verification - AML review required',
+      completed_at: new Date().toISOString(),
+      expires_at: amlClean ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : null, // 1 year
+    };
+
+    let verification: KycVerification | null;
+
+    if (existingVerification) {
+      verification = await updateKycVerification(existingVerification.id, verificationData);
+    } else {
+      verification = await createKycVerification(verificationData as CreateKycVerificationInput);
+    }
+
+    if (!verification) {
+      return {
+        success: false,
+        error: { code: 'DATABASE_ERROR', message: 'Failed to save verification' },
+      };
+    }
+
+    // Sync name to user and profiles if approved
+    if (amlClean) {
+      await syncKycNameToUserAndProfiles(
+        userId,
+        idData.first_name || null,
+        idData.last_name || null,
+        idData.nationality || null
+      );
+    }
+
+    logger.info('Manual KYC verification completed', {
+      userId,
+      verificationId: verification.id,
+      status: verification.status,
+      amlClean
+    });
+
+    return { success: true, data: verification };
+  } catch (error) {
+    logger.error('Manual KYC verification error', error as Error, { userId });
+    return {
+      success: false,
+      error: {
+        code: 'VERIFICATION_ERROR',
+        message: error instanceof Error ? error.message : 'Manual verification failed'
+      },
+    };
+  }
+}
+

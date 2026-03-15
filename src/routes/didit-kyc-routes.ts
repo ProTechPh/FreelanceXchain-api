@@ -6,6 +6,7 @@
  */
 
 import { Router, Request, Response } from 'express';
+import multer from 'multer';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
@@ -23,10 +24,28 @@ import {
   getUserVerificationHistory,
   isUserVerified,
   getProfileDataFromKyc,
+  manualKycVerification,
 } from '../services/didit-kyc-service.js';
 import { DiditWebhookPayload, DiditWebhookStatus, DiditWebhookType, KycStatus } from '../models/didit-kyc.js';
 
 const router = Router();
+
+// Multer configuration for KYC document uploads
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB per file
+    files: 3, // ID front, ID back (optional), selfie
+  },
+  fileFilter: (req, file, cb) => {
+    // Only allow image files
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Only image files are allowed'));
+    }
+    cb(null, true);
+  },
+});
 
 const VALID_WEBHOOK_TYPES: ReadonlySet<DiditWebhookType> = new Set(['status.updated', 'data.updated']);
 const VALID_WEBHOOK_STATUSES: ReadonlySet<DiditWebhookStatus> = new Set([
@@ -759,5 +778,133 @@ router.get('/admin/verification/:verificationId', authMiddleware, requireRole('a
 
   res.status(200).json(result.data);
 });
+
+/**
+ * @swagger
+ * /api/kyc/admin/manual-verify:
+ *   post:
+ *     summary: Manual KYC verification by admin
+ *     description: Admin uploads user documents for manual verification using Didit standalone APIs
+ *     tags:
+ *       - KYC Admin
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - userId
+ *               - id_front
+ *               - selfie
+ *             properties:
+ *               userId:
+ *                 type: string
+ *                 format: uuid
+ *                 description: User ID to verify
+ *               id_front:
+ *                 type: string
+ *                 format: binary
+ *                 description: Front of ID document
+ *               id_back:
+ *                 type: string
+ *                 format: binary
+ *                 description: Back of ID document (optional)
+ *               selfie:
+ *                 type: string
+ *                 format: binary
+ *                 description: User selfie photo
+ *     responses:
+ *       200:
+ *         description: Verification completed
+ *       400:
+ *         description: Validation error or verification failed
+ */
+router.post(
+  '/admin/manual-verify',
+  authMiddleware,
+  requireRole('admin'),
+  apiRateLimiter,
+  upload.fields([
+    { name: 'id_front', maxCount: 1 },
+    { name: 'id_back', maxCount: 1 },
+    { name: 'selfie', maxCount: 1 },
+  ]),
+  async (req: Request, res: Response) => {
+    const adminUserId = req.user?.userId;
+    const { userId } = req.body;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
+    if (!adminUserId) {
+      res.status(401).json({
+        error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      });
+      return;
+    }
+
+    if (!userId) {
+      res.status(400).json({
+        error: { code: 'MISSING_USER_ID', message: 'User ID is required' },
+      });
+      return;
+    }
+
+    if (!files || !files['id_front'] || !files['selfie']) {
+      res.status(400).json({
+        error: {
+          code: 'MISSING_FILES',
+          message: 'ID front image and selfie are required',
+        },
+      });
+      return;
+    }
+
+    const idFrontImage = files['id_front'][0].buffer;
+    const idBackImage = files['id_back']?.[0]?.buffer;
+    const selfieImage = files['selfie'][0].buffer;
+
+    try {
+      const result = await manualKycVerification({
+        userId,
+        adminUserId,
+        idFrontImage,
+        idBackImage,
+        selfieImage,
+      });
+
+      if (!result.success) {
+        const statusCode = result.error.code === 'USER_NOT_FOUND' ? 404 : 400;
+        res.status(statusCode).json({ error: result.error });
+        return;
+      }
+
+      logger.info('Manual KYC verification completed', {
+        userId,
+        adminUserId,
+        verificationId: result.data.id,
+        status: result.data.status,
+      });
+
+      res.status(200).json({
+        message: 'Manual verification completed',
+        verification: result.data,
+      });
+    } catch (error) {
+      logger.error('Manual KYC verification error', error as Error, {
+        userId,
+        adminUserId,
+      });
+
+      res.status(500).json({
+        error: {
+          code: 'VERIFICATION_ERROR',
+          message: 'Failed to process manual verification',
+        },
+      });
+    }
+  }
+);
 
 export default router;

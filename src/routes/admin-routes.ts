@@ -8,6 +8,7 @@ import {
   suspendUser,
   unsuspendUser,
   verifyUser,
+  updateUser,
   getDisputeManagement,
   getSystemHealth,
 } from '../services/admin-service.js';
@@ -59,6 +60,49 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
   if (role) filters.role = role;
   const result = await getUserManagement(filters);
 
+  if (!result.success || !result.data) {
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // Transform database entities to frontend format
+  const transformedUsers = result.data.users.map((user: any) => ({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    walletAddress: user.wallet_address || '',
+    createdAt: user.created_at,
+    name: user.name || '',
+    kycVerified: false, // TODO: Join with KYC table
+    isActive: !user.is_suspended, // Active means NOT suspended
+  }));
+
+  res.status(200).json({
+    users: transformedUsers,
+    total: result.data.total,
+  });
+});
+
+/**
+ * @swagger
+ * /api/admin/users/{userId}:
+ *   patch:
+ *     summary: Update user information
+ *     tags: [Admin]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
+  const userId = req.params['userId'] ?? '';
+  const { name, role, isActive } = req.body;
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  const result = await updateUser(userId, { name, role, isActive });
+
   if (!result.success) {
     res.status(400).json({
       error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
@@ -68,9 +112,19 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
     return;
   }
 
-  res.status(200).json(result.data);
+  // Transform to frontend format
+  const user = result.data;
+  res.status(200).json({
+    id: user?.id,
+    email: user?.email,
+    role: user?.role,
+    walletAddress: user?.wallet_address || '',
+    createdAt: user?.created_at,
+    name: user?.name || '',
+    kycVerified: false,
+    isActive: !user?.is_suspended,
+  });
 });
-
 
 /**
  * @swagger

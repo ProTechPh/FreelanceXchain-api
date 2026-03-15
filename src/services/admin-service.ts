@@ -1,8 +1,8 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { getSupabaseServiceClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import { UserEntity } from '../repositories/user-repository.js';
 
-const supabase = getSupabaseClient();
+const supabase = getSupabaseServiceClient();
 
 export interface ServiceResult<T> {
   success: boolean;
@@ -325,6 +325,64 @@ export async function verifyUser(userId: string): Promise<ServiceResult<UserEnti
     };
   } catch (error) {
     logger.error('Unexpected error in verifyUser', { error, userId });
+    return {
+      success: false,
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred',
+      },
+    };
+  }
+}
+
+/**
+ * Update user information
+ */
+export async function updateUser(
+  userId: string,
+  updates: { name?: string; role?: string; isActive?: boolean }
+): Promise<ServiceResult<UserEntity>> {
+  try {
+    const dbUpdates: any = {
+      updated_at: new Date().toISOString(),
+    };
+
+    if (updates.name !== undefined) {
+      dbUpdates.name = updates.name;
+    }
+    if (updates.role !== undefined) {
+      dbUpdates.role = updates.role;
+    }
+    if (updates.isActive !== undefined) {
+      dbUpdates.is_suspended = !updates.isActive;
+    }
+
+    const { data, error } = await supabase
+      .from('users')
+      .update(dbUpdates)
+      .eq('id', userId)
+      .select('*')
+      .single();
+
+    if (error) {
+      logger.error('Failed to update user', { error, userId, updates });
+      return {
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Failed to update user',
+        },
+      };
+    }
+
+    logger.info('User updated', { userId, updates });
+
+    return {
+      success: true,
+      data: data as UserEntity,
+    };
+  } catch (error) {
+    logger.error('Unexpected error in updateUser', { error, userId, updates });
     return {
       success: false,
       error: {

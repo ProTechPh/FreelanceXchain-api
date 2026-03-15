@@ -326,3 +326,254 @@ export function verifyWebhookSignature(
   
   return false;
 }
+
+/**
+ * Manual ID Verification - Upload document images for verification
+ */
+export async function verifyIdDocument(
+  frontImage: Buffer,
+  backImage?: Buffer,
+  vendorData?: string
+): Promise<DiditClientResult<{
+  request_id: string;
+  id_verification: {
+    status: 'Approved' | 'Declined';
+    first_name?: string;
+    last_name?: string;
+    document_type?: string;
+    document_number?: string;
+    date_of_birth?: string;
+    nationality?: string;
+    expiration_date?: string;
+    issuing_state?: string;
+    warnings?: string[];
+  };
+}>> {
+  try {
+    const FormData = (await import('form-data')).default;
+    const form = new FormData();
+
+    form.append('front_image', frontImage, { filename: 'id_front.jpg' });
+    if (backImage) {
+      form.append('back_image', backImage, { filename: 'id_back.jpg' });
+    }
+    if (vendorData) {
+      form.append('vendor_data', vendorData);
+    }
+    form.append('save_api_request', 'true');
+
+    const response = await fetch(`${DIDIT_API_URL}/v3/id-verification/`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': DIDIT_API_KEY ?? '',
+        ...form.getHeaders(),
+      },
+      body: form,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      logger.error('Didit ID verification failed', undefined, { status: response.status, data });
+      return {
+        success: false,
+        error: data as DiditApiError,
+      };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    logger.error('Failed to verify ID document', error as Error);
+    return {
+      success: false,
+      error: {
+        error: {
+          code: 'NETWORK_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to connect to Didit API',
+        },
+      },
+    };
+  }
+}
+
+/**
+ * Passive Liveness Check - Verify user selfie is a real person
+ */
+export async function checkPassiveLiveness(
+  userImage: Buffer,
+  vendorData?: string
+): Promise<DiditClientResult<{
+  request_id: string;
+  passive_liveness: {
+    status: 'Approved' | 'Declined';
+    score?: number;
+    method?: string;
+  };
+}>> {
+  try {
+    const FormData = (await import('form-data')).default;
+    const form = new FormData();
+
+    form.append('user_image', userImage, { filename: 'selfie.jpg' });
+    if (vendorData) {
+      form.append('vendor_data', vendorData);
+    }
+    form.append('save_api_request', 'true');
+
+    const response = await fetch(`${DIDIT_API_URL}/v3/passive-liveness/`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': DIDIT_API_KEY ?? '',
+        ...form.getHeaders(),
+      },
+      body: form,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      logger.error('Didit liveness check failed', undefined, { status: response.status, data });
+      return {
+        success: false,
+        error: data as DiditApiError,
+      };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    logger.error('Failed to check liveness', error as Error);
+    return {
+      success: false,
+      error: {
+        error: {
+          code: 'NETWORK_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to connect to Didit API',
+        },
+      },
+    };
+  }
+}
+
+/**
+ * Face Match - Compare selfie with ID photo
+ */
+export async function matchFaces(
+  userImage: Buffer,
+  refImage: Buffer,
+  vendorData?: string
+): Promise<DiditClientResult<{
+  request_id: string;
+  face_match: {
+    status: 'Approved' | 'Declined';
+    score?: number;
+  };
+}>> {
+  try {
+    const FormData = (await import('form-data')).default;
+    const form = new FormData();
+
+    form.append('user_image', userImage, { filename: 'selfie.jpg' });
+    form.append('ref_image', refImage, { filename: 'id_photo.jpg' });
+    if (vendorData) {
+      form.append('vendor_data', vendorData);
+    }
+    form.append('save_api_request', 'true');
+
+    const response = await fetch(`${DIDIT_API_URL}/v3/face-match/`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': DIDIT_API_KEY ?? '',
+        ...form.getHeaders(),
+      },
+      body: form,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      logger.error('Didit face match failed', undefined, { status: response.status, data });
+      return {
+        success: false,
+        error: data as DiditApiError,
+      };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    logger.error('Failed to match faces', error as Error);
+    return {
+      success: false,
+      error: {
+        error: {
+          code: 'NETWORK_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to connect to Didit API',
+        },
+      },
+    };
+  }
+}
+
+/**
+ * AML Screening - Check for sanctions, PEPs, adverse media
+ */
+export async function screenAml(params: {
+  full_name: string;
+  entity_type: 'person' | 'company';
+  date_of_birth?: string;
+  nationality?: string;
+  document_number?: string;
+  include_adverse_media?: boolean;
+  include_ongoing_monitoring?: boolean;
+  vendor_data?: string;
+}): Promise<DiditClientResult<{
+  request_id: string;
+  aml: {
+    status: 'Approved' | 'Declined';
+    total_hits?: number;
+    hits?: Array<{
+      name: string;
+      match_score: number;
+      categories: string[];
+      sources: string[];
+    }>;
+    score?: number;
+    entity_type: string;
+  };
+}>> {
+  try {
+    const response = await fetch(`${DIDIT_API_URL}/v3/aml/`, {
+      method: 'POST',
+      headers: {
+        'x-api-key': DIDIT_API_KEY ?? '',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        ...params,
+        save_api_request: true,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      logger.error('Didit AML screening failed', undefined, { status: response.status, data });
+      return {
+        success: false,
+        error: data as DiditApiError,
+      };
+    }
+
+    return { success: true, data };
+  } catch (error) {
+    logger.error('Failed to screen AML', error as Error);
+    return {
+      success: false,
+      error: {
+        error: {
+          code: 'NETWORK_ERROR',
+          message: error instanceof Error ? error.message : 'Failed to connect to Didit API',
+        },
+      },
+    };
+  }
+}
