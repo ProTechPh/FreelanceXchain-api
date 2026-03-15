@@ -150,6 +150,12 @@ export async function createApp(): Promise<Express> {
     }
   });
 
+  // Backward-compatible alias for clients posting to /reset-password directly.
+  // The canonical endpoint remains POST /api/auth/reset-password.
+  app.post('/reset-password', (_req, res) => {
+    res.redirect(307, '/api/auth/reset-password');
+  });
+
   // API routes
   app.use('/api', routes);
 

@@ -1146,7 +1146,8 @@ router.post('/reset-password', passwordResetRateLimiter, async (req: Request, re
   const result = await updatePassword(accessToken, password);
 
   if (isAuthError(result)) {
-    res.status(401).json({
+    const statusCode = result.code === 'INVALID_TOKEN' ? 401 : 500;
+    res.status(statusCode).json({
       error: { code: result.code, message: result.message },
       timestamp: new Date().toISOString(),
       requestId,

@@ -747,9 +747,11 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
 export async function requestPasswordReset(email: string): Promise<{ success: boolean } | AuthError> {
   const supabase = createPerRequestClient();
 
-  const redirectUrl = process.env.PUBLIC_URL
-    ? `${process.env.PUBLIC_URL}/reset-password`
-    : `http://localhost:${config.server.port}/reset-password`;
+  const frontendBaseUrl = process.env.PUBLIC_URL
+    ?? process.env.FRONTEND_URL
+    ?? 'http://localhost:5173';
+  const normalizedFrontendBaseUrl = frontendBaseUrl.replace(/\/+$/, '');
+  const redirectUrl = `${normalizedFrontendBaseUrl}/reset-password`;
 
   const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase().trim(), {
     redirectTo: redirectUrl,
@@ -770,32 +772,42 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
  * Uses a per-request client with the access token to avoid corrupting shared state.
  */
 export async function updatePassword(accessToken: string, newPassword: string): Promise<{ success: boolean } | AuthError> {
-  // Create a fresh client with the user's access token in Authorization header
-  // This avoids the old pattern of setSession({refresh_token: ''}) on the shared singleton
-  const supabase = createClient(config.supabase.url, config.supabase.anonKey, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-      },
-    },
-  });
+  const anonClient = createPerRequestClient();
+  const { data: { user }, error: userError } = await anonClient.auth.getUser(accessToken);
 
-  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (userError || !user) {
+    return {
+      code: 'INVALID_TOKEN',
+      message: 'Invalid or expired reset token',
+    };
+  }
 
-  if (error) {
+  let serviceClient: ReturnType<typeof getSupabaseServiceClient>;
+  try {
+    serviceClient = getSupabaseServiceClient();
+  } catch (error) {
+    logger.error('[Auth] Missing service role configuration for password reset', { error });
     return {
       code: 'INTERNAL_ERROR',
-      message: error.message,
+      message: 'Password reset is temporarily unavailable',
+    };
+  }
+
+  const { error: updateError } = await serviceClient.auth.admin.updateUserById(user.id, {
+    password: newPassword,
+  });
+
+  if (updateError) {
+    logger.error('[Auth] Failed to update password via admin API', { error: updateError.message });
+    return {
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to update password',
     };
   }
 
   // Invalidate all existing sessions after password change (security best practice)
   try {
-    const serviceClient = getSupabaseServiceClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      await serviceClient.auth.admin.signOut(user.id, 'global');
-    }
+    await serviceClient.auth.admin.signOut(user.id, 'global');
   } catch (revokeError) {
     // Log but don't fail - password was already changed successfully
     logger.error('[Auth] Failed to revoke sessions after password change', { error: revokeError });
