@@ -8,6 +8,8 @@ export type UserEntity = {
   role: 'freelancer' | 'employer' | 'admin';
   wallet_address: string;
   name: string;
+  is_suspended: boolean;
+  suspension_reason: string | null;
   created_at: string;
   updated_at: string;
 };

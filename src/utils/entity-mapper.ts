@@ -59,6 +59,8 @@ export function mapUserToEntity(user: Omit<User, 'createdAt' | 'updatedAt'>): Om
     role: user.role,
     wallet_address: user.walletAddress,
     name: user.name,
+    is_suspended: false,
+    suspension_reason: null,
   };
 }
 

@@ -374,9 +374,16 @@ export async function acceptProposal(
   const updatedMilestones = project.milestones?.map((milestone, index) => {
     // Automatically set the first milestone to in_progress so the freelancer can begin
     if (index === 0) {
-      return { ...milestone, status: 'in_progress' as any };
+      return {
+        ...milestone,
+        status: 'in_progress' as any,
+        due_date: milestone.dueDate,
+      };
     }
-    return milestone;
+    return {
+      ...milestone,
+      due_date: milestone.dueDate,
+    };
   }) || [];
 
   await projectRepository.updateProject(project.id, {

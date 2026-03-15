@@ -238,11 +238,19 @@ export function validatePasswordStrength(password: string): PasswordValidationRe
   };
 }
 
-export async function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): Promise<AuthResult> {
+export async function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): Promise<AuthResult | AuthError> {
+  // Check if user is suspended
+  if (user.is_suspended) {
+    return {
+      code: 'USER_SUSPENDED',
+      message: user.suspension_reason || 'Your account has been suspended',
+    };
+  }
+
   // Get KYC status
   const { getKycVerificationByUserId } = await import('../repositories/didit-kyc-repository.js');
   const kycVerification = await getKycVerificationByUserId(user.id);
-  
+
   return {
     user: {
       id: user.id,
@@ -321,6 +329,8 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       role: input.role,
       wallet_address: input.walletAddress ?? '',
       name: '',
+      is_suspended: false,
+      suspension_reason: null,
     });
 
     return {
@@ -479,6 +489,14 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
     return {
       code: 'INVALID_TOKEN',
       message: 'User not found',
+    };
+  }
+
+  // Check if user is suspended
+  if (publicUser.is_suspended) {
+    return {
+      code: 'USER_SUSPENDED',
+      message: publicUser.suspension_reason || 'Your account has been suspended',
     };
   }
 
@@ -693,6 +711,8 @@ export async function registerWithSupabase(
     role,
     wallet_address: walletAddress,
     name: '',
+    is_suspended: false,
+    suspension_reason: null,
   });
 
   logger.debug('[OAuth] registerWithSupabase - Successfully created user');
