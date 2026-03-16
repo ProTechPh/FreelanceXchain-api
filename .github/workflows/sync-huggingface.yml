@@ -16,7 +16,7 @@ jobs:
       url: https://protechph-freelancexchain.hf.space
     steps:
       - name: Harden-Runner
-        uses: step-security/harden-runner@v2.12.0
+        uses: step-security/harden-runner@v2.16.0
         with:
           egress-policy: audit
 
