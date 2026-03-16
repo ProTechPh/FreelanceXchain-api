@@ -811,7 +811,19 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
     return;
   }
 
-  res.status(200).json(result.data);
+  // Safely map dates so the React frontend date-fns format() doesn't crash on invalid/undefined values
+  const profile = result.data;
+  const safeData = {
+    ...profile,
+    createdAt: profile?.createdAt || new Date().toISOString(),
+    experience: (profile?.experience || []).map((exp: any) => ({
+      ...exp,
+      startDate: exp.startDate || new Date().toISOString(),
+      endDate: exp.endDate || null
+    }))
+  };
+
+  res.status(200).json(safeData);
 });
 
 export default router;

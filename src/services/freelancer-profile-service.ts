@@ -221,13 +221,13 @@ export async function addSkillsToProfile(
     const trimmedName = skillInput.name.trim();
     
     // Check if skill already exists in profile (case-insensitive to prevent duplicates)
-    const existingSkillIndex = existingProfile.skills.findIndex(
-      s => s.name.toLowerCase() === trimmedName.toLowerCase()
+    const existingSkillIndex = (existingProfile.skills || []).findIndex(
+      s => s && s.name && s.name.toLowerCase() === trimmedName.toLowerCase()
     );
-    
+
     // Check if skill already exists in newSkills being built (case-insensitive)
-    const newSkillIndex = newSkills.findIndex(
-      s => s.name.toLowerCase() === trimmedName.toLowerCase()
+    const newSkillIndex = (newSkills || []).findIndex(
+      s => s && s.name && s.name.toLowerCase() === trimmedName.toLowerCase()
     );
     
     if (existingSkillIndex === -1 && newSkillIndex === -1) {
@@ -278,9 +278,12 @@ export async function removeSkillFromProfile(
     };
   }
 
-  const updatedSkills = existingProfile.skills.filter(
-    s => s.name.toLowerCase() !== skillName.toLowerCase()
+  // Safely fallback and check for skills array to avoid crashing when deleting
+  const currentSkills = existingProfile.skills || [];
+  const updatedSkills = currentSkills.filter(
+    s => s && s.name && s.name.toLowerCase() !== skillName.toLowerCase()
   );
+
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     skills: updatedSkills,
   });

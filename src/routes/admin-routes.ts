@@ -290,4 +290,37 @@ router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimite
   res.status(200).json(result.data);
 });
 
+/**
+ * @swagger
+ * /api/admin/platform-stats:
+ *   get:
+ *     summary: Get platform stats (users, projects, contracts, etc)
+ *     tags: [Admin]
+ *     description: Used on the landing page and admin dashboard to show aggregate platform statistics. Open to public.
+ */
+router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response) => {
+  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  const result = await getPlatformStats();
+
+  if (!result.success) {
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  // The backend uses slightly different field names than the frontend expects, so we map them here:
+  res.status(200).json({
+    totalFreelancers: result.data?.totalFreelancers || 0,
+    totalEmployers: result.data?.totalEmployers || 0,
+    totalProjects: result.data?.totalProjects || 0,
+    totalPaidOut: (result.data?.totalTransactionVolume || 0).toFixed(2),
+    satisfactionRate: 100, // Mocked to 100% for now
+    ...result.data
+  });
+});
+
 export default router;
