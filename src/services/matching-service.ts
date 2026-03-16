@@ -54,7 +54,7 @@ type ProjectSkillEntity = { skill_id: string; skill_name: string; category_id: s
 function freelancerSkillToInfo(entity: FreelancerSkillEntity): SkillInfo {
   return {
     skillId: '', // No longer using skill IDs for freelancers
-    skillName: entity.name,
+    skillName: entity.name ?? '',
     categoryId: '', // No longer using category IDs for freelancers
     yearsOfExperience: entity.years_of_experience,
   };
@@ -66,7 +66,7 @@ function freelancerSkillToInfo(entity: FreelancerSkillEntity): SkillInfo {
 function projectSkillToInfo(entity: ProjectSkillEntity): SkillInfo {
   return {
     skillId: entity.skill_id,
-    skillName: entity.skill_name,
+    skillName: entity.skill_name ?? '',
     categoryId: entity.category_id,
     yearsOfExperience: entity.years_of_experience ?? 0,
   };

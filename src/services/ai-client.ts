@@ -402,8 +402,8 @@ export async function analyzeSkillMatch(
   }
 
   // Validate and normalize the result
-  const freelancerSkillNames = request.freelancerSkills.map(s => s.skillName.toLowerCase());
-  const requiredSkillNames = request.projectRequirements.map(s => s.skillName.toLowerCase());
+  const freelancerSkillNames = request.freelancerSkills.filter(s => s.skillName).map(s => s.skillName.toLowerCase());
+  const requiredSkillNames = request.projectRequirements.filter(s => s.skillName).map(s => s.skillName.toLowerCase());
 
   // Validate AI matchedSkills against actual data - must exist in both lists
   const validatedMatchedSkills = (result.matchedSkills ?? []).filter(skill =>
