@@ -1206,6 +1206,8 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     };
   }
 
+  const authProvider: 'email' | 'oauth' = user.password_hash === '' ? 'oauth' : 'email';
+
   // Admins are automatically considered KYC approved (exempt from KYC requirement)
   if (user.role === 'admin') {
     return {
@@ -1215,6 +1217,7 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
       walletAddress: user.wallet_address,
       kycStatus: 'approved', // Admins bypass KYC requirement
       createdAt: user.created_at,
+      authProvider,
     };
   }
 
@@ -1229,5 +1232,6 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     walletAddress: user.wallet_address,
     kycStatus: kycVerification?.status as any,
     createdAt: user.created_at,
+    authProvider,
   };
 }
