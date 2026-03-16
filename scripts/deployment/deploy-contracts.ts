@@ -9,9 +9,9 @@
  * Make sure to set BLOCKCHAIN_RPC_URL and BLOCKCHAIN_PRIVATE_KEY in .env
  */
 
-import { deployAllContracts } from '../src/services/contract-deployment.js';
-import { isWeb3Available, getWalletInfo } from '../src/services/web3-client.js';
-import { getCurrentNetwork } from '../src/config/contracts.js';
+import { deployAllContracts } from '../../src/services/contract-deployment.js';
+import { isWeb3Available, getWalletInfo } from '../../src/services/web3-client.js';
+import { getCurrentNetwork } from '../../src/config/contracts.js';
 
 async function main() {
   console.log('🔗 FreelanceXchain Smart Contract Deployment\n');

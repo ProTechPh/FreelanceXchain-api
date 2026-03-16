@@ -18,7 +18,7 @@ function failWithSetup(message, hints = []) {
 }
 
 async function main() {
-  const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:7545";
+  const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:8545";
   const provider = new ethers.JsonRpcProvider(rpcUrl);
 
   // Load deployment info

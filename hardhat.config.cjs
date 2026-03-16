@@ -25,7 +25,7 @@ module.exports = {
     },
     ganache: {
       type: "http",
-      url: "http://127.0.0.1:7545",
+      url: "http://127.0.0.1:8545",
       chainId: 1337,
     },
     sepolia: {

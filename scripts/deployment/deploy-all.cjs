@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 require("dotenv").config();
 
-const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:7545";
+const rpcUrl = process.env.BLOCKCHAIN_RPC_URL || "http://127.0.0.1:8545";
 const privateKey = process.env.BLOCKCHAIN_PRIVATE_KEY || "0x00ad000e3b3dd62055ba74a187b16a00a86b599a08be5fd4200763b68c380ac7";
 
 async function deployContract(name, artifactPath) {
