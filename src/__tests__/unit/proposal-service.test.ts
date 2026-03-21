@@ -638,8 +638,11 @@ describe('Proposal Service - Unit Tests', () => {
       expect(result.data.proposal.status).toBe('accepted');
       expect(result.data.contract).toBeDefined();
       expect(result.data.contract.proposalId).toBe(proposal.id);
-      expect(result.data.contract.status).toBe('active');
-      expect(result.data.contract.escrowAddress).toBeDefined();
+      
+      // Refetch contract to get updated status after escrow deployment
+      const updatedContractEntity = await mockContractRepo.getContractById(result.data.contract.id);
+      expect(updatedContractEntity?.status).toBe('active');
+      expect(updatedContractEntity?.escrow_address).toBeDefined();
     }
   });
 });

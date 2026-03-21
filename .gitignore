@@ -50,3 +50,4 @@ deployment.json
 .roo/
 .env.production
 .env.development
+.claude/settings.local.json

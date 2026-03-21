@@ -663,6 +663,15 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-category-reposito
   },
   SkillCategoryRepository: jest.fn(),
 }));
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
+  PaymentRepository: {
+    create: jest.fn(async (payment: any) => ({ ...payment, id: generateId(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
+    findByContractId: jest.fn(async () => []),
+    findByUserId: jest.fn(async () => ({ items: [], hasMore: false })),
+    updateStatus: jest.fn(async () => null),
+  },
+  PaymentType: {},
+}));
 // Mock escrow contract
 jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () => ({
   deployEscrow: jest.fn(async () => ({
@@ -718,6 +727,38 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () 
   getTransaction: jest.fn(async () => null),
   serializeTransaction: jest.fn(tx => tx),
   deserializeTransaction: jest.fn(tx => tx),
+}));
+
+// Mock blockchain-related functions
+jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+  isWeb3Available: jest.fn(() => false), // Default to false to use simulated mode
+  getProvider: jest.fn(),
+  getWallet: jest.fn(),
+  getContract: jest.fn(),
+  getContractWithSigner: jest.fn(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+  getBlockchainMode: jest.fn(() => 'simulated'), // Default to simulated mode
+}));
+
+// Mock blockchain services
+jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+  deployEscrowContract: jest.fn(),
+  approveMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'b'.repeat(64) })),
+  getEscrowInfo: jest.fn(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({
+  completeAgreement: jest.fn(),
+  createAgreementOnBlockchain: jest.fn(),
+  signAgreement: jest.fn(),
+  disputeAgreement: jest.fn(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/milestone-registry.ts'), () => ({
+  approveMilestoneOnRegistry: jest.fn(),
+  submitMilestoneToRegistry: jest.fn(),
 }));
 // Mock Supabase client to prevent real network calls
 jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
