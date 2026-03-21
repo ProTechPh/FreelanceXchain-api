@@ -50,6 +50,9 @@ importers:
       dotenv:
         specifier: ^16.4.5
         version: 16.6.1
+      ethers:
+        specifier: ^6.16.0
+        version: 6.16.0
       express:
         specifier: ^4.21.0
         version: 4.22.1
@@ -156,9 +159,6 @@ importers:
       eslint:
         specifier: ^9.39.2
         version: 9.39.2
-      ethers:
-        specifier: ^6.16.0
-        version: 6.16.0
       fast-check:
         specifier: ^4.6.0
         version: 4.6.0
