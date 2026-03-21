@@ -337,9 +337,6 @@ export async function acceptProposal(
 
   // Create agreement on blockchain and initialize escrow
   try {
-    const employer = await userRepository.getUserById(project.employerId);
-    const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
-    
     if (employer?.wallet_address && freelancer?.wallet_address) {
       // Create agreement on blockchain (employer signs on creation)
       await createAgreementOnBlockchain({
