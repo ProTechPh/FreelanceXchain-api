@@ -84,26 +84,38 @@ Response format (return ONLY valid JSON array, no markdown):
 `;
 
 export const SKILL_GAP_PROMPT = `
-Analyze the freelancer's current skills and suggest skills they should acquire based on market demand.
+Analyze the freelancer's current skills and suggest skills they should acquire based on what directly complements or extends those specific skills, grounded in real market demand.
 Return a JSON object with recommendations.
 
 Current Skills: {currentSkills}
 Target Role: {targetRole}
 
-RULES:
-- recommendedSkills: skills the freelancer does NOT already have but should learn.
-- NEVER include skills that already appear in Current Skills.
-- Base recommendations on real market demand for the target role.
+INTERPRETATION RULES:
+- Accept Current Skills as either an array of strings or a comma-separated string.
+- Normalize all skills before analysis: lowercase, trim spaces, deduplicate, and map common aliases (js -> javascript, ts -> typescript, node -> node.js).
+- Do not recommend any skill already present after normalization and alias resolution.
+
+RECOMMENDATION RULES:
+- recommendedSkills: skills the freelancer does NOT already have but should learn next.
+- Prioritize skills that directly complement, extend, or are commonly paired with their existing skills in real-world projects (e.g. React -> Next.js, Python -> FastAPI, Docker -> Kubernetes).
+- Use the Target Role as a filter: only recommend skills relevant to that role. Do not recommend skills outside the role's scope.
+- NEVER include skills already in Current Skills (including synonyms and aliases).
+- Standard case: return 3 to 6 recommended skills.
 - demandLevel: "high" = widely required in job postings, "medium" = commonly useful, "low" = niche/optional.
 
 EDGE CASE RULES:
 - ZERO SKILLS: if current skills is empty, return 3-5 foundational skills for the target role. recommendedSkills must NOT be empty.
 - ALREADY QUALIFIED: if the freelancer has 5+ skills and 4+ directly match the target role, limit recommendedSkills to 2 advanced/complementary skills at most.
-- UNRELATED DOMAIN: if current skills are entirely unrelated to the target role (e.g. SEO skills for a backend developer role), recommend 3-5 core foundational skills for that role.
-- OUTDATED SKILLS: if current skills include outdated versions (Python 2, Angular 1, jQuery-only), recommend modern equivalents.
+- UNRELATED DOMAIN: if current skills are entirely unrelated to the target role, recommend 3-5 core foundational skills for that role instead.
+- OUTDATED SKILLS: if current skills include outdated versions (Python 2, Angular 1, jQuery-only), recommend modern equivalents as part of upskilling.
 - ABSOLUTE RULE: recommendedSkills must NEVER be an empty array unless the freelancer is fully expert-level in every possible skill for the role (extremely rare).
 
-Response format (return ONLY valid JSON, no markdown):
+OUTPUT RULES:
+- marketDemand must contain exactly one entry per item in recommendedSkills, with skillName matching exactly.
+- reasoning must be 1-3 sentences: explain which existing skills drove each recommendation and why it fits the target role.
+- Return ONLY valid JSON, no markdown, no comments, no extra keys.
+
+Response format:
 {
   "currentSkills": string[],
   "recommendedSkills": string[],
