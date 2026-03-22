@@ -514,3 +514,11 @@ export async function canUserRate(
     data: { canRate: true },
   };
 }
+
+export function serializeReputationRecord(record: BlockchainRating): string {
+  return JSON.stringify(record);
+}
+
+export function deserializeReputationRecord(serialized: string): BlockchainRating {
+  return JSON.parse(serialized) as BlockchainRating;
+}

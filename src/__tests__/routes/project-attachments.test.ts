@@ -456,7 +456,9 @@ describe('Milestone Attachments API', () => {
       expect(response.body.files[0].url).toContain('milestone-deliverables');
 
       // Clean up test file
-      fs.unlinkSync(testFilePath);
+      if (fs.existsSync(testFilePath)) {
+        fs.unlinkSync(testFilePath);
+      }
     });
 
     it('should upload multiple deliverable files', async () => {
@@ -493,8 +495,12 @@ describe('Milestone Attachments API', () => {
       });
 
       // Clean up test files
-      fs.unlinkSync(testPdfPath);
-      fs.unlinkSync(testImagePath);
+      if (fs.existsSync(testPdfPath)) {
+        fs.unlinkSync(testPdfPath);
+      }
+      if (fs.existsSync(testImagePath)) {
+        fs.unlinkSync(testImagePath);
+      }
     });
 
     it('should reject request without files', async () => {
@@ -540,7 +546,9 @@ describe('Milestone Attachments API', () => {
       });
 
       // Clean up test file
-      fs.unlinkSync(testFilePath);
+      if (fs.existsSync(testFilePath)) {
+        fs.unlinkSync(testFilePath);
+      }
     });
 
     it('should submit milestone with existing and new files', async () => {
@@ -576,7 +584,9 @@ describe('Milestone Attachments API', () => {
       expect(response.body.deliverableFiles).toHaveLength(2);
 
       // Clean up test file
-      fs.unlinkSync(testFilePath);
+      if (fs.existsSync(testFilePath)) {
+        fs.unlinkSync(testFilePath);
+      }
     });
   });
 

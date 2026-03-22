@@ -48,6 +48,12 @@ const mockDisputeRepo = {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Mock Supabase client - return the global mock so beforeEach can modify it
+jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
+  getSupabaseClient: jest.fn(() => (globalThis as any).mockSupabaseClient),
+  getSupabaseServiceClient: jest.fn(() => (globalThis as any).mockSupabaseClient),
+}));
+
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepo,
@@ -67,6 +73,45 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
 
 jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
   disputeRepository: mockDisputeRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
+  PaymentRepository: {
+    create: jest.fn<any>(async (payment: any) => ({ ...payment, id: generateId(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
+    findByContractId: jest.fn<any>(async () => []),
+    findByUserId: jest.fn<any>(async () => ({ items: [], hasMore: false })),
+    updateStatus: jest.fn<any>(async () => null),
+  },
+  PaymentType: {},
+}));
+
+// Mock blockchain-related functions
+jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+  isWeb3Available: jest.fn(() => false), // Default to false to use simulated mode
+  getProvider: jest.fn(),
+  getWallet: jest.fn(),
+  getContract: jest.fn(),
+  getContractWithSigner: jest.fn(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+  getBlockchainMode: jest.fn(() => 'simulated'), // Default to simulated mode
+}));
+
+// Mock blockchain services
+jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+  deployEscrowContract: jest.fn(),
+  approveMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'b'.repeat(64) })),
+  getEscrowInfo: jest.fn(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({
+  completeAgreement: jest.fn(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/services/milestone-registry.ts'), () => ({
+  approveMilestoneOnRegistry: jest.fn(),
+  submitMilestoneToRegistry: jest.fn(),
 }));
 
 // Import after mocking
@@ -97,10 +142,9 @@ describe('Payment Service - Property-Based Tests', () => {
 
     // Setup Supabase RPC mock for atomic milestone approval
     const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    mockSupabaseClient.rpc = jest.fn(async (...args: unknown[]) => {
-      const [functionName, params] = args as [string, Record<string, string>];
-      const contractId = params.p_contract_id;
-      const milestoneId = params.p_milestone_id;
+    mockSupabaseClient.rpc = jest.fn(async (functionName: string, params: any) => {
+      const contractId = params?.p_contract_id;
+      const milestoneId = params?.p_milestone_id;
 
       if (functionName !== 'approve_milestone_atomic') {
         return { data: null, error: { message: `Unsupported RPC function: ${functionName}` } };
@@ -336,6 +380,11 @@ describe('Payment Service - Property-Based Tests', () => {
         fc.uuid(),
         fc.integer({ min: 1, max: 5 }),
         async (freelancerId, employerId, milestoneCount) => {
+          // Skip if freelancer and employer are the same (invalid contract)
+          if (freelancerId === employerId) {
+            return;
+          }
+          
           // Setup users with wallet addresses
           userStore.set(freelancerId, createTestUser({ id: freelancerId, wallet_address: '0x' + 'a'.repeat(40) }));
           userStore.set(employerId, createTestUser({ id: employerId, wallet_address: '0x' + 'b'.repeat(40) }));
@@ -400,10 +449,9 @@ describe('Payment Service - Unit Tests', () => {
 
     // Setup Supabase RPC mock (same as property tests)
     const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    mockSupabaseClient.rpc = jest.fn(async (...args: unknown[]) => {
-      const [functionName, params] = args as [string, Record<string, string>];
-      const contractId = params.p_contract_id;
-      const milestoneId = params.p_milestone_id;
+    mockSupabaseClient.rpc = jest.fn(async (functionName: string, params: any) => {
+      const contractId = params?.p_contract_id;
+      const milestoneId = params?.p_milestone_id;
 
       if (functionName !== 'approve_milestone_atomic') {
         return { data: null, error: { message: `Unsupported RPC function: ${functionName}` } };
@@ -674,6 +722,9 @@ describe('Payment Service - Unit Tests', () => {
 
     const result = await approveMilestone(contract.id, milestones[1]!.id, employerId);
 
+    if (!result.success) {
+      console.error('Approval failed:', result.error);
+    }
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.contractCompleted).toBe(true);

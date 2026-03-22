@@ -442,7 +442,7 @@ router.get(
                 .filter(m => m.status === 'approved')
                 .reduce((sum, m) => sum + m.amount, 0);
 
-              return res.json({
+              res.json({
                 contractId: contractRes.data.id,
                 escrowAddress: contractRes.data.escrowAddress,
                 totalAmount,
@@ -456,6 +456,7 @@ router.get(
                 })),
                 contractStatus: contractRes.data.status,
               });
+              return;
             }
           }
         }

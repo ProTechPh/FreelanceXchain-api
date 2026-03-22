@@ -25,15 +25,30 @@ const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses 
 
 // Prompt templates
 export const SKILL_MATCH_PROMPT = `
-You are a skill matching assistant. Given a freelancer's skills and a project's required skills, identify which of the freelancer's skills match the project requirements.
+You are a skill matching assistant. Given a freelancer's skills and a project's required skills, identify which skills match.
 
 Freelancer Skills: {freelancerSkills}
 Project Requirements: {projectRequirements}
 
-Rules:
-- matchedSkills: list ONLY skills that exist in BOTH the freelancer's skills AND the project requirements. Use the exact names from the project requirements list.
-- matchScore: 0-100. Score = (number of matched required skills / total required skills) * 100.
-- Do NOT include skills that are not in the provided lists.
+CORE RULES:
+- matchedSkills: list ONLY skills present in BOTH lists. Use the exact name from the Project Requirements list.
+- matchScore: (matched / total required) * 100, rounded to nearest integer.
+- Skill comparison is ALWAYS case-insensitive: "python" == "Python" == "PYTHON".
+- Recognize common aliases as the same skill:
+  JS / js == JavaScript
+  TS / ts == TypeScript
+  Postgres / pg == PostgreSQL
+  Node / NodeJS / Node.js == Node.js
+  React / ReactJS / React.js == React
+  Vue / VueJS / Vue.js == Vue.js
+  Mongo / MongoDB == MongoDB
+- NEVER invent matched skills that are not in the freelancer list — phantom matches are forbidden.
+
+EDGE CASE RULES:
+- EMPTY FREELANCER: if the freelancer skills list is empty, matchScore MUST be 0 and matchedSkills MUST be [].
+- OVER-QUALIFIED: if freelancer has more skills than required, score is still based only on required skills covered — no penalty, no bonus beyond 100.
+- CASE MISMATCH: always normalize before comparing. "REACT" and "react" are the same skill.
+- SIMILAR-BUT-DIFFERENT: Vue.js and React are NOT the same. Flask and Django are NOT the same. Do not match across different technologies.
 
 Return ONLY valid JSON, no markdown, no extra text:
 {
@@ -44,11 +59,23 @@ Return ONLY valid JSON, no markdown, no extra text:
 `;
 
 export const SKILL_EXTRACTION_PROMPT = `
-Extract skills from the following text and map them to the provided skill taxonomy.
+Extract technical skills from the following text and map them to the provided skill taxonomy.
 Return a JSON array of extracted skills with confidence scores.
 
 Text: {text}
 Available Skills: {taxonomy}
+
+RULES:
+- Extract ONLY technical skills: programming languages, frameworks, libraries, tools, databases, cloud platforms.
+- Exclude soft skills (communication, teamwork, leadership) and job titles.
+- Normalize skill names: "react.js" -> "React", "JS" -> "JavaScript", "TS" -> "TypeScript", "PG" -> "PostgreSQL".
+- Deduplicate: if a skill appears multiple times, list it only ONCE.
+- Comparison is case-insensitive: "PYTHON", "python", "Python" all map to the same skill.
+
+EDGE CASE RULES:
+- NON-TECH TEXT: if the text describes a non-technical role (chef, nurse, driver, teacher) with no programming languages or technical tools, return an empty array [].
+- IMPLICIT MOBILE: if the text mentions building apps for "iOS and Android" using "cross-platform" technology but names no specific framework, include Flutter and React Native.
+- VERSION NUMBERS: strip version suffixes — "Python 3.11" -> "Python", "React 18" -> "React".
 
 Response format (return ONLY valid JSON array, no markdown):
 [
@@ -61,6 +88,20 @@ Analyze the freelancer's current skills and suggest skills they should acquire b
 Return a JSON object with recommendations.
 
 Current Skills: {currentSkills}
+Target Role: {targetRole}
+
+RULES:
+- recommendedSkills: skills the freelancer does NOT already have but should learn.
+- NEVER include skills that already appear in Current Skills.
+- Base recommendations on real market demand for the target role.
+- demandLevel: "high" = widely required in job postings, "medium" = commonly useful, "low" = niche/optional.
+
+EDGE CASE RULES:
+- ZERO SKILLS: if current skills is empty, return 3-5 foundational skills for the target role. recommendedSkills must NOT be empty.
+- ALREADY QUALIFIED: if the freelancer has 5+ skills and 4+ directly match the target role, limit recommendedSkills to 2 advanced/complementary skills at most.
+- UNRELATED DOMAIN: if current skills are entirely unrelated to the target role (e.g. SEO skills for a backend developer role), recommend 3-5 core foundational skills for that role.
+- OUTDATED SKILLS: if current skills include outdated versions (Python 2, Angular 1, jQuery-only), recommend modern equivalents.
+- ABSOLUTE RULE: recommendedSkills must NEVER be an empty array unless the freelancer is fully expert-level in every possible skill for the role (extremely rare).
 
 Response format (return ONLY valid JSON, no markdown):
 {
@@ -167,7 +208,7 @@ async function makeAIRequest(
     
     // Convert OpenAI format to internal AIResponse format
     const data: AIResponse = {
-      candidates: openAIResponse.choices?.map((choice: any, index: number) => ({
+      candidates: openAIResponse.choices?.map((choice: { message?: { content?: string; role?: string }; finish_reason?: string }, index: number) => ({
         content: {
           parts: [{ text: choice.message?.content || '' }],
           role: choice.message?.role || 'assistant',
@@ -405,17 +446,21 @@ export async function analyzeSkillMatch(
   const freelancerSkillNames = request.freelancerSkills.filter(s => s.skillName).map(s => s.skillName.toLowerCase());
   const requiredSkillNames = request.projectRequirements.filter(s => s.skillName).map(s => s.skillName.toLowerCase());
 
+  // Exact word-boundary match to avoid e.g. "java" falsely matching "javascript"
+  function skillsMatch(a: string, b: string): boolean {
+    return a === b || a.split(/[\s/.-]+/).some(tok => tok === b) || b.split(/[\s/.-]+/).some(tok => tok === a);
+  }
+
   // Validate AI matchedSkills against actual data - must exist in both lists
-  const validatedMatchedSkills = (result.matchedSkills ?? []).filter(skill =>
-    freelancerSkillNames.some(f => f.includes(skill.toLowerCase()) || skill.toLowerCase().includes(f)) &&
-    requiredSkillNames.some(r => r.includes(skill.toLowerCase()) || skill.toLowerCase().includes(r))
-  );
+  const validatedMatchedSkills = (result.matchedSkills ?? []).filter(skill => {
+    const s = skill.toLowerCase();
+    return freelancerSkillNames.some(f => skillsMatch(f, s)) &&
+           requiredSkillNames.some(r => skillsMatch(r, s));
+  });
 
   // Compute missingSkills server-side: required skills the freelancer doesn't have
   const computedMissingSkills = request.projectRequirements
-    .filter(req => !freelancerSkillNames.some(f =>
-      f.includes(req.skillName.toLowerCase()) || req.skillName.toLowerCase().includes(f)
-    ))
+    .filter(req => !freelancerSkillNames.some(f => skillsMatch(f, req.skillName.toLowerCase())))
     .map(req => req.skillName);
 
   // Recalculate score from validated data
@@ -520,11 +565,16 @@ export function keywordExtractSkills(
   const lowerText = text.toLowerCase();
   const extracted: ExtractedSkill[] = [];
 
+  // Escape regex metacharacters to prevent ReDoS (e.g. "C++", "Node.js", "ASP.NET")
+  function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
   for (const skill of availableSkills) {
     const skillNameLower = skill.skillName.toLowerCase();
     if (lowerText.includes(skillNameLower)) {
       // Calculate confidence based on exact match vs partial
-      const exactMatch = new RegExp(`\\b${skillNameLower}\\b`, 'i').test(text);
+      const exactMatch = new RegExp(`\\b${escapeRegex(skillNameLower)}\\b`, 'i').test(text);
       extracted.push({
         skillId: skill.skillId,
         skillName: skill.skillName,

@@ -337,9 +337,6 @@ export async function acceptProposal(
 
   // Create agreement on blockchain and initialize escrow
   try {
-    const employer = await userRepository.getUserById(project.employerId);
-    const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
-    
     if (employer?.wallet_address && freelancer?.wallet_address) {
       // Create agreement on blockchain (employer signs on creation)
       await createAgreementOnBlockchain({
@@ -361,9 +358,22 @@ export async function acceptProposal(
       // Auto-signing is kept for now but should be replaced with explicit consent flow.
       await signAgreement(createdContract.id, freelancer.wallet_address);
 
-      // Escrow is NOT auto-deployed here.
-      // The employer must manually fund the contract via MetaMask on the contract page.
-      // Contract stays in 'pending' status until funded.
+      // Initialize escrow and activate contract
+      const { initializeContractEscrow } = await import('./payment-service.js');
+      const escrowResult = await initializeContractEscrow(
+        createdContract,
+        project,
+        employer.wallet_address,
+        freelancer.wallet_address
+      );
+
+      if (escrowResult.success) {
+        // Update contract status to active and set escrow address
+        await contractRepository.updateContract(createdContract.id, {
+          status: 'active',
+          escrow_address: escrowResult.data.escrowAddress,
+        });
+      }
     }
   } catch (error) {
     console.error('Failed to create blockchain agreement or initialize escrow:', error);

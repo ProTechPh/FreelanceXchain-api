@@ -28,6 +28,9 @@ export const securityHeaders = helmetMiddleware({
             fontSrc: ["'self'"],
             objectSrc: ["'none'"],
             frameSrc: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"],
+            frameAncestors: ["'none'"],
             upgradeInsecureRequests: [],
         },
     },
@@ -39,11 +42,12 @@ export const securityHeaders = helmetMiddleware({
     noSniff: true,
     // Enable XSS filter
     xssFilter: true,
-    // HSTS - enforce HTTPS (1 year)
+    // HSTS - enforce HTTPS (1 year), force on all connections including HTTP
     hsts: {
         maxAge: 31536000,
         includeSubDomains: true,
         preload: true,
+        force: true,
     },
     // Referrer policy
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },

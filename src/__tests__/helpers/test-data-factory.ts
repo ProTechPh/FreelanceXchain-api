@@ -27,6 +27,8 @@ export function createTestUser(overrides: Partial<UserEntity> = {}): UserEntity 
     name: 'Test User',
     role: 'freelancer',
     wallet_address: `0x${generateId().substring(0, 40)}`,
+    is_suspended: false,
+    suspension_reason: null,
     created_at: now(),
     updated_at: now(),
     ...overrides,

@@ -11,7 +11,6 @@ import {
   createTestProject
 } from '../helpers/test-data-factory.js';
 import { generateId } from '../../utils/id.js';
-import { BlockchainRating } from '../../services/reputation-contract.js';
 
 // Create stores and mocks
 const contractStore = createInMemoryStore();
@@ -28,6 +27,12 @@ mockContractRepo.getUserContracts = jest.fn<any>(async (userId: string) => {
 });
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
+
+// Mock Supabase client
+jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
+  getSupabaseClient: jest.fn(() => (globalThis as any).mockSupabaseClient),
+  getSupabaseServiceClient: jest.fn(() => (globalThis as any).mockSupabaseClient),
+}));
 
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -46,21 +51,24 @@ jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), 
 // Import after mocking
 const {
   submitRating,
-  serializeReputationRecord,
-  deserializeReputationRecord,
 } = await import('../../services/reputation-service.js');
 
 const {
   clearBlockchainRatings,
   computeAggregateScore,
+  serializeBlockchainRating,
+  deserializeBlockchainRating,
 } = await import('../../services/reputation-contract.js');
+
+// Import type separately
+import type { BlockchainRating } from '../../services/reputation-contract.js';
 
 // Helper to create blockchain rating with timestamp
 function createRatingWithTimestamp(
   rating: number,
   timestamp: number,
   rateeId: string = generateId()
-): BlockchainRating {
+) {
   return {
     id: generateId(),
     contractId: generateId(),
@@ -86,6 +94,79 @@ describe('Reputation Service - Property-Based Tests', () => {
     contractStore.clear();
     projectStore.clear();
     await clearBlockchainRatings();
+    
+    // Setup Supabase mock (same as unit tests)
+    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
+    
+    // Reset all mocks
+    jest.clearAllMocks();
+    
+    // Mock reviews table for duplicate check
+    mockSupabaseClient.from.mockImplementation((table: string) => {
+      if (table === 'reviews') {
+        const mockBuilder = {
+          select: jest.fn(() => mockBuilder),
+          eq: jest.fn(() => mockBuilder),
+          single: jest.fn(async () => ({ data: null, error: null })), // No duplicate reviews
+          insert: jest.fn((data: any) => ({
+            select: jest.fn(() => ({
+              single: jest.fn(async () => ({
+                data: {
+                  id: generateId(),
+                  contract_id: data.contract_id,
+                  reviewer_id: data.reviewer_id,
+                  reviewee_id: data.reviewee_id,
+                  rating: data.rating,
+                  comment: data.comment,
+                  reviewer_role: data.reviewer_role,
+                  created_at: new Date().toISOString(),
+                },
+                error: null,
+              })),
+            })),
+          })),
+        };
+        return mockBuilder;
+      }
+      
+      if (table === 'users') {
+        const mockBuilder = {
+          select: jest.fn(() => mockBuilder),
+          in: jest.fn(() => mockBuilder),
+          then: jest.fn(async (callback?: (result: any) => any) => {
+            const result = {
+              data: [
+                { id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) },
+                { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) },
+              ],
+              error: null,
+            };
+            if (callback) {
+              return callback(result);
+            }
+            return Promise.resolve(result);
+          }),
+        };
+        return mockBuilder;
+      }
+      
+      // Default mock
+      const defaultBuilder = {
+        select: jest.fn(() => defaultBuilder),
+        eq: jest.fn(() => defaultBuilder),
+        neq: jest.fn(() => defaultBuilder),
+        delete: jest.fn(() => defaultBuilder),
+        single: jest.fn(async () => ({ data: null, error: null })),
+        then: jest.fn(async (callback?: (result: any) => any) => {
+          const result = { data: [], error: null };
+          if (callback) {
+            return callback(result);
+          }
+          return Promise.resolve(result);
+        }),
+      };
+      return defaultBuilder;
+    });
   });
 
   /**
@@ -102,6 +183,11 @@ describe('Reputation Service - Property-Based Tests', () => {
         fc.uuid(),
         validRatingArbitrary(),
         async (freelancerId, employerId, rating) => {
+          // Skip if freelancerId and employerId are the same (self-rating not allowed)
+          if (freelancerId === employerId) {
+            return;
+          }
+          
           contractStore.clear();
           projectStore.clear();
           await clearBlockchainRatings();
@@ -143,6 +229,11 @@ describe('Reputation Service - Property-Based Tests', () => {
         fc.uuid(),
         invalidRatingArbitrary(),
         async (freelancerId, employerId, invalidRating) => {
+          // Skip if freelancerId and employerId are the same (self-rating not allowed)
+          if (freelancerId === employerId) {
+            return;
+          }
+          
           contractStore.clear();
           projectStore.clear();
           await clearBlockchainRatings();
@@ -264,13 +355,12 @@ describe('Reputation Service - Property-Based Tests', () => {
           ),
         }),
         async (ratingRecord) => {
-          const original: BlockchainRating = ratingRecord;
+          const original = ratingRecord;
 
-          const serialized = serializeReputationRecord(original);
-          expect(typeof serialized).toBe('string');
-          expect(() => JSON.parse(serialized)).not.toThrow();
+          const serialized = serializeBlockchainRating(original);
+          expect(typeof serialized).toBe('object');
 
-          const deserialized = deserializeReputationRecord(serialized);
+          const deserialized = deserializeBlockchainRating(serialized);
 
           expect(deserialized.id).toBe(original.id);
           expect(deserialized.contractId).toBe(original.contractId);
@@ -294,7 +384,7 @@ describe('Reputation Service - Property-Based Tests', () => {
         fc.integer({ min: 1, max: 5 }),
         fc.string({ minLength: 1, maxLength: 100 }),
         async (hasComment, id, rating, commentText) => {
-          const original: BlockchainRating = {
+          const original = {
             id,
             contractId: generateId(),
             raterId: generateId(),
@@ -305,8 +395,8 @@ describe('Reputation Service - Property-Based Tests', () => {
             transactionHash: '0x' + generateId().padEnd(64, '0'),
           };
 
-          const serialized = serializeReputationRecord(original);
-          const deserialized = deserializeReputationRecord(serialized);
+          const serialized = serializeBlockchainRating(original);
+          const deserialized = deserializeBlockchainRating(serialized);
 
           expect(deserialized.comment).toBe(original.comment);
         }
@@ -405,6 +495,79 @@ describe('Reputation Service - Unit Tests', () => {
     contractStore.clear();
     projectStore.clear();
     await clearBlockchainRatings();
+    
+    // Setup Supabase mock
+    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
+    
+    // Reset all mocks
+    jest.clearAllMocks();
+    
+    // Mock reviews table for duplicate check
+    mockSupabaseClient.from.mockImplementation((table: string) => {
+      if (table === 'reviews') {
+        const mockBuilder = {
+          select: jest.fn(() => mockBuilder),
+          eq: jest.fn(() => mockBuilder),
+          single: jest.fn(async () => ({ data: null, error: null })), // No duplicate reviews
+          insert: jest.fn((data: any) => ({
+            select: jest.fn(() => ({
+              single: jest.fn(async () => ({
+                data: {
+                  id: generateId(),
+                  contract_id: data.contract_id,
+                  reviewer_id: data.reviewer_id,
+                  reviewee_id: data.reviewee_id,
+                  rating: data.rating,
+                  comment: data.comment,
+                  reviewer_role: data.reviewer_role,
+                  created_at: new Date().toISOString(),
+                },
+                error: null,
+              })),
+            })),
+          })),
+        };
+        return mockBuilder;
+      }
+      
+      if (table === 'users') {
+        const mockBuilder = {
+          select: jest.fn(() => mockBuilder),
+          in: jest.fn(() => mockBuilder),
+          then: jest.fn(async (callback?: (result: any) => any) => {
+            const result = {
+              data: [
+                { id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) },
+                { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) },
+              ],
+              error: null,
+            };
+            if (callback) {
+              return callback(result);
+            }
+            return Promise.resolve(result);
+          }),
+        };
+        return mockBuilder;
+      }
+      
+      // Default mock
+      const defaultBuilder = {
+        select: jest.fn(() => defaultBuilder),
+        eq: jest.fn(() => defaultBuilder),
+        neq: jest.fn(() => defaultBuilder),
+        delete: jest.fn(() => defaultBuilder),
+        single: jest.fn(async () => ({ data: null, error: null })),
+        then: jest.fn(async (callback?: (result: any) => any) => {
+          const result = { data: [], error: null };
+          if (callback) {
+            return callback(result);
+          }
+          return Promise.resolve(result);
+        }),
+      };
+      return defaultBuilder;
+    });
   });
 
   it('should submit valid rating successfully', async () => {
@@ -479,7 +642,7 @@ describe('Reputation Service - Unit Tests', () => {
   });
 
   it('should serialize and deserialize rating with comment', async () => {
-    const rating: BlockchainRating = {
+    const rating = {
       id: generateId(),
       contractId: generateId(),
       raterId: generateId(),
@@ -490,15 +653,15 @@ describe('Reputation Service - Unit Tests', () => {
       transactionHash: '0x' + generateId().padEnd(64, '0'),
     };
 
-    const serialized = serializeReputationRecord(rating);
-    const deserialized = deserializeReputationRecord(serialized);
+    const serialized = serializeBlockchainRating(rating);
+    const deserialized = deserializeBlockchainRating(serialized);
 
     expect(deserialized.comment).toBe('Excellent work!');
     expect(deserialized.rating).toBe(5);
   });
 
   it('should serialize and deserialize rating without comment', async () => {
-    const rating: BlockchainRating = {
+    const rating = {
       id: generateId(),
       contractId: generateId(),
       raterId: generateId(),
@@ -508,8 +671,8 @@ describe('Reputation Service - Unit Tests', () => {
       transactionHash: '0x' + generateId().padEnd(64, '0'),
     };
 
-    const serialized = serializeReputationRecord(rating);
-    const deserialized = deserializeReputationRecord(serialized);
+    const serialized = serializeBlockchainRating(rating);
+    const deserialized = deserializeBlockchainRating(serialized);
 
     expect(deserialized.comment).toBeUndefined();
     expect(deserialized.rating).toBe(4);

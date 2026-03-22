@@ -45,9 +45,10 @@ export async function createApp(): Promise<Express> {
   const allowedOrigins = getAllowedOrigins();
   app.use(cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
+      // No Origin header = not a cross-origin browser request; skip CORS headers
+      // (non-browser clients like curl/mobile don't need them)
       if (!origin) {
-        callback(null, true);
+        callback(null, false);
         return;
       }
 
@@ -99,6 +100,7 @@ export async function createApp(): Promise<Express> {
           'Content-Security-Policy',
           "default-src 'self';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline';img-src 'self' data: https:;font-src 'self' https:;connect-src 'self';object-src 'none';frame-src 'none';base-uri 'self';form-action 'self';frame-ancestors 'none'"
         );
+        res.setHeader('X-Content-Type-Options', 'nosniff');
         next();
       },
       swaggerUi.serve,
@@ -156,8 +158,20 @@ export async function createApp(): Promise<Express> {
     res.redirect(307, '/api/auth/reset-password');
   });
 
+  // Prevent caching of API responses
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store');
+    next();
+  });
+
   // API routes
   app.use('/api', routes);
+
+  // Catch-all 404 handler — prevents Express finalhandler from overriding security headers
+  app.use((_req: Request, res: Response) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } });
+  });
 
   // Error handling middleware (must be last)
   app.use(errorHandler);
