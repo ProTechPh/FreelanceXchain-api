@@ -309,7 +309,10 @@ export async function analyzeSkillGaps(
   }
 
   // Build prompt for skill gap analysis
-  const prompt = SKILL_GAP_PROMPT.replace('{currentSkills}', JSON.stringify(currentSkills));
+  const targetRole = profileEntity.experience?.[0]?.title || 'Software Developer';
+  const prompt = SKILL_GAP_PROMPT
+    .replace('{currentSkills}', JSON.stringify(currentSkills))
+    .replace('{targetRole}', targetRole);
 
   const response = await generateContent(prompt);
 
