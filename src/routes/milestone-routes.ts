@@ -458,7 +458,7 @@ router.post('/:id/submit-with-files',
       if (existingDeliverables) {
         try {
           existingFiles = JSON.parse(existingDeliverables);
-        } catch (error) {
+        } catch {
           return res.status(400).json({ error: 'Invalid existingDeliverables format' });
         }
       }

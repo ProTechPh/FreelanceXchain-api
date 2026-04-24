@@ -157,7 +157,7 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
    const categoryParam = req.query['category'] as string | undefined;
    const categoriesParam = req.query['categories'] as string | undefined;
    const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
-   const continuationToken = req.query['continuationToken'] as string | undefined;
+   const _continuationToken = req.query['continuationToken'] as string | undefined;
 
   const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
   const options = { limit, offset };
@@ -563,7 +563,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
         }
       }
     }
-  } catch (e) {
+  } catch {
     errors.push({ field: 'requiredSkills', message: 'requiredSkills must be a valid JSON array' });
   }
 
@@ -586,7 +586,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
       } else if (parsedTags.length > 10) {
         errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
       }
-    } catch (e) {
+    } catch {
       errors.push({ field: 'tags', message: 'Tags must be a valid JSON array' });
     }
   }
@@ -1056,7 +1056,7 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
  *                         type: number
  */
 router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Response) => {
-  const includeInactive = req.query['includeInactive'] === 'true';
+  const _includeInactive = req.query['includeInactive'] === 'true';
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
   try {
@@ -1096,7 +1096,7 @@ router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Respon
     res.status(200).json({
       categories: Array.from(categoryStats.values()).sort((a, b) => b.projectCount - a.projectCount)
     });
-  } catch (error) {
+  } catch {
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
       timestamp: new Date().toISOString(),

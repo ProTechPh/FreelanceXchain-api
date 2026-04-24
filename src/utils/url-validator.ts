@@ -171,7 +171,7 @@ export function validateUrl(urlString: string): UrlValidationResult {
   
   try {
     parsedUrl = new URL(urlString);
-  } catch (error) {
+  } catch {
     return {
       valid: false,
       error: 'Invalid URL format',

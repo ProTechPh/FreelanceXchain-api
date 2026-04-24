@@ -1026,7 +1026,7 @@ export async function verifyMFAEnrollment(
     }
 
     // Then verify the code
-    const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
+    const { data: _verifyData, error: verifyError } = await supabase.auth.mfa.verify({
       factorId,
       challengeId: challengeData.id,
       code,
@@ -1107,7 +1107,7 @@ export async function verifyMFAChallenge(
       },
     });
 
-    const { data, error } = await supabase.auth.mfa.verify({
+    const { _data, error } = await supabase.auth.mfa.verify({
       factorId,
       challengeId,
       code,
@@ -1206,7 +1206,7 @@ export async function disableMFA(accessToken: string, factorId: string, totpCode
       };
     }
 
-    const { data: verifyData, error: verifyError } = await supabase.auth.mfa.verify({
+    const { data: _verifyData, error: verifyError } = await supabase.auth.mfa.verify({
       factorId,
       challengeId: challengeData.id,
       code: totpCode,
@@ -1220,7 +1220,7 @@ export async function disableMFA(accessToken: string, factorId: string, totpCode
     }
 
     // TOTP verified — now safe to unenroll the factor
-    const { data, error } = await supabase.auth.mfa.unenroll({
+    const { _data, error } = await supabase.auth.mfa.unenroll({
       factorId,
     });
 

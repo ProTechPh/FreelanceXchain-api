@@ -294,7 +294,7 @@ export async function submitEvidence(
   };
 
   // Add evidence to dispute atomically to prevent race condition (Requirement 8.3)
-  const { data: newEvidenceArray, error: rpcError } = await getSupabaseServiceClient()
+  const { data: _newEvidenceArray, error: rpcError } = await getSupabaseServiceClient()
     .rpc('append_dispute_evidence', {
       p_dispute_id: disputeId,
       p_evidence: [evidenceEntity] // Passed as an array to append

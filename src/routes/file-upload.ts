@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import multer from 'multer';
+import _multer from 'multer';
 import { uploadFile, deleteFile, getSignedUrl, listUserFiles } from '../utils/file-upload.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';

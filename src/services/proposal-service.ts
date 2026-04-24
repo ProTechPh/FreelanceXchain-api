@@ -1,7 +1,7 @@
 import { Proposal, mapProposalFromEntity } from '../utils/entity-mapper.js';
 import { Contract, Project, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
 import { proposalRepository, ProposalEntity } from '../repositories/proposal-repository.js';
-import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
+import { contractRepository, _ContractEntity } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
@@ -102,9 +102,8 @@ export async function submitProposal(
   const created = mapProposalFromEntity(createdEntity);
 
   // Create notification for employer
-  let notificationId = '';
   try {
-    const notification = await notificationRepository.createNotification({
+    await notificationRepository.createNotification({
       id: generateId(),
       user_id: project.employerId,
       type: 'proposal_received',
@@ -118,7 +117,6 @@ export async function submitProposal(
       },
       is_read: false,
     });
-    notificationId = notification.id;
   } catch (error) {
     logger.error('Failed to create notification', { error });
     // Continue - notification is secondary

@@ -20,8 +20,8 @@ import {
   verifyMFAChallenge,
   getMFAFactors,
   disableMFA,
-  validateToken,
-  createAuthResult,
+  _validateToken,
+  _createAuthResult,
   consumeMfaSession,
   validateTokenAndGetUser,
 } from '../services/auth-service.js';
@@ -734,7 +734,7 @@ router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Respon
     // Note: We no longer accept role here. Role selection happens AFTER callback.
     const url = await getOAuthUrl(provider as Provider);
     res.redirect(url);
-  } catch (error) {
+  } catch {
     res.status(500).json({
       error: {
         code: 'INTERNAL_ERROR',
@@ -1055,7 +1055,7 @@ router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, r
   // This prevents account enumeration via timing/error differences
   try {
     await requestPasswordReset(email);
-  } catch (error) {
+  } catch {
     // Swallow errors intentionally - don't reveal if the email exists
     logger.info('Password reset requested', { requestId });
   }

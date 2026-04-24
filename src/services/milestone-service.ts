@@ -6,7 +6,7 @@ import type {
   MilestoneStatus,
   SubmitMilestoneInput,
   RejectMilestoneInput,
-  FileAttachment,
+  _FileAttachment,
 } from '../models/milestone.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';

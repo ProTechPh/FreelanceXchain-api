@@ -289,7 +289,7 @@ export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
     try {
       const result = JSON.parse(cleanText) as T;
       return result;
-    } catch (parseError) {
+    } catch {
 
       // Repair: close any open strings, brackets, braces
       let repaired = cleanText;

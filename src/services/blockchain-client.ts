@@ -162,7 +162,7 @@ export function signTransaction(tx: Transaction, _privateKey: string): string {
  */
 export async function submitTransaction(
   input: TransactionInput,
-  blockchainConfig: BlockchainConfig = defaultConfig
+  _blockchainConfig: BlockchainConfig = defaultConfig
 ): Promise<Transaction> {
   const tx: Transaction = {
     id: generateId(),

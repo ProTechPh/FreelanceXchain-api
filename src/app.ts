@@ -135,7 +135,7 @@ export async function createApp(): Promise<Express> {
       const robotsContent = await readFile(robotsPath, 'utf8');
       res.type('text/plain');
       res.send(robotsContent);
-    } catch (error) {
+    } catch (_error) {
       res.status(404).send('Not found');
     }
   });
@@ -147,7 +147,7 @@ export async function createApp(): Promise<Express> {
       const sitemapContent = await readFile(sitemapPath, 'utf8');
       res.type('application/xml');
       res.send(sitemapContent);
-    } catch (error) {
+    } catch (_error) {
       res.status(404).send('Not found');
     }
   });

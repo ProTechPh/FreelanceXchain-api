@@ -25,7 +25,7 @@ router.post('/', authMiddleware, requireRole('freelancer'), fileUploadRateLimite
   }
 });
 
-async function handleMultipartPortfolio(req: Request, res: Response, next: any) {
+async function handleMultipartPortfolio(req: Request, res: Response, _next: any) {
   const middleware = uploadPortfolioImages;
   let index = 0;
   const executeMiddleware = async () => {
@@ -45,7 +45,7 @@ async function handleMultipartPortfolio(req: Request, res: Response, next: any) 
   
   try {
     await executeMiddleware();
-  } catch (error: any) {
+  } catch {
     if (res.headersSent) return;
     const requestId = req.headers['x-request-id'] as string ?? 'unknown';
     res.status(500).json({

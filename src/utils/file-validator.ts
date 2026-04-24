@@ -231,7 +231,7 @@ function validateFileUrl(url: string): string[] {
     if (!parsedUrl.pathname.includes('/storage/')) {
       errors.push('File URL must be a valid Supabase Storage URL');
     }
-  } catch (error) {
+  } catch {
     errors.push('Invalid URL format');
   }
 

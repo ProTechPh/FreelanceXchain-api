@@ -13,7 +13,7 @@ import { NotificationEntity } from '../repositories/notification-repository.js';
 // Import domain types from models
 import type { User, KycStatus } from '../models/user.js';
 import type { Skill, SkillCategory, SkillReference, ProjectSkillReference } from '../models/skill.js';
-import type { FreelancerProfile, WorkExperience } from '../models/freelancer-profile.js';
+import type { FreelancerProfile, _WorkExperience } from '../models/freelancer-profile.js';
 import type { EmployerProfile } from '../models/employer-profile.js';
 import type { Project, Milestone } from '../models/project.js';
 import type { Proposal } from '../models/proposal.js';

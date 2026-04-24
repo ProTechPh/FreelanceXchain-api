@@ -587,7 +587,7 @@ export async function disputeMilestone(
 
   // Create dispute record
   const disputeId = generateId();
-  const dispute: Dispute = {
+  const _dispute: Dispute = {
     id: disputeId,
     contractId,
     milestoneId,

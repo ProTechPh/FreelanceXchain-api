@@ -86,7 +86,7 @@ export async function updateEmailPreferences(
   preferences: Partial<EmailPreference>
 ): Promise<ServiceResult<EmailPreference>> {
   try {
-    const { id, user_id, created_at, updated_at, ...updates } = preferences as any;
+    const { _id, _user_id, _created_at, _updated_at, ...updates } = preferences as any;
 
     const { data, error } = await supabase
       .from('email_preferences')

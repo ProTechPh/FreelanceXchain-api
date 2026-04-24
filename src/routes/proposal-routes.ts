@@ -5,7 +5,7 @@ import { uploadProposalAttachments } from '../middleware/file-upload-middleware.
 import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
-import { generateId } from '../utils/id.js';
+import { _generateId } from '../utils/id.js';
 import {
   submitProposal,
   getProposalById,
@@ -177,7 +177,7 @@ router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, 
 /**
  * Handle proposal submission with multipart/form-data (server-side upload)
  */
-async function handleMultipartProposalSubmission(req: Request, res: Response, next: any) {
+async function handleMultipartProposalSubmission(req: Request, res: Response, _next: any) {
   // Apply file upload middleware
   const middleware = uploadProposalAttachments;
 
@@ -203,7 +203,7 @@ async function handleMultipartProposalSubmission(req: Request, res: Response, ne
   
   try {
     await executeMiddleware();
-  } catch (error: any) {
+  } catch {
     // Middleware already sent response for validation errors
     if (res.headersSent) return;
     

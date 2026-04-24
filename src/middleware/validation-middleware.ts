@@ -134,7 +134,7 @@ function validateProperty(
             value,
           });
         }
-      } catch (error) {
+      } catch {
         errors.push({
           field: fieldPath,
           message: `${fieldPath} pattern validation failed`,

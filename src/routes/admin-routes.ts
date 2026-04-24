@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
-import { ValidationError } from '../middleware/error-handler.js';
+import { _ValidationError } from '../middleware/error-handler.js';
 import {
   getPlatformStats,
   getUserManagement,

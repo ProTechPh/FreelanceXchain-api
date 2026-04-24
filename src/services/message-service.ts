@@ -177,7 +177,7 @@ export async function getConversations(
     const limit = options.limit || 20;
     const offset = (page - 1) * limit;
 
-    const { items, total } = await messageRepository.getUserConversations(userId, limit, offset);
+    const { items, _total } = await messageRepository.getUserConversations(userId, limit, offset);
 
     // Enrich with other user details and filter out conversations with missing participants
     const enrichedConversations: ConversationWithDetails[] = [];

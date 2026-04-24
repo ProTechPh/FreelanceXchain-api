@@ -177,7 +177,7 @@ export async function cancelPendingContract(contractId: string, userId: string):
   }
 
   // RACE CONDITION FIX: Use atomic Supabase RPC to prevent cancellation while being funded
-  const { data: result, error: rpcError } = await getSupabaseServiceClient()
+  const { data: _result, error: rpcError } = await getSupabaseServiceClient()
     .rpc('cancel_pending_contract', {
       p_contract_id: contractId,
       p_user_id: userId

@@ -6,7 +6,7 @@
 
 import { Router, Request, Response, NextFunction } from 'express';
 import {
-  initializeContractEscrow,
+  _initializeContractEscrow,
   requestMilestoneCompletion,
   approveMilestone,
   getContractPaymentStatus,

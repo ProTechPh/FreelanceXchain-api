@@ -68,7 +68,7 @@ export async function uploadFileToStorage(
     const filePath = folder ? `${folder}/${uniqueFilename}` : uniqueFilename;
     
     // Upload to Supabase Storage
-    const { data, error } = await supabase.storage
+    const { _data, error } = await supabase.storage
       .from(bucket)
       .upload(filePath, buffer, {
         contentType: mimeType,
@@ -241,7 +241,7 @@ export function extractFilePathFromUrl(url: string): string | null {
     }
     
     return null;
-  } catch (error) {
+  } catch {
     logger.warn('Failed to extract file path from URL', { url });
     return null;
   }

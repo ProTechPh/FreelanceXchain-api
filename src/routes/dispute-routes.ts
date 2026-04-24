@@ -17,7 +17,7 @@ import {
   submitEvidence,
   resolveDispute,
   getDisputeById,
-  getDisputesByContract,
+  _getDisputesByContract,
   getAllDisputes,
 } from '../services/dispute-service.js';
 import { getContractById } from '../services/contract-service.js';
@@ -505,7 +505,7 @@ async function handleMultipartEvidenceSubmission(req: Request, res: Response, ne
   
   try {
     await executeMiddleware();
-  } catch (error: any) {
+  } catch {
     // Middleware already sent response for validation errors
     if (res.headersSent) return;
     
@@ -525,7 +525,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
     const userId = req.user?.userId;
     const disputeId = req.params['disputeId'] ?? '';
     const files = req.files as Express.Multer.File[] | undefined;
-    const { type } = req.body;
+    const { _type } = req.body;
 
     if (!userId) {
       res.status(401).json({
