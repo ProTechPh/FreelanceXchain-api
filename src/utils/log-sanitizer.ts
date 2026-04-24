@@ -14,7 +14,7 @@ const SENSITIVE_PATTERNS = {
   jwt: /Bearer\s+[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+/gi,
   
   // API keys and secrets
-  apiKey: /(?:api[_-]?key|apikey|api[_-]?secret|secret[_-]?key)[\s:=]+['"]?([a-zA-Z0-9_\-]{20,})['"]?/gi,
+  apiKey: /(?:api[_-]?key|apikey|api[_-]?secret|secret[_-]?key)[\s:=]+['"]?([a-zA-Z0-9_-]{20,})['"]?/gi,
   
   // Passwords
   password: /(?:password|passwd|pwd)[\s:=]+['"]?([^'"\s]{6,})['"]?/gi,

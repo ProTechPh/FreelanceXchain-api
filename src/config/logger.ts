@@ -73,6 +73,7 @@ class Logger {
     if (!shouldLog(LogLevel.DEBUG)) return;
     
     const sanitizedMessage = typeof message === 'string' ? sanitizeLogData(message) : message;
+    // eslint-disable-next-line no-console
     console.log(formatLogEntry(LogLevel.DEBUG, sanitizedMessage, meta));
   }
 
@@ -83,6 +84,7 @@ class Logger {
     if (!shouldLog(LogLevel.INFO)) return;
     
     const sanitizedMessage = typeof message === 'string' ? sanitizeLogData(message) : message;
+    // eslint-disable-next-line no-console
     console.log(formatLogEntry(LogLevel.INFO, sanitizedMessage, meta));
   }
 

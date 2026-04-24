@@ -79,7 +79,7 @@ export async function createApp(): Promise<Express> {
       openApiSpec = JSON.parse(openApiSpecRaw) as Record<string, unknown>;
     } catch (error) {
       throw new Error(
-        `Failed to load OpenAPI spec from ${openApiSpecPath}. Run \"npm run openapi:generate\" before enabling API docs.`,
+        `Failed to load OpenAPI spec from ${openApiSpecPath}. Run "npm run openapi:generate" before enabling API docs.`,
         { cause: error }
       );
     }

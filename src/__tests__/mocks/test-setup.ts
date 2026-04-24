@@ -49,7 +49,6 @@ export const mockWeb3Client = {
   verifyMessage: mockEthers.verifyMessage,
   getNetworkInfo: jest.fn(),
   isCorrectNetwork: jest.fn(),
-  resetWeb3Instances: jest.fn(),
   deployContract: jest.fn(),
   getContract: jest.fn(),
   getContractWithSigner: jest.fn(),

@@ -60,6 +60,7 @@ export default [
                 ...globals.node,
                 ...globals.es2021,
                 ...globals.jest,
+                Express: 'readonly',
             },
         },
         plugins: {

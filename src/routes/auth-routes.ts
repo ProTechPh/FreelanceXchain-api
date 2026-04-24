@@ -849,7 +849,6 @@ router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Respon
     userId: result.user.id,
   });
 
-  console.log('[OAuth] POST /oauth/callback - Success! Returning 200 with user data');
   // Return the full auth result with user and tokens
   res.status(200).json(result);
 });

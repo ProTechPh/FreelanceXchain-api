@@ -250,10 +250,6 @@ function findMatchingBrace(text: string, startIndex: number): number {
  * Parse JSON from AI response, handling markdown code blocks
  */
 export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
-  console.log(`[${label}] Raw response length:`, text.length);
-  console.log(`[${label}] Raw response:`, text.substring(0, 800));
-  console.log(`[${label}] Raw response (end):`, text.substring(Math.max(0, text.length - 200)));
-
   try {
     let cleanText = text.trim();
 
@@ -283,25 +279,17 @@ export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
       // avoiding lastIndexOf which picks up braces in any duplicated trailing text.
       const matchingBrace = findMatchingBrace(cleanText, jsonStart);
       if (matchingBrace !== -1) {
-        if (jsonStart > 0) {
-          console.log(`[${label}] Stripping ${jsonStart} chars of preamble before JSON`);
-        }
         cleanText = cleanText.substring(jsonStart, matchingBrace + 1);
       } else if (jsonStart > 0) {
-        console.log(`[${label}] Stripping ${jsonStart} chars of preamble before JSON`);
         cleanText = cleanText.substring(jsonStart);
       }
     }
 
-    console.log(`[${label}] Cleaned response:`, cleanText.substring(0, 800));
-
     // First try direct parse
     try {
       const result = JSON.parse(cleanText) as T;
-      console.log(`[${label}] Parse succeeded`);
       return result;
     } catch (parseError) {
-      console.log(`[${label}] Direct parse failed, attempting repair:`, (parseError as Error).message);
 
       // Repair: close any open strings, brackets, braces
       let repaired = cleanText;
@@ -314,7 +302,7 @@ export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
       const lastQuote = repaired.lastIndexOf('"');
       if (lastQuote > 0) {
         const afterLastQuote = repaired.substring(lastQuote + 1).trim();
-        if (afterLastQuote && !afterLastQuote.match(/^[,\]\}]/)) {
+        if (afterLastQuote && !afterLastQuote.match(/^[,\]}]/)) {
           repaired = repaired.substring(0, lastQuote + 1);
         }
       }
@@ -322,9 +310,7 @@ export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
       for (let i = 0; i < openBrackets - closeBrackets; i++) repaired += ']';
       for (let i = 0; i < openBraces - closeBraces; i++) repaired += '}';
 
-      console.log(`[${label}] Repaired response:`, repaired.substring(0, 500));
       const result = JSON.parse(repaired) as T;
-      console.log(`[${label}] Repair succeeded`);
       return result;
     }
   } catch (err) {

@@ -94,7 +94,7 @@ const ALLOWED_EXTENSIONS = [
  */
 export function sanitizeFilename(filename: string): string {
   // Remove path components
-  const basename = filename.replace(/^.*[\\\/]/, '');
+  const basename = filename.replace(/^.*[\\/]/, '');
   
   // Remove or replace dangerous characters
   // Keep alphanumeric, dots, hyphens, underscores
