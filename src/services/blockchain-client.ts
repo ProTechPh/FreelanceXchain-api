@@ -175,9 +175,6 @@ export async function submitTransaction(
     status: 'pending',
   };
 
-  // Sign the transaction (signature used for blockchain submission in production)
-  signTransaction(tx, blockchainConfig.privateKey);
-
   // Generate transaction hash
   tx.hash = generateTransactionHash();
 
@@ -352,6 +349,7 @@ export async function failTransaction(txId: string): Promise<Transaction | null>
  * Clear all transactions (for testing)
  */
 export async function clearTransactions(): Promise<void> {
+  if (process.env['NODE_ENV'] !== 'test') return;
   const supabase = getSupabaseServiceClient();
   await supabase.from('blockchain_transactions').delete().neq('id', '');
 }

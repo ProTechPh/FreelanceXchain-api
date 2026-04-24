@@ -5,14 +5,9 @@ import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/m
 import { notificationEmitter } from './notification-delivery-service.js';
 import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
+import type { PaginatedResult } from '../repositories/base-repository.js';
 
 const supabase = getSupabaseServiceClient();
-
-export interface PaginatedResult<T> {
-  items: T[];
-  total: number;
-  hasMore: boolean;
-}
 
 export interface PaginationOptions {
   page?: number;
@@ -219,8 +214,8 @@ export async function getConversations(
       success: true,
       data: {
         items: enrichedConversations,
-        total: enrichedConversations.length, // Adjust total to reflect filtered results
-        hasMore: offset + limit < total,
+        total: enrichedConversations.length,
+        hasMore: enrichedConversations.length === limit,
       },
     };
   } catch (error) {

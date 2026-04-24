@@ -151,6 +151,11 @@ export function initializeSSEConnection(userId: string, res: Response): ServiceR
     // Add connection to manager
     sseConnectionManager.addConnection(userId, res);
 
+    // Start heartbeat on first connection (lazy init)
+    if (!heartbeatTimer) {
+      startHeartbeat();
+    }
+
     // Subscribe to notification events
     const unsubscribe = notificationEmitter.subscribeToUser(userId, (notification) => {
       sseConnectionManager.sendToUser(userId, notification);

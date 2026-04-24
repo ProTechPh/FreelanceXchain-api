@@ -114,7 +114,7 @@ export async function submitMilestoneToRegistry(
   }
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'milestone_submit',
     from: input.freelancerWallet,
     to: MILESTONE_REGISTRY_ADDRESS,
     amount: BigInt(0),
@@ -201,7 +201,7 @@ export async function approveMilestoneOnRegistry(
   }
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'milestone_approve',
     from: approverWallet,
     to: MILESTONE_REGISTRY_ADDRESS,
     amount: BigInt(0),
@@ -265,7 +265,7 @@ export async function rejectMilestoneOnRegistry(
   if (record.status !== 'submitted') throw new Error('Invalid milestone status');
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'milestone_reject',
     from: rejecterWallet,
     to: MILESTONE_REGISTRY_ADDRESS,
     amount: BigInt(0),
@@ -385,6 +385,7 @@ export async function verifyMilestoneWork(milestoneId: string, deliverables: str
 }
 
 export async function clearMilestoneRegistry(): Promise<void> {
+  if (process.env['NODE_ENV'] !== 'test') return;
   const supabase = getSupabaseServiceClient();
   await supabase.from('blockchain_milestones').delete().neq('milestone_id_hash', '');
 }

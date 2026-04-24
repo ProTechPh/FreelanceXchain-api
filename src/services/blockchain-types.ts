@@ -4,7 +4,21 @@
  */
 
 // Transaction types
-export type TransactionType = 'escrow_deploy' | 'escrow_deposit' | 'milestone_release' | 'refund';
+export type TransactionType =
+  | 'escrow_deploy'
+  | 'escrow_deposit'
+  | 'milestone_release'
+  | 'refund'
+  | 'agreement_create'
+  | 'agreement_sign'
+  | 'agreement_complete'
+  | 'dispute_create'
+  | 'dispute_resolve'
+  | 'rating_submit'
+  | 'milestone_submit'
+  | 'milestone_approve'
+  | 'milestone_reject'
+  | 'agreement_dispute';
 
 export type TransactionStatus = 'pending' | 'confirmed' | 'failed';
 

@@ -185,19 +185,39 @@ export async function approveRefund(
       throw updateError || new Error('Failed to approve refund');
     }
 
-    // Execute blockchain refund
+    // Execute blockchain refund for all non-approved milestones
     try {
       if (contract.escrow_address) {
         const { refundMilestone } = await import('./escrow-blockchain.js');
 
-        // Get milestone index from refund data or default to 0
-        const milestoneIndex = 0;
+        // Get all milestones for this contract to determine correct indices
+        const { data: milestones } = await supabase
+          .from('milestones')
+          .select('id, status')
+          .eq('contract_id', refund.contract_id)
+          .order('due_date', { ascending: true });
 
-        await refundMilestone(contract.escrow_address, milestoneIndex);
-        logger.info('Blockchain refund executed', {
-          refundId: input.refundId,
-          escrowAddress: contract.escrow_address
-        });
+        const pendingMilestones = (milestones || [])
+          .map((m, index) => ({ ...m, index }))
+          .filter(m => m.status !== 'approved');
+
+        for (const milestone of pendingMilestones) {
+          try {
+            await refundMilestone(contract.escrow_address, milestone.index);
+            logger.info('Blockchain refund executed for milestone', {
+              refundId: input.refundId,
+              milestoneIndex: milestone.index,
+              milestoneId: milestone.id,
+              escrowAddress: contract.escrow_address,
+            });
+          } catch (milestoneRefundError) {
+            logger.error('Failed to refund individual milestone on-chain', {
+              error: milestoneRefundError,
+              milestoneIndex: milestone.index,
+              milestoneId: milestone.id,
+            });
+          }
+        }
       } else {
         logger.warn('Contract has no escrow address, skipping blockchain refund', {
           contractId: refund.contract_id

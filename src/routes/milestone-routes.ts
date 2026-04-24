@@ -7,7 +7,6 @@ import { uploadFile } from '../utils/file-upload.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository, type MilestoneEntity, type ProjectEntity } from '../repositories/project-repository.js';
 import {
-  approveMilestone as approveMilestoneDB,
   rejectMilestone,
   getMilestoneById,
   getContractMilestones,

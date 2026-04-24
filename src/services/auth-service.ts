@@ -19,6 +19,8 @@ const PASSWORD_MAX_LENGTH = 72;
 const MFA_ENCRYPTION_KEY = process.env['MFA_ENCRYPTION_KEY'] ?? config.jwt.secret;
 const MFA_ENCRYPTION_ALGO = 'aes-256-gcm';
 
+// SECURITY TODO: Static salt weakens key derivation. Migrate to per-user salts
+// stored in the database for proper key isolation between users.
 function getMfaEncryptionKey(): Buffer {
   return scryptSync(MFA_ENCRYPTION_KEY, 'mfa-salt-freelancex', 32);
 }

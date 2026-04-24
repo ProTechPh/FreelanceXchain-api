@@ -270,9 +270,10 @@ export async function getReputationLeaderboard(
     const userStats = new Map<string, { sum: number; count: number; name: string }>();
 
     topUsers.forEach(review => {
-      const userName = Array.isArray(review.users) && review.users.length > 0 
-        ? review.users[0]?.full_name || 'Unknown'
-        : 'Unknown';
+      const users = review.users as any;
+      const userName = Array.isArray(users) 
+        ? users[0]?.full_name || 'Unknown'
+        : users?.full_name || 'Unknown';
       const existing = userStats.get(review.reviewee_id) || { 
         sum: 0, 
         count: 0, 

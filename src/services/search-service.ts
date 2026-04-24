@@ -5,6 +5,9 @@ import { PaginatedResult, QueryOptions } from '../repositories/base-repository.j
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
 
+// TODO: Multi-filter search currently chains individual repository calls and merges client-side.
+// For better scalability, consider using a Supabase RPC function or database view that applies
+// all filters (keyword, skills, budget range) in a single query.
 const SEARCH_FALLBACK_LIMIT = 1000;
 
 export type ProjectSearchFilters = {

@@ -184,18 +184,18 @@ export async function shouldSendEmail(userId: string, emailType: EmailType): Pro
 
     const preferences = result.data;
 
-    const preferenceMap: Record<EmailType, keyof EmailPreference> = {
-      proposal_received: 'proposalReceived',
-      proposal_accepted: 'proposalAccepted',
-      milestone_updates: 'milestoneUpdates',
-      payment_notifications: 'paymentNotifications',
-      dispute_notifications: 'disputeNotifications',
-      marketing_emails: 'marketingEmails',
-      weekly_digest: 'weeklyDigest',
+    const preferenceMap: Record<EmailType, string> = {
+      proposal_received: 'proposal_received',
+      proposal_accepted: 'proposal_accepted',
+      milestone_updates: 'milestone_updates',
+      payment_notifications: 'payment_notifications',
+      dispute_notifications: 'dispute_notifications',
+      marketing_emails: 'marketing_emails',
+      weekly_digest: 'weekly_digest',
     };
 
     const preferenceKey = preferenceMap[emailType];
-    return preferences[preferenceKey] as boolean ?? true;
+    return (preferences as any)[preferenceKey] as boolean ?? true;
   } catch (error) {
     logger.error('Error checking email preference', { error, userId, emailType });
     return ['proposal_accepted', 'milestone_updates', 'payment_notifications', 'dispute_notifications'].includes(emailType);

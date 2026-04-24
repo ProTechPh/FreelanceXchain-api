@@ -125,7 +125,7 @@ export async function createDisputeOnBlockchain(
   }
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'dispute_create',
     from: input.initiatorWallet,
     to: DISPUTE_REGISTRY_ADDRESS,
     amount: BigInt(0),
@@ -218,7 +218,7 @@ export async function updateDisputeEvidence(
   const evidenceHash = generateHash(evidenceData);
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'dispute_create',
     from: submitterWallet,
     to: DISPUTE_REGISTRY_ADDRESS,
     amount: BigInt(0),
@@ -275,7 +275,7 @@ export async function resolveDisputeOnBlockchain(
   if (record.outcome !== 'pending') throw new Error('Dispute already resolved');
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'dispute_resolve',
     from: input.arbiterWallet,
     to: DISPUTE_REGISTRY_ADDRESS,
     amount: BigInt(0),
@@ -388,6 +388,7 @@ export async function getUserDisputes(walletAddress: string): Promise<Blockchain
 }
 
 export async function clearDisputeRegistry(): Promise<void> {
+  if (process.env['NODE_ENV'] !== 'test') return;
   const supabase = getSupabaseServiceClient();
   await supabase.from('blockchain_dispute_records').delete().neq('dispute_id_hash', '');
 }

@@ -327,14 +327,6 @@ export async function isCorrectNetwork(expectedChainId: number): Promise<boolean
   return network.chainId === expectedChainId;
 }
 
-/**
- * Reset provider and wallet (for testing or reconnection)
- */
-export function resetWeb3Client(): void {
-  provider = null;
-  wallet = null;
-}
-
 // Contract interaction helpers
 
 /**

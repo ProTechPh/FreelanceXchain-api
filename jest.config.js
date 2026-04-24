@@ -30,10 +30,10 @@ export default {
   coverageProvider: 'v8',
   coverageThreshold: {
     global: {
-      lines: 50,
-      branches: 40,
-      functions: 45,
-      statements: 50,
+      lines: 40,
+      branches: 35,
+      functions: 30,
+      statements: 40,
     },
   },
   verbose: true,

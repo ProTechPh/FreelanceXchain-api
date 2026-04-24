@@ -387,7 +387,7 @@ export async function analyzeSkillGaps(
 }
 
 /**
- * Calculate match score between a freelancer and a project (for testing)
+ * @internal Test-only helper — calculate match score between a freelancer and a project
  */
 export function calculateMatchScore(
   freelancerSkills: SkillInfo[],
@@ -397,7 +397,7 @@ export function calculateMatchScore(
 }
 
 /**
- * Sort recommendations by match score (for testing)
+ * @internal Test-only helper — sort recommendations by match score
  */
 export function sortRecommendationsByScore<T extends { matchScore: number }>(
   recommendations: T[]
@@ -406,7 +406,7 @@ export function sortRecommendationsByScore<T extends { matchScore: number }>(
 }
 
 /**
- * Sort freelancer recommendations by combined score (for testing)
+ * @internal Test-only helper — sort freelancer recommendations by combined score
  */
 export function sortFreelancerRecommendationsByCombinedScore(
   recommendations: FreelancerRecommendation[]

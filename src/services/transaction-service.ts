@@ -1,14 +1,9 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import type { PaginatedResult } from '../repositories/base-repository.js';
 
 const supabase = getSupabaseClient();
-
-export interface PaginatedResult<T> {
-  items: T[];
-  total: number;
-  hasMore: boolean;
-}
 
 export interface Transaction {
   id: string;
@@ -61,11 +56,9 @@ export async function getUserTransactions(
     let query = supabase
       .from('transactions')
       .select('*', { count: 'exact' })
-      .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .or(`from_user_id.eq.${userId},to_user_id.eq.${userId}`);
 
-    // Apply filters
+    // Apply filters before ordering and pagination
     if (options.type) {
       query = query.eq('type', options.type);
     }
@@ -78,6 +71,10 @@ export async function getUserTransactions(
     if (options.endDate) {
       query = query.lte('created_at', options.endDate);
     }
+
+    query = query
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     const { data, error, count } = await query;
 

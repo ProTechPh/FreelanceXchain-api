@@ -16,8 +16,8 @@ import { TransactionReceipt } from './blockchain-types.js';
 import { generateId } from '../utils/id.js';
 import { getSupabaseServiceClient } from '../config/supabase.js';
 
-// Blockchain rating record type
-export type BlockchainRating = {
+// Simulated blockchain rating record type (Supabase-backed)
+export type SimulatedBlockchainRating = {
   id: string;
   contractId: string;
   raterId: string;
@@ -28,17 +28,9 @@ export type BlockchainRating = {
   transactionHash: string;
 };
 
-// Serialized blockchain rating for JSON encoding
-export type SerializedBlockchainRating = {
-  id: string;
-  contractId: string;
-  raterId: string;
-  rateeId: string;
-  rating: number;
-  comment?: string | undefined;
-  timestamp: number;
-  transactionHash: string;
-};
+// Backward-compatible alias
+export type BlockchainRating = SimulatedBlockchainRating;
+export type SerializedBlockchainRating = SimulatedBlockchainRating;
 
 // Rating submission parameters
 export type RatingSubmissionParams = {
@@ -64,7 +56,7 @@ type RatingRow = {
   transaction_hash: string;
 };
 
-function rowToRating(row: RatingRow): BlockchainRating {
+function rowToRating(row: RatingRow): SimulatedBlockchainRating {
   return {
     id: row.id,
     contractId: row.contract_id,
@@ -78,35 +70,19 @@ function rowToRating(row: RatingRow): BlockchainRating {
 }
 
 /**
- * Serialize a BlockchainRating to JSON-compatible format
+ * Serialize a SimulatedBlockchainRating to JSON-compatible format
+ * (Identity operation — types are already JSON-compatible)
  */
-export function serializeBlockchainRating(rating: BlockchainRating): SerializedBlockchainRating {
-  return {
-    id: rating.id,
-    contractId: rating.contractId,
-    raterId: rating.raterId,
-    rateeId: rating.rateeId,
-    rating: rating.rating,
-    comment: rating.comment,
-    timestamp: rating.timestamp,
-    transactionHash: rating.transactionHash,
-  };
+export function serializeBlockchainRating(rating: SimulatedBlockchainRating): SimulatedBlockchainRating {
+  return rating;
 }
 
 /**
- * Deserialize a JSON object back to BlockchainRating
+ * Deserialize a JSON object back to SimulatedBlockchainRating
+ * (Identity operation — types are already JSON-compatible)
  */
-export function deserializeBlockchainRating(json: SerializedBlockchainRating): BlockchainRating {
-  return {
-    id: json.id,
-    contractId: json.contractId,
-    raterId: json.raterId,
-    rateeId: json.rateeId,
-    rating: json.rating,
-    comment: json.comment,
-    timestamp: json.timestamp,
-    transactionHash: json.transactionHash,
-  };
+export function deserializeBlockchainRating(json: SimulatedBlockchainRating): SimulatedBlockchainRating {
+  return json;
 }
 
 /**
@@ -126,7 +102,7 @@ export async function submitRatingToBlockchain(
 
   // Submit transaction to blockchain
   const tx = await submitTransaction({
-    type: 'escrow_deploy', // Using existing type for simulation
+    type: 'rating_submit',
     from: params.raterId,
     to: REPUTATION_CONTRACT_ADDRESS,
     amount: BigInt(0),
@@ -317,6 +293,7 @@ export async function hasUserRatedForContract(
  * Clear all ratings (for testing)
  */
 export async function clearBlockchainRatings(): Promise<void> {
+  if (process.env['NODE_ENV'] !== 'test') return;
   const supabase = getSupabaseServiceClient();
   await supabase.from('blockchain_ratings').delete().neq('id', '');
 }

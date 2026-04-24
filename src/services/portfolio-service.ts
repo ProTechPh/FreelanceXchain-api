@@ -33,6 +33,16 @@ export async function createPortfolioItem(
 
       if (skillError) {
         logger.error('Failed to verify skills', { error: skillError, skills: input.skills });
+      } else if (skills && skills.length < input.skills.length) {
+        const validSkills = new Set(skills.map((s: { name: string }) => s.name));
+        const invalidSkills = input.skills.filter(s => !validSkills.has(s));
+        return {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: `Invalid skills: ${invalidSkills.join(', ')}`,
+          },
+        };
       }
     }
 

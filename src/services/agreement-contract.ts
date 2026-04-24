@@ -128,7 +128,7 @@ export async function createAgreementOnBlockchain(
   }
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'agreement_create',
     from: input.employerWallet,
     to: AGREEMENT_CONTRACT_ADDRESS,
     amount: BigInt(0),
@@ -214,7 +214,7 @@ export async function signAgreement(
   }
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'agreement_sign',
     from: signerWallet,
     to: AGREEMENT_CONTRACT_ADDRESS,
     amount: BigInt(0),
@@ -286,7 +286,7 @@ export async function completeAgreement(
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'agreement_complete',
     from: callerWallet,
     to: AGREEMENT_CONTRACT_ADDRESS,
     amount: BigInt(0),
@@ -346,7 +346,7 @@ export async function disputeAgreement(
   }
 
   const tx = await submitTransaction({
-    type: 'escrow_deploy',
+    type: 'agreement_dispute',
     from: callerWallet,
     to: AGREEMENT_CONTRACT_ADDRESS,
     amount: BigInt(0),
@@ -440,6 +440,7 @@ export async function getUserAgreements(walletAddress: string): Promise<Blockcha
  * Clear all agreements (for testing)
  */
 export async function clearBlockchainAgreements(): Promise<void> {
+  if (process.env['NODE_ENV'] !== 'test') return;
   const supabase = getSupabaseServiceClient();
   await supabase.from('blockchain_agreements').delete().neq('contract_id_hash', '');
 }
