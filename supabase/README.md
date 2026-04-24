@@ -247,7 +247,7 @@ createdb freelancexchain_test
 psql -d freelancexchain_test -f supabase/schema.sql
 
 # Run tests
-npm test
+pnpm test
 ```
 
 ## 📚 Related Documentation
@@ -278,7 +278,7 @@ npm test
 3. **Test migration**
    ```bash
    supabase db reset
-   npm test
+   pnpm test
    ```
 
 4. **Commit migration**

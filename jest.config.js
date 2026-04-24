@@ -28,6 +28,14 @@ export default {
   ],
   coverageDirectory: 'coverage',
   coverageProvider: 'v8',
+  coverageThreshold: {
+    global: {
+      lines: 50,
+      branches: 40,
+      functions: 45,
+      statements: 50,
+    },
+  },
   verbose: true,
   testTimeout: 30000,
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],

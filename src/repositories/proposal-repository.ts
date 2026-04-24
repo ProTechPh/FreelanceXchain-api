@@ -98,10 +98,29 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
       .from(this.tableName)
       .select('*', { count: 'exact', head: true })
       .eq('project_id', projectId)
-      .neq('status', 'withdrawn'); // Exclude withdrawn proposals from count
+      .neq('status', 'withdrawn');
     
     if (error) throw new Error(`Failed to get proposal count: ${error.message}`);
     return count ?? 0;
+  }
+
+  async getProposalCountsByProjects(projectIds: string[]): Promise<Map<string, number>> {
+    if (projectIds.length === 0) return new Map();
+    const client = this.getClient();
+    const { data, error } = await client
+      .from(this.tableName)
+      .select('project_id')
+      .in('project_id', projectIds)
+      .neq('status', 'withdrawn');
+
+    if (error) throw new Error(`Failed to get proposal counts: ${error.message}`);
+
+    const counts = new Map<string, number>();
+    for (const row of (data ?? [])) {
+      const id = (row as any).project_id as string;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+    return counts;
   }
 
   async getExistingProposal(projectId: string, freelancerId: string): Promise<ProposalEntity | null> {

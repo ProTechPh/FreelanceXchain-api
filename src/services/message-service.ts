@@ -4,18 +4,9 @@ import { messageRepository } from '../repositories/message-repository.js';
 import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/message.js';
 import { notificationEmitter } from './notification-delivery-service.js';
 import { generateId } from '../utils/id.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 const supabase = getSupabaseServiceClient();
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
 
 export interface PaginatedResult<T> {
   items: T[];
@@ -354,6 +345,7 @@ export async function markConversationAsRead(
 
     return {
       success: true,
+      data: undefined as unknown as void,
     };
   } catch (error) {
     logger.error('Unexpected error in markConversationAsRead', { error, conversationId, userId });

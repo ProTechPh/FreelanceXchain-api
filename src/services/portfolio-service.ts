@@ -1,18 +1,9 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import { PortfolioItem, PortfolioItemInput } from '../models/portfolio.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 const supabase = getSupabaseClient();
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
 
 /**
  * Create a new portfolio item
@@ -238,6 +229,7 @@ export async function deletePortfolioItem(
 
     return {
       success: true,
+      data: undefined as unknown as void,
     };
   } catch (error) {
     logger.error('Unexpected error in deletePortfolioItem', { error, portfolioId });

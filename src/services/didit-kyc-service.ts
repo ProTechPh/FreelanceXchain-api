@@ -10,6 +10,7 @@ import { generateId } from '../utils/id.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
 import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
+import type { ServiceResult } from '../types/service-result.js';
 import {
   createKycVerification,
   getKycVerificationById,
@@ -44,8 +45,6 @@ const KYC_RETRY_COOLDOWN_HOURS = 24;
 if (!DIDIT_WORKFLOW_ID) {
   logger.warn('DIDIT_WORKFLOW_ID not configured. Using default workflow.');
 }
-
-type ServiceResult<T> = { success: true; data: T } | { success: false; error: { code: string; message: string; retryAfter?: string } };
 
 /**
  * Initiate KYC verification for a user
@@ -111,7 +110,7 @@ export async function initiateKycVerification(
   });
 
   if (!sessionResult.success) {
-    console.error('Didit session creation failed:', sessionResult.error);
+    logger.error('Didit session creation failed', { error: sessionResult.error });
     return {
       success: false,
       error: {
@@ -191,7 +190,7 @@ export async function refreshVerificationStatus(
   // Get latest status from Didit
   const sessionResult = await getVerificationSession(verification.didit_session_id);
   if (!sessionResult.success) {
-    console.error('Failed to get session details:', sessionResult.error);
+    logger.error('Failed to get session details', { error: sessionResult.error });
     return {
       success: false,
       error: {
@@ -344,7 +343,7 @@ async function syncKycNameToUserAndProfiles(
   try {
     const user = await userRepository.getUserById(userId);
     if (!user) {
-      console.error(`Sync KYC name: User not found: ${userId}`);
+      logger.error('Sync KYC name: User not found', { userId });
       return;
     }
 
@@ -353,20 +352,20 @@ async function syncKycNameToUserAndProfiles(
     // Sync name to users table (KYC is source of truth)
     if (fullName && fullName !== 'User') {
       await userRepository.updateUserName(userId, fullName);
-      console.log(`Synced KYC name to users table for user: ${userId}`);
+      logger.info('Synced KYC name to users table', { userId });
     }
 
     if (user.role === 'freelancer') {
       // Check if profile already exists
       const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
       if (existingProfile) {
-        console.log(`Freelancer profile already exists for user: ${userId}`);
+        logger.info('Freelancer profile already exists', { userId });
         // Update existing profile with KYC name
         await freelancerProfileRepository.updateProfile(existingProfile.id, {
           name: fullName,
           nationality: nationality,
         });
-        console.log(`Updated freelancer profile name from KYC for user: ${userId}`);
+        logger.info('Updated freelancer profile name from KYC', { userId });
         return;
       }
 
@@ -385,19 +384,19 @@ async function syncKycNameToUserAndProfiles(
         availability: 'available',
       });
       
-      console.log(`Auto-created freelancer profile for user: ${userId}`);
+      logger.info('Auto-created freelancer profile', { userId });
       
     } else if (user.role === 'employer') {
       // Check if profile already exists
       const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
       if (existingProfile) {
-        console.log(`Employer profile already exists for user: ${userId}`);
+        logger.info('Employer profile already exists', { userId });
         // Update existing profile with KYC name
         await employerProfileRepository.updateProfile(existingProfile.id, {
           name: fullName,
           nationality: nationality,
         });
-        console.log(`Updated employer profile name from KYC for user: ${userId}`);
+        logger.info('Updated employer profile name from KYC', { userId });
         return;
       }
 
@@ -414,10 +413,10 @@ async function syncKycNameToUserAndProfiles(
         industry: 'Technology',
       });
       
-      console.log(`Auto-created employer profile for user: ${userId}`);
+      logger.info('Auto-created employer profile', { userId });
     }
   } catch (error) {
-    console.error(`Failed to sync KYC name for user ${userId}:`, error);
+    logger.error('Failed to sync KYC name for user', { userId, error });
     // Don't throw - profile sync failure shouldn't fail the webhook/approval
   }
 }
@@ -601,7 +600,7 @@ function mapDiditStatusToKycStatus(diditStatus: string): KycStatus {
       return 'expired';   // FIXED: Was falling through to default ('pending')
     default:
       // Log unexpected statuses instead of silently defaulting
-      console.warn(`[KYC] Unknown Didit status: "${diditStatus}", defaulting to "pending"`);
+      logger.warn('Unknown Didit status, defaulting to pending', { diditStatus });
       return 'pending';
   }
 }

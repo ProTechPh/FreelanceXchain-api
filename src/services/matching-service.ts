@@ -14,6 +14,7 @@ import {
   parseJsonResponse,
   SKILL_GAP_PROMPT,
 } from './ai-client.js';
+import { logger } from '../config/logger.js';
 import {
   SkillMatchResult,
   ExtractedSkill,
@@ -27,15 +28,10 @@ import { freelancerProfileRepository } from '../repositories/freelancer-profile-
 import { getActiveSkills } from './skill-service.js';
 import { getReputation } from './reputation-service.js';
 
-// Types
-export type MatchingServiceError = {
-  code: string;
-  message: string;
-};
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
-export type MatchingServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: MatchingServiceError };
+export type MatchingServiceResult<T> = ServiceResult<T>;
+export type MatchingServiceError = ServiceError;
 
 // Constants
 const DEFAULT_RECOMMENDATION_LIMIT = 10;
@@ -313,12 +309,11 @@ export async function analyzeSkillGaps(
 
   const response = await generateContent(prompt);
 
-  console.log('[SkillGap] generateContent returned type:', typeof response);
-  console.log('[SkillGap] generateContent returned value:', JSON.stringify(response).substring(0, 300));
+  logger.debug('[SkillGap] generateContent returned', { type: typeof response });
 
   if (typeof response !== 'string') {
     // AI error, return basic analysis
-    console.error('[SkillGap] AI returned non-string:', response);
+    logger.error('[SkillGap] AI returned non-string', { type: typeof response });
     return {
       success: true,
       data: {
@@ -360,7 +355,7 @@ export async function analyzeSkillGaps(
       })
       .filter(item => item !== null) as Array<{ skillName: string; demandLevel: 'high' | 'medium' | 'low' }>;
     
-    console.log('[SkillGap] Successfully parsed:', {
+    logger.debug('[SkillGap] Successfully parsed', {
       currentSkills: analysis.currentSkills?.length ?? 0,
       recommendedSkills: analysis.recommendedSkills?.length ?? 0,
       marketDemand: sanitizedMarketDemand.length
@@ -376,8 +371,8 @@ export async function analyzeSkillGaps(
       },
     };
   } catch (error) {
-    console.error('[SkillGap] Failed to parse AI response:', error);
-    console.error('[SkillGap] Response was:', response.substring(0, 1000));
+    logger.error('[SkillGap] Failed to parse AI response', { error });
+    logger.debug('[SkillGap] Response preview', { preview: typeof response === 'string' ? response.substring(0, 500) : String(response).substring(0, 500) });
     
     return {
       success: true,

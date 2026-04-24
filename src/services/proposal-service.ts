@@ -1,5 +1,5 @@
 import { Proposal, mapProposalFromEntity } from '../utils/entity-mapper.js';
-import { Contract, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
+import { Contract, Project, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
 import { proposalRepository, ProposalEntity } from '../repositories/proposal-repository.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
@@ -8,9 +8,11 @@ import { notificationRepository } from '../repositories/notification-repository.
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
 import { getSupabaseServiceClient } from '../config/supabase.js';
+import { logger } from '../config/logger.js';
 
 import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
 export type CreateProposalInput = {
   projectId: string;
@@ -19,15 +21,8 @@ export type CreateProposalInput = {
   estimatedDuration: number;
 };
 
-export type ProposalServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-export type ProposalServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: ProposalServiceError };
+export type ProposalServiceResult<T> = ServiceResult<T>;
+export type ProposalServiceError = ServiceError;
 
 export type ProposalWithNotification = {
   proposal: Proposal;
@@ -125,7 +120,7 @@ export async function submitProposal(
     });
     notificationId = notification.id;
   } catch (error) {
-    console.error('Failed to create notification:', error);
+    logger.error('Failed to create notification', { error });
     // Continue - notification is secondary
   }
 
@@ -155,7 +150,21 @@ export async function getProposalById(proposalId: string): Promise<ProposalServi
 }
 
 // Get proposal by ID with employer history (rating and completed projects)
-export async function getProposalWithEmployerHistory(proposalId: string): Promise<ProposalServiceResult<any>> {
+export type EmployerHistory = {
+  completedProjectsCount: number;
+  averageRating: number;
+  reviewCount: number;
+  companyName: string | null | undefined;
+  industry: string | null | undefined;
+};
+
+export type ProposalWithEmployerHistory = {
+  proposal: Proposal;
+  project: Project;
+  employerHistory: EmployerHistory;
+};
+
+export async function getProposalWithEmployerHistory(proposalId: string): Promise<ProposalServiceResult<ProposalWithEmployerHistory>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
     return {
@@ -315,7 +324,7 @@ export async function acceptProposal(
     });
 
   if (rpcError) {
-    console.error('Failed to accept proposal (RPC):', rpcError);
+    logger.error('Failed to accept proposal (RPC)', { error: rpcError });
     return {
       success: false,
       error: { 
@@ -379,7 +388,7 @@ export async function acceptProposal(
       }
     }
   } catch (error) {
-    console.error('Failed to create blockchain agreement or initialize escrow:', error);
+    logger.error('Failed to create blockchain agreement or initialize escrow', { error });
     // Continue - blockchain is secondary, contract remains pending
   }
 
@@ -421,7 +430,7 @@ export async function acceptProposal(
       is_read: false,
     });
   } catch (error) {
-    console.error('Failed to create notification:', error);
+    logger.error('Failed to create notification', { error });
     // Continue - notification is secondary
   }
 
@@ -502,7 +511,7 @@ export async function rejectProposal(
       is_read: false,
     });
   } catch (error) {
-    console.error('Failed to create notification:', error);
+    logger.error('Failed to create notification', { error });
     // Continue - notification is secondary
   }
 

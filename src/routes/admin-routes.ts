@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { ValidationError } from '../middleware/error-handler.js';
 import {
   getPlatformStats,
   getUserManagement,
@@ -87,9 +88,9 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
   if (role) filters.role = role;
   const result = await getUserManagement(filters);
 
-  if (!result.success || !result.data) {
+  if (!result.success) {
     res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      error: { code: result.error.code ?? 'UNKNOWN', message: result.error.message ?? 'An error occurred' },
       timestamp: new Date().toISOString(),
       requestId,
     });
@@ -127,6 +128,16 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
   const userId = req.params['userId'] ?? '';
   const { name, role, isActive } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+
+  const validRoles = ['freelancer', 'employer', 'admin'];
+  if (role !== undefined && !validRoles.includes(role)) {
+    res.status(400).json({
+      error: { code: 'INVALID_ROLE', message: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
 
   const result = await updateUser(userId, { name, role, isActive });
 
@@ -305,21 +316,17 @@ router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response
 
   if (!result.success) {
     res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      error: { code: result.error.code ?? 'UNKNOWN', message: result.error.message ?? 'An error occurred' },
       timestamp: new Date().toISOString(),
       requestId,
     });
     return;
   }
 
-  // The backend uses slightly different field names than the frontend expects, so we map them here:
   res.status(200).json({
-    totalFreelancers: result.data?.totalFreelancers || 0,
-    totalEmployers: result.data?.totalEmployers || 0,
-    totalProjects: result.data?.totalProjects || 0,
-    totalPaidOut: (result.data?.totalTransactionVolume || 0).toFixed(2),
-    satisfactionRate: 100, // Mocked to 100% for now
-    ...result.data
+    ...result.data,
+    totalPaidOut: result.data.totalTransactionVolume.toFixed(2),
+    satisfactionRate: 100,
   });
 });
 

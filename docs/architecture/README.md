@@ -2,10 +2,6 @@
 
 Deep dive into the system architecture, design patterns, and technical implementation.
 
-# Architecture Documentation
-
-Deep dive into the system architecture, design patterns, and technical implementation.
-
 ## Documentation
 
 ### AI-Powered Matching
@@ -17,6 +13,16 @@ Deep dive into the system architecture, design patterns, and technical implement
 ### API Endpoints
 - [API Overview](api-overview.md) - API architecture overview
 - [API Contract](api-contract.md) - Contract endpoints
+- [AI Matching API](api-ai-matching.md) - AI matching endpoints
+- [Auth API](api-auth.md) - Authentication endpoints
+- [Dispute API](api-dispute.md) - Dispute resolution endpoints
+- [KYC API](api-kyc.md) - KYC verification endpoints
+- [Notification API](api-notification.md) - Notification endpoints
+- [Payment API](api-payment.md) - Payment processing endpoints
+- [Project API](api-project.md) - Project management endpoints
+- [Proposal API](api-proposal.md) - Proposal endpoints
+- [Reputation API](api-reputation.md) - Reputation endpoints
+- [Search API](api-search.md) - Search endpoints
 
 ### Services Layer
 - [Services Overview](services-overview.md) - Business logic services
@@ -44,6 +50,7 @@ Deep dive into the system architecture, design patterns, and technical implement
 
 ### Database Design
 - [Database Overview](database-overview.md) - Schema design
+- [Database Tables](database-tables.md) - Table definitions
 - [Database Indexes](database-indexes.md) - Index optimization
 - [Database RLS](database-rls.md) - Row-level security
 - [Database Seeding](database-seeding.md) - Data seeding

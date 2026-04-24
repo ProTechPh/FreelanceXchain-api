@@ -1,22 +1,7 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { TABLES } from '../config/supabase.js';
-
-export type NotificationType =
-  | 'proposal_received'
-  | 'proposal_accepted'
-  | 'proposal_rejected'
-  | 'milestone_submitted'
-  | 'milestone_approved'
-  | 'milestone_rejected'
-  | 'payment_released'
-  | 'dispute_created'
-  | 'dispute_resolved'
-  | 'dispute_evidence_submitted'
-  | 'refund_requested'
-  | 'refund_approved'
-  | 'refund_rejected'
-  | 'rating_received'
-  | 'message';
+export type { NotificationType } from '../models/notification.js';
+import type { NotificationType } from '../models/notification.js';
 
 export type NotificationEntity = {
   id: string;

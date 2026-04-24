@@ -1,9 +1,6 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
-
-export type ServiceResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: { code: string; message: string } };
+import type { ServiceResult } from '../types/service-result.js';
 
 export type ReputationScore = {
   userId: string;

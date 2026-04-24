@@ -4,6 +4,7 @@ import { skillRepository } from '../repositories/skill-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
 export type CreateProjectInput = {
   title: string;
@@ -37,15 +38,8 @@ export type ProjectWithProposalCount = ProjectEntity & {
   proposalCount: number;
 };
 
-export type ProjectServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-export type ProjectServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: ProjectServiceError };
+export type ProjectServiceResult<T> = ServiceResult<T>;
+export type ProjectServiceError = ServiceError;
 
 type SkillRef = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
 
@@ -357,12 +351,15 @@ export async function listProjectsByEmployer(
 ): Promise<ProjectServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByEmployer(employerId, options);
   
-  const projectsWithCounts: ProjectWithProposalCount[] = await Promise.all(
-    result.items.map(async (project) => {
-      const proposalCount = await proposalRepository.getProposalCountByProject(project.id);
-      return { ...project, proposalCount };
-    })
-  );
+  const projectIds = result.items.map(p => p.id);
+  const proposalCounts = projectIds.length > 0
+    ? await proposalRepository.getProposalCountsByProjects(projectIds)
+    : new Map<string, number>();
+
+  const projectsWithCounts: ProjectWithProposalCount[] = result.items.map((project) => ({
+    ...project,
+    proposalCount: proposalCounts.get(project.id) ?? 0,
+  }));
 
   return { 
     success: true, 

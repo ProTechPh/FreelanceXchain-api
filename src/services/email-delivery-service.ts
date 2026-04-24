@@ -1,6 +1,7 @@
 import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { logger } from '../config/logger.js';
+import type { ServiceResult } from '../types/service-result.js';
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -26,10 +27,6 @@ export type EmailData = {
   template: EmailTemplate;
   data: Record<string, any>;
 };
-
-export type ServiceResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: { code: string; message: string } };
 
 let transporter: Transporter | null = null;
 

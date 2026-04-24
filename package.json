@@ -9,7 +9,7 @@
     "openapi:generate": "tsx scripts/generate-openapi.ts",
     "start": "node dist/index.js",
     "start:prod": "tsx src/index.ts",
-    "dev": "cross-env NODE_ENV=development BLOCKCHAIN_MODE=real BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545 BLOCKCHAIN_PRIVATE_KEY=00ad000e3b3dd62055ba74a187b16a00a86b599a08be5fd4200763b68c380ac7 tsx watch src/index.ts",
+    "dev": "cross-env NODE_ENV=development BLOCKCHAIN_MODE=real BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545 tsx watch src/index.ts",
     "prod": "cross-env NODE_ENV=production BLOCKCHAIN_RPC_URL=https://rpc-amoy.polygon.technology tsx src/index.ts",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
     "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
@@ -25,7 +25,7 @@
     "deploy:escrow": "hardhat run scripts/deploy-escrow.cjs --network sepolia --config hardhat.config.cjs",
     "deploy:local": "node scripts/deploy-to-hardhat.cjs",
     "deploy:contracts": "tsx scripts/deploy-contracts.ts",
-    "deploy:contracts:dev": "cross-env BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545 BLOCKCHAIN_PRIVATE_KEY=00ad000e3b3dd62055ba74a187b16a00a86b599a08be5fd4200763b68c380ac7 tsx scripts/deploy-contracts.ts",
+    "deploy:contracts:dev": "cross-env BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545 tsx scripts/deploy-contracts.ts",
     "deploy:contracts:prod": "cross-env BLOCKCHAIN_RPC_URL=https://rpc-amoy.polygon.technology tsx scripts/deploy-contracts.ts",
     "setup:polygon": "tsx scripts/setup-polygon-testnet.ts",
     "check:balance": "tsx scripts/check-balance.ts"
@@ -46,6 +46,7 @@
     "cors": "^2.8.5",
     "csrf-csrf": "^4.0.3",
     "dotenv": "^16.4.5",
+    "ethers": "^6.16.0",
     "express": "^4.21.0",
     "file-type": "21.3.1",
     "form-data": "^4.0.5",
@@ -57,10 +58,10 @@
     "nodemailer": "^8.0.2",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
-    "uuid": "^10.0.0",
-    "ethers": "^6.16.0"
+    "uuid": "^10.0.0"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "3.3.5",
     "@eslint/js": "^9.39.4",
     "@jest/globals": "^30.2.0",
     "@nomicfoundation/hardhat-ethers": "^4.0.6",
@@ -83,7 +84,7 @@
     "@typescript-eslint/eslint-plugin": "^8.56.1",
     "@typescript-eslint/parser": "^8.56.1",
     "cross-env": "^10.1.0",
-    "eslint": "^9.39.2",
+    "eslint": "^10.2.1",
     "fast-check": "^4.6.0",
     "globals": "^16.5.0",
     "hardhat": "^3.1.11",

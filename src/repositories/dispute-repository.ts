@@ -1,7 +1,7 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { TABLES } from '../config/supabase.js';
-
-export type DisputeStatus = 'open' | 'under_review' | 'resolved';
+export type { DisputeStatus } from '../models/dispute.js';
+import type { DisputeStatus } from '../models/dispute.js';
 
 export type EvidenceEntity = {
   id: string;
@@ -46,10 +46,6 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
 
   async updateDispute(id: string, updates: Partial<DisputeEntity>): Promise<DisputeEntity | null> {
     return this.update(id, updates);
-  }
-
-  async findDisputeById(id: string): Promise<DisputeEntity | null> {
-    return this.getById(id);
   }
 
   async getDisputesByContract(contractId: string, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {

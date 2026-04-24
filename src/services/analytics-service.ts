@@ -1,18 +1,9 @@
 import { getSupabaseClient, getSupabaseServiceClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 const supabase = getSupabaseClient();
 const supabaseAdmin = getSupabaseServiceClient();
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
 
 export interface DateRangeOptions {
   startDate?: string;

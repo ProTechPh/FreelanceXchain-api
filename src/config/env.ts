@@ -54,7 +54,6 @@ export const config = {
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     baseUrl: getBaseUrl(),
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
-    disableRateLimit: getEnvVarBoolean('DISABLE_RATE_LIMIT', false),
   },
   supabase: {
     url: getEnvVar('SUPABASE_URL'),
@@ -66,8 +65,13 @@ export const config = {
   },
   jwt: {
     secret: getEnvVar('JWT_SECRET'),
-    // Separate secret for refresh tokens (defaults to main secret if not set)
-    refreshSecret: getEnvVarOptional('JWT_REFRESH_SECRET') ?? getEnvVar('JWT_SECRET'),
+    refreshSecret: (() => {
+      const refreshSecret = getEnvVarOptional('JWT_REFRESH_SECRET');
+      if (!refreshSecret && getEnvVar('NODE_ENV', 'development') === 'production') {
+        throw new Error('JWT_REFRESH_SECRET is required in production. Using the same secret for access and refresh tokens is a security risk.');
+      }
+      return refreshSecret ?? getEnvVar('JWT_SECRET');
+    })(),
     expiresIn: getEnvVar('JWT_EXPIRES_IN', '1h'),
     refreshExpiresIn: getEnvVar('JWT_REFRESH_EXPIRES_IN', '7d'),
   },

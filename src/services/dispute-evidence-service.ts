@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
+import type { ServiceResult } from '../types/service-result.js';
 import type {
   DisputeEvidence,
   SubmitEvidenceInput,
@@ -7,10 +8,6 @@ import type {
 } from '../models/dispute-evidence.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
-
-export type ServiceResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: { code: string; message: string } };
 
 /**
  * Submit evidence for dispute
@@ -78,7 +75,7 @@ export async function submitEvidence(
       });
 
       if (notificationResult.success) {
-        sendNotificationToUser(dispute.arbiter_id, notificationResult.data);
+        await sendNotificationToUser(dispute.arbiter_id, notificationResult.data);
       }
     }
 

@@ -8,6 +8,7 @@ Welcome to the FreelanceXchain API documentation. This guide will help you navig
 Essential documentation to get you up and running quickly.
 
 - [Project Overview](getting-started/overview.md) - High-level platform overview
+- [Product Overview](getting-started/product-overview.md) - Product documentation
 - [Developer Setup Guide](getting-started/setup.md) - Step-by-step setup instructions
 - [Technology Stack](getting-started/tech-stack.md) - Technologies and tools used
 
@@ -23,6 +24,16 @@ Deep dive into the system architecture and design.
 #### API Endpoints
 - [API Overview](architecture/api-overview.md) - API architecture overview
 - [API Contract](architecture/api-contract.md) - Contract endpoints
+- [AI Matching API](architecture/api-ai-matching.md) - AI matching endpoints
+- [Auth API](architecture/api-auth.md) - Authentication endpoints
+- [Dispute API](architecture/api-dispute.md) - Dispute resolution endpoints
+- [KYC API](architecture/api-kyc.md) - KYC verification endpoints
+- [Notification API](architecture/api-notification.md) - Notification endpoints
+- [Payment API](architecture/api-payment.md) - Payment processing endpoints
+- [Project API](architecture/api-project.md) - Project management endpoints
+- [Proposal API](architecture/api-proposal.md) - Proposal endpoints
+- [Reputation API](architecture/api-reputation.md) - Reputation endpoints
+- [Search API](architecture/api-search.md) - Search endpoints
 
 #### Services Layer
 - [Services Overview](architecture/services-overview.md) - Business logic services
@@ -50,6 +61,7 @@ Deep dive into the system architecture and design.
 
 #### Database Design
 - [Database Overview](architecture/database-overview.md) - Schema design
+- [Database Tables](architecture/database-tables.md) - Table definitions
 - [Database Indexes](architecture/database-indexes.md) - Index optimization
 - [Database RLS](architecture/database-rls.md) - Row-level security
 - [Database Seeding](architecture/database-seeding.md) - Data seeding
@@ -105,6 +117,18 @@ Feature-specific documentation and implementation guides.
 - [Implementation Guide](features/proposal-uploads/implementation.md) - Implementation details
 - [Quick Start](features/proposal-uploads/quickstart.md) - Quick setup guide
 
+#### Other Features
+- [New Features Implementation](features/new-features-implementation.md) - Feature implementation guide
+- [Custom Skills API](features/custom-skills-api.md) - Custom skills
+- [Milestone File Attachments](features/milestone-file-attachments.md) - Milestone attachments
+- [Project Attachments](features/project-attachments.md) - Project file attachments
+- [Project Tags](features/project-tags.md) - Project tagging
+- [Proposal Employer History](features/proposal-employer-history.md) - Employer history
+
+#### 📧 Email Templates
+- [Email Templates](email-templates/README.md) - Supabase auth email templates
+- [Quick Setup](email-templates/quick-setup.md) - Email template setup guide
+
 ### 📖 Guides
 Operational guides, troubleshooting, and maintenance.
 
@@ -112,6 +136,10 @@ Operational guides, troubleshooting, and maintenance.
 - [Maintenance](guides/maintenance.md) - System maintenance
 - [Testing](guides/testing.md) - Testing strategy
 - [Troubleshooting](guides/troubleshooting.md) - Issue resolution
+- [Migration Guide](guides/migration-new-features.md) - Migrating to new features
+
+### 🔧 Fixes
+- [Contract Activation Fix](fixes/contract-activation-fix.md) - Contract activation bug fix
 
 ## 🔍 Quick Links
 

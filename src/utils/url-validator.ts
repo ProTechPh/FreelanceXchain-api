@@ -262,19 +262,3 @@ export function sanitizeSessionId(sessionId: string): string {
 
   return sanitized;
 }
-
-/**
- * Add a domain to the allowed list (for dynamic configuration)
- */
-export function addAllowedDomain(domain: string): void {
-  if (domain && typeof domain === 'string') {
-    ALLOWED_DOMAINS.add(domain.toLowerCase());
-  }
-}
-
-/**
- * Check if a domain is in the allowed list
- */
-export function isAllowedDomain(domain: string): boolean {
-  return ALLOWED_DOMAINS.has(domain.toLowerCase());
-}

@@ -2,6 +2,7 @@ import { Notification, NotificationType, mapNotificationFromEntity } from '../ut
 import { notificationRepository, NotificationEntity } from '../repositories/notification-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
 export type CreateNotificationInput = {
   userId: string;
@@ -11,15 +12,8 @@ export type CreateNotificationInput = {
   data?: Record<string, unknown>;
 };
 
-export type NotificationServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-export type NotificationServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: NotificationServiceError };
+export type NotificationServiceResult<T> = ServiceResult<T>;
+export type NotificationServiceError = ServiceError;
 
 // Create a notification
 export async function createNotification(

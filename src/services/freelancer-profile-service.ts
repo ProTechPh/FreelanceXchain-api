@@ -2,6 +2,7 @@ import { FreelancerProfile, mapFreelancerProfileFromEntity } from '../utils/enti
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
 export type CreateFreelancerProfileInput = {
   bio: string;
@@ -34,15 +35,8 @@ export type AddExperienceInput = {
   endDate?: string | null;
 };
 
-export type FreelancerProfileServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-export type FreelancerProfileServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: FreelancerProfileServiceError };
+export type FreelancerProfileServiceResult<T> = ServiceResult<T>;
+export type FreelancerProfileServiceError = ServiceError;
 
 
 // Validation helpers

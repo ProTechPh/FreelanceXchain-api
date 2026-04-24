@@ -1,9 +1,8 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { TABLES } from '../config/supabase.js';
 import { FileAttachment } from '../utils/file-validator.js';
-
-export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
-export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed' | 'refunded';
+export type { ProjectStatus, MilestoneStatus } from '../models/project.js';
+import type { ProjectStatus, MilestoneStatus } from '../models/project.js';
 
 export type MilestoneEntity = {
   id: string;
@@ -141,28 +140,20 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    // Fetch ALL open projects (no range), filter by skill, then paginate in memory.
-    // This ensures total/hasMore reflect actual matched results, not all open projects.
-    const { data, error } = await client
+    const { data, error, count } = await client
       .from(this.tableName)
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('status', 'open')
-      .order('created_at', { ascending: false });
-    
-    if (error) throw new Error(`Failed to get projects by skills: ${error.message}`);
-    
-    // Filter for skill matching in memory
-    const allMatched = (data ?? []).filter((project: ProjectEntity) =>
-      project.required_skills.some(skill => skillIds.includes(skill.skill_id))
-    );
+      .contains('required_skills', skillIds.map(id => ({ skill_id: id })))
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    const total = allMatched.length;
-    const paginatedItems = allMatched.slice(offset, offset + limit);
+    if (error) throw new Error(`Failed to get projects by skills: ${error.message}`);
 
     return {
-      items: paginatedItems as ProjectEntity[],
-      hasMore: offset + limit < total,
-      total,
+      items: (data ?? []) as ProjectEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
   }
 
@@ -225,7 +216,8 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const client = this.getClient();
     const { data, error } = await client
       .from(this.tableName)
-      .select('*');
+      .select('*')
+      .limit(1000);
     
     if (error) throw new Error(`Failed to get all projects: ${error.message}`);
     return (data ?? []) as ProjectEntity[];
@@ -236,28 +228,20 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    // Fetch ALL open projects (no range), filter by category, then paginate in memory.
-    // This ensures total/hasMore reflect actual matched results, not all open projects.
-    const { data, error } = await client
+    const { data, error, count } = await client
       .from(this.tableName)
-      .select('*')
+      .select('*', { count: 'exact' })
       .eq('status', 'open')
-      .order('created_at', { ascending: false });
-    
-    if (error) throw new Error(`Failed to get projects by category: ${error.message}`);
-    
-    // Filter for category matching in memory
-    const allMatched = (data ?? []).filter((project: ProjectEntity) =>
-      project.required_skills.some(skill => skill.category_id === categoryId)
-    );
+      .contains('required_skills', [{ category_id: categoryId }])
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    const total = allMatched.length;
-    const paginatedItems = allMatched.slice(offset, offset + limit);
+    if (error) throw new Error(`Failed to get projects by category: ${error.message}`);
 
     return {
-      items: paginatedItems as ProjectEntity[],
-      hasMore: offset + limit < total,
-      total,
+      items: (data ?? []) as ProjectEntity[],
+      hasMore: count ? offset + limit < count : false,
+      total: count ?? undefined,
     };
   }
 
@@ -266,16 +250,14 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    // Fetch ALL open projects (no range), filter by categories, then paginate in memory.
     const { data, error } = await client
       .from(this.tableName)
       .select('*')
       .eq('status', 'open')
       .order('created_at', { ascending: false });
-    
+
     if (error) throw new Error(`Failed to get projects by categories: ${error.message}`);
-    
-    // Filter for category matching in memory
+
     const allMatched = (data ?? []).filter((project: ProjectEntity) =>
       project.required_skills.some(skill => categoryIds.includes(skill.category_id))
     );

@@ -1,7 +1,8 @@
 import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { TABLES } from '../config/supabase.js';
+import type { ContractStatus } from '../models/contract.js';
 
-export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'cancelled';
+export type { ContractStatus };
 
 export type ContractEntity = {
   id: string;

@@ -21,6 +21,8 @@ export default [
             globals: {
                 ...globals.node,
                 ...globals.es2021,
+                Express: 'readonly',
+                NodeJS: 'readonly',
             },
         },
         plugins: {
@@ -39,7 +41,7 @@ export default [
             '@typescript-eslint/explicit-module-boundary-types': 'off',
             '@typescript-eslint/no-explicit-any': 'warn',
             '@typescript-eslint/no-namespace': 'off', // Allow namespaces for Express augmentation
-            'no-console': 'off',
+            'no-console': ['error', { allow: ['warn', 'error'] }],
             'no-unused-vars': 'off', // Use TypeScript's rule instead
         },
     },

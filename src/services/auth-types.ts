@@ -57,3 +57,13 @@ export type AuthError = {
   | 'MFA_VERIFY_FAILED';
   message: string;
 };
+
+export type MfaRequiredResult = {
+  code: 'MFA_REQUIRED';
+  message: string;
+  mfaRequired: true;
+  mfaSessionId: string;
+  factorId?: string;
+};
+
+export type AuthResponse = AuthResult | AuthError | MfaRequiredResult;

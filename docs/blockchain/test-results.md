@@ -75,22 +75,22 @@
 
 ### Run All Blockchain Tests
 ```bash
-npm test -- src/services/__tests__/blockchain-services.test.ts
+pnpm test -- src/services/__tests__/blockchain-services.test.ts
 ```
 
 ### Run with Verbose Output
 ```bash
-npm test -- src/services/__tests__/blockchain-services.test.ts --verbose
+pnpm test -- src/services/__tests__/blockchain-services.test.ts --verbose
 ```
 
 ### Run All Tests
 ```bash
-npm test
+pnpm test
 ```
 
 ### Run with Coverage
 ```bash
-npm test -- --coverage
+pnpm run test:coverage
 ```
 
 ## Test Results Summary

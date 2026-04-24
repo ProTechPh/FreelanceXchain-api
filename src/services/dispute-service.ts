@@ -28,16 +28,10 @@ import {
 } from './dispute-registry.js';
 import { disputeAgreement } from './agreement-contract.js';
 import { logger } from '../config/logger.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
-export type DisputeServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-export type DisputeServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: DisputeServiceError };
+export type DisputeServiceResult<T> = ServiceResult<T>;
+export type DisputeServiceError = ServiceError;
 
 export type CreateDisputeInput = {
   contractId: string;
@@ -258,7 +252,7 @@ export async function submitEvidence(
   const { disputeId, submitterId, type, content } = input;
 
   // Find dispute
-  const disputeEntity = await disputeRepository.findDisputeById(disputeId);
+  const disputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!disputeEntity) {
     return {
       success: false,
@@ -315,7 +309,7 @@ export async function submitEvidence(
   }
 
   // Get the fully updated entity
-  const updatedDisputeEntity = await disputeRepository.findDisputeById(disputeId);
+  const updatedDisputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!updatedDisputeEntity) {
     return {
       success: false,
@@ -361,7 +355,7 @@ export async function resolveDispute(
   }
 
   // Find dispute
-  const disputeEntity = await disputeRepository.findDisputeById(disputeId);
+  const disputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!disputeEntity) {
     return {
       success: false,
@@ -560,7 +554,7 @@ export async function resolveDispute(
 export async function getDisputeById(
   disputeId: string
 ): Promise<DisputeServiceResult<Dispute>> {
-  const disputeEntity = await disputeRepository.findDisputeById(disputeId);
+  const disputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!disputeEntity) {
     return {
       success: false,

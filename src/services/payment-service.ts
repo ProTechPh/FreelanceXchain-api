@@ -4,12 +4,14 @@
  * Requirements: 6.2, 6.3, 6.4, 6.5
  */
 
-import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
+import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity, mapDisputeFromEntity } from '../utils/entity-mapper.js';
+import { logger } from '../config/logger.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { getSupabaseClient } from '../config/supabase.js';
 import { PaymentRepository, PaymentType } from '../repositories/payment-repository.js';
+import { disputeRepository } from '../repositories/dispute-repository.js';
 import { generateId } from '../utils/id.js';
 import {
   deployEscrow,
@@ -24,6 +26,7 @@ import {
   notifyDisputeCreated,
 } from './notification-service.js';
 import { EscrowMilestone } from './blockchain-types.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import {
   submitMilestoneToRegistry,
   approveMilestoneOnRegistry,
@@ -51,9 +54,6 @@ export function setEscrowOpsForTesting(overrides?: Partial<typeof escrowOps>): v
   escrowOps.getEscrowByContractId = overrides?.getEscrowByContractId ?? getEscrowByContractId;
 }
 
-/**
- * Create a payment record for audit trail
- */
 async function createPaymentRecord(params: {
   contractId: string;
   milestoneId: string | null;
@@ -78,20 +78,12 @@ async function createPaymentRecord(params: {
       payment_type: params.paymentType,
     });
   } catch (error) {
-    console.error('Failed to create payment record:', error);
-    // Non-critical: payment record is for audit, don't fail the operation
+    logger.error('Failed to create payment record', { error });
   }
 }
 
-export type PaymentServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-export type PaymentServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: PaymentServiceError };
+export type PaymentServiceResult<T> = ServiceResult<T>;
+export type PaymentServiceError = ServiceError;
 
 export type MilestoneCompletionResult = {
   milestoneId: string;
@@ -129,9 +121,6 @@ export type ContractPaymentStatus = {
   contractStatus: string;
 };
 
-
-// In-memory dispute store (would be in database in production)
-const disputeStore = new Map<string, Dispute>();
 
 /**
  * Request milestone completion
@@ -235,19 +224,18 @@ export async function requestMilestoneCompletion(
       });
     }
   } catch (error) {
-    console.error('Failed to submit milestone to blockchain registry:', error);
+    logger.error('Failed to submit milestone to blockchain registry', { error });
     // Non-critical: blockchain registry is supplementary, DB is source of truth for status
   }
 
-  // Update milestone status to submitted in DB
-  const milestoneToUpdate = projectEntity.milestones[milestoneIndex];
-  if (milestoneToUpdate) {
-    milestoneToUpdate.status = 'submitted';
-  }
+  // Update milestone status to submitted (immutable pattern)
+  const updatedMilestones = projectEntity.milestones.map((m, i) =>
+    i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
+  );
 
   // Update project in database
   await projectRepository.updateProject(project.id, {
-    milestones: projectEntity.milestones,
+    milestones: updatedMilestones,
   });
 
   // Send notification to employer
@@ -380,7 +368,7 @@ export async function approveMilestone(
       // Call the real smart contract on Ganache - use milestone index (0-based)
       const onChainResult = await approveOnChainMilestone(realEscrowAddress, milestoneIndex);
       transactionHash = onChainResult.transactionHash;
-      console.log(`Real blockchain milestone release tx: ${transactionHash}`);
+      logger.info('Real blockchain milestone release tx', { transactionHash });
     }
 
     // Also update simulated escrow state in DB for tracking
@@ -401,7 +389,7 @@ export async function approveMilestone(
       if (!transactionHash) {
         throw simError;
       }
-      console.error('Simulated escrow update failed (non-critical):', simError);
+      logger.error('Simulated escrow update failed (non-critical)', { error: simError });
     }
 
     // Create payment record for audit trail
@@ -426,14 +414,14 @@ export async function approveMilestone(
   }
 
   // Update milestone status to approved only after successful payment release
-  const milestoneToApprove = projectEntity.milestones[milestoneIndex];
-  if (milestoneToApprove) {
-    milestoneToApprove.status = 'approved';
-  }
+  // Update milestone status to approved (immutable pattern)
+  const updatedMilestones = projectEntity.milestones.map((m, i) =>
+    i === milestoneIndex ? { ...m, status: 'approved' as const } : m
+  );
 
   // Update project in database
   await projectRepository.updateProject(project.id, {
-    milestones: projectEntity.milestones,
+    milestones: updatedMilestones,
   });
 
   // Also update the separate milestones table so the UI reflects the change
@@ -448,7 +436,7 @@ export async function approveMilestone(
       })
       .eq('id', milestoneId);
   } catch (milestoneTableError) {
-    console.error('Failed to update milestones table (non-critical):', milestoneTableError);
+    logger.error('Failed to update milestones table (non-critical)', { error: milestoneTableError });
   }
 
   // Approve milestone on blockchain registry
@@ -458,11 +446,11 @@ export async function approveMilestone(
       await approveMilestoneOnRegistry(milestoneId, employer.wallet_address);
     }
   } catch (error) {
-    console.error('Failed to approve milestone on blockchain registry:', error);
+    logger.error('Failed to approve milestone on blockchain registry', { error });
   }
 
   // Check if all milestones are approved
-  const allApproved = projectEntity.milestones.every(m => m.status === 'approved');
+  const allApproved = updatedMilestones.every(m => m.status === 'approved');
   let contractCompleted = false;
 
   if (allApproved) {
@@ -482,7 +470,7 @@ export async function approveMilestone(
         await completeAgreement(contractId, employer.wallet_address);
       }
     } catch (error) {
-      console.error('Failed to complete agreement on blockchain:', error);
+      logger.error('Failed to complete agreement on blockchain', { error });
     }
   }
 
@@ -612,17 +600,25 @@ export async function disputeMilestone(
     updatedAt: new Date().toISOString(),
   };
 
-  disputeStore.set(disputeId, dispute);
+  await disputeRepository.createDispute({
+    id: disputeId,
+    contract_id: contractId,
+    milestone_id: milestoneId,
+    initiator_id: initiatorId,
+    reason,
+    evidence: [],
+    status: 'open',
+    resolution: null,
+  });
 
-  // Update milestone status to disputed
-  const milestoneToDispute = projectEntity.milestones[milestoneIndex];
-  if (milestoneToDispute) {
-    milestoneToDispute.status = 'disputed';
-  }
+  // Update milestone status to disputed (immutable pattern)
+  const updatedMilestones = projectEntity.milestones.map((m, i) =>
+    i === milestoneIndex ? { ...m, status: 'disputed' as const } : m
+  );
 
   // Update project in database
   await projectRepository.updateProject(project.id, {
-    milestones: projectEntity.milestones,
+    milestones: updatedMilestones,
   });
 
   // Update contract status to disputed
@@ -748,27 +744,24 @@ export async function isContractComplete(contractId: string): Promise<boolean> {
  * Get dispute by ID
  */
 export async function getDisputeById(disputeId: string): Promise<Dispute | null> {
-  return disputeStore.get(disputeId) ?? null;
+  const entity = await disputeRepository.getDisputeById(disputeId);
+  if (!entity) return null;
+  return mapDisputeFromEntity(entity);
 }
 
 /**
  * Get disputes by contract ID
  */
 export async function getDisputesByContract(contractId: string): Promise<Dispute[]> {
-  const disputes: Dispute[] = [];
-  for (const dispute of disputeStore.values()) {
-    if (dispute.contractId === contractId) {
-      disputes.push(dispute);
-    }
-  }
-  return disputes;
+  const entities = await disputeRepository.getAllDisputesByContract(contractId);
+  return entities.map(mapDisputeFromEntity);
 }
 
 /**
  * Clear all disputes (for testing)
  */
 export function clearDisputes(): void {
-  disputeStore.clear();
+  // No-op: disputes are now stored in the database
 }
 
 /**
@@ -852,7 +845,7 @@ export async function initializeContractEscrow(
       });
 
       escrowAddress = realDeployment.escrowAddress;
-      console.log(`Real escrow deployed at ${escrowAddress} with ${contractTotalAmount} wei`);
+      logger.info('Real escrow deployed', { escrowAddress, contractTotalAmount });
 
       // Also save to simulated escrow DB for status tracking
       try {
@@ -869,7 +862,7 @@ export async function initializeContractEscrow(
           employerWalletAddress
         );
       } catch (simError) {
-        console.error('Failed to save simulated escrow state (non-critical):', simError);
+        logger.error('Failed to save simulated escrow state (non-critical)', { error: simError });
       }
     } else {
       // Simulated mode: deploy escrow in Supabase tables

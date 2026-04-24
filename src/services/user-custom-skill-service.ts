@@ -11,16 +11,10 @@ import {
 } from '../repositories/user-custom-skill-repository.js';
 import { generateId } from '../utils/id.js';
 import { searchSkills } from './skill-service.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
-export type UserCustomSkillServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-export type UserCustomSkillServiceResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: UserCustomSkillServiceError };
+export type UserCustomSkillServiceResult<T> = ServiceResult<T>;
+export type UserCustomSkillServiceError = ServiceError;
 
 // Entity mapping functions
 function mapUserCustomSkillFromEntity(entity: UserCustomSkillEntity): UserCustomSkill {

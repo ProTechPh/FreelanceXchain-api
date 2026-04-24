@@ -1,17 +1,8 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 const supabase = getSupabaseClient();
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
 
 export interface FileInfo {
   name: string;
@@ -128,6 +119,7 @@ export async function deleteFile(
 
     return {
       success: true,
+      data: undefined as unknown as void,
     };
   } catch (error) {
     logger.error('Unexpected error in deleteFile', { error, userId, bucket, path });
@@ -148,14 +140,13 @@ export async function getFileQuota(userId: string): Promise<ServiceResult<FileQu
   try {
     const filesResult = await getUserFiles(userId);
     
-    if (!filesResult.success || !filesResult.data) {
+    if (!filesResult.success) {
       return {
         success: false,
-        error: filesResult.error || {
-          code: 'INTERNAL_ERROR',
-          message: 'Failed to calculate quota',
-        },
+        error: filesResult.error,
       };
+    }
+    if (!filesResult.data || filesResult.data.length === 0) {
     }
 
     const files = filesResult.data;

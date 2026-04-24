@@ -2,10 +2,6 @@
 
 Comprehensive security implementation, best practices, and compliance documentation.
 
-# Security Documentation
-
-Comprehensive security implementation, best practices, and compliance documentation.
-
 ## Documentation
 
 - [Security Overview](overview.md) - Overall security architecture
@@ -25,7 +21,5 @@ Comprehensive security implementation, best practices, and compliance documentat
 - [ ] Set up database security
 - [ ] Implement RBAC
 - [ ] Review smart contract security
-
-[← Back to Documentation Index](../README.md)
 
 [← Back to Documentation Index](../README.md)

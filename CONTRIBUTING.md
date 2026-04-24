@@ -86,7 +86,6 @@ Thank you for your interest in contributing to FreelanceXchain! This guide will 
 ### Project Documentation
 
 Before contributing, familiarize yourself with:
-- [Project Structure](PROJECT_STRUCTURE.md)
 - [Developer Setup Guide](docs/getting-started/setup.md)
 - [Architecture Documentation](docs/architecture/)
 - [Source Code Structure](src/README.md)
@@ -365,7 +364,7 @@ BREAKING CHANGE: JWT tokens now expire after 1 hour instead of 24 hours
 - [ ] No console.log statements
 - [ ] No commented-out code
 - [ ] Linter passes (`pnpm run lint`)
-- [ ] Type checking passes (`pnpm run type-check`)
+- [ ] Type checking passes (`pnpm exec tsc --noEmit`)
 
 ### PR Title Format
 

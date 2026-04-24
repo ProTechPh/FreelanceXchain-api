@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+#### Documentation Consistency Fixes (2026-03-22)
+- **Port Numbers**: Corrected `localhost:3000` → `localhost:7860` across README.md, CONFIGURATION.md, and 4 architecture API docs
+- **Script Names**: Fixed `deploy:ganache` → `deploy:local` in README.md; `generate:openapi` → `openapi:generate` in CONFIGURATION.md and scripts/README.md
+- **Package Manager**: Replaced all remaining `npm test` / `npm run` references with `pnpm` equivalents in contracts/README.md, supabase/README.md, docs/blockchain/testing.md, docs/blockchain/test-results.md, docs/guides/troubleshooting.md, src/__tests__/README.md
+- **Type Check Command**: Replaced non-existent `pnpm run type-check` with `pnpm exec tsc --noEmit` in CONFIGURATION.md, CONTRIBUTING.md, src/README.md
+- **Broken Links**: Removed references to non-existent QUICKSTART.md, PROJECT_STRUCTURE.md, and email-templates/README.md from README.md and CONTRIBUTING.md
+
+#### Documentation File Naming & Restructuring (2026-03-22)
+- **Architecture Docs Flattened**: Merged 63 files across 11 subdirectories into single kebab-case files at `docs/architecture/`
+  - `api-ai-matching/` (5 files) → `api-ai-matching.md`
+  - `api-auth/` (9 files incl. OAuth Integration subfolder) → `api-auth.md`
+  - `api-dispute/` (5 files) → `api-dispute.md`
+  - `api-kyc/` (6 files) → `api-kyc.md`
+  - `api-notification/` (4 files) → `api-notification.md`
+  - `api-payment/` (5 files) → `api-payment.md`
+  - `api-project/` (6 files) → `api-project.md`
+  - `api-proposal/` (7 files) → `api-proposal.md`
+  - `api-reputation/` (4 files) → `api-reputation.md`
+  - `api-search/` (3 files) → `api-search.md`
+  - `database-tables/` (14 files) → `database-tables.md`
+- **File Renames**: Converted remaining UPPER_SNAKE_CASE filenames to kebab-case
+  - `docs/email-templates/QUICK-SETUP.md` → `quick-setup.md`
+  - `docs/features/NEW_FEATURES_IMPLEMENTATION.md` → `new-features-implementation.md`
+  - `docs/guides/MIGRATION_NEW_FEATURES.md` → `migration-new-features.md`
+- **Index Updates**: Updated `docs/README.md` and `docs/architecture/README.md` links to reflect new file structure
+
 #### Configuration and Build System Improvements (2026-03-06)
 - **Package Manager**: Standardized all commands to use `pnpm` with `--frozen-lockfile` for reproducible builds
 - **Build Script**: Simplified `build` script to use `tsc` directly without workarounds

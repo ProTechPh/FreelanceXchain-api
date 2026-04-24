@@ -1,5 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { config } from './env.js';
+import { logger } from './logger.js';
 
 let supabaseClient: SupabaseClient | null = null;
 let supabaseServiceClient: SupabaseClient | null = null;
@@ -87,5 +88,5 @@ export async function initializeDatabase(): Promise<void> {
     // PGRST116 = no rows returned, which is fine
     throw new Error(`Failed to connect to Supabase: ${error.message}`);
   }
-  console.log('Supabase connection verified');
+  logger.info('Supabase connection verified');
 }

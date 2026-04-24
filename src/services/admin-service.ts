@@ -1,17 +1,14 @@
 import { getSupabaseServiceClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import { UserEntity } from '../repositories/user-repository.js';
+import type { ServiceResult } from '../types/service-result.js';
 
-const supabase = getSupabaseServiceClient();
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
+let _supabase: ReturnType<typeof getSupabaseServiceClient> | null = null;
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = getSupabaseServiceClient();
+  }
+  return _supabase;
 }
 
 export interface PlatformStats {
@@ -64,37 +61,37 @@ export interface SystemHealth {
 export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> {
   try {
     // Total users by role
-    const { count: totalUsers } = await supabase
+    const { count: totalUsers } = await getSupabase()
       .from('users')
       .select('*', { count: 'exact', head: true });
 
-    const { count: totalFreelancers } = await supabase
+    const { count: totalFreelancers } = await getSupabase()
       .from('users')
       .select('*', { count: 'exact', head: true })
       .eq('role', 'freelancer');
 
-    const { count: totalEmployers } = await supabase
+    const { count: totalEmployers } = await getSupabase()
       .from('users')
       .select('*', { count: 'exact', head: true })
       .eq('role', 'employer');
 
     // Projects
-    const { count: totalProjects } = await supabase
+    const { count: totalProjects } = await getSupabase()
       .from('projects')
       .select('*', { count: 'exact', head: true });
 
-    const { count: activeProjects } = await supabase
+    const { count: activeProjects } = await getSupabase()
       .from('projects')
       .select('*', { count: 'exact', head: true })
       .in('status', ['open', 'in_progress']);
 
-    const { count: completedProjects } = await supabase
+    const { count: completedProjects } = await getSupabase()
       .from('projects')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'completed');
 
     // Average project budget
-    const { data: projects } = await supabase
+    const { data: projects } = await getSupabase()
       .from('projects')
       .select('budget');
 
@@ -103,17 +100,17 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
       : 0;
 
     // Contracts
-    const { count: totalContracts } = await supabase
+    const { count: totalContracts } = await getSupabase()
       .from('contracts')
       .select('*', { count: 'exact', head: true });
 
     // Disputes
-    const { count: totalDisputes } = await supabase
+    const { count: totalDisputes } = await getSupabase()
       .from('disputes')
       .select('*', { count: 'exact', head: true });
 
     // Transaction volume
-    const { data: transactions } = await supabase
+    const { data: transactions } = await getSupabase()
       .from('transactions')
       .select('amount')
       .eq('status', 'completed');
@@ -152,7 +149,7 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
  */
 export async function getUserManagement(filters?: UserFilters): Promise<ServiceResult<UserManagementData>> {
   try {
-    let query = supabase
+    let query = getSupabase()
       .from('users')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
@@ -162,7 +159,8 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
       query = query.eq('role', filters.role);
     }
     if (filters?.search) {
-      query = query.or(`email.ilike.%${filters.search}%,name.ilike.%${filters.search}%`);
+      const safeSearch = filters.search.replace(/[%_]/g, '\\$&');
+      query = query.or(`email.ilike.%${safeSearch}%,name.ilike.%${safeSearch}%`);
     }
 
     const { data, error, count } = await query;
@@ -203,7 +201,7 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
 export async function suspendUser(userId: string, reason: string): Promise<ServiceResult<UserEntity>> {
   try {
     // Update user status
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('users')
       .update({
         is_suspended: true,
@@ -249,7 +247,7 @@ export async function suspendUser(userId: string, reason: string): Promise<Servi
  */
 export async function unsuspendUser(userId: string): Promise<ServiceResult<UserEntity>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('users')
       .update({
         is_suspended: false,
@@ -295,7 +293,7 @@ export async function unsuspendUser(userId: string): Promise<ServiceResult<UserE
  */
 export async function verifyUser(userId: string): Promise<ServiceResult<UserEntity>> {
   try {
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('users')
       .update({
         is_verified: true,
@@ -357,7 +355,7 @@ export async function updateUser(
       dbUpdates.is_suspended = !updates.isActive;
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await getSupabase()
       .from('users')
       .update(dbUpdates)
       .eq('id', userId)
@@ -398,7 +396,7 @@ export async function updateUser(
  */
 export async function getDisputeManagement(filters?: DisputeFilters): Promise<ServiceResult<DisputeManagementData>> {
   try {
-    let query = supabase
+    let query = getSupabase()
       .from('disputes')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false });
@@ -454,7 +452,7 @@ export async function getSystemHealth(): Promise<ServiceResult<SystemHealth>> {
     // Check database connectivity
     let databaseHealth: 'healthy' | 'unhealthy' = 'healthy';
     try {
-      await supabase.from('users').select('id').limit(1);
+      await getSupabase().from('users').select('id').limit(1);
     } catch {
       databaseHealth = 'unhealthy';
     }
@@ -462,7 +460,7 @@ export async function getSystemHealth(): Promise<ServiceResult<SystemHealth>> {
     // Check storage connectivity
     let storageHealth: 'healthy' | 'unhealthy' = 'healthy';
     try {
-      await supabase.storage.listBuckets();
+      await getSupabase().storage.listBuckets();
     } catch {
       storageHealth = 'unhealthy';
     }

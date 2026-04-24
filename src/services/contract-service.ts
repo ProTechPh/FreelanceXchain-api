@@ -1,18 +1,13 @@
 import { getSupabaseServiceClient } from '../config/supabase.js';
 import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
+import { disputeRepository } from '../repositories/dispute-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
-export type ContractServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-export type ContractServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: ContractServiceError };
+export type ContractServiceResult<T> = ServiceResult<T>;
+export type ContractServiceError = ServiceError;
 
 function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): PaginatedResult<Contract> {
   return {
@@ -79,9 +74,10 @@ export async function updateContractStatus(
   const validTransitions: Record<ContractStatus, ContractStatus[]> = {
     pending: ['active', 'cancelled'],
     active: ['completed', 'disputed', 'cancelled'],
-    disputed: ['active', 'completed', 'cancelled'],  // 'active' allowed after all disputes resolved
+    disputed: ['resolved', 'cancelled'],  // must go through 'resolved' before returning to 'active'
     completed: [],
     cancelled: [],
+    resolved: ['active', 'completed', 'cancelled'],
   };
 
   if (!validTransitions[entity.status].includes(status)) {
@@ -92,6 +88,20 @@ export async function updateContractStatus(
         message: `Cannot transition from "${entity.status}" to "${status}"`,
       },
     };
+  }
+
+  if (entity.status === 'disputed' && status === 'resolved') {
+    const openDisputes = await disputeRepository.getDisputesByContract(contractId);
+    const hasOpenDisputes = openDisputes.items.some(d => d.status === 'open' || d.status === 'under_review');
+    if (hasOpenDisputes) {
+      return {
+        success: false,
+        error: {
+          code: 'OPEN_DISPUTES_EXIST',
+          message: 'Cannot resolve contract while open disputes exist',
+        },
+      };
+    }
   }
 
   const updated = await contractRepository.updateContract(contractId, { status });

@@ -1,6 +1,7 @@
 /**
- * Reputation Service
- * Handles rating submission, reputation score computation, and work history retrieval
+ * Reputation & Review Service
+ * Handles rating/review submission, reputation score computation, work history retrieval
+ * Merged from former review-service.ts and reputation-service.ts
  * Uses Supabase reviews table as primary storage, blockchain as best-effort sync
  * Requirements: 7.3, 7.4, 7.5, 7.6, 7.7
  */
@@ -17,17 +18,25 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
 import { logger } from '../config/logger.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { Review, ReviewEntity } from '../models/review.js';
 
-// Rating input type
+export type ReputationServiceResult<T> = ServiceResult<T>;
+export type ReputationServiceError = ServiceError;
+
 export type RatingInput = {
   contractId: string;
   raterId: string;
-  rateeId: string;
+  rateeId?: string;
   rating: number;
-  comment?: string | undefined;
+  comment?: string;
+  reviewerRole?: string;
+  workQuality?: number;
+  communication?: number;
+  professionalism?: number;
+  wouldWorkAgain?: boolean;
 };
 
-// Unified rating type for API responses
 export type RatingData = {
   id: string;
   contractId: string;
@@ -39,7 +48,6 @@ export type RatingData = {
   transactionHash: string;
 };
 
-// Reputation score result
 export type ReputationScore = {
   userId: string;
   score: number;
@@ -48,45 +56,29 @@ export type ReputationScore = {
   ratings: RatingData[];
 };
 
-// Work history entry
 export type WorkHistoryEntry = {
   contractId: string;
   projectId: string;
   projectTitle: string;
   role: 'freelancer' | 'employer';
   completedAt: string;
-  rating?: number | undefined;
-  ratingComment?: string | undefined;
+  rating?: number;
+  ratingComment?: string;
 };
 
-
-// Service error type
-export type ReputationServiceError = {
-  code: string;
-  message: string;
-  details?: string[];
-};
-
-// Service result type
-export type ReputationServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: ReputationServiceError };
-
-// Rating result type
 export type RatingResult = {
   rating: RatingData;
   transactionHash: string;
 };
 
 /**
- * Submit a rating for a completed contract
+ * Submit a rating/review for a completed contract
  * Stores in Supabase reviews table, syncs to blockchain best-effort
- * Requirements: 7.3, 7.4
+ * Supports both simple ratings (via /api/reputation/rate) and rich reviews (via /api/reviews)
  */
 export async function submitRating(
   input: RatingInput
 ): Promise<ReputationServiceResult<RatingResult>> {
-  // Validate rating value (1-5)
   if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
     return {
       success: false,
@@ -97,7 +89,6 @@ export async function submitRating(
     };
   }
 
-  // Verify contract exists
   const contractEntity = await contractRepository.getContractById(input.contractId);
   if (!contractEntity) {
     return {
@@ -110,8 +101,6 @@ export async function submitRating(
   }
   const contract = mapContractFromEntity(contractEntity);
 
-  // FIXED: Verify contract is completed before allowing ratings
-  // Users should not be able to rate on active, pending, or cancelled contracts
   if (contract.status !== 'completed') {
     return {
       success: false,
@@ -122,7 +111,6 @@ export async function submitRating(
     };
   }
 
-  // Verify rater is part of the contract
   if (contract.freelancerId !== input.raterId && contract.employerId !== input.raterId) {
     return {
       success: false,
@@ -133,8 +121,9 @@ export async function submitRating(
     };
   }
 
-  // Verify ratee is part of the contract
-  if (contract.freelancerId !== input.rateeId && contract.employerId !== input.rateeId) {
+  const rateeId = input.rateeId ?? (input.raterId === contract.freelancerId ? contract.employerId : contract.freelancerId);
+
+  if (contract.freelancerId !== rateeId && contract.employerId !== rateeId) {
     return {
       success: false,
       error: {
@@ -144,8 +133,7 @@ export async function submitRating(
     };
   }
 
-  // Verify rater and ratee are different
-  if (input.raterId === input.rateeId) {
+  if (input.raterId === rateeId) {
     return {
       success: false,
       error: {
@@ -157,7 +145,6 @@ export async function submitRating(
 
   const supabase = getSupabaseServiceClient();
 
-  // Check for duplicate rating in Supabase reviews table
   const { data: existingReview } = await supabase
     .from('reviews')
     .select('id')
@@ -175,24 +162,31 @@ export async function submitRating(
     };
   }
 
-  // Determine reviewer role
-  const reviewerRole = contract.employerId === input.raterId ? 'employer' : 'freelancer';
+  const reviewerRole = input.reviewerRole ?? (contract.employerId === input.raterId ? 'employer' : 'freelancer');
 
-  // Store rating in Supabase reviews table (primary storage)
+  const insertData: Record<string, unknown> = {
+    contract_id: input.contractId,
+    project_id: contract.projectId,
+    reviewer_id: input.raterId,
+    reviewee_id: rateeId,
+    rating: input.rating,
+    comment: input.comment || null,
+    reviewer_role: reviewerRole,
+  };
+
+  if (input.workQuality !== undefined) insertData.work_quality = input.workQuality;
+  if (input.communication !== undefined) insertData.communication = input.communication;
+  if (input.professionalism !== undefined) insertData.professionalism = input.professionalism;
+  if (input.wouldWorkAgain !== undefined) insertData.would_work_again = input.wouldWorkAgain;
+
   const { data: review, error: insertError } = await supabase
     .from('reviews')
-    .insert({
-      contract_id: input.contractId,
-      reviewer_id: input.raterId,
-      reviewee_id: input.rateeId,
-      rating: input.rating,
-      comment: input.comment || null,
-      reviewer_role: reviewerRole,
-    })
+    .insert(insertData)
     .select()
     .single();
 
   if (insertError || !review) {
+    logger.error('Failed to save rating', { error: insertError, contractId: input.contractId });
     return {
       success: false,
       error: {
@@ -202,15 +196,14 @@ export async function submitRating(
     };
   }
 
-  // Best-effort blockchain sync
   let transactionHash = '';
   try {
     const { data: users } = await supabase
       .from('users')
       .select('id, wallet_address')
-      .in('id', [input.raterId, input.rateeId]);
+      .in('id', [input.raterId, rateeId]);
 
-    const rateeWallet = users?.find(u => u.id === input.rateeId)?.wallet_address;
+    const rateeWallet = users?.find(u => u.id === rateeId)?.wallet_address;
 
     if (rateeWallet) {
       const { isWeb3Available } = await import('./web3-client.js');
@@ -238,12 +231,11 @@ export async function submitRating(
         logger.info('Rating synced to blockchain', { reviewId: review.id, transactionHash });
       }
     } else {
-      logger.warn('Ratee has no wallet address, skipping blockchain sync', { rateeId: input.rateeId });
+      logger.warn('Ratee has no wallet address, skipping blockchain sync', { rateeId });
     }
-  } catch (blockchainError: any) {
+  } catch (blockchainError: unknown) {
     logger.error('Failed to sync rating to blockchain', {
-      error: blockchainError?.message || blockchainError,
-      stack: blockchainError?.stack,
+      error: blockchainError instanceof Error ? blockchainError.message : String(blockchainError),
       reviewId: review.id,
     });
   }
@@ -252,20 +244,18 @@ export async function submitRating(
     id: review.id,
     contractId: input.contractId,
     raterId: input.raterId,
-    rateeId: input.rateeId,
+    rateeId,
     rating: input.rating,
     comment: input.comment,
     timestamp: Math.floor(new Date(review.created_at).getTime() / 1000),
     transactionHash,
   };
 
-  // Get project title for notification
   const projectEntity = await projectRepository.getProjectById(contract.projectId);
   const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
-  // Notify the ratee
   await notifyRatingReceived(
-    input.rateeId,
+    rateeId,
     input.rating,
     input.contractId,
     projectTitle
@@ -274,17 +264,14 @@ export async function submitRating(
   return {
     success: true,
     data: {
-      rating: rating,
-      transactionHash: transactionHash,
+      rating,
+      transactionHash,
     },
   };
 }
 
-
 /**
  * Get reputation score for a user
- * Reads from Supabase reviews table (primary), merges blockchain data if available
- * Requirements: 7.3, 7.5
  */
 export async function getReputation(
   userId: string,
@@ -292,12 +279,22 @@ export async function getReputation(
 ): Promise<ReputationServiceResult<ReputationScore>> {
   const supabase = getSupabaseServiceClient();
 
-  // Get ratings from Supabase reviews table (primary source)
   const { data: reviews, error: reviewsError } = await supabase
     .from('reviews')
     .select('*')
     .eq('reviewee_id', userId)
     .order('created_at', { ascending: false });
+
+  if (reviewsError) {
+    logger.error('Failed to fetch reviews for reputation', { error: reviewsError, userId });
+    return {
+      success: false,
+      error: {
+        code: 'DATABASE_ERROR',
+        message: 'Failed to fetch reviews',
+      },
+    };
+  }
 
   const ratings: RatingData[] = (reviews || []).map(r => ({
     id: r.id,
@@ -310,10 +307,8 @@ export async function getReputation(
     transactionHash: '',
   }));
 
-  // Compute aggregate score with time decay
   const score = computeAggregateScore(ratings, decayLambda);
 
-  // Compute simple average (without time decay)
   const averageRating = ratings.length > 0
     ? Math.round((ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length) * 100) / 100
     : 0;
@@ -352,22 +347,17 @@ function computeAggregateScore(ratings: RatingData[], decayLambda: number = 0.01
 
 /**
  * Get work history for a user
- * Returns completed contracts with ratings from Supabase
- * Requirements: 7.3
  */
 export async function getWorkHistory(
   userId: string
 ): Promise<ReputationServiceResult<WorkHistoryEntry[]>> {
   const supabase = getSupabaseServiceClient();
 
-  // Get all contracts for the user
   const contractsResult = await contractRepository.getUserContracts(userId);
   const contractEntities = contractsResult.items;
 
-  // Filter to completed contracts only
   const completedContracts = contractEntities.filter(c => c.status === 'completed');
 
-  // Get all reviews for this user from Supabase
   const { data: userReviews } = await supabase
     .from('reviews')
     .select('*')
@@ -378,15 +368,12 @@ export async function getWorkHistory(
   for (const contractEntity of completedContracts) {
     const contract = mapContractFromEntity(contractEntity);
 
-    // Determine user's role in the contract
     const role: 'freelancer' | 'employer' =
       contract.freelancerId === userId ? 'freelancer' : 'employer';
 
-    // Get project details
     const projectEntity = await projectRepository.getProjectById(contract.projectId);
     const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
-    // Find rating received by this user for this contract
     const receivedRating = userReviews?.find(r => r.contract_id === contract.id);
 
     workHistory.push({
@@ -400,7 +387,6 @@ export async function getWorkHistory(
     });
   }
 
-  // Sort by completion date descending
   workHistory.sort((a, b) =>
     new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
   );
@@ -443,7 +429,6 @@ export async function getContractRatings(
 
 /**
  * Check if a user can rate another user for a contract
- * Uses Supabase reviews table for duplicate check (no wallet required)
  */
 export async function canUserRate(
   raterId: string,
@@ -452,7 +437,6 @@ export async function canUserRate(
 ): Promise<ReputationServiceResult<{ canRate: boolean; reason?: string }>> {
   const supabase = getSupabaseServiceClient();
 
-  // Verify contract exists
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
     return {
@@ -462,7 +446,6 @@ export async function canUserRate(
   }
   const contract = mapContractFromEntity(contractEntity);
 
-  // Verify contract is completed
   if (contract.status !== 'completed') {
     return {
       success: true,
@@ -470,7 +453,6 @@ export async function canUserRate(
     };
   }
 
-  // Verify rater is part of the contract
   if (contract.freelancerId !== raterId && contract.employerId !== raterId) {
     return {
       success: true,
@@ -478,7 +460,6 @@ export async function canUserRate(
     };
   }
 
-  // Verify ratee is part of the contract
   if (contract.freelancerId !== rateeId && contract.employerId !== rateeId) {
     return {
       success: true,
@@ -486,7 +467,6 @@ export async function canUserRate(
     };
   }
 
-  // Verify rater and ratee are different
   if (raterId === rateeId) {
     return {
       success: true,
@@ -494,7 +474,6 @@ export async function canUserRate(
     };
   }
 
-  // Check for duplicate rating in Supabase reviews table (no wallet needed)
   const { data: existingReview } = await supabase
     .from('reviews')
     .select('id')
@@ -512,6 +491,104 @@ export async function canUserRate(
   return {
     success: true,
     data: { canRate: true },
+  };
+}
+
+// --- Former review-service.ts functions ---
+
+/**
+ * Get review by ID
+ */
+export async function getReviewById(reviewId: string): Promise<ServiceResult<Review>> {
+  const supabase = getSupabaseServiceClient();
+
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('id', reviewId)
+    .single();
+
+  if (error || !data) {
+    return {
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Review not found' },
+    };
+  }
+
+  return {
+    success: true,
+    data: mapReviewFromEntity(data as ReviewEntity),
+  };
+}
+
+/**
+ * Get reviews for a user (as reviewee)
+ */
+export async function getUserReviews(userId: string): Promise<ServiceResult<Review[]>> {
+  const supabase = getSupabaseServiceClient();
+
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('reviewee_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    logger.error('Failed to get user reviews', { error, userId });
+    return {
+      success: false,
+      error: { code: 'DATABASE_ERROR', message: 'Failed to fetch reviews' },
+    };
+  }
+
+  return {
+    success: true,
+    data: (data || []).map(r => mapReviewFromEntity(r as ReviewEntity)),
+  };
+}
+
+/**
+ * Get reviews for a project
+ */
+export async function getProjectReviews(projectId: string): Promise<ServiceResult<Review[]>> {
+  const supabase = getSupabaseServiceClient();
+
+  const { data, error } = await supabase
+    .from('reviews')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    logger.error('Failed to get project reviews', { error, projectId });
+    return {
+      success: false,
+      error: { code: 'DATABASE_ERROR', message: 'Failed to fetch reviews' },
+    };
+  }
+
+  return {
+    success: true,
+    data: (data || []).map(r => mapReviewFromEntity(r as ReviewEntity)),
+  };
+}
+
+function mapReviewFromEntity(entity: ReviewEntity): Review {
+  return {
+    id: entity.id,
+    contractId: entity.contract_id,
+    projectId: entity.project_id,
+    reviewerId: entity.reviewer_id,
+    revieweeId: entity.reviewee_id,
+    rating: entity.rating,
+    comment: entity.comment,
+    reviewerRole: entity.reviewer_role,
+    workQuality: entity.work_quality,
+    communication: entity.communication,
+    professionalism: entity.professionalism,
+    wouldWorkAgain: entity.would_work_again,
+    createdAt: new Date(entity.created_at),
+    updatedAt: new Date(entity.updated_at),
   };
 }
 

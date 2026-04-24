@@ -7,8 +7,6 @@ import {
   validateUrl,
   validateSessionId,
   sanitizeSessionId,
-  addAllowedDomain,
-  isAllowedDomain,
 } from '../url-validator.js';
 
 describe('URL Validator - OWASP A10 SSRF Protection', () => {
@@ -210,25 +208,6 @@ describe('URL Validator - OWASP A10 SSRF Protection', () => {
 
     it('should throw on invalid sanitized result', () => {
       expect(() => sanitizeSessionId('abc')).toThrow('format is invalid');
-    });
-  });
-
-  describe('Domain Management', () => {
-    it('should check if domain is allowed', () => {
-      expect(isAllowedDomain('didit.me')).toBe(true);
-      expect(isAllowedDomain('supabase.co')).toBe(true);
-      expect(isAllowedDomain('evil.com')).toBe(false);
-    });
-
-    it('should add new allowed domain', () => {
-      addAllowedDomain('trusted-api.com');
-      expect(isAllowedDomain('trusted-api.com')).toBe(true);
-    });
-
-    it('should handle case-insensitive domains', () => {
-      addAllowedDomain('EXAMPLE.COM');
-      expect(isAllowedDomain('example.com')).toBe(true);
-      expect(isAllowedDomain('EXAMPLE.COM')).toBe(true);
     });
   });
 

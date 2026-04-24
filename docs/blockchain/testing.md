@@ -159,29 +159,29 @@ Tests verify:
 ### Run All Blockchain Tests
 
 ```bash
-npm test -- --testPathPattern="blockchain"
+pnpm test -- --testPathPattern="blockchain"
 ```
 
 ### Run Specific Test Suite
 
 ```bash
 # Web3 client tests
-npm test -- web3-client.test.ts
+pnpm test -- web3-client.test.ts
 
 # Reputation tests
-npm test -- reputation-blockchain.test.ts
+pnpm test -- reputation-blockchain.test.ts
 
 # Escrow tests
-npm test -- escrow-blockchain.test.ts
+pnpm test -- escrow-blockchain.test.ts
 
 # Agreement tests
-npm test -- agreement-blockchain.test.ts
+pnpm test -- agreement-blockchain.test.ts
 ```
 
 ### Run with Coverage
 
 ```bash
-npm test -- --coverage --testPathPattern="blockchain"
+pnpm run test:coverage -- --testPathPattern="blockchain"
 ```
 
 ## Test Scenarios
@@ -266,7 +266,7 @@ expect(mockContract.submitRating).toHaveBeenCalledWith(
 Run tests before committing:
 
 ```bash
-npm test
+pnpm test
 ```
 
 ### CI Pipeline
@@ -300,7 +300,7 @@ Tests run automatically on:
 Run tests with verbose output:
 
 ```bash
-npm test -- --verbose --testPathPattern="blockchain"
+pnpm test -- --verbose --testPathPattern="blockchain"
 ```
 
 ## Future Improvements

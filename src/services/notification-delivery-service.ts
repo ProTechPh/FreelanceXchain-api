@@ -2,10 +2,7 @@ import { EventEmitter } from 'events';
 import type { Response } from 'express';
 import { logger } from '../config/logger.js';
 import type { Notification } from '../models/notification.js';
-
-export type ServiceResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: { code: string; message: string } };
+import type { ServiceResult } from '../types/service-result.js';
 
 /**
  * Event emitter for real-time notifications
@@ -135,7 +132,7 @@ class SSEConnectionManager {
   }
 }
 
-export const sseConnectionManager = new SSEConnectionManager();
+const sseConnectionManager = new SSEConnectionManager();
 
 /**
  * Initialize SSE connection for user
@@ -233,10 +230,26 @@ export function getSSEStats(): ServiceResult<{
 /**
  * Start heartbeat interval to keep connections alive
  */
-export function startHeartbeat(intervalMs: number = 30000): NodeJS.Timeout {
+let heartbeatTimer: NodeJS.Timeout | null = null;
+
+function startHeartbeat(intervalMs: number = 30000): NodeJS.Timeout {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+  }
   logger.info(`Starting SSE heartbeat with interval ${intervalMs}ms`);
   
-  return setInterval(() => {
+  heartbeatTimer = setInterval(() => {
     sseConnectionManager.sendHeartbeat();
   }, intervalMs);
+  heartbeatTimer.unref();
+
+  return heartbeatTimer;
+}
+
+export function stopHeartbeat(): void {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+    logger.info('SSE heartbeat stopped');
+  }
 }

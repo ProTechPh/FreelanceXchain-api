@@ -50,9 +50,9 @@ Development tools and utilities.
 **Usage:**
 ```bash
 # Generate OpenAPI spec
-npm run generate:openapi
+pnpm run openapi:generate
 # or
-node scripts/dev/generate-openapi.ts
+tsx scripts/dev/generate-openapi.ts
 ```
 
 ### 🧪 Testing Scripts

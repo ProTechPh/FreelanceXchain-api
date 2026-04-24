@@ -2,10 +2,6 @@
 
 Feature-specific documentation and implementation guides.
 
-# Features Documentation
-
-Feature-specific documentation and implementation guides.
-
 ## Available Features
 
 ### 📋 Audit Logs
@@ -22,20 +18,18 @@ File upload functionality for project proposals.
 - [Implementation Guide](proposal-uploads/implementation.md) - Technical implementation
 - [Quick Start](proposal-uploads/quickstart.md) - Quick setup and usage guide
 
-## Adding New Features
-
-When documenting new features:
-1. Create a subfolder under `features/`
-2. Include overview, implementation, and usage docs
-3. Update this README with links
-4. Update the main [documentation index](../README.md)
-
-[← Back to Documentation Index](../README.md)
+### 🔧 Other Features
+- [New Features Implementation](new-features-implementation.md) - Feature implementation guide
+- [Custom Skills API](custom-skills-api.md) - Custom skills management
+- [Milestone File Attachments](milestone-file-attachments.md) - Milestone attachments
+- [Project Attachments](project-attachments.md) - Project file attachments
+- [Project Tags](project-tags.md) - Project tagging system
+- [Proposal Employer History](proposal-employer-history.md) - Employer history in proposals
 
 ## Adding New Features
 
 When documenting new features:
-1. Create a subfolder under `features/`
+1. Create a subfolder under `features/` for multi-file features
 2. Include overview, implementation, and usage docs
 3. Update this README with links
 4. Update the main [documentation index](../README.md)

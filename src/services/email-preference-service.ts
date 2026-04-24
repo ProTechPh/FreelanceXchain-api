@@ -1,18 +1,9 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import { EmailPreference, EmailType } from '../models/email-preference.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 const supabase = getSupabaseClient();
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
 
 /**
  * Get user's email preferences (create default if doesn't exist)
@@ -166,6 +157,7 @@ export async function unsubscribeAll(userId: string): Promise<ServiceResult<void
 
     return {
       success: true,
+      data: undefined as unknown as void,
     };
   } catch (error) {
     logger.error('Unexpected error in unsubscribeAll', { error, userId });

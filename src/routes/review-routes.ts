@@ -3,12 +3,12 @@ import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middlewar
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import {
-  submitReview,
+  submitRating as submitReview,
   getReviewById,
   getUserReviews,
   getProjectReviews,
-  canUserReview,
-} from '../services/review-service.js';
+  canUserRate as canUserReview,
+} from '../services/reputation-service.js';
 
 const router = Router();
 
@@ -42,7 +42,7 @@ router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, async (req:
 
   const result = await submitReview({
     contractId,
-    reviewerId: userId,
+    raterId: userId,
     rating,
     comment,
     workQuality,
@@ -52,9 +52,9 @@ router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, async (req:
   });
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : result.error?.code === 'DUPLICATE_REVIEW' ? 409 : 400;
+    const statusCode = result.error.code === 'NOT_FOUND' ? 404 : result.error.code === 'UNAUTHORIZED' ? 403 : result.error.code === 'DUPLICATE_RATING' ? 409 : 400;
     res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
+      error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
     });
@@ -71,9 +71,9 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   const result = await getReviewById(reviewId);
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : 400;
+    const statusCode = result.error.code === 'NOT_FOUND' ? 404 : 400;
     res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
+      error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
     });
@@ -91,7 +91,7 @@ router.get('/user/:userId', apiRateLimiter, validateUUID(['userId']), async (req
 
   if (!result.success) {
     res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
+      error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
     });
@@ -109,7 +109,7 @@ router.get('/project/:projectId', apiRateLimiter, validateUUID(['projectId']), a
 
   if (!result.success) {
     res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
+      error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
     });
@@ -133,11 +133,11 @@ router.get('/can-review/:contractId', authMiddleware, apiRateLimiter, validateUU
     return;
   }
 
-  const result = await canUserReview(userId, contractId);
+  const result = await canUserReview(userId, userId, contractId);
 
   if (!result.success) {
     res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
+      error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
       requestId,
     });

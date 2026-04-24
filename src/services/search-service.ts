@@ -2,6 +2,10 @@ import { Project, FreelancerProfile, mapProjectFromEntity, mapFreelancerProfileF
 import { projectRepository, ProjectEntity } from '../repositories/project-repository.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import { logger } from '../config/logger.js';
+
+const SEARCH_FALLBACK_LIMIT = 1000;
 
 export type ProjectSearchFilters = {
   keyword?: string;
@@ -31,14 +35,8 @@ export type SearchResult<T> = {
   metadata: SearchResultMetadata;
 };
 
-export type SearchServiceError = {
-  code: string;
-  message: string;
-};
-
-export type SearchServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: SearchServiceError };
+export type SearchServiceResult<T> = ServiceResult<T>;
+export type SearchServiceError = ServiceError;
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -109,9 +107,13 @@ export async function searchProjects(
     
     // Start with a large limit to get all matching items, then paginate manually
     // This is a compromise until Supabase supports complex compound queries
-    const allMatchingOptions = { limit: 1000, offset: 0 };
+    const allMatchingOptions = { limit: SEARCH_FALLBACK_LIMIT, offset: 0 };
     entityResult = await projectRepository.getAllOpenProjects(allMatchingOptions);
-    
+
+    if (entityResult.items.length >= SEARCH_FALLBACK_LIMIT) {
+      logger.warn('Search fallback limit reached, results may be incomplete', { limit: SEARCH_FALLBACK_LIMIT });
+    }
+
     let filteredItems = entityResult.items;
 
     // Apply keyword filter
@@ -184,8 +186,12 @@ export async function searchFreelancers(
     entityResult = await freelancerProfileRepository.getAllProfilesPaginated(queryOptions);
   } else {
     // Multiple filters - fetch broad set, filter in memory, then paginate
-    const allProfiles = await freelancerProfileRepository.getAllProfilesPaginated({ limit: 1000, offset: 0 });
-    
+    const allProfiles = await freelancerProfileRepository.getAllProfilesPaginated({ limit: SEARCH_FALLBACK_LIMIT, offset: 0 });
+
+    if (allProfiles.items.length >= SEARCH_FALLBACK_LIMIT) {
+      logger.warn('Freelancer search fallback limit reached, results may be incomplete', { limit: SEARCH_FALLBACK_LIMIT });
+    }
+
     let filteredItems = allProfiles.items;
 
     // Apply keyword filter

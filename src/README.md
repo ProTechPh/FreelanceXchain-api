@@ -346,7 +346,7 @@ pnpm test
 pnpm run test:watch
 
 # Type checking
-pnpm run type-check
+pnpm exec tsc --noEmit
 
 # Linting
 pnpm run lint

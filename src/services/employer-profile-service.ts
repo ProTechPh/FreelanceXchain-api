@@ -2,6 +2,7 @@ import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-m
 import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
 export type CreateEmployerProfileInput = {
   companyName: string;
@@ -21,14 +22,8 @@ export type UpdateEmployerProfileInput = {
   industry?: string;
 };
 
-export type EmployerProfileServiceError = {
-  code: string;
-  message: string;
-};
-
-export type EmployerProfileServiceResult<T> =
-  | { success: true; data: T }
-  | { success: false; error: EmployerProfileServiceError };
+export type EmployerProfileServiceResult<T> = ServiceResult<T>;
+export type EmployerProfileServiceError = ServiceError;
 
 // Profile Operations
 

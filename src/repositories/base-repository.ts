@@ -124,7 +124,8 @@ export class BaseRepository<T extends BaseEntity> {
     const { data, error } = await client
       .from(this.tableName)
       .select('*')
-      .order(orderBy, { ascending });
+      .order(orderBy, { ascending })
+      .limit(1000);
     
     if (error) throw new Error(`Failed to query: ${error.message}`);
     return (data ?? []) as T[];

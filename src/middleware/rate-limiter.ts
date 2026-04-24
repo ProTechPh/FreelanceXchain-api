@@ -54,8 +54,7 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
   const { windowMs, maxRequests, message } = rateLimitConfig;
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    // Skip rate limiting if disabled in development
-    if (config.server.disableRateLimit && config.server.nodeEnv === 'development') {
+    if (config.server.nodeEnv === 'test') {
       next();
       return;
     }

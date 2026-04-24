@@ -20,7 +20,7 @@ import {
   getEscrowState,
   getMilestoneStatus,
 } from '../escrow-contract.js';
-import { isBlockchainAvailable } from '../blockchain-client.js';
+
 import { EscrowParams } from '../blockchain-types.js';
 
 /**

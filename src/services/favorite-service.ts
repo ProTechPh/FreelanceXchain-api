@@ -1,18 +1,9 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
-import { Favorite } from '../models/favorite.js';
+import { Favorite, FavoriteEntity } from '../models/favorite.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 const supabase = getSupabaseClient();
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
 
 /**
  * Add a favorite (project or freelancer)
@@ -127,6 +118,7 @@ export async function removeFavorite(
 
     return {
       success: true,
+      data: undefined as unknown as void,
     };
   } catch (error) {
     logger.error('Unexpected error in removeFavorite', { error, userId, targetType, targetId });
@@ -171,22 +163,40 @@ export async function getUserFavorites(
       };
     }
 
-    // Enrich with target details
-    const enrichedFavorites = await Promise.all(
-      (data || []).map(async (fav) => {
-        const targetTable = fav.target_type === 'project' ? 'projects' : 'users';
-        const { data: targetData } = await supabase
-          .from(targetTable)
-          .select('*')
-          .eq('id', fav.target_id)
-          .single();
+    const favorites = (data || []) as FavoriteEntity[];
 
-        return {
-          ...fav,
-          target: targetData,
-        } as Favorite;
-      })
-    );
+    // Batch-fetch target details instead of N+1 queries
+    const projectIds = favorites.filter(f => f.target_type === 'project').map(f => f.target_id);
+    const userIds = favorites.filter(f => f.target_type !== 'project').map(f => f.target_id);
+
+    const [projectMap, userMap] = await Promise.all([
+      projectIds.length > 0
+        ? supabase.from('projects').select('*').in('id', projectIds).then(({ data: d }) => {
+            const m = new Map<string, any>();
+            for (const item of (d ?? [])) m.set(item.id, item);
+            return m;
+          })
+        : Promise.resolve(new Map<string, any>()),
+      userIds.length > 0
+        ? supabase.from('users').select('*').in('id', userIds).then(({ data: d }) => {
+            const m = new Map<string, any>();
+            for (const item of (d ?? [])) m.set(item.id, item);
+            return m;
+          })
+        : Promise.resolve(new Map<string, any>()),
+    ]);
+
+    const enrichedFavorites: (Favorite & { target: any })[] = favorites.map((fav) => {
+      const targetMap = fav.target_type === 'project' ? projectMap : userMap;
+      return {
+        id: fav.id,
+        userId: fav.user_id,
+        targetType: fav.target_type,
+        targetId: fav.target_id,
+        createdAt: new Date(fav.created_at),
+        target: targetMap.get(fav.target_id) ?? null,
+      };
+    });
 
     return {
       success: true,

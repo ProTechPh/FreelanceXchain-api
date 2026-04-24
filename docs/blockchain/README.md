@@ -2,10 +2,6 @@
 
 Documentation for blockchain integration, smart contracts, and testing.
 
-# Blockchain Documentation
-
-Documentation for blockchain integration, smart contracts, and testing.
-
 ## Documentation
 
 - [Blockchain Overview](overview.md) - Integration overview
@@ -36,7 +32,5 @@ The platform uses the following smart contracts:
 - Setting up blockchain integration → [Blockchain Integration](integration.md)
 - Running blockchain tests → [Blockchain Testing](testing.md)
 - Test results → [Test Results](test-results.md)
-
-[← Back to Documentation Index](../README.md)
 
 [← Back to Documentation Index](../README.md)

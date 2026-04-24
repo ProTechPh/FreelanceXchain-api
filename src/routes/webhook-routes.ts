@@ -1,29 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import { logger } from '../config/logger.js';
+import { verifyWebhookSignature } from '../services/didit-client.js';
+import { processWebhook } from '../services/didit-kyc-service.js';
 import crypto from 'crypto';
 
 const router = Router();
-
-/**
- * Verify Didit webhook signature
- */
-function verifyDiditSignature(payload: string, signature: string): boolean {
-  const secret = process.env['DIDIT_WEBHOOK_SECRET'];
-  if (!secret) {
-    logger.warn('DIDIT_WEBHOOK_SECRET not configured');
-    return false;
-  }
-
-  const expectedSignature = crypto
-    .createHmac('sha256', secret)
-    .update(payload)
-    .digest('hex');
-
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  );
-}
 
 /**
  * @swagger
@@ -47,38 +28,32 @@ function verifyDiditSignature(payload: string, signature: string): boolean {
  */
 router.post('/didit', async (req: Request, res: Response) => {
   try {
-    const signature = req.headers['x-didit-signature'] as string;
+    const signature = req.headers['x-didit-signature'] as string ?? '';
+    const timestamp = req.headers['x-didit-timestamp'] as string ?? '';
     const payload = JSON.stringify(req.body);
 
-    // Verify signature
-    if (!verifyDiditSignature(payload, signature)) {
+    if (!verifyWebhookSignature(payload, signature, timestamp)) {
       logger.warn('Invalid Didit webhook signature');
       return res.status(401).json({ error: 'Invalid signature' });
     }
 
-    const { event, data } = req.body;
+    const { webhook_type, session_id, status, decision, vendor_data, metadata } = req.body;
 
-    logger.info('Received Didit webhook:', { event, sessionId: data?.sessionId });
+    logger.info('Received Didit webhook:', { webhook_type, session_id, status });
 
-    // Handle different event types
-    switch (event) {
-      case 'verification.completed':
-        // TODO: Update KYC status in database
-        logger.info('KYC verification completed:', data);
-        break;
+    const result = await processWebhook({
+      webhook_type,
+      session_id,
+      status,
+      timestamp: req.body.timestamp ?? Math.floor(Date.now() / 1000),
+      created_at: req.body.created_at ?? Math.floor(Date.now() / 1000),
+      vendor_data,
+      metadata,
+      decision,
+    });
 
-      case 'verification.failed':
-        // TODO: Update KYC status to failed
-        logger.info('KYC verification failed:', data);
-        break;
-
-      case 'verification.expired':
-        // TODO: Mark KYC session as expired
-        logger.info('KYC verification expired:', data);
-        break;
-
-      default:
-        logger.warn('Unknown Didit webhook event:', event);
+    if (!result.success) {
+      logger.warn('Didit webhook processing failed', { error: result.error });
     }
 
     return res.status(200).json({ received: true });
@@ -87,6 +62,31 @@ router.post('/didit', async (req: Request, res: Response) => {
     return res.status(500).json({ error: 'Webhook processing failed' });
   }
 });
+
+/**
+ * Verify blockchain webhook signature (HMAC-SHA256)
+ */
+function verifyBlockchainSignature(payload: string, signature: string): boolean {
+  const secret = process.env['BLOCKCHAIN_WEBHOOK_SECRET'];
+  if (!secret) {
+    logger.warn('BLOCKCHAIN_WEBHOOK_SECRET not configured - blockchain webhook authentication is disabled. Set BLOCKCHAIN_WEBHOOK_SECRET to secure this endpoint.');
+    return false;
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(payload)
+    .digest('hex');
+
+  try {
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature)
+    );
+  } catch {
+    return false;
+  }
+}
 
 /**
  * @swagger
@@ -105,9 +105,24 @@ router.post('/didit', async (req: Request, res: Response) => {
  *     responses:
  *       200:
  *         description: Webhook processed successfully
+ *       401:
+ *         description: Invalid signature
  */
 router.post('/blockchain', async (req: Request, res: Response) => {
   try {
+    const signature = req.headers['x-blockchain-signature'] as string | undefined;
+    const payload = JSON.stringify(req.body);
+
+    if (signature === undefined) {
+      logger.warn('Missing blockchain webhook signature');
+      return res.status(401).json({ error: 'Missing signature' });
+    }
+
+    if (!verifyBlockchainSignature(payload, signature)) {
+      logger.warn('Invalid blockchain webhook signature');
+      return res.status(401).json({ error: 'Invalid signature' });
+    }
+
     const { event, data } = req.body;
 
     logger.info('Received blockchain webhook:', { event, data });

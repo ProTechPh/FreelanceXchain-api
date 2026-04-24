@@ -331,7 +331,7 @@ This document serves as a centralized index to all troubleshooting resources acr
 - [Error Handling Middleware](../architecture/middleware-errors.md)
 
 ### Testing
-- **Unit Tests**: Run `npm test` for comprehensive test suite
+- **Unit Tests**: Run `pnpm test` for comprehensive test suite
 - **Integration Tests**: Test full API workflows
 - **Blockchain Tests**: Dedicated blockchain integration tests
 

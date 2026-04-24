@@ -4,7 +4,7 @@ emoji: 🔗
 colorFrom: blue
 colorTo: purple
 sdk: docker
-app_port: 3000
+app_port: 7860
 pinned: false
 ---
 
@@ -102,8 +102,6 @@ The platform supports UN Sustainable Development Goals:
 ## 📚 Documentation Hub
 
 ### Quick Access Guides
-- **[Quick Start Guide](QUICKSTART.md)** - Get up and running in 10 minutes ⚡
-- **[Project Structure](PROJECT_STRUCTURE.md)** - Complete project organization overview
 - **[Configuration Guide](CONFIGURATION.md)** - All configuration files explained
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 
@@ -124,7 +122,7 @@ The platform supports UN Sustainable Development Goals:
 
 ### Quick Setup
 
-**See [Quick Start Guide](QUICKSTART.md) for detailed 10-minute setup.**
+**See [Developer Setup Guide](docs/getting-started/setup.md) for detailed setup instructions.**
 
 ### Local Development Setup
 
@@ -243,9 +241,9 @@ Immutable reputation system:
 
 ### Deployment
 
-**Local (Ganache):**
+**Local (Hardhat):**
 ```bash
-pnpm run deploy:ganache
+pnpm run deploy:local
 ```
 
 **Testnet (Sepolia):**
@@ -273,7 +271,7 @@ pnpm run test:watch
 | `pnpm start` | Start production server |
 | `pnpm test` | Run tests |
 | `pnpm run compile` | Compile Solidity contracts |
-| `pnpm run deploy:ganache` | Deploy to local Ganache |
+| `pnpm run deploy:local` | Deploy to local Hardhat node |
 | `pnpm run deploy:reputation` | Deploy reputation contract to Sepolia |
 | `pnpm run deploy:escrow` | Deploy escrow contract to Sepolia |
 
@@ -318,8 +316,6 @@ pnpm run test:watch
 #### 🔧 Additional Resources
 - [Scripts Documentation](scripts/README.md) - Utility scripts guide
 - [Database Documentation](supabase/README.md) - Database schema and migrations
-- [Email Templates](email-templates/README.md) - Email template setup
-- [Project Structure](PROJECT_STRUCTURE.md) - Complete project organization
 - [Changelog](CHANGELOG.md) - Version history
 
 ## 🤝 Contributing
@@ -334,8 +330,6 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 ## 📖 Additional Resources
 
 - **[Configuration Guide](CONFIGURATION.md)** - Detailed configuration documentation
-- **[Quick Start](QUICKSTART.md)** - Fast setup guide
-- **[Project Structure](PROJECT_STRUCTURE.md)** - Complete project overview
 - **[Changelog](CHANGELOG.md)** - Version history and changes
 
 ## 🆘 Support & Help

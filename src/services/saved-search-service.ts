@@ -1,18 +1,9 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
 import { SavedSearch, SavedSearchInput } from '../models/saved-search.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 const supabase = getSupabaseClient();
-
-export interface ServiceResult<T> {
-  success: boolean;
-  data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-}
 
 /**
  * Create a saved search
@@ -251,6 +242,7 @@ export async function deleteSavedSearch(
 
     return {
       success: true,
+      data: undefined as unknown as void,
     };
   } catch (error) {
     logger.error('Unexpected error in deleteSavedSearch', { error, searchId });

@@ -31,7 +31,6 @@ import fileRoutes from './file-routes.js';
 import milestoneRoutes from './milestone-routes.js';
 import disputeEvidenceRoutes from './dispute-evidence-routes.js';
 import escrowRefundRoutes from './escrow-refund-routes.js';
-import reputationEnhancedRoutes from './reputation-routes-enhanced.js';
 import webhookRoutes from './webhook-routes.js';
 import userCustomSkillRoutes from './user-custom-skill-routes.js';
 
@@ -129,9 +128,6 @@ router.use('/disputes', disputeEvidenceRoutes);
 
 // Escrow refund routes
 router.use('/escrow', escrowRefundRoutes);
-
-// Enhanced reputation routes
-router.use('/reputation-enhanced', reputationEnhancedRoutes);
 
 // Webhook routes
 router.use('/webhooks', webhookRoutes);

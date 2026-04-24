@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
+import type { ServiceResult } from '../types/service-result.js';
 import type {
   Milestone,
   MilestoneStatus,
@@ -11,10 +12,6 @@ import type {
 import { sendMilestoneApprovedEmail } from './email-delivery-service.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
-
-export type ServiceResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: { code: string; message: string } };
 
 /**
  * Get milestone by ID
@@ -130,7 +127,7 @@ export async function submitMilestone(
     });
 
     if (notificationResult.success) {
-      sendNotificationToUser(contract.employer_id, notificationResult.data);
+      await sendNotificationToUser(contract.employer_id, notificationResult.data);
     }
 
     logger.info(`Milestone ${input.milestoneId} submitted by freelancer ${input.freelancerId}`);
@@ -233,7 +230,7 @@ export async function approveMilestone(
     });
 
     if (notificationResult.success) {
-      sendNotificationToUser(contract.freelancer_id, notificationResult.data);
+      await sendNotificationToUser(contract.freelancer_id, notificationResult.data);
     }
 
     // Send email notification
@@ -384,7 +381,7 @@ export async function rejectMilestone(
     });
 
     if (notificationResult.success) {
-      sendNotificationToUser(contract.freelancer_id, notificationResult.data);
+      await sendNotificationToUser(contract.freelancer_id, notificationResult.data);
     }
 
     logger.info(`Milestone ${input.milestoneId} rejected by employer ${input.employerId}`);

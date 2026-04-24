@@ -1,5 +1,5 @@
 import { Provider, createClient } from '@supabase/supabase-js';
-import { randomUUID } from 'crypto';
+import { randomUUID, createCipheriv, createDecipheriv, scryptSync } from 'crypto';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
 import { getSupabaseClient, getSupabaseServiceClient } from '../config/supabase.js';
@@ -10,10 +10,42 @@ import {
   LoginInput,
   AuthResult,
   AuthError,
+  AuthResponse,
 } from './auth-types.js';
 
-// Password strength requirements
 const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 72;
+
+const MFA_ENCRYPTION_KEY = process.env['MFA_ENCRYPTION_KEY'] ?? config.jwt.secret;
+const MFA_ENCRYPTION_ALGO = 'aes-256-gcm';
+
+function getMfaEncryptionKey(): Buffer {
+  return scryptSync(MFA_ENCRYPTION_KEY, 'mfa-salt-freelancex', 32);
+}
+
+function encryptToken(plaintext: string): string {
+  const key = getMfaEncryptionKey();
+  const iv = randomUUID().replace(/-/g, '').slice(0, 16);
+  const cipher = createCipheriv(MFA_ENCRYPTION_ALGO, key, iv);
+  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+  return `${iv}:${authTag}:${encrypted}`;
+}
+
+function decryptToken(encrypted: string): string {
+  const key = getMfaEncryptionKey();
+  const parts = encrypted.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted token format');
+  }
+  const [ivHex, authTagHex, data] = parts as [string, string, string];
+  const ivBuf = Buffer.from(ivHex, 'hex');
+  const decipher = createDecipheriv(MFA_ENCRYPTION_ALGO, key, ivBuf);
+  decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+  const decrypted = decipher.update(data, 'hex', 'utf8') + decipher.final('utf8');
+  return decrypted;
+}
 
 // ============================================================
 // MFA Session Management
@@ -113,8 +145,8 @@ async function storeMfaSession(sessionId: string, session: PendingMfaSession): P
     .from('pending_mfa_sessions')
     .insert({
       session_id: sessionId,
-      access_token: session.accessToken,
-      refresh_token: session.refreshToken,
+      access_token: encryptToken(session.accessToken),
+      refresh_token: encryptToken(session.refreshToken),
       user_id: session.userId,
       factor_id: session.factorId,
       expires_at: session.expiresAt,
@@ -178,9 +210,19 @@ export async function consumeMfaSession(mfaSessionId: string): Promise<PendingMf
   // Check expiry after consumption — session is already deleted so a replay returns null
   if (row.expires_at < Date.now()) return null;
 
+  let accessToken: string;
+  let refreshToken: string;
+  try {
+    accessToken = decryptToken(row.access_token);
+    refreshToken = decryptToken(row.refresh_token);
+  } catch {
+    logger.error('Failed to decrypt MFA session tokens');
+    return null;
+  }
+
   return {
-    accessToken: row.access_token,
-    refreshToken: row.refresh_token,
+    accessToken,
+    refreshToken,
     userId: row.user_id,
     factorId: row.factor_id,
     expiresAt: row.expires_at,
@@ -218,6 +260,9 @@ export function validatePasswordStrength(password: string): PasswordValidationRe
 
   if (password.length < PASSWORD_MIN_LENGTH) {
     errors.push(`Password must be at least ${PASSWORD_MIN_LENGTH} characters`);
+  }
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    errors.push(`Password must be at most ${PASSWORD_MAX_LENGTH} characters`);
   }
   if (!/[a-z]/.test(password)) {
     errors.push('Password must contain at least one lowercase letter');
@@ -257,7 +302,7 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
       email: user.email,
       role: user.role,
       walletAddress: user.wallet_address,
-      kycStatus: kycVerification?.status as any,
+      ...(kycVerification?.status ? { kycStatus: kycVerification.status } : {}),
       createdAt: user.created_at,
     },
     accessToken,
@@ -363,7 +408,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
  * Login with Supabase Auth (email/password)
  * Only works if email is verified
  */
-export async function login(input: LoginInput): Promise<AuthResult | AuthError> {
+export async function login(input: LoginInput): Promise<AuthResponse> {
   const supabase = createPerRequestClient();
   const normalizedEmail = input.email.toLowerCase().trim();
 
@@ -419,12 +464,12 @@ export async function login(input: LoginInput): Promise<AuthResult | AuthError> 
     });
 
     return {
-      code: 'MFA_REQUIRED',
+      code: 'MFA_REQUIRED' as const,
       message: 'MFA verification required',
-      mfaRequired: true,
-      mfaSessionId,  // Opaque identifier, NOT the real access token
+      mfaRequired: true as const,
+      mfaSessionId,
       factorId: factorsData?.all?.find(f => f.status === 'verified')?.id,
-    } as any;
+    };
   }
 
   // Get user from public.users
@@ -538,7 +583,7 @@ export async function validateTokenAndGetUser(accessToken: string): Promise<Auth
 /**
  * Login with existing Supabase session (for OAuth users)
  */
-export async function loginWithSupabase(accessToken: string): Promise<AuthResult | AuthError> {
+export async function loginWithSupabase(accessToken: string): Promise<AuthResponse> {
   // Use a per-request client to avoid session cross-contamination
   const supabase = createPerRequestClient();
 
@@ -591,12 +636,12 @@ export async function loginWithSupabase(accessToken: string): Promise<AuthResult
     });
 
     return {
-      code: 'MFA_REQUIRED',
+      code: 'MFA_REQUIRED' as const,
       message: 'MFA verification required',
-      mfaRequired: true,
-      mfaSessionId,  // Opaque identifier, NOT the real access token
+      mfaRequired: true as const,
+      mfaSessionId,
       factorId: factorsData?.all?.find(f => f.status === 'verified')?.id,
-    } as any;
+    };
   }
 
   // For OAuth flow, the accessToken IS the token we have - use it directly
@@ -1230,7 +1275,7 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     email: user.email,
     role: user.role,
     walletAddress: user.wallet_address,
-    kycStatus: kycVerification?.status as any,
+    ...(kycVerification?.status ? { kycStatus: kycVerification.status } : {}),
     createdAt: user.created_at,
     authProvider,
   };

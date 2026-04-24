@@ -433,7 +433,7 @@ describe('AI Matching', () => {
 ### Pre-commit Hooks
 ```bash
 # .husky/pre-commit
-npm test -- --bail --findRelatedTests
+pnpm test -- --bail --findRelatedTests
 ```
 
 ### CI/CD Integration

@@ -1,7 +1,8 @@
 // User domain types
 export type UserRole = 'freelancer' | 'employer' | 'admin';
 
-export type KycStatus = 'pending' | 'in_progress' | 'completed' | 'approved' | 'rejected' | 'expired';
+export type { KycStatus } from './didit-kyc.js';
+import type { KycStatus } from './didit-kyc.js';
 
 export type User = {
   id: string;

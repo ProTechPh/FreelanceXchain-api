@@ -411,7 +411,7 @@ pnpm run deploy:contracts:prod   # Production network
 ### Generation
 ```bash
 # Generate from code
-pnpm run generate:openapi
+pnpm run openapi:generate
 ```
 
 ### Usage
@@ -422,7 +422,7 @@ pnpm run generate:openapi
 
 ### Viewing
 ```
-http://localhost:3000/api-docs
+http://localhost:7860/api-docs
 ```
 
 ---
@@ -588,7 +588,7 @@ nano .env
 - Verify variable names match
 
 ### "TypeScript compilation errors"
-- Run `pnpm run type-check`
+- Run `pnpm exec tsc --noEmit`
 - Check `tsconfig.json` settings
 
 ### "Tests failing"

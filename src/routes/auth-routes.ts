@@ -25,7 +25,8 @@ import {
   consumeMfaSession,
   validateTokenAndGetUser,
 } from '../services/auth-service.js';
-import { RegisterInput, LoginInput } from '../services/auth-types.js';
+import { RegisterInput, LoginInput, MfaRequiredResult } from '../services/auth-types.js';
+import type { Provider } from '@supabase/supabase-js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limiter.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
@@ -35,6 +36,22 @@ import { createPerRequestClient } from '../config/supabase.js';
 import { userRepository } from '../repositories/user-repository.js';
 
 const router = Router();
+
+const WALLET_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+function extractBearerToken(req: Request, res: Response): string | null {
+  const authHeader = req.headers.authorization;
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader?.split(' ')[1];
+  if (!token) {
+    res.status(401).json({
+      error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization token is required' },
+      timestamp: new Date().toISOString(),
+      requestId: (req.headers['x-request-id'] as string) ?? 'unknown',
+    });
+    return null;
+  }
+  return token;
+}
 
 /**
  * @swagger
@@ -208,7 +225,7 @@ router.post('/register', registerRateLimiter, async (req: Request, res: Response
 
   // Validate wallet address format if provided
   if (walletAddress && typeof walletAddress === 'string' && walletAddress.trim() !== '') {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+    if (!WALLET_REGEX.test(walletAddress)) {
       errors.push({ field: 'walletAddress', message: 'Invalid Ethereum wallet address format' });
     }
   }
@@ -318,10 +335,11 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   if (isAuthError(result)) {
     // Check if MFA is required
     if (result.code === 'MFA_REQUIRED') {
+      const mfaResult = result as MfaRequiredResult;
       res.status(200).json({
         mfaRequired: true,
-        mfaSessionId: (result as any).mfaSessionId,
-        factorId: (result as any).factorId,
+        mfaSessionId: mfaResult.mfaSessionId,
+        factorId: mfaResult.factorId,
       });
       return;
     }
@@ -714,7 +732,7 @@ router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Respon
     }
 
     // Note: We no longer accept role here. Role selection happens AFTER callback.
-    const url = await getOAuthUrl(provider as any);
+    const url = await getOAuthUrl(provider as Provider);
     res.redirect(url);
   } catch (error) {
     res.status(500).json({
@@ -791,10 +809,11 @@ router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Respon
     // Check if MFA is required
     if (result.code === 'MFA_REQUIRED') {
       logger.info('OAuth user requires MFA', { requestId });
+      const mfaResult = result as MfaRequiredResult;
       res.status(200).json({
         mfaRequired: true,
-        mfaSessionId: (result as any).mfaSessionId,
-        factorId: (result as any).factorId,
+        mfaSessionId: mfaResult.mfaSessionId,
+        factorId: mfaResult.factorId,
       });
       return;
     }
@@ -890,7 +909,7 @@ router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Re
 
   // Validate wallet address format if provided
   if (walletAddress && typeof walletAddress === 'string' && walletAddress.trim() !== '') {
-    if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+    if (!WALLET_REGEX.test(walletAddress)) {
       errors.push({ field: 'walletAddress', message: 'Invalid Ethereum wallet address format' });
     }
   }
@@ -1247,20 +1266,8 @@ router.post('/logout', authMiddleware, authRateLimiter, async (req: Request, res
  */
 router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.split(' ')[1];
-
-  if (!token) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_MISSING_TOKEN',
-        message: 'Authorization token is required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
+  const token = extractBearerToken(req, res);
+  if (!token) return;
 
   const result = await enrollMFA(token);
 
@@ -1315,20 +1322,8 @@ router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request,
 router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, code } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.split(' ')[1];
-
-  if (!token) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_MISSING_TOKEN',
-        message: 'Authorization token is required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
+  const token = extractBearerToken(req, res);
+  if (!token) return;
 
   if (!factorId || !code) {
     res.status(400).json({
@@ -1396,20 +1391,8 @@ router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, async (re
 router.post('/mfa/challenge', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.split(' ')[1];
-
-  if (!token) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_MISSING_TOKEN',
-        message: 'Authorization token is required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
+  const token = extractBearerToken(req, res);
+  if (!token) return;
 
   if (!factorId) {
     res.status(400).json({
@@ -1479,20 +1462,8 @@ router.post('/mfa/challenge', authMiddleware, authRateLimiter, async (req: Reque
 router.post('/mfa/verify', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, challengeId, code } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.split(' ')[1];
-
-  if (!token) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_MISSING_TOKEN',
-        message: 'Authorization token is required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
+  const token = extractBearerToken(req, res);
+  if (!token) return;
 
   if (!factorId || !challengeId || !code) {
     res.status(400).json({
@@ -1550,20 +1521,8 @@ router.post('/mfa/verify', authMiddleware, authRateLimiter, async (req: Request,
  */
 router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.split(' ')[1];
-
-  if (!token) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_MISSING_TOKEN',
-        message: 'Authorization token is required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
+  const token = extractBearerToken(req, res);
+  if (!token) return;
 
   const result = await getMFAFactors(token);
 
@@ -1614,20 +1573,8 @@ router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request,
 router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, totpCode } = req.body;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
-  const authHeader = req.headers.authorization;
-  const token = authHeader?.split(' ')[1];
-
-  if (!token) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_MISSING_TOKEN',
-        message: 'Authorization token is required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
+  const token = extractBearerToken(req, res);
+  if (!token) return;
 
   if (!factorId) {
     res.status(400).json({
@@ -1808,7 +1755,7 @@ router.patch('/wallet', authMiddleware, authRateLimiter, async (req: Request, re
     return;
   }
 
-  if (!/^0x[a-fA-F0-9]{40}$/.test(walletAddress)) {
+  if (!WALLET_REGEX.test(walletAddress)) {
     res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'Invalid Ethereum wallet address format' },
       timestamp: new Date().toISOString(),

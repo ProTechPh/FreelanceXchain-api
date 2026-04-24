@@ -1,5 +1,5 @@
 // Contract domain types
-export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'cancelled';
+export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'resolved' | 'cancelled';
 
 export type Contract = {
   id: string;

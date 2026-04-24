@@ -135,13 +135,13 @@ BLOCKCHAIN_PRIVATE_KEY=your_private_key_here
 Run contract tests:
 ```bash
 # Run all contract tests
-npm test
+pnpm test
 
 # Run specific contract tests
-npm test -- FreelanceEscrow
+pnpm test -- FreelanceEscrow
 
 # With coverage
-npm run test:coverage
+pnpm run test:coverage
 ```
 
 ## 📦 Compilation

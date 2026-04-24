@@ -48,7 +48,7 @@ const CSRF_EXEMPT_PATHS = [
 ];
 
 function isExemptPath(path: string): boolean {
-  return CSRF_EXEMPT_PATHS.some(exemptPath => path === exemptPath);
+  return CSRF_EXEMPT_PATHS.some(exemptPath => path === exemptPath || path.startsWith(exemptPath + '/'));
 }
 
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {

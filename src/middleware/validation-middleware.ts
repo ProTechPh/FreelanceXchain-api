@@ -429,7 +429,7 @@ export const registerSchema: RequestSchema = {
     type: 'object',
     properties: {
       email: { type: 'string', format: 'email', minLength: 5, maxLength: 255 },
-      password: { type: 'string', minLength: 8, maxLength: 128 },
+      password: { type: 'string', minLength: 8, maxLength: 72 },
       role: { type: 'string', enum: ['freelancer', 'employer'] },
       walletAddress: { type: 'string' },
     },

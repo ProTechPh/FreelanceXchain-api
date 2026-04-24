@@ -13,15 +13,11 @@ import {
 import { skillCategoryRepository, SkillCategoryEntity } from '../repositories/skill-category-repository.js';
 import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
 import { generateId } from '../utils/id.js';
+import { skillCache } from '../utils/cache.js';
+import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
-export type SkillServiceError = {
-  code: string;
-  message: string;
-};
-
-export type SkillServiceResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: SkillServiceError };
+export type SkillServiceResult<T> = ServiceResult<T>;
+export type SkillServiceError = ServiceError;
 
 // Category Operations
 
@@ -90,8 +86,12 @@ export async function updateCategory(
 }
 
 export async function getAllCategories(): Promise<SkillCategory[]> {
+  const cached = skillCache.get('all_categories');
+  if (cached) return cached as SkillCategory[];
   const entities = await skillCategoryRepository.getAllCategories();
-  return entities.map(mapSkillCategoryFromEntity);
+  const result = entities.map(mapSkillCategoryFromEntity);
+  skillCache.set('all_categories', result);
+  return result;
 }
 
 export async function getActiveCategories(): Promise<SkillCategory[]> {

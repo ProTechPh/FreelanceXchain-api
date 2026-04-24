@@ -80,47 +80,9 @@ export function getCurrentNetwork(): NetworkName {
 }
 
 /**
- * Get contract addresses for current network
- */
-export function getContractAddresses(): ContractAddresses {
-  const network = getCurrentNetwork();
-  return contractAddresses[network];
-}
-
-/**
  * Get specific contract address
  */
 export function getContractAddress(contractName: keyof ContractAddresses): string | undefined {
-  const addresses = getContractAddresses();
-  return addresses[contractName];
-}
-
-/**
- * Set contract address for current network (used after deployment)
- */
-export function setContractAddress(contractName: keyof ContractAddresses, address: string): void {
   const network = getCurrentNetwork();
-  contractAddresses[network][contractName] = address;
-}
-
-/**
- * Check if all required contracts are deployed
- */
-export function areContractsDeployed(): boolean {
-  const addresses = getContractAddresses();
-  return Boolean(
-    addresses.reputation &&
-    addresses.escrow &&
-    addresses.agreement &&
-    addresses.disputeResolution &&
-    addresses.milestoneRegistry
-  );
-}
-
-/**
- * Check if a specific contract is deployed
- */
-export function isContractDeployed(contractName: keyof ContractAddresses): boolean {
-  const address = getContractAddress(contractName);
-  return Boolean(address);
+  return contractAddresses[network][contractName];
 }

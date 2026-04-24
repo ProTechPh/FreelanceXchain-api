@@ -1,5 +1,6 @@
 import { getSupabaseServiceClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
+import type { ServiceResult } from '../types/service-result.js';
 import type {
   RefundRequest,
   CreateRefundRequestInput,
@@ -8,10 +9,6 @@ import type {
 } from '../models/escrow-refund.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
-
-export type ServiceResult<T> = 
-  | { success: true; data: T }
-  | { success: false; error: { code: string; message: string } };
 
 /**
  * Create refund request
@@ -108,7 +105,7 @@ export async function createRefundRequest(
     });
 
     if (notificationResult.success) {
-      sendNotificationToUser(otherPartyId, notificationResult.data);
+      await sendNotificationToUser(otherPartyId, notificationResult.data);
     }
 
     logger.info(`Refund request created for contract ${input.contractId}`);
@@ -247,7 +244,7 @@ export async function approveRefund(
     });
 
     if (notificationResult.success) {
-      sendNotificationToUser(refund.requested_by, notificationResult.data);
+      await sendNotificationToUser(refund.requested_by, notificationResult.data);
     }
 
     logger.info(`Refund ${input.refundId} approved by ${input.approvedBy}`);
@@ -341,7 +338,7 @@ export async function rejectRefund(
     });
 
     if (notificationResult.success) {
-      sendNotificationToUser(refund.requested_by, notificationResult.data);
+      await sendNotificationToUser(refund.requested_by, notificationResult.data);
     }
 
     logger.info(`Refund ${input.refundId} rejected by ${input.rejectedBy}`);
