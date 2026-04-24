@@ -8,6 +8,8 @@ export type Contract = {
   freelancerId: string;
   employerId: string;
   escrowAddress: string;
+  baseAmount: number;
+  rushFee: number;
   totalAmount: number;
   status: ContractStatus;
   title?: string;

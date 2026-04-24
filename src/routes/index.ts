@@ -33,6 +33,7 @@ import disputeEvidenceRoutes from './dispute-evidence-routes.js';
 import escrowRefundRoutes from './escrow-refund-routes.js';
 import webhookRoutes from './webhook-routes.js';
 import userCustomSkillRoutes from './user-custom-skill-routes.js';
+import rushUpgradeRoutes from './rush-upgrade-routes.js';
 
 const router = Router();
 
@@ -131,5 +132,8 @@ router.use('/escrow', escrowRefundRoutes);
 
 // Webhook routes
 router.use('/webhooks', webhookRoutes);
+
+// Rush upgrade routes
+router.use('/', rushUpgradeRoutes);
 
 export default router;

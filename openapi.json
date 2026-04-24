@@ -240,6 +240,16 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "isRush": {
+            "type": "boolean",
+            "description": "Whether this project is marked as rush"
+          },
+          "rushFeePercentage": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 100,
+            "description": "Rush fee percentage applied to the proposed rate"
           }
         }
       },
@@ -356,6 +366,14 @@
           },
           "totalAmount": {
             "type": "number"
+          },
+          "baseAmount": {
+            "type": "number",
+            "description": "Base contract amount before rush fee"
+          },
+          "rushFee": {
+            "type": "number",
+            "description": "Rush fee amount (0 if not rush)"
           },
           "status": {
             "type": "string",
@@ -1564,6 +1582,36 @@
           }
         },
         "required": ["count"]
+      },
+      "RushUpgradeRequest": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "contractId": { "type": "string", "format": "uuid" },
+          "requestedBy": { "type": "string", "format": "uuid" },
+          "proposedPercentage": { "type": "number", "minimum": 0.01, "maximum": 100 },
+          "counterPercentage": { "type": "number", "minimum": 0.01, "maximum": 100, "nullable": true },
+          "status": { "type": "string", "enum": ["pending", "accepted", "declined", "counter_offered", "expired"] },
+          "respondedBy": { "type": "string", "format": "uuid", "nullable": true },
+          "respondedAt": { "type": "string", "format": "date-time", "nullable": true },
+          "createdAt": { "type": "string", "format": "date-time" },
+          "updatedAt": { "type": "string", "format": "date-time" }
+        }
+      },
+      "RequestRushUpgradeInput": {
+        "type": "object",
+        "required": ["proposedPercentage"],
+        "properties": {
+          "proposedPercentage": { "type": "number", "minimum": 0.01, "maximum": 100, "description": "Proposed rush fee percentage" }
+        }
+      },
+      "RespondToRushUpgradeInput": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": { "type": "string", "enum": ["accept", "decline", "counter_offer"] },
+          "counterPercentage": { "type": "number", "minimum": 0.01, "maximum": 100, "description": "Required when action is counter_offer" }
+        }
       }
     }
   },
@@ -6568,6 +6616,104 @@
             }
           }
         }
+      }
+    }
+  },
+  "/api/contracts/{id}/rush-upgrade": {
+    "post": {
+      "summary": "Request rush upgrade",
+      "description": "Employer requests a rush upgrade on an active contract with a proposed rush fee percentage",
+      "tags": ["Rush Upgrade"],
+      "security": [{ "bearerAuth": [] }],
+      "parameters": [
+        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract ID" }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequestRushUpgradeInput" } } }
+      },
+      "responses": {
+        "201": { "description": "Rush upgrade request created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RushUpgradeRequest" } } } },
+        "400": { "description": "Validation error or invalid status" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "Not the contract employer" },
+        "404": { "description": "Contract not found" },
+        "409": { "description": "Pending request already exists or contract already rush" }
+      }
+    }
+  },
+  "/api/rush-upgrade-requests/{id}/respond": {
+    "post": {
+      "summary": "Respond to rush upgrade request",
+      "description": "Freelancer responds to a rush upgrade request (accept, decline, or counter-offer)",
+      "tags": ["Rush Upgrade"],
+      "security": [{ "bearerAuth": [] }],
+      "parameters": [
+        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Rush upgrade request ID" }
+      ],
+      "requestBody": {
+        "required": true,
+        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespondToRushUpgradeInput" } } }
+      },
+      "responses": {
+        "200": { "description": "Response recorded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RushUpgradeRequest" } } } },
+        "400": { "description": "Validation error or invalid status" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "Not the contract freelancer" },
+        "404": { "description": "Request not found" }
+      }
+    }
+  },
+  "/api/rush-upgrade-requests/{id}/accept-counter": {
+    "post": {
+      "summary": "Accept counter-offer",
+      "description": "Employer accepts freelancer's counter-offer for rush upgrade",
+      "tags": ["Rush Upgrade"],
+      "security": [{ "bearerAuth": [] }],
+      "parameters": [
+        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Rush upgrade request ID" }
+      ],
+      "responses": {
+        "200": { "description": "Counter-offer accepted and rush upgrade applied", "content": { "application/json": { "schema": { "type": "object", "properties": { "request": { "$ref": "#/components/schemas/RushUpgradeRequest" }, "contract": { "$ref": "#/components/schemas/Contract" } } } } } },
+        "400": { "description": "Invalid status or no counter percentage" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "Not the employer" },
+        "404": { "description": "Request not found" }
+      }
+    }
+  },
+  "/api/rush-upgrade-requests/{id}/decline-counter": {
+    "post": {
+      "summary": "Decline counter-offer",
+      "description": "Employer declines freelancer's counter-offer for rush upgrade",
+      "tags": ["Rush Upgrade"],
+      "security": [{ "bearerAuth": [] }],
+      "parameters": [
+        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Rush upgrade request ID" }
+      ],
+      "responses": {
+        "200": { "description": "Counter-offer declined", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RushUpgradeRequest" } } } },
+        "400": { "description": "Invalid status" },
+        "401": { "description": "Unauthorized" },
+        "403": { "description": "Not the employer" },
+        "404": { "description": "Request not found" }
+      }
+    }
+  },
+  "/api/contracts/{id}/rush-upgrade-requests": {
+    "get": {
+      "summary": "List rush upgrade requests for a contract",
+      "description": "Get all rush upgrade requests for a specific contract (contract parties only)",
+      "tags": ["Rush Upgrade"],
+      "security": [{ "bearerAuth": [] }],
+      "parameters": [
+        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract ID" }
+      ],
+      "responses": {
+        "200": { "description": "Rush upgrade requests retrieved", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/RushUpgradeRequest" } } } } },
+        "400": { "description": "Not a contract party" },
+        "401": { "description": "Unauthorized" },
+        "404": { "description": "Contract not found" }
       }
     }
   },

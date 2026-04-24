@@ -12,6 +12,8 @@ export type CreateProjectInput = {
   requiredSkills: { skillId: string }[];
   budget: number;
   deadline: string;
+  isRush?: boolean;
+  rushFeePercentage?: number;
   tags?: string[];
   attachments?: FileAttachment[];
 };
@@ -22,6 +24,8 @@ export type UpdateProjectInput = {
   requiredSkills?: { skillId: string }[];
   budget?: number;
   deadline?: string;
+  isRush?: boolean;
+  rushFeePercentage?: number;
   status?: ProjectStatus;
   tags?: string[];
   attachments?: FileAttachment[];
@@ -116,6 +120,16 @@ export async function createProject(
 
   const skillRefs = await buildSkillReferences(skillIds);
 
+  // Validate rush fee percentage if provided
+  if (input.isRush && input.rushFeePercentage !== undefined) {
+    if (input.rushFeePercentage <= 0 || input.rushFeePercentage > 100) {
+      return {
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Rush fee percentage must be between 0.01 and 100' },
+      };
+    }
+  }
+
   const projectInput = {
     id: generateId(),
     employer_id: employerId,
@@ -124,6 +138,8 @@ export async function createProject(
     required_skills: skillRefs,
     budget: input.budget,
     deadline: input.deadline,
+    is_rush: input.isRush ?? false,
+    rush_fee_percentage: input.rushFeePercentage ?? 25,
     status: 'open' as ProjectStatus,
     milestones: [],
     tags: input.tags ?? [],
@@ -225,12 +241,24 @@ export async function updateProject(
     }
   }
 
+  // Validate rush fee percentage if provided
+  if (input.isRush && input.rushFeePercentage !== undefined) {
+    if (input.rushFeePercentage <= 0 || input.rushFeePercentage > 100) {
+      return {
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Rush fee percentage must be between 0.01 and 100' },
+      };
+    }
+  }
+
   const updates: Partial<ProjectEntity> = {
     ...(input.title && { title: input.title }),
     ...(input.description && { description: input.description }),
     ...(input.requiredSkills && { required_skills: skillRefs }),
     ...(input.budget !== undefined && { budget: input.budget }),
     ...(input.deadline && { deadline: input.deadline }),
+    ...(input.isRush !== undefined && { is_rush: input.isRush }),
+    ...(input.rushFeePercentage !== undefined && { rush_fee_percentage: input.rushFeePercentage }),
     ...(input.status && { status: input.status }),
   };
 

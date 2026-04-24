@@ -31,6 +31,8 @@ export type Project = {
   requiredSkills: ProjectSkillReference[];
   budget: number;
   deadline: string;
+  isRush: boolean;
+  rushFeePercentage: number;
   status: ProjectStatus;
   milestones: Milestone[];
   tags: string[];

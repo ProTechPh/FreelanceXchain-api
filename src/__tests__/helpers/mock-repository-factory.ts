@@ -570,3 +570,31 @@ export function createMockEmployerProfileRepository(store: Map<string, any>) {
   };
 }
 
+/**
+ * Create a mock rush upgrade request repository
+ */
+export function createMockRushUpgradeRequestRepository(store: Map<string, any>) {
+  const base = createMockRepository(store);
+
+  return {
+    ...base,
+    createRequest: base.create,
+    getRequestById: base.findById,
+    updateRequest: base.update,
+    getRequestsByContract: jest.fn(async (contractId: string) => {
+      return Array.from(store.values())
+        .filter(r => r.contract_id === contractId)
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    }),
+    getPendingRequestByContract: jest.fn(async (contractId: string) => {
+      const pending = Array.from(store.values())
+        .filter(r => r.contract_id === contractId && (r.status === 'pending' || r.status === 'counter_offered'))
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      return pending[0] ?? null;
+    }),
+    clear: jest.fn(() => {
+      store.clear();
+    }),
+  };
+}
+

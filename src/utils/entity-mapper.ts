@@ -9,6 +9,7 @@ import { ContractEntity } from '../repositories/contract-repository.js';
 import { DisputeEntity, EvidenceEntity } from '../repositories/dispute-repository.js';
 import { SkillEntity, SkillCategoryEntity } from '../repositories/skill-repository.js';
 import { NotificationEntity } from '../repositories/notification-repository.js';
+import { RushUpgradeRequestEntity } from '../repositories/rush-upgrade-request-repository.js';
 
 // Import domain types from models
 import type { User, KycStatus } from '../models/user.js';
@@ -20,6 +21,7 @@ import type { Proposal } from '../models/proposal.js';
 import type { Contract } from '../models/contract.js';
 import type { Dispute, Evidence } from '../models/dispute.js';
 import type { Notification } from '../models/notification.js';
+import type { RushUpgradeRequest } from '../models/rush-upgrade-request.js';
 
 // Re-export types for backward compatibility
 export type { User, KycStatus } from '../models/user.js';
@@ -31,6 +33,7 @@ export type { Proposal, ProposalStatus } from '../models/proposal.js';
 export type { Contract, ContractStatus } from '../models/contract.js';
 export type { Dispute, Evidence, DisputeResolution, DisputeStatus } from '../models/dispute.js';
 export type { Notification, NotificationType } from '../models/notification.js';
+export type { RushUpgradeRequest, RushUpgradeRequestStatus } from '../models/rush-upgrade-request.js';
 
 // Internal helper types
 type SkillRefEntity = { name: string; years_of_experience: number };
@@ -203,6 +206,8 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
     requiredSkills: (entity.required_skills || []).map(mapProjectSkillRefFromEntity),
     budget: entity.budget,
     deadline: entity.deadline,
+    isRush: entity.is_rush ?? false,
+    rushFeePercentage: entity.rush_fee_percentage ?? 25,
     status: entity.status,
     milestones: (entity.milestones || []).map(mapMilestoneFromEntity),
     tags: entity.tags || [],
@@ -262,6 +267,8 @@ export function mapContractFromEntity(entity: ContractEntity & { project?: any; 
     freelancerId: entity.freelancer_id,
     employerId: entity.employer_id,
     escrowAddress: entity.escrow_address,
+    baseAmount: entity.base_amount,
+    rushFee: entity.rush_fee,
     totalAmount: entity.total_amount,
     status: entity.status,
     title: entity.project?.title,
@@ -325,3 +332,22 @@ export function mapNotificationFromEntity(entity: NotificationEntity): Notificat
 
 // Export skill ref mapper for use in services
 export { mapSkillRefToEntity };
+
+// RushUpgradeRequest mapping functions
+export function mapRushUpgradeRequestFromEntity(entity: RushUpgradeRequestEntity): RushUpgradeRequest {
+  if (!entity) {
+    throw new Error('Cannot map null or undefined RushUpgradeRequestEntity');
+  }
+  return {
+    id: entity.id,
+    contractId: entity.contract_id,
+    requestedBy: entity.requested_by,
+    proposedPercentage: entity.proposed_percentage,
+    counterPercentage: entity.counter_percentage,
+    status: entity.status,
+    respondedBy: entity.responded_by,
+    respondedAt: entity.responded_at,
+    createdAt: entity.created_at,
+    updatedAt: entity.updated_at,
+  };
+}

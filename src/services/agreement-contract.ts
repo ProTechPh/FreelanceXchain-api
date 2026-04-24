@@ -47,6 +47,9 @@ export type CreateAgreementInput = {
     description: string;
     milestones: { title: string; amount: number }[];
     deadline: string;
+    isRush?: boolean;
+    rushFee?: number;
+    rushFeePercentage?: number;
   };
 };
 

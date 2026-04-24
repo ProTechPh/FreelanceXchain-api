@@ -39,6 +39,8 @@ export type ProjectEntity = {
   required_skills: { skill_id: string; skill_name: string; category_id: string; years_of_experience: number }[];
   budget: number;
   deadline: string;
+  is_rush: boolean;
+  rush_fee_percentage: number;
   status: ProjectStatus;
   milestones: MilestoneEntity[];
   tags: string[];

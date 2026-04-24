@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS projects (
   required_skills JSONB DEFAULT '[]',
   budget DECIMAL(12, 2) DEFAULT 0,
   deadline TIMESTAMPTZ,
+  is_rush BOOLEAN DEFAULT false,
+  rush_fee_percentage DECIMAL(5,2) DEFAULT 25.00,
   status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'open', 'in_progress', 'completed', 'cancelled')),
   milestones JSONB DEFAULT '[]',
   created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -113,8 +115,24 @@ CREATE TABLE IF NOT EXISTS contracts (
   freelancer_id UUID REFERENCES users(id) ON DELETE CASCADE,
   employer_id UUID REFERENCES users(id) ON DELETE CASCADE,
   escrow_address VARCHAR(255),
+  base_amount DECIMAL(12, 2) DEFAULT 0,
+  rush_fee DECIMAL(12, 2) DEFAULT 0,
   total_amount DECIMAL(12, 2) DEFAULT 0,
   status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'completed', 'disputed', 'cancelled')),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Rush Upgrade Requests table (for mid-contract rush negotiation)
+CREATE TABLE IF NOT EXISTS rush_upgrade_requests (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  contract_id UUID NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
+  requested_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  proposed_percentage DECIMAL(5,2) NOT NULL CHECK (proposed_percentage > 0 AND proposed_percentage <= 100),
+  counter_percentage DECIMAL(5,2) CHECK (counter_percentage IS NULL OR (counter_percentage > 0 AND counter_percentage <= 100)),
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'counter_offered', 'expired')),
+  responded_by UUID REFERENCES users(id),
+  responded_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -278,6 +296,9 @@ CREATE INDEX IF NOT EXISTS idx_payments_contract_id ON payments(contract_id);
 CREATE INDEX IF NOT EXISTS idx_payments_payer_id ON payments(payer_id);
 CREATE INDEX IF NOT EXISTS idx_payments_payee_id ON payments(payee_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+CREATE INDEX IF NOT EXISTS idx_rush_upgrade_contract_id ON rush_upgrade_requests(contract_id);
+CREATE INDEX IF NOT EXISTS idx_rush_upgrade_requested_by ON rush_upgrade_requests(requested_by);
+CREATE INDEX IF NOT EXISTS idx_rush_upgrade_status ON rush_upgrade_requests(status);
 
 -- Unique constraints to prevent data inconsistencies
 -- FIXED: These were missing, allowing duplicate entries via race conditions
@@ -299,6 +320,7 @@ ALTER TABLE skill_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rush_upgrade_requests ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
 -- RLS Policies
@@ -444,6 +466,31 @@ CREATE POLICY "Payments parties read" ON payments FOR SELECT
     OR auth.jwt() ->> 'role' = 'admin'
   );
 CREATE POLICY "Admin full access payments" ON payments FOR ALL
+  USING (auth.jwt() ->> 'role' = 'admin')
+  WITH CHECK (auth.jwt() ->> 'role' = 'admin');
+
+-- Rush upgrade requests: only contract parties can read/write
+CREATE POLICY "Rush upgrade contract parties read" ON rush_upgrade_requests FOR SELECT
+  USING (
+    requested_by = auth.uid()
+    OR contract_id IN (
+      SELECT id FROM contracts WHERE freelancer_id = auth.uid() OR employer_id = auth.uid()
+    )
+    OR auth.jwt() ->> 'role' = 'admin'
+  );
+CREATE POLICY "Rush upgrade employer insert" ON rush_upgrade_requests FOR INSERT
+  WITH CHECK (
+    requested_by = auth.uid()
+    OR auth.jwt() ->> 'role' = 'admin'
+  );
+CREATE POLICY "Rush upgrade parties update" ON rush_upgrade_requests FOR UPDATE
+  USING (
+    contract_id IN (
+      SELECT id FROM contracts WHERE freelancer_id = auth.uid() OR employer_id = auth.uid()
+    )
+    OR auth.jwt() ->> 'role' = 'admin'
+  );
+CREATE POLICY "Admin full access rush_upgrade_requests" ON rush_upgrade_requests FOR ALL
   USING (auth.jwt() ->> 'role' = 'admin')
   WITH CHECK (auth.jwt() ->> 'role' = 'admin');
 

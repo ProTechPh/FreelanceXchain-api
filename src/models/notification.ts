@@ -14,6 +14,10 @@ export type NotificationType =
   | 'refund_approved'
   | 'refund_rejected'
   | 'rating_received'
+  | 'rush_upgrade_requested'
+  | 'rush_upgrade_accepted'
+  | 'rush_upgrade_declined'
+  | 'rush_upgrade_counter_offered'
   | 'message';
 
 export type Notification = {

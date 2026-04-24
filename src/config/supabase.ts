@@ -20,6 +20,7 @@ export const TABLES = {
   REVIEWS: 'reviews',
   MESSAGES: 'messages',
   PAYMENTS: 'payments',
+  RUSH_UPGRADE_REQUESTS: 'rush_upgrade_requests',
   AUDIT_LOG_ENTRIES: 'audit_log_entries',
 } as const;
 

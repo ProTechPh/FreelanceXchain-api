@@ -11,6 +11,7 @@ import type { ContractEntity } from '../../repositories/contract-repository.js';
 import type { SkillEntity, SkillCategoryEntity } from '../../repositories/skill-repository.js';
 import type { DisputeEntity, EvidenceEntity } from '../../repositories/dispute-repository.js';
 import type { NotificationEntity } from '../../repositories/notification-repository.js';
+import type { RushUpgradeRequestEntity } from '../../repositories/rush-upgrade-request-repository.js';
 import type { FreelancerProfileEntity } from '../../repositories/freelancer-profile-repository.js';
 import type { EmployerProfileEntity } from '../../repositories/employer-profile-repository.js';
 
@@ -47,6 +48,8 @@ export function createTestProject(overrides: Partial<ProjectEntity> = {}): Proje
     required_skills: [],
     budget: 1000,
     deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    is_rush: false,
+    rush_fee_percentage: 25,
     status: 'open',
     milestones: [],
     tags: [],
@@ -102,6 +105,8 @@ export function createTestContract(overrides: Partial<ContractEntity> = {}): Con
     freelancer_id: generateId(),
     employer_id: generateId(),
     escrow_address: `0x${generateId().substring(0, 40)}`,
+    base_amount: 1000,
+    rush_fee: 0,
     total_amount: 1000,
     status: 'completed',
     created_at: now(),
@@ -263,6 +268,25 @@ export function createTestReview(overrides: Partial<any> = {}): any {
     rating: 5,
     comment: 'Great work!',
     reviewer_role: 'employer',
+    created_at: now(),
+    updated_at: now(),
+    ...overrides,
+  };
+}
+
+/**
+ * Create a test rush upgrade request entity
+ */
+export function createTestRushUpgradeRequest(overrides: Partial<RushUpgradeRequestEntity> = {}): RushUpgradeRequestEntity {
+  return {
+    id: generateId(),
+    contract_id: generateId(),
+    requested_by: generateId(),
+    proposed_percentage: 25,
+    counter_percentage: null,
+    status: 'pending',
+    responded_by: null,
+    responded_at: null,
     created_at: now(),
     updated_at: now(),
     ...overrides,

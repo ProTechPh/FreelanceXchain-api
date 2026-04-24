@@ -11,6 +11,8 @@ export type ContractEntity = {
   freelancer_id: string;
   employer_id: string;
   escrow_address: string;
+  base_amount: number;
+  rush_fee: number;
   total_amount: number;
   status: ContractStatus;
   created_at: string;

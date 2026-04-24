@@ -379,7 +379,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
  *         description: Unauthorized
  */
 router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, async (req: Request, res: Response) => {
-  const { title, description, requiredSkills, budget, deadline, tags } = req.body;
+  const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -448,6 +448,8 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
     requiredSkills, 
     budget, 
     deadline,
+    ...(isRush !== undefined && { isRush }),
+    ...(rushFeePercentage !== undefined && { rushFeePercentage }),
     ...(processedTags && { tags: processedTags })
   });
 
@@ -525,7 +527,7 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
  *         description: Unauthorized
  */
 router.post('/with-attachments', authMiddleware, requireRole('employer'), requireVerifiedKyc, fileUploadRateLimiter, uploadProjectAttachments, async (req: Request, res: Response) => {
-  const { title, description, requiredSkills, budget, deadline, tags } = req.body;
+  const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
   const files = req.files as Express.Multer.File[];
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
@@ -650,6 +652,8 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
     requiredSkills: parsedRequiredSkills, 
     budget: Number(budget), 
     deadline,
+    ...(isRush !== undefined && { isRush }),
+    ...(rushFeePercentage !== undefined && { rushFeePercentage }),
     ...(processedTags && { tags: processedTags }),
     ...(attachments.length > 0 && { attachments })
   });
@@ -734,7 +738,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
  */
 router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
-  const { title, description, requiredSkills, budget, deadline, status } = req.body;
+  const { title, description, requiredSkills, budget, deadline, status, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
   const requestId = req.headers['x-request-id'] as string ?? 'unknown';
 
@@ -768,7 +772,11 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
     return;
   }
 
-  const result = await updateProject(projectId, userId, { title, description, requiredSkills, budget, deadline, status });
+  const result = await updateProject(projectId, userId, { 
+    title, description, requiredSkills, budget, deadline, status,
+    ...(isRush !== undefined && { isRush }),
+    ...(rushFeePercentage !== undefined && { rushFeePercentage }),
+  });
 
   if (!result.success) {
     let statusCode = 400;

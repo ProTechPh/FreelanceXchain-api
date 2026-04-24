@@ -303,6 +303,7 @@ export async function acceptProposal(
     };
   }
 
+  // Milestone total must match the base amount (proposed rate), not the total with rush fee
   const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
   if (Math.abs(milestoneTotal - proposalRate) > 0.01) {
     return {
@@ -313,6 +314,12 @@ export async function acceptProposal(
       },
     };
   }
+
+  // Calculate rush fee if project is marked as rush
+  const isRush = project.isRush ?? false;
+  const rushFeePercentage = project.rushFeePercentage ?? 25;
+  const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
+  const totalAmount = proposalRate + rushFee;
 
   // RACE CONDITION FIX: Use atomic Supabase RPC to prevent double-accepting proposals
   const { data: result, error: rpcError } = await getSupabaseServiceClient()
@@ -353,13 +360,14 @@ export async function acceptProposal(
         contractId: createdContract.id,
         employerWallet: employer.wallet_address,
         freelancerWallet: freelancer.wallet_address,
-        totalAmount: proposalRate,
+        totalAmount: totalAmount,
         milestoneCount: project.milestones.length,
         terms: {
           projectTitle: project.title,
           description: project.description ?? '',
           milestones: project.milestones.map(m => ({ title: m.title, amount: m.amount })),
           deadline: project.deadline ?? '',
+          ...(isRush ? { isRush: true, rushFee, rushFeePercentage } : {}),
         },
       });
 
