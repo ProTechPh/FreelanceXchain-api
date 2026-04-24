@@ -6,9 +6,7 @@ import { logger } from '../config/logger.js';
 const csrfSecret = process.env['CSRF_SECRET'] ?? config.jwt.secret;
 
 const {
-  _invalidCsrfTokenError,
   generateCsrfToken: csrfTokenGenerator,
-  _validateRequest,
   doubleCsrfProtection,
 } = doubleCsrf({
   getSecret: () => csrfSecret,

@@ -18,7 +18,6 @@ import {
   refundMilestone,
   getEscrowBalance,
   getEscrowState,
-  _getMilestoneStatus,
 } from '../escrow-contract.js';
 
 import { EscrowParams } from '../blockchain-types.js';

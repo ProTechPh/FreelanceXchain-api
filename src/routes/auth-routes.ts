@@ -20,8 +20,6 @@ import {
   verifyMFAChallenge,
   getMFAFactors,
   disableMFA,
-  _validateToken,
-  _createAuthResult,
   consumeMfaSession,
   validateTokenAndGetUser,
 } from '../services/auth-service.js';

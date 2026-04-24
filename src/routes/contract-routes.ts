@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware, _requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
@@ -13,7 +13,6 @@ import {
 import { initializeContractEscrow } from '../services/payment-service.js';
 import { getProjectById } from '../services/project-service.js';
 import { getDisputesByContract } from '../services/dispute-service.js';
-import { _mapContractFromEntity } from '../utils/entity-mapper.js';
 
 const router = Router();
 

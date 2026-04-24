@@ -1,7 +1,7 @@
 import { Proposal, mapProposalFromEntity } from '../utils/entity-mapper.js';
 import { Contract, Project, mapContractFromEntity, mapProjectFromEntity } from '../utils/entity-mapper.js';
 import { proposalRepository, ProposalEntity } from '../repositories/proposal-repository.js';
-import { contractRepository, _ContractEntity } from '../repositories/contract-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';

@@ -8,8 +8,6 @@
 
 import {
   submitRatingToBlockchain,
-  _getRatingsFromBlockchain,
-  hasUserRatedForContract as _hasUserRatedForContractBlockchain,
   BlockchainRating,
 } from './reputation-blockchain.js';
 import { getSupabaseServiceClient } from '../config/supabase.js';

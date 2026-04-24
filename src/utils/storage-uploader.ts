@@ -68,7 +68,7 @@ export async function uploadFileToStorage(
     const filePath = folder ? `${folder}/${uniqueFilename}` : uniqueFilename;
     
     // Upload to Supabase Storage
-    const { _data, error } = await supabase.storage
+    const { data: _data, error } = await supabase.storage
       .from(bucket)
       .upload(filePath, buffer, {
         contentType: mimeType,

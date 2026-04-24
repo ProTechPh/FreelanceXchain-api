@@ -5,7 +5,7 @@ import { uploadProposalAttachments } from '../middleware/file-upload-middleware.
 import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
-import { _generateId } from '../utils/id.js';
+
 import {
   submitProposal,
   getProposalById,

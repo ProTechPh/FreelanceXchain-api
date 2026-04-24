@@ -17,7 +17,6 @@ import {
   submitEvidence,
   resolveDispute,
   getDisputeById,
-  _getDisputesByContract,
   getAllDisputes,
 } from '../services/dispute-service.js';
 import { getContractById } from '../services/contract-service.js';

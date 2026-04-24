@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
-import { clampLimit, _clampOffset } from '../utils/index.js';
+import { clampLimit } from '../utils/index.js';
 import {
   sendMessage,
   getConversations,
