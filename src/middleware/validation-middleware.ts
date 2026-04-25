@@ -1,7 +1,6 @@
 /**
  * Request Validation Middleware
  * Provides JSON schema-based validation for API requests with field-specific error reporting
- * Requirements: 12.2, 12.3, 12.4
  */
 
 import { Request, Response, NextFunction, RequestHandler } from 'express';
@@ -563,6 +562,7 @@ export const createProjectSchema: RequestSchema = {
       deadline: { type: 'string', format: 'date-time' },
       isRush: { type: 'boolean' },
       rushFeePercentage: { type: 'number', minimum: 0.01, maximum: 100 },
+      freelancerLimit: { type: 'number', minimum: 1 },
     },
     required: ['title', 'description', 'requiredSkills', 'budget', 'deadline'],
   },
@@ -588,6 +588,7 @@ export const updateProjectSchema: RequestSchema = {
       deadline: { type: 'string', format: 'date-time' },
       isRush: { type: 'boolean' },
       rushFeePercentage: { type: 'number', minimum: 0.01, maximum: 100 },
+      freelancerLimit: { type: 'number', minimum: 1 },
       status: { type: 'string', enum: ['draft', 'open', 'in_progress', 'completed', 'cancelled'] },
     },
   },

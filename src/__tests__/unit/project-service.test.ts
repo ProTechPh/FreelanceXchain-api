@@ -530,6 +530,96 @@ describe('Project Service - Unit Tests', () => {
       expect(result.error.code).toBe('UNAUTHORIZED');
     }
   });
+
+  it('should create project with custom freelancer limit', async () => {
+    const employerId = generateId();
+    const createInput = {
+      title: 'Agency Project',
+      description: 'A project requiring multiple freelancers to work together.',
+      requiredSkills: [{ skillId: 'skill-1' }],
+      budget: 10000,
+      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      freelancerLimit: 3,
+    };
+
+    const result = await createProject(employerId, createInput);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.freelancer_limit).toBe(3);
+    }
+  });
+
+  it('should default freelancer limit to 1 when not specified', async () => {
+    const employerId = generateId();
+    const createInput = {
+      title: 'Single Freelancer Project',
+      description: 'A project for a single freelancer with standard setup.',
+      requiredSkills: [{ skillId: 'skill-1' }],
+      budget: 5000,
+      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    const result = await createProject(employerId, createInput);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.freelancer_limit).toBe(1);
+    }
+  });
+
+  it('should reject freelancer limit less than 1', async () => {
+    const employerId = generateId();
+    const createInput = {
+      title: 'Invalid Limit Project',
+      description: 'A project with an invalid freelancer limit value.',
+      requiredSkills: [{ skillId: 'skill-1' }],
+      budget: 5000,
+      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      freelancerLimit: 0,
+    };
+
+    const result = await createProject(employerId, createInput);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+
+  it('should reject non-integer freelancer limit', async () => {
+    const employerId = generateId();
+    const createInput = {
+      title: 'Non-integer Limit Project',
+      description: 'A project with a non-integer freelancer limit value.',
+      requiredSkills: [{ skillId: 'skill-1' }],
+      budget: 5000,
+      deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      freelancerLimit: 2.5,
+    };
+
+    const result = await createProject(employerId, createInput);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+
+  it('should update freelancer limit on a project', async () => {
+    const employerId = generateId();
+    const project = createTestProject({ employer_id: employerId, status: 'open' });
+    projectStore.set(project.id, project);
+
+    const result = await updateProject(project.id, employerId, {
+      freelancerLimit: 5,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.freelancer_limit).toBe(5);
+    }
+  });
 });
 
 describe('Project Service - Category Filtering Tests', () => {

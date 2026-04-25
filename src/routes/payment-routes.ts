@@ -1,7 +1,6 @@
 /**
  * Payment Routes
  * API endpoints for milestone completion, approval, disputes, and payment status
- * Requirements: 6.2, 6.3, 6.4, 6.5
  */
 
 import { Router, Request, Response, NextFunction } from 'express';

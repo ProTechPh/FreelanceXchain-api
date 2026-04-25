@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import {
   addFavorite,
   removeFavorite,
@@ -23,7 +24,7 @@ const router = Router();
 router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { targetType, targetId } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -70,7 +71,7 @@ router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respo
 router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const targetType = req.query['targetType'] as 'project' | 'freelancer' | undefined;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -107,7 +108,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
 router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validateUUID(['targetId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { targetType, targetId } = req.params;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -144,7 +145,7 @@ router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validate
 router.get('/check/:targetType/:targetId', authMiddleware, apiRateLimiter, validateUUID(['targetId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { targetType, targetId } = req.params;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

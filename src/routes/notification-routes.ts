@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit } from '../utils/index.js';
 import {
   getNotificationsByUser,
@@ -85,7 +86,7 @@ const router = Router();
  */
 router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -146,7 +147,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
  */
 router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -207,7 +208,7 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request,
 router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const notificationId = req.params['id'] ?? '';
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -263,7 +264,7 @@ router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async 
  */
 router.patch('/read-all', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

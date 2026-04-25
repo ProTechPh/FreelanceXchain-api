@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS projects (
   deadline TIMESTAMPTZ,
   is_rush BOOLEAN DEFAULT false,
   rush_fee_percentage DECIMAL(5,2) DEFAULT 25.00,
+  freelancer_limit INTEGER DEFAULT 1 CHECK (freelancer_limit >= 1),
   status VARCHAR(20) DEFAULT 'draft' CHECK (status IN ('draft', 'open', 'in_progress', 'completed', 'cancelled')),
   milestones JSONB DEFAULT '[]',
   created_at TIMESTAMPTZ DEFAULT NOW(),

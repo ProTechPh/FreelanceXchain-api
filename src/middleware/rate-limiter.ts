@@ -20,7 +20,6 @@ function getStore(name: string): RateLimitStore {
 
 /**
  * Get client IP for rate limiting.
- * FIXED: Only trust X-Forwarded-For when Express trust proxy is configured.
  * Using req.ip which respects the trust proxy setting, falling back to socket address.
  * This prevents attackers from spoofing X-Forwarded-For to bypass rate limits.
  */
@@ -47,7 +46,6 @@ function cleanupExpiredEntries(): void {
 }
 
 // Run cleanup every 5 minutes to prevent memory leaks from expired entries
-// FIXED: .unref() prevents this timer from blocking graceful Node.js shutdown
 setInterval(cleanupExpiredEntries, 5 * 60 * 1000).unref();
 
 export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
@@ -91,7 +89,6 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
 }
 
 // Preset rate limiters
-// FIXED: Separated auth rate limiters by operation to prevent
 // login exhaustion from blocking password reset
 export const loginRateLimiter = rateLimiter('login', {
   windowMs: 15 * 60 * 1000, // 15 minutes

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import {
   getEmailPreferences,
   updateEmailPreferences,
@@ -11,7 +12,7 @@ const router = Router();
 
 router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -38,7 +39,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
 
 router.patch('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const preferences = req.body;
 
   if (!userId) {
@@ -66,7 +67,7 @@ router.patch('/', authMiddleware, apiRateLimiter, async (req: Request, res: Resp
 
 router.post('/unsubscribe-all', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

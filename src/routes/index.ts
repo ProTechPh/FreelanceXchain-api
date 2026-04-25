@@ -32,7 +32,6 @@ import milestoneRoutes from './milestone-routes.js';
 import disputeEvidenceRoutes from './dispute-evidence-routes.js';
 import escrowRefundRoutes from './escrow-refund-routes.js';
 import webhookRoutes from './webhook-routes.js';
-import userCustomSkillRoutes from './user-custom-skill-routes.js';
 import rushUpgradeRoutes from './rush-upgrade-routes.js';
 
 const router = Router();
@@ -45,9 +44,6 @@ router.use('/auth', authRoutes);
 
 // Skill taxonomy routes
 router.use('/skills', skillRoutes);
-
-// User custom skills routes
-router.use('/user-custom-skills', userCustomSkillRoutes);
 
 // Freelancer profile routes
 router.use('/freelancers', freelancerRoutes);

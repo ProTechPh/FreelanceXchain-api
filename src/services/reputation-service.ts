@@ -3,7 +3,6 @@
  * Handles rating/review submission, reputation score computation, work history retrieval
  * Merged from former review-service.ts and reputation-service.ts
  * Uses Supabase reviews table as primary storage, blockchain as best-effort sync
- * Requirements: 7.3, 7.4, 7.5, 7.6, 7.7
  */
 
 import {
@@ -16,11 +15,9 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
 import { logger } from '../config/logger.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 import type { Review, ReviewEntity } from '../models/review.js';
 
-export type ReputationServiceResult<T> = ServiceResult<T>;
-export type ReputationServiceError = ServiceError;
 
 export type RatingInput = {
   contractId: string;
@@ -76,7 +73,7 @@ export type RatingResult = {
  */
 export async function submitRating(
   input: RatingInput
-): Promise<ReputationServiceResult<RatingResult>> {
+): Promise<ServiceResult<RatingResult>> {
   if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
     return {
       success: false,
@@ -274,7 +271,7 @@ export async function submitRating(
 export async function getReputation(
   userId: string,
   decayLambda: number = 0.01
-): Promise<ReputationServiceResult<ReputationScore>> {
+): Promise<ServiceResult<ReputationScore>> {
   const supabase = getSupabaseServiceClient();
 
   const { data: reviews, error: reviewsError } = await supabase
@@ -348,7 +345,7 @@ function computeAggregateScore(ratings: RatingData[], decayLambda: number = 0.01
  */
 export async function getWorkHistory(
   userId: string
-): Promise<ReputationServiceResult<WorkHistoryEntry[]>> {
+): Promise<ServiceResult<WorkHistoryEntry[]>> {
   const supabase = getSupabaseServiceClient();
 
   const contractsResult = await contractRepository.getUserContracts(userId);
@@ -400,7 +397,7 @@ export async function getWorkHistory(
  */
 export async function getContractRatings(
   contractId: string
-): Promise<ReputationServiceResult<RatingData[]>> {
+): Promise<ServiceResult<RatingData[]>> {
   const supabase = getSupabaseServiceClient();
 
   const { data: reviews } = await supabase
@@ -432,7 +429,7 @@ export async function canUserRate(
   raterId: string,
   rateeId: string,
   contractId: string
-): Promise<ReputationServiceResult<{ canRate: boolean; reason?: string }>> {
+): Promise<ServiceResult<{ canRate: boolean; reason?: string }>> {
   const supabase = getSupabaseServiceClient();
 
   const contractEntity = await contractRepository.getContractById(contractId);

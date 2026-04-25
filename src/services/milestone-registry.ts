@@ -2,7 +2,6 @@
  * Milestone Registry Blockchain Service
  * Records milestone completions on-chain for verifiable work history
  *
- * ARCHITECTURE: Uses Supabase (blockchain_milestones table)
  * for persistent storage instead of in-memory Maps.
  */
 

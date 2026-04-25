@@ -10,6 +10,7 @@ import multer from 'multer';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { verifyWebhookSignature } from '../services/didit-client.js';
 import { logger } from '../config/logger.js';
 import {
@@ -172,7 +173,7 @@ function parseWebhookPayload(payload: unknown): DiditWebhookPayload | null {
  */
 router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -219,7 +220,7 @@ router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, re
  */
 router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -410,7 +411,7 @@ router.get('/history', authMiddleware, apiRateLimiter, async (req: Request, res:
 router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validateUUID(['verificationId']), async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!verificationId) {
     res.status(400).json({
@@ -476,7 +477,7 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
  *         description: Invalid signature
  */
 router.post('/webhook', async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const signature = typeof req.headers['x-signature'] === 'string' ? req.headers['x-signature'] : '';
   const timestamp = typeof req.headers['x-timestamp'] === 'string' ? req.headers['x-timestamp'] : '';
   const payload = typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body ?? {});

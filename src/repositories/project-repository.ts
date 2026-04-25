@@ -43,6 +43,7 @@ export type ProjectEntity = {
   rush_fee_percentage: number;
   status: ProjectStatus;
   milestones: MilestoneEntity[];
+  freelancer_limit: number;
   tags: string[];
   attachments: FileAttachment[];
   created_at: string;

@@ -4,7 +4,7 @@ import { skillRepository } from '../repositories/skill-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 export type CreateProjectInput = {
   title: string;
@@ -14,6 +14,7 @@ export type CreateProjectInput = {
   deadline: string;
   isRush?: boolean;
   rushFeePercentage?: number;
+  freelancerLimit?: number;
   tags?: string[];
   attachments?: FileAttachment[];
 };
@@ -26,6 +27,7 @@ export type UpdateProjectInput = {
   deadline?: string;
   isRush?: boolean;
   rushFeePercentage?: number;
+  freelancerLimit?: number;
   status?: ProjectStatus;
   tags?: string[];
   attachments?: FileAttachment[];
@@ -42,8 +44,6 @@ export type ProjectWithProposalCount = ProjectEntity & {
   proposalCount: number;
 };
 
-export type ProjectServiceResult<T> = ServiceResult<T>;
-export type ProjectServiceError = ServiceError;
 
 type SkillRef = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
 
@@ -88,7 +88,7 @@ async function buildSkillReferences(skillIds: string[]): Promise<SkillRef[]> {
 export async function createProject(
   employerId: string,
   input: CreateProjectInput
-): Promise<ProjectServiceResult<ProjectEntity>> {
+): Promise<ServiceResult<ProjectEntity>> {
   // Validate attachments if provided
   if (input.attachments && input.attachments.length > 0) {
     const attachmentErrors = validateAttachments(input.attachments, { maxFiles: 10 });
@@ -130,6 +130,14 @@ export async function createProject(
     }
   }
 
+  // Validate freelancer limit
+  if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
+    return {
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Freelancer limit must be a positive integer (minimum 1)' },
+    };
+  }
+
   const projectInput = {
     id: generateId(),
     employer_id: employerId,
@@ -140,6 +148,7 @@ export async function createProject(
     deadline: input.deadline,
     is_rush: input.isRush ?? false,
     rush_fee_percentage: input.rushFeePercentage ?? 25,
+    freelancer_limit: input.freelancerLimit ?? 1,
     status: 'open' as ProjectStatus,
     milestones: [],
     tags: input.tags ?? [],
@@ -150,7 +159,7 @@ export async function createProject(
   return { success: true, data: created };
 }
 
-export async function getProjectById(projectId: string): Promise<ProjectServiceResult<ProjectEntity>> {
+export async function getProjectById(projectId: string): Promise<ServiceResult<ProjectEntity>> {
   const project = await projectRepository.findProjectById(projectId);
   if (!project) {
     return {
@@ -165,7 +174,7 @@ export async function updateProject(
   projectId: string,
   employerId: string,
   input: UpdateProjectInput
-): Promise<ProjectServiceResult<ProjectEntity>> {
+): Promise<ServiceResult<ProjectEntity>> {
   const existingProject = await projectRepository.getProjectById(projectId);
   if (!existingProject) {
     return {
@@ -251,6 +260,14 @@ export async function updateProject(
     }
   }
 
+  // Validate freelancer limit if provided
+  if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
+    return {
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Freelancer limit must be a positive integer (minimum 1)' },
+    };
+  }
+
   const updates: Partial<ProjectEntity> = {
     ...(input.title && { title: input.title }),
     ...(input.description && { description: input.description }),
@@ -259,6 +276,7 @@ export async function updateProject(
     ...(input.deadline && { deadline: input.deadline }),
     ...(input.isRush !== undefined && { is_rush: input.isRush }),
     ...(input.rushFeePercentage !== undefined && { rush_fee_percentage: input.rushFeePercentage }),
+    ...(input.freelancerLimit !== undefined && { freelancer_limit: input.freelancerLimit }),
     ...(input.status && { status: input.status }),
   };
 
@@ -277,7 +295,7 @@ export async function addMilestones(
   projectId: string,
   employerId: string,
   milestones: AddMilestoneInput[]
-): Promise<ProjectServiceResult<ProjectEntity>> {
+): Promise<ServiceResult<ProjectEntity>> {
   const existingProject = await projectRepository.getProjectById(projectId);
   if (!existingProject || existingProject.employer_id !== employerId) {
     return {
@@ -328,7 +346,7 @@ export async function setMilestones(
   projectId: string,
   employerId: string,
   milestones: AddMilestoneInput[]
-): Promise<ProjectServiceResult<ProjectEntity>> {
+): Promise<ServiceResult<ProjectEntity>> {
   const existingProject = await projectRepository.getProjectById(projectId);
   if (!existingProject || existingProject.employer_id !== employerId) {
     return {
@@ -376,7 +394,7 @@ export async function setMilestones(
 export async function listProjectsByEmployer(
   employerId: string,
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByEmployer(employerId, options);
   
   const projectIds = result.items.map(p => p.id);
@@ -401,7 +419,7 @@ export async function listProjectsByEmployer(
 
 export async function listOpenProjects(
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getAllOpenProjects(options);
   return { success: true, data: result };
 }
@@ -409,7 +427,7 @@ export async function listOpenProjects(
 export async function listProjectsByStatus(
   status: ProjectStatus,
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByStatus(status, options);
   return { success: true, data: result };
 }
@@ -417,7 +435,7 @@ export async function listProjectsByStatus(
 export async function searchProjects(
   keyword: string,
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.searchProjects(keyword, options);
   return { success: true, data: result };
 }
@@ -425,7 +443,7 @@ export async function searchProjects(
 export async function listProjectsBySkills(
   skillIds: string[],
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsBySkills(skillIds, options);
   return { success: true, data: result };
 }
@@ -434,7 +452,7 @@ export async function listProjectsByBudgetRange(
   minBudget: number,
   maxBudget: number,
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, options);
   return { success: true, data: result };
 }
@@ -442,7 +460,7 @@ export async function listProjectsByBudgetRange(
 export async function listProjectsByCategory(
   categoryId: string,
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByCategory(categoryId, options);
   return { success: true, data: result };
 }
@@ -450,7 +468,7 @@ export async function listProjectsByCategory(
 export async function listProjectsByMultipleCategories(
   categoryIds: string[],
   options?: QueryOptions
-): Promise<ProjectServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByMultipleCategories(categoryIds, options);
   return { success: true, data: result };
 }
@@ -458,7 +476,7 @@ export async function listProjectsByMultipleCategories(
 export async function deleteProject(
   projectId: string,
   employerId: string
-): Promise<ProjectServiceResult<boolean>> {
+): Promise<ServiceResult<boolean>> {
   const existingProject = await projectRepository.getProjectById(projectId);
   if (!existingProject || existingProject.employer_id !== employerId) {
     return {

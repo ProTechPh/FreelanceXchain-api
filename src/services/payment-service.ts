@@ -1,7 +1,6 @@
 /**
  * Payment Service
  * Handles milestone completion, approval, disputes, and contract completion
- * Requirements: 6.2, 6.3, 6.4, 6.5
  */
 
 import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity, mapDisputeFromEntity } from '../utils/entity-mapper.js';
@@ -26,7 +25,7 @@ import {
   notifyDisputeCreated,
 } from './notification-service.js';
 import { EscrowMilestone } from './blockchain-types.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 import {
   submitMilestoneToRegistry,
   approveMilestoneOnRegistry,
@@ -82,8 +81,6 @@ async function createPaymentRecord(params: {
   }
 }
 
-export type PaymentServiceResult<T> = ServiceResult<T>;
-export type PaymentServiceError = ServiceError;
 
 export type MilestoneCompletionResult = {
   milestoneId: string;
@@ -125,13 +122,12 @@ export type ContractPaymentStatus = {
 /**
  * Request milestone completion
  * Called by freelancer when they complete a milestone
- * Requirements: 6.2
  */
 export async function requestMilestoneCompletion(
   contractId: string,
   milestoneId: string,
   freelancerId: string
-): Promise<PaymentServiceResult<MilestoneCompletionResult>> {
+): Promise<ServiceResult<MilestoneCompletionResult>> {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -262,9 +258,7 @@ export async function requestMilestoneCompletion(
 /**
  * Approve milestone completion
  * Called by employer to approve and release payment
- * Requirements: 6.3
  * 
- * FIXED: 
  * - Only milestones with status 'submitted' can be approved
  * - Contract must be 'active' status
  * - Looks up employer wallet address instead of passing UUID
@@ -275,7 +269,7 @@ export async function approveMilestone(
   contractId: string,
   milestoneId: string,
   employerId: string
-): Promise<PaymentServiceResult<MilestoneApprovalResult>> {
+): Promise<ServiceResult<MilestoneApprovalResult>> {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -511,9 +505,7 @@ export async function approveMilestone(
 /**
  * Dispute milestone
  * Called by a contract party to dispute a milestone completion
- * Requirements: 6.4
  * 
- * FIXED:
  * - Contract must be 'active' status
  * - Only milestones with status 'submitted' can be disputed
  */
@@ -522,7 +514,7 @@ export async function disputeMilestone(
   milestoneId: string,
   initiatorId: string,
   reason: string
-): Promise<PaymentServiceResult<MilestoneDisputeResult>> {
+): Promise<ServiceResult<MilestoneDisputeResult>> {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -664,7 +656,7 @@ export async function disputeMilestone(
 export async function getContractPaymentStatus(
   contractId: string,
   userId: string
-): Promise<PaymentServiceResult<ContractPaymentStatus>> {
+): Promise<ServiceResult<ContractPaymentStatus>> {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -724,7 +716,6 @@ export async function getContractPaymentStatus(
 
 /**
  * Check if contract is complete (all milestones approved or refunded)
- * Requirements: 6.5
  */
 export async function isContractComplete(contractId: string): Promise<boolean> {
   const contractEntity = await contractRepository.getContractById(contractId);
@@ -787,7 +778,7 @@ export async function initializeContractEscrow(
   project: Project,
   employerWalletAddress: string,
   freelancerWalletAddress: string
-): Promise<PaymentServiceResult<{ escrowAddress: string }>> {
+): Promise<ServiceResult<{ escrowAddress: string }>> {
   try {
     if (contract.totalAmount <= 0) {
       return {
@@ -800,7 +791,6 @@ export async function initializeContractEscrow(
     }
 
     // Prepare milestone data for escrow
-    // FIXED: Use toWei() instead of BigInt(Math.floor(amount * 1e18)) to avoid floating-point precision loss
     const escrowMilestones: EscrowMilestone[] = project.milestones.map(m => ({
       id: m.id,
       amount: toWei(m.amount),

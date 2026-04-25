@@ -3,6 +3,7 @@ import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/a
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadProjectAttachments } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter, apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
 import { generateId } from '../utils/id.js';
@@ -184,7 +185,7 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
     res.status(400).json({
       error: { code: result.error.code, message: result.error.message },
       timestamp: new Date().toISOString(),
-      requestId: req.headers['x-request-id'] ?? 'unknown',
+      requestId: getRequestId(req),
     });
     return;
   }
@@ -241,7 +242,7 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
  */
 router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
 
@@ -305,7 +306,7 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
  */
 router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getProjectById(id);
 
@@ -381,7 +382,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
 router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, async (req: Request, res: Response) => {
   const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -530,7 +531,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
   const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
   const files = req.files as Express.Multer.File[];
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -740,7 +741,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
   const projectId = req.params['id'] ?? '';
   const { title, description, requiredSkills, budget, deadline, status, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -861,7 +862,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
   const projectId = req.params['id'] ?? '';
   const { milestones } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -976,7 +977,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
 router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
 
@@ -1065,7 +1066,7 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
  */
 router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Response) => {
   const _includeInactive = req.query['includeInactive'] === 'true';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   try {
     // This is a simplified implementation - in production you'd want to optimize this query

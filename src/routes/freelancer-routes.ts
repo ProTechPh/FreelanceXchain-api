@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import {
   createProfile,
   getProfileByUserId,
@@ -119,7 +120,7 @@ const router = Router();
 router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { bio, hourlyRate, availability } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -191,7 +192,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
  */
 router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -258,7 +259,7 @@ router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter
 router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { bio, hourlyRate, availability } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -363,7 +364,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimit
 router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { skills } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -452,7 +453,7 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
 router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const skillName = decodeURIComponent(req.params['name'] ?? '');
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -540,7 +541,7 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
 router.post('/profile/experience', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { title, company, description, startDate, endDate } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -645,7 +646,7 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
 router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const experienceId = req.params['id'] ?? '';
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -738,7 +739,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
 router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const experienceId = req.params['id'] ?? '';
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -795,7 +796,7 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
  */
 router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getProfileByUserId(id);
 

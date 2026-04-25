@@ -30,8 +30,6 @@ import { getReputation } from './reputation-service.js';
 
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
-export type MatchingServiceResult<T> = ServiceResult<T>;
-export type MatchingServiceError = ServiceError;
 
 // Constants
 const DEFAULT_RECOMMENDATION_LIMIT = 10;
@@ -75,7 +73,7 @@ function projectSkillToInfo(entity: ProjectSkillEntity): SkillInfo {
 export async function getProjectRecommendations(
   freelancerId: string,
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
-): Promise<MatchingServiceResult<ProjectRecommendation[]>> {
+): Promise<ServiceResult<ProjectRecommendation[]>> {
   // Get freelancer profile
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
@@ -145,7 +143,7 @@ export async function getProjectRecommendations(
 export async function getFreelancerRecommendations(
   projectId: string,
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
-): Promise<MatchingServiceResult<FreelancerRecommendation[]>> {
+): Promise<ServiceResult<FreelancerRecommendation[]>> {
   // Get project
   const projectEntity = await projectRepository.findProjectById(projectId);
   if (!projectEntity) {
@@ -228,7 +226,7 @@ export async function getFreelancerRecommendations(
  */
 export async function extractSkillsFromText(
   text: string
-): Promise<MatchingServiceResult<ExtractedSkill[]>> {
+): Promise<ServiceResult<ExtractedSkill[]>> {
   if (!text || text.trim().length === 0) {
     return {
       success: false,
@@ -279,7 +277,7 @@ export async function extractSkillsFromText(
  */
 export async function analyzeSkillGaps(
   freelancerId: string
-): Promise<MatchingServiceResult<SkillGapAnalysis>> {
+): Promise<ServiceResult<SkillGapAnalysis>> {
   // Get freelancer profile
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
@@ -418,7 +416,7 @@ export function sortFreelancerRecommendationsByCombinedScore(
  * Check if matching service result is an error
  */
 export function isMatchingError<T>(
-  result: MatchingServiceResult<T>
-): result is { success: false; error: MatchingServiceError } {
+  result: ServiceResult<T>
+): result is { success: false; error: ServiceError } {
   return !result.success;
 }

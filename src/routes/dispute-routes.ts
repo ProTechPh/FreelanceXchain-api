@@ -1,7 +1,6 @@
 /**
  * Dispute Routes
  * API endpoints for dispute creation, evidence submission, and resolution
- * Requirements: 8.1, 8.2, 8.3, 8.4, 8.5
  */
 
 import { Router, Request, Response, NextFunction } from 'express';

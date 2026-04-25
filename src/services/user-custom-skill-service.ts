@@ -11,10 +11,7 @@ import {
 } from '../repositories/user-custom-skill-repository.js';
 import { generateId } from '../utils/id.js';
 import { searchSkills } from './skill-service.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
-
-export type UserCustomSkillServiceResult<T> = ServiceResult<T>;
-export type UserCustomSkillServiceError = ServiceError;
+import type { ServiceResult } from '../types/service-result.js';
 
 // Entity mapping functions
 function mapUserCustomSkillFromEntity(entity: UserCustomSkillEntity): UserCustomSkill {
@@ -53,7 +50,7 @@ export async function createUserCustomSkill(
   userId: string,
   userName: string,
   input: CreateUserCustomSkillInput
-): Promise<UserCustomSkillServiceResult<UserCustomSkill>> {
+): Promise<ServiceResult<UserCustomSkill>> {
   // Check if skill already exists in global taxonomy
   const globalSkills = await searchSkills(input.name);
   const exactMatch = globalSkills.find((skill: any) => 
@@ -131,7 +128,7 @@ export async function getUserCustomSkills(userId: string): Promise<UserCustomSki
 export async function getUserCustomSkillById(
   id: string, 
   userId: string
-): Promise<UserCustomSkillServiceResult<UserCustomSkill>> {
+): Promise<ServiceResult<UserCustomSkill>> {
   const entity = await userCustomSkillRepository.getUserCustomSkillById(id, userId);
   if (!entity) {
     return {
@@ -146,7 +143,7 @@ export async function updateUserCustomSkill(
   id: string,
   userId: string,
   updates: UpdateUserCustomSkillInput
-): Promise<UserCustomSkillServiceResult<UserCustomSkill>> {
+): Promise<ServiceResult<UserCustomSkill>> {
   const existing = await userCustomSkillRepository.getUserCustomSkillById(id, userId);
   if (!existing) {
     return {
@@ -203,7 +200,7 @@ export async function updateUserCustomSkill(
 export async function deleteUserCustomSkill(
   id: string, 
   userId: string
-): Promise<UserCustomSkillServiceResult<boolean>> {
+): Promise<ServiceResult<boolean>> {
   const existing = await userCustomSkillRepository.getUserCustomSkillById(id, userId);
   if (!existing) {
     return {
@@ -277,7 +274,7 @@ export async function getPendingSkillSuggestions(): Promise<SkillSuggestion[]> {
 export async function updateSkillSuggestionStatus(
   id: string,
   status: 'approved' | 'rejected'
-): Promise<UserCustomSkillServiceResult<SkillSuggestion>> {
+): Promise<ServiceResult<SkillSuggestion>> {
   try {
     const updatedEntity = await userCustomSkillRepository.updateSkillSuggestionStatus(id, status);
     if (!updatedEntity) {

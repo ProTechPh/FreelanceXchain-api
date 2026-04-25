@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 
 import {
   getPlatformStats,
@@ -27,7 +28,7 @@ const router = Router();
  *       - bearerAuth: []
  */
 router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getPlatformStats();
 
@@ -53,7 +54,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async
  *       - bearerAuth: []
  */
 router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getAdminAnalytics();
 
@@ -79,7 +80,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, a
  *       - bearerAuth: []
  */
 router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
   const role = req.query['role'] as string | undefined;
 
@@ -127,7 +128,7 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
 router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const { name, role, isActive } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const validRoles = ['freelancer', 'employer', 'admin'];
   if (role !== undefined && !validRoles.includes(role)) {
@@ -176,7 +177,7 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
 router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const { reason } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await suspendUser(userId, reason);
 
@@ -203,7 +204,7 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
  */
 router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await unsuspendUser(userId);
 
@@ -230,7 +231,7 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
  */
 router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await verifyUser(userId);
 
@@ -256,7 +257,7 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
  *       - bearerAuth: []
  */
 router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
 
   const filters: any = {};
@@ -285,7 +286,7 @@ router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, as
  *       - bearerAuth: []
  */
 router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getSystemHealth();
 
@@ -310,7 +311,7 @@ router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimite
  *     description: Used on the landing page and admin dashboard to show aggregate platform statistics. Open to public.
  */
 router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getPlatformStats();
 

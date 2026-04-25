@@ -12,7 +12,7 @@ import { logger } from '../config/logger.js';
 
 import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 export type CreateProposalInput = {
   projectId: string;
@@ -21,8 +21,6 @@ export type CreateProposalInput = {
   estimatedDuration: number;
 };
 
-export type ProposalServiceResult<T> = ServiceResult<T>;
-export type ProposalServiceError = ServiceError;
 
 export type ProposalWithNotification = {
   proposal: Proposal;
@@ -46,7 +44,7 @@ export type RejectProposalResult = {
 export async function submitProposal(
   freelancerId: string,
   input: CreateProposalInput
-): Promise<ProposalServiceResult<ProposalWithNotification>> {
+): Promise<ServiceResult<ProposalWithNotification>> {
   // Validate attachments
   const attachmentErrors = validateAttachments(input.attachments);
   if (attachmentErrors.length > 0) {
@@ -84,6 +82,16 @@ export async function submitProposal(
     return {
       success: false,
       error: { code: 'DUPLICATE_PROPOSAL', message: 'You have already submitted a proposal for this project' },
+    };
+  }
+
+  // Check if freelancer limit has been reached (all slots filled)
+  const acceptedCount = await proposalRepository.getAcceptedProposalCount(input.projectId);
+  const freelancerLimit = projectEntity.freelancer_limit ?? 1;
+  if (acceptedCount >= freelancerLimit) {
+    return {
+      success: false,
+      error: { code: 'FREELANCER_LIMIT_REACHED', message: `This project has already accepted the maximum number of freelancers (${freelancerLimit})` },
     };
   }
 
@@ -136,7 +144,7 @@ export async function submitProposal(
 
 
 // Get proposal by ID
-export async function getProposalById(proposalId: string): Promise<ProposalServiceResult<Proposal>> {
+export async function getProposalById(proposalId: string): Promise<ServiceResult<Proposal>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
     return {
@@ -162,7 +170,7 @@ export type ProposalWithEmployerHistory = {
   employerHistory: EmployerHistory;
 };
 
-export async function getProposalWithEmployerHistory(proposalId: string): Promise<ProposalServiceResult<ProposalWithEmployerHistory>> {
+export async function getProposalWithEmployerHistory(proposalId: string): Promise<ServiceResult<ProposalWithEmployerHistory>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
     return {
@@ -215,7 +223,7 @@ export async function getProposalWithEmployerHistory(proposalId: string): Promis
 export async function getProposalsByProject(
   projectId: string,
   options?: QueryOptions
-): Promise<ProposalServiceResult<PaginatedResult<Proposal>>> {
+): Promise<ServiceResult<PaginatedResult<Proposal>>> {
   const projectEntity = await projectRepository.findProjectById(projectId);
   if (!projectEntity) {
     return {
@@ -238,14 +246,13 @@ export async function getProposalsByProject(
 // Get proposals by freelancer
 export async function getProposalsByFreelancer(
   freelancerId: string
-): Promise<ProposalServiceResult<Proposal[]>> {
+): Promise<ServiceResult<Proposal[]>> {
   const proposalEntities = await proposalRepository.getProposalsByFreelancer(freelancerId);
   return { success: true, data: proposalEntities.map(mapProposalFromEntity) };
 }
 
 
 // Accept a proposal - creates a contract
-// FIXED:
 // - Checks if another proposal was already accepted (prevents race condition)
 // - Uses freelancer's proposedRate for contract amount (not project.budget)
 // - Rejects all other pending proposals for the same project
@@ -253,7 +260,7 @@ export async function getProposalsByFreelancer(
 export async function acceptProposal(
   proposalId: string,
   employerId: string
-): Promise<ProposalServiceResult<AcceptProposalResult>> {
+): Promise<ServiceResult<AcceptProposalResult>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
     return {
@@ -341,6 +348,7 @@ export async function acceptProposal(
 
   // Map the new values returned from the RPC
   const createdContractId = result.contract_id;
+  const limitReached = result.limit_reached ?? true; // Default true for backward compat if RPC doesn't return it
 
   // Get the updated entities
   const updatedProposalEntity = await proposalRepository.findProposalById(proposalId);
@@ -398,26 +406,31 @@ export async function acceptProposal(
     // Continue - blockchain is secondary, contract remains pending
   }
 
-  // Update project status to in_progress and activate the first milestone
-  const updatedMilestones = project.milestones?.map((milestone, index) => {
-    // Automatically set the first milestone to in_progress so the freelancer can begin
-    if (index === 0) {
+  // Update project status based on freelancer limit
+  // Only transition to in_progress when all freelancer slots are filled
+  if (limitReached) {
+    // All freelancer slots filled — transition project to in_progress and activate first milestone
+    const updatedMilestones = project.milestones?.map((milestone, index) => {
+      // Automatically set the first milestone to in_progress so the freelancer can begin
+      if (index === 0) {
+        return {
+          ...milestone,
+          status: 'in_progress' as any,
+          due_date: milestone.dueDate,
+        };
+      }
       return {
         ...milestone,
-        status: 'in_progress' as any,
         due_date: milestone.dueDate,
       };
-    }
-    return {
-      ...milestone,
-      due_date: milestone.dueDate,
-    };
-  }) || [];
+    }) || [];
 
-  await projectRepository.updateProject(project.id, {
-    status: 'in_progress',
-    milestones: updatedMilestones,
-  });
+    await projectRepository.updateProject(project.id, {
+      status: 'in_progress',
+      milestones: updatedMilestones,
+    });
+  }
+  // If limit is not reached, project stays 'open' so more freelancers can be accepted
 
   // Create notification for freelancer
   try {
@@ -454,7 +467,7 @@ export async function acceptProposal(
 export async function rejectProposal(
   proposalId: string,
   employerId: string
-): Promise<ProposalServiceResult<RejectProposalResult>> {
+): Promise<ServiceResult<RejectProposalResult>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
     return {
@@ -533,7 +546,7 @@ export async function rejectProposal(
 export async function withdrawProposal(
   proposalId: string,
   freelancerId: string
-): Promise<ProposalServiceResult<Proposal>> {
+): Promise<ServiceResult<Proposal>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
     return {

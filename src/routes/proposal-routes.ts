@@ -3,6 +3,7 @@ import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/a
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadProposalAttachments } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
 
@@ -208,7 +209,7 @@ async function handleMultipartProposalSubmission(req: Request, res: Response, _n
     if (res.headersSent) return;
     
     // Handle unexpected errors
-    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const requestId = getRequestId(req);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
       timestamp: new Date().toISOString(),
@@ -222,7 +223,7 @@ async function handleMultipartProposalSubmission(req: Request, res: Response, _n
  */
 async function processMultipartProposal(req: Request, res: Response) {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   
   if (!userId) {
     return res.status(401).json({
@@ -330,7 +331,7 @@ async function processMultipartProposal(req: Request, res: Response) {
 async function handleJsonProposalSubmission(req: Request, res: Response) {
   const { projectId, attachments, proposedRate, estimatedDuration } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     return res.status(401).json({
@@ -424,7 +425,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
 router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
-    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const requestId = getRequestId(req);
     const userId = req.user?.userId;
 
     const result = await getProposalById(id);
@@ -523,7 +524,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
 router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
-    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const requestId = getRequestId(req);
     const userId = req.user?.userId;
 
     if (!userId) {
@@ -589,7 +590,7 @@ router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
 router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -657,7 +658,7 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
-    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const requestId = getRequestId(req);
 
     if (!userId) {
       res.status(401).json({
@@ -730,7 +731,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
-    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const requestId = getRequestId(req);
 
     if (!userId) {
       res.status(401).json({
@@ -801,7 +802,7 @@ router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireV
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
-    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const requestId = getRequestId(req);
 
     if (!userId) {
       res.status(401).json({

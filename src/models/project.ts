@@ -35,6 +35,7 @@ export type Project = {
   rushFeePercentage: number;
   status: ProjectStatus;
   milestones: Milestone[];
+  freelancerLimit: number;
   tags: string[];
   attachments: FileAttachment[];
   createdAt: string;

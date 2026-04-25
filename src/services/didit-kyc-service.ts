@@ -573,7 +573,6 @@ export async function isUserVerified(userId: string): Promise<boolean> {
 
 /**
  * Map Didit session status to our KYC status
- * FIXED: Handle 'Completed' and 'Cancelled' statuses that were falling through to default
  * The Didit session API returns different values than the webhook:
  *   Session API: 'Not Started', 'In Progress', 'Completed', 'Expired', 'Cancelled'
  *   Webhook:     'Approved', 'Declined', 'In Review'
@@ -585,7 +584,6 @@ function mapDiditStatusToKycStatus(diditStatus: string): KycStatus {
     case 'In Progress':
       return 'in_progress';
     case 'Completed':
-      return 'completed';  // FIXED: Was falling through to default ('pending')
     case 'Approved':
       return 'approved';
     case 'Declined':
@@ -597,7 +595,6 @@ function mapDiditStatusToKycStatus(diditStatus: string): KycStatus {
     case 'Abandoned':
       return 'expired';
     case 'Cancelled':
-      return 'expired';   // FIXED: Was falling through to default ('pending')
     default:
       // Log unexpected statuses instead of silently defaulting
       logger.warn('Unknown Didit status, defaulting to pending', { diditStatus });

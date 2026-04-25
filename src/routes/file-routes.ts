@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import {
   getUserFiles,
   deleteFile,
@@ -11,7 +12,7 @@ const router = Router();
 
 router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const bucket = req.query['bucket'] as string | undefined;
 
   if (!userId) {
@@ -40,7 +41,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
 router.delete('/:bucket/:path', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { bucket, path } = req.params;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -77,7 +78,7 @@ router.delete('/:bucket/:path', authMiddleware, apiRateLimiter, async (req: Requ
 
 router.get('/quota', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

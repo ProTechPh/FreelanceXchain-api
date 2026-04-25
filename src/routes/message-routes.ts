@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit } from '../utils/index.js';
 import {
   sendMessage,
@@ -24,7 +25,7 @@ const router = Router();
  */
 router.get('/conversations', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const page = req.query['page'] ? Number(req.query['page']) : 1;
 
@@ -62,7 +63,7 @@ router.get('/conversations', authMiddleware, apiRateLimiter, async (req: Request
  */
 router.post('/send', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const { receiverId, content, attachments } = req.body;
 
@@ -110,7 +111,7 @@ router.post('/send', authMiddleware, apiRateLimiter, async (req: Request, res: R
 router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, validateUUID(['conversationId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const conversationId = req.params['conversationId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const page = req.query['page'] ? Number(req.query['page']) : 1;
 
@@ -150,7 +151,7 @@ router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, val
 router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimiter, validateUUID(['conversationId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const conversationId = req.params['conversationId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -186,7 +187,7 @@ router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimit
  */
 router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

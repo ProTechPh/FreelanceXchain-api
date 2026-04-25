@@ -27,6 +27,7 @@ import { RegisterInput, LoginInput, MfaRequiredResult } from '../services/auth-t
 import type { Provider } from '@supabase/supabase-js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
@@ -44,7 +45,7 @@ function extractBearerToken(req: Request, res: Response): string | null {
     res.status(401).json({
       error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization token is required' },
       timestamp: new Date().toISOString(),
-      requestId: (req.headers['x-request-id'] as string) ?? 'unknown',
+      requestId: getRequestId(req),
     });
     return null;
   }
@@ -144,7 +145,6 @@ function extractBearerToken(req: Request, res: Response): string | null {
 
 /**
  * Validate email format
- * FIXED: Previous validation accepted strings like "@@@@@" or "a@b c"
  * Now checks for proper local@domain.tld format with maximum length
  */
 function validateEmail(email: unknown): email is string {
@@ -196,7 +196,7 @@ function validateRole(role: unknown): role is UserRole {
  */
 router.post('/register', registerRateLimiter, async (req: Request, res: Response) => {
   const { email, password, role, walletAddress } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   // Validate input
   const errors: { field: string; message: string }[] = [];
@@ -302,7 +302,7 @@ router.post('/register', registerRateLimiter, async (req: Request, res: Response
  */
 router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   const { email, password } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   // Validate input
   const errors: { field: string; message: string }[] = [];
@@ -396,7 +396,7 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
  */
 router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Response) => {
   const { mfaSessionId, factorId, code } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!mfaSessionId || !factorId || !code) {
     res.status(400).json({
@@ -522,7 +522,7 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
  */
 router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => {
   const { refreshToken } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!refreshToken || typeof refreshToken !== 'string') {
     res.status(400).json({
@@ -586,7 +586,7 @@ router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => 
  */
 router.get('/callback', authRateLimiter, async (req: Request, res: Response) => {
   const { code, error, error_description } = req.query;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (error) {
     res.status(400).json({
@@ -713,7 +713,7 @@ router.get('/callback', authRateLimiter, async (req: Request, res: Response) => 
  */
 router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Response) => {
   const { provider } = req.params as { provider: string };
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   try {
     // Valid provider check
@@ -778,7 +778,7 @@ router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Respon
  */
 router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Response) => {
   const { access_token } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   logger.debug('OAuth callback received', { requestId });
 
@@ -892,7 +892,7 @@ router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Respon
  */
 router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Response) => {
   const { accessToken, role, walletAddress } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const errors: { field: string; message: string }[] = [];
 
@@ -985,7 +985,7 @@ router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Re
  */
 router.post('/resend-confirmation', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     res.status(400).json({
@@ -1038,7 +1038,7 @@ router.post('/resend-confirmation', passwordResetRateLimiter, async (req: Reques
  */
 router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { email } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!email || typeof email !== 'string' || !email.includes('@')) {
     res.status(400).json({
@@ -1049,7 +1049,6 @@ router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, r
     return;
   }
 
-  // FIXED: Always return the same response regardless of whether the email exists
   // This prevents account enumeration via timing/error differences
   try {
     await requestPasswordReset(email);
@@ -1131,7 +1130,7 @@ router.post('/csrf-token', authRateLimiter, (req: Request, res: Response) => {
  */
 router.post('/reset-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
   const { accessToken, password } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const errors: { field: string; message: string }[] = [];
 
@@ -1201,12 +1200,11 @@ router.post('/reset-password', passwordResetRateLimiter, async (req: Request, re
  *         description: Internal server error
  */
 router.post('/logout', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const userId = req.user?.userId;
 
   logger.info('User logout initiated', { userId, requestId });
 
-  // FIXED: Extract the access token from the Authorization header and pass it to logout()
   // Previously logout() was called with no arguments, signing out the server-side session
   // instead of the user's actual session
   const authHeader = req.headers.authorization;
@@ -1262,7 +1260,7 @@ router.post('/logout', authMiddleware, authRateLimiter, async (req: Request, res
  *         description: Unauthorized
  */
 router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
 
@@ -1318,7 +1316,7 @@ router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request,
  */
 router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, code } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
 
@@ -1387,7 +1385,7 @@ router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, async (re
  */
 router.post('/mfa/challenge', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
 
@@ -1458,7 +1456,7 @@ router.post('/mfa/challenge', authMiddleware, authRateLimiter, async (req: Reque
  */
 router.post('/mfa/verify', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, challengeId, code } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
 
@@ -1517,7 +1515,7 @@ router.post('/mfa/verify', authMiddleware, authRateLimiter, async (req: Request,
  *         description: Unauthorized
  */
 router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
 
@@ -1569,7 +1567,7 @@ router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request,
  */
 router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { factorId, totpCode } = req.body;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
 
@@ -1652,7 +1650,7 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request
  */
 router.get('/me', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -1731,7 +1729,7 @@ router.get('/me', authMiddleware, authRateLimiter, async (req: Request, res: Res
 router.patch('/wallet', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
   const { walletAddress } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

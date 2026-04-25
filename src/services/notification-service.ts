@@ -2,7 +2,7 @@ import { Notification, NotificationType, mapNotificationFromEntity } from '../ut
 import { notificationRepository, NotificationEntity } from '../repositories/notification-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
 import { generateId } from '../utils/id.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 export type CreateNotificationInput = {
   userId: string;
@@ -12,13 +12,10 @@ export type CreateNotificationInput = {
   data?: Record<string, unknown>;
 };
 
-export type NotificationServiceResult<T> = ServiceResult<T>;
-export type NotificationServiceError = ServiceError;
-
 // Create a notification
 export async function createNotification(
   input: CreateNotificationInput
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   const notificationEntity: Omit<NotificationEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
     user_id: input.userId,
@@ -36,7 +33,7 @@ export async function createNotification(
 // Create multiple notifications at once
 export async function createNotifications(
   inputs: CreateNotificationInput[]
-): Promise<NotificationServiceResult<Notification[]>> {
+): Promise<ServiceResult<Notification[]>> {
   const notifications: Notification[] = [];
 
   for (const input of inputs) {
@@ -57,11 +54,10 @@ export async function createNotifications(
 }
 
 // Get notification by ID
-// FIXED: Now actually verifies that the requesting user owns the notification
 export async function getNotificationById(
   notificationId: string,
   userId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   const notificationEntity = await notificationRepository.getNotificationById(notificationId);
   if (!notificationEntity) {
     return {
@@ -85,7 +81,7 @@ export async function getNotificationById(
 export async function getNotificationsByUser(
   userId: string,
   options?: QueryOptions
-): Promise<NotificationServiceResult<PaginatedResult<Notification>>> {
+): Promise<ServiceResult<PaginatedResult<Notification>>> {
   const result = await notificationRepository.getNotificationsByUser(userId, options);
   return { 
     success: true, 
@@ -100,7 +96,7 @@ export async function getNotificationsByUser(
 // Get all notifications for a user (sorted by creation time descending)
 export async function getAllNotificationsByUser(
   userId: string
-): Promise<NotificationServiceResult<Notification[]>> {
+): Promise<ServiceResult<Notification[]>> {
   const notificationEntities = await notificationRepository.getAllNotificationsByUser(userId);
   return { success: true, data: notificationEntities.map(mapNotificationFromEntity) };
 }
@@ -109,7 +105,7 @@ export async function getAllNotificationsByUser(
 // Get unread notifications for a user
 export async function getUnreadNotificationsByUser(
   userId: string
-): Promise<NotificationServiceResult<Notification[]>> {
+): Promise<ServiceResult<Notification[]>> {
   const notificationEntities = await notificationRepository.getUnreadNotificationsByUser(userId);
   return { success: true, data: notificationEntities.map(mapNotificationFromEntity) };
 }
@@ -118,7 +114,7 @@ export async function getUnreadNotificationsByUser(
 export async function markNotificationAsRead(
   notificationId: string,
   userId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   const notificationEntity = await notificationRepository.getNotificationById(notificationId);
   if (!notificationEntity) {
     return {
@@ -149,7 +145,7 @@ export async function markNotificationAsRead(
 // Mark all notifications as read for a user
 export async function markAllNotificationsAsRead(
   userId: string
-): Promise<NotificationServiceResult<{ count: number }>> {
+): Promise<ServiceResult<{ count: number }>> {
   const count = await notificationRepository.markAllAsRead(userId);
   return { success: true, data: { count } };
 }
@@ -157,7 +153,7 @@ export async function markAllNotificationsAsRead(
 // Get unread notification count for a user
 export async function getUnreadCount(
   userId: string
-): Promise<NotificationServiceResult<number>> {
+): Promise<ServiceResult<number>> {
   const count = await notificationRepository.getUnreadCount(userId);
   return { success: true, data: count };
 }
@@ -171,7 +167,7 @@ export async function notifyProposalReceived(
   projectId: string,
   projectTitle: string,
   freelancerId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId: employerId,
     type: 'proposal_received',
@@ -187,7 +183,7 @@ export async function notifyProposalAccepted(
   projectId: string,
   projectTitle: string,
   contractId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId: freelancerId,
     type: 'proposal_accepted',
@@ -202,7 +198,7 @@ export async function notifyProposalRejected(
   proposalId: string,
   projectId: string,
   projectTitle: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId: freelancerId,
     type: 'proposal_rejected',
@@ -220,7 +216,7 @@ export async function notifyMilestoneSubmitted(
   projectId: string,
   projectTitle: string,
   contractId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId: employerId,
     type: 'milestone_submitted',
@@ -237,7 +233,7 @@ export async function notifyMilestoneApproved(
   projectId: string,
   projectTitle: string,
   contractId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId: freelancerId,
     type: 'milestone_approved',
@@ -255,7 +251,7 @@ export async function notifyPaymentReleased(
   projectId: string,
   projectTitle: string,
   contractId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId,
     type: 'payment_released',
@@ -274,7 +270,7 @@ export async function notifyDisputeCreated(
   projectId: string,
   projectTitle: string,
   contractId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId,
     type: 'dispute_created',
@@ -293,7 +289,7 @@ export async function notifyDisputeResolved(
   projectId: string,
   projectTitle: string,
   contractId: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId,
     type: 'dispute_resolved',
@@ -308,7 +304,7 @@ export async function notifyRatingReceived(
   rating: number,
   contractId: string,
   projectTitle: string
-): Promise<NotificationServiceResult<Notification>> {
+): Promise<ServiceResult<Notification>> {
   return createNotification({
     userId,
     type: 'rating_received',

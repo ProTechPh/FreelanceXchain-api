@@ -2,7 +2,6 @@
  * Dispute Resolution Blockchain Service
  * Records dispute outcomes on-chain for transparency
  *
- * ARCHITECTURE: Uses Supabase (blockchain_dispute_records table)
  * for persistent storage instead of in-memory Maps.
  */
 

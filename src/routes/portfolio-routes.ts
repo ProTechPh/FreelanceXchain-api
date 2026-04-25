@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { uploadPortfolioImages } from '../middleware/file-upload-middleware.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { STORAGE_BUCKETS } from '../config/supabase.js';
@@ -47,7 +48,7 @@ async function handleMultipartPortfolio(req: Request, res: Response, _next: any)
     await executeMiddleware();
   } catch {
     if (res.headersSent) return;
-    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const requestId = getRequestId(req);
     res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
       timestamp: new Date().toISOString(),
@@ -58,7 +59,7 @@ async function handleMultipartPortfolio(req: Request, res: Response, _next: any)
 
 async function processMultipartPortfolio(req: Request, res: Response) {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const files = req.files as Express.Multer.File[] | undefined;
   const { title, description, projectUrl, skills, completedAt } = req.body;
 
@@ -119,7 +120,7 @@ async function processMultipartPortfolio(req: Request, res: Response) {
 
 async function handleJsonPortfolio(req: Request, res: Response) {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const { title, description, projectUrl, images, skills, completedAt } = req.body;
 
   if (!userId) {
@@ -152,7 +153,7 @@ async function handleJsonPortfolio(req: Request, res: Response) {
 
 router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelancerId']), async (req: Request, res: Response) => {
   const freelancerId = req.params['freelancerId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getFreelancerPortfolio(freelancerId);
 
@@ -170,7 +171,7 @@ router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelance
 
 router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const portfolioId = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getPortfolioItem(portfolioId);
 
@@ -190,7 +191,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
 router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const updates = req.body;
 
   if (!userId) {
@@ -220,7 +221,7 @@ router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, 
 router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

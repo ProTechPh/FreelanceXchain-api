@@ -2,7 +2,7 @@ import { Project, FreelancerProfile, mapProjectFromEntity, mapFreelancerProfileF
 import { projectRepository, ProjectEntity } from '../repositories/project-repository.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
 
 // TODO: Multi-filter search currently chains individual repository calls and merges client-side.
@@ -38,8 +38,6 @@ export type SearchResult<T> = {
   metadata: SearchResultMetadata;
 };
 
-export type SearchServiceResult<T> = ServiceResult<T>;
-export type SearchServiceError = ServiceError;
 
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 100;
@@ -73,12 +71,11 @@ function buildSearchResult<T>(
 
 /**
  * Search projects with keyword, skill, and budget filters
- * Requirements: 10.1, 10.2, 10.4, 10.5
  */
 export async function searchProjects(
   filters: ProjectSearchFilters,
   pagination?: SearchPaginationInput
-): Promise<SearchServiceResult<SearchResult<Project>>> {
+): Promise<ServiceResult<SearchResult<Project>>> {
   const pageSize = normalizePageSize(pagination?.pageSize);
   const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 
@@ -104,7 +101,6 @@ export async function searchProjects(
     entityResult = await projectRepository.getAllOpenProjects(queryOptions);
   } else {
     // Multiple filters - build a combined query to push ALL filters to the database
-    // FIXED: Previously fetched a paginated window then filtered in memory,
     // causing missing results, wrong hasMore, and inconsistent page sizes.
     // Now we apply all filters in a single DB query before pagination.
     
@@ -166,12 +162,11 @@ export async function searchProjects(
 
 /**
  * Search freelancers with skill filters
- * Requirements: 10.3, 10.4
  */
 export async function searchFreelancers(
   filters: FreelancerSearchFilters,
   pagination?: SearchPaginationInput
-): Promise<SearchServiceResult<SearchResult<FreelancerProfile>>> {
+): Promise<ServiceResult<SearchResult<FreelancerProfile>>> {
   const pageSize = normalizePageSize(pagination?.pageSize);
   const queryOptions = buildQueryOptions(pageSize, pagination?.offset);
 

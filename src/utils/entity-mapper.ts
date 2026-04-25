@@ -210,6 +210,7 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
     rushFeePercentage: entity.rush_fee_percentage ?? 25,
     status: entity.status,
     milestones: (entity.milestones || []).map(mapMilestoneFromEntity),
+    freelancerLimit: entity.freelancer_limit ?? 1,
     tags: entity.tags || [],
     attachments: entity.attachments || [],
     createdAt: entity.created_at,

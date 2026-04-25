@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import {
   getUserTransactions,
@@ -13,7 +14,7 @@ const router = Router();
 
 router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const page = clampOffset(req.query['page'] ? Number(req.query['page']) : undefined);
   const type = req.query['type'] as string | undefined;
@@ -50,7 +51,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
 router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const transactionId = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -79,7 +80,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
 router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

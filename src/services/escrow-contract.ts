@@ -1,9 +1,7 @@
 /**
  * Escrow Smart Contract Interface
  * Handles escrow deployment, deposits, milestone releases, and refunds
- * Requirements: 6.1, 6.3
  *
- * ARCHITECTURE: Uses Supabase (blockchain_escrows + blockchain_escrow_milestones)
  * for persistent storage instead of in-memory Maps.
  */
 

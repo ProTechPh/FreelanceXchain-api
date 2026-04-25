@@ -1,9 +1,7 @@
 /**
  * Reputation Smart Contract Interface
  * Handles reputation record submission, retrieval, and aggregate score computation on blockchain
- * Requirements: 7.1, 7.2, 7.3
  *
- * ARCHITECTURE: Uses Supabase (blockchain_ratings table)
  * for persistent storage instead of in-memory Maps.
  */
 

@@ -92,6 +92,18 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
     return (count ?? 0) > 0;
   }
 
+  async getAcceptedProposalCount(projectId: string): Promise<number> {
+    const client = this.getClient();
+    const { count, error } = await client
+      .from(this.tableName)
+      .select('*', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .eq('status', 'accepted');
+    
+    if (error) throw new Error(`Failed to get accepted proposal count: ${error.message}`);
+    return count ?? 0;
+  }
+
   async getProposalCountByProject(projectId: string): Promise<number> {
     const client = this.getClient();
     const { count, error } = await client

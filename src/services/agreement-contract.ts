@@ -3,7 +3,6 @@
  * Stores contract agreements and signatures on-chain
  * Creates immutable proof that both parties agreed to terms
  *
- * ARCHITECTURE: Uses Supabase (blockchain_agreements table)
  * for persistent storage instead of in-memory Maps.
  */
 

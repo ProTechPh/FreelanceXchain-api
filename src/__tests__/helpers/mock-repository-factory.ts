@@ -227,6 +227,15 @@ export function createMockProposalRepository(store: Map<string, any>) {
       }
       return false;
     }),
+    getAcceptedProposalCount: jest.fn(async (projectId: string) => {
+      let count = 0;
+      for (const proposal of store.values()) {
+        if (proposal.project_id === projectId && proposal.status === 'accepted') {
+          count++;
+        }
+      }
+      return count;
+    }),
     getProposalCountByProject: jest.fn(async (projectId: string) => {
       let count = 0;
       for (const proposal of store.values()) {

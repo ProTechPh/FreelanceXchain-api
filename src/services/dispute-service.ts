@@ -1,7 +1,6 @@
 /**
  * Dispute Service
  * Handles dispute creation, evidence submission, and resolution
- * Requirements: 8.1, 8.2, 8.3, 8.4, 8.5, 8.6
  */
 
 import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
@@ -58,7 +57,6 @@ export type ResolveDisputeInput = {
 
 /**
  * Create a new dispute
- * Requirements: 8.1, 8.2
  */
 export async function createDispute(
   input: CreateDisputeInput
@@ -75,7 +73,6 @@ export async function createDispute(
   }
   const contract = mapContractFromEntity(contractEntity);
 
-  // FIXED: Verify contract is active before allowing disputes
   // Cannot dispute milestones on completed, cancelled, or pending contracts
   if (contract.status !== 'active') {
     return {
@@ -195,7 +192,6 @@ export async function createDispute(
   // Update contract status to disputed
   await contractRepository.updateContract(contractId, { status: 'disputed' });
 
-  // Send notifications to both parties (Requirements: 8.2)
   await notifyDisputeCreated(
     contract.freelancerId,
     createdDispute.id,
@@ -244,7 +240,6 @@ export async function createDispute(
 
 /**
  * Submit evidence for a dispute
- * Requirements: 8.3
  */
 export async function submitEvidence(
   input: SubmitEvidenceInput
@@ -339,7 +334,6 @@ export async function submitEvidence(
 
 /**
  * Resolve a dispute
- * Requirements: 8.4, 8.5, 8.6
  */
 export async function resolveDispute(
   input: ResolveDisputeInput
@@ -408,8 +402,6 @@ export async function resolveDispute(
     resolved_at: new Date().toISOString(),
   };
 
-  // Trigger payment based on decision (Requirements: 8.4, 8.5)
-  // CRITICAL FIX: Use the employer's wallet address for escrow operations,
   // not the admin's resolvedBy ID. The escrow contract checks that the
   // approver is the employer.
   try {

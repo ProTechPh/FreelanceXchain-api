@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import {
   submitRating as submitReview,
   getReviewById,
@@ -14,7 +15,7 @@ const router = Router();
 
 router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const { contractId, rating, comment, workQuality, communication, professionalism, wouldWorkAgain } = req.body;
 
   if (!userId) {
@@ -66,7 +67,7 @@ router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, async (req:
 
 router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const reviewId = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getReviewById(reviewId);
 
@@ -85,7 +86,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
 
 router.get('/user/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getUserReviews(userId);
 
@@ -103,7 +104,7 @@ router.get('/user/:userId', apiRateLimiter, validateUUID(['userId']), async (req
 
 router.get('/project/:projectId', apiRateLimiter, validateUUID(['projectId']), async (req: Request, res: Response) => {
   const projectId = req.params['projectId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getProjectReviews(projectId);
 
@@ -122,7 +123,7 @@ router.get('/project/:projectId', apiRateLimiter, validateUUID(['projectId']), a
 router.get('/can-review/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

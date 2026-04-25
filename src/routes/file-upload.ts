@@ -28,8 +28,6 @@ const secureUpload = createFileUploadMiddleware('file', {
  * Upload a file
  * POST /api/files/upload
  */
-// FIXED: Added fileUploadRateLimiter to prevent abuse (20 uploads/hour)
-// FIXED: Switched from raw multer to createFileUploadMiddleware for magic number & AV validation
 router.post('/upload', authMiddleware, fileUploadRateLimiter, ...secureUpload, async (req: Request, res: Response): Promise<void> => {
   try {
     const { bucket, folder } = req.body;

@@ -1,9 +1,7 @@
 /**
  * Blockchain Client
  * Handles blockchain transactions, serialization, and status polling
- * Requirements: 6.6, 6.7
  * 
- * ARCHITECTURE: Uses Supabase (blockchain_transactions table) for persistent storage
  * instead of in-memory Maps, so data survives server restarts.
  */
 

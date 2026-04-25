@@ -52,6 +52,7 @@ export function createTestProject(overrides: Partial<ProjectEntity> = {}): Proje
     rush_fee_percentage: 25,
     status: 'open',
     milestones: [],
+    freelancer_limit: 1,
     tags: [],
     attachments: [],
     created_at: now(),

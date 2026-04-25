@@ -8,10 +8,8 @@ import { userRepository } from '../repositories/user-repository.js';
 import { generateId } from '../utils/id.js';
 import { getSupabaseServiceClient } from '../config/supabase.js';
 import { logger } from '../config/logger.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 
-export type RushUpgradeServiceResult<T> = ServiceResult<T>;
-export type RushUpgradeServiceError = ServiceError;
 
 export type RequestRushUpgradeInput = {
   contractId: string;
@@ -33,7 +31,7 @@ export type RushUpgradeWithContract = {
 export async function requestRushUpgrade(
   employerId: string,
   input: RequestRushUpgradeInput
-): Promise<RushUpgradeServiceResult<RushUpgradeRequest>> {
+): Promise<ServiceResult<RushUpgradeRequest>> {
   // Validate percentage
   if (input.proposedPercentage <= 0 || input.proposedPercentage > 100) {
     return {
@@ -125,7 +123,7 @@ export async function requestRushUpgrade(
 export async function respondToRushUpgrade(
   freelancerId: string,
   input: RespondToRushUpgradeInput
-): Promise<RushUpgradeServiceResult<RushUpgradeRequest | RushUpgradeWithContract>> {
+): Promise<ServiceResult<RushUpgradeRequest | RushUpgradeWithContract>> {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(input.requestId);
   if (!requestEntity) {
     return {
@@ -305,7 +303,7 @@ export async function respondToRushUpgrade(
 export async function acceptCounterOffer(
   employerId: string,
   requestId: string
-): Promise<RushUpgradeServiceResult<RushUpgradeWithContract>> {
+): Promise<ServiceResult<RushUpgradeWithContract>> {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!requestEntity) {
     return {
@@ -400,7 +398,7 @@ export async function acceptCounterOffer(
 export async function declineCounterOffer(
   employerId: string,
   requestId: string
-): Promise<RushUpgradeServiceResult<RushUpgradeRequest>> {
+): Promise<ServiceResult<RushUpgradeRequest>> {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!requestEntity) {
     return {
@@ -462,7 +460,7 @@ export async function declineCounterOffer(
 // Get rush upgrade requests for a contract
 export async function getRushUpgradeRequestsByContract(
   contractId: string
-): Promise<RushUpgradeServiceResult<RushUpgradeRequest[]>> {
+): Promise<ServiceResult<RushUpgradeRequest[]>> {
   const entities = await rushUpgradeRequestRepository.getRequestsByContract(contractId);
   return { success: true, data: entities.map(mapRushUpgradeRequestFromEntity) };
 }
@@ -470,7 +468,7 @@ export async function getRushUpgradeRequestsByContract(
 // Get a single rush upgrade request
 export async function getRushUpgradeRequestById(
   requestId: string
-): Promise<RushUpgradeServiceResult<RushUpgradeRequest>> {
+): Promise<ServiceResult<RushUpgradeRequest>> {
   const entity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!entity) {
     return {

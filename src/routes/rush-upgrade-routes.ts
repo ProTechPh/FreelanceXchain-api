@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 
 import {
   requestRushUpgrade,
@@ -63,7 +64,7 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
   try {
     const contractId = req.params['id'] ?? '';
     const userId = req.user?.userId;
-    const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const requestId = getRequestId(req);
     const { proposedPercentage } = req.body;
 
     if (!userId) {
@@ -155,7 +156,7 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
-    const xRequestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const xRequestId = getRequestId(req);
     const { action, counterPercentage } = req.body;
 
     if (!userId) {
@@ -250,7 +251,7 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
-    const xRequestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const xRequestId = getRequestId(req);
 
     if (!userId) {
       return res.status(401).json({
@@ -315,7 +316,7 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
-    const xRequestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const xRequestId = getRequestId(req);
 
     if (!userId) {
       return res.status(401).json({
@@ -375,7 +376,7 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
 router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const contractId = req.params['id'] ?? '';
-    const xRequestId = req.headers['x-request-id'] as string ?? 'unknown';
+    const xRequestId = getRequestId(req);
 
     const result = await getRushUpgradeRequestsByContract(contractId);
 

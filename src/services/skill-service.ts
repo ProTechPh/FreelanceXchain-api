@@ -14,14 +14,9 @@ import { skillCategoryRepository, SkillCategoryEntity } from '../repositories/sk
 import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
 import { generateId } from '../utils/id.js';
 import { skillCache } from '../utils/cache.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 
-export type SkillServiceResult<T> = ServiceResult<T>;
-export type SkillServiceError = ServiceError;
-
-// Category Operations
-
-export async function createCategory(input: CreateSkillCategoryInput): Promise<SkillServiceResult<SkillCategory>> {
+export async function createCategory(input: CreateSkillCategoryInput): Promise<ServiceResult<SkillCategory>> {
   const existingCategory = await skillCategoryRepository.getCategoryByName(input.name);
   if (existingCategory) {
     return {
@@ -41,7 +36,7 @@ export async function createCategory(input: CreateSkillCategoryInput): Promise<S
   return { success: true, data: mapSkillCategoryFromEntity(createdEntity) };
 }
 
-export async function getCategoryById(id: string): Promise<SkillServiceResult<SkillCategory>> {
+export async function getCategoryById(id: string): Promise<ServiceResult<SkillCategory>> {
   const categoryEntity = await skillCategoryRepository.getCategoryById(id);
   if (!categoryEntity) {
     return {
@@ -56,7 +51,7 @@ export async function getCategoryById(id: string): Promise<SkillServiceResult<Sk
 export async function updateCategory(
   id: string, 
   updates: Partial<CreateSkillCategoryInput>
-): Promise<SkillServiceResult<SkillCategory>> {
+): Promise<ServiceResult<SkillCategory>> {
   const existing = await skillCategoryRepository.getCategoryById(id);
   if (!existing) {
     return {
@@ -101,7 +96,7 @@ export async function getActiveCategories(): Promise<SkillCategory[]> {
 
 // Skill Operations
 
-export async function createSkill(input: CreateSkillInput): Promise<SkillServiceResult<Skill>> {
+export async function createSkill(input: CreateSkillInput): Promise<ServiceResult<Skill>> {
   const category = await skillCategoryRepository.getCategoryById(input.categoryId);
   if (!category) {
     return {
@@ -130,7 +125,7 @@ export async function createSkill(input: CreateSkillInput): Promise<SkillService
   return { success: true, data: mapSkillFromEntity(createdEntity) };
 }
 
-export async function getSkillById(id: string): Promise<SkillServiceResult<Skill>> {
+export async function getSkillById(id: string): Promise<ServiceResult<Skill>> {
   const skillEntity = await skillRepository.findSkillById(id);
   if (!skillEntity) {
     return {
@@ -144,7 +139,7 @@ export async function getSkillById(id: string): Promise<SkillServiceResult<Skill
 export async function updateSkill(
   id: string,
   updates: Partial<CreateSkillInput>
-): Promise<SkillServiceResult<Skill>> {
+): Promise<ServiceResult<Skill>> {
   const existing = await skillRepository.findSkillById(id);
   if (!existing) {
     return {
@@ -189,7 +184,7 @@ export async function updateSkill(
   return { success: true, data: mapSkillFromEntity(updatedEntity) };
 }
 
-export async function deprecateSkill(id: string): Promise<SkillServiceResult<Skill>> {
+export async function deprecateSkill(id: string): Promise<ServiceResult<Skill>> {
   const existing = await skillRepository.findSkillById(id);
   if (!existing) {
     return {

@@ -2,7 +2,7 @@ import { FreelancerProfile, mapFreelancerProfileFromEntity } from '../utils/enti
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 export type CreateFreelancerProfileInput = {
   bio: string;
@@ -35,8 +35,6 @@ export type AddExperienceInput = {
   endDate?: string | null;
 };
 
-export type FreelancerProfileServiceResult<T> = ServiceResult<T>;
-export type FreelancerProfileServiceError = ServiceError;
 
 
 // Validation helpers
@@ -72,7 +70,7 @@ function validateDateRange(startDate: string, endDate: string | null | undefined
 export async function createProfile(
   userId: string,
   input: CreateFreelancerProfileInput
-): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (existingProfile) {
     return {
@@ -104,7 +102,7 @@ export async function createProfile(
 export async function createProfileFromKyc(
   userId: string,
   input: CreateProfileFromKycInput = {}
-): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+): Promise<ServiceResult<FreelancerProfile>> {
   // Check if profile already exists
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (existingProfile) {
@@ -155,7 +153,7 @@ export async function createProfileFromKyc(
   return { success: true, data: mapFreelancerProfileFromEntity(createdEntity) };
 }
 
-export async function getProfileByUserId(userId: string): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+export async function getProfileByUserId(userId: string): Promise<ServiceResult<FreelancerProfile>> {
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!profileEntity) {
     return {
@@ -169,7 +167,7 @@ export async function getProfileByUserId(userId: string): Promise<FreelancerProf
 export async function updateProfile(
   userId: string,
   input: UpdateFreelancerProfileInput
-): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
     return {
@@ -200,7 +198,7 @@ export async function updateProfile(
 export async function addSkillsToProfile(
   userId: string,
   skills: AddSkillInput[]
-): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
     return {
@@ -263,7 +261,7 @@ export async function addSkillsToProfile(
 export async function removeSkillFromProfile(
   userId: string,
   skillName: string
-): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
     return {
@@ -298,7 +296,7 @@ export async function removeSkillFromProfile(
 export async function addExperience(
   userId: string,
   input: AddExperienceInput
-): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
     return {
@@ -343,7 +341,7 @@ export async function updateExperience(
   userId: string,
   experienceId: string,
   input: Partial<AddExperienceInput>
-): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
     return {
@@ -406,7 +404,7 @@ export async function updateExperience(
 export async function removeExperience(
   userId: string,
   experienceId: string
-): Promise<FreelancerProfileServiceResult<FreelancerProfile>> {
+): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
     return {

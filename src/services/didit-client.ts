@@ -263,7 +263,6 @@ export function verifyWebhookSignature(
       hasTimestamp: !!timestamp,
       nodeEnv: process.env['NODE_ENV'],
     });
-    // FIXED: Always reject missing signatures, even in non-production
     // This prevents trivial forgery in staging environments
     return false;
   }

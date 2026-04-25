@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { searchProjects, searchFreelancers } from '../services/search-service.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 
 const router = Router();
 
@@ -94,7 +95,7 @@ const router = Router();
  *         description: Invalid request parameters
  */
 router.get('/projects', apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   // Parse query parameters
   const keyword = req.query['keyword'] as string | undefined;
@@ -214,7 +215,7 @@ router.get('/projects', apiRateLimiter, async (req: Request, res: Response) => {
  *         description: Invalid request parameters
  */
 router.get('/freelancers', apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   // Parse query parameters
   const keyword = req.query['keyword'] as string | undefined;

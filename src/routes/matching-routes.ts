@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { TokenPayload } from '../services/auth-types.js';
 import {
   getProjectRecommendations,
@@ -148,7 +149,7 @@ const router = Router();
  */
 router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const userId = authReq.user.userId;
 
   // Parse limit parameter
@@ -225,7 +226,7 @@ router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res
  *         description: Project not found
  */
 router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUUID(['projectId']), async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const projectId = req.params['projectId'];
 
   if (!projectId) {
@@ -299,7 +300,7 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
  *         description: Unauthorized - Invalid or missing token
  */
 router.post('/extract-skills', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const { text } = req.body as { text?: string };
 
   if (!text || typeof text !== 'string') {
@@ -349,7 +350,7 @@ router.post('/extract-skills', authMiddleware, apiRateLimiter, async (req: Reque
  */
 router.get('/skill-gaps', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const userId = authReq.user.userId;
 
   const result = await analyzeSkillGaps(userId);

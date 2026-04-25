@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import {
   getContractById,
@@ -91,7 +92,7 @@ const router = Router();
  */
 router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
 
@@ -155,7 +156,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
  */
 router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const userId = req.user?.userId;
 
   const result = await getContractById(id);
@@ -169,7 +170,6 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
     return;
   }
 
-  // FIXED: Authorization check - only contract parties can view contract details
   const contract = result.data;
   if (userId && contract.freelancerId !== userId && contract.employerId !== userId) {
     // Check if user is admin (admins can view all contracts)
@@ -218,7 +218,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
 router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -443,7 +443,7 @@ router.get('/:id/fund-info', authMiddleware, validateUUID(), async (req: Request
 router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -503,7 +503,7 @@ router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, v
 router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({

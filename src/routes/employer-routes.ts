@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit } from '../utils/index.js';
 import {
   getEmployerProfileByUserId,
@@ -84,7 +85,7 @@ const router = Router();
  */
 router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const continuationToken = req.query['continuationToken'] as string | undefined;
 
@@ -140,7 +141,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
  */
 router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -206,7 +207,7 @@ router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, 
 router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
   const { companyName, description, industry } = req.body;
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!userId) {
     res.status(401).json({
@@ -283,7 +284,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
  */
 router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
 
   const result = await getEmployerProfileByUserId(id);
 

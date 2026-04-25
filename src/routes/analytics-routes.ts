@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { getRequestId } from '../utils/route-helpers.js';
 import {
   getFreelancerAnalytics,
   getEmployerAnalytics,
@@ -12,7 +13,7 @@ const router = Router();
 
 router.get('/freelancer', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const startDate = req.query['startDate'] as string | undefined;
   const endDate = req.query['endDate'] as string | undefined;
 
@@ -44,7 +45,7 @@ router.get('/freelancer', authMiddleware, apiRateLimiter, async (req: Request, r
 
 router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
-  const requestId = req.headers['x-request-id'] as string ?? 'unknown';
+  const requestId = getRequestId(req);
   const startDate = req.query['startDate'] as string | undefined;
   const endDate = req.query['endDate'] as string | undefined;
 

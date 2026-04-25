@@ -977,7 +977,6 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
     // Construct the otpauth URL manually from the secret
     const otpauthUrl = `otpauth://totp/FreelanceXchain:${encodeURIComponent(user.email)}?secret=${data.totp.secret}&issuer=FreelanceXchain&algorithm=SHA1&digits=6&period=30`;
     
-    // FIXED: Never log TOTP secrets or OTPAuth URLs - they contain the MFA secret key
     logger.debug('[MFA] Enrollment successful for user');
     
     return {
