@@ -10,12 +10,8 @@ export const messageRepository = {
       RETURNING *
     `;
     
-    try {
-      const result = await pool.query(query, [participant1Id, participant2Id, now]);
-      return result.rows[0];
-    } catch (error) {
-      throw error;
-    }
+    const result = await pool.query(query, [participant1Id, participant2Id, now]);
+    return result.rows[0];
   },
 
   async findConversation(user1Id: string, user2Id: string): Promise<ConversationEntity | null> {
@@ -26,12 +22,8 @@ export const messageRepository = {
       LIMIT 1
     `;
     
-    try {
-      const result = await pool.query(query, [user1Id, user2Id]);
-      return result.rows[0] || null;
-    } catch (error) {
-      throw error;
-    }
+    const result = await pool.query(query, [user1Id, user2Id]);
+    return result.rows[0] || null;
   },
 
   async getUserConversations(userId: string, limit: number, offset: number) {
@@ -42,13 +34,9 @@ export const messageRepository = {
       LIMIT $2 OFFSET $3
     `;
     
-    try {
-      const result = await pool.query(query, [userId, limit, offset]);
-      const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
-      return { items: result.rows, total };
-    } catch (error) {
-      throw error;
-    }
+    const result = await pool.query(query, [userId, limit, offset]);
+    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+    return { items: result.rows, total };
   },
 
   async createMessage(messageData: Omit<MessageEntity, 'id' | 'created_at' | 'updated_at'>): Promise<MessageEntity> {
@@ -64,12 +52,8 @@ export const messageRepository = {
       RETURNING *
     `;
     
-    try {
-      const result = await pool.query(query, [...values, now]);
-      return result.rows[0];
-    } catch (error) {
-      throw error;
-    }
+    const result = await pool.query(query, [...values, now]);
+    return result.rows[0];
   },
 
   async getConversationMessages(conversationId: string, limit: number, offset: number) {
@@ -80,13 +64,9 @@ export const messageRepository = {
       LIMIT $2 OFFSET $3
     `;
     
-    try {
-      const result = await pool.query(query, [conversationId, limit, offset]);
-      const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
-      return { items: result.rows, total };
-    } catch (error) {
-      throw error;
-    }
+    const result = await pool.query(query, [conversationId, limit, offset]);
+    const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+    return { items: result.rows, total };
   },
 
   async markMessagesAsRead(conversationId: string, userId: string): Promise<void> {
@@ -96,11 +76,7 @@ export const messageRepository = {
       WHERE conversation_id = $1 AND receiver_id = $2 AND is_read = false
     `;
     
-    try {
-      await pool.query(query, [conversationId, userId]);
-    } catch (error) {
-      throw error;
-    }
+    await pool.query(query, [conversationId, userId]);
   },
 
   async updateConversation(conversationId: string, updates: Partial<ConversationEntity>): Promise<void> {
@@ -115,11 +91,7 @@ export const messageRepository = {
       WHERE id = $${keys.length + 2}
     `;
     
-    try {
-      await pool.query(query, [now, ...values, conversationId]);
-    } catch (error) {
-      throw error;
-    }
+    await pool.query(query, [now, ...values, conversationId]);
   },
 
   async getUnreadCount(userId: string): Promise<number> {
@@ -129,8 +101,7 @@ export const messageRepository = {
       WHERE participant1_id = $1 OR participant2_id = $1
     `;
     
-    try {
-      const result = await pool.query(query, [userId]);
+    const result = await pool.query(query, [userId]);
       let total = 0;
       for (const conv of result.rows) {
         if (conv.participant1_id === userId) {
@@ -140,8 +111,5 @@ export const messageRepository = {
         }
       }
       return total;
-    } catch (error) {
-      throw error;
-    }
   },
 };

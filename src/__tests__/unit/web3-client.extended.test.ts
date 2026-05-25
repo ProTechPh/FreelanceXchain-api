@@ -167,13 +167,9 @@ jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
     return { name: network.name, chainId: Number(network.chainId) };
   },
   isCorrectNetwork: async (expectedChainId: number) => {
-    try {
-      const p = getProvider();
-      const network = await p.getNetwork();
-      return Number(network.chainId) === expectedChainId;
-    } catch (e: any) {
-      throw e;
-    }
+    const p = getProvider();
+    const network = await p.getNetwork();
+    return Number(network.chainId) === expectedChainId;
   },
   deployContract: async (abi: any, bytecode: string, constructorArgs: any[] = []) => {
     const w = getWallet();

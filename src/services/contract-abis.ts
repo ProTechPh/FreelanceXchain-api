@@ -4,12 +4,12 @@
  */
 
 import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 function tryLoadArtifact(contractPath: string): { abi: any; bytecode: string } | null {
   try {
     const artifactPath = join(process.cwd(), 'artifacts/contracts', contractPath);
-    const fs = require('fs');
-    const content = fs.readFileSync(artifactPath, 'utf-8');
+    const content = readFileSync(artifactPath, 'utf-8');
     return JSON.parse(content);
   } catch {
     console.warn(`[contract-abis] Could not load artifact: ${contractPath}. Smart contract features will be unavailable.`);

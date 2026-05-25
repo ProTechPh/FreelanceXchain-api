@@ -61,6 +61,13 @@ export default [
                 ...globals.es2021,
                 ...globals.jest,
                 Express: 'readonly',
+                mockPool: 'readonly',
+                mockAppwriteResult: 'readonly',
+                mockAppwriteClient: 'readonly',
+                mockAppwriteAccount: 'readonly',
+                mockAppwriteUsers: 'readonly',
+                mockAppwriteStorage: 'readonly',
+                createMockBuilder: 'readonly',
             },
         },
         plugins: {

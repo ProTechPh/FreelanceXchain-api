@@ -881,7 +881,7 @@ describe('Integration Tests - Critical Flows', () => {
               (dispute as any).evidence = [...existingEvidence, ...evidenceItems];
               (dispute as any).status = 'under_review';
             }
-          } catch (_e) {}
+          } catch (_e) { /* ignore */ }
         }
         return Promise.resolve({
           rows: [{ result: true }],
