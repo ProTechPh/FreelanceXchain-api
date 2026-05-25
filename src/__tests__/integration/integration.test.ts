@@ -67,6 +67,22 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
       userStore.set(id, updated);
       return updated;
     }),
+    getUsersByRole: jest.fn(async (role: string) => {
+      const users: any[] = [];
+      for (const user of userStore.values()) {
+        if (user.role === role) {
+          users.push({
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            wallet_address: user.walletAddress || ('0x' + 'a'.repeat(40)),
+            created_at: user.createdAt,
+            updated_at: user.updatedAt,
+          });
+        }
+      }
+      return users;
+    }),
   },
   UserRepository: jest.fn(),
 }));
@@ -350,6 +366,11 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
       return Array.from(proposalStore.values()).some(
         p => ((p as any).project_id || p.projectId) === projectId && p.status === 'accepted'
       );
+    }),
+    getAcceptedProposalCount: jest.fn(async (projectId: string) => {
+      return Array.from(proposalStore.values()).filter(
+        p => ((p as any).project_id || p.projectId) === projectId && p.status === 'accepted'
+      ).length;
     }),
   },
   ProposalRepository: jest.fn(),
@@ -760,184 +781,7 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-registry.ts'), ()
   approveMilestoneOnRegistry: jest.fn(),
   submitMilestoneToRegistry: jest.fn(),
 }));
-// Mock Supabase client to prevent real network calls
-jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
-  getSupabaseClient: jest.fn(() => ({
-    auth: {
-      signUp: jest.fn(async ({ email, options }: { email: string; password: string; options?: { data?: Record<string, unknown> } }) => {
-        const userId = generateId();
-        const mockUser = {
-          id: userId,
-          email: email.toLowerCase(),
-          user_metadata: options?.data ?? {},
-        };
-        // Store user in memory for the test
-        const now = new Date().toISOString();
-        userStore.set(userId, {
-          id: userId,
-          email: email.toLowerCase(),
-          name: (options?.data?.name as string) ?? 'Test User',
-          role: (options?.data?.role as 'freelancer' | 'employer') ?? 'freelancer',
-          walletAddress: (options?.data?.wallet_address as string) ?? '',
-          createdAt: now,
-          updatedAt: now,
-        });
-        const mockSession = {
-          access_token: 'mock-access-token-' + userId,
-          refresh_token: 'mock-refresh-token-' + userId,
-        };
-        return { data: { user: mockUser, session: mockSession }, error: null };
-      }),
-      signInWithPassword: jest.fn(async () => ({
-        data: { user: null, session: null },
-        error: { message: 'Not implemented in test' },
-      })),
-    },
-  })),
-  getSupabaseServiceClient: jest.fn(() => ({
-    from: jest.fn(() => {
-      const queryBuilder: any = {
-        select: jest.fn(() => queryBuilder),
-        insert: jest.fn(() => queryBuilder),
-        update: jest.fn(() => queryBuilder),
-        delete: jest.fn(() => queryBuilder),
-        eq: jest.fn(() => queryBuilder),
-        neq: jest.fn(() => queryBuilder),
-        order: jest.fn(() => queryBuilder),
-        limit: jest.fn(() => queryBuilder),
-        single: jest.fn(async () => ({ data: null, error: null })),
-        maybeSingle: jest.fn(async () => ({ data: null, error: null })),
-        then: (resolve: (value: { data: any[]; error: null }) => unknown) =>
-          Promise.resolve(resolve({ data: [], error: null })),
-      };
-      return queryBuilder;
-    }),
-    rpc: jest.fn(async (functionName: string, params: Record<string, any>) => {
-      if (functionName === 'accept_proposal_atomic') {
-        const proposal = proposalStore.get(params.p_proposal_id);
-        if (!proposal) {
-          return { data: null, error: { message: 'Proposal not found' } };
-        }
-
-        const projectId = (proposal as any).project_id || proposal.projectId;
-        const project = projectStore.get(projectId);
-        if (!project) {
-          return { data: null, error: { message: 'Project not found' } };
-        }
-
-        const now = new Date().toISOString();
-        proposalStore.set(params.p_proposal_id, {
-          ...proposal,
-          status: 'accepted',
-          updated_at: now,
-        } as any);
-
-        const proposalRate = (proposal as any).proposed_rate ?? proposal.proposedRate;
-        const contractId = generateId();
-        contractStore.set(contractId, {
-          id: contractId,
-          project_id: projectId,
-          proposal_id: params.p_proposal_id,
-          freelancer_id: (proposal as any).freelancer_id || proposal.freelancerId,
-          employer_id: params.p_employer_id,
-          escrow_address: '',
-          total_amount: proposalRate ?? project.budget,
-          status: 'active',
-          created_at: now,
-          updated_at: now,
-        } as any);
-
-        return { data: { contract_id: contractId }, error: null };
-      }
-
-      if (functionName === 'approve_milestone_atomic') {
-        const contract = contractStore.get(params.p_contract_id);
-        if (!contract) {
-          return { data: null, error: { message: 'Contract not found' } };
-        }
-
-        const contractEmployerId = (contract as any).employer_id || contract.employerId;
-        if (contractEmployerId !== params.p_employer_id) {
-          return { data: null, error: { message: 'Unauthorized' } };
-        }
-
-        const projectId = (contract as any).project_id || contract.projectId;
-        const project = projectStore.get(projectId);
-        if (!project) {
-          return { data: null, error: { message: 'Project not found' } };
-        }
-
-        const milestones = (project.milestones || []).map((milestone: any) =>
-          milestone.id === params.p_milestone_id
-            ? { ...milestone, status: 'approved', updatedAt: new Date().toISOString() }
-            : milestone,
-        );
-        const contractCompleted = milestones.length > 0 && milestones.every((m: any) => m.status === 'approved');
-        projectStore.set(projectId, {
-          ...project,
-          milestones,
-          status: contractCompleted ? 'completed' : project.status,
-          updated_at: new Date().toISOString(),
-        } as any);
-
-        if (contractCompleted) {
-          contractStore.set(params.p_contract_id, {
-            ...contract,
-            status: 'completed',
-            updated_at: new Date().toISOString(),
-          } as any);
-        }
-
-        return { data: { contract_completed: contractCompleted }, error: null };
-      }
-
-      if (functionName === 'append_dispute_evidence') {
-        const dispute = disputeStore.get(params.p_dispute_id);
-        if (!dispute) {
-          return { data: null, error: { message: 'Dispute not found' } };
-        }
-
-        const incomingEvidence = Array.isArray(params.p_evidence) ? params.p_evidence : [];
-        const updatedEvidence = [...(dispute.evidence ?? []), ...incomingEvidence];
-        const nextStatus = dispute.status === 'open' ? 'under_review' : dispute.status;
-        const now = new Date().toISOString();
-
-        disputeStore.set(params.p_dispute_id, {
-          ...dispute,
-          evidence: updatedEvidence,
-          status: nextStatus,
-          updated_at: now,
-          updatedAt: now,
-        } as any);
-
-        return { data: updatedEvidence, error: null };
-      }
-
-      return { data: null, error: null };
-    }),
-    auth: {
-      admin: {
-        generateLink: jest.fn(async () => ({ data: {}, error: null })),
-      },
-    },
-  })),
-  TABLES: {
-    USERS: 'users',
-    FREELANCER_PROFILES: 'freelancer_profiles',
-    EMPLOYER_PROFILES: 'employer_profiles',
-    PROJECTS: 'projects',
-    PROPOSALS: 'proposals',
-    CONTRACTS: 'contracts',
-    DISPUTES: 'disputes',
-    SKILLS: 'skills',
-    SKILL_CATEGORIES: 'skill_categories',
-    NOTIFICATIONS: 'notifications',
-    KYC_VERIFICATIONS: 'kyc_verifications',
-    REVIEWS: 'reviews',
-    MESSAGES: 'messages',
-    PAYMENTS: 'payments',
-  },
-}));
+// Mock Appwrite client to prevent real network calls
 // Import services after mocking
 const { register } = await import('../../services/auth-service.js');
 const { createProfile: createFreelancerProfile, addSkillsToProfile } = await import('../../services/freelancer-profile-service.js');
@@ -992,6 +836,60 @@ function createTestSkillCategory(): SkillCategory {
 describe('Integration Tests - Critical Flows', () => {
   beforeEach(() => {
     clearAllStores();
+    (global as any).mockPool.query.mockImplementation((text: string, params?: any[]) => {
+      if (text && text.includes('accept_proposal_atomic')) {
+        const proposalId = params?.[0];
+        const employerIdArg = params?.[1];
+        const contractId = `contract-${proposalId}`;
+        const proposal = proposalStore.get(proposalId);
+        const now = new Date().toISOString();
+        const contractEntity = {
+          id: contractId,
+          project_id: (proposal as any)?.project_id || (proposal as any)?.projectId,
+          proposal_id: proposalId,
+          freelancer_id: (proposal as any)?.freelancer_id || (proposal as any)?.freelancerId,
+          employer_id: employerIdArg,
+          escrow_address: '',
+          base_amount: (proposal as any)?.proposed_rate ?? (proposal as any)?.proposedRate ?? 0,
+          rush_fee: 0,
+          total_amount: (proposal as any)?.proposed_rate ?? (proposal as any)?.proposedRate ?? 0,
+          status: 'active',
+          created_at: now,
+          updated_at: now,
+        };
+        contractStore.set(contractId, contractEntity as any);
+        if (proposal) {
+          (proposal as any).status = 'accepted';
+        }
+        const queryResult: any = {
+          rows: [{ result: true, contract_id: contractId }],
+          rowCount: 1,
+          contract_id: contractId,
+          limit_reached: true,
+        };
+        return Promise.resolve(queryResult);
+      }
+      if (text && text.includes('append_dispute_evidence')) {
+        const disputeId = params?.[0];
+        const evidenceJson = params?.[1];
+        if (disputeId && evidenceJson) {
+          try {
+            const evidenceItems = JSON.parse(evidenceJson);
+            const dispute = disputeStore.get(disputeId);
+            if (dispute) {
+              const existingEvidence = (dispute as any).evidence || [];
+              (dispute as any).evidence = [...existingEvidence, ...evidenceItems];
+              (dispute as any).status = 'under_review';
+            }
+          } catch (_e) {}
+        }
+        return Promise.resolve({
+          rows: [{ result: true }],
+          rowCount: 1,
+        });
+      }
+      return Promise.resolve({ rows: [], rowCount: 0 });
+    });
   });
   /**
    * Flow 1: Registration → Profile → Project → Proposal → Contract
@@ -1076,7 +974,7 @@ describe('Integration Tests - Critical Flows', () => {
         projectId: project.id,
         attachments: [
           {
-            url: 'https://test.supabase.co/storage/v1/object/public/proposal-attachments/test.pdf',
+            url: 'https://test.appwrite.co/storage/v1/object/public/proposal-attachments/test.pdf',
             filename: 'proposal.pdf',
             size: 1048576,
             mimeType: 'application/pdf',
@@ -1165,8 +1063,11 @@ describe('Integration Tests - Critical Flows', () => {
         requiredSkills: [],
         budget: 5000,
         deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        isRush: false,
+        rushFeePercentage: 0,
         status: 'in_progress',
         milestones: [milestone1, milestone2],
+        freelancerLimit: 10,
         tags: [],
         attachments: [],
         createdAt: new Date().toISOString(),
@@ -1181,6 +1082,8 @@ describe('Integration Tests - Critical Flows', () => {
         freelancerId,
         employerId,
         escrowAddress: '0x' + 'a'.repeat(40),
+        baseAmount: 5000,
+        rushFee: 0,
         totalAmount: 5000,
         status: 'active',
         createdAt: new Date().toISOString(),
@@ -1302,8 +1205,11 @@ describe('Integration Tests - Critical Flows', () => {
         requiredSkills: [],
         budget: 3000,
         deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        isRush: false,
+        rushFeePercentage: 0,
         status: 'in_progress',
         milestones: [milestone],
+        freelancerLimit: 10,
         tags: [],
         attachments: [],
         createdAt: new Date().toISOString(),
@@ -1318,6 +1224,8 @@ describe('Integration Tests - Critical Flows', () => {
         freelancerId,
         employerId,
         escrowAddress: '0x' + 'a'.repeat(40),
+        baseAmount: 3000,
+        rushFee: 0,
         totalAmount: 3000,
         status: 'active',
         createdAt: new Date().toISOString(),
@@ -1433,6 +1341,9 @@ describe('Integration Tests - Critical Flows', () => {
         budget: 2000,
         deadline: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'in_progress',
+        isRush: false,
+        rushFeePercentage: 0,
+        freelancerLimit: 10,
         milestones: [milestone],
         tags: [],
         attachments: [],
@@ -1447,6 +1358,8 @@ describe('Integration Tests - Critical Flows', () => {
         freelancerId,
         employerId,
         escrowAddress: '0x' + 'a'.repeat(40),
+        baseAmount: 2000,
+        rushFee: 0,
         totalAmount: 2000,
         status: 'active',
         createdAt: new Date().toISOString(),

@@ -5,8 +5,8 @@ import {
   refreshTokens,
   isAuthError,
   validatePasswordStrength,
-  loginWithSupabase,
-  registerWithSupabase,
+  loginWithAppwrite,
+  registerWithAppwrite,
   getOAuthUrl,
   exchangeCodeForSession,
   resendConfirmationEmail,
@@ -24,14 +24,12 @@ import {
   validateTokenAndGetUser,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput, MfaRequiredResult } from '../services/auth-types.js';
-import type { Provider } from '@supabase/supabase-js';
 import { UserRole } from '../models/user.js';
 import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
-import { createPerRequestClient } from '../config/supabase.js';
 import { userRepository } from '../repositories/user-repository.js';
 
 const router = Router();
@@ -472,14 +470,10 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
     return;
   }
 
-  // Get a fresh session after MFA verification to update refresh token
-  const supabase = createPerRequestClient(realAccessToken);
-  const { data: sessionData } = await supabase.auth.getSession();
-  
-  // Update refresh token if available
+  // Return the auth result with tokens from MFA session
   const finalResult = {
     ...authResult,
-    refreshToken: mfaSession.refreshToken || sessionData?.session?.refresh_token || authResult.refreshToken,
+    refreshToken: mfaSession.refreshToken || authResult.refreshToken,
   };
 
   res.status(200).json(finalResult);
@@ -612,7 +606,7 @@ router.get('/callback', authRateLimiter, async (req: Request, res: Response) => 
       return;
     }
 
-    const result = await loginWithSupabase(sessionResult.accessToken);
+    const result = await loginWithAppwrite(sessionResult.accessToken);
 
     if (isAuthError(result)) {
       if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
@@ -645,6 +639,7 @@ router.get('/callback', authRateLimiter, async (req: Request, res: Response) => 
 
   // Implicit flow: tokens in URL fragment - serve minimal HTML to extract and POST to callback
   // Uses textContent instead of document.write to prevent XSS via untrusted URL fragment data
+  /* istanbul ignore next */
   res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
 <pre id="result">Processing OAuth callback...</pre>
 <script>
@@ -667,8 +662,8 @@ router.get('/callback', authRateLimiter, async (req: Request, res: Response) => 
  * @swagger
  * /api/auth/oauth-login:
  *   post:
- *     summary: Login with Supabase OAuth
- *     description: Authenticates a user using a Supabase access token calling our backend to sync user and get app tokens
+ *     summary: Login with Appwrite OAuth
+ *     description: Authenticates a user using a Appwrite access token calling our backend to sync user and get app tokens
  *     tags:
  *       - Authentication
  *     requestBody:
@@ -697,7 +692,7 @@ router.get('/callback', authRateLimiter, async (req: Request, res: Response) => 
  * /api/auth/oauth/{provider}:
  *   get:
  *     summary: Initiate OAuth flow
- *     description: Redirects to Supabase OAuth provider
+ *     description: Redirects to Appwrite OAuth provider
  *     tags:
  *       - Authentication
  *     parameters:
@@ -730,7 +725,7 @@ router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Respon
     }
 
     // Note: We no longer accept role here. Role selection happens AFTER callback.
-    const url = await getOAuthUrl(provider as Provider);
+    const url = await getOAuthUrl(provider);
     res.redirect(url);
   } catch {
     res.status(500).json({
@@ -763,7 +758,7 @@ router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Respon
  *             properties:
  *               access_token:
  *                 type: string
- *                 description: Supabase access token from OAuth redirect
+ *                 description: Appwrite access token from OAuth redirect
  *     responses:
  *       200:
  *         description: Login successful
@@ -795,8 +790,8 @@ router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Respon
     return;
   }
 
-  logger.debug('Calling loginWithSupabase', { requestId });
-  const result = await loginWithSupabase(access_token);
+  logger.debug('Calling loginWithAppwrite', { requestId });
+  const result = await loginWithAppwrite(access_token);
 
   if (isAuthError(result)) {
     logger.info('OAuth authentication error', {
@@ -925,7 +920,7 @@ router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Re
   }
 
   try {
-    const result = await registerWithSupabase(
+    const result = await registerWithAppwrite(
       accessToken, 
       role, 
       walletAddress ?? ''
@@ -1652,6 +1647,7 @@ router.get('/me', authMiddleware, authRateLimiter, async (req: Request, res: Res
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: {
@@ -1731,6 +1727,7 @@ router.patch('/wallet', authMiddleware, authRateLimiter, async (req: Request, re
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },

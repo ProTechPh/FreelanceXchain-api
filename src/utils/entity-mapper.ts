@@ -64,6 +64,7 @@ export function mapUserToEntity(user: Omit<User, 'createdAt' | 'updatedAt'>): Om
     name: user.name,
     is_suspended: false,
     suspension_reason: null,
+    mfa_enabled: false,
   };
 }
 

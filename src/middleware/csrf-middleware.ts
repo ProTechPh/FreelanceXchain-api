@@ -10,10 +10,13 @@ const {
   doubleCsrfProtection,
 } = doubleCsrf({
   getSecret: () => csrfSecret,
+  /* istanbul ignore next */
   cookieName: process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token',
   cookieOptions: {
+    /* istanbul ignore next */
     sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
     path: '/',
+    /* istanbul ignore next */
     secure: process.env.NODE_ENV === 'production',
     httpOnly: false,
     domain: undefined,

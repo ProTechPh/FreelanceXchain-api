@@ -12,7 +12,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 
 export type BlockchainMilestoneStatus = 'submitted' | 'approved' | 'rejected' | 'disputed';
 
@@ -101,14 +101,12 @@ export async function submitMilestoneToRegistry(
   const workHash = generateWorkHash(input.deliverables);
 
   // Check if already exists
-  const supabase = getSupabaseServiceClient();
-  const { data: existing } = await supabase
-    .from('blockchain_milestones')
-    .select('milestone_id_hash')
-    .eq('milestone_id_hash', milestoneIdHash)
-    .single();
+  const existingResult = await pool.query(
+    'SELECT milestone_id_hash FROM blockchain_milestones WHERE milestone_id_hash = $1',
+    [milestoneIdHash]
+  );
 
-  if (existing) {
+  if (existingResult.rows.length > 0) {
     throw new Error('Milestone already submitted');
   }
 
@@ -149,20 +147,26 @@ export async function submitMilestoneToRegistry(
   };
 
   // Persist to DB
-  await supabase.from('blockchain_milestones').insert({
-    milestone_id_hash: record.milestoneIdHash,
-    contract_id_hash: record.contractIdHash,
-    work_hash: record.workHash,
-    freelancer_wallet: record.freelancerWallet,
-    employer_wallet: record.employerWallet,
-    amount: record.amount,
-    status: record.status,
-    submitted_at: record.submittedAt,
-    completed_at: record.completedAt,
-    title: record.title,
-    transaction_hash: record.transactionHash,
-    block_number: record.blockNumber,
-  });
+  await pool.query(
+    `INSERT INTO blockchain_milestones 
+     (milestone_id_hash, contract_id_hash, work_hash, freelancer_wallet, employer_wallet, 
+      amount, status, submitted_at, completed_at, title, transaction_hash, block_number)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [
+      record.milestoneIdHash,
+      record.contractIdHash,
+      record.workHash,
+      record.freelancerWallet,
+      record.employerWallet,
+      record.amount,
+      record.status,
+      record.submittedAt,
+      record.completedAt,
+      record.title,
+      record.transactionHash,
+      record.blockNumber
+    ]
+  );
 
   return {
     record,
@@ -184,16 +188,14 @@ export async function approveMilestoneOnRegistry(
   approverWallet: string
 ): Promise<{ record: BlockchainMilestoneRecord; receipt: TransactionReceipt }> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  const supabase = getSupabaseServiceClient();
 
-  const { data: row, error } = await supabase
-    .from('blockchain_milestones')
-    .select('*')
-    .eq('milestone_id_hash', milestoneIdHash)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_milestones WHERE milestone_id_hash = $1',
+    [milestoneIdHash]
+  );
 
-  if (error || !row) throw new Error('Milestone not found');
-  const record = rowToRecord(row as MilestoneRow);
+  if (result.rows.length === 0) throw new Error('Milestone not found');
+  const record = rowToRecord(result.rows[0] as MilestoneRow);
 
   if (record.status !== 'submitted' && record.status !== 'disputed') {
     throw new Error('Invalid milestone status');
@@ -213,16 +215,12 @@ export async function approveMilestoneOnRegistry(
   const now = Date.now();
 
   // Update in DB
-  await supabase
-    .from('blockchain_milestones')
-    .update({
-      status: 'approved',
-      completed_at: now,
-      transaction_hash: confirmed.hash!,
-      block_number: confirmed.blockNumber!,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('milestone_id_hash', milestoneIdHash);
+  await pool.query(
+    `UPDATE blockchain_milestones 
+     SET status = $1, completed_at = $2, transaction_hash = $3, block_number = $4, updated_at = NOW()
+     WHERE milestone_id_hash = $5`,
+    ['approved', now, confirmed.hash!, confirmed.blockNumber!, milestoneIdHash]
+  );
 
   record.status = 'approved';
   record.completedAt = now;
@@ -250,16 +248,14 @@ export async function rejectMilestoneOnRegistry(
   reason: string
 ): Promise<{ record: BlockchainMilestoneRecord; receipt: TransactionReceipt }> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  const supabase = getSupabaseServiceClient();
 
-  const { data: row, error } = await supabase
-    .from('blockchain_milestones')
-    .select('*')
-    .eq('milestone_id_hash', milestoneIdHash)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_milestones WHERE milestone_id_hash = $1',
+    [milestoneIdHash]
+  );
 
-  if (error || !row) throw new Error('Milestone not found');
-  const record = rowToRecord(row as MilestoneRow);
+  if (result.rows.length === 0) throw new Error('Milestone not found');
+  const record = rowToRecord(result.rows[0] as MilestoneRow);
 
   if (record.status !== 'submitted') throw new Error('Invalid milestone status');
 
@@ -275,15 +271,12 @@ export async function rejectMilestoneOnRegistry(
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
   // Update in DB
-  await supabase
-    .from('blockchain_milestones')
-    .update({
-      status: 'rejected',
-      transaction_hash: confirmed.hash!,
-      block_number: confirmed.blockNumber!,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('milestone_id_hash', milestoneIdHash);
+  await pool.query(
+    `UPDATE blockchain_milestones 
+     SET status = $1, transaction_hash = $2, block_number = $3, updated_at = NOW()
+     WHERE milestone_id_hash = $4`,
+    ['rejected', confirmed.hash!, confirmed.blockNumber!, milestoneIdHash]
+  );
 
   record.status = 'rejected';
   record.transactionHash = confirmed.hash!;
@@ -306,46 +299,41 @@ export async function rejectMilestoneOnRegistry(
  */
 export async function getMilestoneFromRegistry(milestoneId: string): Promise<BlockchainMilestoneRecord | null> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_milestones')
-    .select('*')
-    .eq('milestone_id_hash', milestoneIdHash)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_milestones WHERE milestone_id_hash = $1',
+    [milestoneIdHash]
+  );
 
-  if (error || !data) return null;
-  return rowToRecord(data as MilestoneRow);
+  if (result.rows.length === 0) return null;
+  return rowToRecord(result.rows[0] as MilestoneRow);
 }
 
 /**
  * Get freelancer stats from blockchain (derived via SQL aggregates)
  */
 export async function getFreelancerStatsFromRegistry(walletAddress: string): Promise<FreelancerStats> {
-  const supabase = getSupabaseServiceClient();
-
   // Total milestones for this freelancer
-  const { count: totalMilestones } = await supabase
-    .from('blockchain_milestones')
-    .select('*', { count: 'exact', head: true })
-    .eq('freelancer_wallet', walletAddress);
+  const totalResult = await pool.query(
+    'SELECT COUNT(*) as count FROM blockchain_milestones WHERE freelancer_wallet = $1',
+    [walletAddress]
+  );
 
   // Approved milestones (completed) with sum of amounts
-  const { data: approvedRows } = await supabase
-    .from('blockchain_milestones')
-    .select('amount')
-    .eq('freelancer_wallet', walletAddress)
-    .eq('status', 'approved');
+  const approvedResult = await pool.query(
+    'SELECT amount FROM blockchain_milestones WHERE freelancer_wallet = $1 AND status = $2',
+    [walletAddress, 'approved']
+  );
 
-  const completedCount = approvedRows?.length ?? 0;
+  const completedCount = approvedResult.rows.length;
   let totalEarned = 0;
-  for (const row of (approvedRows ?? []) as { amount: number }[]) {
+  for (const row of approvedResult.rows) {
     totalEarned += Number(row.amount);
   }
 
   return {
     completedCount,
     totalEarned,
-    totalMilestones: totalMilestones ?? 0,
+    totalMilestones: parseInt(totalResult.rows[0].count) || 0,
   };
 }
 
@@ -353,16 +341,12 @@ export async function getFreelancerStatsFromRegistry(walletAddress: string): Pro
  * Get freelancer's completed milestones (portfolio)
  */
 export async function getFreelancerPortfolio(walletAddress: string): Promise<BlockchainMilestoneRecord[]> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_milestones')
-    .select('*')
-    .eq('freelancer_wallet', walletAddress)
-    .eq('status', 'approved')
-    .order('completed_at', { ascending: false });
+  const result = await pool.query(
+    'SELECT * FROM blockchain_milestones WHERE freelancer_wallet = $1 AND status = $2 ORDER BY completed_at DESC',
+    [walletAddress, 'approved']
+  );
 
-  if (error || !data) return [];
-  return (data as MilestoneRow[]).map(rowToRecord);
+  return result.rows.map(rowToRecord);
 }
 
 /**
@@ -370,23 +354,21 @@ export async function getFreelancerPortfolio(walletAddress: string): Promise<Blo
  */
 export async function verifyMilestoneWork(milestoneId: string, deliverables: string): Promise<boolean> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_milestones')
-    .select('work_hash')
-    .eq('milestone_id_hash', milestoneIdHash)
-    .single();
+  
+  const result = await pool.query(
+    'SELECT work_hash FROM blockchain_milestones WHERE milestone_id_hash = $1',
+    [milestoneIdHash]
+  );
 
-  if (error || !data) return false;
+  if (result.rows.length === 0) return false;
 
   const computedHash = generateWorkHash(deliverables);
-  return (data as { work_hash: string }).work_hash === computedHash;
+  return result.rows[0].work_hash === computedHash;
 }
 
 export async function clearMilestoneRegistry(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  const supabase = getSupabaseServiceClient();
-  await supabase.from('blockchain_milestones').delete().neq('milestone_id_hash', '');
+  await pool.query("DELETE FROM blockchain_milestones WHERE milestone_id_hash != ''");
 }
 
 export function getMilestoneRegistryAddress(): string {

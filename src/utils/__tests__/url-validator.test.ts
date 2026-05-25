@@ -24,13 +24,19 @@ describe('URL Validator - OWASP A10 SSRF Protection', () => {
       });
 
       it('should allow subdomains of whitelisted domains', () => {
-        const result = validateUrl('https://xyz.supabase.co/rest/v1/');
+        const result = validateUrl('https://xyz.appwrite.co/rest/v1/');
         expect(result.valid).toBe(true);
       });
 
       it('should allow Google Gemini API', () => {
         const result = validateUrl('https://generativelanguage.googleapis.com/v1/models');
         expect(result.valid).toBe(true);
+      });
+
+      it('should allow public IPs not in blocked ranges', () => {
+        const result = validateUrl('http://1.1.1.1/api');
+        expect(result.valid).toBe(true);
+        expect(result.sanitizedUrl).toBe('http://1.1.1.1/api');
       });
     });
 

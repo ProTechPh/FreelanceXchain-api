@@ -1,222 +1,172 @@
 import { Router, Request, Response } from 'express';
-import _multer from 'multer';
-import { uploadFile, deleteFile, getSignedUrl, listUserFiles } from '../utils/file-upload.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
-import { logger } from '../config/logger.js';
+import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
+import { uploadFile, deleteFile, getSignedUrl, listUserFiles } from '../utils/storage-uploader.js';
 
 const router = Router();
 
-// Allowed storage buckets — reject any bucket not in this list
-const ALLOWED_BUCKETS = new Set([
+const ALLOWED_BUCKETS = [
   'profile-images',
   'contract-documents',
   'proposal-attachments',
   'dispute-evidence',
   'milestone-deliverables',
-]);
+];
 
-// Use secure file upload middleware (validates magic numbers, sanitizes filenames, enforces limits)
-const secureUpload = createFileUploadMiddleware('file', {
-  minFiles: 1,
-  maxFiles: 1,
-  validateMagicNumbers: true,
-});
+function isValidBucket(bucket: string): boolean {
+  return ALLOWED_BUCKETS.includes(bucket);
+}
 
-/**
- * Upload a file
- * POST /api/files/upload
- */
-router.post('/upload', authMiddleware, fileUploadRateLimiter, ...secureUpload, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { bucket, folder } = req.body;
-    // createFileUploadMiddleware parses into req.files array
-    const files = req.files as Express.Multer.File[] | undefined;
-    const file = files?.[0];
-    const userId = req.user?.id; // Use the new id field
-
-    if (!file) {
-      res.status(400).json({ error: 'No file provided' });
+router.post(
+  '/upload',
+  authMiddleware,
+  fileUploadRateLimiter,
+  ...createFileUploadMiddleware(),
+  async (req: Request, res: Response) => {
+    const userId = req.user?.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
       return;
     }
+
+    const { bucket, folder } = req.body as { bucket?: string; folder?: string };
 
     if (!bucket) {
       res.status(400).json({ error: 'Bucket name is required' });
       return;
     }
 
-    // Validate bucket against allowlist to prevent bucket injection
-    if (!ALLOWED_BUCKETS.has(bucket)) {
-      res.status(400).json({ error: `Invalid bucket. Allowed: ${[...ALLOWED_BUCKETS].join(', ')}` });
+    if (!isValidBucket(bucket)) {
+      res.status(400).json({ error: `Invalid bucket: ${bucket}` });
       return;
     }
 
-    if (!userId) {
-      logger.warn('[FILE UPLOAD] Authentication failed - no userId on request');
-      res.status(401).json({ error: 'User not authenticated' });
+    const files = req.files as Express.Multer.File[] | undefined;
+    if (!files || files.length === 0) {
+      res.status(400).json({ error: 'No file provided' });
       return;
     }
 
-    // Upload using the updated uploadFile function
-    const result = await uploadFile({
-      bucket: bucket as 'profile-images' | 'contract-documents' | 'proposal-attachments' | 'dispute-evidence',
-      userId,
-      file: file.buffer, // Use the buffer directly
-      filename: file.originalname,
-      mimetype: file.mimetype,
-      folder,
-    });
+    try {
+      const file = files[0]!;
+      const uploadOptions: Parameters<typeof uploadFile>[0] = {
+        bucket,
+        userId,
+        file: file.buffer,
+        filename: file.originalname,
+        mimetype: file.mimetype,
+      };
+      if (folder) uploadOptions.folder = folder;
+      const result = await uploadFile(uploadOptions);
 
-    if (!result.success) {
-      res.status(400).json({ error: result.error });
-      return;
+      if (!result.success) {
+        res.status(400).json({ error: result.error });
+        return;
+      }
+
+      res.status(200).json({ success: true, url: result.url, path: result.path });
+    } catch {
+      res.status(500).json({ error: 'Failed to upload file' });
     }
-
-    res.json({
-      success: true,
-      url: result.url,
-      path: result.path,
-    });
-  } catch (error) {
-    console.error('File upload error:', error);
-    res.status(500).json({ error: 'Failed to upload file' });
   }
-});
+);
 
-/**
- * Delete a file
- * DELETE /api/files/:bucket/:path
- */
-router.delete('/:bucket/*', authMiddleware, fileUploadRateLimiter, async (req: Request, res: Response): Promise<void> => {
+router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const bucket = req.params['bucket'] as string;
+  const filePath = ((req.params as any)[0] as string | undefined) ?? '';
+
+  if (!isValidBucket(bucket)) {
+    res.status(400).json({ error: `Invalid bucket: ${bucket}` });
+    return;
+  }
+
+  const pathStart = filePath.split('/')[0];
+  if (pathStart && pathStart !== userId) {
+    res.status(403).json({ error: 'Unauthorized: cannot delete another user\'s file' });
+    return;
+  }
+
   try {
-    const bucket = req.params.bucket!; // Route param is always defined
-    const path = req.params[0]; // Get the rest of the path
-    const userId = req.user?.id;
-
-    if (!userId) {
-      res.status(401).json({ error: 'User not authenticated' });
-      return;
-    }
-
-    // Validate bucket against allowlist
-    if (!ALLOWED_BUCKETS.has(bucket)) {
-      res.status(400).json({ error: `Invalid bucket. Allowed: ${[...ALLOWED_BUCKETS].join(', ')}` });
-      return;
-    }
-
-    if (!path) {
-      res.status(400).json({ error: 'File path is required' });
-      return;
-    }
-
-    // Verify the file belongs to the user (boundary-safe check with '/' separator)
-    if (!path.startsWith(`${userId}/`) && path !== userId) {
-      res.status(403).json({ error: 'Unauthorized to delete this file' });
-      return;
-    }
-
-    const result = await deleteFile(bucket, path);
-
+    const result = await deleteFile(bucket, filePath || userId);
     if (!result.success) {
       res.status(400).json({ error: result.error });
       return;
     }
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('File delete error:', error);
+    res.status(200).json({ success: true });
+  } catch {
     res.status(500).json({ error: 'Failed to delete file' });
   }
 });
 
-/**
- * Get signed URL for a private file
- * GET /api/files/signed-url/:bucket/:path
- */
-router.get('/signed-url/:bucket/*', authMiddleware, fileUploadRateLimiter, async (req: Request, res: Response): Promise<void> => {
+router.get('/signed-url/:bucket/*', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const bucket = req.params['bucket'] as string;
+  const filePath = ((req.params as any)[0] as string | undefined) ?? '';
+
+  if (!isValidBucket(bucket)) {
+    res.status(400).json({ error: `Invalid bucket: ${bucket}` });
+    return;
+  }
+
+  const pathStart = filePath.split('/')[0];
+  if (pathStart && pathStart !== userId) {
+    res.status(403).json({ error: 'Unauthorized: cannot access another user\'s file' });
+    return;
+  }
+
+  const rawExpiry = parseInt(req.query['expiresIn'] as string ?? '3600', 10);
+  const expiresIn = Math.min(Math.max(isNaN(rawExpiry) ? 3600 : rawExpiry, 60), 86400);
+
   try {
-    const bucket = req.params.bucket!; // Route param is always defined
-    const path = req.params[0];
-    const userId = req.user?.id;
-    const expiresIn = parseInt(req.query.expiresIn as string) || 3600;
-
-    if (!userId) {
-      res.status(401).json({ error: 'User not authenticated' });
-      return;
-    }
-
-    // Validate bucket against allowlist
-    if (!ALLOWED_BUCKETS.has(bucket)) {
-      res.status(400).json({ error: `Invalid bucket. Allowed: ${[...ALLOWED_BUCKETS].join(', ')}` });
-      return;
-    }
-
-    if (!path) {
-      res.status(400).json({ error: 'File path is required' });
-      return;
-    }
-
-    // Cap expiresIn to a reasonable maximum (24 hours)
-    const clampedExpiresIn = Math.min(Math.max(expiresIn, 60), 86400);
-
-    // Verify the file belongs to the user (boundary-safe check with '/' separator)
-    if (!path.startsWith(`${userId}/`) && path !== userId) {
-      res.status(403).json({ error: 'Unauthorized to access this file' });
-      return;
-    }
-
-    const result = await getSignedUrl(bucket, path, clampedExpiresIn);
-
+    const result = await getSignedUrl(bucket, filePath || userId);
     if (!result.success) {
       res.status(400).json({ error: result.error });
       return;
     }
-
-    res.json({
-      success: true,
-      url: result.url,
-    });
-  } catch (error) {
-    console.error('Get signed URL error:', error);
+    res.status(200).json({ success: true, url: result.url });
+  } catch {
     res.status(500).json({ error: 'Failed to get signed URL' });
   }
 });
 
-/**
- * List user's files
- * GET /api/files/list/:bucket
- */
-router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return;
+  }
+
+  const bucket = req.params['bucket'] as string;
+
+  if (!isValidBucket(bucket)) {
+    res.status(400).json({ error: `Invalid bucket: ${bucket}` });
+    return;
+  }
+
+  const folder = req.query['folder'] as string | undefined;
+
   try {
-    const bucket = req.params.bucket!; // Route param is always defined
-    const { folder } = req.query;
-    const userId = req.user?.id;
-
-    if (!userId) {
-      res.status(401).json({ error: 'User not authenticated' });
-      return;
-    }
-
-    // Validate bucket against allowlist
-    if (!ALLOWED_BUCKETS.has(bucket)) {
-      res.status(400).json({ error: `Invalid bucket. Allowed: ${[...ALLOWED_BUCKETS].join(', ')}` });
-      return;
-    }
-
-    const result = await listUserFiles(bucket, userId, folder as string | undefined);
-
+    const listOptions: Parameters<typeof listUserFiles> = [bucket, userId];
+    if (folder) listOptions.push(folder);
+    const result = await listUserFiles(...listOptions);
     if (!result.success) {
       res.status(400).json({ error: result.error });
       return;
     }
-
-    res.json({
-      success: true,
-      files: result.files,
-    });
-  } catch (error) {
-    console.error('List files error:', error);
+    res.status(200).json({ success: true, files: result.files });
+  } catch {
     res.status(500).json({ error: 'Failed to list files' });
   }
 });

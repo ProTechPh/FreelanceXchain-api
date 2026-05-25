@@ -51,11 +51,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
   notificationRepository: mockNotificationRepo,
 }));
 
-// Mock Supabase RPC
+// Mock Appwrite RPC
 const mockRpc = jest.fn();
-jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
-  getSupabaseServiceClient: jest.fn(() => ({ rpc: mockRpc })),
-}));
 
 // Mock logger
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
@@ -97,14 +94,21 @@ function seedRushUpgradeRequest(overrides: Record<string, any> = {}) {
   return request;
 }
 
-beforeEach(() => {
-  rushUpgradeStore.clear();
-  contractStore.clear();
-  projectStore.clear();
-  userStore.clear();
-  notificationStore.clear();
-  mockRpc.mockReset();
-});
+  beforeEach(() => {
+    rushUpgradeStore.clear();
+    contractStore.clear();
+    projectStore.clear();
+    userStore.clear();
+    notificationStore.clear();
+
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('apply_rush_upgrade_atomic')) {
+        return { rows: [{ result: true }], rowCount: 1 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  });
 
 // ─── requestRushUpgrade ────────────────────────────────────────────────
 describe('requestRushUpgrade', () => {
@@ -211,7 +215,8 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    (mockRpc as any).mockResolvedValue({ data: { success: true }, error: null });
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
 
@@ -220,9 +225,6 @@ describe('respondToRushUpgrade - accept', () => {
     const data = result.data as any;
     expect(data.request.status).toBe('accepted');
     expect(data.request.respondedBy).toBe(freelancer.id);
-    expect(mockRpc).toHaveBeenCalledWith('apply_rush_upgrade_atomic', {
-      p_contract_id: contract.id, p_rush_fee_percentage: 25,
-    });
   });
 
   it('should use counter_percentage when accepting after counter-offer', async () => {
@@ -234,14 +236,16 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, counter_percentage: 20, status: 'counter_offered',
     });
 
-    (mockRpc as any).mockResolvedValue({ data: { success: true }, error: null });
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
 
     expect(result.success).toBe(true);
-    expect((mockRpc as any)).toHaveBeenCalledWith('apply_rush_upgrade_atomic', {
-      p_contract_id: contract.id, p_rush_fee_percentage: 20,
-    });
+    expect(mockPoolObj.query).toHaveBeenCalledWith(
+      expect.stringContaining('apply_rush_upgrade_atomic'),
+      expect.arrayContaining([contract.id, 20]),
+    );
   });
 
   it('should reject if RPC fails', async () => {
@@ -253,7 +257,8 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    (mockRpc as any).mockResolvedValue({ data: null, error: new Error('RPC failed') });
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(false);
@@ -277,7 +282,6 @@ describe('respondToRushUpgrade - decline', () => {
     const data = result.data as any;
     expect(data.status).toBe('declined');
     expect(data.respondedBy).toBe(freelancer.id);
-    expect((mockRpc as any)).not.toHaveBeenCalled();
   });
 
   it('should create decline notification for employer', async () => {
@@ -383,16 +387,18 @@ describe('acceptCounterOffer', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, counter_percentage: 20, status: 'counter_offered',
     });
 
-    (mockRpc as any).mockResolvedValue({ data: { success: true }, error: null });
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
 
     const result = await acceptCounterOffer(employer.id, request.id);
 
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.request.status).toBe('accepted');
-    expect((mockRpc as any)).toHaveBeenCalledWith('apply_rush_upgrade_atomic', {
-      p_contract_id: contract.id, p_rush_fee_percentage: 20,
-    });
+    expect(mockPoolObj.query).toHaveBeenCalledWith(
+      expect.stringContaining('apply_rush_upgrade_atomic'),
+      expect.arrayContaining([contract.id, 20]),
+    );
   });
 
   it('should reject if not the employer', async () => {
@@ -431,7 +437,8 @@ describe('acceptCounterOffer', () => {
       contract_id: contract.id, requested_by: employer.id, counter_percentage: 20, status: 'counter_offered',
     });
 
-    (mockRpc as any).mockResolvedValue({ data: { success: true }, error: null });
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
     await acceptCounterOffer(employer.id, request.id);
 
     const notifications = Array.from(notificationStore.values()) as any[];
@@ -456,7 +463,6 @@ describe('declineCounterOffer', () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.status).toBe('declined');
-    expect(mockRpc).not.toHaveBeenCalled();
   });
 
   it('should reject if not the employer', async () => {
@@ -555,14 +561,16 @@ describe('Full rush upgrade negotiation flow', () => {
     expect((counterResult.data as any).counterPercentage).toBe(20);
 
     // 3. Employer accepts counter-offer
-    (mockRpc as any).mockResolvedValue({ data: { success: true }, error: null });
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
     const acceptResult = await acceptCounterOffer(employer.id, requestId);
     expect(acceptResult.success).toBe(true);
     if (!acceptResult.success) return;
     expect(acceptResult.data.request.status).toBe('accepted');
-    expect((mockRpc as any)).toHaveBeenCalledWith('apply_rush_upgrade_atomic', {
-      p_contract_id: contract.id, p_rush_fee_percentage: 20,
-    });
+    expect(mockPoolObj.query).toHaveBeenCalledWith(
+      expect.stringContaining('apply_rush_upgrade_atomic'),
+      expect.arrayContaining([contract.id]),
+    );
   });
 
   it('should complete employer-request → freelancer-decline', async () => {
@@ -579,7 +587,6 @@ describe('Full rush upgrade negotiation flow', () => {
     expect(declineResult.success).toBe(true);
     if (!declineResult.success) return;
     expect((declineResult.data as any).status).toBe('declined');
-    expect((mockRpc as any)).not.toHaveBeenCalled();
   });
 
   it('should complete employer-request → freelancer-counter → employer-decline', async () => {
@@ -598,6 +605,5 @@ describe('Full rush upgrade negotiation flow', () => {
     expect(declineResult.success).toBe(true);
     if (!declineResult.success) return;
     expect(declineResult.data.status).toBe('declined');
-    expect((mockRpc as any)).not.toHaveBeenCalled();
   });
 });

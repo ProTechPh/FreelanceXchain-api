@@ -3,50 +3,10 @@
 
 import { describe, it, expect, jest, beforeAll } from '@jest/globals';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Mock Supabase config
-jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
-  getSupabaseServiceClient: jest.fn(() => ({
-    storage: {
-      from: jest.fn(() => ({
-        upload: jest.fn(async () => ({ data: { path: 'test/path' }, error: null })),
-        remove: jest.fn(async () => ({ data: null, error: null })),
-        createSignedUrl: jest.fn(async () => ({ data: { signedUrl: 'https://example.com/signed' }, error: null })),
-        getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://example.com/public' } })),
-      })),
-    },
-  })),
-  getSupabaseClient: jest.fn(() => ({})),
-  createPerRequestClient: jest.fn(() => ({})),
-  initializeDatabase: jest.fn(async () => {}),
-  TABLES: {
-    USERS: 'users',
-    FREELANCER_PROFILES: 'freelancer_profiles',
-    EMPLOYER_PROFILES: 'employer_profiles',
-    PROJECTS: 'projects',
-    PROPOSALS: 'proposals',
-    CONTRACTS: 'contracts',
-    DISPUTES: 'disputes',
-    SKILLS: 'skills',
-    SKILL_CATEGORIES: 'skill_categories',
-    NOTIFICATIONS: 'notifications',
-    KYC_VERIFICATIONS: 'kyc_verifications',
-    REVIEWS: 'reviews',
-    MESSAGES: 'messages',
-    PAYMENTS: 'payments',
-    AUDIT_LOG_ENTRIES: 'audit_log_entries',
-  },
-  STORAGE_BUCKETS: {
-    PROPOSAL_ATTACHMENTS: 'proposal-attachments',
-    PROJECT_ATTACHMENTS: 'project-attachments',
-    DISPUTE_EVIDENCE: 'dispute-evidence',
-    MILESTONE_DELIVERABLES: 'milestone-deliverables',
-    PROFILE_IMAGES: 'profile-images',
-  },
-}));
+// Mock Appwrite config
 
 // Mock the auth-middleware to bypass authentication
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -275,37 +235,16 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () 
   })),
 }));
 
-// Mock file upload utility
-jest.unstable_mockModule(resolveModule('src/utils/file-upload.ts'), () => ({
-  uploadFile: jest.fn(async (options: any) => ({
-    success: true,
-    url: `https://example.supabase.co/storage/v1/object/public/milestone-deliverables/${options.userId}/${options.folder}/${options.filename}`,
-    path: `${options.userId}/${options.folder}/${options.filename}`,
-  })),
-  deleteFile: jest.fn(async (bucket: string, path: string) => ({
-    success: true,
-  })),
-  getSignedUrl: jest.fn(async (bucket: string, path: string, expiresIn?: number) => ({
-    success: true,
-    url: `https://example.supabase.co/storage/v1/object/sign/${bucket}/${path}`,
-  })),
-  listUserFiles: jest.fn(async (bucket: string, userId: string, folder?: string) => ({
-    success: true,
-    files: [],
-  })),
-}));
-
-// Mock storage uploader utility
-jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+const storageUploaderMocks = {
   uploadFileToStorage: jest.fn(async (file: any, bucket: string, metadata: any) => ({
     success: true,
-    url: `https://example.supabase.co/storage/v1/object/public/${bucket}/${metadata.userId}/${file.originalname}`,
+    url: `https://example.appwrite.co/storage/v1/object/public/${bucket}/${metadata.userId}/${file.originalname}`,
     path: `${metadata.userId}/${file.originalname}`,
   })),
   uploadMultipleFiles: jest.fn(async (files: any[], bucket: string, metadata: any) => ({
     success: true,
     files: files.map(f => ({
-      url: `https://example.supabase.co/storage/v1/object/public/${bucket}/${metadata.userId}/${f.originalname}`,
+      url: `https://example.appwrite.co/storage/v1/object/public/${bucket}/${metadata.userId}/${f.originalname}`,
       path: `${metadata.userId}/${f.originalname}`,
       filename: f.originalname,
     })),
@@ -315,7 +254,26 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => (
   })),
   extractFilePathFromUrl: jest.fn((url: string) => 'test/path'),
   cleanupUploadedFiles: jest.fn(async (urls: string[]) => ({ success: true })),
-}));
+  uploadFile: jest.fn(async (options: any) => ({
+    success: true,
+    url: `https://example.appwrite.co/storage/v1/object/public/milestone-deliverables/${options.userId}/${options.folder}/${options.filename}`,
+    path: `${options.userId}/${options.folder}/${options.filename}`,
+  })),
+  deleteFile: jest.fn(async (bucket: string, path: string) => ({
+    success: true,
+  })),
+  getSignedUrl: jest.fn(async (bucket: string, path: string, expiresIn?: number) => ({
+    success: true,
+    url: `https://example.appwrite.co/storage/v1/object/sign/${bucket}/${path}`,
+  })),
+  listUserFiles: jest.fn(async (bucket: string, userId: string, folder?: string) => ({
+    success: true,
+    files: [],
+  })),
+  extractFileIdFromUrl: jest.fn((url: string) => 'test-file-id'),
+};
+
+jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => storageUploaderMocks);
 
 // Mock contract repository
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -402,17 +360,13 @@ jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () =>
 }));
 
 // Dynamically import everything after the mock is set up
-let request: any, createApp: any, generateId: any, fs: any;
+let request: any, createApp: any, generateId: any;
 
 beforeAll(async () => {
   request = (await import('supertest')).default;
   ({ createApp } = await import('../../app.js'));
   ({ generateId } = await import('../../utils/id.js'));
-  fs = await import('fs');
 });
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 describe('Milestone Attachments API', () => {
   let app: any;
@@ -432,15 +386,13 @@ describe('Milestone Attachments API', () => {
 
   describe('POST /api/milestones/:id/upload-deliverables', () => {
     it('should upload deliverable files for milestone', async () => {
-      // Create test file
-      const testFilePath = path.join(__dirname, 'test-deliverable.pdf');
+      // Use in-memory buffer instead of writing to disk to avoid file stream issues under load
       const testFileContent = Buffer.from('JVBERi0xLjQKJcOkw7zDtsO8CjIgMCBvYmoKPDwKL0xlbmd0aCAzIDAgUgo+PgpzdHJlYW0KQNC4xOTk5Cg==', 'base64');
-      fs.writeFileSync(testFilePath, testFileContent);
 
       const response = await request(app)
         .post(`/api/milestones/${milestoneId}/upload-deliverables`)
         .set('Authorization', authToken)
-        .attach('files', testFilePath)
+        .attach('files', testFileContent, 'test-deliverable.pdf')
         .expect(200);
 
       expect(response.body).toMatchObject({
@@ -454,29 +406,18 @@ describe('Milestone Attachments API', () => {
         mimeType: 'application/pdf',
       });
       expect(response.body.files[0].url).toContain('milestone-deliverables');
-
-      // Clean up test file
-      if (fs.existsSync(testFilePath)) {
-        fs.unlinkSync(testFilePath);
-      }
     });
 
     it('should upload multiple deliverable files', async () => {
-      // Create test files
-      const testPdfPath = path.join(__dirname, 'test-document.pdf');
-      const testImagePath = path.join(__dirname, 'test-screenshot.png');
-      
+      // Use in-memory buffers instead of writing to disk to avoid file stream issues under load
       const testPdfContent = Buffer.from('JVBERi0xLjQKJcOkw7zDtsO8CjIgMCBvYmoKPDwKL0xlbmd0aCAzIDAgUgo+PgpzdHJlYW0KQNC4xOTk5Cg==', 'base64');
       const testImageContent = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
-      
-      fs.writeFileSync(testPdfPath, testPdfContent);
-      fs.writeFileSync(testImagePath, testImageContent);
 
       const response = await request(app)
         .post(`/api/milestones/${milestoneId}/upload-deliverables`)
         .set('Authorization', authToken)
-        .attach('files', testPdfPath)
-        .attach('files', testImagePath)
+        .attach('files', testPdfContent, 'test-document.pdf')
+        .attach('files', testImageContent, 'test-screenshot.png')
         .expect(200);
 
       expect(response.body.files).toHaveLength(2);
@@ -493,14 +434,6 @@ describe('Milestone Attachments API', () => {
         filename: 'test-screenshot.png',
         mimeType: 'image/png',
       });
-
-      // Clean up test files
-      if (fs.existsSync(testPdfPath)) {
-        fs.unlinkSync(testPdfPath);
-      }
-      if (fs.existsSync(testImagePath)) {
-        fs.unlinkSync(testImagePath);
-      }
     });
 
     it('should reject request without files', async () => {
@@ -520,16 +453,14 @@ describe('Milestone Attachments API', () => {
 
   describe('POST /api/milestones/:id/submit-with-files', () => {
     it('should submit milestone with file uploads', async () => {
-      // Create test file
-      const testFilePath = path.join(__dirname, 'final-deliverable.zip');
+      // Use in-memory buffer instead of writing to disk
       const testFileContent = Buffer.from('UEsDBAoAAAAAAGxvbVAAAAAAAAAAAAAAAAAJAAAAdGVzdC50eHRQSwECFAAKAAAAAABsb21QAAAAAAAAAAAAAAAACQAAAAAAAAAAAAAAAAAAAAAAAAB0ZXN0LnR4dFBLBQYAAAAAAQABADcAAAAfAAAAAAA=', 'base64');
-      fs.writeFileSync(testFilePath, testFileContent);
 
       const response = await request(app)
         .post(`/api/milestones/${milestoneId}/submit-with-files`)
         .set('Authorization', authToken)
         .field('notes', 'Milestone completed with deliverables')
-        .attach('files', testFilePath)
+        .attach('files', testFileContent, 'final-deliverable.zip')
         .expect(200);
 
       expect(response.body).toMatchObject({
@@ -544,18 +475,11 @@ describe('Milestone Attachments API', () => {
         filename: 'final-deliverable.zip',
         mimeType: 'application/zip',
       });
-
-      // Clean up test file
-      if (fs.existsSync(testFilePath)) {
-        fs.unlinkSync(testFilePath);
-      }
     });
 
     it('should submit milestone with existing and new files', async () => {
-      // Create test file
-      const testFilePath = path.join(__dirname, 'additional-file.txt');
-      const testFileContent = 'Additional deliverable content';
-      fs.writeFileSync(testFilePath, testFileContent);
+      // Use in-memory buffer instead of writing to disk
+      const testFileContent = Buffer.from('Additional deliverable content');
 
       const existingDeliverables = JSON.stringify([
         {
@@ -571,7 +495,7 @@ describe('Milestone Attachments API', () => {
         .set('Authorization', authToken)
         .field('notes', 'Final submission with all files')
         .field('existingDeliverables', existingDeliverables)
-        .attach('files', testFilePath)
+        .attach('files', testFileContent, 'additional-file.txt')
         .expect(200);
 
       expect(response.body).toMatchObject({
@@ -582,11 +506,6 @@ describe('Milestone Attachments API', () => {
       });
 
       expect(response.body.deliverableFiles).toHaveLength(2);
-
-      // Clean up test file
-      if (fs.existsSync(testFilePath)) {
-        fs.unlinkSync(testFilePath);
-      }
     });
   });
 
@@ -595,13 +514,13 @@ describe('Milestone Attachments API', () => {
       const deliverables = [
         {
           filename: 'project-source.zip',
-          url: 'https://example.supabase.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/project-source.zip',
+          url: 'https://example.appwrite.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/project-source.zip',
           size: 2048576,
           mimeType: 'application/zip',
         },
         {
           filename: 'documentation.pdf',
-          url: 'https://example.supabase.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/documentation.pdf',
+          url: 'https://example.appwrite.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/documentation.pdf',
           size: 1024000,
           mimeType: 'application/pdf',
         },
@@ -659,9 +578,7 @@ describe('Project Attachments API', () => {
 
   describe('File Type Validation', () => {
     it('should reject executable files', async () => {
-      const testExePath = path.join(__dirname, 'test-file.exe');
       const testExeBuffer = Buffer.from([0x4d, 0x5a, 0x90, 0x00]); // PE header
-      fs.writeFileSync(testExePath, testExeBuffer);
 
       const projectData = {
         title: 'Test Project With Invalid File',
@@ -671,27 +588,18 @@ describe('Project Attachments API', () => {
         deadline: '2026-12-31T23:59:59Z'
       };
 
-      try {
-        const response = await request(app)
-          .post('/api/projects/with-attachments')
-          .set('Authorization', authToken)
-          .field('title', projectData.title)
-          .field('description', projectData.description)
-          .field('requiredSkills', projectData.requiredSkills)
-          .field('budget', projectData.budget)
-          .field('deadline', projectData.deadline)
-          .attach('files', testExePath)
-          .expect(400);
+      const response = await request(app)
+        .post('/api/projects/with-attachments')
+        .set('Authorization', authToken)
+        .field('title', projectData.title)
+        .field('description', projectData.description)
+        .field('requiredSkills', projectData.requiredSkills)
+        .field('budget', projectData.budget)
+        .field('deadline', projectData.deadline)
+        .attach('files', testExeBuffer, 'test-file.exe')
+        .expect(400);
 
-        expect(response.body.error.code).toBe('INVALID_FILE_TYPE');
-      } finally {
-        // Clean up test file
-        try {
-          fs.unlinkSync(testExePath);
-        } catch (e) {
-          // Ignore cleanup errors
-        }
-      }
+      expect(response.body.error.code).toBe('INVALID_FILE_TYPE');
     });
 
     it('should reject too many files', async () => {
@@ -703,42 +611,23 @@ describe('Project Attachments API', () => {
         deadline: '2026-12-31T23:59:59Z'
       };
 
-      // Create 11 test files (exceeds limit of 10)
-      const testFiles: string[] = [];
+      let requestBuilder = request(app)
+        .post('/api/projects/with-attachments')
+        .set('Authorization', authToken)
+        .field('title', projectData.title)
+        .field('description', projectData.description)
+        .field('requiredSkills', projectData.requiredSkills)
+        .field('budget', projectData.budget)
+        .field('deadline', projectData.deadline);
+
+      // Attach 11 in-memory buffers (exceeds limit of 10)
       for (let i = 0; i < 11; i++) {
-        const testFilePath = path.join(__dirname, `test-file-${i}.txt`);
-        fs.writeFileSync(testFilePath, `Test content ${i}`);
-        testFiles.push(testFilePath);
+        requestBuilder = requestBuilder.attach('files', Buffer.from(`Test content ${i}`), `test-file-${i}.txt`);
       }
 
-      try {
-        let requestBuilder = request(app)
-          .post('/api/projects/with-attachments')
-          .set('Authorization', authToken)
-          .field('title', projectData.title)
-          .field('description', projectData.description)
-          .field('requiredSkills', projectData.requiredSkills)
-          .field('budget', projectData.budget)
-          .field('deadline', projectData.deadline);
+      const response = await requestBuilder.expect(400);
 
-        // Attach all files
-        testFiles.forEach(filePath => {
-          requestBuilder = requestBuilder.attach('files', filePath);
-        });
-
-        const response = await requestBuilder.expect(400);
-
-        expect(response.body.error.code).toBe('UPLOAD_ERROR');
-      } finally {
-        // Clean up test files
-        testFiles.forEach(filePath => {
-          try {
-            fs.unlinkSync(filePath);
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-        });
-      }
+      expect(response.body.error.code).toBe('UPLOAD_ERROR');
     });
 
     it('should validate required fields', async () => {
@@ -778,10 +667,9 @@ describe('Project Attachments API', () => {
 
   describe('File Upload Security', () => {
     it('should detect malicious files', async () => {
-      // Create EICAR test file
-      const testVirusPath = path.join(__dirname, 'test-virus.txt');
+      // Use in-memory buffer with EICAR test signature
       const eicarSignature = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
-      fs.writeFileSync(testVirusPath, eicarSignature);
+      const testVirusBuffer = Buffer.from(eicarSignature);
 
       const projectData = {
         title: 'Test Project With Malicious File',
@@ -791,27 +679,18 @@ describe('Project Attachments API', () => {
         deadline: '2026-12-31T23:59:59Z'
       };
 
-      try {
-        const response = await request(app)
-          .post('/api/projects/with-attachments')
-          .set('Authorization', authToken)
-          .field('title', projectData.title)
-          .field('description', projectData.description)
-          .field('requiredSkills', projectData.requiredSkills)
-          .field('budget', projectData.budget)
-          .field('deadline', projectData.deadline)
-          .attach('files', testVirusPath)
-          .expect(400);
+      const response = await request(app)
+        .post('/api/projects/with-attachments')
+        .set('Authorization', authToken)
+        .field('title', projectData.title)
+        .field('description', projectData.description)
+        .field('requiredSkills', projectData.requiredSkills)
+        .field('budget', projectData.budget)
+        .field('deadline', projectData.deadline)
+        .attach('files', testVirusBuffer, 'test-virus.txt')
+        .expect(400);
 
-        expect(response.body.error.code).toBe('MALICIOUS_FILE_DETECTED');
-      } finally {
-        // Clean up test file
-        try {
-          fs.unlinkSync(testVirusPath);
-        } catch (e) {
-          // Ignore cleanup errors
-        }
-      }
+      expect(response.body.error.code).toBe('MALICIOUS_FILE_DETECTED');
     });
   });
 });

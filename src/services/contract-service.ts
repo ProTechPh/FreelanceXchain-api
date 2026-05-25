@@ -1,9 +1,9 @@
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository-pg.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 
 export type ContractServiceResult<T> = ServiceResult<T>;
@@ -176,20 +176,19 @@ export async function cancelPendingContract(contractId: string, userId: string):
     };
   }
 
-  // RACE CONDITION FIX: Use atomic Supabase RPC to prevent cancellation while being funded
-  const { data: _result, error: rpcError } = await getSupabaseServiceClient()
-    .rpc('cancel_pending_contract', {
-      p_contract_id: contractId,
-      p_user_id: userId
-    });
+  // RACE CONDITION FIX: Use atomic PostgreSQL function to prevent cancellation while being funded
+  const result = await pool.query(
+    'SELECT cancel_pending_contract($1, $2) as result',
+    [contractId, userId]
+  );
 
-  if (rpcError) {
-    console.error('Failed to cancel pending contract (RPC):', rpcError);
+  if (!result.rows[0]?.result) {
+    console.error('Failed to cancel pending contract (RPC)');
     return {
       success: false,
       error: { 
         code: 'UPDATE_FAILED', 
-        message: rpcError.message 
+        message: 'Failed to cancel contract' 
       },
     };
   }

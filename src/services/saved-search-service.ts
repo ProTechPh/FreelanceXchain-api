@@ -1,9 +1,7 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { SavedSearch, SavedSearchInput } from '../models/saved-search.js';
 import type { ServiceResult } from '../types/service-result.js';
-
-const supabase = getSupabaseClient();
 
 /**
  * Create a saved search
@@ -24,32 +22,16 @@ export async function createSavedSearch(
       };
     }
 
-    const { data, error } = await supabase
-      .from('saved_searches')
-      .insert({
-        user_id: userId,
-        name: input.name,
-        search_type: input.searchType,
-        filters: input.filters,
-        notify_on_new: input.notifyOnNew || false,
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      logger.error('Failed to create saved search', { error, userId, input });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to create saved search',
-        },
-      };
-    }
+    const result = await pool.query(
+      `INSERT INTO saved_searches (user_id, name, search_type, filters, notify_on_new, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+       RETURNING *`,
+      [userId, input.name, input.searchType, JSON.stringify(input.filters), input.notifyOnNew || false]
+    );
 
     return {
       success: true,
-      data: data as SavedSearch,
+      data: result.rows[0] as SavedSearch,
     };
   } catch (error) {
     logger.error('Unexpected error in createSavedSearch', { error, userId, input });
@@ -71,32 +53,21 @@ export async function getUserSavedSearches(
   searchType?: 'project' | 'freelancer'
 ): Promise<ServiceResult<SavedSearch[]>> {
   try {
-    let query = supabase
-      .from('saved_searches')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    let query = 'SELECT * FROM saved_searches WHERE user_id = $1';
+    const params: any[] = [userId];
 
     if (searchType) {
-      query = query.eq('search_type', searchType);
+      query += ' AND search_type = $2';
+      params.push(searchType);
     }
 
-    const { data, error } = await query;
+    query += ' ORDER BY created_at DESC';
 
-    if (error) {
-      logger.error('Failed to get saved searches', { error, userId, searchType });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to fetch saved searches',
-        },
-      };
-    }
+    const result = await pool.query(query, params);
 
     return {
       success: true,
-      data: (data || []) as SavedSearch[],
+      data: result.rows as SavedSearch[],
     };
   } catch (error) {
     logger.error('Unexpected error in getUserSavedSearches', { error, userId, searchType });
@@ -120,13 +91,57 @@ export async function updateSavedSearch(
 ): Promise<ServiceResult<SavedSearch>> {
   try {
     // Verify ownership
-    const { data: existing, error: fetchError } = await supabase
-      .from('saved_searches')
-      .select('user_id')
-      .eq('id', searchId)
-      .single();
+    const existingResult = await pool.query(
+      'SELECT user_id FROM saved_searches WHERE id = $1',
+      [searchId]
+    );
 
-    if (fetchError || !existing) {
+    if (existingResult.rows.length === 0) {
+      return {
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Saved search not found' },
+      };
+    }
+
+    if (existingResult.rows[0].user_id !== userId) {
+      return {
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'You can only update your own saved searches' },
+      };
+    }
+
+    // Build update query
+    const columns = [];
+    const values = [];
+    let paramIndex = 1;
+
+    if (updates.name) {
+      columns.push(`name = $${paramIndex++}`);
+      values.push(updates.name);
+    }
+    if (updates.filters) {
+      columns.push(`filters = $${paramIndex++}`);
+      values.push(JSON.stringify(updates.filters));
+    }
+    if (updates.notifyOnNew !== undefined) {
+      columns.push(`notify_on_new = $${paramIndex++}`);
+      values.push(updates.notifyOnNew);
+    }
+
+    if (columns.length === 0) {
+      const result = await pool.query('SELECT * FROM saved_searches WHERE id = $1', [searchId]);
+      return { success: true, data: result.rows[0] as SavedSearch };
+    }
+
+    columns.push(`updated_at = NOW()`);
+    values.push(searchId);
+
+    const result = await pool.query(
+      `UPDATE saved_searches SET ${columns.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -136,49 +151,12 @@ export async function updateSavedSearch(
       };
     }
 
-    if (existing.user_id !== userId) {
-      return {
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'You can only update your own saved searches',
-        },
-      };
-    }
-
-    // Build update object
-    const updateData: any = {
-      updated_at: new Date().toISOString(),
-    };
-
-    if (updates.name) updateData.name = updates.name;
-    if (updates.filters) updateData.filters = updates.filters;
-    if (updates.notifyOnNew !== undefined) updateData.notify_on_new = updates.notifyOnNew;
-
-    const { data, error } = await supabase
-      .from('saved_searches')
-      .update(updateData)
-      .eq('id', searchId)
-      .select('*')
-      .single();
-
-    if (error) {
-      logger.error('Failed to update saved search', { error, searchId, updates });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to update saved search',
-        },
-      };
-    }
-
     return {
       success: true,
-      data: data as SavedSearch,
+      data: result.rows[0] as SavedSearch,
     };
   } catch (error) {
-    logger.error('Unexpected error in updateSavedSearch', { error, searchId, updates });
+    logger.error('Unexpected error in updateSavedSearch', { error, searchId, userId, updates });
     return {
       success: false,
       error: {
@@ -198,13 +176,12 @@ export async function deleteSavedSearch(
 ): Promise<ServiceResult<void>> {
   try {
     // Verify ownership
-    const { data: existing, error: fetchError } = await supabase
-      .from('saved_searches')
-      .select('user_id')
-      .eq('id', searchId)
-      .single();
+    const existingResult = await pool.query(
+      'SELECT user_id FROM saved_searches WHERE id = $1',
+      [searchId]
+    );
 
-    if (fetchError || !existing) {
+    if (existingResult.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -214,7 +191,7 @@ export async function deleteSavedSearch(
       };
     }
 
-    if (existing.user_id !== userId) {
+    if (existingResult.rows[0].user_id !== userId) {
       return {
         success: false,
         error: {
@@ -224,28 +201,14 @@ export async function deleteSavedSearch(
       };
     }
 
-    const { error } = await supabase
-      .from('saved_searches')
-      .delete()
-      .eq('id', searchId);
-
-    if (error) {
-      logger.error('Failed to delete saved search', { error, searchId });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to delete saved search',
-        },
-      };
-    }
+    await pool.query('DELETE FROM saved_searches WHERE id = $1', [searchId]);
 
     return {
       success: true,
       data: undefined as unknown as void,
     };
   } catch (error) {
-    logger.error('Unexpected error in deleteSavedSearch', { error, searchId });
+    logger.error('Unexpected error in deleteSavedSearch', { error, searchId, userId });
     return {
       success: false,
       error: {
@@ -262,16 +225,15 @@ export async function deleteSavedSearch(
 export async function executeSavedSearch(
   searchId: string,
   userId: string
-): Promise<ServiceResult<any>> {
+): Promise<ServiceResult<{ results: any[]; count: number }>> {
   try {
     // Get saved search
-    const { data: savedSearch, error: fetchError } = await supabase
-      .from('saved_searches')
-      .select('*')
-      .eq('id', searchId)
-      .single();
+    const searchResult = await pool.query(
+      'SELECT * FROM saved_searches WHERE id = $1',
+      [searchId]
+    );
 
-    if (fetchError || !savedSearch) {
+    if (searchResult.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -280,6 +242,8 @@ export async function executeSavedSearch(
         },
       };
     }
+
+    const savedSearch = searchResult.rows[0];
 
     // Verify ownership
     if (savedSearch.user_id !== userId) {
@@ -297,95 +261,78 @@ export async function executeSavedSearch(
 
     // Execute search based on type
     if (searchType === 'project') {
-      let query = supabase
-        .from('projects')
-        .select('*')
-        .eq('status', 'open');
+      let query = "SELECT * FROM projects WHERE status = 'open'";
+      const params: any[] = [];
+      let pIndex = 1;
 
       // Apply filters
       if (filters.skills && Array.isArray(filters.skills)) {
-        query = query.contains('required_skills', filters.skills);
+        query += ` AND required_skills @> $${pIndex++}`;
+        params.push(filters.skills);
       }
       if (filters.minBudget) {
-        query = query.gte('budget', filters.minBudget);
+        query += ` AND budget >= $${pIndex++}`;
+        params.push(filters.minBudget);
       }
       if (filters.maxBudget) {
-        query = query.lte('budget', filters.maxBudget);
+        query += ` AND budget <= $${pIndex++}`;
+        params.push(filters.maxBudget);
       }
       if (filters.keyword) {
-        query = query.or(`title.ilike.%${filters.keyword}%,description.ilike.%${filters.keyword}%`);
+        query += ` AND (title ILIKE $${pIndex} OR description ILIKE $${pIndex})`;
+        params.push(`%${filters.keyword}%`);
+        pIndex++;
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false }).limit(50);
+      query += ' ORDER BY created_at DESC LIMIT 50';
 
-      if (error) {
-        logger.error('Failed to execute project search', { error, searchId, filters });
-        return {
-          success: false,
-          error: {
-            code: 'SEARCH_ERROR',
-            message: 'Failed to execute search',
-          },
-        };
-      }
+      const results = await pool.query(query, params);
 
       return {
         success: true,
         data: {
-          results: data || [],
-          count: data?.length || 0,
+          results: results.rows,
+          count: results.rows.length,
         },
       };
-    } else if (searchType === 'freelancer') {
-      let query = supabase
-        .from('freelancer_profiles')
-        .select('*, users!inner(id, email, name)');
+    } else {
+      let query = `
+        SELECT fp.*, u.email, u.name 
+        FROM freelancer_profiles fp
+        INNER JOIN users u ON fp.user_id = u.id
+        WHERE 1=1
+      `;
+      const params: any[] = [];
+      let pIndex = 1;
 
       // Apply filters
       if (filters.skills && Array.isArray(filters.skills)) {
-        query = query.contains('skills', filters.skills);
+        query += ` AND fp.skills @> $${pIndex++}`;
+        params.push(filters.skills);
       }
       if (filters.minHourlyRate) {
-        query = query.gte('hourly_rate', filters.minHourlyRate);
+        query += ` AND fp.hourly_rate >= $${pIndex++}`;
+        params.push(filters.minHourlyRate);
       }
       if (filters.maxHourlyRate) {
-        query = query.lte('hourly_rate', filters.maxHourlyRate);
-      }
-      if (filters.keyword) {
-        query = query.or(`bio.ilike.%${filters.keyword}%,title.ilike.%${filters.keyword}%`);
+        query += ` AND fp.hourly_rate <= $${pIndex++}`;
+        params.push(filters.maxHourlyRate);
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false }).limit(50);
+      query += ' ORDER BY fp.created_at DESC LIMIT 50';
 
-      if (error) {
-        logger.error('Failed to execute freelancer search', { error, searchId, filters });
-        return {
-          success: false,
-          error: {
-            code: 'SEARCH_ERROR',
-            message: 'Failed to execute search',
-          },
-        };
-      }
+      const results = await pool.query(query, params);
 
       return {
         success: true,
         data: {
-          results: data || [],
-          count: data?.length || 0,
+          results: results.rows,
+          count: results.rows.length,
         },
       };
     }
-
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_SEARCH_TYPE',
-        message: 'Invalid search type',
-      },
-    };
   } catch (error) {
-    logger.error('Unexpected error in executeSavedSearch', { error, searchId });
+    logger.error('Unexpected error in executeSavedSearch', { error, searchId, userId });
     return {
       success: false,
       error: {

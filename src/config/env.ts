@@ -55,13 +55,25 @@ export const config = {
     baseUrl: getBaseUrl(),
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
   },
-  supabase: {
-    url: getEnvVar('SUPABASE_URL'),
-    anonKey: getEnvVar('SUPABASE_ANON_KEY'),
-    serviceRoleKey: getEnvVarOptional('SUPABASE_SERVICE_ROLE_KEY'),
-    storage: {
-      proposalAttachmentsBucket: getEnvVar('SUPABASE_PROPOSAL_ATTACHMENTS_BUCKET', 'proposal-attachments'),
+  database: {
+    url: getEnvVar('DATABASE_URL'),
+  },
+  appwrite: {
+    endpoint: getEnvVar('APPWRITE_ENDPOINT'),
+    projectId: getEnvVar('APPWRITE_PROJECT_ID'),
+    apiKey: getEnvVar('APPWRITE_API_KEY'),
+    buckets: {
+      proposalAttachments: getEnvVar('APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET', 'proposal-attachments'),
+      projectAttachments: getEnvVar('APPWRITE_PROJECT_ATTACHMENTS_BUCKET', 'project-attachments'),
+      disputeEvidence: getEnvVar('APPWRITE_DISPUTE_EVIDENCE_BUCKET', 'dispute-evidence'),
+      portfolioImages: getEnvVar('APPWRITE_PORTFOLIO_IMAGES_BUCKET', 'portfolio-images'),
+      milestoneDeliverables: getEnvVar('APPWRITE_MILESTONE_DELIVERABLES_BUCKET', 'milestone-deliverables'),
     },
+  },
+  llm: {
+    apiKey: getEnvVarOptional('LLM_API_KEY'),
+    apiUrl: getEnvVar('LLM_API_URL'),
+    model: getEnvVar('LLM_MODEL', 'claude-haiku-4.5'),
   },
   jwt: {
     secret: getEnvVar('JWT_SECRET'),
@@ -75,11 +87,7 @@ export const config = {
     expiresIn: getEnvVar('JWT_EXPIRES_IN', '1h'),
     refreshExpiresIn: getEnvVar('JWT_REFRESH_EXPIRES_IN', '7d'),
   },
-  llm: {
-    apiKey: getEnvVarOptional('LLM_API_KEY'),
-    apiUrl: getEnvVar('LLM_API_URL'),
-    model: getEnvVar('LLM_MODEL', 'claude-haiku-4.5'),
-  },
+
   blockchain: {
     rpcUrl: getEnvVarOptional('BLOCKCHAIN_RPC_URL'),
     privateKey: getEnvVarOptional('BLOCKCHAIN_PRIVATE_KEY'),

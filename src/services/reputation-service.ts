@@ -2,14 +2,14 @@
  * Reputation & Review Service
  * Handles rating/review submission, reputation score computation, work history retrieval
  * Merged from former review-service.ts and reputation-service.ts
- * Uses Supabase reviews table as primary storage, blockchain as best-effort sync
+ * Uses Appwrite reviews table as primary storage, blockchain as best-effort sync
  */
 
 import {
   submitRatingToBlockchain,
   BlockchainRating,
 } from './reputation-blockchain.js';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
@@ -68,7 +68,7 @@ export type RatingResult = {
 
 /**
  * Submit a rating/review for a completed contract
- * Stores in Supabase reviews table, syncs to blockchain best-effort
+ * Stores in Appwrite reviews table, syncs to blockchain best-effort
  * Supports both simple ratings (via /api/reputation/rate) and rich reviews (via /api/reviews)
  */
 export async function submitRating(
@@ -132,80 +132,85 @@ export async function submitRating(
     return {
       success: false,
       error: {
-        code: 'SELF_RATING',
-        message: 'Users cannot rate themselves',
-      },
-    };
-  }
-
-  const supabase = getSupabaseServiceClient();
-
-  const { data: existingReview } = await supabase
-    .from('reviews')
-    .select('id')
-    .eq('contract_id', input.contractId)
-    .eq('reviewer_id', input.raterId)
-    .single();
-
-  if (existingReview) {
-    return {
-      success: false,
-      error: {
-        code: 'DUPLICATE_RATING',
-        message: 'You have already rated this user for this contract',
-      },
-    };
-  }
-
-  const reviewerRole = input.reviewerRole ?? (contract.employerId === input.raterId ? 'employer' : 'freelancer');
-
-  const insertData: Record<string, unknown> = {
-    contract_id: input.contractId,
-    project_id: contract.projectId,
-    reviewer_id: input.raterId,
-    reviewee_id: rateeId,
-    rating: input.rating,
-    comment: input.comment || null,
-    reviewer_role: reviewerRole,
+      code: 'SELF_RATING',
+      message: 'Users cannot rate themselves',
+    },
   };
+}
 
-  if (input.workQuality !== undefined) insertData.work_quality = input.workQuality;
-  if (input.communication !== undefined) insertData.communication = input.communication;
-  if (input.professionalism !== undefined) insertData.professionalism = input.professionalism;
-  if (input.wouldWorkAgain !== undefined) insertData.would_work_again = input.wouldWorkAgain;
+const existingReviewResult = await pool.query(
+  'SELECT id FROM reviews WHERE contract_id = $1 AND reviewer_id = $2',
+  [input.contractId, input.raterId]
+);
 
-  const { data: review, error: insertError } = await supabase
-    .from('reviews')
-    .insert(insertData)
-    .select()
-    .single();
+if (existingReviewResult.rows.length > 0) {
+  return {
+    success: false,
+    error: {
+      code: 'DUPLICATE_RATING',
+      message: 'You have already rated this user for this contract',
+    },
+  };
+}
 
-  if (insertError || !review) {
-    logger.error('Failed to save rating', { error: insertError, contractId: input.contractId });
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: 'Failed to save rating',
-      },
-    };
-  }
+const reviewerRole = input.reviewerRole ?? (contract.employerId === input.raterId ? 'employer' : 'freelancer');
 
-  let transactionHash = '';
-  try {
-    const { data: users } = await supabase
-      .from('users')
-      .select('id, wallet_address')
-      .in('id', [input.raterId, rateeId]);
+// Build dynamic insert query
+const baseColumns = ['contract_id', 'project_id', 'reviewer_id', 'reviewee_id', 'rating', 'comment', 'reviewer_role'];
+const baseValues: any[] = [input.contractId, contract.projectId, input.raterId, rateeId, input.rating, input.comment || null, reviewerRole];
+let paramCount = baseValues.length;
 
-    const rateeWallet = users?.find(u => u.id === rateeId)?.wallet_address;
+const optionalFields: { column: string; value: any }[] = [];
+if (input.workQuality !== undefined) {
+  optionalFields.push({ column: 'work_quality', value: input.workQuality });
+}
+if (input.communication !== undefined) {
+  optionalFields.push({ column: 'communication', value: input.communication });
+}
+if (input.professionalism !== undefined) {
+  optionalFields.push({ column: 'professionalism', value: input.professionalism });
+}
+if (input.wouldWorkAgain !== undefined) {
+  optionalFields.push({ column: 'would_work_again', value: input.wouldWorkAgain });
+}
 
-    if (rateeWallet) {
-      const { isWeb3Available } = await import('./web3-client.js');
-      if (!isWeb3Available()) {
-        logger.warn('Web3 not available, skipping blockchain sync', { reviewId: review.id });
-      } else {
-        const { getContractAddress } = await import('../config/contracts.js');
+const allColumns = [...baseColumns, ...optionalFields.map(f => f.column), 'created_at', 'updated_at'];
+const allValues = [...baseValues, ...optionalFields.map(f => f.value)];
+const placeholders = allValues.map((_, i) => `$${i + 1}`).join(', ') + ', NOW(), NOW()';
+
+const reviewResult = await pool.query(
+  `INSERT INTO reviews (${allColumns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+  allValues
+);
+
+if (reviewResult.rows.length === 0) {
+  logger.error('Failed to save rating', { contractId: input.contractId });
+  return {
+    success: false,
+    error: {
+      code: 'DATABASE_ERROR',
+      message: 'Failed to save rating',
+    },
+  };
+}
+
+const review = reviewResult.rows[0];
+
+let transactionHash = '';
+try {
+  const usersResult = await pool.query(
+    'SELECT id, wallet_address FROM users WHERE id = ANY($1)',
+    [[input.raterId, rateeId]]
+  );
+
+  const rateeWallet = usersResult.rows.find((u: any) => u.id === rateeId)?.wallet_address;
+
+  if (rateeWallet) {
+    const { isWeb3Available } = await import('./web3-client.js');
+    if (!isWeb3Available()) {
+      logger.warn('Web3 not available, skipping blockchain sync', { reviewId: review.id });
+    } else {
+      const { getContractAddress } = await import('../config/contracts.js');
         const reputationAddress = getContractAddress('reputation');
         logger.info('Attempting blockchain sync', {
           reviewId: review.id,
@@ -272,52 +277,49 @@ export async function getReputation(
   userId: string,
   decayLambda: number = 0.01
 ): Promise<ServiceResult<ReputationScore>> {
-  const supabase = getSupabaseServiceClient();
+  try {
+    const reviewsResult = await pool.query(
+      'SELECT * FROM reviews WHERE reviewee_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
 
-  const { data: reviews, error: reviewsError } = await supabase
-    .from('reviews')
-    .select('*')
-    .eq('reviewee_id', userId)
-    .order('created_at', { ascending: false });
+    const ratings: RatingData[] = reviewsResult.rows.map((r: any) => ({
+      id: r.id,
+      contractId: r.contract_id,
+      raterId: r.reviewer_id,
+      rateeId: r.reviewee_id,
+      rating: r.rating,
+      comment: r.comment || undefined,
+      timestamp: Math.floor(new Date(r.created_at).getTime() / 1000),
+      transactionHash: '',
+    }));
 
-  if (reviewsError) {
-    logger.error('Failed to fetch reviews for reputation', { error: reviewsError, userId });
+    const score = computeAggregateScore(ratings, decayLambda);
+
+    const averageRating = ratings.length > 0
+      ? Math.round((ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length) * 100) / 100
+      : 0;
+
+    return {
+      success: true,
+      data: {
+        userId,
+        score,
+        totalRatings: ratings.length,
+        averageRating,
+        ratings,
+      },
+    };
+  } catch (error) {
+    logger.error('Failed to get reputation', { error, userId });
     return {
       success: false,
       error: {
         code: 'DATABASE_ERROR',
-        message: 'Failed to fetch reviews',
+        message: 'Failed to get reputation',
       },
     };
   }
-
-  const ratings: RatingData[] = (reviews || []).map(r => ({
-    id: r.id,
-    contractId: r.contract_id,
-    raterId: r.reviewer_id,
-    rateeId: r.reviewee_id,
-    rating: r.rating,
-    comment: r.comment || undefined,
-    timestamp: Math.floor(new Date(r.created_at).getTime() / 1000),
-    transactionHash: '',
-  }));
-
-  const score = computeAggregateScore(ratings, decayLambda);
-
-  const averageRating = ratings.length > 0
-    ? Math.round((ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length) * 100) / 100
-    : 0;
-
-  return {
-    success: true,
-    data: {
-      userId,
-      score,
-      totalRatings: ratings.length,
-      averageRating,
-      ratings,
-    },
-  };
 }
 
 /**
@@ -346,50 +348,59 @@ function computeAggregateScore(ratings: RatingData[], decayLambda: number = 0.01
 export async function getWorkHistory(
   userId: string
 ): Promise<ServiceResult<WorkHistoryEntry[]>> {
-  const supabase = getSupabaseServiceClient();
+  try {
+    const contractsResult = await contractRepository.getUserContracts(userId);
+    const contractEntities = contractsResult.items;
 
-  const contractsResult = await contractRepository.getUserContracts(userId);
-  const contractEntities = contractsResult.items;
+    const completedContracts = contractEntities.filter(c => c.status === 'completed');
 
-  const completedContracts = contractEntities.filter(c => c.status === 'completed');
+    const userReviewsResult = await pool.query(
+      'SELECT * FROM reviews WHERE reviewee_id = $1',
+      [userId]
+    );
 
-  const { data: userReviews } = await supabase
-    .from('reviews')
-    .select('*')
-    .eq('reviewee_id', userId);
+    const workHistory: WorkHistoryEntry[] = [];
 
-  const workHistory: WorkHistoryEntry[] = [];
+    for (const contractEntity of completedContracts) {
+      const contract = mapContractFromEntity(contractEntity);
 
-  for (const contractEntity of completedContracts) {
-    const contract = mapContractFromEntity(contractEntity);
+      const role: 'freelancer' | 'employer' =
+        contract.freelancerId === userId ? 'freelancer' : 'employer';
 
-    const role: 'freelancer' | 'employer' =
-      contract.freelancerId === userId ? 'freelancer' : 'employer';
+      const projectEntity = await projectRepository.getProjectById(contract.projectId);
+      const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
-    const projectEntity = await projectRepository.getProjectById(contract.projectId);
-    const projectTitle = projectEntity?.title ?? 'Unknown Project';
+      const receivedRating = userReviewsResult.rows.find((r: any) => r.contract_id === contract.id);
 
-    const receivedRating = userReviews?.find(r => r.contract_id === contract.id);
+      workHistory.push({
+        contractId: contract.id,
+        projectId: contract.projectId,
+        projectTitle,
+        role,
+        completedAt: contract.updatedAt,
+        rating: receivedRating?.rating,
+        ratingComment: receivedRating?.comment,
+      });
+    }
 
-    workHistory.push({
-      contractId: contract.id,
-      projectId: contract.projectId,
-      projectTitle,
-      role,
-      completedAt: contract.updatedAt,
-      rating: receivedRating?.rating,
-      ratingComment: receivedRating?.comment,
-    });
+    workHistory.sort((a, b) =>
+      new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
+    );
+
+    return {
+      success: true,
+      data: workHistory,
+    };
+  } catch (error) {
+    logger.error('Failed to get work history', { error, userId });
+    return {
+      success: false,
+      error: {
+        code: 'DATABASE_ERROR',
+        message: 'Failed to get work history',
+      },
+    };
   }
-
-  workHistory.sort((a, b) =>
-    new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
-  );
-
-  return {
-    success: true,
-    data: workHistory,
-  };
 }
 
 /**
@@ -398,28 +409,37 @@ export async function getWorkHistory(
 export async function getContractRatings(
   contractId: string
 ): Promise<ServiceResult<RatingData[]>> {
-  const supabase = getSupabaseServiceClient();
+  try {
+    const reviewsResult = await pool.query(
+      'SELECT * FROM reviews WHERE contract_id = $1',
+      [contractId]
+    );
 
-  const { data: reviews } = await supabase
-    .from('reviews')
-    .select('*')
-    .eq('contract_id', contractId);
+    const ratings: RatingData[] = reviewsResult.rows.map((r: any) => ({
+      id: r.id,
+      contractId: r.contract_id,
+      raterId: r.reviewer_id,
+      rateeId: r.reviewee_id,
+      rating: r.rating,
+      comment: r.comment || undefined,
+      timestamp: Math.floor(new Date(r.created_at).getTime() / 1000),
+      transactionHash: '',
+    }));
 
-  const ratings: RatingData[] = (reviews || []).map(r => ({
-    id: r.id,
-    contractId: r.contract_id,
-    raterId: r.reviewer_id,
-    rateeId: r.reviewee_id,
-    rating: r.rating,
-    comment: r.comment || undefined,
-    timestamp: Math.floor(new Date(r.created_at).getTime() / 1000),
-    transactionHash: '',
-  }));
-
-  return {
-    success: true,
-    data: ratings,
-  };
+    return {
+      success: true,
+      data: ratings,
+    };
+  } catch (error) {
+    logger.error('Failed to get contract ratings', { error, contractId });
+    return {
+      success: false,
+      error: {
+        code: 'DATABASE_ERROR',
+        message: 'Failed to get contract ratings',
+      },
+    };
+  }
 }
 
 /**
@@ -430,15 +450,14 @@ export async function canUserRate(
   rateeId: string,
   contractId: string
 ): Promise<ServiceResult<{ canRate: boolean; reason?: string }>> {
-  const supabase = getSupabaseServiceClient();
-
-  const contractEntity = await contractRepository.getContractById(contractId);
-  if (!contractEntity) {
-    return {
-      success: true,
-      data: { canRate: false, reason: 'Contract not found' },
-    };
-  }
+  try {
+    const contractEntity = await contractRepository.getContractById(contractId);
+    if (!contractEntity) {
+      return {
+        success: true,
+        data: { canRate: false, reason: 'Contract not found' },
+      };
+    }
   const contract = mapContractFromEntity(contractEntity);
 
   if (contract.status !== 'completed') {
@@ -469,14 +488,12 @@ export async function canUserRate(
     };
   }
 
-  const { data: existingReview } = await supabase
-    .from('reviews')
-    .select('id')
-    .eq('contract_id', contractId)
-    .eq('reviewer_id', raterId)
-    .single();
+  const existingReviewResult = await pool.query(
+    'SELECT id FROM reviews WHERE contract_id = $1 AND reviewer_id = $2',
+    [contractId, raterId]
+  );
 
-  if (existingReview) {
+  if (existingReviewResult.rows.length > 0) {
     return {
       success: true,
       data: { canRate: false, reason: 'You have already rated this user for this contract' },
@@ -487,6 +504,16 @@ export async function canUserRate(
     success: true,
     data: { canRate: true },
   };
+  } catch (error) {
+    logger.error('Failed to check if user can rate', { error, raterId, rateeId, contractId });
+    return {
+      success: false,
+      error: {
+        code: 'DATABASE_ERROR',
+        message: 'Failed to check rating eligibility',
+      },
+    };
+  }
 }
 
 // --- Former review-service.ts functions ---
@@ -495,77 +522,76 @@ export async function canUserRate(
  * Get review by ID
  */
 export async function getReviewById(reviewId: string): Promise<ServiceResult<Review>> {
-  const supabase = getSupabaseServiceClient();
+  try {
+    const result = await pool.query(
+      'SELECT * FROM reviews WHERE id = $1',
+      [reviewId]
+    );
 
-  const { data, error } = await supabase
-    .from('reviews')
-    .select('*')
-    .eq('id', reviewId)
-    .single();
+    if (result.rows.length === 0) {
+      return {
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Review not found' },
+      };
+    }
 
-  if (error || !data) {
+    return {
+      success: true,
+      data: mapReviewFromEntity(result.rows[0] as ReviewEntity),
+    };
+  } catch (error) {
+    logger.error('Failed to get review by ID', { error, reviewId });
     return {
       success: false,
-      error: { code: 'NOT_FOUND', message: 'Review not found' },
+      error: { code: 'DATABASE_ERROR', message: 'Failed to fetch review' },
     };
   }
-
-  return {
-    success: true,
-    data: mapReviewFromEntity(data as ReviewEntity),
-  };
 }
 
 /**
  * Get reviews for a user (as reviewee)
  */
 export async function getUserReviews(userId: string): Promise<ServiceResult<Review[]>> {
-  const supabase = getSupabaseServiceClient();
+  try {
+    const result = await pool.query(
+      'SELECT * FROM reviews WHERE reviewee_id = $1 ORDER BY created_at DESC',
+      [userId]
+    );
 
-  const { data, error } = await supabase
-    .from('reviews')
-    .select('*')
-    .eq('reviewee_id', userId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
+    return {
+      success: true,
+      data: result.rows.map((r: any) => mapReviewFromEntity(r as ReviewEntity)),
+    };
+  } catch (error) {
     logger.error('Failed to get user reviews', { error, userId });
     return {
       success: false,
       error: { code: 'DATABASE_ERROR', message: 'Failed to fetch reviews' },
     };
   }
-
-  return {
-    success: true,
-    data: (data || []).map(r => mapReviewFromEntity(r as ReviewEntity)),
-  };
 }
 
 /**
  * Get reviews for a project
  */
 export async function getProjectReviews(projectId: string): Promise<ServiceResult<Review[]>> {
-  const supabase = getSupabaseServiceClient();
+  try {
+    const result = await pool.query(
+      'SELECT * FROM reviews WHERE project_id = $1 ORDER BY created_at DESC',
+      [projectId]
+    );
 
-  const { data, error } = await supabase
-    .from('reviews')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: false });
-
-  if (error) {
+    return {
+      success: true,
+      data: result.rows.map((r: any) => mapReviewFromEntity(r as ReviewEntity)),
+    };
+  } catch (error) {
     logger.error('Failed to get project reviews', { error, projectId });
     return {
       success: false,
       error: { code: 'DATABASE_ERROR', message: 'Failed to fetch reviews' },
     };
   }
-
-  return {
-    success: true,
-    data: (data || []).map(r => mapReviewFromEntity(r as ReviewEntity)),
-  };
 }
 
 function mapReviewFromEntity(entity: ReviewEntity): Review {

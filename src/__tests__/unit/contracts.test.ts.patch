@@ -1,0 +1,10 @@
+--- src/config/contracts.ts
++++ src/config/contracts.ts
+@@ -21,6 +21,7 @@
+ export function getContractAddress(contractName: keyof ContractAddresses): string | undefined {
+   const network = getCurrentNetwork();
+   
++  console.log("NETWORK: ", network);
+   const envMap: Record<keyof ContractAddresses, string> = {
+     reputation: 'REPUTATION',
+     escrow: 'ESCROW',

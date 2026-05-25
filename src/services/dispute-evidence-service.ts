@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type {
@@ -16,26 +16,26 @@ export async function submitEvidence(
   input: SubmitEvidenceInput
 ): Promise<ServiceResult<DisputeEvidence>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Verify dispute exists and user is involved
-    const { data: dispute, error: disputeError } = await supabase
-      .from('disputes')
-      .select('*, contracts!inner(freelancer_id, employer_id)')
-      .eq('id', input.disputeId)
-      .single();
+    const disputeResult = await pool.query(
+      `SELECT d.*, c.freelancer_id, c.employer_id 
+       FROM disputes d
+       INNER JOIN contracts c ON d.contract_id = c.id
+       WHERE d.id = $1`,
+      [input.disputeId]
+    );
 
-    if (disputeError || !dispute) {
+    if (disputeResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
       };
     }
 
-    const contract = dispute.contracts;
+    const dispute = disputeResult.rows[0];
     const isInvolved = 
-      contract.freelancer_id === input.submittedBy || 
-      contract.employer_id === input.submittedBy;
+      dispute.freelancer_id === input.submittedBy || 
+      dispute.employer_id === input.submittedBy;
 
     if (!isInvolved) {
       return {
@@ -45,21 +45,18 @@ export async function submitEvidence(
     }
 
     // Insert evidence
-    const { data: evidence, error: insertError } = await supabase
-      .from('dispute_evidence')
-      .insert({
-        dispute_id: input.disputeId,
-        submitted_by: input.submittedBy,
-        evidence_type: input.evidenceType,
-        file_url: input.fileUrl,
-        description: input.description,
-      })
-      .select()
-      .single();
+    const evidenceResult = await pool.query(
+      `INSERT INTO dispute_evidence (dispute_id, submitted_by, evidence_type, file_url, description, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+       RETURNING *`,
+      [input.disputeId, input.submittedBy, input.evidenceType, input.fileUrl, input.description]
+    );
 
-    if (insertError || !evidence) {
-      throw insertError || new Error('Failed to insert evidence');
+    if (evidenceResult.rows.length === 0) {
+      throw new Error('Failed to insert evidence');
     }
+
+    const evidence = evidenceResult.rows[0];
 
     // Notify arbiter if assigned
     if (dispute.arbiter_id) {
@@ -80,9 +77,9 @@ export async function submitEvidence(
     }
 
     // Notify the other party
-    const otherPartyId = contract.freelancer_id === input.submittedBy 
-      ? contract.employer_id 
-      : contract.freelancer_id;
+    const otherPartyId = dispute.freelancer_id === input.submittedBy 
+      ? dispute.employer_id 
+      : dispute.freelancer_id;
 
     const notificationResult = await createNotification({
       userId: otherPartyId,
@@ -122,26 +119,26 @@ export async function getDisputeEvidence(
   userId: string
 ): Promise<ServiceResult<DisputeEvidence[]>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Verify user is involved in dispute or is arbiter
-    const { data: dispute, error: disputeError } = await supabase
-      .from('disputes')
-      .select('*, contracts!inner(freelancer_id, employer_id)')
-      .eq('id', disputeId)
-      .single();
+    const disputeResult = await pool.query(
+      `SELECT d.*, c.freelancer_id, c.employer_id 
+       FROM disputes d
+       INNER JOIN contracts c ON d.contract_id = c.id
+       WHERE d.id = $1`,
+      [disputeId]
+    );
 
-    if (disputeError || !dispute) {
+    if (disputeResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
       };
     }
 
-    const contract = dispute.contracts;
+    const dispute = disputeResult.rows[0];
     const isAuthorized = 
-      contract.freelancer_id === userId || 
-      contract.employer_id === userId ||
+      dispute.freelancer_id === userId || 
+      dispute.employer_id === userId ||
       dispute.arbiter_id === userId;
 
     if (!isAuthorized) {
@@ -152,15 +149,12 @@ export async function getDisputeEvidence(
     }
 
     // Get all evidence
-    const { data: evidence, error: evidenceError } = await supabase
-      .from('dispute_evidence')
-      .select('*')
-      .eq('dispute_id', disputeId)
-      .order('created_at', { ascending: true });
+    const evidenceResult = await pool.query(
+      'SELECT * FROM dispute_evidence WHERE dispute_id = $1 ORDER BY created_at ASC',
+      [disputeId]
+    );
 
-    if (evidenceError) throw evidenceError;
-
-    return { success: true, data: (evidence || []) as DisputeEvidence[] };
+    return { success: true, data: evidenceResult.rows as DisputeEvidence[] };
   } catch (error) {
     logger.error('Failed to get dispute evidence:', error);
     return {
@@ -181,21 +175,20 @@ export async function deleteEvidence(
   userId: string
 ): Promise<ServiceResult<void>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get evidence
-    const { data: evidence, error: evidenceError } = await supabase
-      .from('dispute_evidence')
-      .select('*')
-      .eq('id', evidenceId)
-      .single();
+    const evidenceResult = await pool.query(
+      'SELECT * FROM dispute_evidence WHERE id = $1',
+      [evidenceId]
+    );
 
-    if (evidenceError || !evidence) {
+    if (evidenceResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'EVIDENCE_NOT_FOUND', message: 'Evidence not found' },
       };
     }
+
+    const evidence = evidenceResult.rows[0];
 
     // Check ownership
     if (evidence.submitted_by !== userId) {
@@ -214,12 +207,10 @@ export async function deleteEvidence(
     }
 
     // Delete evidence
-    const { error: deleteError } = await supabase
-      .from('dispute_evidence')
-      .delete()
-      .eq('id', evidenceId);
-
-    if (deleteError) throw deleteError;
+    await pool.query(
+      'DELETE FROM dispute_evidence WHERE id = $1',
+      [evidenceId]
+    );
 
     logger.info(`Evidence ${evidenceId} deleted by user ${userId}`);
 
@@ -243,26 +234,26 @@ export async function verifyEvidence(
   input: VerifyEvidenceInput
 ): Promise<ServiceResult<DisputeEvidence>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get evidence and dispute
-    const { data: evidence, error: evidenceError } = await supabase
-      .from('dispute_evidence')
-      .select('*, disputes!inner(*)')
-      .eq('id', input.evidenceId)
-      .single();
+    const evidenceResult = await pool.query(
+      `SELECT de.*, d.arbiter_id, d.id as dispute_id
+       FROM dispute_evidence de
+       INNER JOIN disputes d ON de.dispute_id = d.id
+       WHERE de.id = $1`,
+      [input.evidenceId]
+    );
 
-    if (evidenceError || !evidence) {
+    if (evidenceResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'EVIDENCE_NOT_FOUND', message: 'Evidence not found' },
       };
     }
 
-    const dispute = evidence.disputes;
+    const evidence = evidenceResult.rows[0];
 
     // Check if user is arbiter
-    if (dispute.arbiter_id !== input.verifiedBy) {
+    if (evidence.arbiter_id !== input.verifiedBy) {
       return {
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'Only the assigned arbiter can verify evidence' },
@@ -270,20 +261,19 @@ export async function verifyEvidence(
     }
 
     // Update evidence
-    const { data: updated, error: updateError } = await supabase
-      .from('dispute_evidence')
-      .update({
-        verified_by: input.verifiedBy,
-        verified_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', input.evidenceId)
-      .select()
-      .single();
+    const updateResult = await pool.query(
+      `UPDATE dispute_evidence 
+       SET verified_by = $1, verified_at = NOW(), updated_at = NOW()
+       WHERE id = $2
+       RETURNING *`,
+      [input.verifiedBy, input.evidenceId]
+    );
 
-    if (updateError || !updated) {
-      throw updateError || new Error('Failed to verify evidence');
+    if (updateResult.rows.length === 0) {
+      throw new Error('Failed to verify evidence');
     }
+
+    const updated = updateResult.rows[0];
 
     logger.info(`Evidence ${input.evidenceId} verified by arbiter ${input.verifiedBy}`);
 

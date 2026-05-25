@@ -41,7 +41,8 @@ The platform supports UN Sustainable Development Goals:
 | Layer | Technology |
 |-------|------------|
 | Backend | Node.js, Express, TypeScript |
-| Database | Supabase (PostgreSQL) |
+| Database | PostgreSQL |
+| Storage | Appwrite |
 | Blockchain | Ethereum (Solidity), Hardhat, Ethers.js |
 | AI/ML | LLM API |
 | Documentation | Swagger/OpenAPI |
@@ -94,7 +95,6 @@ The platform supports UN Sustainable Development Goals:
 │   ├── routes/               # API route handlers
 │   ├── services/             # Business logic
 │   └── utils/                # Utility functions
-├── supabase/                 # Supabase schema and migrations
 ├── artifacts/                # Compiled contracts
 └── dist/                     # Compiled TypeScript
 ```
@@ -115,7 +115,8 @@ The platform supports UN Sustainable Development Goals:
 ### Prerequisites
 - Node.js 20+
 - pnpm 8+ (fast, disk space efficient package manager)
-- Supabase account (https://supabase.com)
+- PostgreSQL database
+- Appwrite account (https://appwrite.io)
 - Ethereum wallet (for blockchain features)
 - LLM API key (for AI features)
 - Docker (optional, for containerized deployment)
@@ -139,12 +140,17 @@ cp .env.example .env
 # Edit .env with your credentials
 ```
 
-3. **Set up Supabase database**
-- Create a new project at https://supabase.com
-- Run the SQL schema from `supabase/schema.sql` in the SQL Editor
-- Copy your project URL and anon key to `.env`
+3. **Set up PostgreSQL database**
+- Create a PostgreSQL database
+- Run migrations if available
+- Update DATABASE_URL in `.env`
 
-4. **Compile smart contracts**
+4. **Set up Appwrite**
+- Create a project at https://appwrite.io
+- Create storage buckets for file uploads
+- Copy your credentials to `.env`
+
+5. **Compile smart contracts**
 ```bash
 pnpm run compile
 ```
@@ -181,9 +187,10 @@ docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 |----------|-------------|
 | `PORT` | Server port (default: 7860) |
 | `NODE_ENV` | Environment (development/production/test) |
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Supabase anonymous key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (optional) |
+| `DATABASE_URL` | PostgreSQL connection string |
+| `APPWRITE_ENDPOINT` | Appwrite API endpoint |
+| `APPWRITE_PROJECT_ID` | Appwrite project ID |
+| `APPWRITE_API_KEY` | Appwrite API key |
 | `JWT_SECRET` | Secret for JWT signing (min 32 chars) |
 | `JWT_EXPIRES_IN` | Access token expiry (e.g., 1h) |
 | `JWT_REFRESH_EXPIRES_IN` | Refresh token expiry (e.g., 7d) |
@@ -315,7 +322,7 @@ pnpm run test:watch
 
 #### 🔧 Additional Resources
 - [Scripts Documentation](scripts/README.md) - Utility scripts guide
-- [Database Documentation](supabase/README.md) - Database schema and migrations
+- [Database Documentation](appwrite/README.md) - Database schema and migrations
 - [Changelog](CHANGELOG.md) - Version history
 
 ## 🤝 Contributing

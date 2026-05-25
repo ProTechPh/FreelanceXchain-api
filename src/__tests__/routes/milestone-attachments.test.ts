@@ -4,46 +4,7 @@ import { fileURLToPath } from 'url';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Mock Supabase config
-jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
-  getSupabaseServiceClient: jest.fn(() => ({
-    storage: {
-      from: jest.fn(() => ({
-        upload: jest.fn(async () => ({ data: { path: 'test/path' }, error: null })),
-        remove: jest.fn(async () => ({ data: null, error: null })),
-        createSignedUrl: jest.fn(async () => ({ data: { signedUrl: 'https://example.com/signed' }, error: null })),
-        getPublicUrl: jest.fn(() => ({ data: { publicUrl: 'https://example.com/public' } })),
-      })),
-    },
-  })),
-  getSupabaseClient: jest.fn(() => ({})),
-  createPerRequestClient: jest.fn(() => ({})),
-  initializeDatabase: jest.fn(async () => {}),
-  TABLES: {
-    USERS: 'users',
-    FREELANCER_PROFILES: 'freelancer_profiles',
-    EMPLOYER_PROFILES: 'employer_profiles',
-    PROJECTS: 'projects',
-    PROPOSALS: 'proposals',
-    CONTRACTS: 'contracts',
-    DISPUTES: 'disputes',
-    SKILLS: 'skills',
-    SKILL_CATEGORIES: 'skill_categories',
-    NOTIFICATIONS: 'notifications',
-    KYC_VERIFICATIONS: 'kyc_verifications',
-    REVIEWS: 'reviews',
-    MESSAGES: 'messages',
-    PAYMENTS: 'payments',
-    AUDIT_LOG_ENTRIES: 'audit_log_entries',
-  },
-  STORAGE_BUCKETS: {
-    PROPOSAL_ATTACHMENTS: 'proposal-attachments',
-    PROJECT_ATTACHMENTS: 'project-attachments',
-    DISPUTE_EVIDENCE: 'dispute-evidence',
-    MILESTONE_DELIVERABLES: 'milestone-deliverables',
-    PROFILE_IMAGES: 'profile-images',
-  },
-}));
+// Mock Appwrite config
 
 // Mock the auth-middleware to bypass authentication
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -164,37 +125,16 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () 
   })),
 }));
 
-// Mock file upload utility
-jest.unstable_mockModule(resolveModule('src/utils/file-upload.ts'), () => ({
-  uploadFile: jest.fn(async (options: any) => ({
-    success: true,
-    url: `https://example.supabase.co/storage/v1/object/public/milestone-deliverables/${options.userId}/${options.folder}/${options.filename}`,
-    path: `${options.userId}/${options.folder}/${options.filename}`,
-  })),
-  deleteFile: jest.fn(async (bucket: string, path: string) => ({
-    success: true,
-  })),
-  getSignedUrl: jest.fn(async (bucket: string, path: string, expiresIn?: number) => ({
-    success: true,
-    url: `https://example.supabase.co/storage/v1/object/sign/${bucket}/${path}`,
-  })),
-  listUserFiles: jest.fn(async (bucket: string, userId: string, folder?: string) => ({
-    success: true,
-    files: [],
-  })),
-}));
-
-// Mock storage uploader utility
-jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+const storageUploaderMocks = {
   uploadFileToStorage: jest.fn(async (file: any, bucket: string, metadata: any) => ({
     success: true,
-    url: `https://example.supabase.co/storage/v1/object/public/${bucket}/${metadata.userId}/${file.originalname}`,
+    url: `https://example.appwrite.co/storage/v1/object/public/${bucket}/${metadata.userId}/${file.originalname}`,
     path: `${metadata.userId}/${file.originalname}`,
   })),
   uploadMultipleFiles: jest.fn(async (files: any[], bucket: string, metadata: any) => ({
     success: true,
-    files: files.map(f => ({
-      url: `https://example.supabase.co/storage/v1/object/public/${bucket}/${metadata.userId}/${f.originalname}`,
+    files: files.map((f: any) => ({
+      url: `https://example.appwrite.co/storage/v1/object/public/${bucket}/${metadata.userId}/${f.originalname}`,
       path: `${metadata.userId}/${f.originalname}`,
       filename: f.originalname,
     })),
@@ -204,7 +144,26 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => (
   })),
   extractFilePathFromUrl: jest.fn((url: string) => 'test/path'),
   cleanupUploadedFiles: jest.fn(async (urls: string[]) => ({ success: true })),
-}));
+  uploadFile: jest.fn(async (options: any) => ({
+    success: true,
+    url: `https://example.appwrite.co/storage/v1/object/public/milestone-deliverables/${options.userId}/${options.folder}/${options.filename}`,
+    path: `${options.userId}/${options.folder}/${options.filename}`,
+  })),
+  deleteFile: jest.fn(async (bucket: string, path: string) => ({
+    success: true,
+  })),
+  getSignedUrl: jest.fn(async (bucket: string, path: string, expiresIn?: number) => ({
+    success: true,
+    url: `https://example.appwrite.co/storage/v1/object/sign/${bucket}/${path}`,
+  })),
+  listUserFiles: jest.fn(async (bucket: string, userId: string, folder?: string) => ({
+    success: true,
+    files: [],
+  })),
+  extractFileIdFromUrl: jest.fn((url: string) => 'test-file-id'),
+};
+
+jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => storageUploaderMocks);
 
 // Mock contract repository
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -482,13 +441,13 @@ describe('Milestone Attachments API', () => {
       const deliverables = [
         {
           filename: 'project-source.zip',
-          url: 'https://example.supabase.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/project-source.zip',
+          url: 'https://example.appwrite.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/project-source.zip',
           size: 2048576,
           mimeType: 'application/zip',
         },
         {
           filename: 'documentation.pdf',
-          url: 'https://example.supabase.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/documentation.pdf',
+          url: 'https://example.appwrite.co/storage/v1/object/public/milestone-deliverables/user123/milestone-456/documentation.pdf',
           size: 1024000,
           mimeType: 'application/pdf',
         },

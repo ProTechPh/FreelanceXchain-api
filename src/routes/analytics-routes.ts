@@ -2,11 +2,12 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import {
-  getFreelancerAnalytics,
-  getEmployerAnalytics,
-  getSkillDemandTrends,
+import { 
+  getFreelancerAnalytics, 
+  getEmployerAnalytics, 
   getPlatformMetrics,
+  getAdminAnalytics,
+  getSkillTrends 
 } from '../services/analytics-service.js';
 
 const router = Router();
@@ -76,11 +77,12 @@ router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res
 });
 
 router.get('/skill-trends', apiRateLimiter, async (_req: Request, res: Response) => {
-  const result = await getSkillDemandTrends();
-
+  const result = await getSkillTrends();
+  
   if (!result.success) {
     res.status(400).json({
       error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
     });
     return;
   }

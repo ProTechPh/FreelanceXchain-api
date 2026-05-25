@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 
@@ -34,17 +34,19 @@ export type ReputationBreakdown = {
  */
 export async function getAggregatedScore(userId: string): Promise<ServiceResult<ReputationScore>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get all reviews for user
-    const { data: reviews, error: reviewsError } = await supabase
-      .from('reviews')
-      .select('*, contracts!inner(*, projects!inner(title))')
-      .eq('reviewee_id', userId);
+    const reviewsResult = await pool.query(
+      `SELECT r.*, p.title as project_title 
+       FROM reviews r
+       INNER JOIN contracts c ON r.contract_id = c.id
+       INNER JOIN projects p ON c.project_id = p.id
+       WHERE r.reviewee_id = $1`,
+      [userId]
+    );
 
-    if (reviewsError) throw reviewsError;
+    const reviews = reviewsResult.rows;
 
-    if (!reviews || reviews.length === 0) {
+    if (reviews.length === 0) {
       return {
         success: true,
         data: {
@@ -63,37 +65,40 @@ export async function getAggregatedScore(userId: string): Promise<ServiceResult<
 
     // Calculate averages
     const totalRatings = reviews.length;
-    const avgRating = reviews.reduce((sum, r) => sum + r.rating, 0) / totalRatings;
-    const avgWorkQuality = reviews.reduce((sum, r) => sum + (r.work_quality || 0), 0) / totalRatings;
-    const avgCommunication = reviews.reduce((sum, r) => sum + (r.communication || 0), 0) / totalRatings;
-    const avgProfessionalism = reviews.reduce((sum, r) => sum + (r.professionalism || 0), 0) / totalRatings;
+    const avgRating = reviews.reduce((sum: number, r: any) => sum + r.rating, 0) / totalRatings;
+    const avgWorkQuality = reviews.reduce((sum: number, r: any) => sum + (r.work_quality || 0), 0) / totalRatings;
+    const avgCommunication = reviews.reduce((sum: number, r: any) => sum + (r.communication || 0), 0) / totalRatings;
+    const avgProfessionalism = reviews.reduce((sum: number, r: any) => sum + (r.professionalism || 0), 0) / totalRatings;
     
-    const wouldWorkAgainCount = reviews.filter(r => r.would_work_again).length;
+    const wouldWorkAgainCount = reviews.filter((r: any) => r.would_work_again).length;
     const wouldWorkAgainPercentage = (wouldWorkAgainCount / totalRatings) * 100;
 
     // Get completed contracts count
-    const { count: completedCount } = await supabase
-      .from('contracts')
-      .select('*', { count: 'exact', head: true })
-      .eq('freelancer_id', userId)
-      .eq('status', 'completed');
+    const completedCountResult = await pool.query(
+      "SELECT COUNT(*) FROM contracts WHERE freelancer_id = $1 AND status = 'completed'",
+      [userId]
+    );
+    const completedCount = parseInt(completedCountResult.rows[0].count);
 
     // Calculate on-time delivery rate
-    const { data: milestones } = await supabase
-      .from('milestones')
-      .select('due_date, approved_at, contracts!inner(freelancer_id)')
-      .eq('contracts.freelancer_id', userId)
-      .eq('status', 'approved');
+    const milestonesResult = await pool.query(
+      `SELECT m.due_date, m.approved_at 
+       FROM milestones m
+       INNER JOIN contracts c ON m.contract_id = c.id
+       WHERE c.freelancer_id = $1 AND m.status = 'approved'`,
+      [userId]
+    );
+    const milestones = milestonesResult.rows;
 
     let onTimeCount = 0;
-    if (milestones && milestones.length > 0) {
-      onTimeCount = milestones.filter(m => {
+    if (milestones.length > 0) {
+      onTimeCount = milestones.filter((m: any) => {
         if (!m.approved_at || !m.due_date) return false;
         return new Date(m.approved_at) <= new Date(m.due_date);
       }).length;
     }
 
-    const onTimeDeliveryRate = milestones && milestones.length > 0
+    const onTimeDeliveryRate = milestones.length > 0
       ? (onTimeCount / milestones.length) * 100
       : 0;
 
@@ -128,22 +133,20 @@ export async function getAggregatedScore(userId: string): Promise<ServiceResult<
  */
 export async function getReputationBreakdown(userId: string): Promise<ServiceResult<ReputationBreakdown>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get all reviews
-    const { data: reviews, error: reviewsError } = await supabase
-      .from('reviews')
-      .select(`
-        *,
-        reviewer:users!reviews_reviewer_id_fkey(full_name),
-        projects!inner(title)
-      `)
-      .eq('reviewee_id', userId)
-      .order('created_at', { ascending: false });
+    const reviewsResult = await pool.query(
+      `SELECT r.*, u.name as reviewer_name, p.title as project_title 
+       FROM reviews r
+       LEFT JOIN users u ON r.reviewer_id = u.id
+       LEFT JOIN projects p ON r.project_id = p.id
+       WHERE r.reviewee_id = $1
+       ORDER BY r.created_at DESC`,
+      [userId]
+    );
 
-    if (reviewsError) throw reviewsError;
+    const reviews = reviewsResult.rows;
 
-    if (!reviews || reviews.length === 0) {
+    if (reviews.length === 0) {
       return {
         success: true,
         data: {
@@ -159,17 +162,17 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
 
     // Count ratings by star
     const breakdown = {
-      fiveStars: reviews.filter(r => r.rating === 5).length,
-      fourStars: reviews.filter(r => r.rating === 4).length,
-      threeStars: reviews.filter(r => r.rating === 3).length,
-      twoStars: reviews.filter(r => r.rating === 2).length,
-      oneStar: reviews.filter(r => r.rating === 1).length,
-      recentRatings: reviews.slice(0, 10).map(r => ({
+      fiveStars: reviews.filter((r: any) => r.rating === 5).length,
+      fourStars: reviews.filter((r: any) => r.rating === 4).length,
+      threeStars: reviews.filter((r: any) => r.rating === 3).length,
+      twoStars: reviews.filter((r: any) => r.rating === 2).length,
+      oneStar: reviews.filter((r: any) => r.rating === 1).length,
+      recentRatings: reviews.slice(0, 10).map((r: any) => ({
         rating: r.rating,
         comment: r.comment,
-        reviewerName: r.reviewer?.full_name || 'Anonymous',
-        projectTitle: r.projects?.title || 'Unknown Project',
-        createdAt: new Date(r.created_at),
+        reviewerName: r.reviewer_name || 'Anonymous',
+        projectTitle: r.project_title || 'Unknown Project',
+        createdAt: r.created_at,
       })),
     };
 
@@ -194,28 +197,24 @@ export async function getReputationHistory(
   months: number = 12
 ): Promise<ServiceResult<Array<{ month: string; averageRating: number; count: number }>>> {
   try {
-    const supabase = getSupabaseClient();
-
     const startDate = new Date();
     startDate.setMonth(startDate.getMonth() - months);
 
-    const { data: reviews, error: reviewsError } = await supabase
-      .from('reviews')
-      .select('rating, created_at')
-      .eq('reviewee_id', userId)
-      .gte('created_at', startDate.toISOString())
-      .order('created_at', { ascending: true });
+    const reviewsResult = await pool.query(
+      'SELECT rating, created_at FROM reviews WHERE reviewee_id = $1 AND created_at >= $2 ORDER BY created_at ASC',
+      [userId, startDate.toISOString()]
+    );
 
-    if (reviewsError) throw reviewsError;
+    const reviews = reviewsResult.rows;
 
-    if (!reviews || reviews.length === 0) {
+    if (reviews.length === 0) {
       return { success: true, data: [] };
     }
 
     // Group by month
     const monthlyData = new Map<string, { sum: number; count: number }>();
 
-    reviews.forEach(review => {
+    reviews.forEach((review: any) => {
       const date = new Date(review.created_at);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       
@@ -252,28 +251,25 @@ export async function getReputationLeaderboard(
   limit: number = 10
 ): Promise<ServiceResult<Array<{ userId: string; userName: string; averageRating: number; totalRatings: number }>>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get users with most reviews and highest ratings
-    const { data: topUsers, error } = await supabase
-      .from('reviews')
-      .select('reviewee_id, rating, users!reviews_reviewee_id_fkey(full_name)')
-      .limit(1000); // Get enough data to calculate
+    const topUsersResult = await pool.query(
+      `SELECT r.reviewee_id, r.rating, u.name as user_name
+       FROM reviews r
+       LEFT JOIN users u ON r.reviewee_id = u.id
+       LIMIT 1000`
+    );
 
-    if (error) throw error;
+    const topUsers = topUsersResult.rows;
 
-    if (!topUsers || topUsers.length === 0) {
+    if (topUsers.length === 0) {
       return { success: true, data: [] };
     }
 
     // Aggregate by user
     const userStats = new Map<string, { sum: number; count: number; name: string }>();
 
-    topUsers.forEach(review => {
-      const users = review.users as any;
-      const userName = Array.isArray(users) 
-        ? users[0]?.full_name || 'Unknown'
-        : users?.full_name || 'Unknown';
+    topUsers.forEach((review: any) => {
+      const userName = review.user_name || 'Unknown';
       const existing = userStats.get(review.reviewee_id) || { 
         sum: 0, 
         count: 0, 

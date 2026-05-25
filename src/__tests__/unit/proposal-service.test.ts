@@ -100,19 +100,20 @@ describe('Proposal Service - Property-Based Tests', () => {
     mockNotificationRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
-    // Mock Supabase RPC for atomic proposal acceptance
-    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    mockSupabaseClient.rpc = jest.fn(async (functionName: string, params: any) => {
-      if (functionName === 'accept_proposal_atomic') {
-        const proposalId = params.p_proposal_id;
+    // Mock pool.query for atomic proposal acceptance
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('accept_proposal_atomic')) {
+        const proposalId = params?.[0];
+        const employerId = params?.[1];
         const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) return { data: null, error: { message: 'Proposal not found' } };
+        if (!proposal) {
+          return { rows: [], rowCount: 0 };
+        }
         
-        // Update proposal status
         proposal.status = 'accepted';
         proposalStore.set(proposalId, proposal);
         
-        // Create contract with pending status (will be activated by proposal service)
         const contractId = 'contract-' + Date.now();
         const now = new Date().toISOString();
         const contract = {
@@ -120,7 +121,7 @@ describe('Proposal Service - Property-Based Tests', () => {
           proposal_id: proposalId,
           project_id: proposal.project_id,
           freelancer_id: proposal.freelancer_id,
-          employer_id: params.p_employer_id,
+          employer_id: employerId,
           total_amount: proposal.proposed_rate,
           status: 'pending',
           escrow_address: null,
@@ -129,7 +130,6 @@ describe('Proposal Service - Property-Based Tests', () => {
         };
         contractStore.set(contractId, contract);
         
-        // Reject other proposals for same project
         for (const [id, p] of proposalStore.entries()) {
           const otherProposal = p as any;
           if (otherProposal.project_id === proposal.project_id && 
@@ -140,9 +140,9 @@ describe('Proposal Service - Property-Based Tests', () => {
           }
         }
         
-        return { data: { success: true, contract_id: contractId }, error: null };
+        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1, contract_id: contractId, limit_reached: true };
       }
-      return { data: null, error: { message: 'Unsupported RPC function' } };
+      return { rows: [], rowCount: 0 };
     });
   });
 
@@ -384,18 +384,20 @@ describe('Proposal Service - Unit Tests', () => {
     mockNotificationRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
-    // Mock Supabase RPC for atomic proposal acceptance
-    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    mockSupabaseClient.rpc = jest.fn(async (functionName: string, params: any) => {
-      if (functionName === 'accept_proposal_atomic') {
-        const proposalId = params.p_proposal_id;
+    // Mock pool.query for atomic proposal acceptance
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('accept_proposal_atomic')) {
+        const proposalId = params?.[0];
+        const employerId = params?.[1];
         const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) return { data: null, error: { message: 'Proposal not found' } };
+        if (!proposal) {
+          return { rows: [], rowCount: 0 };
+        }
         
         proposal.status = 'accepted';
         proposalStore.set(proposalId, proposal);
         
-        // Create contract with pending status (will be activated by proposal service)
         const contractId = 'contract-' + Date.now();
         const now = new Date().toISOString();
         const contract = {
@@ -403,7 +405,7 @@ describe('Proposal Service - Unit Tests', () => {
           proposal_id: proposalId,
           project_id: proposal.project_id,
           freelancer_id: proposal.freelancer_id,
-          employer_id: params.p_employer_id,
+          employer_id: employerId,
           total_amount: proposal.proposed_rate,
           status: 'pending',
           escrow_address: null,
@@ -412,7 +414,6 @@ describe('Proposal Service - Unit Tests', () => {
         };
         contractStore.set(contractId, contract);
         
-        // Reject other proposals
         for (const [id, p] of proposalStore.entries()) {
           const otherProposal = p as any;
           if (otherProposal.project_id === proposal.project_id && 
@@ -423,9 +424,9 @@ describe('Proposal Service - Unit Tests', () => {
           }
         }
         
-        return { data: { success: true, contract_id: contractId }, error: null };
+        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1, contract_id: contractId, limit_reached: true };
       }
-      return { data: null, error: { message: 'Unsupported RPC function' } };
+      return { rows: [], rowCount: 0 };
     });
   });
 

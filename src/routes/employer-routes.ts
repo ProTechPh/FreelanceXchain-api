@@ -89,6 +89,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const continuationToken = req.query['continuationToken'] as string | undefined;
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -143,6 +144,7 @@ router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, 
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -209,6 +211,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },

@@ -1,7 +1,7 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
-export type { DisputeStatus } from '../models/dispute.js';
+import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
 import type { DisputeStatus } from '../models/dispute.js';
+
+export type { DisputeStatus };
 
 export type EvidenceEntity = {
   id: string;
@@ -31,9 +31,9 @@ export type DisputeEntity = {
   updated_at: string;
 };
 
-export class DisputeRepository extends BaseRepository<DisputeEntity> {
+export class DisputeRepository extends BaseRepositoryPg<DisputeEntity> {
   constructor() {
-    super(TABLES.DISPUTES);
+    super('disputes');
   }
 
   async createDispute(dispute: Omit<DisputeEntity, 'created_at' | 'updated_at'>): Promise<DisputeEntity> {
@@ -49,149 +49,192 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
   }
 
   async getDisputesByContract(contractId: string, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('contract_id', contractId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE contract_id = $1`;
+    const countResult = await this.pool.query(countQuery, [contractId]);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE contract_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to get disputes by contract: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as DisputeEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [contractId, limit, offset]);
+      return {
+        items: result.rows as DisputeEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get disputes by contract: ${error.message}`);
+    }
   }
 
   async getAllDisputesByContract(contractId: string): Promise<DisputeEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('contract_id', contractId)
-      .order('created_at', { ascending: false });
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE contract_id = $1
+      ORDER BY created_at DESC
+    `;
     
-    if (error) throw new Error(`Failed to get all disputes by contract: ${error.message}`);
-    return (data ?? []) as DisputeEntity[];
+    try {
+      const result = await this.pool.query(query, [contractId]);
+      return result.rows as DisputeEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get all disputes by contract: ${error.message}`);
+    }
   }
 
   async getDisputeByMilestone(milestoneId: string): Promise<DisputeEntity | null> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('milestone_id', milestoneId)
-      .neq('status', 'resolved')
-      .limit(1)
-      .maybeSingle();
-
-    if (error) return null;
-    return (data as DisputeEntity) ?? null;
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE milestone_id = $1 AND status != 'resolved'
+      LIMIT 1
+    `;
+    
+    try {
+      const result = await this.pool.query(query, [milestoneId]);
+      return result.rows[0] || null;
+    } catch (error: any) {
+      throw new Error(`Failed to get dispute by milestone: ${error.message}`);
+    }
   }
 
   async getDisputesByStatus(status: DisputeStatus, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('status', status)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = $1`;
+    const countResult = await this.pool.query(countQuery, [status]);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE status = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to get disputes by status: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as DisputeEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [status, limit, offset]);
+      return {
+        items: result.rows as DisputeEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get disputes by status: ${error.message}`);
+    }
   }
 
   async getDisputesByInitiator(initiatorId: string, options?: QueryOptions): Promise<PaginatedResult<DisputeEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('initiator_id', initiatorId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE initiator_id = $1`;
+    const countResult = await this.pool.query(countQuery, [initiatorId]);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE initiator_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to get disputes by initiator: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as DisputeEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [initiatorId, limit, offset]);
+      return {
+        items: result.rows as DisputeEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get disputes by initiator: ${error.message}`);
+    }
   }
 
   async getAllDisputes(options?: QueryOptions & { status?: string }): Promise<PaginatedResult<DisputeEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    let query = client
-      .from(this.tableName)
-      .select('*', { count: 'exact' });
+    let countQuery = `SELECT COUNT(*) FROM ${this.tableName}`;
+    let dataQuery = `SELECT * FROM ${this.tableName}`;
+    const params: any[] = [];
 
     if (options?.status) {
-      query = query.eq('status', options.status);
+      countQuery += ` WHERE status = $1`;
+      dataQuery += ` WHERE status = $1`;
+      params.push(options.status);
     }
 
-    const { data, error, count } = await query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    dataQuery += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
     
-    if (error) throw new Error(`Failed to get all disputes: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as DisputeEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const countResult = await this.pool.query(countQuery, params);
+      const total = parseInt(countResult.rows[0].count, 10);
+      
+      const result = await this.pool.query(dataQuery, [...params, limit, offset]);
+      
+      return {
+        items: result.rows as DisputeEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get all disputes: ${error.message}`);
+    }
   }
 
   async getDisputesByUserId(userId: string, options?: QueryOptions & { status?: string }): Promise<PaginatedResult<DisputeEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    // Get disputes where user is initiator OR part of the contract
-    let query = client
-      .from(this.tableName)
-      .select(`
-        *,
-        contracts!inner(employer_id, freelancer_id)
-      `, { count: 'exact' })
-      .or(`initiator_id.eq.${userId},contracts.employer_id.eq.${userId},contracts.freelancer_id.eq.${userId}`);
+    let whereClause = `
+      WHERE d.initiator_id = $1 
+         OR c.employer_id = $1 
+         OR c.freelancer_id = $1
+    `;
+    const params: any[] = [userId];
 
     if (options?.status) {
-      query = query.eq('status', options.status);
+      whereClause += ` AND d.status = $2`;
+      params.push(options.status);
     }
 
-    const { data: disputes, error, count } = await query
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `
+      SELECT COUNT(*) FROM ${this.tableName} d
+      JOIN contracts c ON d.contract_id = c.id
+      ${whereClause}
+    `;
+
+    const dataQuery = `
+      SELECT d.* FROM ${this.tableName} d
+      JOIN contracts c ON d.contract_id = c.id
+      ${whereClause}
+      ORDER BY d.created_at DESC
+      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
+    `;
     
-    if (error) throw new Error(`Failed to get disputes by user: ${error.message}`);
-    
-    return {
-      items: (disputes ?? []) as DisputeEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const countResult = await this.pool.query(countQuery, params);
+      const total = parseInt(countResult.rows[0].count, 10);
+      
+      const result = await this.pool.query(dataQuery, [...params, limit, offset]);
+      
+      return {
+        items: result.rows as DisputeEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get disputes by user: ${error.message}`);
+    }
   }
 }
 

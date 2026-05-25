@@ -5,9 +5,9 @@ import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository-pg.js';
 import { generateId } from '../utils/id.js';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 
 import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
@@ -328,27 +328,26 @@ export async function acceptProposal(
   const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
   const totalAmount = proposalRate + rushFee;
 
-  // RACE CONDITION FIX: Use atomic Supabase RPC to prevent double-accepting proposals
-  const { data: result, error: rpcError } = await getSupabaseServiceClient()
-    .rpc('accept_proposal_atomic', {
-      p_proposal_id: proposalId,
-      p_employer_id: employerId
-    });
+  // RACE CONDITION FIX: Use atomic PostgreSQL function to prevent double-accepting proposals
+  const result = await pool.query(
+    'SELECT accept_proposal_atomic($1, $2) as result',
+    [proposalId, employerId]
+  );
 
-  if (rpcError) {
-    logger.error('Failed to accept proposal (RPC)', { error: rpcError });
+  if (!result.rows[0]?.result) {
+    logger.error('Failed to accept proposal (RPC)');
     return {
       success: false,
       error: { 
-        code: rpcError.message.includes('already been accepted') ? 'ALREADY_ACCEPTED' : 'UPDATE_FAILED', 
-        message: rpcError.message 
+        code: 'UPDATE_FAILED', 
+        message: 'Failed to accept proposal or proposal already accepted' 
       },
     };
   }
 
   // Map the new values returned from the RPC
-  const createdContractId = result.contract_id;
-  const limitReached = result.limit_reached ?? true; // Default true for backward compat if RPC doesn't return it
+  const createdContractId = (result as any).contract_id;
+  const limitReached = (result as any).limit_reached ?? true; // Default true for backward compat if RPC doesn't return it
 
   // Get the updated entities
   const updatedProposalEntity = await proposalRepository.findProposalById(proposalId);

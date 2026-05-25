@@ -1,6 +1,6 @@
 /**
  * Simulated Blockchain Adapter
- * Uses Supabase database for simulated blockchain operations (no real blockchain)
+ * Uses Appwrite database for simulated blockchain operations (no real blockchain)
  */
 
 import {
@@ -24,11 +24,11 @@ import { EscrowParams } from '../blockchain-types.js';
 
 /**
  * Simulated Blockchain Adapter Implementation
- * Delegates to escrow-contract.ts which uses Supabase for simulation
+ * Delegates to escrow-contract.ts which uses Appwrite for simulation
  */
 export class SimulatedBlockchainAdapter implements IBlockchainAdapter {
   isAvailable(): boolean {
-    // Simulated mode is always available (uses Supabase)
+    // Simulated mode is always available (uses Appwrite)
     return true;
   }
 

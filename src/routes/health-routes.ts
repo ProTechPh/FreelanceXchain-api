@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 
 const router = Router();
 
@@ -22,9 +22,8 @@ router.get('/', async (_req: Request, res: Response) => {
   };
 
   try {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('users').select('id').limit(1);
-    health.services.database = error ? 'error' : 'ok';
+    await pool.query('SELECT 1');
+    health.services.database = 'ok';
   } catch {
     health.services.database = 'error';
   }
@@ -42,9 +41,7 @@ router.get('/', async (_req: Request, res: Response) => {
  */
 router.get('/ready', async (_req: Request, res: Response) => {
   try {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('users').select('id').limit(1);
-    if (error) throw error;
+    await pool.query('SELECT 1');
     res.status(200).json({ ready: true });
   } catch {
     res.status(503).json({ ready: false });

@@ -75,6 +75,13 @@ describe('Favorite Routes Integration Tests', () => {
 
       expect([200, 401]).toContain(response.status);
     });
+
+    it('should require authentication', async () => {
+      const response = await request(app)
+        .get('/api/favorites');
+
+      expect(response.status).toBe(401);
+    });
   });
 
   describe('DELETE /api/favorites/:targetType/:targetId', () => {
@@ -93,6 +100,13 @@ describe('Favorite Routes Integration Tests', () => {
 
       expect([400, 401]).toContain(response.status);
     });
+
+    it('should require authentication', async () => {
+      const response = await request(app)
+        .delete('/api/favorites/project/123e4567-e89b-12d3-a456-426614174000');
+
+      expect(response.status).toBe(401);
+    });
   });
 
   describe('GET /api/favorites/check/:targetType/:targetId', () => {
@@ -107,6 +121,21 @@ describe('Favorite Routes Integration Tests', () => {
         expect(response.body).toHaveProperty('isFavorited');
         expect(typeof response.body.isFavorited).toBe('boolean');
       }
+    });
+
+    it('should require authentication', async () => {
+      const response = await request(app)
+        .get('/api/favorites/check/project/123e4567-e89b-12d3-a456-426614174000');
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should validate UUID format', async () => {
+      const response = await request(app)
+        .get('/api/favorites/check/project/invalid-uuid')
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect([400, 401]).toContain(response.status);
     });
   });
 });

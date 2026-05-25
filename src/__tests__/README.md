@@ -40,7 +40,7 @@ OWASP Top 10 security validation.
 ### [Mocks](mocks/)
 Mock implementations for external dependencies.
 - Blockchain mocks
-- Supabase mocks
+- Appwrite mocks
 - Test setup utilities
 
 ### [Helpers](helpers/)
@@ -141,15 +141,15 @@ Mock implementations for external services.
 
 **Files:**
 - `blockchain-mocks.ts` - Blockchain and smart contract mocks
-- `supabase-mocks.ts` - Database operation mocks
+- `appwrite-mocks.ts` - Database operation mocks
 - `test-setup.ts` - Centralized test configuration
 
 **Usage:**
 ```typescript
-import { mockSupabase } from '../mocks/supabase-mocks.js';
+import { mockAppwrite } from '../mocks/appwrite-mocks.js';
 import { mockBlockchainClient } from '../mocks/blockchain-mocks.js';
 
-jest.mock('../../config/supabase.js', () => ({ supabase: mockSupabase }));
+jest.mock('../../config/database.js', () => ({ appwrite: mockAppwrite }));
 ```
 
 ---
@@ -321,15 +321,15 @@ afterAll(async () => {
 createdb freelancexchain_test
 
 # Apply schema
-psql -d freelancexchain_test -f supabase/schema.sql
+psql -d freelancexchain_test -f appwrite/schema.sql
 ```
 
 ### Environment Variables
 ```env
 # .env.test
 NODE_ENV=test
-SUPABASE_URL=http://localhost:54321
-SUPABASE_ANON_KEY=test-key
+APPWRITE_URL=http://localhost:54321
+APPWRITE_ANON_KEY=test-key
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/freelancexchain_test
 ```
 

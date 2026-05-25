@@ -1,5 +1,4 @@
-import { BaseRepository } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepositoryPg } from './base-repository-pg.js';
 
 export type EmployerProfileEntity = {
   id: string;
@@ -13,9 +12,9 @@ export type EmployerProfileEntity = {
   updated_at: string;
 };
 
-export class EmployerProfileRepository extends BaseRepository<EmployerProfileEntity> {
+export class EmployerProfileRepository extends BaseRepositoryPg<EmployerProfileEntity> {
   constructor() {
-    super(TABLES.EMPLOYER_PROFILES);
+    super('employer_profiles');
   }
 
   async createProfile(profile: Omit<EmployerProfileEntity, 'created_at' | 'updated_at'>): Promise<EmployerProfileEntity> {
@@ -43,15 +42,18 @@ export class EmployerProfileRepository extends BaseRepository<EmployerProfileEnt
   }
 
   async getProfilesByIndustry(industry: string): Promise<EmployerProfileEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('industry', industry)
-      .order('created_at', { ascending: false });
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE industry = $1
+      ORDER BY created_at DESC
+    `;
     
-    if (error) throw new Error(`Failed to get profiles by industry: ${error.message}`);
-    return (data ?? []) as EmployerProfileEntity[];
+    try {
+      const result = await this.pool.query(query, [industry]);
+      return result.rows as EmployerProfileEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get profiles by industry: ${error.message}`);
+    }
   }
 }
 

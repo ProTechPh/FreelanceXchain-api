@@ -10,7 +10,7 @@ import { uploadDisputeEvidence } from '../middleware/file-upload-middleware.js';
 import { clampLimit } from '../utils/index.js';
 import { fileUploadRateLimiter, apiRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadFileToStorage, cleanupUploadedFiles } from '../utils/storage-uploader.js';
-import { STORAGE_BUCKETS } from '../config/supabase.js';
+import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
 import {
   createDispute,
   submitEvidence,
@@ -549,7 +549,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
     }
     const mimeType = (file as any).detectedMimeType || file.mimetype;
     
-    // Upload file to Supabase Storage
+    // Upload file to Appwrite Storage
     const uploadResult = await uploadFileToStorage(
       file.buffer,
       file.originalname,

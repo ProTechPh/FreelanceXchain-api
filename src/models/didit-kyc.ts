@@ -154,7 +154,7 @@ export type DiditApiError = {
   };
 };
 
-// Local Database Types (Supabase)
+// Local Database Types (Appwrite)
 export type KycStatus = 'pending' | 'in_progress' | 'completed' | 'approved' | 'rejected' | 'expired';
 
 export type KycVerification = {

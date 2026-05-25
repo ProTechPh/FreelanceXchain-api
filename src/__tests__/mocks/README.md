@@ -5,7 +5,7 @@ Mock implementations for external services and dependencies used in tests.
 ## 📄 Mock Files
 
 - **blockchain-mocks.ts** - Blockchain and smart contract mocks
-- **supabase-mocks.ts** - Supabase database mocks
+- **appwrite-mocks.ts** - Appwrite database mocks
 - **test-setup.ts** - Centralized test setup and configuration
 
 ---
@@ -47,21 +47,21 @@ jest.mock('../../services/blockchain-client.js', () => ({
 
 ---
 
-### Supabase Mocks (`supabase-mocks.ts`)
+### Appwrite Mocks (`appwrite-mocks.ts`)
 
 #### Mock Database Operations
 ```typescript
-import { mockSupabase } from '../mocks/supabase-mocks.js';
+import { mockAppwrite } from '../mocks/appwrite-mocks.js';
 
-// Mock Supabase client
-jest.mock('../../config/supabase.js', () => ({
-  supabase: mockSupabase
+// Mock Appwrite client
+jest.mock('../../config/database.js', () => ({
+  appwrite: mockAppwrite
 }));
 ```
 
 #### Generate Mock Entities
 ```typescript
-import { generateMockEntity } from '../mocks/supabase-mocks.js';
+import { generateMockEntity } from '../mocks/appwrite-mocks.js';
 
 const mockUser = generateMockEntity();
 const mockProject = generateMockEntity();
@@ -70,13 +70,13 @@ const mockProject = generateMockEntity();
 #### Mock Query Responses
 ```typescript
 // Successful query
-mockSupabase.from('users').select().returns({
+mockAppwrite.from('users').select().returns({
   data: [mockUser],
   error: null
 });
 
 // Error response
-mockSupabase.from('users').select().returns({
+mockAppwrite.from('users').select().returns({
   data: null,
   error: { message: 'Not found' }
 });
@@ -110,11 +110,11 @@ jest.mock('../../services/web3-client.js', () => ({
 
 ```typescript
 import { jest, describe, it, expect } from '@jest/globals';
-import { mockSupabase } from '../mocks/supabase-mocks.js';
+import { mockAppwrite } from '../mocks/appwrite-mocks.js';
 import { mockBlockchainClient } from '../mocks/blockchain-mocks.js';
 
 // Mock modules
-jest.mock('../../config/supabase.js', () => ({ supabase: mockSupabase }));
+jest.mock('../../config/database.js', () => ({ appwrite: mockAppwrite }));
 jest.mock('../../services/blockchain-client.js', () => ({ 
   blockchainClient: mockBlockchainClient 
 }));
@@ -130,7 +130,7 @@ describe('MyService', () => {
 
 ```typescript
 // Override default mock behavior
-mockSupabase.from('users').select.mockResolvedValueOnce({
+mockAppwrite.from('users').select.mockResolvedValueOnce({
   data: [{ id: 'custom-id', email: 'custom@example.com' }],
   error: null
 });
@@ -149,7 +149,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   
   // Or reset specific mocks
-  mockSupabase.from.mockClear();
+  mockAppwrite.from.mockClear();
   mockBlockchainClient.getContract.mockClear();
 });
 ```
@@ -190,7 +190,7 @@ export const mockMyServiceResponses = {
 
 ### External Services
 - **Blockchain** - Ethereum, smart contracts
-- **Database** - Supabase, PostgreSQL
+- **Database** - Appwrite, PostgreSQL
 - **AI/LLM** - OpenAI, Claude
 - **KYC** - Didit verification
 - **Email** - Email service providers
@@ -212,8 +212,8 @@ it('should call mocked service', async () => {
   await myService.doSomething();
   
   // Verify mock was called
-  expect(mockSupabase.from).toHaveBeenCalledWith('users');
-  expect(mockSupabase.from).toHaveBeenCalledTimes(1);
+  expect(mockAppwrite.from).toHaveBeenCalledWith('users');
+  expect(mockAppwrite.from).toHaveBeenCalledTimes(1);
 });
 ```
 
@@ -223,8 +223,8 @@ it('should call mocked service', async () => {
 it('should call with correct arguments', async () => {
   await myService.createUser({ email: 'test@example.com' });
   
-  expect(mockSupabase.from).toHaveBeenCalledWith('users');
-  expect(mockSupabase.insert).toHaveBeenCalledWith(
+  expect(mockAppwrite.from).toHaveBeenCalledWith('users');
+  expect(mockAppwrite.insert).toHaveBeenCalledWith(
     expect.objectContaining({ email: 'test@example.com' })
   );
 });
@@ -238,16 +238,16 @@ it('should call with correct arguments', async () => {
 
 ```typescript
 // Log all calls to a mock
-console.log(mockSupabase.from.mock.calls);
-console.log(mockSupabase.from.mock.results);
+console.log(mockAppwrite.from.mock.calls);
+console.log(mockAppwrite.from.mock.results);
 ```
 
 ### Verify Mock Setup
 
 ```typescript
 // Check if mock is properly configured
-expect(mockSupabase.from).toBeDefined();
-expect(typeof mockSupabase.from).toBe('function');
+expect(mockAppwrite.from).toBeDefined();
+expect(typeof mockAppwrite.from).toBe('function');
 ```
 
 ### Reset and Retry

@@ -316,7 +316,7 @@ All endpoints require authentication via JWT bearer tokens, except for public en
 
 ## Authentication Endpoints
 
-The authentication system provides standard user registration and login functionality with JWT token management. It also supports OAuth integration with external providers (Google, GitHub, Azure, LinkedIn) through Supabase.
+The authentication system provides standard user registration and login functionality with JWT token management. It also supports OAuth integration with external providers (Google, GitHub, Azure, LinkedIn) through Appwrite.
 
 ```mermaid
 sequenceDiagram
@@ -2753,7 +2753,7 @@ The middleware implementation in FreelanceXchain follows several best practices 
 8. [Conclusion](#conclusion)
 
 ## Introduction
-The FreelanceXchain platform implements a comprehensive data model to support its decentralized freelance marketplace. This documentation details the core entities, their relationships, and the ORM mapping between TypeScript models and PostgreSQL schema. The system is built on Supabase, leveraging PostgreSQL for data persistence with Row Level Security (RLS) for access control. The architecture follows a repository pattern, separating data access logic from business logic and providing a clean interface for database operations.
+The FreelanceXchain platform implements a comprehensive data model to support its decentralized freelance marketplace. This documentation details the core entities, their relationships, and the ORM mapping between TypeScript models and PostgreSQL schema. The system is built on Appwrite, leveraging PostgreSQL for data persistence with Row Level Security (RLS) for access control. The architecture follows a repository pattern, separating data access logic from business logic and providing a clean interface for database operations.
 
 ## Core Data Models
 The FreelanceXchain platform consists of several interconnected data models that represent the core entities of the freelance marketplace. These models include User, Project, Proposal, Contract, Dispute, KYC, Notification, and supporting entities for skills management. The models are implemented in TypeScript with corresponding PostgreSQL tables, and the system uses a repository pattern to abstract database operations.
@@ -3280,7 +3280,7 @@ The BaseRepository class provides common CRUD operations and pagination function
 ```typescript
 export class BaseRepository<T extends BaseEntity> {
   protected tableName: TableName;
-  protected client: SupabaseClient | null = null;
+  protected client: AppwriteClient | null = null;
 
   constructor(tableName: TableName) {
     this.tableName = tableName;
@@ -3617,7 +3617,7 @@ B --> B10
 ```
 
 ## Authentication Service
-The authentication service handles user registration, login, token management, and OAuth integration. It validates credentials against Supabase Auth and maintains user profiles in the public.users table. The service implements password strength requirements and handles email verification workflows. For OAuth users, it facilitates role selection and wallet address association during registration. The service returns standardized AuthResult objects containing user information and tokens, or AuthError objects when operations fail.
+The authentication service handles user registration, login, token management, and OAuth integration. It validates credentials against Appwrite Auth and maintains user profiles in the public.users table. The service implements password strength requirements and handles email verification workflows. For OAuth users, it facilitates role selection and wallet address association during registration. The service returns standardized AuthResult objects containing user information and tokens, or AuthError objects when operations fail.
 
 ## Project Management Service
 The project service manages the lifecycle of freelance projects, from creation to deletion. It validates project inputs, ensures skill requirements reference active skills, and enforces business rules such as preventing modifications to projects with accepted proposals. The service supports milestone management, requiring that milestone amounts sum to the total project budget. It provides comprehensive search and filtering capabilities, allowing users to find projects by keyword, skills, budget range, and status. The service returns ProjectServiceResult objects that encapsulate operation outcomes.
@@ -3749,7 +3749,7 @@ The business logic layer of FreelanceXchain demonstrates a well-structured Servi
 
 ## Introduction
 
-The FreelanceXchain platform utilizes a Supabase PostgreSQL database to store all application data, providing a robust foundation for the blockchain-based freelance marketplace. The database schema is designed to support key features including user management, project lifecycle, contract execution, payment processing, and dispute resolution. This document provides comprehensive documentation of the database schema, detailing all tables, their relationships, indexing strategy, security policies, and performance considerations.
+The FreelanceXchain platform utilizes a Appwrite PostgreSQL database to store all application data, providing a robust foundation for the blockchain-based freelance marketplace. The database schema is designed to support key features including user management, project lifecycle, contract execution, payment processing, and dispute resolution. This document provides comprehensive documentation of the database schema, detailing all tables, their relationships, indexing strategy, security policies, and performance considerations.
 
 The schema implements a relational model with UUID primary keys for all tables, ensuring global uniqueness and preventing enumeration attacks. JSONB columns are strategically used for flexible data storage where schema flexibility is required, such as storing skills, experience, and milestone data. Row Level Security (RLS) is enabled on all tables to enforce data access controls based on user roles and ownership, providing a secure multi-tenant environment.
 
@@ -4312,7 +4312,7 @@ The predefined UUIDs ensure consistency across different environments (developme
 The database schema and configuration are optimized for performance in a high-traffic freelance marketplace environment. Several strategies are employed to ensure responsive queries and efficient data processing.
 
 ### Connection Pooling
-The application utilizes Supabase's built-in connection pooling to manage database connections efficiently. This reduces the overhead of establishing new connections for each request and prevents connection exhaustion under high load.
+The application utilizes Appwrite's built-in connection pooling to manage database connections efficiently. This reduces the overhead of establishing new connections for each request and prevents connection exhaustion under high load.
 
 ### Query Optimization
 The indexing strategy (documented in the Indexing Strategy section) is designed to optimize the most common query patterns, particularly:
@@ -4335,7 +4335,7 @@ Potential performance improvements include:
 
 ### Monitoring and Maintenance
 Regular database maintenance should include:
-- Monitoring query performance using Supabase's analytics tools
+- Monitoring query performance using Appwrite's analytics tools
 - Reviewing and optimizing slow queries
 - Updating table statistics to ensure optimal query planning
 - Managing index bloat and vacuuming tables as needed

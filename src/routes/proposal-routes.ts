@@ -5,7 +5,7 @@ import { uploadProposalAttachments } from '../middleware/file-upload-middleware.
 import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
-import { STORAGE_BUCKETS } from '../config/supabase.js';
+import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
 
 import {
   submitProposal,
@@ -35,7 +35,7 @@ const router = Router();
  *         url:
  *           type: string
  *           format: uri
- *           description: Supabase Storage URL of the uploaded file
+ *           description: Appwrite Storage URL of the uploaded file
  *         filename:
  *           type: string
  *           description: Original filename
@@ -270,7 +270,7 @@ async function processMultipartProposal(req: Request, res: Response) {
     });
   }
   
-  // Upload files to Supabase Storage
+  // Upload files to Appwrite Storage
   const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS, userId);
   
   // Check for upload failures

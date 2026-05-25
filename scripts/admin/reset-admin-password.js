@@ -1,18 +1,21 @@
 import bcrypt from 'bcrypt';
-import { createClient } from '@supabase/supabase-js';
+import pg from 'pg';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+const { Pool } = pg;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env');
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  console.error('Error: DATABASE_URL must be set in .env');
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const pool = new Pool({
+  connectionString: databaseUrl,
+});
 
 async function resetAdminPassword(email, newPassword) {
   try {
@@ -20,27 +23,25 @@ async function resetAdminPassword(email, newPassword) {
     const passwordHash = await bcrypt.hash(newPassword, 10);
     
     // Update the password in the database
-    const { data, error } = await supabase
-      .from('users')
-      .update({ password_hash: passwordHash })
-      .eq('email', email)
-      .select();
+    const result = await pool.query(
+      'UPDATE users SET password_hash = $1 WHERE email = $2 RETURNING id, email',
+      [passwordHash, email]
+    );
 
-    if (error) {
-      console.error('Error updating password:', error);
-      return;
-    }
-
-    if (!data || data.length === 0) {
+    if (result.rows.length === 0) {
       console.error('User not found with email:', email);
+      await pool.end();
       return;
     }
 
     console.log('✅ Password reset successfully!');
     console.log('Email:', email);
     // Password and hash are sensitive - do not log them
+    
+    await pool.end();
   } catch (err) {
     console.error('Error:', err);
+    await pool.end();
   }
 }
 

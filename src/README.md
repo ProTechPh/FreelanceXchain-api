@@ -25,7 +25,7 @@ Application configuration and initialization.
 
 **Files:**
 - **env.ts** - Environment variable validation and typing
-- **supabase.ts** - Supabase client configuration
+- **appwrite.ts** - Appwrite client configuration
 - **swagger.ts** - OpenAPI/Swagger documentation setup
 - **logger.ts** - Winston logger configuration
 - **contracts.ts** - Smart contract addresses and ABIs
@@ -177,7 +177,7 @@ Data access layer for database operations.
 ```typescript
 class ProjectRepository {
   async findById(id: string): Promise<Project | null> {
-    const { data, error } = await supabase
+    const { data, error } = await appwrite
       .from('projects')
       .select('*')
       .eq('id', id)
@@ -234,7 +234,7 @@ Utility functions and helpers.
    ↓
 5. Repository Layer (database access)
    ↓
-6. Database (Supabase)
+6. Database (Appwrite)
    ↓
 7. Response (back through layers)
 ```
@@ -324,7 +324,7 @@ route-name.test.ts
 
 - **Express** - Web framework
 - **TypeScript** - Type safety
-- **Supabase** - Database and auth
+- **Appwrite** - Database and auth
 - **Ethers.js** - Blockchain interaction
 - **Winston** - Logging
 - **Joi/Zod** - Validation
@@ -362,7 +362,7 @@ pnpm run lint
 - **Input Validation** - All inputs validated at route level
 - **Authentication** - JWT tokens required for protected routes
 - **Authorization** - RBAC enforced in middleware
-- **SQL Injection** - Prevented by Supabase parameterized queries
+- **SQL Injection** - Prevented by Appwrite parameterized queries
 - **XSS Protection** - Input sanitization and output encoding
 - **Rate Limiting** - API rate limits enforced
 - **CORS** - Configured for allowed origins only

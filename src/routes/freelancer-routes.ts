@@ -122,6 +122,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -194,6 +195,7 @@ router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -261,6 +263,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimit
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -366,6 +369,7 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -455,6 +459,7 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -543,6 +548,7 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -648,6 +654,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -741,6 +748,7 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },

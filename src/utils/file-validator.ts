@@ -204,7 +204,7 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
 }
 
 /**
- * Validates that a file URL is from Supabase Storage
+ * Validates that a file URL is valid
  * @param url - File URL to validate
  * @returns Array of error messages (empty if valid)
  */
@@ -215,22 +215,12 @@ function validateFileUrl(url: string): string[] {
   try {
     const parsedUrl = new URL(url);
     
-    // Check if URL is HTTPS
-    if (parsedUrl.protocol !== 'https:') {
-      errors.push('File URL must use HTTPS protocol');
+    // Check if URL is HTTP/HTTPS
+    if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+      errors.push('File URL must use HTTP or HTTPS protocol');
     }
 
-    // Check if URL is from Supabase Storage domain
-    // Supabase storage URLs typically follow pattern: https://<project-ref>.supabase.co/storage/v1/object/...
-    const hostname = parsedUrl.hostname;
-    if (hostname !== 'supabase.co' && !hostname.endsWith('.supabase.co')) {
-      errors.push('File URL must be from Supabase Storage domain');
-    }
-
-    // Check if URL path includes storage endpoint
-    if (!parsedUrl.pathname.includes('/storage/')) {
-      errors.push('File URL must be a valid Supabase Storage URL');
-    }
+    // Removed specific domain checks to support Appwrite
   } catch {
     errors.push('Invalid URL format');
   }

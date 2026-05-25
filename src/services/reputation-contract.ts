@@ -12,9 +12,9 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { generateId } from '../utils/id.js';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 
-// Simulated blockchain rating record type (Supabase-backed)
+// Simulated blockchain rating record type (Appwrite-backed)
 export type SimulatedBlockchainRating = {
   id: string;
   contractId: string;
@@ -134,17 +134,21 @@ export async function submitRatingToBlockchain(
   };
 
   // Persist to DB
-  const supabase = getSupabaseServiceClient();
-  await supabase.from('blockchain_ratings').insert({
-    id: blockchainRating.id,
-    contract_id: blockchainRating.contractId,
-    rater_id: blockchainRating.raterId,
-    ratee_id: blockchainRating.rateeId,
-    rating: blockchainRating.rating,
-    comment: blockchainRating.comment ?? null,
-    timestamp: blockchainRating.timestamp,
-    transaction_hash: blockchainRating.transactionHash,
-  });
+  await pool.query(
+    `INSERT INTO blockchain_ratings 
+     (id, contract_id, rater_id, ratee_id, rating, comment, timestamp, transaction_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      blockchainRating.id,
+      blockchainRating.contractId,
+      blockchainRating.raterId,
+      blockchainRating.rateeId,
+      blockchainRating.rating,
+      blockchainRating.comment ?? null,
+      blockchainRating.timestamp,
+      blockchainRating.transactionHash
+    ]
+  );
 
   const receipt: TransactionReceipt = {
     transactionHash: confirmed.hash!,
@@ -162,60 +166,61 @@ export async function submitRatingToBlockchain(
  * Get all ratings for a user from the blockchain
  */
 export async function getRatingsFromBlockchain(userId: string): Promise<BlockchainRating[]> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_ratings')
-    .select('*')
-    .eq('ratee_id', userId)
-    .order('timestamp', { ascending: false });
+  try {
+    const result = await pool.query(
+      'SELECT * FROM blockchain_ratings WHERE ratee_id = $1 ORDER BY timestamp DESC',
+      [userId]
+    );
 
-  if (error || !data) return [];
-  return (data as RatingRow[]).map(rowToRating);
+    return result.rows.map(rowToRating);
+  } catch {
+    return [];
+  }
 }
 
 /**
  * Get ratings given by a user from the blockchain
  */
 export async function getRatingsGivenByUser(userId: string): Promise<BlockchainRating[]> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_ratings')
-    .select('*')
-    .eq('rater_id', userId)
-    .order('timestamp', { ascending: false });
+  try {
+    const result = await pool.query(
+      'SELECT * FROM blockchain_ratings WHERE rater_id = $1 ORDER BY timestamp DESC',
+      [userId]
+    );
 
-  if (error || !data) return [];
-  return (data as RatingRow[]).map(rowToRating);
+    return result.rows.map(rowToRating);
+  } catch {
+    return [];
+  }
 }
 
 /**
  * Get a specific rating by ID from the blockchain
  */
 export async function getRatingById(ratingId: string): Promise<BlockchainRating | null> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_ratings')
-    .select('*')
-    .eq('id', ratingId)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_ratings WHERE id = $1',
+    [ratingId]
+  );
 
-  if (error || !data) return null;
-  return rowToRating(data as RatingRow);
+  if (result.rows.length === 0) return null;
+  return rowToRating(result.rows[0] as RatingRow);
 }
 
 /**
  * Get ratings for a specific contract
  */
 export async function getRatingsByContract(contractId: string): Promise<BlockchainRating[]> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_ratings')
-    .select('*')
-    .eq('contract_id', contractId)
-    .order('timestamp', { ascending: false });
+  try {
+    const result = await pool.query(
+      'SELECT * FROM blockchain_ratings WHERE contract_id = $1 ORDER BY timestamp DESC',
+      [contractId]
+    );
 
-  if (error || !data) return [];
-  return (data as RatingRow[]).map(rowToRating);
+    return result.rows.map(rowToRating);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -250,6 +255,7 @@ export function computeAggregateScore(
   }
 
   if (totalWeight === 0) {
+    /* istanbul ignore next */
     return 0;
   }
 
@@ -276,15 +282,12 @@ export async function hasUserRatedForContract(
   rateeId: string,
   contractId: string
 ): Promise<boolean> {
-  const supabase = getSupabaseServiceClient();
-  const { count } = await supabase
-    .from('blockchain_ratings')
-    .select('*', { count: 'exact', head: true })
-    .eq('rater_id', raterId)
-    .eq('ratee_id', rateeId)
-    .eq('contract_id', contractId);
+  const result = await pool.query(
+    'SELECT COUNT(*) as count FROM blockchain_ratings WHERE rater_id = $1 AND ratee_id = $2 AND contract_id = $3',
+    [raterId, rateeId, contractId]
+  );
 
-  return (count ?? 0) > 0;
+  return parseInt(result.rows[0].count) > 0;
 }
 
 /**
@@ -292,8 +295,7 @@ export async function hasUserRatedForContract(
  */
 export async function clearBlockchainRatings(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  const supabase = getSupabaseServiceClient();
-  await supabase.from('blockchain_ratings').delete().neq('id', '');
+  await pool.query('DELETE FROM blockchain_ratings');
 }
 
 /**

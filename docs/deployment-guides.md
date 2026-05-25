@@ -62,13 +62,13 @@ At the heart of FreelanceXchain is an AI-powered skill matching engine that conn
 
 FreelanceXchain employs a multi-layered architecture that integrates traditional backend services with blockchain technology and AI capabilities. The system follows a microservices-inspired design with clear separation of concerns between different functional components.
 
-The platform is built on a Node.js/TypeScript backend with Express.js for the REST API, providing a robust foundation for handling business logic and user interactions. Supabase, a PostgreSQL-based database solution, serves as the primary data store for user profiles, projects, proposals, and other application data. This traditional backend layer handles authentication, authorization, and data management, ensuring efficient data retrieval and storage.
+The platform is built on a Node.js/TypeScript backend with Express.js for the REST API, providing a robust foundation for handling business logic and user interactions. Appwrite, a PostgreSQL-based database solution, serves as the primary data store for user profiles, projects, proposals, and other application data. This traditional backend layer handles authentication, authorization, and data management, ensuring efficient data retrieval and storage.
 
 The blockchain layer, built on Ethereum-compatible smart contracts, handles critical functions that require decentralization, immutability, and trustless execution. The core smart contracts include FreelanceEscrow.sol for milestone-based payments, FreelanceReputation.sol for on-chain reputation, and KYCVerification.sol for identity verification. These contracts are deployed on the Ethereum network (initially on testnets like Sepolia) and interact with the backend through Web3.js or Ethers.js libraries.
 
 The AI layer integrates with external LLM (Large Language Model) APIs to power the intelligent matching system. This layer processes natural language descriptions of projects and freelancer profiles to extract skills, analyze requirements, and generate recommendations. The AI system also performs gap analysis to identify skill deficiencies and suggest professional development opportunities for freelancers.
 
-Security is implemented at multiple levels, including HTTPS/TLS for transport security, JWT-based authentication with role-based access control, Supabase Row Level Security (RLS) for database security, and smart contract security measures like reentrancy guards and access modifiers. The architecture also includes comprehensive logging and monitoring to ensure system transparency and facilitate regulatory compliance.
+Security is implemented at multiple levels, including HTTPS/TLS for transport security, JWT-based authentication with role-based access control, Appwrite Row Level Security (RLS) for database security, and smart contract security measures like reentrancy guards and access modifiers. The architecture also includes comprehensive logging and monitoring to ensure system transparency and facilitate regulatory compliance.
 
 ## Key User Workflows
 
@@ -76,7 +76,7 @@ FreelanceXchain supports several key user workflows that cover the complete life
 
 ### Project Posting
 
-Employers begin by creating a project through the platform's API, specifying details such as title, description, required skills, budget, and deadline. The project-routes.ts implementation handles this workflow, validating input data and storing the project in the Supabase database. Employers can then define milestone-based payment schedules, with each milestone including a title, description, amount, and due date. The system validates that the sum of milestone amounts equals the total project budget. Once published, the project becomes visible to freelancers in the marketplace.
+Employers begin by creating a project through the platform's API, specifying details such as title, description, required skills, budget, and deadline. The project-routes.ts implementation handles this workflow, validating input data and storing the project in the Appwrite database. Employers can then define milestone-based payment schedules, with each milestone including a title, description, amount, and due date. The system validates that the sum of milestone amounts equals the total project budget. Once published, the project becomes visible to freelancers in the marketplace.
 
 ### Proposal Submission
 
@@ -88,7 +88,7 @@ When an employer accepts a proposal, the system automatically creates a smart co
 
 ### Milestone-Based Payments
 
-As work progresses, freelancers submit completed milestones through the platform. The payment-service.ts implementation handles this workflow, updating the project status and triggering notifications to the employer. Employers review the submitted work and approve milestones when satisfied. Upon approval, the smart contract automatically releases payment to the freelancer's wallet address. The system tracks all payment transactions on both the blockchain and in the Supabase database, providing a complete audit trail. If a milestone is disputed, the system initiates a dispute resolution process.
+As work progresses, freelancers submit completed milestones through the platform. The payment-service.ts implementation handles this workflow, updating the project status and triggering notifications to the employer. Employers review the submitted work and approve milestones when satisfied. Upon approval, the smart contract automatically releases payment to the freelancer's wallet address. The system tracks all payment transactions on both the blockchain and in the Appwrite database, providing a complete audit trail. If a milestone is disputed, the system initiates a dispute resolution process.
 
 ### Dispute Resolution
 
@@ -124,7 +124,7 @@ R[Dispute Service]
 S[Search Service]
 end
 subgraph "Data Layer"
-T[Supabase]
+T[Appwrite]
 U[Ethereum Network]
 V[AI/LLM API]
 end
@@ -153,12 +153,12 @@ S --> T
 ```mermaid
 flowchart TD
 A[Employer] --> |1. Create Project| B[Project Service]
-B --> C[Store in Supabase]
+B --> C[Store in Appwrite]
 C --> D[AI Matching Service]
 D --> E[Recommend to Freelancers]
 E --> F[Freelancer]
 F --> |2. Submit Proposal| G[Proposal Service]
-G --> H[Store in Supabase]
+G --> H[Store in Appwrite]
 H --> I[Notify Employer]
 I --> J[Employer]
 J --> |3. Accept Proposal| K[Contract Service]
@@ -277,7 +277,7 @@ The platform supports UN Sustainable Development Goals:
 2. [Prerequisites](#prerequisites)
 3. [Repository Setup](#repository-setup)
 4. [Environment Configuration](#environment-configuration)
-5. [Supabase Database Setup](#supabase-database-setup)
+5. [Appwrite Database Setup](#appwrite-database-setup)
 6. [Blockchain Development Environment](#blockchain-development-environment)
 7. [Running the Application](#running-the-application)
 8. [API Documentation Access](#api-documentation-access)
@@ -285,7 +285,7 @@ The platform supports UN Sustainable Development Goals:
 10. [Troubleshooting](#troubleshooting)
 
 ## Introduction
-This guide provides comprehensive instructions for setting up a development environment for FreelanceXchain, a blockchain-based freelance marketplace with AI skill matching. The setup process covers all necessary prerequisites, configuration steps, and environment initialization required to contribute to the project. This document will walk you through installing dependencies, configuring environment variables, setting up the Supabase database, initializing the blockchain development environment with Hardhat, and running the application in development mode.
+This guide provides comprehensive instructions for setting up a development environment for FreelanceXchain, a blockchain-based freelance marketplace with AI skill matching. The setup process covers all necessary prerequisites, configuration steps, and environment initialization required to contribute to the project. This document will walk you through installing dependencies, configuring environment variables, setting up the Appwrite database, initializing the blockchain development environment with Hardhat, and running the application in development mode.
 
 ## Prerequisites
 Before beginning the setup process, ensure you have the following tools and accounts installed or created:
@@ -293,7 +293,7 @@ Before beginning the setup process, ensure you have the following tools and acco
 - **Node.js 20+** - JavaScript runtime environment
 - **pnpm 8+** - Fast, disk space efficient package manager
 - **Docker** - Containerization platform for optional containerized deployment
-- **Supabase account** - Create a free account at https://supabase.com for database hosting
+- **Appwrite account** - Create a free account at https://appwrite.com for database hosting
 - **Ethereum wallet** - For blockchain interactions and deployment
 - **LLM API key** - Required for AI features and skill matching functionality
 - **Hardhat** - Ethereum development environment for smart contract compilation and deployment
@@ -304,9 +304,9 @@ node --version
 pnpm --version
 ```
 
-Install Docker by following the official installation guide for your operating system at https://docs.docker.com/get-docker/. The Supabase CLI can be installed globally using pnpm:
+Install Docker by following the official installation guide for your operating system at https://docs.docker.com/get-docker/. The Appwrite CLI can be installed globally using pnpm:
 ```bash
-pnpm install -g supabase
+pnpm install -g appwrite
 ```
 
 ## Repository Setup
@@ -323,7 +323,7 @@ cd FreelanceXchain
 pnpm install --frozen-lockfile
 ```
 
-This command will read the package.json file and install all dependencies listed in both the dependencies and devDependencies sections. The package.json file reveals that the project uses Node.js with TypeScript, Express for the backend framework, Supabase for the PostgreSQL database, and Hardhat for Ethereum development.
+This command will read the package.json file and install all dependencies listed in both the dependencies and devDependencies sections. The package.json file reveals that the project uses Node.js with TypeScript, Express for the backend framework, Appwrite for the PostgreSQL database, and Hardhat for Ethereum development.
 
 The project structure follows a modular architecture with distinct directories for contracts, scripts, source code, and documentation. The src directory contains the main application code organized into config, middleware, models, repositories, routes, services, and utils subdirectories.
 
@@ -341,10 +341,10 @@ cp .env.example .env
 - `PORT`: Server port (default: 7860)
 - `NODE_ENV`: Environment mode (development/production/test)
 
-**Supabase Configuration**
-- `SUPABASE_URL`: Your Supabase project URL
-- `SUPABASE_ANON_KEY`: Your Supabase anonymous key
-- `SUPABASE_SERVICE_ROLE_KEY`: Your Supabase service role key (optional)
+**Appwrite Configuration**
+- `APPWRITE_URL`: Your Appwrite project URL
+- `APPWRITE_ANON_KEY`: Your Appwrite anonymous key
+- `APPWRITE_SERVICE_ROLE_KEY`: Your Appwrite service role key (optional)
 
 **JWT Configuration**
 - `JWT_SECRET`: Secret key for JWT signing (minimum 32 characters)
@@ -365,12 +365,12 @@ cp .env.example .env
 
 The src/config/env.ts file contains validation logic that ensures required environment variables are present and properly formatted, throwing errors if any required variables are missing.
 
-## Supabase Database Setup
-Setting up the Supabase database involves creating a project, applying the schema, and seeding initial data.
+## Appwrite Database Setup
+Setting up the Appwrite database involves creating a project, applying the schema, and seeding initial data.
 
-1. Create a new project at https://supabase.com/dashboard
+1. Create a new project at https://appwrite.com/dashboard
 
-2. Apply the database schema by running the SQL commands from supabase/schema.sql in the Supabase SQL Editor. This schema file creates all necessary tables for the application, including:
+2. Apply the database schema by running the SQL commands from appwrite/schema.sql in the Appwrite SQL Editor. This schema file creates all necessary tables for the application, including:
    - Users and profile management
    - Projects and proposals
    - Contracts and payments
@@ -378,13 +378,13 @@ Setting up the Supabase database involves creating a project, applying the schem
    - Notifications and messages
    - KYC verifications and disputes
 
-3. Copy your project URL and anon key from the Supabase dashboard to your .env file:
+3. Copy your project URL and anon key from the Appwrite dashboard to your .env file:
 ```bash
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
+APPWRITE_URL=https://your-project.appwrite.co
+APPWRITE_ANON_KEY=your-anon-key
 ```
 
-4. Seed the database with initial skill data by running the commands from supabase/seed-skills.sql in the SQL Editor. This script inserts predefined skill categories (Web Development, Mobile Development, Data Science, DevOps, Design, Blockchain) and associated skills into the database.
+4. Seed the database with initial skill data by running the commands from appwrite/seed-skills.sql in the SQL Editor. This script inserts predefined skill categories (Web Development, Mobile Development, Data Science, DevOps, Design, Blockchain) and associated skills into the database.
 
 5. Enable Row Level Security (RLS) on all tables as defined in the schema.sql file, which includes policies for public read access and service role full access.
 
@@ -506,10 +506,10 @@ The linting configuration in eslint.config.js includes rules for TypeScript best
 This section addresses common setup issues and their solutions.
 
 **Database Connection Errors**
-- Verify Supabase URL and keys are correctly copied to .env
-- Ensure the schema.sql has been executed in the Supabase SQL Editor
+- Verify Appwrite URL and keys are correctly copied to .env
+- Ensure the schema.sql has been executed in the Appwrite SQL Editor
 - Check that Row Level Security (RLS) policies are properly configured
-- Verify network connectivity to Supabase
+- Verify network connectivity to Appwrite
 
 **Missing Dependencies**
 - Run `pnpm install --frozen-lockfile` to ensure all dependencies are installed
@@ -549,13 +549,13 @@ Refer to the comprehensive documentation in the docs directory for additional tr
 
 ## Core Technology Stack
 
-The FreelanceXchain platform leverages a modern technology stack combining blockchain, AI, and traditional web technologies to create a decentralized freelance marketplace. The architecture is built around TypeScript as the primary language, Express.js for REST API handling, Supabase for database and authentication, Hardhat for Ethereum smart contract development, and ethers.js for blockchain interaction.
+The FreelanceXchain platform leverages a modern technology stack combining blockchain, AI, and traditional web technologies to create a decentralized freelance marketplace. The architecture is built around TypeScript as the primary language, Express.js for REST API handling, Appwrite for database and authentication, Hardhat for Ethereum smart contract development, and ethers.js for blockchain interaction.
 
 TypeScript serves as the foundation for backend development, providing static typing that enhances code quality, maintainability, and developer productivity. The type safety offered by TypeScript reduces runtime errors and improves code documentation, making the codebase more robust and easier to understand.
 
 Express.js functions as the web application framework, handling REST API requests and responses. It provides a minimalist and flexible Node.js web application framework for building single-page, multi-page, and hybrid web applications. The framework's middleware architecture enables efficient request processing and response handling.
 
-Supabase acts as the PostgreSQL database provider and authentication system. It offers real-time capabilities through PostgreSQL's replication functionality and implements Row Level Security (RLS) for fine-grained access control. This allows the application to securely expose the database directly to clients while maintaining data integrity and privacy.
+Appwrite acts as the PostgreSQL database provider and authentication system. It offers real-time capabilities through PostgreSQL's replication functionality and implements Row Level Security (RLS) for fine-grained access control. This allows the application to securely expose the database directly to clients while maintaining data integrity and privacy.
 
 Hardhat serves as the Ethereum development environment, providing tools for compiling, testing, debugging, and deploying smart contracts. Its local blockchain testing capability enables developers to simulate Ethereum network conditions without incurring gas costs, facilitating rapid development and thorough testing of blockchain functionality.
 
@@ -568,7 +568,7 @@ The dependencies in the FreelanceXchain project are organized into distinct cate
 ### Core Frameworks
 The core frameworks form the foundation of the application:
 - **express**: Web application framework for handling HTTP requests and responses
-- **@supabase/supabase-js**: Client library for interacting with Supabase services
+- **@appwrite/appwrite-js**: Client library for interacting with Appwrite services
 - **typescript**: Programming language that adds static typing to JavaScript
 
 ### Blockchain Tools
@@ -606,11 +606,11 @@ The technology choices in FreelanceXchain are driven by specific requirements fo
 
 TypeScript's type safety provides significant benefits for a complex application like FreelanceXchain. By catching errors at compile time rather than runtime, TypeScript reduces bugs and improves code quality. The type system also serves as documentation, making the codebase more maintainable and easier for new developers to understand. This is particularly important in a system that handles financial transactions and sensitive user data.
 
-Supabase was selected over traditional database solutions due to its real-time capabilities and Row Level Security (RLS) features. The real-time functionality enables instant updates across clients when data changes, which is essential for features like notification systems and live project updates. RLS allows the application to implement fine-grained access control directly at the database level, reducing the need for complex application-level permission checks and minimizing the risk of unauthorized data access.
+Appwrite was selected over traditional database solutions due to its real-time capabilities and Row Level Security (RLS) features. The real-time functionality enables instant updates across clients when data changes, which is essential for features like notification systems and live project updates. RLS allows the application to implement fine-grained access control directly at the database level, reducing the need for complex application-level permission checks and minimizing the risk of unauthorized data access.
 
 Hardhat's local blockchain testing environment provides significant advantages for smart contract development. Developers can test contract functionality, edge cases, and failure scenarios without incurring gas costs on public networks. The ability to simulate different network conditions, mine blocks programmatically, and inspect transaction details enhances the testing process and ensures contract reliability before deployment to production networks.
 
-The combination of these technologies creates a robust foundation for a decentralized application that requires both traditional web functionality and blockchain integration. The architecture separates concerns effectively, with Supabase handling relational data and authentication, while the blockchain manages smart contracts for escrow, reputation, and dispute resolution.
+The combination of these technologies creates a robust foundation for a decentralized application that requires both traditional web functionality and blockchain integration. The architecture separates concerns effectively, with Appwrite handling relational data and authentication, while the blockchain manages smart contracts for escrow, reputation, and dispute resolution.
 
 ## Containerization Strategy
 
@@ -637,7 +637,7 @@ The AI integration is implemented through the ai-client.ts service, which handle
 
 The architecture includes fallback mechanisms when the AI service is unavailable. For skill matching, the system implements keyword-based matching as a fallback to the AI-powered analysis. Similarly, skill extraction includes a keyword-based fallback when the AI service cannot be reached. This ensures that core functionality remains available even when external services experience outages.
 
-The integration with Supabase extends beyond basic database operations to leverage its real-time capabilities. The application can subscribe to database changes, enabling features like instant notifications and live updates without requiring constant polling. This real-time functionality enhances the user experience by providing immediate feedback on actions taken within the platform.
+The integration with Appwrite extends beyond basic database operations to leverage its real-time capabilities. The application can subscribe to database changes, enabling features like instant notifications and live updates without requiring constant polling. This real-time functionality enhances the user experience by providing immediate feedback on actions taken within the platform.
 
 The blockchain integration through ethers.js connects to Ethereum networks via Infura or Alchemy, allowing the application to interact with smart contracts on various networks including mainnet, testnets, and local development chains. This flexibility supports development, testing, and production deployment across different environments.
 
@@ -709,10 +709,10 @@ The following environment variables are essential for FreelanceXchain operation:
 PORT=7860
 NODE_ENV=development
 
-# Supabase Configuration
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+# Appwrite Configuration
+APPWRITE_URL=https://your-project.appwrite.co
+APPWRITE_ANON_KEY=your-anon-key
+APPWRITE_SERVICE_ROLE_KEY=your-service-role-key
 
 # JWT Configuration
 JWT_SECRET=your-jwt-secret-key-min-32-chars-change-this
@@ -798,11 +798,11 @@ D --> E[Redirect HTTP to HTTPS]
 E --> F[Serve Production Swagger Docs]
 ```
 
-### Supabase Project Setup
+### Appwrite Project Setup
 
-For Supabase integration, create a new project and configure:
+For Appwrite integration, create a new project and configure:
 
-1. Database schema using `supabase/schema.sql`
+1. Database schema using `appwrite/schema.sql`
 2. Environment variables with project URL and keys
 3. Row Level Security (RLS) policies as defined in the schema
 4. Authentication settings for user management
@@ -894,10 +894,10 @@ The application provides a root endpoint for health checks:
 sequenceDiagram
 participant HealthCheck as Health Check System
 participant App as FreelanceXchain App
-participant Supabase as Supabase
+participant Appwrite as Appwrite
 HealthCheck->>App : GET /
-App->>Supabase : Test Database Connection
-Supabase-->>App : Connection Status
+App->>Appwrite : Test Database Connection
+Appwrite-->>App : Connection Status
 App-->>HealthCheck : 200 OK with status message
 ```
 
@@ -1337,7 +1337,7 @@ pnpm run blockchain:balance
 - Incremental backup: Every 6 hours
 - Retention: 30 days
 
-**Supabase Automated Backups**:
+**Appwrite Automated Backups**:
 - Point-in-time recovery available
 - Backup retention based on plan tier
 
@@ -1503,7 +1503,7 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 - **Escalation**: [Engineering Manager]
 
 ### External Contacts
-- **Supabase Support**: support@supabase.io
+- **Appwrite Support**: support@appwrite.io
 - **Blockchain RPC Provider**: [Provider Support]
 - **Security Incidents**: security@freelancexchain.com
 
@@ -1571,7 +1571,7 @@ This guide provides step-by-step instructions for deploying the new features to 
 
 ## Prerequisites
 
-- Access to Supabase dashboard
+- Access to Appwrite dashboard
 - Database admin privileges
 - Node.js 20+ and pnpm installed
 - Existing FreelanceXchain deployment
@@ -1582,7 +1582,7 @@ This guide provides step-by-step instructions for deploying the new features to 
 
 ### 1.1 Create New Tables
 
-Execute the following SQL in your Supabase SQL Editor:
+Execute the following SQL in your Appwrite SQL Editor:
 
 ```sql
 -- 1. Conversations table
@@ -1818,7 +1818,7 @@ CREATE POLICY "Users can view their own transactions"
 
 ### 2.1 Create Storage Buckets
 
-In Supabase Dashboard → Storage:
+In Appwrite Dashboard → Storage:
 
 1. Create `portfolio-images` bucket
    - Public: Yes
@@ -2040,7 +2040,7 @@ DROP TABLE IF EXISTS transactions CASCADE;
 
 ### 3. Remove Storage Buckets
 
-In Supabase Dashboard → Storage, delete:
+In Appwrite Dashboard → Storage, delete:
 - `portfolio-images`
 
 ---
@@ -2049,7 +2049,7 @@ In Supabase Dashboard → Storage, delete:
 
 ### Issue: "Table does not exist"
 
-**Solution**: Ensure all SQL migration scripts ran successfully. Check Supabase logs.
+**Solution**: Ensure all SQL migration scripts ran successfully. Check Appwrite logs.
 
 ### Issue: "Permission denied for table"
 
@@ -2067,7 +2067,7 @@ In Supabase Dashboard → Storage, delete:
 
 **Solution**:
 1. Check database connectivity
-2. Verify Supabase credentials
+2. Verify Appwrite credentials
 3. Check network/firewall rules
 
 ---
@@ -2092,7 +2092,7 @@ In Supabase Dashboard → Storage, delete:
 
 For issues or questions:
 1. Check application logs
-2. Review Supabase logs
+2. Review Appwrite logs
 3. Consult [new-features-implementation.md](../features/new-features-implementation.md)
 4. Contact development team
 
@@ -2629,16 +2629,16 @@ This document serves as a centralized index to all troubleshooting resources acr
 **Solution**: 
 1. Verify `.env` file exists and contains all required variables
 2. Check `src/config/env.ts` for required variable names
-3. Ensure Supabase credentials are correct
+3. Ensure Appwrite credentials are correct
 4. Validate blockchain RPC URLs and private keys
 
 **Related Guides**:
 - [Developer Setup Guide](../getting-started/setup.md#troubleshooting)
 
 ### Database Connection Errors
-**Problem**: Cannot connect to PostgreSQL/Supabase  
+**Problem**: Cannot connect to PostgreSQL/Appwrite  
 **Solution**:
-1. Verify `DATABASE_URL` or Supabase credentials
+1. Verify `DATABASE_URL` or Appwrite credentials
 2. Check network connectivity
 3. Ensure database migrations are applied
 4. Verify RLS policies are not blocking access
@@ -2664,7 +2664,7 @@ This document serves as a centralized index to all troubleshooting resources acr
 **Solution**:
 1. Verify `JWT_SECRET` is configured correctly
 2. Check token expiration settings
-3. Ensure Supabase Auth is properly initialized
+3. Ensure Appwrite Auth is properly initialized
 4. Validate token format in Authorization header
 5. Check for clock skew between client and server
 
@@ -2854,7 +2854,7 @@ All existing tests pass, including:
 - [src/services/proposal-service.ts](../../src/services/proposal-service.ts)
 - [src/services/payment-service.ts](../../src/services/payment-service.ts)
 - [src/services/contract-service.ts](../../src/services/contract-service.ts)
-- [supabase/migrations/20240321000000_concurrency_rpcs.sql](../../supabase/migrations/20240321000000_concurrency_rpcs.sql)
+- [appwrite/migrations/20240321000000_concurrency_rpcs.sql](../../appwrite/migrations/20240321000000_concurrency_rpcs.sql)
 - [src/__tests__/unit/proposal-service.test.ts](../../src/__tests__/unit/proposal-service.test.ts)
 
 ---
@@ -3633,7 +3633,7 @@ Enhanced existing dispute and payment services to support refund scenarios.
 
 ## Database Schema Requirements
 
-The following tables need to be created in Supabase:
+The following tables need to be created in Appwrite:
 
 ### 1. conversations
 ```sql
@@ -3767,7 +3767,7 @@ CREATE TABLE transactions (
 
 ## Storage Buckets Required
 
-Create the following Supabase Storage buckets:
+Create the following Appwrite Storage buckets:
 
 1. `portfolio-images` - For portfolio item images
 2. `message-attachments` - For message file attachments (if not using existing buckets)
@@ -3914,7 +3914,7 @@ formData.append('files', documentFile2);
 - **File Types**: PDF, DOC, DOCX, TXT, PNG, JPG, JPEG, GIF
 - **File Size**: Max 10MB per file
 - **File Count**: Max 10 files per project
-- **Storage**: Files stored in Supabase Storage with RLS policies
+- **Storage**: Files stored in Appwrite Storage with RLS policies
 
 ## Database Changes
 - Added `attachments` JSONB column to `projects` table
@@ -4033,11 +4033,11 @@ The feature includes a database migration that:
 
 Run the migration:
 ```bash
-# Using Supabase CLI
-supabase db push
+# Using Appwrite CLI
+appwrite db push
 
 # Or apply manually
-psql -d your_database -f supabase/migrations/20260312000002_move_tags_to_projects.sql
+psql -d your_database -f appwrite/migrations/20260312000002_move_tags_to_projects.sql
 ```
 
 ---
@@ -4883,7 +4883,7 @@ The audit logs table has RLS enabled with the following policies:
 2. **Use service role for logging**: Audit logging should use the service role to bypass RLS
 3. **Monitor failed actions**: Regularly review failed actions for security incidents
 4. **Set retention policies**: Consider archiving old logs to manage database size
-5. **Encrypt at rest**: Ensure your Supabase project has encryption enabled
+5. **Encrypt at rest**: Ensure your Appwrite project has encryption enabled
 
 ## Compliance
 
@@ -4933,10 +4933,10 @@ This audit logging system helps meet compliance requirements for:
 Successfully implemented file upload feature for proposals, replacing text-based cover letters with file attachments (1-5 files per proposal).
 
 ## Implementation Approach
-Used **URL reference pattern** where clients upload files to Supabase Storage first, then submit file metadata to the API. This approach:
+Used **URL reference pattern** where clients upload files to Appwrite Storage first, then submit file metadata to the API. This approach:
 - Aligns with existing codebase patterns (dispute evidence, KYC documents)
 - Reduces server load (no file processing on API)
-- Leverages Supabase Storage's built-in features
+- Leverages Appwrite Storage's built-in features
 - Simplifies API implementation
 
 ## Files Created
@@ -4946,11 +4946,11 @@ Used **URL reference pattern** where clients upload files to Supabase Storage fi
   - Validates file count (1-5)
   - Validates file types (PDF, DOCX, DOC, TXT, PNG, JPG, JPEG, GIF)
   - Validates file sizes (10MB per file, 25MB total)
-  - Validates URLs (must be from Supabase Storage)
+  - Validates URLs (must be from Appwrite Storage)
   - Exports `FileAttachment` type and validation functions
 
 ### 2. Database
-- **`supabase/migrations/20260218000000_add_proposal_attachments.sql`** - Migration file
+- **`appwrite/migrations/20260218000000_add_proposal_attachments.sql`** - Migration file
   - Adds `attachments` JSONB column to proposals table
   - Makes `cover_letter` nullable for backward compatibility
   - Adds column comments for documentation
@@ -4960,7 +4960,7 @@ Used **URL reference pattern** where clients upload files to Supabase Storage fi
   - Architecture overview
   - File requirements and limits
   - Database schema details
-  - Supabase Storage setup instructions
+  - Appwrite Storage setup instructions
   - API usage examples
   - Client implementation guide with code samples
   - Security considerations
@@ -5007,14 +5007,14 @@ Used **URL reference pattern** where clients upload files to Supabase Storage fi
 
 ### 4. Configuration
 - **`src/config/env.ts`**
-  - Added `storage` section to `supabase` config
+  - Added `storage` section to `appwrite` config
   - Added `proposalAttachmentsBucket` configuration with default value
 
-- **`src/config/supabase.ts`**
+- **`src/config/appwrite.ts`**
   - Added `STORAGE_BUCKETS` constant with `PROPOSAL_ATTACHMENTS` bucket name
   - Exported `StorageBucketName` type
 
-- **`supabase/schema.sql`**
+- **`appwrite/schema.sql`**
   - Added `attachments JSONB DEFAULT '[]'::jsonb` column to proposals table
   - Added column comments for documentation
 
@@ -5044,7 +5044,7 @@ Used **URL reference pattern** where clients upload files to Supabase Storage fi
 - **Count**: 1-5 files required per proposal
 - **Types**: PDF, DOCX, DOC, TXT, PNG, JPG, JPEG, GIF
 - **Size**: 10MB per file, 25MB total
-- **URL**: Must be HTTPS from Supabase Storage domain
+- **URL**: Must be HTTPS from Appwrite Storage domain
 
 ### Security
 - URL domain validation prevents external URL injection
@@ -5075,7 +5075,7 @@ Used **URL reference pattern** where clients upload files to Supabase Storage fi
   "projectId": "uuid",
   "attachments": [
     {
-      "url": "https://project.supabase.co/storage/v1/object/public/proposal-attachments/file.pdf",
+      "url": "https://project.appwrite.co/storage/v1/object/public/proposal-attachments/file.pdf",
       "filename": "proposal.pdf",
       "size": 1048576,
       "mimeType": "application/pdf"
@@ -5091,28 +5091,28 @@ Used **URL reference pattern** where clients upload files to Supabase Storage fi
 1. **Run Database Migration**
    ```bash
    # Apply migration to add attachments column
-   psql -d your_database -f supabase/migrations/20260218000000_add_proposal_attachments.sql
+   psql -d your_database -f appwrite/migrations/20260218000000_add_proposal_attachments.sql
    ```
 
-2. **Create Supabase Storage Bucket**
-   - Navigate to Supabase Dashboard → Storage
+2. **Create Appwrite Storage Bucket**
+   - Navigate to Appwrite Dashboard → Storage
    - Create bucket named `proposal-attachments`
    - Set to Private (authenticated access only)
    - Configure RLS policies for access control
 
 3. **Update Environment Variables**
    ```env
-   SUPABASE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments
+   APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments
    ```
 
 4. **Test the Implementation**
-   - Test file upload to Supabase Storage from client
+   - Test file upload to Appwrite Storage from client
    - Test proposal submission with attachments
    - Test validation (file count, types, sizes)
    - Test error handling
 
 5. **Update Client Applications**
-   - Implement file upload to Supabase Storage
+   - Implement file upload to Appwrite Storage
    - Update proposal submission forms
    - Handle file metadata collection
    - Update UI to display attachments instead of cover letter
@@ -5151,7 +5151,7 @@ The implementation supports **two upload patterns**:
 ### 1. Server-Side Upload (Recommended - New)
 1. Client sends files via `multipart/form-data` to API
 2. API validates files using multer middleware (extension, magic numbers, size)
-3. API uploads validated files to Supabase Storage
+3. API uploads validated files to Appwrite Storage
 4. API stores file metadata in database
 5. API returns proposal with file URLs
 
@@ -5163,14 +5163,14 @@ The implementation supports **two upload patterns**:
 - Centralized file validation logic
 
 ### 2. URL Reference Pattern (Legacy - Backward Compatible)
-1. Client uploads files directly to Supabase Storage
-2. Client receives file URLs from Supabase
+1. Client uploads files directly to Appwrite Storage
+2. Client receives file URLs from Appwrite
 3. Client submits proposal with file metadata (URLs, filenames, sizes, MIME types)
 4. API validates file metadata and stores references in the database
 
 **Benefits:**
 - Reduces server load (no file processing on API server)
-- Leverages Supabase Storage's built-in features (CDN, access control)
+- Leverages Appwrite Storage's built-in features (CDN, access control)
 - Simpler client implementation for existing integrations
 
 ## File Requirements
@@ -5204,7 +5204,7 @@ The implementation supports **two upload patterns**:
 6. Rate limiting (20 uploads per hour per user)
 
 **URL Reference Pattern:**
-1. URL domain validation (must be from Supabase Storage)
+1. URL domain validation (must be from Appwrite Storage)
 2. MIME type whitelist validation
 3. Extension validation
 4. Size validation (metadata-based)
@@ -5236,7 +5236,7 @@ The `attachments` column stores a JSON array of file metadata:
 ```json
 [
   {
-    "url": "https://<project-ref>.supabase.co/storage/v1/object/public/proposal-attachments/...",
+    "url": "https://<project-ref>.appwrite.co/storage/v1/object/public/proposal-attachments/...",
     "filename": "proposal.pdf",
     "size": 1048576,
     "mimeType": "application/pdf"
@@ -5244,11 +5244,11 @@ The `attachments` column stores a JSON array of file metadata:
 ]
 ```
 
-## Supabase Storage Setup
+## Appwrite Storage Setup
 
 ### 1. Create Storage Bucket
 
-In Supabase Dashboard:
+In Appwrite Dashboard:
 1. Navigate to **Storage** section
 2. Click **New bucket**
 3. Bucket name: `proposal-attachments`
@@ -5281,7 +5281,7 @@ USING (bucket_id = 'proposal-attachments' AND auth.uid()::text = (storage.folder
 Add to `.env`:
 
 ```env
-SUPABASE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments
+APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments
 ```
 
 ## API Usage
@@ -5337,7 +5337,7 @@ async function submitProposalWithFiles(files, proposalData, token) {
   "coverLetter": null,
   "attachments": [
     {
-      "url": "https://<project>.supabase.co/storage/v1/object/public/proposal-attachments/user-id/uuid_proposal.pdf",
+      "url": "https://<project>.appwrite.co/storage/v1/object/public/proposal-attachments/user-id/uuid_proposal.pdf",
       "filename": "proposal.pdf",
       "size": 1048576,
       "mimeType": "application/pdf"
@@ -5364,7 +5364,7 @@ async function submitProposalWithFiles(files, proposalData, token) {
   "projectId": "uuid-here",
   "attachments": [
     {
-      "url": "https://<project-ref>.supabase.co/storage/v1/object/public/proposal-attachments/user-id/file.pdf",
+      "url": "https://<project-ref>.appwrite.co/storage/v1/object/public/proposal-attachments/user-id/file.pdf",
       "filename": "proposal.pdf",
       "size": 1048576,
       "mimeType": "application/pdf"
@@ -5477,25 +5477,25 @@ function ProposalForm({ projectId, token }) {
 
 ### Option 2: URL Reference Pattern (Legacy)
 
-**1. Upload Files to Supabase Storage**
+**1. Upload Files to Appwrite Storage**
 
 ```typescript
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@appwrite/appwrite-js';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const appwrite = createClient(APPWRITE_URL, APPWRITE_ANON_KEY);
 
 async function uploadProposalFile(file: File, userId: string) {
   const fileExt = file.name.split('.').pop();
   const fileName = `${userId}/${Date.now()}.${fileExt}`;
   
-  const { data, error } = await supabase.storage
+  const { data, error } = await appwrite.storage
     .from('proposal-attachments')
     .upload(fileName, file);
   
   if (error) throw error;
   
   // Get public URL
-  const { data: { publicUrl } } = supabase.storage
+  const { data: { publicUrl } } = appwrite.storage
     .from('proposal-attachments')
     .getPublicUrl(fileName);
   
@@ -5542,7 +5542,7 @@ The API validates:
 2. **File size:** Each file ≤ 10MB, total ≤ 25MB
 3. **File types:** Only allowed MIME types and extensions
 4. **URL format:** Must be valid HTTPS URLs
-5. **URL domain:** Must be from Supabase Storage domain
+5. **URL domain:** Must be from Appwrite Storage domain
 6. **URL path:** Must include `/storage/` path segment
 
 Validation errors return `400 Bad Request` with detailed error messages.
@@ -5551,7 +5551,7 @@ Validation errors return `400 Bad Request` with detailed error messages.
 
 ### URL Validation
 
-- Only Supabase Storage URLs are accepted
+- Only Appwrite Storage URLs are accepted
 - Prevents external URL injection attacks
 - Validates HTTPS protocol
 
@@ -5607,7 +5607,7 @@ import { validateAttachments } from '../utils/file-validator';
 describe('File Validation', () => {
   it('should accept valid attachments', () => {
     const attachments = [{
-      url: 'https://project.supabase.co/storage/v1/object/public/proposal-attachments/file.pdf',
+      url: 'https://project.appwrite.co/storage/v1/object/public/proposal-attachments/file.pdf',
       filename: 'proposal.pdf',
       size: 1000000,
       mimeType: 'application/pdf',
@@ -5619,7 +5619,7 @@ describe('File Validation', () => {
   
   it('should reject too many files', () => {
     const attachments = Array(6).fill({
-      url: 'https://project.supabase.co/storage/v1/object/public/proposal-attachments/file.pdf',
+      url: 'https://project.appwrite.co/storage/v1/object/public/proposal-attachments/file.pdf',
       filename: 'file.pdf',
       size: 1000,
       mimeType: 'application/pdf',
@@ -5637,11 +5637,11 @@ Test the full proposal submission flow with attachments.
 
 ## Troubleshooting
 
-### "File URL must be from Supabase Storage domain"
+### "File URL must be from Appwrite Storage domain"
 
-- Ensure files are uploaded to Supabase Storage first
+- Ensure files are uploaded to Appwrite Storage first
 - Check that the URL includes your project reference
-- Verify the URL format matches: `https://<project-ref>.supabase.co/storage/...`
+- Verify the URL format matches: `https://<project-ref>.appwrite.co/storage/...`
 
 ### "MIME type not allowed"
 
@@ -5657,7 +5657,7 @@ Test the full proposal submission flow with attachments.
 
 ### Storage bucket not found
 
-- Verify the bucket exists in Supabase Dashboard
+- Verify the bucket exists in Appwrite Dashboard
 - Check the bucket name matches the configuration
 - Ensure the bucket is accessible to authenticated users
 
@@ -5680,7 +5680,7 @@ Potential improvements:
 
 ### What Changed
 - Proposals now use **file attachments** instead of text cover letters
-- Clients must upload files to Supabase Storage first, then submit file metadata
+- Clients must upload files to Appwrite Storage first, then submit file metadata
 - API validates file metadata (URLs, types, sizes, count)
 
 ### API Request Format
@@ -5690,7 +5690,7 @@ POST /api/proposals
   "projectId": "uuid",
   "attachments": [
     {
-      "url": "https://<project>.supabase.co/storage/v1/object/public/proposal-attachments/file.pdf",
+      "url": "https://<project>.appwrite.co/storage/v1/object/public/proposal-attachments/file.pdf",
       "filename": "proposal.pdf",
       "size": 1048576,
       "mimeType": "application/pdf"
@@ -5705,12 +5705,12 @@ POST /api/proposals
 - **Count**: 1-5 files required
 - **Types**: PDF, DOCX, DOC, TXT, PNG, JPG, JPEG, GIF
 - **Size**: 10MB per file, 25MB total
-- **URL**: Must be from Supabase Storage
+- **URL**: Must be from Appwrite Storage
 
 ### Deployment Steps
-1. Run migration: `supabase/migrations/20260218000000_add_proposal_attachments.sql`
-2. Create Supabase Storage bucket: `proposal-attachments` (private)
-3. Set environment variable: `SUPABASE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments`
+1. Run migration: `appwrite/migrations/20260218000000_add_proposal_attachments.sql`
+2. Create Appwrite Storage bucket: `proposal-attachments` (private)
+3. Set environment variable: `APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments`
 4. Configure bucket RLS policies (see overview.md)
 
 ---
@@ -5719,15 +5719,15 @@ POST /api/proposals
 
 ### Upload Flow
 1. **User selects files** (1-5 files, allowed types only)
-2. **Upload to Supabase Storage**
+2. **Upload to Appwrite Storage**
    ```typescript
-   const { data, error } = await supabase.storage
+   const { data, error } = await appwrite.storage
      .from('proposal-attachments')
      .upload(`${userId}/${Date.now()}.${ext}`, file);
    ```
 3. **Get file URL**
    ```typescript
-   const { data: { publicUrl } } = supabase.storage
+   const { data: { publicUrl } } = appwrite.storage
      .from('proposal-attachments')
      .getPublicUrl(fileName);
    ```
@@ -5830,7 +5830,7 @@ try {
 - [ ] Submit with file > 10MB → "File size exceeds 10MB limit"
 - [ ] Submit with total > 25MB → "Total file size exceeds 25MB limit"
 - [ ] Submit with invalid file type → "File type not allowed"
-- [ ] Submit with external URL → "File URL must be from Supabase Storage"
+- [ ] Submit with external URL → "File URL must be from Appwrite Storage"
 - [ ] Submit with non-HTTPS URL → "File URL must use HTTPS protocol"
 
 #### Edge Cases
@@ -5853,7 +5853,7 @@ curl -X POST http://localhost:7860/api/proposals \
   -d '{
     "projectId": "uuid-here",
     "attachments": [{
-      "url": "https://project.supabase.co/storage/v1/object/public/proposal-attachments/test.pdf",
+      "url": "https://project.appwrite.co/storage/v1/object/public/proposal-attachments/test.pdf",
       "filename": "proposal.pdf",
       "size": 1048576,
       "mimeType": "application/pdf"
@@ -5878,18 +5878,18 @@ curl -X POST http://localhost:7860/api/proposals \
 
 ## Troubleshooting
 
-### "File URL must be from Supabase Storage domain"
-- Ensure files are uploaded to Supabase Storage first
+### "File URL must be from Appwrite Storage domain"
+- Ensure files are uploaded to Appwrite Storage first
 - Check that the URL includes your project reference
-- Verify URL format: `https://<project-ref>.supabase.co/storage/...`
+- Verify URL format: `https://<project-ref>.appwrite.co/storage/...`
 
 ### "Storage bucket not found"
-- Create the bucket in Supabase Dashboard
+- Create the bucket in Appwrite Dashboard
 - Verify bucket name matches configuration
 - Check bucket is accessible to authenticated users
 
 ### "Permission denied" when uploading
-- Check Supabase Storage RLS policies
+- Check Appwrite Storage RLS policies
 - Ensure user is authenticated
 - Verify bucket permissions allow uploads
 
@@ -5906,5 +5906,5 @@ curl -X POST http://localhost:7860/api/proposals \
 - **Full Documentation**: [Overview](overview.md)
 - **Implementation Details**: [Implementation Guide](implementation.md)
 - **API Reference**: Swagger UI at `/api-docs`
-- **Database Migration**: `supabase/migrations/20260218000000_add_proposal_attachments.sql`
+- **Database Migration**: `appwrite/migrations/20260218000000_add_proposal_attachments.sql`
 - **Validation Utility**: `src/utils/file-validator.ts`

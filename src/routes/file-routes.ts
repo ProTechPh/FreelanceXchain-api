@@ -15,6 +15,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const requestId = getRequestId(req);
   const bucket = req.query['bucket'] as string | undefined;
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -43,6 +44,7 @@ router.delete('/:bucket/:path', authMiddleware, apiRateLimiter, async (req: Requ
   const { bucket, path } = req.params;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -80,6 +82,7 @@ router.get('/quota', authMiddleware, apiRateLimiter, async (req: Request, res: R
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },

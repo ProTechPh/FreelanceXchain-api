@@ -47,7 +47,7 @@ Thumbs.db
 infra
 .azure
 azure.yaml
-supabase
+appwrite
 
 # Docker files (no need to copy into image)
 Dockerfile*

@@ -53,10 +53,10 @@ Manage test database state:
 // helpers/database.ts
 export const cleanupDatabase = async () => {
   // Clear all test data
-  await supabase.from('contracts').delete().neq('id', '');
-  await supabase.from('proposals').delete().neq('id', '');
-  await supabase.from('projects').delete().neq('id', '');
-  await supabase.from('users').delete().neq('id', '');
+  await appwrite.from('contracts').delete().neq('id', '');
+  await appwrite.from('proposals').delete().neq('id', '');
+  await appwrite.from('projects').delete().neq('id', '');
+  await appwrite.from('users').delete().neq('id', '');
 };
 
 export const seedTestData = async () => {

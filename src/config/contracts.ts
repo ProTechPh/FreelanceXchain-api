@@ -67,14 +67,14 @@ if (process.env.MAINNET_MILESTONE_ADDRESS) contractAddresses.mainnet.milestoneRe
  */
 export function getCurrentNetwork(): NetworkName {
   const rpcUrl = config.blockchain.rpcUrl?.toLowerCase() || '';
-  
+
   if (rpcUrl.includes('sepolia')) return 'sepolia';
   if (rpcUrl.includes('polygon-mainnet')) return 'polygon';
   if (rpcUrl.includes('amoy')) return 'amoy';
   if (rpcUrl.includes('127.0.0.1:7545') || rpcUrl.includes('localhost:7545')) return 'ganache';
   if (rpcUrl.includes('127.0.0.1:8545') || rpcUrl.includes('localhost:8545')) return 'hardhat';
   if (rpcUrl.includes('mainnet')) return 'mainnet';
-  
+
   // Default to ganache for local development
   return 'ganache';
 }

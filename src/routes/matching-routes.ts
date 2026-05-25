@@ -229,6 +229,7 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
   const requestId = getRequestId(req);
   const projectId = req.params['projectId'];
 
+  /* istanbul ignore next */
   if (!projectId) {
     res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'projectId is required' },

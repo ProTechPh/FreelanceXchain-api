@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type {
@@ -15,23 +15,19 @@ import { createNotification } from './notification-service.js';
  */
 export async function getMilestoneById(milestoneId: string): Promise<ServiceResult<Milestone>> {
   try {
-    const supabase = getSupabaseClient();
-    
-    const { data, error } = await supabase
-      .from('milestones')
-      .select('*')
-      .eq('id', milestoneId)
-      .single();
+    const result = await pool.query(
+      'SELECT * FROM milestones WHERE id = $1',
+      [milestoneId]
+    );
 
-    if (error) throw error;
-    if (!data) {
+    if (result.rows.length === 0) {
       return {
         success: false,
         error: { code: 'NOT_FOUND', message: 'Milestone not found' },
       };
     }
 
-    return { success: true, data: data as Milestone };
+    return { success: true, data: result.rows[0] as Milestone };
   } catch (error) {
     logger.error('Failed to get milestone:', error);
     return {
@@ -51,8 +47,6 @@ export async function submitMilestone(
   input: SubmitMilestoneInput
 ): Promise<ServiceResult<Milestone>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get milestone and verify ownership
     const milestoneResult = await getMilestoneById(input.milestoneId);
     if (!milestoneResult.success) {
@@ -62,18 +56,19 @@ export async function submitMilestone(
     const milestone = milestoneResult.data;
 
     // Get contract to verify freelancer
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .select('freelancer_id, employer_id, project_id')
-      .eq('id', milestone.contractId)
-      .single();
+    const contractResult = await pool.query(
+      'SELECT freelancer_id, employer_id, project_id FROM contracts WHERE id = $1',
+      [milestone.contractId]
+    );
 
-    if (contractError || !contract) {
+    if (contractResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
       };
     }
+
+    const contract = contractResult.rows[0];
 
     if (contract.freelancer_id !== input.freelancerId) {
       return {
@@ -94,22 +89,27 @@ export async function submitMilestone(
     }
 
     // Update milestone
-    const { data: updated, error: updateError } = await supabase
-      .from('milestones')
-      .update({
-        status: 'submitted',
-        submitted_at: new Date().toISOString(),
-        deliverable_files: input.deliverables,
-        revision_count: milestone.status === 'rejected' ? milestone.revisionCount + 1 : milestone.revisionCount,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', input.milestoneId)
-      .select()
-      .single();
+    const updateResult = await pool.query(
+      `UPDATE milestones 
+       SET status = 'submitted', 
+           submitted_at = NOW(), 
+           deliverable_files = $1, 
+           revision_count = $2, 
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING *`,
+      [
+        JSON.stringify(input.deliverables),
+        milestone.status === 'rejected' ? milestone.revisionCount + 1 : milestone.revisionCount,
+        input.milestoneId
+      ]
+    );
 
-    if (updateError || !updated) {
-      throw updateError || new Error('Failed to update milestone');
+    if (updateResult.rows.length === 0) {
+      throw new Error('Failed to update milestone');
     }
+
+    const updated = updateResult.rows[0];
 
     // Create notification for employer
     const notificationResult = await createNotification({
@@ -149,8 +149,6 @@ export async function rejectMilestone(
   input: RejectMilestoneInput
 ): Promise<ServiceResult<Milestone>> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get milestone
     const milestoneResult = await getMilestoneById(input.milestoneId);
     if (!milestoneResult.success) {
@@ -160,18 +158,19 @@ export async function rejectMilestone(
     const milestone = milestoneResult.data;
 
     // Get contract to verify employer
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .select('freelancer_id, employer_id, project_id')
-      .eq('id', milestone.contractId)
-      .single();
+    const contractResult = await pool.query(
+      'SELECT freelancer_id, employer_id, project_id FROM contracts WHERE id = $1',
+      [milestone.contractId]
+    );
 
-    if (contractError || !contract) {
+    if (contractResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
       };
     }
+
+    const contract = contractResult.rows[0];
 
     if (contract.employer_id !== input.employerId) {
       return {
@@ -194,21 +193,22 @@ export async function rejectMilestone(
     // Update milestone
     const newStatus: MilestoneStatus = input.requestRevision ? 'rejected' : 'disputed';
     
-    const { data: updated, error: updateError } = await supabase
-      .from('milestones')
-      .update({
-        status: newStatus,
-        rejected_at: new Date().toISOString(),
-        rejection_reason: input.reason,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', input.milestoneId)
-      .select()
-      .single();
+    const updateResult = await pool.query(
+      `UPDATE milestones 
+       SET status = $1, 
+           rejected_at = NOW(), 
+           rejection_reason = $2, 
+           updated_at = NOW()
+       WHERE id = $3
+       RETURNING *`,
+      [newStatus, input.reason, input.milestoneId]
+    );
 
-    if (updateError || !updated) {
-      throw updateError || new Error('Failed to update milestone');
+    if (updateResult.rows.length === 0) {
+      throw new Error('Failed to update milestone');
     }
+
+    const updated = updateResult.rows[0];
 
     // Create notification for freelancer
     const notificationResult = await createNotification({
@@ -248,17 +248,12 @@ export async function rejectMilestone(
  */
 export async function getContractMilestones(contractId: string): Promise<ServiceResult<Milestone[]>> {
   try {
-    const supabase = getSupabaseClient();
-    
-    const { data, error } = await supabase
-      .from('milestones')
-      .select('*')
-      .eq('contract_id', contractId)
-      .order('due_date', { ascending: true });
+    const result = await pool.query(
+      'SELECT * FROM milestones WHERE contract_id = $1 ORDER BY due_date ASC',
+      [contractId]
+    );
 
-    if (error) throw error;
-
-    return { success: true, data: (data || []) as Milestone[] };
+    return { success: true, data: result.rows as Milestone[] };
   } catch (error) {
     logger.error('Failed to get contract milestones:', error);
     return {

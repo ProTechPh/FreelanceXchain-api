@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "jest", "@types/jest"],
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM"],
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/__tests__/**/*.ts",
+    "jest.setup.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}

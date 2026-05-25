@@ -49,7 +49,7 @@ Complete guide to all configuration files in the FreelanceXchain API project.
 ```
 
 #### Dependencies
-- **Production:** Express, Supabase, Ethers.js, bcrypt, JWT, etc.
+- **Production:** Express, Appwrite, PostgreSQL, Ethers.js, bcrypt, JWT, etc.
 - **Development:** TypeScript, Jest, Hardhat, ESLint, tsx, etc.
 
 ### Common Commands
@@ -499,9 +499,19 @@ PORT=7860
 
 #### Database
 ```env
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your-anon-key
-SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
+DATABASE_URL=postgresql://user:password@localhost:5432/freelancexchain
+```
+
+#### Appwrite
+```env
+APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
+APPWRITE_PROJECT_ID=your-project-id
+APPWRITE_API_KEY=your-api-key
+APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments
+APPWRITE_PROJECT_ATTACHMENTS_BUCKET=project-attachments
+APPWRITE_DISPUTE_EVIDENCE_BUCKET=dispute-evidence
+APPWRITE_PORTFOLIO_IMAGES_BUCKET=portfolio-images
+APPWRITE_MILESTONE_DELIVERABLES_BUCKET=milestone-deliverables
 ```
 
 #### Authentication

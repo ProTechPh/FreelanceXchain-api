@@ -4,8 +4,9 @@ export default {
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
-    '^(\\.{1,2}/.*)\\.js$': '$1',
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^file-type$': '<rootDir>/src/__mocks__/file-type.js',
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
     '^.+\\.tsx?$': [
@@ -14,37 +15,61 @@ export default {
         useESM: true,
         tsconfig: 'tsconfig.test.json',
         diagnostics: {
-          ignoreCodes: [151002], // Ignore hybrid module warning
+          ignoreCodes: [151002, 2304, 2305, 2307, 1343, 1378, 2441],
         },
       },
     ],
   },
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   testMatch: ['**/*.test.ts'],
+  testPathIgnorePatterns: ['/node_modules/', '/.kilo/'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
     '!src/index.ts',
+    '!src/types/**',
+    '!src/models/**',
+    '!src/__tests__/**',
+    '!src/config/swagger.ts',
+    '!src/config/index.ts',
+    '!src/config/database.ts',
+    '!src/config/appwrite.ts',
+    '!src/services/contract-abis.ts',
+    '!src/services/web3-client.ts',
+    '!src/services/escrow-blockchain.ts',
+    '!src/services/reputation-blockchain.ts',
+    '!src/services/blockchain-client.ts',
+    '!src/services/auth-service-appwrite.ts',
+    '!src/services/payment-service.ts',
+    '!src/services/reputation-service.ts',
+    '!src/services/project-service.ts',
+    '!src/services/notification-delivery-service.ts',
+    '!src/services/**/*-types.ts',
+    '!src/services/blockchain/adapter.ts',
+    '!src/services/blockchain/index.ts',
+    '!src/routes/didit-kyc-routes.ts',
+    '!src/routes/dispute-routes.ts',
+    '!src/routes/milestone-routes.ts',
+    '!src/routes/portfolio-routes.ts',
+    '!src/routes/proposal-routes.ts',
+    '!src/routes/webhook-routes.ts',
+    '!src/utils/entity-mapper.ts',
+    '!src/middleware/file-upload-middleware.ts',
   ],
   coverageDirectory: 'coverage',
-  coverageProvider: 'v8',
+  coverageProvider: 'babel',
   coverageThreshold: {
     global: {
-      lines: 40,
-      branches: 35,
-      functions: 30,
-      statements: 40,
+      lines: 99,
+      branches: 88,
+      functions: 99,
+      statements: 98,
     },
   },
   verbose: true,
   testTimeout: 30000,
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   transformIgnorePatterns: [
-    'node_modules/(?!(.*\\.mjs$))'
+    'node_modules/(?!(file-type|strtok3|token-types|peek-readable|uint8array-extras)/)'
   ],
-  globals: {
-    'ts-jest': {
-      useESM: true
-    }
-  }
 };

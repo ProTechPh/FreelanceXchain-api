@@ -118,11 +118,6 @@ export function sanitizeObject(obj: any): any {
     return obj.map(item => sanitizeObject(item));
   }
 
-  // Handle null
-  if (obj === null) {
-    return null;
-  }
-
   // Handle objects
   const sanitized: any = {};
   

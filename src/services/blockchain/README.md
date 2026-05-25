@@ -4,13 +4,13 @@ This directory contains the blockchain adapter pattern implementation that provi
 
 ## Architecture
 
-The adapter pattern allows the application to switch between real blockchain (Web3) and simulated blockchain (Supabase) implementations without changing business logic code.
+The adapter pattern allows the application to switch between real blockchain (Web3) and simulated blockchain (Appwrite) implementations without changing business logic code.
 
 ```
 blockchain/
 ├── adapter.ts           # Interface definition
 ├── real-adapter.ts      # Real blockchain implementation (Web3)
-├── simulated-adapter.ts # Simulated blockchain implementation (Supabase)
+├── simulated-adapter.ts # Simulated blockchain implementation (Appwrite)
 ├── factory.ts           # Adapter factory and singleton
 └── index.ts            # Exports
 ```
@@ -51,7 +51,7 @@ Set the `BLOCKCHAIN_MODE` environment variable:
 # Use real blockchain (requires BLOCKCHAIN_RPC_URL and BLOCKCHAIN_PRIVATE_KEY)
 BLOCKCHAIN_MODE=real
 
-# Use simulated blockchain (uses Supabase, no blockchain required)
+# Use simulated blockchain (uses Appwrite, no blockchain required)
 BLOCKCHAIN_MODE=simulated
 ```
 
@@ -83,7 +83,7 @@ The `IBlockchainAdapter` interface defines the following operations:
 
 ### Simulated Blockchain Adapter
 
-- Uses `escrow-contract.ts` which stores data in Supabase
+- Uses `escrow-contract.ts` which stores data in Appwrite
 - No blockchain configuration required
 - Instant transactions (no mining/confirmation delays)
 - No gas fees

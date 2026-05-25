@@ -1,12 +1,12 @@
 import { Project, FreelancerProfile, mapProjectFromEntity, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
 import { projectRepository, ProjectEntity } from '../repositories/project-repository.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository.js';
+import { PaginatedResult, QueryOptions } from '../repositories/base-repository-pg.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
 
 // TODO: Multi-filter search currently chains individual repository calls and merges client-side.
-// For better scalability, consider using a Supabase RPC function or database view that applies
+// For better scalability, consider using a Appwrite RPC function or database view that applies
 // all filters (keyword, skills, budget range) in a single query.
 const SEARCH_FALLBACK_LIMIT = 1000;
 
@@ -105,7 +105,7 @@ export async function searchProjects(
     // Now we apply all filters in a single DB query before pagination.
     
     // Start with a large limit to get all matching items, then paginate manually
-    // This is a compromise until Supabase supports complex compound queries
+    // This is a compromise until Appwrite supports complex compound queries
     const allMatchingOptions = { limit: SEARCH_FALLBACK_LIMIT, offset: 0 };
     entityResult = await projectRepository.getAllOpenProjects(allMatchingOptions);
 

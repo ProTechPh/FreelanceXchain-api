@@ -3,7 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
-import { uploadFile } from '../utils/file-upload.js';
+import { uploadFile } from '../utils/storage-uploader.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository, type MilestoneEntity, type ProjectEntity } from '../repositories/project-repository.js';
 import {

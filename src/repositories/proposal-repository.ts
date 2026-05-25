@@ -1,6 +1,4 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
-
+import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
 import { FileAttachment } from '../utils/file-validator.js';
 
 export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
@@ -18,9 +16,9 @@ export type ProposalEntity = {
   updated_at: string;
 };
 
-export class ProposalRepository extends BaseRepository<ProposalEntity> {
+export class ProposalRepository extends BaseRepositoryPg<ProposalEntity> {
   constructor() {
-    super(TABLES.PROPOSALS);
+    super('proposals');
   }
 
   async createProposal(proposal: Omit<ProposalEntity, 'created_at' | 'updated_at'>): Promise<ProposalEntity> {
@@ -40,116 +38,133 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
   }
 
   async getProposalsByProject(projectId: string, options?: QueryOptions): Promise<PaginatedResult<ProposalEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select(`
-        *,
-        freelancer:users!proposals_freelancer_id_fkey(
-          id,
-          name,
-          email
-        )
-      `, { count: 'exact' })
-      .eq('project_id', projectId)
-      .neq('status', 'withdrawn') // Exclude withdrawn proposals
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `
+      SELECT COUNT(*) FROM ${this.tableName} 
+      WHERE project_id = $1 AND status != 'withdrawn'
+    `;
+    const countResult = await this.pool.query(countQuery, [projectId]);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    // Using a JOIN to get freelancer info
+    const dataQuery = `
+      SELECT p.*, 
+             json_build_object('id', u.id, 'name', u.name, 'email', u.email) as freelancer
+      FROM ${this.tableName} p
+      JOIN users u ON p.freelancer_id = u.id
+      WHERE p.project_id = $1 AND p.status != 'withdrawn'
+      ORDER BY p.created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to get proposals by project: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as ProposalEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [projectId, limit, offset]);
+      return {
+        items: result.rows as ProposalEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get proposals by project: ${error.message}`);
+    }
   }
 
   async getProposalsByFreelancer(freelancerId: string): Promise<ProposalEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('freelancer_id', freelancerId)
-      .order('created_at', { ascending: false });
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE freelancer_id = $1
+      ORDER BY created_at DESC
+    `;
     
-    if (error) throw new Error(`Failed to get proposals by freelancer: ${error.message}`);
-    return (data ?? []) as ProposalEntity[];
+    try {
+      const result = await this.pool.query(query, [freelancerId]);
+      return result.rows as ProposalEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get proposals by freelancer: ${error.message}`);
+    }
   }
 
   async hasAcceptedProposal(projectId: string): Promise<boolean> {
-    const client = this.getClient();
-    const { count, error } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact', head: true })
-      .eq('project_id', projectId)
-      .eq('status', 'accepted');
+    const query = `
+      SELECT EXISTS (
+        SELECT 1 FROM ${this.tableName} 
+        WHERE project_id = $1 AND status = 'accepted'
+      )
+    `;
     
-    if (error) throw new Error(`Failed to check accepted proposal: ${error.message}`);
-    return (count ?? 0) > 0;
+    try {
+      const result = await this.pool.query(query, [projectId]);
+      return result.rows[0].exists;
+    } catch (error: any) {
+      throw new Error(`Failed to check accepted proposal: ${error.message}`);
+    }
   }
 
   async getAcceptedProposalCount(projectId: string): Promise<number> {
-    const client = this.getClient();
-    const { count, error } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact', head: true })
-      .eq('project_id', projectId)
-      .eq('status', 'accepted');
+    const query = `
+      SELECT COUNT(*) FROM ${this.tableName} 
+      WHERE project_id = $1 AND status = 'accepted'
+    `;
     
-    if (error) throw new Error(`Failed to get accepted proposal count: ${error.message}`);
-    return count ?? 0;
+    try {
+      const result = await this.pool.query(query, [projectId]);
+      return parseInt(result.rows[0].count, 10);
+    } catch (error: any) {
+      throw new Error(`Failed to get accepted proposal count: ${error.message}`);
+    }
   }
 
   async getProposalCountByProject(projectId: string): Promise<number> {
-    const client = this.getClient();
-    const { count, error } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact', head: true })
-      .eq('project_id', projectId)
-      .neq('status', 'withdrawn');
+    const query = `
+      SELECT COUNT(*) FROM ${this.tableName} 
+      WHERE project_id = $1 AND status != 'withdrawn'
+    `;
     
-    if (error) throw new Error(`Failed to get proposal count: ${error.message}`);
-    return count ?? 0;
+    try {
+      const result = await this.pool.query(query, [projectId]);
+      return parseInt(result.rows[0].count, 10);
+    } catch (error: any) {
+      throw new Error(`Failed to get proposal count: ${error.message}`);
+    }
   }
 
   async getProposalCountsByProjects(projectIds: string[]): Promise<Map<string, number>> {
     if (projectIds.length === 0) return new Map();
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('project_id')
-      .in('project_id', projectIds)
-      .neq('status', 'withdrawn');
+    
+    const query = `
+      SELECT project_id, COUNT(*) as count 
+      FROM ${this.tableName}
+      WHERE project_id = ANY($1) AND status != 'withdrawn'
+      GROUP BY project_id
+    `;
 
-    if (error) throw new Error(`Failed to get proposal counts: ${error.message}`);
-
-    const counts = new Map<string, number>();
-    for (const row of (data ?? [])) {
-      const id = (row as any).project_id as string;
-      counts.set(id, (counts.get(id) ?? 0) + 1);
+    try {
+      const result = await this.pool.query(query, [projectIds]);
+      const counts = new Map<string, number>();
+      for (const row of result.rows) {
+        counts.set(row.project_id, parseInt(row.count, 10));
+      }
+      return counts;
+    } catch (error: any) {
+      throw new Error(`Failed to get proposal counts: ${error.message}`);
     }
-    return counts;
   }
 
   async getExistingProposal(projectId: string, freelancerId: string): Promise<ProposalEntity | null> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('project_id', projectId)
-      .eq('freelancer_id', freelancerId)
-      .neq('status', 'withdrawn') // Exclude withdrawn proposals
-      .single();
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE project_id = $1 AND freelancer_id = $2 AND status != 'withdrawn'
+      LIMIT 1
+    `;
     
-    if (error) {
-      if (error.code === 'PGRST116') return null;
+    try {
+      const result = await this.pool.query(query, [projectId, freelancerId]);
+      return result.rows[0] || null;
+    } catch (error: any) {
       throw new Error(`Failed to get existing proposal: ${error.message}`);
     }
-    return data as ProposalEntity;
   }
 }
 

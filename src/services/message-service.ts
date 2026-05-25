@@ -1,13 +1,11 @@
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { messageRepository } from '../repositories/message-repository.js';
 import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/message.js';
 import { notificationEmitter } from './notification-delivery-service.js';
 import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
-import type { PaginatedResult } from '../repositories/base-repository.js';
-
-const supabase = getSupabaseServiceClient();
+import type { PaginatedResult } from '../repositories/base-repository-pg.js';
 
 export interface PaginationOptions {
   page?: number;
@@ -28,44 +26,34 @@ export interface ConversationWithDetails extends ConversationEntity {
  * - freelancer_profiles.id / employer_profiles.id (compat fallback)
  */
 async function resolveReceiverUserId(receiverId: string): Promise<string | null> {
-  const { data: user, error: userLookupError } = await supabase
-    .from('users')
-    .select('id')
-    .eq('id', receiverId)
-    .maybeSingle();
+  try {
+    // Check if receiverId exists in users table
+    const userResult = await pool.query(
+      'SELECT id FROM users WHERE id = $1',
+      [receiverId]
+    );
 
-  if (userLookupError) {
-    logger.error('Failed receiver lookup in users table', { receiverId, error: userLookupError });
+    if (userResult.rows.length > 0) {
+      return userResult.rows[0].id;
+    }
+
+    // Backward-compatibility path: support profile IDs by mapping to user_id
+    for (const profileTable of ['freelancer_profiles', 'employer_profiles'] as const) {
+      const profileResult = await pool.query(
+        `SELECT user_id FROM ${profileTable} WHERE id = $1`,
+        [receiverId]
+      );
+
+      if (profileResult.rows.length > 0) {
+        return profileResult.rows[0].user_id;
+      }
+    }
+
+    return null;
+  } catch (error) {
+    logger.error('Failed receiver lookup', { receiverId, error });
     return null;
   }
-
-  if (user?.id) {
-    return user.id;
-  }
-
-  // Backward-compatibility path: support profile IDs by mapping to user_id
-  for (const profileTable of ['freelancer_profiles', 'employer_profiles'] as const) {
-    const { data: profile, error: profileLookupError } = await supabase
-      .from(profileTable)
-      .select('user_id')
-      .eq('id', receiverId)
-      .maybeSingle();
-
-    if (profileLookupError) {
-      logger.error('Failed receiver lookup in profile table', {
-        receiverId,
-        profileTable,
-        error: profileLookupError,
-      });
-      continue;
-    }
-
-    if (profile?.user_id) {
-      return profile.user_id;
-    }
-  }
-
-  return null;
 }
 
 /**
@@ -185,29 +173,33 @@ export async function getConversations(
     for (const conv of items) {
       const otherUserId = conv.participant1_id === userId ? conv.participant2_id : conv.participant1_id;
       
-      const { data: otherUser, error: userError } = await supabase
-        .from('users')
-        .select('id, name, email')
-        .eq('id', otherUserId)
-        .single();
+      try {
+        const userResult = await pool.query(
+          'SELECT id, name, email FROM users WHERE id = $1',
+          [otherUserId]
+        );
 
-      // If the other user doesn't exist, this conversation has inconsistent data
-      if (userError || !otherUser) {
-        logger.warn('Conversation has missing participant, skipping from results', { 
+        // If the other user doesn't exist, this conversation has inconsistent data
+        if (userResult.rows.length === 0) {
+          logger.warn('Conversation has missing participant, skipping from results', { 
+            conversationId: conv.id, 
+            missingUserId: otherUserId
+          });
+          continue;
+        }
+
+        enrichedConversations.push({
+          ...conv,
+          otherUser: userResult.rows[0],
+        } as ConversationWithDetails);
+      } catch (error) {
+        logger.error('Error fetching user details for conversation', { 
           conversationId: conv.id, 
-          missingUserId: otherUserId,
-          error: userError 
+          otherUserId, 
+          error 
         });
-        
-        // Optionally, we could mark this conversation for cleanup
-        // For now, we'll just skip it from the results
         continue;
       }
-
-      enrichedConversations.push({
-        ...conv,
-        otherUser,
-      } as ConversationWithDetails);
     }
 
     return {
@@ -240,13 +232,12 @@ export async function getConversationMessages(
 ): Promise<ServiceResult<PaginatedResult<MessageEntity>>> {
   try {
     // Verify user is participant
-    const { data: conversation, error: convError } = await supabase
-      .from('conversations')
-      .select('participant1_id, participant2_id')
-      .eq('id', conversationId)
-      .single();
+    const convResult = await pool.query(
+      'SELECT participant1_id, participant2_id FROM conversations WHERE id = $1',
+      [conversationId]
+    );
 
-    if (convError || !conversation) {
+    if (convResult.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -255,6 +246,8 @@ export async function getConversationMessages(
         },
       };
     }
+
+    const conversation = convResult.rows[0];
 
     if (conversation.participant1_id !== userId && conversation.participant2_id !== userId) {
       return {
@@ -301,13 +294,12 @@ export async function markConversationAsRead(
 ): Promise<ServiceResult<void>> {
   try {
     // Verify user is participant
-    const { data: conversation, error: convError } = await supabase
-      .from('conversations')
-      .select('participant1_id, participant2_id')
-      .eq('id', conversationId)
-      .single();
+    const convResult = await pool.query(
+      'SELECT participant1_id, participant2_id FROM conversations WHERE id = $1',
+      [conversationId]
+    );
 
-    if (convError || !conversation) {
+    if (convResult.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -316,6 +308,8 @@ export async function markConversationAsRead(
         },
       };
     }
+
+    const conversation = convResult.rows[0];
 
     if (conversation.participant1_id !== userId && conversation.participant2_id !== userId) {
       return {
@@ -378,7 +372,7 @@ export async function getUnreadMessageCount(userId: string): Promise<ServiceResu
 }
 
 /**
- * Validate conversation participants and identify orphaned conversations
+ * Validate that all participants in user's conversations still exist
  * This can be used for cleanup or debugging purposes
  */
 export async function validateConversationParticipants(userId: string): Promise<ServiceResult<{
@@ -391,26 +385,27 @@ export async function validateConversationParticipants(userId: string): Promise<
     const orphanedConversations: ConversationEntity[] = [];
 
     for (const conv of conversations) {
-      const participant1Exists = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', conv.participant1_id)
-        .single();
+      const participant1Result = await pool.query(
+        'SELECT id FROM users WHERE id = $1',
+        [conv.participant1_id]
+      );
 
-      const participant2Exists = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', conv.participant2_id)
-        .single();
+      const participant2Result = await pool.query(
+        'SELECT id FROM users WHERE id = $1',
+        [conv.participant2_id]
+      );
 
-      if (participant1Exists.error || participant2Exists.error) {
+      const participant1Exists = participant1Result.rows.length > 0;
+      const participant2Exists = participant2Result.rows.length > 0;
+
+      if (!participant1Exists || !participant2Exists) {
         orphanedConversations.push(conv);
         logger.warn('Found orphaned conversation', {
           conversationId: conv.id,
           participant1Id: conv.participant1_id,
           participant2Id: conv.participant2_id,
-          participant1Exists: !participant1Exists.error,
-          participant2Exists: !participant2Exists.error,
+          participant1Exists,
+          participant2Exists,
         });
       } else {
         validConversations.push(conv);

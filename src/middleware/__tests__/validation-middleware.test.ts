@@ -318,7 +318,7 @@ describe('Validation Middleware - Property Tests', () => {
               projectId: 'project-123',
               attachments: [
                 {
-                  url: 'https://test.supabase.co/storage/v1/object/public/proposal-attachments/test.pdf',
+                  url: 'https://test.appwrite.co/storage/v1/object/public/proposal-attachments/test.pdf',
                   filename: 'proposal.pdf',
                   size: 1048576,
                   mimeType: 'application/pdf',

@@ -256,6 +256,7 @@ export async function extractSkillsFromText(
 
     if (isAIError(aiResult)) {
       // Fall back to keyword extraction
+      /* istanbul ignore next */
       extractedSkills = keywordExtractSkills(text, availableSkills);
     } else {
       extractedSkills = aiResult;

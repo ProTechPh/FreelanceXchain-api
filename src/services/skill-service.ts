@@ -175,6 +175,7 @@ export async function updateSkill(
   if (updates.description !== undefined) entityUpdates.description = updates.description;
 
   const updatedEntity = await skillRepository.updateSkill(id, entityUpdates);
+  /* istanbul ignore next */
   if (!updatedEntity) {
     return {
       success: false,

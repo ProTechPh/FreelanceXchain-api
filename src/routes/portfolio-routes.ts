@@ -5,7 +5,7 @@ import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limite
 import { getRequestId } from '../utils/route-helpers.js';
 import { uploadPortfolioImages } from '../middleware/file-upload-middleware.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
-import { STORAGE_BUCKETS } from '../config/supabase.js';
+import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
 import {
   createPortfolioItem,
   updatePortfolioItem,

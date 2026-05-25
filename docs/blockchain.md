@@ -647,7 +647,7 @@ Invalid --> End
 - Off-chain to on-chain:
   - agreement-contract.ts submits transactions with action payloads; ContractAgreement.sol executes state changes
 - On-chain to database:
-  - contract-service.ts manages contract entities and status transitions in Supabase
+  - contract-service.ts manages contract entities and status transitions in Appwrite
   - No direct on-chain-to-database sync is implemented; off-chain services coordinate state updates
 - Audit logging:
   - Off-chain receipts include transactionHash, blockNumber, gasUsed, and timestamps for traceability
@@ -819,7 +819,7 @@ C --> D[Dispute Repository]
 C --> E[Dispute Registry]
 E --> F[Blockchain Client]
 F --> G[Ethereum Network]
-D --> H[Supabase Database]
+D --> H[Appwrite Database]
 C --> I[Escrow Contract]
 C --> J[Notification Service]
 style A fill:#f9f,stroke:#333
@@ -1749,7 +1749,7 @@ Scripts --> Routes
 - kyc-contract.ts: Off-chain service that simulates blockchain interactions, computes hashes, and manages gas-efficient state updates by storing a local in-memory copy of verification records.
 - kyc-service.ts: Orchestrates KYC workflows, validates documents and liveness checks, and triggers on-chain approvals/rejections.
 - kyc-routes.ts: Express routes exposing KYC endpoints and admin review endpoints.
-- kyc-repository.ts: Data access layer for KYC records stored in Supabase.
+- kyc-repository.ts: Data access layer for KYC records stored in Appwrite.
 - blockchain-client.ts: Utility for transaction submission, polling, and confirmation; simulates blockchain behavior.
 - blockchain-types.ts: Shared type definitions for transactions and receipts.
 - test-kyc-flow.cjs: Integration test script that exercises the full KYC flow.
@@ -1868,7 +1868,7 @@ Store --> Done(["Return {verification, receipt}"])
   - Admin review: approve or reject with risk and AML fields.
   - On-chain sync: triggers approve/reject on the contract when applicable.
   - Integrity checks: compares off-chain status with on-chain status and data hash.
-- Data model: Uses models from kyc.ts and persists to Supabase via kyc-repository.ts.
+- Data model: Uses models from kyc.ts and persists to Appwrite via kyc-repository.ts.
 
 ```mermaid
 sequenceDiagram
@@ -1901,7 +1901,7 @@ Routes-->>Admin : "200 OK"
 - Supports structured validation and consistent representation across services and routes.
 
 ### Repository: kyc-repository.ts
-- Persists KYC records to Supabase.
+- Persists KYC records to Appwrite.
 - Provides CRUD operations and status-based queries.
 - Maps between domain models and database entities.
 
@@ -2179,7 +2179,7 @@ D --> E[web3-client.ts]
 D --> F[blockchain-types.ts]
 E --> G[env.ts]
 C --> H[contract-repository.ts]
-H --> I[Supabase]
+H --> I[Appwrite]
 E --> J[Ethereum RPC]
 ```
 
@@ -2817,7 +2817,7 @@ BC[Blockchain Client]
 end
 subgraph "Data Layer"
 SC[FreelanceReputation.sol]
-DB[(Supabase Database)]
+DB[(Appwrite Database)]
 end
 UI --> API
 API --> RS
@@ -2945,7 +2945,7 @@ sequenceDiagram
 participant Client as "Client"
 participant ReputationService as "Reputation Service"
 participant NotificationService as "Notification Service"
-participant Database as "Supabase Database"
+participant Database as "Appwrite Database"
 Client->>ReputationService : submitRating()
 ReputationService->>ReputationService : Validate rating
 ReputationService->>ReputationService : Submit to blockchain

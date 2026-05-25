@@ -3,17 +3,14 @@
  * Exports compiled contract ABIs for blockchain interaction
  */
 
-import { createRequire } from 'node:module';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const require = createRequire(import.meta.url);
+import { join } from 'node:path';
 
 function tryLoadArtifact(contractPath: string): { abi: any; bytecode: string } | null {
   try {
-    return require(join(__dirname, '../../artifacts/contracts', contractPath));
+    const artifactPath = join(process.cwd(), 'artifacts/contracts', contractPath);
+    const fs = require('fs');
+    const content = fs.readFileSync(artifactPath, 'utf-8');
+    return JSON.parse(content);
   } catch {
     console.warn(`[contract-abis] Could not load artifact: ${contractPath}. Smart contract features will be unavailable.`);
     return null;

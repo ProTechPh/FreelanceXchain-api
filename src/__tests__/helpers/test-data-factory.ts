@@ -30,6 +30,7 @@ export function createTestUser(overrides: Partial<UserEntity> = {}): UserEntity 
     wallet_address: `0x${generateId().substring(0, 40)}`,
     is_suspended: false,
     suspension_reason: null,
+    mfa_enabled: false,
     created_at: now(),
     updated_at: now(),
     ...overrides,

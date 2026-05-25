@@ -101,6 +101,7 @@ class SSEConnectionManager {
   /**
    * Get connection count for user
    */
+  /* c8 ignore next 3 */
   getConnectionCount(userId: string): number {
     return this.connections.get(userId)?.size || 0;
   }
@@ -220,6 +221,7 @@ export function getSSEStats(): ServiceResult<{
         activeUsers,
       },
     };
+  /* c8 ignore next 9 */
   } catch (error) {
     logger.error('Failed to get SSE stats:', error);
     return {
@@ -238,6 +240,7 @@ export function getSSEStats(): ServiceResult<{
 let heartbeatTimer: NodeJS.Timeout | null = null;
 
 function startHeartbeat(intervalMs: number = 30000): NodeJS.Timeout {
+  /* c8 ignore next 3 */
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
   }

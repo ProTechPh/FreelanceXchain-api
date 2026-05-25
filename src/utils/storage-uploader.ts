@@ -1,11 +1,13 @@
 /**
- * Supabase Storage Uploader Utility
- * Handles uploading validated files to Supabase Storage
+ * Appwrite Storage Uploader Utility
+ * Handles uploading validated files to Appwrite Storage
  * Requirements: IAS Checklist - File upload validation
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { getSupabaseServiceClient, STORAGE_BUCKETS, StorageBucketName } from '../config/supabase.js';
+import { ID } from 'node-appwrite';
+import { InputFile } from 'node-appwrite/file';
+import { storage, BUCKETS, type BucketId } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
 import { sanitizeFilename } from '../middleware/file-upload-middleware.js';
 
@@ -14,11 +16,14 @@ export type FileMetadata = {
   filename: string;
   size: number;
   mimeType: string;
+  fileId?: string; // Appwrite file ID for deletion
 };
 
 export type UploadResult = {
   success: boolean;
   metadata?: FileMetadata;
+  url?: string;
+  path?: string;
   error?: string;
 };
 
@@ -43,87 +48,55 @@ function generateUniqueFilename(originalFilename: string): string {
 }
 
 /**
- * Upload a file buffer to Supabase Storage
+ * Upload a file buffer to Appwrite Storage
  * @param buffer - File buffer from multer
  * @param originalFilename - Original filename
  * @param mimeType - MIME type of the file
- * @param bucket - Storage bucket name
- * @param folder - Optional folder path within bucket
+ * @param bucket - Storage bucket ID
+ * @param folder - Optional folder path within bucket (not used in Appwrite, kept for compatibility)
  * @returns Upload result with file metadata or error
  */
 export async function uploadFileToStorage(
   buffer: Buffer,
   originalFilename: string,
   mimeType: string,
-  bucket: StorageBucketName = STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS,
-  folder?: string
+  bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS,
+  _folder?: string
 ): Promise<UploadResult> {
   try {
-    const supabase = getSupabaseServiceClient();
-    
     // Generate unique filename
     const uniqueFilename = generateUniqueFilename(originalFilename);
     
-    // Construct full path (with folder if provided)
-    const filePath = folder ? `${folder}/${uniqueFilename}` : uniqueFilename;
+    // Create InputFile from buffer
+    const inputFile = InputFile.fromBuffer(buffer, uniqueFilename);
     
-    // Upload to Supabase Storage
-    const { data: _data, error } = await supabase.storage
-      .from(bucket)
-      .upload(filePath, buffer, {
-        contentType: mimeType,
-        upsert: false, // Don't overwrite existing files
-      });
+    // Upload to Appwrite Storage
+    const file = await storage.createFile(
+      bucket,
+      ID.unique(),
+      inputFile,
+      ['read("any")'] // Public read access
+    );
     
-    if (error) {
-      logger.error('Supabase Storage upload failed', {
-        error: error.message,
-        filename: originalFilename,
-        bucket,
-        filePath,
-      });
-      
-      return {
-        success: false,
-        error: `Failed to upload file: ${error.message}`,
-      };
-    }
-    
-    // Get public URL for the uploaded file
-    const { data: urlData } = supabase.storage
-      .from(bucket)
-      .getPublicUrl(filePath);
-    
-    if (!urlData || !urlData.publicUrl) {
-      logger.error('Failed to get public URL for uploaded file', {
-        filename: originalFilename,
-        bucket,
-        filePath,
-      });
-      
-      // Cleanup: delete the uploaded file since we can't get its URL
-      await supabase.storage.from(bucket).remove([filePath]);
-      
-      return {
-        success: false,
-        error: 'Failed to generate file URL',
-      };
-    }
+    // Get file view URL (public URL)
+    const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${bucket}/files/${file.$id}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
     
     // Construct file metadata
     const metadata: FileMetadata = {
-      url: urlData.publicUrl,
+      url,
       filename: originalFilename, // Keep original filename for display
       size: buffer.length,
       mimeType,
+      fileId: file.$id, // Store Appwrite file ID for deletion
     };
     
-    logger.info('File uploaded successfully to Supabase Storage', {
+    logger.info('File uploaded successfully to Appwrite Storage', {
       filename: originalFilename,
       uniqueFilename,
       bucket,
+      fileId: file.$id,
       size: buffer.length,
-      url: urlData.publicUrl,
+      url,
     });
     
     return {
@@ -140,21 +113,21 @@ export async function uploadFileToStorage(
     
     return {
       success: false,
-      error: 'An unexpected error occurred during file upload',
+      error: `An unexpected error occurred during file upload: ${error.message}`,
     };
   }
 }
 
 /**
- * Upload multiple files to Supabase Storage
+ * Upload multiple files to Appwrite Storage
  * @param files - Array of multer files
- * @param bucket - Storage bucket name
- * @param folder - Optional folder path within bucket
+ * @param bucket - Storage bucket ID
+ * @param folder - Optional folder path within bucket (not used in Appwrite, kept for compatibility)
  * @returns Array of upload results
  */
 export async function uploadMultipleFiles(
   files: Express.Multer.File[],
-  bucket: StorageBucketName = STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS,
+  bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS,
   folder?: string
 ): Promise<UploadResult[]> {
   const uploadPromises = files.map(file => {
@@ -174,37 +147,20 @@ export async function uploadMultipleFiles(
 }
 
 /**
- * Delete a file from Supabase Storage
- * @param filePath - Full path to the file in storage
- * @param bucket - Storage bucket name
+ * Delete a file from Appwrite Storage
+ * @param fileId - Appwrite file ID
+ * @param bucket - Storage bucket ID
  * @returns Success status
  */
 export async function deleteFileFromStorage(
-  filePath: string,
-  bucket: StorageBucketName = STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS
+  fileId: string,
+  bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const supabase = getSupabaseServiceClient();
+    await storage.deleteFile(bucket, fileId);
     
-    const { error } = await supabase.storage
-      .from(bucket)
-      .remove([filePath]);
-    
-    if (error) {
-      logger.error('Failed to delete file from Supabase Storage', {
-        error: error.message,
-        filePath,
-        bucket,
-      });
-      
-      return {
-        success: false,
-        error: `Failed to delete file: ${error.message}`,
-      };
-    }
-    
-    logger.info('File deleted successfully from Supabase Storage', {
-      filePath,
+    logger.info('File deleted successfully from Appwrite Storage', {
+      fileId,
       bucket,
     });
     
@@ -213,36 +169,36 @@ export async function deleteFileFromStorage(
     logger.error('Unexpected error during file deletion', {
       error: error.message,
       stack: error.stack,
-      filePath,
+      fileId,
       bucket,
     });
     
     return {
       success: false,
-      error: 'An unexpected error occurred during file deletion',
+      error: `An unexpected error occurred during file deletion: ${error.message}`,
     };
   }
 }
 
 /**
- * Extract file path from Supabase Storage URL
- * @param url - Full Supabase Storage URL
- * @returns File path or null if invalid URL
+ * Extract file ID from Appwrite Storage URL
+ * @param url - Full Appwrite Storage URL
+ * @returns File ID or null if invalid URL
  */
-export function extractFilePathFromUrl(url: string): string | null {
+export function extractFileIdFromUrl(url: string): string | null {
   try {
     const urlObj = new URL(url);
     
-    // Supabase storage URLs follow pattern: https://{project}.supabase.co/storage/v1/object/public/{bucket}/{path}
-    const pathMatch = urlObj.pathname.match(/\/storage\/v1\/object\/public\/[^/]+\/(.+)$/);
+    // Appwrite storage URLs follow pattern: https://{endpoint}/storage/buckets/{bucket}/files/{fileId}/view?project=${process.env.APPWRITE_PROJECT_ID}
+    const pathMatch = urlObj.pathname.match(/\/storage\/buckets\/[^/]+\/files\/([^/]+)/);
     
     if (pathMatch && pathMatch[1]) {
-      return decodeURIComponent(pathMatch[1]);
+      return pathMatch[1];
     }
     
     return null;
   } catch {
-    logger.warn('Failed to extract file path from URL', { url });
+    logger.warn('Failed to extract file ID from URL', { url });
     return null;
   }
 }
@@ -250,18 +206,19 @@ export function extractFilePathFromUrl(url: string): string | null {
 /**
  * Cleanup uploaded files in case of transaction failure
  * @param fileMetadata - Array of file metadata to cleanup
- * @param bucket - Storage bucket name
+ * @param bucket - Storage bucket ID
  */
 export async function cleanupUploadedFiles(
   fileMetadata: FileMetadata[],
-  bucket: StorageBucketName = STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS
+  bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS
 ): Promise<void> {
   const deletePromises = fileMetadata.map(metadata => {
-    const filePath = extractFilePathFromUrl(metadata.url);
-    if (filePath) {
-      return deleteFileFromStorage(filePath, bucket);
+    // Try to get fileId from metadata first, then extract from URL
+    const fileId = metadata.fileId || extractFileIdFromUrl(metadata.url);
+    if (fileId) {
+      return deleteFileFromStorage(fileId, bucket);
     }
-    return Promise.resolve({ success: false, error: 'Invalid URL' });
+    return Promise.resolve({ success: false, error: 'Invalid file ID or URL' });
   });
   
   const results = await Promise.all(deletePromises);
@@ -272,5 +229,80 @@ export async function cleanupUploadedFiles(
       failedCount: failedDeletions.length,
       totalCount: fileMetadata.length,
     });
+  }
+}
+
+/**
+ * Alias for extractFileIdFromUrl for backward compatibility
+ */
+export const extractFilePathFromUrl = extractFileIdFromUrl;
+
+/**
+ * Compatibility wrapper for legacy uploadFile calls
+ */
+export async function uploadFile(options: {
+  bucket: BucketId;
+  userId: string;
+  file: Buffer;
+  filename: string;
+  mimetype?: string;
+  folder?: string;
+}): Promise<UploadResult> {
+  const result = await uploadFileToStorage(
+    options.file,
+    options.filename,
+    options.mimetype || 'application/octet-stream',
+    options.bucket,
+    options.folder
+  );
+
+  const finalResult: UploadResult = {
+    success: result.success,
+  };
+
+  if (result.metadata?.url) finalResult.url = result.metadata.url;
+  if (result.metadata?.fileId) finalResult.path = result.metadata.fileId;
+  if (result.error) finalResult.error = result.error;
+
+  return finalResult;
+}
+
+/**
+ * Compatibility wrapper for legacy deleteFile calls
+ */
+export async function deleteFile(bucket: BucketId, path: string): Promise<{ success: boolean; error?: string }> {
+  return deleteFileFromStorage(path, bucket);
+}
+
+/**
+ * Compatibility wrapper for legacy getSignedUrl calls
+ */
+export async function getSignedUrl(bucket: BucketId, path: string): Promise<UploadResult> {
+  // Appwrite doesn't have "signed URLs" in the same way Appwrite does for public view
+  const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${bucket}/files/${path}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
+  return {
+    success: true,
+    url,
+  };
+}
+
+/**
+ * Compatibility wrapper for legacy listUserFiles calls
+ */
+export async function listUserFiles(bucket: BucketId, userId: string): Promise<{ success: boolean; files: any[]; error?: string }> {
+  try {
+    const result = await storage.listFiles(bucket);
+    // Filter by userId in filename prefix
+    const userFiles = result.files.filter(f => f.name.includes(userId));
+    return {
+      success: true,
+      files: userFiles,
+    };
+  } catch (error: any) {
+    return {
+      success: false,
+      files: [],
+      error: error.message,
+    };
   }
 }

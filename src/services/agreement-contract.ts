@@ -2,8 +2,6 @@
  * Contract Agreement Blockchain Service
  * Stores contract agreements and signatures on-chain
  * Creates immutable proof that both parties agreed to terms
- *
- * for persistent storage instead of in-memory Maps.
  */
 
 import {
@@ -13,7 +11,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 
 // Agreement status on blockchain
 export type BlockchainAgreementStatus = 'pending' | 'signed' | 'completed' | 'disputed' | 'cancelled';
@@ -118,14 +116,12 @@ export async function createAgreementOnBlockchain(
   const termsHash = generateTermsHash(input.terms);
 
   // Check if already exists
-  const supabase = getSupabaseServiceClient();
-  const { data: existing } = await supabase
-    .from('blockchain_agreements')
-    .select('contract_id_hash')
-    .eq('contract_id_hash', contractIdHash)
-    .single();
+  const existingResult = await pool.query(
+    'SELECT contract_id_hash FROM blockchain_agreements WHERE contract_id_hash = $1',
+    [contractIdHash]
+  );
 
-  if (existing) {
+  if (existingResult.rows.length > 0) {
     throw new Error('Agreement already exists for this contract');
   }
 
@@ -165,20 +161,27 @@ export async function createAgreementOnBlockchain(
   };
 
   // Persist to DB
-  await supabase.from('blockchain_agreements').insert({
-    contract_id_hash: agreement.contractIdHash,
-    terms_hash: agreement.termsHash,
-    employer_wallet: agreement.employerWallet,
-    freelancer_wallet: agreement.freelancerWallet,
-    total_amount: agreement.totalAmount,
-    milestone_count: agreement.milestoneCount,
-    status: agreement.status,
-    employer_signed_at: agreement.employerSignedAt,
-    freelancer_signed_at: agreement.freelancerSignedAt,
-    created_at_ts: agreement.createdAt,
-    transaction_hash: agreement.transactionHash,
-    block_number: agreement.blockNumber,
-  });
+  await pool.query(
+    `INSERT INTO blockchain_agreements 
+     (contract_id_hash, terms_hash, employer_wallet, freelancer_wallet, total_amount, 
+      milestone_count, status, employer_signed_at, freelancer_signed_at, created_at_ts, 
+      transaction_hash, block_number, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
+    [
+      agreement.contractIdHash,
+      agreement.termsHash,
+      agreement.employerWallet,
+      agreement.freelancerWallet,
+      agreement.totalAmount,
+      agreement.milestoneCount,
+      agreement.status,
+      agreement.employerSignedAt,
+      agreement.freelancerSignedAt,
+      agreement.createdAt,
+      agreement.transactionHash,
+      agreement.blockNumber
+    ]
+  );
 
   return {
     agreement,
@@ -200,16 +203,14 @@ export async function signAgreement(
   signerWallet: string
 ): Promise<{ agreement: BlockchainAgreement; receipt: TransactionReceipt }> {
   const contractIdHash = generateContractIdHash(contractId);
-  const supabase = getSupabaseServiceClient();
 
-  const { data: row, error } = await supabase
-    .from('blockchain_agreements')
-    .select('*')
-    .eq('contract_id_hash', contractIdHash)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_agreements WHERE contract_id_hash = $1',
+    [contractIdHash]
+  );
 
-  if (error || !row) throw new Error('Agreement not found');
-  const agreement = rowToAgreement(row as AgreementRow);
+  if (result.rows.length === 0) throw new Error('Agreement not found');
+  const agreement = rowToAgreement(result.rows[0] as AgreementRow);
   if (agreement.status !== 'pending') throw new Error('Agreement not pending');
   if (signerWallet !== agreement.employerWallet && signerWallet !== agreement.freelancerWallet) {
     throw new Error('Not a party to this agreement');
@@ -224,39 +225,44 @@ export async function signAgreement(
   });
 
   const confirmed = await confirmTransaction(tx.id);
+  /* istanbul ignore next */
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
   const now = Date.now();
-  const updates: Record<string, unknown> = {
-    transaction_hash: confirmed.hash!,
-    block_number: confirmed.blockNumber!,
-    updated_at: new Date().toISOString(),
-  };
+  let status: BlockchainAgreementStatus = agreement.status;
+  let employerSignedAt = agreement.employerSignedAt;
+  let freelancerSignedAt = agreement.freelancerSignedAt;
 
-  if (signerWallet === agreement.employerWallet && !agreement.employerSignedAt) {
-    updates['employer_signed_at'] = now;
-    agreement.employerSignedAt = now;
-  } else if (signerWallet === agreement.freelancerWallet && !agreement.freelancerSignedAt) {
-    updates['freelancer_signed_at'] = now;
-    agreement.freelancerSignedAt = now;
+  if (signerWallet === agreement.employerWallet && !employerSignedAt) {
+    employerSignedAt = now;
+  } else if (signerWallet === agreement.freelancerWallet && !freelancerSignedAt) {
+    freelancerSignedAt = now;
   }
 
   // Both signed = fully signed
-  if (agreement.employerSignedAt && agreement.freelancerSignedAt) {
-    updates['status'] = 'signed';
-    agreement.status = 'signed';
+  if (employerSignedAt && freelancerSignedAt) {
+    status = 'signed';
   }
 
-  await supabase
-    .from('blockchain_agreements')
-    .update(updates)
-    .eq('contract_id_hash', contractIdHash);
+  await pool.query(
+    `UPDATE blockchain_agreements 
+     SET status = $1, employer_signed_at = $2, freelancer_signed_at = $3, 
+         transaction_hash = $4, block_number = $5, updated_at = NOW() 
+     WHERE contract_id_hash = $6`,
+    [status, employerSignedAt, freelancerSignedAt, confirmed.hash!, confirmed.blockNumber!, contractIdHash]
+  );
 
-  agreement.transactionHash = confirmed.hash!;
-  agreement.blockNumber = confirmed.blockNumber!;
+  const updatedAgreement = {
+    ...agreement,
+    status,
+    employerSignedAt,
+    freelancerSignedAt,
+    transactionHash: confirmed.hash!,
+    blockNumber: confirmed.blockNumber!,
+  };
 
   return {
-    agreement,
+    agreement: updatedAgreement,
     receipt: {
       transactionHash: confirmed.hash!,
       blockNumber: confirmed.blockNumber!,
@@ -275,16 +281,14 @@ export async function completeAgreement(
   callerWallet: string
 ): Promise<{ agreement: BlockchainAgreement; receipt: TransactionReceipt }> {
   const contractIdHash = generateContractIdHash(contractId);
-  const supabase = getSupabaseServiceClient();
 
-  const { data: row, error } = await supabase
-    .from('blockchain_agreements')
-    .select('*')
-    .eq('contract_id_hash', contractIdHash)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_agreements WHERE contract_id_hash = $1',
+    [contractIdHash]
+  );
 
-  if (error || !row) throw new Error('Agreement not found');
-  const agreement = rowToAgreement(row as AgreementRow);
+  if (result.rows.length === 0) throw new Error('Agreement not found');
+  const agreement = rowToAgreement(result.rows[0] as AgreementRow);
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
 
   const tx = await submitTransaction({
@@ -298,28 +302,31 @@ export async function completeAgreement(
   const confirmed = await confirmTransaction(tx.id);
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
-  await supabase
-    .from('blockchain_agreements')
-    .update({
-      status: 'completed',
-      transaction_hash: confirmed.hash!,
-      block_number: confirmed.blockNumber!,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('contract_id_hash', contractIdHash);
+  const now = Date.now();
 
-  agreement.status = 'completed';
-  agreement.transactionHash = confirmed.hash!;
-  agreement.blockNumber = confirmed.blockNumber!;
+  // Update in DB
+  await pool.query(
+    `UPDATE blockchain_agreements 
+     SET status = $1, transaction_hash = $2, block_number = $3, updated_at = NOW()
+     WHERE contract_id_hash = $4`,
+    ['completed', confirmed.hash!, confirmed.blockNumber!, contractIdHash]
+  );
+
+  const updatedAgreement = {
+    ...agreement,
+    status: 'completed' as BlockchainAgreementStatus,
+    transactionHash: confirmed.hash!,
+    blockNumber: confirmed.blockNumber!,
+  };
 
   return {
-    agreement,
+    agreement: updatedAgreement,
     receipt: {
       transactionHash: confirmed.hash!,
       blockNumber: confirmed.blockNumber!,
       status: 'success',
       gasUsed: confirmed.gasUsed!,
-      timestamp: Date.now(),
+      timestamp: now,
     },
   };
 }
@@ -332,21 +339,16 @@ export async function disputeAgreement(
   callerWallet: string
 ): Promise<{ agreement: BlockchainAgreement; receipt: TransactionReceipt }> {
   const contractIdHash = generateContractIdHash(contractId);
-  const supabase = getSupabaseServiceClient();
 
-  const { data: row, error } = await supabase
-    .from('blockchain_agreements')
-    .select('*')
-    .eq('contract_id_hash', contractIdHash)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_agreements WHERE contract_id_hash = $1',
+    [contractIdHash]
+  );
 
-  if (error || !row) throw new Error('Agreement not found');
-  const agreement = rowToAgreement(row as AgreementRow);
+  if (result.rows.length === 0) throw new Error('Agreement not found');
+  const agreement = rowToAgreement(result.rows[0] as AgreementRow);
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
-  if (callerWallet !== agreement.employerWallet && callerWallet !== agreement.freelancerWallet) {
-    throw new Error('Not a party');
-  }
-
+  
   const tx = await submitTransaction({
     type: 'agreement_dispute',
     from: callerWallet,
@@ -358,28 +360,31 @@ export async function disputeAgreement(
   const confirmed = await confirmTransaction(tx.id);
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
-  await supabase
-    .from('blockchain_agreements')
-    .update({
-      status: 'disputed',
-      transaction_hash: confirmed.hash!,
-      block_number: confirmed.blockNumber!,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('contract_id_hash', contractIdHash);
+  const now = Date.now();
 
-  agreement.status = 'disputed';
-  agreement.transactionHash = confirmed.hash!;
-  agreement.blockNumber = confirmed.blockNumber!;
+  // Update in DB
+  await pool.query(
+    `UPDATE blockchain_agreements 
+     SET status = $1, transaction_hash = $2, block_number = $3, updated_at = NOW()
+     WHERE contract_id_hash = $4`,
+    ['disputed', confirmed.hash!, confirmed.blockNumber!, contractIdHash]
+  );
+
+  const updatedAgreement = {
+    ...agreement,
+    status: 'disputed' as BlockchainAgreementStatus,
+    transactionHash: confirmed.hash!,
+    blockNumber: confirmed.blockNumber!,
+  };
 
   return {
-    agreement,
+    agreement: updatedAgreement,
     receipt: {
       transactionHash: confirmed.hash!,
       blockNumber: confirmed.blockNumber!,
       status: 'success',
       gasUsed: confirmed.gasUsed!,
-      timestamp: Date.now(),
+      timestamp: now,
     },
   };
 }
@@ -389,15 +394,13 @@ export async function disputeAgreement(
  */
 export async function getAgreementFromBlockchain(contractId: string): Promise<BlockchainAgreement | null> {
   const contractIdHash = generateContractIdHash(contractId);
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_agreements')
-    .select('*')
-    .eq('contract_id_hash', contractIdHash)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_agreements WHERE contract_id_hash = $1',
+    [contractIdHash]
+  );
 
-  if (error || !data) return null;
-  return rowToAgreement(data as AgreementRow);
+  if (result.rows.length === 0) return null;
+  return rowToAgreement(result.rows[0] as AgreementRow);
 }
 
 /**
@@ -427,15 +430,18 @@ export async function isAgreementFullySigned(contractId: string): Promise<boolea
  * Get user's agreements
  */
 export async function getUserAgreements(walletAddress: string): Promise<BlockchainAgreement[]> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_agreements')
-    .select('*')
-    .or(`employer_wallet.eq.${walletAddress},freelancer_wallet.eq.${walletAddress}`)
-    .order('created_at_ts', { ascending: false });
+  try {
+    const result = await pool.query(
+      `SELECT * FROM blockchain_agreements 
+       WHERE employer_wallet = $1 OR freelancer_wallet = $1
+       ORDER BY created_at_ts DESC`,
+      [walletAddress]
+    );
 
-  if (error || !data) return [];
-  return (data as AgreementRow[]).map(rowToAgreement);
+    return result.rows.map(rowToAgreement);
+  } catch {
+    return [];
+  }
 }
 
 /**
@@ -443,8 +449,7 @@ export async function getUserAgreements(walletAddress: string): Promise<Blockcha
  */
 export async function clearBlockchainAgreements(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  const supabase = getSupabaseServiceClient();
-  await supabase.from('blockchain_agreements').delete().neq('contract_id_hash', '');
+  await pool.query('DELETE FROM blockchain_agreements');
 }
 
 export function getAgreementContractAddress(): string {

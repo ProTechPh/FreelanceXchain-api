@@ -10,7 +10,7 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity, mapProjectFromEntity, mapMilestoneFromEntity } from '../utils/entity-mapper.js';
 import { generateId } from '../utils/id.js';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import {
   notifyDisputeCreated,
   notifyDisputeResolved,
@@ -289,14 +289,13 @@ export async function submitEvidence(
   };
 
   // Add evidence to dispute atomically to prevent race condition (Requirement 8.3)
-  const { data: _newEvidenceArray, error: rpcError } = await getSupabaseServiceClient()
-    .rpc('append_dispute_evidence', {
-      p_dispute_id: disputeId,
-      p_evidence: [evidenceEntity] // Passed as an array to append
-    });
+  const result = await pool.query(
+    'SELECT append_dispute_evidence($1, $2) as result',
+    [disputeId, JSON.stringify([evidenceEntity])]
+  );
 
-  if (rpcError) {
-    logger.error('Failed to append evidence via RPC', rpcError, { disputeId });
+  if (!result.rows[0]?.result) {
+    logger.error('Failed to append evidence via RPC', { disputeId });
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to update dispute evidence' },

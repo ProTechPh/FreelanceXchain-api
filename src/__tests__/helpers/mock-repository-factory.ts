@@ -84,8 +84,63 @@ export function createMockUserRepository(store: Map<string, any>) {
 }
 
 /**
- * Create a mock project repository
+ * Create a mock proposal repository
  */
+export function createMockProposalRepository(store: Map<string, any>) {
+  const base = createMockRepository(store);
+
+  return {
+    ...base,
+    createProposal: base.create,
+    getProposalById: base.findById,
+    findProposalById: base.findById,
+    updateProposal: base.update,
+    getExistingProposal: jest.fn(async (projectId: string, freelancerId: string) => {
+      for (const proposal of store.values()) {
+        if (proposal.project_id === projectId && proposal.freelancer_id === freelancerId) {
+          return proposal;
+        }
+      }
+      return null;
+    }),
+    getProposalsByProject: jest.fn(async (projectId: string) => {
+      const items = Array.from(store.values()).filter(p => p.project_id === projectId);
+      return {
+        items,
+        hasMore: false,
+        total: items.length,
+      };
+    }),
+    getProposalsByFreelancer: jest.fn(async (freelancerId: string) => {
+      return Array.from(store.values()).filter(p => p.freelancer_id === freelancerId);
+    }),
+    hasAcceptedProposal: jest.fn(async (projectId: string) => {
+      for (const proposal of store.values()) {
+        if (proposal.project_id === projectId && proposal.status === 'accepted') {
+          return true;
+        }
+      }
+      return false;
+    }),
+    getAcceptedProposalCount: jest.fn(async (projectId: string) => {
+      let count = 0;
+      for (const proposal of store.values()) {
+        if (proposal.project_id === projectId && proposal.status === 'accepted') {
+          count++;
+        }
+      }
+      return count;
+    }),
+    getProposalCountByProject: jest.fn(async (projectId: string) => {
+      let count = 0;
+      for (const proposal of store.values()) {
+        if (proposal.project_id === projectId) count++;
+      }
+      return count;
+    }),
+  };
+}
+
 export function createMockProjectRepository(store: Map<string, any>) {
   const base = createMockRepository(store);
 
@@ -188,67 +243,6 @@ export function createMockProjectRepository(store: Map<string, any>) {
   };
 }
 
-/**
- * Create a mock proposal repository
- */
-export function createMockProposalRepository(store: Map<string, any>) {
-  const base = createMockRepository(store);
-
-  return {
-    ...base,
-    createProposal: base.create,
-    getProposalById: base.findById,
-    findProposalById: base.findById,
-    updateProposal: base.update,
-    getExistingProposal: jest.fn(async (projectId: string, freelancerId: string) => {
-      for (const proposal of store.values()) {
-        if (proposal.project_id === projectId && proposal.freelancer_id === freelancerId) {
-          return proposal;
-        }
-      }
-      return null;
-    }),
-    getProposalsByProject: jest.fn(async (projectId: string) => {
-      const items = Array.from(store.values()).filter(p => p.project_id === projectId);
-      return {
-        items,
-        hasMore: false,
-        total: items.length,
-      };
-    }),
-    getProposalsByFreelancer: jest.fn(async (freelancerId: string) => {
-      return Array.from(store.values()).filter(p => p.freelancer_id === freelancerId);
-    }),
-    hasAcceptedProposal: jest.fn(async (projectId: string) => {
-      for (const proposal of store.values()) {
-        if (proposal.project_id === projectId && proposal.status === 'accepted') {
-          return true;
-        }
-      }
-      return false;
-    }),
-    getAcceptedProposalCount: jest.fn(async (projectId: string) => {
-      let count = 0;
-      for (const proposal of store.values()) {
-        if (proposal.project_id === projectId && proposal.status === 'accepted') {
-          count++;
-        }
-      }
-      return count;
-    }),
-    getProposalCountByProject: jest.fn(async (projectId: string) => {
-      let count = 0;
-      for (const proposal of store.values()) {
-        if (proposal.project_id === projectId) count++;
-      }
-      return count;
-    }),
-  };
-}
-
-/**
- * Create a mock contract repository
- */
 export function createMockContractRepository(store: Map<string, any>) {
   const base = createMockRepository(store);
 
@@ -257,6 +251,9 @@ export function createMockContractRepository(store: Map<string, any>) {
     createContract: base.create,
     getContractById: base.findById,
     getContractByIdWithRelations: base.findById,
+    findContractByProposalId: jest.fn(async (proposalId: string) => {
+      return Array.from(store.values()).find(c => c.proposal_id === proposalId) || null;
+    }),
     updateContract: base.update,
     getUserContracts: jest.fn(async (userId: string, options?: any) => {
       const items = Array.from(store.values()).filter(

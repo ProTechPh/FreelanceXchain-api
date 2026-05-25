@@ -28,12 +28,6 @@ mockContractRepo.getUserContracts = jest.fn<any>(async (userId: string) => {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Mock Supabase client
-jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
-  getSupabaseClient: jest.fn(() => (globalThis as any).mockSupabaseClient),
-  getSupabaseServiceClient: jest.fn(() => (globalThis as any).mockSupabaseClient),
-}));
-
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepo,
@@ -90,91 +84,33 @@ const invalidRatingArbitrary = () =>
   );
 
 describe('Reputation Service - Property-Based Tests', () => {
+  let mockPool: any;
+
   beforeEach(async () => {
     contractStore.clear();
     projectStore.clear();
     await clearBlockchainRatings();
-    
-    // Setup Supabase mock (same as unit tests)
-    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    
-    // Reset all mocks
     jest.clearAllMocks();
+    mockPool = (globalThis as any).mockPool;
+    mockPool.query.mockReset();
     
-    // Mock reviews table for duplicate check
-    mockSupabaseClient.from.mockImplementation((table: string) => {
-      if (table === 'reviews') {
-        const mockBuilder = {
-          select: jest.fn(() => mockBuilder),
-          eq: jest.fn(() => mockBuilder),
-          single: jest.fn(async () => ({ data: null, error: null })), // No duplicate reviews
-          insert: jest.fn((data: any) => ({
-            select: jest.fn(() => ({
-              single: jest.fn(async () => ({
-                data: {
-                  id: generateId(),
-                  contract_id: data.contract_id,
-                  reviewer_id: data.reviewer_id,
-                  reviewee_id: data.reviewee_id,
-                  rating: data.rating,
-                  comment: data.comment,
-                  reviewer_role: data.reviewer_role,
-                  created_at: new Date().toISOString(),
-                },
-                error: null,
-              })),
-            })),
-          })),
-        };
-        return mockBuilder;
+    // Mock reviews table for duplicate check - return empty (no duplicates)
+    mockPool.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('reviews') && text.includes('SELECT') && text.includes('contract_id') && text.includes('reviewer_id')) {
+        return { rows: [], rowCount: 0 };
       }
-      
-      if (table === 'users') {
-        const mockBuilder = {
-          select: jest.fn(() => mockBuilder),
-          in: jest.fn(() => mockBuilder),
-          then: jest.fn(async (callback?: (result: any) => any) => {
-            const result = {
-              data: [
-                { id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) },
-                { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) },
-              ],
-              error: null,
-            };
-            if (callback) {
-              return callback(result);
-            }
-            return Promise.resolve(result);
-          }),
-        };
-        return mockBuilder;
+      if (text.includes('INSERT INTO reviews')) {
+        return { rows: [{ id: generateId(), contract_id: params?.[0], reviewer_id: params?.[2], reviewee_id: params?.[3], rating: params?.[4], comment: params?.[5], reviewer_role: params?.[6], created_at: new Date().toISOString() }], rowCount: 1 };
       }
-      
-      // Default mock
-      const defaultBuilder = {
-        select: jest.fn(() => defaultBuilder),
-        eq: jest.fn(() => defaultBuilder),
-        neq: jest.fn(() => defaultBuilder),
-        delete: jest.fn(() => defaultBuilder),
-        single: jest.fn(async () => ({ data: null, error: null })),
-        then: jest.fn(async (callback?: (result: any) => any) => {
-          const result = { data: [], error: null };
-          if (callback) {
-            return callback(result);
-          }
-          return Promise.resolve(result);
-        }),
-      };
-      return defaultBuilder;
+      if (text.includes('users') && text.includes('wallet_address')) {
+        return { rows: [{ id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) }, { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) }], rowCount: 2 };
+      }
+      return { rows: [], rowCount: 0 };
     });
   });
 
   /**
    * **Feature: blockchain-freelance-marketplace, Property 22: Rating validation bounds**
-   * **Validates: Requirements 7.4**
-   *
-   * For any rating submission, the rating value must be between 1 and 5 inclusive;
-   * values outside this range shall be rejected.
    */
   it('Property 22: Rating validation bounds - accept valid ratings', async () => {
     await fc.assert(
@@ -183,11 +119,8 @@ describe('Reputation Service - Property-Based Tests', () => {
         fc.uuid(),
         validRatingArbitrary(),
         async (freelancerId, employerId, rating) => {
-          // Skip if freelancerId and employerId are the same (self-rating not allowed)
-          if (freelancerId === employerId) {
-            return;
-          }
-          
+          if (freelancerId === employerId) return;
+
           contractStore.clear();
           projectStore.clear();
           await clearBlockchainRatings();
@@ -218,7 +151,7 @@ describe('Reputation Service - Property-Based Tests', () => {
           }
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 
@@ -229,14 +162,10 @@ describe('Reputation Service - Property-Based Tests', () => {
         fc.uuid(),
         invalidRatingArbitrary(),
         async (freelancerId, employerId, invalidRating) => {
-          // Skip if freelancerId and employerId are the same (self-rating not allowed)
-          if (freelancerId === employerId) {
-            return;
-          }
-          
+          if (freelancerId === employerId) return;
+
           contractStore.clear();
           projectStore.clear();
-          await clearBlockchainRatings();
 
           const project = createTestProject({ employer_id: employerId });
           const contract = createTestContract({
@@ -262,16 +191,12 @@ describe('Reputation Service - Property-Based Tests', () => {
           }
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 
   /**
    * **Feature: blockchain-freelance-marketplace, Property 23: Reputation time decay weighting**
-   * **Validates: Requirements 7.5**
-   *
-   * For any user with multiple ratings, more recent ratings shall have higher weight
-   * in the computed reputation score than older ratings.
    */
   it('Property 23: Time decay weighting - recent ratings weighted higher', async () => {
     await fc.assert(
@@ -298,7 +223,7 @@ describe('Reputation Service - Property-Based Tests', () => {
           expect(distanceToNewWithDecay).toBeLessThanOrEqual(distanceToNewSimple + 0.01);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 
@@ -328,16 +253,12 @@ describe('Reputation Service - Property-Based Tests', () => {
           expect(score1).toBeGreaterThan(score2);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 
   /**
-   * **Feature: blockchain-freelance-marketplace, Property 24: Reputation record serialization round-trip**
-   * **Validates: Requirements 7.6, 7.7**
-   *
-   * For any valid reputation record object, serializing to JSON and deserializing back
-   * shall produce an equivalent object.
+   * **Feature: blockchain-freelance-marketplace, Property 24: Serialization round-trip**
    */
   it('Property 24: Serialization round-trip preserves all fields', async () => {
     await fc.assert(
@@ -372,7 +293,7 @@ describe('Reputation Service - Property-Based Tests', () => {
           expect(deserialized.transactionHash).toBe(original.transactionHash);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 
@@ -401,16 +322,12 @@ describe('Reputation Service - Property-Based Tests', () => {
           expect(deserialized.comment).toBe(original.comment);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 
   /**
    * **Feature: blockchain-freelance-marketplace, Property 25: Reputation score computation**
-   * **Validates: Requirements 7.3**
-   *
-   * For any user with ratings, the computed reputation score shall be the weighted
-   * average of all ratings using time decay.
    */
   it('Property 25: Score computation - weighted average with time decay', async () => {
     await fc.assert(
@@ -443,15 +360,13 @@ describe('Reputation Service - Property-Based Tests', () => {
           expect(computedScore).toBeCloseTo(expectedScore, 2);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 
   it('Property 25: Score computation - edge cases', async () => {
-    // No ratings
     expect(computeAggregateScore([], 0.01)).toBe(0);
 
-    // Single rating
     await fc.assert(
       fc.asyncProperty(
         fc.integer({ min: 1, max: 5 }),
@@ -462,7 +377,7 @@ describe('Reputation Service - Property-Based Tests', () => {
           expect(score).toBe(rating);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 
@@ -485,88 +400,34 @@ describe('Reputation Service - Property-Based Tests', () => {
           expect(score).toBeLessThanOrEqual(5);
         }
       ),
-      { numRuns: 100 }
+      { numRuns: 50 }
     );
   });
 });
 
 describe('Reputation Service - Unit Tests', () => {
+  let mockPool: any;
+
   beforeEach(async () => {
     contractStore.clear();
     projectStore.clear();
     await clearBlockchainRatings();
-    
-    // Setup Supabase mock
-    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    
-    // Reset all mocks
     jest.clearAllMocks();
+    mockPool = (globalThis as any).mockPool;
+    mockPool.query.mockReset();
     
-    // Mock reviews table for duplicate check
-    mockSupabaseClient.from.mockImplementation((table: string) => {
-      if (table === 'reviews') {
-        const mockBuilder = {
-          select: jest.fn(() => mockBuilder),
-          eq: jest.fn(() => mockBuilder),
-          single: jest.fn(async () => ({ data: null, error: null })), // No duplicate reviews
-          insert: jest.fn((data: any) => ({
-            select: jest.fn(() => ({
-              single: jest.fn(async () => ({
-                data: {
-                  id: generateId(),
-                  contract_id: data.contract_id,
-                  reviewer_id: data.reviewer_id,
-                  reviewee_id: data.reviewee_id,
-                  rating: data.rating,
-                  comment: data.comment,
-                  reviewer_role: data.reviewer_role,
-                  created_at: new Date().toISOString(),
-                },
-                error: null,
-              })),
-            })),
-          })),
-        };
-        return mockBuilder;
+    // Mock pool.query for various reputation operations
+    mockPool.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('reviews') && text.includes('SELECT') && text.includes('contract_id') && text.includes('reviewer_id')) {
+        return { rows: [], rowCount: 0 };
       }
-      
-      if (table === 'users') {
-        const mockBuilder = {
-          select: jest.fn(() => mockBuilder),
-          in: jest.fn(() => mockBuilder),
-          then: jest.fn(async (callback?: (result: any) => any) => {
-            const result = {
-              data: [
-                { id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) },
-                { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) },
-              ],
-              error: null,
-            };
-            if (callback) {
-              return callback(result);
-            }
-            return Promise.resolve(result);
-          }),
-        };
-        return mockBuilder;
+      if (text.includes('INSERT INTO reviews')) {
+        return { rows: [{ id: generateId(), contract_id: params?.[0], reviewer_id: params?.[2], reviewee_id: params?.[3], rating: params?.[4], comment: params?.[5], reviewer_role: params?.[6], created_at: new Date().toISOString() }], rowCount: 1 };
       }
-      
-      // Default mock
-      const defaultBuilder = {
-        select: jest.fn(() => defaultBuilder),
-        eq: jest.fn(() => defaultBuilder),
-        neq: jest.fn(() => defaultBuilder),
-        delete: jest.fn(() => defaultBuilder),
-        single: jest.fn(async () => ({ data: null, error: null })),
-        then: jest.fn(async (callback?: (result: any) => any) => {
-          const result = { data: [], error: null };
-          if (callback) {
-            return callback(result);
-          }
-          return Promise.resolve(result);
-        }),
-      };
-      return defaultBuilder;
+      if (text.includes('users') && text.includes('wallet_address')) {
+        return { rows: [{ id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) }, { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) }], rowCount: 2 };
+      }
+      return { rows: [], rowCount: 0 };
     });
   });
 

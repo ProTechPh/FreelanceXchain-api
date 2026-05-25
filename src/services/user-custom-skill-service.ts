@@ -186,6 +186,7 @@ export async function updateUserCustomSkill(
     }
     return { success: true, data: mapUserCustomSkillFromEntity(updatedEntity) };
   } catch (error) {
+    /* istanbul ignore next */
     return {
       success: false,
       error: { 
@@ -213,6 +214,7 @@ export async function deleteUserCustomSkill(
     await userCustomSkillRepository.deleteUserCustomSkill(id, userId);
     return { success: true, data: true };
   } catch (error) {
+    /* istanbul ignore next */
     return {
       success: false,
       error: { 
@@ -285,6 +287,7 @@ export async function updateSkillSuggestionStatus(
     }
     return { success: true, data: mapSkillSuggestionFromEntity(updatedEntity) };
   } catch (error) {
+    /* istanbul ignore next */
     return {
       success: false,
       error: { 

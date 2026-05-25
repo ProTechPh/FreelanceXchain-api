@@ -1,5 +1,4 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
 export type { NotificationType } from '../models/notification.js';
 import type { NotificationType } from '../models/notification.js';
 
@@ -15,9 +14,9 @@ export type NotificationEntity = {
   updated_at: string;
 };
 
-export class NotificationRepository extends BaseRepository<NotificationEntity> {
+export class NotificationRepository extends BaseRepositoryPg<NotificationEntity> {
   constructor() {
-    super(TABLES.NOTIFICATIONS);
+    super('notifications');
   }
 
   async createNotification(notification: Omit<NotificationEntity, 'created_at' | 'updated_at'>): Promise<NotificationEntity> {
@@ -29,78 +28,97 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
   }
 
   async getNotificationsByUser(userId: string, options?: QueryOptions): Promise<PaginatedResult<NotificationEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    // Get total count
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE user_id = $1`;
+    const countResult = await this.pool.query(countQuery, [userId]);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    // Get paginated data
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to get notifications by user: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as NotificationEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [userId, limit, offset]);
+      
+      return {
+        items: result.rows as NotificationEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get notifications by user: ${error.message}`);
+    }
   }
 
   async getAllNotificationsByUser(userId: string): Promise<NotificationEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+    `;
     
-    if (error) throw new Error(`Failed to get all notifications by user: ${error.message}`);
-    return (data ?? []) as NotificationEntity[];
+    try {
+      const result = await this.pool.query(query, [userId]);
+      return result.rows as NotificationEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get all notifications by user: ${error.message}`);
+    }
   }
 
   async getUnreadNotificationsByUser(userId: string): Promise<NotificationEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('user_id', userId)
-      .eq('is_read', false)
-      .order('created_at', { ascending: false });
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE user_id = $1 AND is_read = false
+      ORDER BY created_at DESC
+    `;
     
-    if (error) throw new Error(`Failed to get unread notifications: ${error.message}`);
-    return (data ?? []) as NotificationEntity[];
+    try {
+      const result = await this.pool.query(query, [userId]);
+      return result.rows as NotificationEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get unread notifications: ${error.message}`);
+    }
   }
 
   async markAsRead(id: string): Promise<NotificationEntity | null> {
-    return this.update(id, { is_read: true });
+    return this.update(id, { is_read: true } as Partial<NotificationEntity>);
   }
 
   async markAllAsRead(userId: string): Promise<number> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .update({ is_read: true, updated_at: new Date().toISOString() })
-      .eq('user_id', userId)
-      .eq('is_read', false)
-      .select();
+    const query = `
+      UPDATE ${this.tableName}
+      SET is_read = true, updated_at = $1
+      WHERE user_id = $2 AND is_read = false
+      RETURNING id
+    `;
     
-    if (error) throw new Error(`Failed to mark all as read: ${error.message}`);
-    return data?.length ?? 0;
+    try {
+      const result = await this.pool.query(query, [new Date().toISOString(), userId]);
+      return result.rowCount ?? 0;
+    } catch (error: any) {
+      throw new Error(`Failed to mark all as read: ${error.message}`);
+    }
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    const client = this.getClient();
-    const { count, error } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('is_read', false);
+    const query = `
+      SELECT COUNT(*) FROM ${this.tableName}
+      WHERE user_id = $1 AND is_read = false
+    `;
     
-    if (error) throw new Error(`Failed to get unread count: ${error.message}`);
-    return count ?? 0;
+    try {
+      const result = await this.pool.query(query, [userId]);
+      return parseInt(result.rows[0].count, 10);
+    } catch (error: any) {
+      throw new Error(`Failed to get unread count: ${error.message}`);
+    }
   }
 }
 

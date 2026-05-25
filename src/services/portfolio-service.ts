@@ -1,9 +1,9 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { PortfolioItem, PortfolioItemInput } from '../models/portfolio.js';
 import type { ServiceResult } from '../types/service-result.js';
-
-const supabase = getSupabaseClient();
+import { storage, BUCKETS } from '../config/appwrite.js';
+import { extractFileIdFromUrl } from '../utils/storage-uploader.js';
 
 /**
  * Create a new portfolio item
@@ -26,15 +26,13 @@ export async function createPortfolioItem(
 
     // Verify skills exist if provided
     if (input.skills && input.skills.length > 0) {
-      const { data: skills, error: skillError } = await supabase
-        .from('skills')
-        .select('name')
-        .in('name', input.skills);
+      const skillsResult = await pool.query(
+        'SELECT name FROM skills WHERE name = ANY($1)',
+        [input.skills]
+      );
 
-      if (skillError) {
-        logger.error('Failed to verify skills', { error: skillError, skills: input.skills });
-      } else if (skills && skills.length < input.skills.length) {
-        const validSkills = new Set(skills.map((s: { name: string }) => s.name));
+      if (skillsResult.rows.length < input.skills.length) {
+        const validSkills = new Set(skillsResult.rows.map((s: { name: string }) => s.name));
         const invalidSkills = input.skills.filter(s => !validSkills.has(s));
         return {
           success: false,
@@ -46,34 +44,16 @@ export async function createPortfolioItem(
       }
     }
 
-    const { data, error } = await supabase
-      .from('portfolio_items')
-      .insert({
-        freelancer_id: freelancerId,
-        title: input.title,
-        description: input.description,
-        project_url: input.projectUrl,
-        images: input.images,
-        skills: input.skills || [],
-        completed_at: input.completedAt,
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      logger.error('Failed to create portfolio item', { error, freelancerId, input });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to create portfolio item',
-        },
-      };
-    }
+    const result = await pool.query(
+      `INSERT INTO portfolio_items (freelancer_id, title, description, project_url, images, skills, completed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING *`,
+      [freelancerId, input.title, input.description, input.projectUrl, JSON.stringify(input.images), JSON.stringify(input.skills || []), input.completedAt]
+    );
 
     return {
       success: true,
-      data: data as PortfolioItem,
+      data: result.rows[0] as PortfolioItem,
     };
   } catch (error) {
     logger.error('Unexpected error in createPortfolioItem', { error, freelancerId, input });
@@ -97,13 +77,12 @@ export async function updatePortfolioItem(
 ): Promise<ServiceResult<PortfolioItem>> {
   try {
     // Verify ownership
-    const { data: existing, error: fetchError } = await supabase
-      .from('portfolio_items')
-      .select('freelancer_id')
-      .eq('id', portfolioId)
-      .single();
+    const existingResult = await pool.query(
+      'SELECT freelancer_id FROM portfolio_items WHERE id = $1',
+      [portfolioId]
+    );
 
-    if (fetchError || !existing) {
+    if (existingResult.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -113,7 +92,7 @@ export async function updatePortfolioItem(
       };
     }
 
-    if (existing.freelancer_id !== userId) {
+    if (existingResult.rows[0].freelancer_id !== userId) {
       return {
         success: false,
         error: {
@@ -123,39 +102,46 @@ export async function updatePortfolioItem(
       };
     }
 
-    // Build update object
-    const updateData: any = {
-      updated_at: new Date().toISOString(),
-    };
+    // Build update query dynamically
+    const updateFields: string[] = ['updated_at = NOW()'];
+    const values: any[] = [];
+    let paramIndex = 1;
 
-    if (updates.title) updateData.title = updates.title;
-    if (updates.description) updateData.description = updates.description;
-    if (updates.projectUrl !== undefined) updateData.project_url = updates.projectUrl;
-    if (updates.images) updateData.images = updates.images;
-    if (updates.skills) updateData.skills = updates.skills;
-    if (updates.completedAt !== undefined) updateData.completed_at = updates.completedAt;
-
-    const { data, error } = await supabase
-      .from('portfolio_items')
-      .update(updateData)
-      .eq('id', portfolioId)
-      .select('*')
-      .single();
-
-    if (error) {
-      logger.error('Failed to update portfolio item', { error, portfolioId, updates });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to update portfolio item',
-        },
-      };
+    if (updates.title) {
+      updateFields.push(`title = $${paramIndex++}`);
+      values.push(updates.title);
     }
+    if (updates.description) {
+      updateFields.push(`description = $${paramIndex++}`);
+      values.push(updates.description);
+    }
+    if (updates.projectUrl !== undefined) {
+      updateFields.push(`project_url = $${paramIndex++}`);
+      values.push(updates.projectUrl);
+    }
+    if (updates.images) {
+      updateFields.push(`images = $${paramIndex++}`);
+      values.push(JSON.stringify(updates.images));
+    }
+    if (updates.skills) {
+      updateFields.push(`skills = $${paramIndex++}`);
+      values.push(JSON.stringify(updates.skills));
+    }
+    if (updates.completedAt !== undefined) {
+      updateFields.push(`completed_at = $${paramIndex++}`);
+      values.push(updates.completedAt);
+    }
+
+    values.push(portfolioId);
+
+    const result = await pool.query(
+      `UPDATE portfolio_items SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
+      values
+    );
 
     return {
       success: true,
-      data: data as PortfolioItem,
+      data: result.rows[0] as PortfolioItem,
     };
   } catch (error) {
     logger.error('Unexpected error in updatePortfolioItem', { error, portfolioId, updates });
@@ -178,13 +164,12 @@ export async function deletePortfolioItem(
 ): Promise<ServiceResult<void>> {
   try {
     // Verify ownership
-    const { data: existing, error: fetchError } = await supabase
-      .from('portfolio_items')
-      .select('freelancer_id, images')
-      .eq('id', portfolioId)
-      .single();
+    const existingResult = await pool.query(
+      'SELECT freelancer_id, images FROM portfolio_items WHERE id = $1',
+      [portfolioId]
+    );
 
-    if (fetchError || !existing) {
+    if (existingResult.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -193,6 +178,8 @@ export async function deletePortfolioItem(
         },
       };
     }
+
+    const existing = existingResult.rows[0];
 
     if (existing.freelancer_id !== userId) {
       return {
@@ -205,31 +192,15 @@ export async function deletePortfolioItem(
     }
 
     // Delete from database
-    const { error } = await supabase
-      .from('portfolio_items')
-      .delete()
-      .eq('id', portfolioId);
-
-    if (error) {
-      logger.error('Failed to delete portfolio item', { error, portfolioId });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to delete portfolio item',
-        },
-      };
-    }
+    await pool.query('DELETE FROM portfolio_items WHERE id = $1', [portfolioId]);
 
     // Clean up images from storage (best effort)
     if (existing.images && Array.isArray(existing.images)) {
       for (const imageUrl of existing.images) {
         try {
-          // Extract path from URL
-          const urlParts = imageUrl.split('/storage/v1/object/public/portfolio-images/');
-          if (urlParts.length === 2) {
-            const path = urlParts[1];
-            await supabase.storage.from('portfolio-images').remove([path]);
+          const fileId = extractFileIdFromUrl(imageUrl);
+          if (fileId) {
+            await storage.deleteFile(BUCKETS.PORTFOLIO_IMAGES, fileId);
           }
         } catch (cleanupError) {
           logger.warn('Failed to cleanup portfolio image', { error: cleanupError, imageUrl });
@@ -260,26 +231,14 @@ export async function getFreelancerPortfolio(
   freelancerId: string
 ): Promise<ServiceResult<PortfolioItem[]>> {
   try {
-    const { data, error } = await supabase
-      .from('portfolio_items')
-      .select('*')
-      .eq('freelancer_id', freelancerId)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      logger.error('Failed to get freelancer portfolio', { error, freelancerId });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to fetch portfolio',
-        },
-      };
-    }
+    const result = await pool.query(
+      'SELECT * FROM portfolio_items WHERE freelancer_id = $1 ORDER BY created_at DESC',
+      [freelancerId]
+    );
 
     return {
       success: true,
-      data: (data || []) as PortfolioItem[],
+      data: result.rows as PortfolioItem[],
     };
   } catch (error) {
     logger.error('Unexpected error in getFreelancerPortfolio', { error, freelancerId });
@@ -298,13 +257,12 @@ export async function getFreelancerPortfolio(
  */
 export async function getPortfolioItem(portfolioId: string): Promise<ServiceResult<PortfolioItem>> {
   try {
-    const { data, error } = await supabase
-      .from('portfolio_items')
-      .select('*')
-      .eq('id', portfolioId)
-      .single();
+    const result = await pool.query(
+      'SELECT * FROM portfolio_items WHERE id = $1',
+      [portfolioId]
+    );
 
-    if (error || !data) {
+    if (result.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -316,7 +274,7 @@ export async function getPortfolioItem(portfolioId: string): Promise<ServiceResu
 
     return {
       success: true,
-      data: data as PortfolioItem,
+      data: result.rows[0] as PortfolioItem,
     };
   } catch (error) {
     logger.error('Unexpected error in getPortfolioItem', { error, portfolioId });

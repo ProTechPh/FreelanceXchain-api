@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Documentation Consistency Fixes (2026-03-22)
 - **Port Numbers**: Corrected `localhost:3000` → `localhost:7860` across README.md, CONFIGURATION.md, and 4 architecture API docs
 - **Script Names**: Fixed `deploy:ganache` → `deploy:local` in README.md; `generate:openapi` → `openapi:generate` in CONFIGURATION.md and scripts/README.md
-- **Package Manager**: Replaced all remaining `npm test` / `npm run` references with `pnpm` equivalents in contracts/README.md, supabase/README.md, docs/blockchain/testing.md, docs/blockchain/test-results.md, docs/guides/troubleshooting.md, src/__tests__/README.md
+- **Package Manager**: Replaced all remaining `npm test` / `npm run` references with `pnpm` equivalents in contracts/README.md, appwrite/README.md, docs/blockchain/testing.md, docs/blockchain/test-results.md, docs/guides/troubleshooting.md, src/__tests__/README.md
 - **Type Check Command**: Replaced non-existent `pnpm run type-check` with `pnpm exec tsc --noEmit` in CONFIGURATION.md, CONTRIBUTING.md, src/README.md
 - **Broken Links**: Removed references to non-existent QUICKSTART.md, PROJECT_STRUCTURE.md, and email-templates/README.md from README.md and CONTRIBUTING.md
 
@@ -241,15 +241,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Server-Side File Upload Validation (IAS Checklist Completion)
 - **Multer Middleware**: Implemented server-side file upload handling with `file-upload-middleware.ts`
-  - Memory storage for processing before Supabase upload
+  - Memory storage for processing before Appwrite upload
   - Extension-based file type filtering (first line of defense)
   - Magic number validation using `file-type` library (prevents MIME spoofing)
   - File size validation (10MB per file, 25MB total)
   - File count validation (1-5 files for proposals, 1-10 for disputes)
   - Filename sanitization (removes special characters, prevents path traversal)
   - Comprehensive error handling with detailed error messages
-- **Storage Uploader Utility**: Created `storage-uploader.ts` for Supabase Storage integration
-  - Uploads validated files from memory to Supabase Storage
+- **Storage Uploader Utility**: Created `storage-uploader.ts` for Appwrite Storage integration
+  - Uploads validated files from memory to Appwrite Storage
   - Generates unique filenames with UUID prefix
   - Returns file metadata (URL, filename, size, MIME type)
   - Cleanup functions for failed transactions
@@ -278,12 +278,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Documents: PDF, DOCX, DOC, TXT
   - Images: PNG, JPG, JPEG, GIF
 - **File Size Limits**: 10MB per file, 25MB total per proposal
-- **URL Reference Pattern**: Clients upload files to Supabase Storage first, then submit file metadata (URL, filename, size, MIME type) to the API
+- **URL Reference Pattern**: Clients upload files to Appwrite Storage first, then submit file metadata (URL, filename, size, MIME type) to the API
 - **New Validation**: Added comprehensive file validation utility (`file-validator.ts`) that validates:
   - File count (1-5 required)
   - File types (MIME type and extension whitelist)
   - File sizes (per file and total)
-  - URL format and domain (must be from Supabase Storage)
+  - URL format and domain (must be from Appwrite Storage)
 - **Database Schema**: Added `attachments` JSONB column to proposals table, made `cover_letter` nullable for backward compatibility
 - **Storage Configuration**: Added `STORAGE_BUCKETS` constant and storage bucket configuration to environment
 - **Documentation**: Updated `docs/PROPOSAL_FILE_UPLOADS.md` with:
@@ -326,7 +326,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.5.1] - 2026-01-02
 
 ### Fixed
-- **LinkedIn OAuth**: Fixed LinkedIn authentication by mapping `linkedin` provider to `linkedin_oidc` for Supabase compatibility.
+- **LinkedIn OAuth**: Fixed LinkedIn authentication by mapping `linkedin` provider to `linkedin_oidc` for Appwrite compatibility.
 
 ---
 
@@ -345,7 +345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Strict Role Enforcement**: OAuth login no longer auto-creates accounts; explicit registration step is now required.
 
 ### Fixed
-- **Role Assignment**: Fixed issue where Supabase OAuth defaults would create users without a clear role intent.
+- **Role Assignment**: Fixed issue where Appwrite OAuth defaults would create users without a clear role intent.
 
 ---
 
@@ -354,20 +354,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 #### OAuth Integration
-- **Provider Support**: Integrated Google, GitHub, LinkedIn, and Microsoft authentication via Supabase.
+- **Provider Support**: Integrated Google, GitHub, LinkedIn, and Microsoft authentication via Appwrite.
 - **New Endpoints**:
-  - `GET /api/auth/oauth/:provider`: Initiates OAuth flow by redirecting to Supabase.
+  - `GET /api/auth/oauth/:provider`: Initiates OAuth flow by redirecting to Appwrite.
   - `GET /api/auth/callback`: Handles OAuth callbacks, syncs user data, and issues application JWTs.
 - **Service Layer**:
   - `getOAuthUrl(provider)`: Generates auth URL with `skipBrowserRedirect` to keep control on backend.
-  - `exchangeCodeForSession(code)`: Swaps authorization code for Supabase session.
-  - `loginWithSupabase(accessToken)`: Syncs Supabase user to local `users` table and issues app tokens.
+  - `exchangeCodeForSession(code)`: Swaps authorization code for Appwrite session.
+  - `loginWithAppwrite(accessToken)`: Syncs Appwrite user to local `users` table and issues app tokens.
 
 ### Changed
 
 #### Authentication Flow
 - Refactored `auth-service.ts` to handle OAuth tokens directly.
-- Updated CSP in `security-middleware.ts` to allow specific CDN and supabase connections (maintained for potential future use).
+- Updated CSP in `security-middleware.ts` to allow specific CDN and appwrite connections (maintained for potential future use).
 
 ### Fixed
 
@@ -521,7 +521,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Blockchain KYC Verification
 - `contracts/KYCVerification.sol` - Smart contract for on-chain KYC status
 - `src/services/kyc-contract.ts` - Blockchain KYC service interface
-- Hybrid KYC system: sensitive data in Supabase, verification status on blockchain
+- Hybrid KYC system: sensitive data in Appwrite, verification status on blockchain
 - On-chain verification proof with data hash (privacy-compliant)
 - Automatic blockchain submission on KYC approval/rejection
 - Wallet verification status checking
@@ -590,19 +590,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 #### Database Migration
-- Migrated from Azure Cosmos DB to Supabase (PostgreSQL)
-- Updated all repositories to use Supabase client
+- Migrated from Azure Cosmos DB to Appwrite (PostgreSQL)
+- Updated all repositories to use Appwrite client
 - Converted document-based schema to relational tables
 - Added entity mapper utilities for type conversion
 
 #### Configuration
-- Replaced Cosmos DB environment variables with Supabase
+- Replaced Cosmos DB environment variables with Appwrite
 - Updated database configuration module
 - Simplified connection handling
 
 ### Added
-- `supabase/schema.sql` - Complete PostgreSQL schema
-- `src/config/supabase.ts` - Supabase client configuration
+- `appwrite/schema.sql` - Complete PostgreSQL schema
+- `src/config/appwrite.ts` - Appwrite client configuration
 - `src/utils/entity-mapper.ts` - Entity type conversion utilities
 - Row Level Security (RLS) policies for all tables
 
@@ -688,7 +688,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Backend Stack
 - Node.js with Express.js
 - TypeScript for type safety
-- Supabase (PostgreSQL) for data storage
+- Appwrite (PostgreSQL) for data storage
 - JWT for authentication
 
 #### Blockchain Stack
@@ -735,7 +735,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Repository**: `src/repositories/didit-kyc-repository.ts` - Database operations
 - **Routes**: `src/routes/didit-kyc-routes.ts` - RESTful API endpoints
 - **Webhook Support**: Secure webhook endpoint with HMAC signature verification
-- **Database Migration**: `supabase/migrations/003_didit_kyc_verifications.sql` - New schema
+- **Database Migration**: `appwrite/migrations/003_didit_kyc_verifications.sql` - New schema
 - **Documentation**: `docs/DIDIT-KYC-INTEGRATION.md` - Complete integration guide
 
 #### KYC Features
@@ -762,7 +762,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Webhook signature verification using HMAC-SHA256
 - Secure API key management via environment variables
 - Row Level Security (RLS) policies on KYC table
-- Personal data stored encrypted in Supabase
+- Personal data stored encrypted in Appwrite
 - Document images handled by Didit (not stored locally)
 
 ### Migration Notes
@@ -803,5 +803,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 | 2.2.1 | 2025-12-25 | Security fixes and rate limiting |
 | 2.2.0 | 2025-12-25 | Added reviews, messages, and payments tables |
 | 2.1.0 | 2025-12-25 | Blockchain integration and AI features |
-| 2.0.0 | 2025-12-25 | Migrated to Supabase |
+| 2.0.0 | 2025-12-25 | Migrated to Appwrite |
 | 1.0.0 | 2025-12-07 | Initial release with full feature set |

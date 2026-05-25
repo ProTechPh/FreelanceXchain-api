@@ -6,7 +6,7 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { generateId } from '../utils/id.js';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 
@@ -168,14 +168,13 @@ export async function respondToRushUpgrade(
 
     // Apply rush upgrade atomically
     const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
-    const { error: rpcError } = await getSupabaseServiceClient()
-      .rpc('apply_rush_upgrade_atomic', {
-        p_contract_id: requestEntity.contract_id,
-        p_rush_fee_percentage: agreedPercentage,
-      });
+    const result = await pool.query(
+      'SELECT apply_rush_upgrade_atomic($1, $2) as result',
+      [requestEntity.contract_id, agreedPercentage]
+    );
 
-    if (rpcError) {
-      logger.error('Failed to apply rush upgrade (RPC)', { error: rpcError });
+    if (!result.rows[0]?.result) {
+      logger.error('Failed to apply rush upgrade (RPC)');
       return {
         success: false,
         error: { code: 'UPDATE_FAILED', message: 'Failed to apply rush upgrade to contract' },
@@ -349,14 +348,13 @@ export async function acceptCounterOffer(
   }
 
   // Apply rush upgrade atomically with the counter percentage
-  const { error: rpcError } = await getSupabaseServiceClient()
-    .rpc('apply_rush_upgrade_atomic', {
-      p_contract_id: requestEntity.contract_id,
-      p_rush_fee_percentage: requestEntity.counter_percentage,
-    });
+  const result = await pool.query(
+    'SELECT apply_rush_upgrade_atomic($1, $2) as result',
+    [requestEntity.contract_id, requestEntity.counter_percentage]
+  );
 
-  if (rpcError) {
-    logger.error('Failed to apply rush upgrade (RPC)', { error: rpcError });
+  if (!result.rows[0]?.result) {
+    logger.error('Failed to apply rush upgrade (RPC)');
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to apply rush upgrade to contract' },

@@ -2,13 +2,13 @@
 
 ## ⚡ 5-Minute Setup
 
-Follow these steps to apply your new email templates to Supabase:
+Follow these steps to apply your new email templates to Appwrite:
 
-### Step 1: Access Supabase Dashboard
+### Step 1: Access Appwrite Dashboard
 
 Open this link in your browser:
 ```
-https://supabase.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates
+https://appwrite.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates
 ```
 
 ### Step 2: Apply Each Template
@@ -109,14 +109,14 @@ Each template features:
 - Use the OTP code option for users with email prefetching issues
 - Customize colors to match your exact brand guidelines
 - Add your logo URL to replace the emoji icons
-- Monitor email delivery rates in Supabase dashboard
+- Monitor email delivery rates in Appwrite dashboard
 
 ## 🆘 Troubleshooting
 
 **Email not received?**
 - Check spam folder
-- Verify email provider settings in Supabase
-- Check Supabase Auth logs
+- Verify email provider settings in Appwrite
+- Check Appwrite Auth logs
 
 **Template not saving?**
 - Ensure HTML is valid
@@ -124,7 +124,7 @@ Each template features:
 - Try saving in smaller chunks
 
 **Links not working?**
-- Verify Site URL in Supabase Auth settings
+- Verify Site URL in Appwrite Auth settings
 - Check redirect URLs are whitelisted
 - Ensure token hasn't expired
 

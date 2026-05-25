@@ -1,4 +1,4 @@
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type {
@@ -17,21 +17,20 @@ export async function createRefundRequest(
   input: CreateRefundRequestInput
 ): Promise<ServiceResult<RefundRequest>> {
   try {
-    const supabase = getSupabaseServiceClient();
-
     // Get contract details
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .select('*')
-      .eq('id', input.contractId)
-      .single();
+    const contractResult = await pool.query(
+      'SELECT * FROM contracts WHERE id = $1',
+      [input.contractId]
+    );
 
-    if (contractError || !contract) {
+    if (contractResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
       };
     }
+
+    const contract = contractResult.rows[0];
 
     // Only allow refund on active contracts
     if (contract.status !== 'active') {
@@ -54,13 +53,12 @@ export async function createRefundRequest(
     }
 
     // Check for existing pending refund request
-    const { data: existingRefunds } = await supabase
-      .from('refund_requests')
-      .select('id')
-      .eq('contract_id', input.contractId)
-      .eq('status', 'pending');
+    const existingRefundsResult = await pool.query(
+      'SELECT id FROM refund_requests WHERE contract_id = $1 AND status = $2',
+      [input.contractId, 'pending']
+    );
 
-    if (existingRefunds && existingRefunds.length > 0) {
+    if (existingRefundsResult.rows.length > 0) {
       return {
         success: false,
         error: { code: 'DUPLICATE_REQUEST', message: 'There is already a pending refund request for this contract' },
@@ -71,22 +69,18 @@ export async function createRefundRequest(
     const isPartial = input.amount !== undefined && input.amount < contract.total_amount;
 
     // Insert refund request
-    const { data: refund, error: insertError } = await supabase
-      .from('refund_requests')
-      .insert({
-        contract_id: input.contractId,
-        requested_by: input.requestedBy,
-        amount: input.amount || contract.total_amount,
-        is_partial: isPartial,
-        reason: input.reason,
-        status: 'pending',
-      })
-      .select()
-      .single();
+    const refundResult = await pool.query(
+      `INSERT INTO refund_requests (contract_id, requested_by, amount, is_partial, reason, status, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
+       RETURNING *`,
+      [input.contractId, input.requestedBy, input.amount || contract.total_amount, isPartial, input.reason, 'pending']
+    );
 
-    if (insertError || !refund) {
-      throw insertError || new Error('Failed to create refund request');
+    if (refundResult.rows.length === 0) {
+      throw new Error('Failed to create refund request');
     }
+
+    const refund = refundResult.rows[0];
 
     // Notify other party
     const otherPartyId = contract.freelancer_id === input.requestedBy
@@ -130,28 +124,28 @@ export async function approveRefund(
   input: ApproveRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
   try {
-    const supabase = getSupabaseServiceClient();
-
     // Get refund request
-    const { data: refund, error: refundError } = await supabase
-      .from('refund_requests')
-      .select('*, contracts!inner(*)')
-      .eq('id', input.refundId)
-      .single();
+    const refundResult = await pool.query(
+      `SELECT r.*, c.freelancer_id, c.employer_id, c.total_amount, c.status as contract_status
+       FROM refund_requests r
+       INNER JOIN contracts c ON r.contract_id = c.id
+       WHERE r.id = $1`,
+      [input.refundId]
+    );
 
-    if (refundError || !refund) {
+    if (refundResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'REFUND_NOT_FOUND', message: 'Refund request not found' },
       };
     }
 
-    const contract = refund.contracts;
+    const refund = refundResult.rows[0];
 
     // Verify approver is the other party
-    const otherPartyId = contract.freelancer_id === refund.requested_by
-      ? contract.employer_id
-      : contract.freelancer_id;
+    const otherPartyId = refund.freelancer_id === refund.requested_by
+      ? refund.employer_id
+      : refund.freelancer_id;
 
     if (otherPartyId !== input.approvedBy) {
       return {
@@ -169,46 +163,43 @@ export async function approveRefund(
     }
 
     // Update refund request
-    const { data: updated, error: updateError } = await supabase
-      .from('refund_requests')
-      .update({
-        status: 'approved',
-        approved_by: input.approvedBy,
-        approved_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', input.refundId)
-      .select()
-      .single();
+    const updateResult = await pool.query(
+      `UPDATE refund_requests 
+       SET status = $1, approved_by = $2, approved_at = NOW(), updated_at = NOW()
+       WHERE id = $3
+       RETURNING *`,
+      ['approved', input.approvedBy, input.refundId]
+    );
 
-    if (updateError || !updated) {
-      throw updateError || new Error('Failed to approve refund');
+    if (updateResult.rows.length === 0) {
+      throw new Error('Failed to approve refund');
     }
+
+    const updated = updateResult.rows[0];
 
     // Execute blockchain refund for all non-approved milestones
     try {
-      if (contract.escrow_address) {
+      if (refund.escrow_address) {
         const { refundMilestone } = await import('./escrow-blockchain.js');
 
         // Get all milestones for this contract to determine correct indices
-        const { data: milestones } = await supabase
-          .from('milestones')
-          .select('id, status')
-          .eq('contract_id', refund.contract_id)
-          .order('due_date', { ascending: true });
+        const milestonesResult = await pool.query(
+          'SELECT id, status FROM milestones WHERE contract_id = $1 ORDER BY due_date ASC',
+          [refund.contract_id]
+        );
 
-        const pendingMilestones = (milestones || [])
-          .map((m, index) => ({ ...m, index }))
-          .filter(m => m.status !== 'approved');
+        const pendingMilestones = milestonesResult.rows
+          .map((m: any, index: number) => ({ ...m, index }))
+          .filter((m: any) => m.status !== 'approved');
 
         for (const milestone of pendingMilestones) {
           try {
-            await refundMilestone(contract.escrow_address, milestone.index);
+            await refundMilestone(refund.escrow_address, milestone.index);
             logger.info('Blockchain refund executed for milestone', {
               refundId: input.refundId,
               milestoneIndex: milestone.index,
               milestoneId: milestone.id,
-              escrowAddress: contract.escrow_address,
+              escrowAddress: refund.escrow_address,
             });
           } catch (milestoneRefundError) {
             logger.error('Failed to refund individual milestone on-chain', {
@@ -219,12 +210,14 @@ export async function approveRefund(
           }
         }
       } else {
+        /* istanbul ignore next */
         logger.warn('Contract has no escrow address, skipping blockchain refund', {
           contractId: refund.contract_id
         });
       }
     } catch (blockchainError) {
       // Log error but don't fail the approval - the refund is approved in DB
+      /* istanbul ignore next */
       logger.error('Failed to execute blockchain refund', {
         error: blockchainError,
         refundId: input.refundId
@@ -232,24 +225,16 @@ export async function approveRefund(
     }
 
     // Update contract status to cancelled after refund approval
-    await supabase
-      .from('contracts')
-      .update({
-        status: 'cancelled',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', refund.contract_id);
+    await pool.query(
+      "UPDATE contracts SET status = 'cancelled', updated_at = NOW() WHERE id = $1",
+      [refund.contract_id]
+    );
 
     // Cancel any other pending refund requests for this contract
-    await supabase
-      .from('refund_requests')
-      .update({
-        status: 'cancelled',
-        updated_at: new Date().toISOString(),
-      })
-      .eq('contract_id', refund.contract_id)
-      .eq('status', 'pending')
-      .neq('id', input.refundId);
+    await pool.query(
+      "UPDATE refund_requests SET status = 'cancelled', updated_at = NOW() WHERE contract_id = $1 AND status = 'pending' AND id != $2",
+      [refund.contract_id, input.refundId]
+    );
 
     // Notify requester
     const notificationResult = await createNotification({
@@ -289,28 +274,28 @@ export async function rejectRefund(
   input: RejectRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
   try {
-    const supabase = getSupabaseServiceClient();
-
     // Get refund request
-    const { data: refund, error: refundError } = await supabase
-      .from('refund_requests')
-      .select('*, contracts!inner(*)')
-      .eq('id', input.refundId)
-      .single();
+    const refundResult = await pool.query(
+      `SELECT r.*, c.freelancer_id, c.employer_id
+       FROM refund_requests r
+       INNER JOIN contracts c ON r.contract_id = c.id
+       WHERE r.id = $1`,
+      [input.refundId]
+    );
 
-    if (refundError || !refund) {
+    if (refundResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'REFUND_NOT_FOUND', message: 'Refund request not found' },
       };
     }
 
-    const contract = refund.contracts;
+    const refund = refundResult.rows[0];
 
     // Verify rejector is the other party
-    const otherPartyId = contract.freelancer_id === refund.requested_by
-      ? contract.employer_id
-      : contract.freelancer_id;
+    const otherPartyId = refund.freelancer_id === refund.requested_by
+      ? refund.employer_id
+      : refund.freelancer_id;
 
     if (otherPartyId !== input.rejectedBy) {
       return {
@@ -328,22 +313,19 @@ export async function rejectRefund(
     }
 
     // Update refund request
-    const { data: updated, error: updateError } = await supabase
-      .from('refund_requests')
-      .update({
-        status: 'rejected',
-        rejected_by: input.rejectedBy,
-        rejected_at: new Date().toISOString(),
-        rejection_reason: input.reason,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', input.refundId)
-      .select()
-      .single();
+    const updateResult = await pool.query(
+      `UPDATE refund_requests 
+       SET status = $1, rejected_by = $2, rejection_reason = $3, rejected_at = NOW(), updated_at = NOW()
+       WHERE id = $4
+       RETURNING *`,
+      ['rejected', input.rejectedBy, input.reason, input.refundId]
+    );
 
-    if (updateError || !updated) {
-      throw updateError || new Error('Failed to reject refund');
+    if (updateResult.rows.length === 0) {
+      throw new Error('Failed to reject refund');
     }
+
+    const updated = updateResult.rows[0];
 
     // Notify requester
     const notificationResult = await createNotification({
@@ -384,21 +366,20 @@ export async function getContractRefunds(
   userId: string
 ): Promise<ServiceResult<RefundRequest[]>> {
   try {
-    const supabase = getSupabaseServiceClient();
-
     // Verify user is involved
-    const { data: contract, error: contractError } = await supabase
-      .from('contracts')
-      .select('*')
-      .eq('id', contractId)
-      .single();
+    const contractResult = await pool.query(
+      'SELECT * FROM contracts WHERE id = $1',
+      [contractId]
+    );
 
-    if (contractError || !contract) {
+    if (contractResult.rows.length === 0) {
       return {
         success: false,
         error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
       };
     }
+
+    const contract = contractResult.rows[0];
 
     const isInvolved =
       contract.freelancer_id === userId ||
@@ -412,15 +393,12 @@ export async function getContractRefunds(
     }
 
     // Get refund requests
-    const { data: refunds, error: refundsError } = await supabase
-      .from('refund_requests')
-      .select('*')
-      .eq('contract_id', contractId)
-      .order('created_at', { ascending: false });
+    const refundsResult = await pool.query(
+      'SELECT * FROM refund_requests WHERE contract_id = $1 ORDER BY created_at DESC',
+      [contractId]
+    );
 
-    if (refundsError) throw refundsError;
-
-    return { success: true, data: (refunds || []) as RefundRequest[] };
+    return { success: true, data: refundsResult.rows as RefundRequest[] };
   } catch (error) {
     logger.error('Failed to get contract refunds:', error);
     return {

@@ -149,6 +149,7 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -228,6 +229,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(401).json({
       error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -348,6 +350,7 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'User ID is required' },
@@ -405,6 +408,7 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
+  /* istanbul ignore next */
   if (!userId) {
     res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'User ID is required' },

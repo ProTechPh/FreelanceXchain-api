@@ -12,7 +12,7 @@
 7. [Conclusion](#conclusion)
 
 ## Introduction
-The FreelanceXchain platform implements a comprehensive indexing strategy to optimize database query performance across its core entities. This document details the indexing approach used in the Supabase PostgreSQL database, focusing on how indexes support common query patterns in the freelance marketplace. The indexing strategy balances read performance optimization with write overhead considerations, ensuring efficient data retrieval for user-facing operations while maintaining data integrity and write performance.
+The FreelanceXchain platform implements a comprehensive indexing strategy to optimize database query performance across its core entities. This document details the indexing approach used in the Appwrite PostgreSQL database, focusing on how indexes support common query patterns in the freelance marketplace. The indexing strategy balances read performance optimization with write overhead considerations, ensuring efficient data retrieval for user-facing operations while maintaining data integrity and write performance.
 
 ## Indexing Strategy Overview
 
@@ -255,7 +255,7 @@ The FreelanceXchain database indexing strategy effectively optimizes query perfo
 
 ## Introduction
 
-The FreelanceXchain platform utilizes a Supabase PostgreSQL database to store all application data, providing a robust foundation for the blockchain-based freelance marketplace. The database schema is designed to support key features including user management, project lifecycle, contract execution, payment processing, and dispute resolution. This document provides comprehensive documentation of the database schema, detailing all tables, their relationships, indexing strategy, security policies, and performance considerations.
+The FreelanceXchain platform utilizes a Appwrite PostgreSQL database to store all application data, providing a robust foundation for the blockchain-based freelance marketplace. The database schema is designed to support key features including user management, project lifecycle, contract execution, payment processing, and dispute resolution. This document provides comprehensive documentation of the database schema, detailing all tables, their relationships, indexing strategy, security policies, and performance considerations.
 
 The schema implements a relational model with UUID primary keys for all tables, ensuring global uniqueness and preventing enumeration attacks. JSONB columns are strategically used for flexible data storage where schema flexibility is required, such as storing skills, experience, and milestone data. Row Level Security (RLS) is enabled on all tables to enforce data access controls based on user roles and ownership, providing a secure multi-tenant environment.
 
@@ -818,7 +818,7 @@ The predefined UUIDs ensure consistency across different environments (developme
 The database schema and configuration are optimized for performance in a high-traffic freelance marketplace environment. Several strategies are employed to ensure responsive queries and efficient data processing.
 
 ### Connection Pooling
-The application utilizes Supabase's built-in connection pooling to manage database connections efficiently. This reduces the overhead of establishing new connections for each request and prevents connection exhaustion under high load.
+The application utilizes Appwrite's built-in connection pooling to manage database connections efficiently. This reduces the overhead of establishing new connections for each request and prevents connection exhaustion under high load.
 
 ### Query Optimization
 The indexing strategy (documented in the Indexing Strategy section) is designed to optimize the most common query patterns, particularly:
@@ -841,7 +841,7 @@ Potential performance improvements include:
 
 ### Monitoring and Maintenance
 Regular database maintenance should include:
-- Monitoring query performance using Supabase's analytics tools
+- Monitoring query performance using Appwrite's analytics tools
 - Reviewing and optimizing slow queries
 - Updating table statistics to ensure optimal query planning
 - Managing index bloat and vacuuming tables as needed
@@ -875,21 +875,21 @@ The schema is well-positioned to support the platform's growth and evolving requ
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document explains the Row Level Security (RLS) implementation in the FreelanceXchain database. It describes how RLS policies are enabled on all tables via ALTER TABLE statements, outlines the public read policies for skill categories, skills, and open projects, and details the service role bypass policies that allow the backend application to perform administrative operations. It also explains how the Supabase authentication layer integrates with the application’s role-based access control to enforce data access restrictions based on user roles and ownership.
+This document explains the Row Level Security (RLS) implementation in the FreelanceXchain database. It describes how RLS policies are enabled on all tables via ALTER TABLE statements, outlines the public read policies for skill categories, skills, and open projects, and details the service role bypass policies that allow the backend application to perform administrative operations. It also explains how the Appwrite authentication layer integrates with the application’s role-based access control to enforce data access restrictions based on user roles and ownership.
 
 ## Project Structure
-RLS is defined in the database schema and enforced by Supabase. The application’s authentication and authorization middleware validate tokens and roles, while repositories and services interact with Supabase using the Supabase client. The architecture diagram in the documentation shows how authentication and RLS fit into the overall security layers.
+RLS is defined in the database schema and enforced by Appwrite. The application’s authentication and authorization middleware validate tokens and roles, while repositories and services interact with Appwrite using the Appwrite client. The architecture diagram in the documentation shows how authentication and RLS fit into the overall security layers.
 
 ```mermaid
 graph TB
 subgraph "Application Layer"
 MW["Auth Middleware<br/>validateToken()"]
 SVC["Auth Service<br/>login(), validateToken()"]
-CFG["Config<br/>env.ts, supabase.ts"]
-REPO["Base Repository<br/>Supabase client"]
+CFG["Config<br/>env.ts, appwrite.ts"]
+REPO["Base Repository<br/>Appwrite client"]
 end
 subgraph "Database Layer"
-DB["Supabase (PostgreSQL)<br/>RLS-enabled tables"]
+DB["Appwrite (PostgreSQL)<br/>RLS-enabled tables"]
 POL["RLS Policies<br/>Public reads, Service role bypass"]
 end
 MW --> SVC
@@ -902,19 +902,19 @@ DB --> POL
 ## Core Components
 - RLS enablement: All tables have RLS enabled via ALTER TABLE commands in the schema.
 - Public read policies: skill_categories and skills allow SELECT for all users; projects allow SELECT only when status equals open.
-- Service role bypass: A policy allows full access to all tables for the Supabase service role, enabling backend operations.
+- Service role bypass: A policy allows full access to all tables for the Appwrite service role, enabling backend operations.
 
-These policies are defined in the database schema and enforced by Supabase.
+These policies are defined in the database schema and enforced by Appwrite.
 
 ## Architecture Overview
 The system enforces layered security:
 - Transport security (HTTPS/TLS)
 - Authentication (JWT bearer tokens)
 - Authorization (role-based access control)
-- Database security (Supabase RLS)
+- Database security (Appwrite RLS)
 - Smart contract security (blockchain layer)
 
-RLS sits alongside the Supabase auth layer to restrict row-level access based on policies.
+RLS sits alongside the Appwrite auth layer to restrict row-level access based on policies.
 
 ```mermaid
 graph TB
@@ -922,7 +922,7 @@ subgraph "Security Layers"
 TLS["Transport Security"]
 AUTH["Authentication<br/>JWT Bearer Tokens"]
 RBAC["Authorization<br/>Role-Based Access Control"]
-RLS["Database Security<br/>Supabase RLS"]
+RLS["Database Security<br/>Appwrite RLS"]
 SC["Smart Contract Security"]
 end
 TLS --> AUTH
@@ -962,15 +962,15 @@ OwnerOrRole --> |No| Deny["Deny access"]
 ### Integration with Authentication and Authorization
 - Application authentication validates JWT tokens and attaches user identity (userId, role) to requests.
 - The auth middleware ensures requests carry a valid Bearer token and forwards validated user info downstream.
-- The auth service retrieves user metadata from Supabase and constructs application-level user objects.
+- The auth service retrieves user metadata from Appwrite and constructs application-level user objects.
 
 ```mermaid
 sequenceDiagram
 participant Client as "Client"
 participant API as "Auth Middleware"
 participant SVC as "Auth Service"
-participant SUPA as "Supabase Auth"
-participant DB as "Supabase DB"
+participant SUPA as "Appwrite Auth"
+participant DB as "Appwrite DB"
 Client->>API : "Authorization : Bearer <token>"
 API->>SVC : "validateToken(accessToken)"
 SVC->>SUPA : "auth.getUser(accessToken)"
@@ -981,19 +981,19 @@ SVC-->>API : "{userId, email, role}"
 API-->>Client : "Authenticated request proceeds"
 ```
 
-### Supabase Client and Service Role Key
-- The Supabase client is initialized with the Supabase URL and anonymous key.
+### Appwrite Client and Service Role Key
+- The Appwrite client is initialized with the Appwrite URL and anonymous key.
 - The service role key is configured in environment variables and is intended for server-side use only.
-- Repositories use the Supabase client to perform database operations.
+- Repositories use the Appwrite client to perform database operations.
 
 ```mermaid
 classDiagram
-class SupabaseConfig {
+class AppwriteConfig {
 +url : string
 +anonKey : string
 +serviceRoleKey : string
 }
-class SupabaseClient {
+class AppwriteClient {
 +from(table)
 +auth
 }
@@ -1007,8 +1007,8 @@ class BaseRepository {
 +queryAll()
 +queryPaginated()
 }
-SupabaseConfig --> SupabaseClient : "initialize"
-BaseRepository --> SupabaseClient : "uses"
+AppwriteConfig --> AppwriteClient : "initialize"
+BaseRepository --> AppwriteClient : "uses"
 ```
 
 ### Public Data Exposure and Seed Data
@@ -1017,24 +1017,24 @@ BaseRepository --> SupabaseClient : "uses"
 
 ```mermaid
 flowchart TD
-Seed["Seed Script<br/>skill_categories, skills"] --> DB["Supabase DB"]
+Seed["Seed Script<br/>skill_categories, skills"] --> DB["Appwrite DB"]
 DB --> Clients["Clients can SELECT skill_categories and skills"]
 Clients --> Matching["Skill Matching & Discovery"]
 ```
 
 ## Dependency Analysis
-- RLS depends on Supabase’s policy engine and the Supabase client.
+- RLS depends on Appwrite’s policy engine and the Appwrite client.
 - Application middleware depends on the auth service to validate tokens and roles.
-- Repositories depend on the Supabase client to perform CRUD operations; RLS policies apply to these operations server-side.
+- Repositories depend on the Appwrite client to perform CRUD operations; RLS policies apply to these operations server-side.
 
 ```mermaid
 graph LR
 AUTH_MW["Auth Middleware"] --> AUTH_SVC["Auth Service"]
 AUTH_SVC --> ENV["Environment Config"]
-AUTH_SVC --> SUPA_CFG["Supabase Config"]
-SUPA_CFG --> SUPA_CLIENT["Supabase Client"]
+AUTH_SVC --> SUPA_CFG["Appwrite Config"]
+SUPA_CFG --> SUPA_CLIENT["Appwrite Client"]
 SUPA_CLIENT --> REPO["Base Repository"]
-REPO --> DB["Supabase DB with RLS"]
+REPO --> DB["Appwrite DB with RLS"]
 DB --> POLICIES["RLS Policies"]
 ```
 
@@ -1048,7 +1048,7 @@ DB --> POLICIES["RLS Policies"]
 ## Troubleshooting Guide
 Common issues and resolutions:
 - Unauthorized access to protected tables:
-  - Ensure the request is made with a valid JWT issued by Supabase and that the user role aligns with the operation.
+  - Ensure the request is made with a valid JWT issued by Appwrite and that the user role aligns with the operation.
   - Confirm that RLS policies are enabled on the target table and that the service role bypass is not misapplied.
 - Public read not working for categories/skills:
   - Verify the public read policies exist and that the client is not using an authenticated session that would trigger row-level filtering.
@@ -1058,7 +1058,7 @@ Common issues and resolutions:
   - Ensure the service role key is configured server-side and used only for trusted backend operations.
 
 ## Conclusion
-The FreelanceXchain database employs Supabase RLS to enforce fine-grained access control across all tables. Public read policies enable discovery of categories and skills and controlled exposure of open projects. A service role bypass policy permits backend operations while maintaining strict access controls for authenticated users. Together with the application’s JWT-based authentication and role-based authorization, RLS forms a robust, layered security model that protects sensitive data and prevents unauthorized access.
+The FreelanceXchain database employs Appwrite RLS to enforce fine-grained access control across all tables. Public read policies enable discovery of categories and skills and controlled exposure of open projects. A service role bypass policy permits backend operations while maintaining strict access controls for authenticated users. Together with the application’s JWT-based authentication and role-based authorization, RLS forms a robust, layered security model that protects sensitive data and prevents unauthorized access.
 
 ---
 
@@ -1080,17 +1080,17 @@ This document explains the data seeding process for initial database content in 
 
 ## Project Structure
 The seeding and taxonomy-related components are organized as follows:
-- Database schema and seed scripts live under supabase/.
+- Database schema and seed scripts live under appwrite/.
 - Application services and repositories that consume the taxonomy live under src/.
 
 ```mermaid
 graph TB
 subgraph "Database"
-SCHEMA["supabase/schema.sql"]
-SEED["supabase/seed-skills.sql"]
+SCHEMA["appwrite/schema.sql"]
+SEED["appwrite/seed-skills.sql"]
 end
 subgraph "Application"
-CFG["src/config/supabase.ts"]
+CFG["src/config/appwrite.ts"]
 SRV["src/services/skill-service.ts"]
 REP["src/repositories/skill-repository.ts"]
 MAP["src/utils/entity-mapper.ts"]
@@ -1113,22 +1113,22 @@ ROUTE --> SRV
 
 ## Architecture Overview
 The seeding process integrates with the database initialization workflow as follows:
-- Developers run the schema.sql in the Supabase SQL Editor to create tables and enable extensions.
+- Developers run the schema.sql in the Appwrite SQL Editor to create tables and enable extensions.
 - After schema creation, developers run seed-skills.sql to populate categories and skills with stable UUIDs.
-- The application’s Supabase client and repositories read the taxonomy to support skill management and AI matching.
+- The application’s Appwrite client and repositories read the taxonomy to support skill management and AI matching.
 
 ```mermaid
 sequenceDiagram
 participant Dev as "Developer"
-participant Supabase as "Supabase SQL Editor"
-participant DB as "Supabase Database"
+participant Appwrite as "Appwrite SQL Editor"
+participant DB as "Appwrite Database"
 participant App as "Application Server"
 participant Repo as "SkillRepository"
 participant Map as "EntityMapper"
-Dev->>Supabase : "Run supabase/schema.sql"
-Supabase->>DB : "Create tables and indexes"
-Dev->>Supabase : "Run supabase/seed-skills.sql"
-Supabase->>DB : "Insert categories and skills<br/>with ON CONFLICT DO NOTHING"
+Dev->>Appwrite : "Run appwrite/schema.sql"
+Appwrite->>DB : "Create tables and indexes"
+Dev->>Appwrite : "Run appwrite/seed-skills.sql"
+Appwrite->>DB : "Insert categories and skills<br/>with ON CONFLICT DO NOTHING"
 App->>Repo : "getActiveSkills()"
 Repo->>DB : "SELECT * FROM skills WHERE is_active=true ORDER BY name"
 DB-->>Repo : "Rows"
@@ -1179,7 +1179,7 @@ ContinueBC --> Verify["Verify counts by category"]
 Verify --> End(["Done"])
 ```
 
-### Schema: supabase/schema.sql
+### Schema: appwrite/schema.sql
 - Enables UUID extension for generating stable identifiers.
 - Declares skill_categories and skills tables with UUID primary keys.
 - Defines foreign key relationship from skills.category_id to skill_categories.id with cascade delete.
@@ -1288,15 +1288,15 @@ Match-->>Client : "ExtractedSkill[]"
   - schema.sql defines tables and indexes; seed-skills.sql depends on these definitions.
   - ON CONFLICT DO NOTHING relies on unique constraints enforced by primary keys.
 - Application dependencies:
-  - SkillRepository depends on Supabase client configuration and table names.
+  - SkillRepository depends on Appwrite client configuration and table names.
   - SkillService depends on SkillRepository and EntityMapper.
   - MatchingService depends on SkillService to access taxonomy data.
 
 ```mermaid
 graph LR
 SEED["seed-skills.sql"] --> SCHEMA["schema.sql"]
-SCHEMA --> DB["Supabase Database"]
-CFG["supabase.ts"] --> APP["Application"]
+SCHEMA --> DB["Appwrite Database"]
+CFG["appwrite.ts"] --> APP["Application"]
 APP --> SRV["skill-service.ts"]
 SRV --> REP["skill-repository.ts"]
 REP --> MAP["entity-mapper.ts"]
@@ -1315,10 +1315,10 @@ MATCH --> SRV
   - Resolution: The script uses ON CONFLICT DO NOTHING to skip duplicates. Ensure the script is executed after schema creation and that ids match the seeded values.
 - Missing taxonomy data:
   - Symptom: Matching service returns empty skill lists or extraction fails.
-  - Resolution: Confirm that seed-skills.sql was executed after schema.sql and that the database is reachable via the configured Supabase client.
+  - Resolution: Confirm that seed-skills.sql was executed after schema.sql and that the database is reachable via the configured Appwrite client.
 - Connection issues:
-  - Symptom: Application cannot connect to Supabase.
-  - Resolution: Verify SUPABASE_URL and SUPABASE_ANON_KEY environment variables and ensure the Supabase project is healthy.
+  - Symptom: Application cannot connect to Appwrite.
+  - Resolution: Verify APPWRITE_URL and APPWRITE_ANON_KEY environment variables and ensure the Appwrite project is healthy.
 
 ## Conclusion
 The seed-skills.sql script establishes a stable, repeatable taxonomy for skills and categories, enabling consistent identification and matching across environments. Its use of UUIDs and ON CONFLICT DO NOTHING ensures safe re-execution without duplication. The schema enforces referential integrity and performance through indexes. Application services and repositories consume this taxonomy to power skill management and AI-driven matching, while the matching service leverages the standardized vocabulary for skill extraction and gap analysis. Integrating seeding into the database initialization workflow guarantees that the taxonomy is present for both development and production deployments.
@@ -1339,7 +1339,7 @@ The seed-skills.sql script establishes a stable, repeatable taxonomy for skills 
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the contracts table in the FreelanceXchain Supabase PostgreSQL database. The contracts table formalizes the agreement between freelancers and employers, linking off-chain project and proposal data to on-chain escrow smart contracts. It centralizes payment and milestone release workflows, enforces status transitions, and ensures only authorized parties can access sensitive data.
+This document provides comprehensive data model documentation for the contracts table in the FreelanceXchain Appwrite PostgreSQL database. The contracts table formalizes the agreement between freelancers and employers, linking off-chain project and proposal data to on-chain escrow smart contracts. It centralizes payment and milestone release workflows, enforces status transitions, and ensures only authorized parties can access sensitive data.
 
 ## Project Structure
 The contracts table definition and related components are distributed across:
@@ -1356,7 +1356,7 @@ subgraph "Database"
 SCHEMA["schema.sql<br/>Defines contracts table,<br/>indexes, and RLS"]
 end
 subgraph "Application"
-CFG["supabase.ts<br/>TABLES.CONTRACTS constant"]
+CFG["appwrite.ts<br/>TABLES.CONTRACTS constant"]
 REPO["contract-repository.ts<br/>CRUD and queries"]
 SVC["contract-service.ts<br/>Status transitions and updates"]
 MAPPER["entity-mapper.ts<br/>Contract model mapping"]
@@ -1392,7 +1392,7 @@ participant Client as "Client"
 participant API as "Contract Routes"
 participant Service as "Contract Service"
 participant Repo as "Contract Repository"
-participant DB as "Supabase Contracts"
+participant DB as "Appwrite Contracts"
 participant Pay as "Payment Service"
 participant Escrow as "Escrow Contract"
 Client->>API : "GET /contracts/ : id"
@@ -1568,12 +1568,12 @@ The contracts table is the backbone of FreelanceXchain’s payment and milestone
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the disputes table in the FreelanceXchain Supabase PostgreSQL database. It explains the purpose of the disputes table as the conflict resolution tracking system, details each column, and describes how it integrates with the on-chain DisputeResolution.sol contract. It also covers evidence submission off-chain, the dispute lifecycle from creation to resolution, and how it affects payment flows. Finally, it references the TABLES.DISPUTES constant and the idx_disputes_contract_id index, and addresses RLS policies ensuring privacy during dispute resolution.
+This document provides comprehensive data model documentation for the disputes table in the FreelanceXchain Appwrite PostgreSQL database. It explains the purpose of the disputes table as the conflict resolution tracking system, details each column, and describes how it integrates with the on-chain DisputeResolution.sol contract. It also covers evidence submission off-chain, the dispute lifecycle from creation to resolution, and how it affects payment flows. Finally, it references the TABLES.DISPUTES constant and the idx_disputes_contract_id index, and addresses RLS policies ensuring privacy during dispute resolution.
 
 ## Project Structure
-The disputes table is defined in the Supabase schema and is used by the backend services and routes to manage disputes. The key files involved are:
+The disputes table is defined in the Appwrite schema and is used by the backend services and routes to manage disputes. The key files involved are:
 - Database schema definition
-- Supabase client constants
+- Appwrite client constants
 - Repository and service layers for disputes
 - Blockchain integration for on-chain records
 - API routes for dispute operations
@@ -1589,7 +1589,7 @@ subgraph "Backend"
 SRV["dispute-service.ts<br/>Business logic"]
 REP["dispute-repository.ts<br/>Data access"]
 MAP["entity-mapper.ts<br/>DTO mapping"]
-CFG["supabase.ts<br/>TABLES.DISPUTES"]
+CFG["appwrite.ts<br/>TABLES.DISPUTES"]
 end
 subgraph "Blockchain"
 REG["dispute-registry.ts<br/>Off-chain to on-chain bridge"]
@@ -1844,18 +1844,18 @@ Chain-->>Reg : event DisputeResolved
 - After resolution, if no other milestones remain disputed, contract status reverts to active.
 
 ### Constants and Index References
-- TABLES.DISPUTES: The constant for the disputes table name is defined in the Supabase configuration module and is used by the repository to target the correct table.
+- TABLES.DISPUTES: The constant for the disputes table name is defined in the Appwrite configuration module and is used by the repository to target the correct table.
 - idx_disputes_contract_id: The index on contract_id is defined in the schema to optimize queries filtering by contract.
 
 ## Dependency Analysis
-- Repository depends on TABLES.DISPUTES constant and Supabase client.
+- Repository depends on TABLES.DISPUTES constant and Appwrite client.
 - Service depends on repository, contract and project repositories, user repository, notification service, and blockchain registry.
 - Routes depend on service and enforce authentication and authorization.
 - Blockchain registry depends on blockchain client and generates hashes for on-chain storage.
 
 ```mermaid
 graph LR
-CFG["supabase.ts"] --> REP["dispute-repository.ts"]
+CFG["appwrite.ts"] --> REP["dispute-repository.ts"]
 REP --> SRV["dispute-service.ts"]
 SRV --> ROUTE["dispute-routes.ts"]
 SRV --> REG["dispute-registry.ts"]
@@ -1904,10 +1904,10 @@ The disputes table serves as the central record for conflict resolution in Freel
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the employer_profiles table in the FreelanceXchain Supabase PostgreSQL database. It explains the table’s structure, relationships, and lifecycle, and describes how it supports the platform’s organizational identity for employers posting projects. It also covers the one-to-one relationship with the users table, the purpose of verified company information in building trust, and how employer profiles integrate with project browsing and display. Finally, it references the TABLES.EMPLOYER_PROFILES constant and the idx_employer_profiles_user_id index, and outlines considerations for Row Level Security (RLS) policies.
+This document provides comprehensive data model documentation for the employer_profiles table in the FreelanceXchain Appwrite PostgreSQL database. It explains the table’s structure, relationships, and lifecycle, and describes how it supports the platform’s organizational identity for employers posting projects. It also covers the one-to-one relationship with the users table, the purpose of verified company information in building trust, and how employer profiles integrate with project browsing and display. Finally, it references the TABLES.EMPLOYER_PROFILES constant and the idx_employer_profiles_user_id index, and outlines considerations for Row Level Security (RLS) policies.
 
 ## Project Structure
-The employer_profiles table is defined in the Supabase schema and is accessed through the backend service layer. The relevant files include:
+The employer_profiles table is defined in the Appwrite schema and is accessed through the backend service layer. The relevant files include:
 - Database schema definition and indexes
 - Backend constants for table names
 - Repository and service layers for CRUD operations
@@ -1922,7 +1922,7 @@ U["users"]
 EP["employer_profiles"]
 end
 subgraph "Backend"
-CFG["TABLES constant<br/>supabase.ts"]
+CFG["TABLES constant<br/>appwrite.ts"]
 REP["EmployerProfileRepository<br/>employer-profile-repository.ts"]
 SVC["EmployerProfileService<br/>employer-profile-service.ts"]
 MAP["Entity Mapper<br/>entity-mapper.ts"]
@@ -1966,7 +1966,7 @@ participant Client as "Client"
 participant Route as "Employer Routes"
 participant Service as "EmployerProfileService"
 participant Repo as "EmployerProfileRepository"
-participant DB as "Supabase DB"
+participant DB as "Appwrite DB"
 Client->>Route : POST /api/employers/profile
 Route->>Service : createEmployerProfile(userId, input)
 Service->>Repo : getProfileByUserId(userId)
@@ -2100,7 +2100,7 @@ sequenceDiagram
 participant Client as "Client"
 participant PRJSVC as "ProjectService"
 participant PRJREP as "ProjectRepository"
-participant DB as "Supabase DB"
+participant DB as "Appwrite DB"
 Client->>PRJSVC : listProjectsByEmployer(userId)
 PRJSVC->>PRJREP : getProjectsByEmployer(userId)
 PRJREP->>DB : SELECT * FROM projects WHERE employer_id = ?
@@ -2120,14 +2120,14 @@ PRJSVC-->>Client : projects with proposal counts
 
 ## Dependency Analysis
 - Centralized table naming via TABLES constant ensures consistency across repositories and routes.
-- Repository depends on Supabase client and table name constant.
+- Repository depends on Appwrite client and table name constant.
 - Service depends on repository and entity mapper.
 - Routes depend on services and validation middleware.
 - Project services depend on repositories and skill repositories.
 
 ```mermaid
 graph LR
-CFG["supabase.ts"] --> REP["employer-profile-repository.ts"]
+CFG["appwrite.ts"] --> REP["employer-profile-repository.ts"]
 REP --> SVC["employer-profile-service.ts"]
 SVC --> MAP["entity-mapper.ts"]
 ROUTE["employer-routes.ts"] --> SVC
@@ -2181,19 +2181,19 @@ The employer_profiles table defines the organizational identity for employers in
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the freelancer_profiles table in the FreelanceXchain Supabase PostgreSQL database. It explains each column, the one-to-one relationship with the users table, and how the table enables personalized matching through the AI service. It also covers JSONB structures for skills and experience, the TABLES.FREELANCER_PROFILES constant, the idx_freelancer_profiles_user_id index, and RLS policies and privacy considerations.
+This document provides comprehensive data model documentation for the freelancer_profiles table in the FreelanceXchain Appwrite PostgreSQL database. It explains each column, the one-to-one relationship with the users table, and how the table enables personalized matching through the AI service. It also covers JSONB structures for skills and experience, the TABLES.FREELANCER_PROFILES constant, the idx_freelancer_profiles_user_id index, and RLS policies and privacy considerations.
 
 ## Project Structure
-The freelancer_profiles table is defined in the Supabase schema and is consumed by the application through typed repositories and services. The TABLES constant centralizes table names for consistent access across the codebase. The matching service consumes profile data to compute AI-driven recommendations.
+The freelancer_profiles table is defined in the Appwrite schema and is consumed by the application through typed repositories and services. The TABLES constant centralizes table names for consistent access across the codebase. The matching service consumes profile data to compute AI-driven recommendations.
 
 ```mermaid
 graph TB
-subgraph "Supabase Database"
+subgraph "Appwrite Database"
 U["users"]
 FP["freelancer_profiles"]
 end
 subgraph "Application Layer"
-CFG["TABLES constant<br/>src/config/supabase.ts"]
+CFG["TABLES constant<br/>src/config/appwrite.ts"]
 REP["FreelancerProfileRepository<br/>src/repositories/freelancer-profile-repository.ts"]
 SVC["FreelancerProfileService<br/>src/services/freelancer-profile-service.ts"]
 MAP["Entity Mapper<br/>src/utils/entity-mapper.ts"]
@@ -2228,7 +2228,7 @@ sequenceDiagram
 participant Client as "Client"
 participant Service as "FreelancerProfileService"
 participant Repo as "FreelancerProfileRepository"
-participant DB as "Supabase DB"
+participant DB as "Appwrite DB"
 participant Mapper as "Entity Mapper"
 Client->>Service : "Create/Update/Get Profile"
 Service->>Repo : "Call repository methods"
@@ -2398,7 +2398,7 @@ Privacy considerations:
 
 ```mermaid
 graph LR
-CFG["TABLES (src/config/supabase.ts)"] --> REP["FreelancerProfileRepository"]
+CFG["TABLES (src/config/appwrite.ts)"] --> REP["FreelancerProfileRepository"]
 REP --> DB["freelancer_profiles (DB)"]
 SVC["FreelancerProfileService"] --> REP
 MAP["Entity Mapper"] --> SVC
@@ -2447,7 +2447,7 @@ The freelancer_profiles table defines the detailed professional identity for fre
 10. [Appendices](#appendices)
 
 ## Introduction
-This document provides comprehensive data model documentation for the kyc_verifications table in the FreelanceXchain Supabase PostgreSQL database. It explains each column, constraints, indexes, and roles within the privacy-preserving identity verification system integrated with blockchain. The table serves as the central persistence layer for international KYC submissions, biometric checks, and administrative review, while the on-chain KYCVerification.sol smart contract ensures immutable, transparent verification records without exposing personal data.
+This document provides comprehensive data model documentation for the kyc_verifications table in the FreelanceXchain Appwrite PostgreSQL database. It explains each column, constraints, indexes, and roles within the privacy-preserving identity verification system integrated with blockchain. The table serves as the central persistence layer for international KYC submissions, biometric checks, and administrative review, while the on-chain KYCVerification.sol smart contract ensures immutable, transparent verification records without exposing personal data.
 
 The documentation covers:
 - Column definitions and data types
@@ -2460,11 +2460,11 @@ The documentation covers:
 - Index usage and performance considerations
 
 ## Project Structure
-The kyc_verifications table is defined in the Supabase schema and accessed through typed models, repositories, services, and routes. The on-chain counterpart is implemented in Solidity and bridged via service functions.
+The kyc_verifications table is defined in the Appwrite schema and accessed through typed models, repositories, services, and routes. The on-chain counterpart is implemented in Solidity and bridged via service functions.
 
 ```mermaid
 graph TB
-subgraph "Supabase Database"
+subgraph "Appwrite Database"
 TBL["kyc_verifications table"]
 IDX["idx_kyc_user_id index"]
 end
@@ -2473,7 +2473,7 @@ ROUTE["kyc-routes.ts"]
 SVC["kyc-service.ts"]
 REPO["kyc-repository.ts"]
 MODEL["kyc.ts"]
-CFG["supabase.ts"]
+CFG["appwrite.ts"]
 end
 subgraph "Blockchain"
 SOL["KYCVerification.sol"]
@@ -2498,7 +2498,7 @@ MODEL --> SVC
 
 ## Architecture Overview
 The KYC system integrates off-chain persistence with on-chain immutability:
-- Off-chain: Supabase stores KYC records, user references, and biometric metadata. Routes and services manage submission, liveness, face match, and admin review.
+- Off-chain: Appwrite stores KYC records, user references, and biometric metadata. Routes and services manage submission, liveness, face match, and admin review.
 - On-chain: The KYCVerification.sol contract stores verification status, tier, data hash, and expiration, enabling trustless verification checks and dispute resolution.
 
 ```mermaid
@@ -2507,7 +2507,7 @@ participant Client as "Client"
 participant Route as "kyc-routes.ts"
 participant Svc as "kyc-service.ts"
 participant Repo as "kyc-repository.ts"
-participant DB as "Supabase DB"
+participant DB as "Appwrite DB"
 participant BcSvc as "kyc-contract.ts"
 participant SC as "KYCVerification.sol"
 Client->>Route : POST /api/kyc/submit
@@ -2565,7 +2565,7 @@ These types ensure strong typing across the API, repository, and service layers.
 The repository:
 - Extends BaseRepository with the kyc_verifications table name
 - Provides create, get by id, get by user id, update, and status-based queries
-- Uses Supabase client to select, insert, update, and order by timestamps
+- Uses Appwrite client to select, insert, update, and order by timestamps
 
 Entity-to-model mapping:
 - Converts snake_case database fields to camelCase model properties
@@ -2604,15 +2604,15 @@ Routes expose:
 Validation and error handling are implemented in routes and services.
 
 ## Dependency Analysis
-- supabase.ts defines TABLES.KYC_VERIFICATIONS and exposes it to repositories
-- kyc-repository.ts depends on supabase.ts for table name and BaseRepository for DB operations
+- appwrite.ts defines TABLES.KYC_VERIFICATIONS and exposes it to repositories
+- kyc-repository.ts depends on appwrite.ts for table name and BaseRepository for DB operations
 - kyc-service.ts depends on kyc-repository.ts and kyc-contract.ts
 - kyc-routes.ts depends on kyc-service.ts and exports Swagger schemas
 - KYCVerification.sol is the on-chain dependency for blockchain operations
 
 ```mermaid
 graph LR
-SUP["supabase.ts"] --> REP["kyc-repository.ts"]
+SUP["appwrite.ts"] --> REP["kyc-repository.ts"]
 REP --> SVC["kyc-service.ts"]
 SVC --> RT["kyc-routes.ts"]
 SVC --> BC["kyc-contract.ts"]
@@ -2686,14 +2686,14 @@ The kyc_verifications table is the backbone of FreelanceXchain’s privacy-prese
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document describes the messages table in the FreelanceXchain Supabase PostgreSQL database. It defines the table schema, explains the purpose of secure communication between contract parties, and documents how the application enforces access control and performance optimizations. It also covers message threading within contracts, read receipts, and the role of messages in dispute evidence collection.
+This document describes the messages table in the FreelanceXchain Appwrite PostgreSQL database. It defines the table schema, explains the purpose of secure communication between contract parties, and documents how the application enforces access control and performance optimizations. It also covers message threading within contracts, read receipts, and the role of messages in dispute evidence collection.
 
 ## Project Structure
-The messages table is defined in the Supabase schema and is accessed by the application through a typed repository and service layer. The TABLES.MESSAGES constant centralizes table naming across the codebase.
+The messages table is defined in the Appwrite schema and is accessed by the application through a typed repository and service layer. The TABLES.MESSAGES constant centralizes table naming across the codebase.
 
 ```mermaid
 graph TB
-subgraph "Supabase Schema"
+subgraph "Appwrite Schema"
 MSG["messages (table)"]
 CON["contracts (table)"]
 USR["users (table)"]
@@ -2728,7 +2728,7 @@ participant Client as "Client"
 participant Service as "MessageService"
 participant ContractRepo as "ContractRepository"
 participant Repo as "MessageRepository"
-participant DB as "Supabase DB"
+participant DB as "Appwrite DB"
 Client->>Service : "sendMessage(contractId, senderId, content)"
 Service->>ContractRepo : "getContractById(contractId)"
 ContractRepo->>DB : "SELECT * FROM contracts WHERE id = contractId"
@@ -2827,10 +2827,10 @@ end
 
 ```mermaid
 graph LR
-SUP["supabase.ts<br/>TABLES.MESSAGES"] --> MR["MessageRepository"]
+SUP["appwrite.ts<br/>TABLES.MESSAGES"] --> MR["MessageRepository"]
 MR --> MS["MessageService"]
 MS --> CR["ContractRepository"]
-MR --> DB["Supabase DB<br/>messages"]
+MR --> DB["Appwrite DB<br/>messages"]
 CR --> DB
 US["users"] --> DB
 CT["contracts"] --> DB
@@ -2868,10 +2868,10 @@ The messages table provides a secure, indexed, and participant-enforced communic
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document describes the notifications table in the FreelanceXchain Supabase PostgreSQL database. It explains the table schema, the roles of each column, and how the table powers the event-driven communication system for user engagement. The notifications table stores events such as proposal status changes, contract updates, and messages, enabling targeted UI behaviors for users.
+This document describes the notifications table in the FreelanceXchain Appwrite PostgreSQL database. It explains the table schema, the roles of each column, and how the table powers the event-driven communication system for user engagement. The notifications table stores events such as proposal status changes, contract updates, and messages, enabling targeted UI behaviors for users.
 
 ## Project Structure
-The notifications table is defined in the Supabase schema and is accessed through the backend service layer and routes. The key files involved are:
+The notifications table is defined in the Appwrite schema and is accessed through the backend service layer and routes. The key files involved are:
 - Database schema definition
 - Backend constants for table names
 - Repository and service layers for CRUD operations and helper functions
@@ -2883,7 +2883,7 @@ subgraph "Database"
 NTF["notifications table"]
 end
 subgraph "Backend"
-CFG["TABLES constant<br/>supabase.ts"]
+CFG["TABLES constant<br/>appwrite.ts"]
 REP["NotificationRepository<br/>notification-repository.ts"]
 SVC["NotificationService<br/>notification-service.ts"]
 RT["Notification Routes<br/>notification-routes.ts"]
@@ -2903,7 +2903,7 @@ RT --> SVC
 
 ## Architecture Overview
 The notifications system follows a layered architecture:
-- Data layer: Supabase PostgreSQL table with indexes and RLS enabled.
+- Data layer: Appwrite PostgreSQL table with indexes and RLS enabled.
 - Service layer: Typed helpers and business logic for creating and updating notifications.
 - Repository layer: Generic base repository plus notification-specific queries.
 - API layer: Routes exposing endpoints for listing, counting, and marking notifications as read.
@@ -2914,7 +2914,7 @@ participant Client as "Client"
 participant Route as "Notification Routes"
 participant Service as "NotificationService"
 participant Repo as "NotificationRepository"
-participant DB as "Supabase DB"
+participant DB as "Appwrite DB"
 Client->>Route : GET /api/notifications
 Route->>Service : getNotificationsByUser(userId, options)
 Service->>Repo : getNotificationsByUser(userId, options)
@@ -3075,7 +3075,7 @@ NotificationService --> NotificationRepository : "uses"
 
 ```mermaid
 graph LR
-SUP["supabase.ts<br/>TABLES.NOTIFICATIONS"] --> REP["notification-repository.ts"]
+SUP["appwrite.ts<br/>TABLES.NOTIFICATIONS"] --> REP["notification-repository.ts"]
 REP --> SVC["notification-service.ts"]
 SVC --> RT["notification-routes.ts"]
 MAP["entity-mapper.ts<br/>Notification types"] --> SVC
@@ -3128,14 +3128,14 @@ The notifications table is the backbone of FreelanceXchain’s event-driven user
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the payments table in the FreelanceXchain Supabase PostgreSQL database. The payments table serves as the transaction history ledger that bridges off-chain application records with on-chain events from the FreelanceEscrow.sol contract. It tracks fund flows across escrow deposits, milestone releases, refunds, and dispute resolutions, enabling auditability and reconciliation between Ethereum transactions and application state.
+This document provides comprehensive data model documentation for the payments table in the FreelanceXchain Appwrite PostgreSQL database. The payments table serves as the transaction history ledger that bridges off-chain application records with on-chain events from the FreelanceEscrow.sol contract. It tracks fund flows across escrow deposits, milestone releases, refunds, and dispute resolutions, enabling auditability and reconciliation between Ethereum transactions and application state.
 
 ## Project Structure
-The payments table is defined in the Supabase schema and integrated into the application through configuration constants, repository classes, and service functions. Indexes and Row Level Security (RLS) policies are configured to support efficient querying and financial privacy.
+The payments table is defined in the Appwrite schema and integrated into the application through configuration constants, repository classes, and service functions. Indexes and Row Level Security (RLS) policies are configured to support efficient querying and financial privacy.
 
 ```mermaid
 graph TB
-subgraph "Supabase Schema"
+subgraph "Appwrite Schema"
 P["payments table<br/>columns: id, contract_id, milestone_id, payer_id, payee_id,<br/>amount, currency, tx_hash, status, payment_type,<br/>created_at, updated_at"]
 IDX["Indexes:<br/>idx_payments_contract_id<br/>idx_payments_payer_id<br/>idx_payments_payee_id"]
 RLS["RLS enabled on payments"]
@@ -3177,7 +3177,7 @@ sequenceDiagram
 participant Client as "Client"
 participant Service as "TransactionService"
 participant Repo as "PaymentRepository"
-participant DB as "Supabase payments"
+participant DB as "Appwrite payments"
 participant Escrow as "Escrow Contract"
 Client->>Service : "recordEscrowDeposit(...)"
 Service->>Repo : "create payment (status=pending)"
@@ -3306,7 +3306,7 @@ TxSvc --> Escrow["Escrow Contract"]
 - Missing indexes impacting performance:
   - Confirm indexes exist on contract_id, payer_id, and payee_id
 - RLS access issues:
-  - Ensure the Supabase session has appropriate permissions; RLS policies enable service role access for backend operations
+  - Ensure the Appwrite session has appropriate permissions; RLS policies enable service role access for backend operations
 
 ## Conclusion
 The payments table is central to the FreelanceXchain architecture, providing a reliable bridge between off-chain application actions and on-chain Ethereum events. Through structured columns, constraints, indexes, and RLS policies, it ensures data integrity, performance, and privacy. Application services and repositories coordinate payment creation, status updates, and reconciliation with blockchain confirmations, enabling transparent and auditable fund flows across escrow deposits, milestone releases, refunds, and dispute resolutions.
@@ -3327,10 +3327,10 @@ The payments table is central to the FreelanceXchain architecture, providing a r
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the projects table in the FreelanceXchain Supabase PostgreSQL database. The projects table is the central entity representing freelance work opportunities. It captures essential metadata such as employer identity, title, description, required skills, budget, deadline, and lifecycle status. It also stores structured milestone definitions and audit timestamps. The table integrates with related entities (proposals, contracts, notifications) and supports AI-driven recommendations and milestone-based payment workflows.
+This document provides comprehensive data model documentation for the projects table in the FreelanceXchain Appwrite PostgreSQL database. The projects table is the central entity representing freelance work opportunities. It captures essential metadata such as employer identity, title, description, required skills, budget, deadline, and lifecycle status. It also stores structured milestone definitions and audit timestamps. The table integrates with related entities (proposals, contracts, notifications) and supports AI-driven recommendations and milestone-based payment workflows.
 
 ## Project Structure
-The projects table is defined in the Supabase schema and is referenced throughout the backend via a centralized table name constant. Repositories and services encapsulate data access and business logic, while entity mappers convert between database entities and API-facing models.
+The projects table is defined in the Appwrite schema and is referenced throughout the backend via a centralized table name constant. Repositories and services encapsulate data access and business logic, while entity mappers convert between database entities and API-facing models.
 
 ```mermaid
 graph TB
@@ -3486,7 +3486,7 @@ sequenceDiagram
 participant Client as "Client"
 participant Route as "Matching Routes"
 participant Service as "AI Client"
-participant DB as "Supabase Projects"
+participant DB as "Appwrite Projects"
 Client->>Route : GET /api/matching/projects/ : projectId
 Route->>Service : computeMatchScores(projectId)
 Service->>DB : fetch project.required_skills
@@ -3536,7 +3536,7 @@ Indexes:
 
 ```mermaid
 graph LR
-SUP["supabase.ts<br/>TABLES.PROJECTS"] --> REP["project-repository.ts<br/>ProjectRepository"]
+SUP["appwrite.ts<br/>TABLES.PROJECTS"] --> REP["project-repository.ts<br/>ProjectRepository"]
 REP --> SVC["project-service.ts<br/>ProjectService"]
 SVC --> MAP["entity-mapper.ts<br/>Project/Milestone types"]
 SCHEMA["schema.sql<br/>projects table"] --> REP
@@ -3585,14 +3585,14 @@ The projects table is the cornerstone of the FreelanceXchain marketplace. It def
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the proposals table in the FreelanceXchain Supabase PostgreSQL database. It explains each column, the table’s role as the bidding mechanism for freelancers to express interest in projects, and how proposal status changes drive downstream workflows such as notifications and contract creation. It also references the TABLES.PROPOSALS constant, indexes for performance, and RLS policies that govern visibility.
+This document provides comprehensive data model documentation for the proposals table in the FreelanceXchain Appwrite PostgreSQL database. It explains each column, the table’s role as the bidding mechanism for freelancers to express interest in projects, and how proposal status changes drive downstream workflows such as notifications and contract creation. It also references the TABLES.PROPOSALS constant, indexes for performance, and RLS policies that govern visibility.
 
 ## Project Structure
-The proposals table is defined in the Supabase schema and is consumed by the application through typed repositories, services, and routes. The TABLES.PROPOSALS constant centralizes table naming across the codebase.
+The proposals table is defined in the Appwrite schema and is consumed by the application through typed repositories, services, and routes. The TABLES.PROPOSALS constant centralizes table naming across the codebase.
 
 ```mermaid
 graph TB
-subgraph "Supabase Schema"
+subgraph "Appwrite Schema"
 SCHEMA["schema.sql<br/>Defines proposals table"]
 end
 subgraph "Application Layer"
@@ -3600,7 +3600,7 @@ ROUTES["proposal-routes.ts<br/>HTTP endpoints"]
 SERVICE["proposal-service.ts<br/>Business logic"]
 REPO["proposal-repository.ts<br/>Data access"]
 MAPPER["entity-mapper.ts<br/>Proposal model mapping"]
-CFG["supabase.ts<br/>TABLES.PROPOSALS constant"]
+CFG["appwrite.ts<br/>TABLES.PROPOSALS constant"]
 end
 SCHEMA --> REPO
 CFG --> REPO
@@ -3641,7 +3641,7 @@ participant Client as "Client"
 participant Routes as "proposal-routes.ts"
 participant Service as "proposal-service.ts"
 participant Repo as "proposal-repository.ts"
-participant DB as "Supabase DB"
+participant DB as "Appwrite DB"
 participant Notif as "notification-service.ts"
 participant Proj as "project-repository.ts"
 participant Contr as "contract-repository.ts"
@@ -3801,7 +3801,7 @@ graph LR
 Routes["proposal-routes.ts"] --> Service["proposal-service.ts"]
 Service --> Repo["proposal-repository.ts"]
 Service --> Notif["notification-service.ts"]
-Repo --> Cfg["supabase.ts"]
+Repo --> Cfg["appwrite.ts"]
 Service --> Mapper["entity-mapper.ts"]
 Service --> ProjRepo["project-repository.ts"]
 Service --> ContrRepo["contract-repository.ts"]
@@ -3859,14 +3859,14 @@ The proposals table is central to the FreelanceXchain bidding and contract creat
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the reviews table in the FreelanceXchain Supabase PostgreSQL database. It explains the structure, constraints, and relationships of the reviews table, and clarifies its role in the platform’s off-chain reputation data store. It also describes how the off-chain reviews integrate with the on-chain reputation system implemented in the FreelanceReputation.sol smart contract, including how submissions occur post-completion, how visibility is controlled via Row Level Security (RLS), and how indexes and unique constraints support performance and data integrity.
+This document provides comprehensive data model documentation for the reviews table in the FreelanceXchain Appwrite PostgreSQL database. It explains the structure, constraints, and relationships of the reviews table, and clarifies its role in the platform’s off-chain reputation data store. It also describes how the off-chain reviews integrate with the on-chain reputation system implemented in the FreelanceReputation.sol smart contract, including how submissions occur post-completion, how visibility is controlled via Row Level Security (RLS), and how indexes and unique constraints support performance and data integrity.
 
 ## Project Structure
-The reviews table is defined in the Supabase schema and is referenced by the application through a centralized table constant. The off-chain repository and service layer provide CRUD operations and business logic around reviews, while the on-chain reputation system stores immutable records for scoring and transparency.
+The reviews table is defined in the Appwrite schema and is referenced by the application through a centralized table constant. The off-chain repository and service layer provide CRUD operations and business logic around reviews, while the on-chain reputation system stores immutable records for scoring and transparency.
 
 ```mermaid
 graph TB
-subgraph "Supabase Database"
+subgraph "Appwrite Database"
 REV["reviews (table)"]
 CON["contracts (table)"]
 USR["users (table)"]
@@ -3904,7 +3904,7 @@ sequenceDiagram
 participant Client as "Client"
 participant API as "ReviewService"
 participant Repo as "ReviewRepository"
-participant DB as "Supabase (reviews)"
+participant DB as "Appwrite (reviews)"
 participant Chain as "ReputationContract (simulation)"
 Client->>API : "Submit review after contract completion"
 API->>Repo : "hasReviewed(contractId, reviewerId)"
@@ -4072,7 +4072,7 @@ RCT --> SCR["FreelanceReputation.sol"]
 - Duplicate review attempts:
   - Off-chain UNIQUE constraint and on-chain mapping prevent duplicates.
 - Database connectivity:
-  - Ensure Supabase client initialization succeeds and TABLES constants are present.
+  - Ensure Appwrite client initialization succeeds and TABLES constants are present.
 
 ## Conclusion
 The reviews table serves as the off-chain foundation for the platform’s reputation system. It captures transient feedback with strong constraints and indexes to ensure data integrity and performance. Together with the on-chain FreelanceReputation.sol contract, it enables transparent, immutable reputation records that reflect real-world interactions. Off-chain operations manage submission workflows, visibility, and user profile displays, while on-chain logic guarantees immutability and trust.
@@ -4093,7 +4093,7 @@ The reviews table serves as the off-chain foundation for the platform’s reputa
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the skill_categories table in the FreelanceXchain Supabase PostgreSQL database. It explains the table’s structure, purpose as a hierarchical classification system for skills, and its one-to-many relationship with the skills table. It also covers programmatic access via the TABLES.SKILL_CATEGORIES constant, indexing strategy, and Row Level Security (RLS) policy enabling public read access. Finally, it demonstrates how skill categories support organized browsing and filtering within the AI-powered matching system.
+This document provides comprehensive data model documentation for the skill_categories table in the FreelanceXchain Appwrite PostgreSQL database. It explains the table’s structure, purpose as a hierarchical classification system for skills, and its one-to-many relationship with the skills table. It also covers programmatic access via the TABLES.SKILL_CATEGORIES constant, indexing strategy, and Row Level Security (RLS) policy enabling public read access. Finally, it demonstrates how skill categories support organized browsing and filtering within the AI-powered matching system.
 
 ## Project Structure
 The skill_categories table is part of the core schema and is closely integrated with related repositories and services:
@@ -4180,18 +4180,18 @@ These constraints ensure consistent categorization, discoverability, and referen
 ### Programmatic access via TABLES.SKILL_CATEGORIES
 - The TABLES constant exposes SKILL_CATEGORIES as a string literal, enabling:
   - Centralized table naming across repositories and services.
-  - Type-safe usage in Supabase client calls.
+  - Type-safe usage in Appwrite client calls.
 - SkillCategoryRepository constructs its base class with TABLES.SKILL_CATEGORIES, ensuring consistent table targeting.
 
 ```mermaid
 sequenceDiagram
 participant Client as "Caller"
 participant Repo as "SkillCategoryRepository"
-participant Supabase as "Supabase Client"
+participant Appwrite as "Appwrite Client"
 participant DB as "skill_categories"
 Client->>Repo : getAllCategories()
-Repo->>Supabase : from(TABLES.SKILL_CATEGORIES).select("*").order("name")
-Supabase-->>Repo : { data, error }
+Repo->>Appwrite : from(TABLES.SKILL_CATEGORIES).select("*").order("name")
+Appwrite-->>Repo : { data, error }
 Repo-->>Client : Category list or throws error
 ```
 
@@ -4258,7 +4258,7 @@ MS-->>Emp : Ranked recommendations
 
 ## Dependency Analysis
 - skill_categories depends on:
-  - Supabase client configured via TABLES constant.
+  - Appwrite client configured via TABLES constant.
   - SkillCategoryRepository for CRUD operations.
 - skills depends on:
   - skill_categories.id via category_id foreign key.
@@ -4316,14 +4316,14 @@ The skill_categories table serves as the backbone of the skill taxonomy, enablin
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the skills table in the FreelanceXchain Supabase PostgreSQL database. It explains the table’s schema, relationships, and behavior, and demonstrates how it underpins the platform’s AI-powered matching system. The skills table serves as the atomic unit of expertise tracking for freelancers, enabling precise skill-based recommendations and search. It is referenced by the TABLES.SKILLS constant, supported by the idx_skills_category_id index, and governed by Row Level Security (RLS) policies that permit public read access to support discovery and search.
+This document provides comprehensive data model documentation for the skills table in the FreelanceXchain Appwrite PostgreSQL database. It explains the table’s schema, relationships, and behavior, and demonstrates how it underpins the platform’s AI-powered matching system. The skills table serves as the atomic unit of expertise tracking for freelancers, enabling precise skill-based recommendations and search. It is referenced by the TABLES.SKILLS constant, supported by the idx_skills_category_id index, and governed by Row Level Security (RLS) policies that permit public read access to support discovery and search.
 
 ## Project Structure
-The skills table is defined in the Supabase schema and is used across the backend services and repositories. The following diagram shows how the skills table integrates with related tables and services.
+The skills table is defined in the Appwrite schema and is used across the backend services and repositories. The following diagram shows how the skills table integrates with related tables and services.
 
 ```mermaid
 graph TB
-subgraph "Supabase Database"
+subgraph "Appwrite Database"
 SCHEMA["schema.sql"]
 SKILLS["skills"]
 SKILL_CATEGORIES["skill_categories"]
@@ -4331,7 +4331,7 @@ FREELANCER_PROFILES["freelancer_profiles"]
 PROJECTS["projects"]
 end
 subgraph "Backend Services"
-SUPABASE_TS["supabase.ts<br/>TABLES.SKILLS"]
+APPWRITE_TS["appwrite.ts<br/>TABLES.SKILLS"]
 SKILL_REPO["skill-repository.ts"]
 SKILL_SERVICE["skill-service.ts"]
 ENTITY_MAPPER["entity-mapper.ts"]
@@ -4343,7 +4343,7 @@ SCHEMA --> SKILLS
 SCHEMA --> SKILL_CATEGORIES
 SCHEMA --> FREELANCER_PROFILES
 SCHEMA --> PROJECTS
-SUPABASE_TS --> SKILL_REPO
+APPWRITE_TS --> SKILL_REPO
 SKILL_REPO --> SKILL_SERVICE
 ENTITY_MAPPER --> SKILL_SERVICE
 ENTITY_MAPPER --> FP_REPO
@@ -4370,7 +4370,7 @@ The skills table participates in two complementary workflows:
 sequenceDiagram
 participant Admin as "Admin"
 participant Repo as "SkillRepository"
-participant DB as "Supabase DB"
+participant DB as "Appwrite DB"
 participant Mapper as "EntityMapper"
 participant Client as "Client App"
 Admin->>Repo : Create/Update/Delete skills
@@ -4530,7 +4530,7 @@ The skills table underpins several layers:
 ```mermaid
 graph LR
 SCHEMA["schema.sql"] --> REPO["skill-repository.ts"]
-SUPABASE["supabase.ts"] --> REPO
+APPWRITE["appwrite.ts"] --> REPO
 REPO --> SERVICE["skill-service.ts"]
 MAPPER["entity-mapper.ts"] --> SERVICE
 SERVICE --> MATCH["matching-service.ts"]
@@ -4571,20 +4571,20 @@ The skills table is the foundational element for expertise modeling in Freelance
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive data model documentation for the users table in the FreelanceXchain Supabase PostgreSQL database. It explains the schema, purpose, relationships with role-specific profiles, programmatic access patterns, and security considerations including password hashing and Row Level Security (RLS) policies. The users table serves as the central identity store for all platform users, with role-based access control enforced at both the database and application layers.
+This document provides comprehensive data model documentation for the users table in the FreelanceXchain Appwrite PostgreSQL database. It explains the schema, purpose, relationships with role-specific profiles, programmatic access patterns, and security considerations including password hashing and Row Level Security (RLS) policies. The users table serves as the central identity store for all platform users, with role-based access control enforced at both the database and application layers.
 
 ## Project Structure
-The users table is defined in the Supabase schema and is accessed programmatically through the application’s configuration, repository, and service layers. Role-specific profile tables (freelancer_profiles and employer_profiles) reference users via foreign keys, enabling role-scoped data storage while maintaining a unified identity model.
+The users table is defined in the Appwrite schema and is accessed programmatically through the application’s configuration, repository, and service layers. Role-specific profile tables (freelancer_profiles and employer_profiles) reference users via foreign keys, enabling role-scoped data storage while maintaining a unified identity model.
 
 ```mermaid
 graph TB
-subgraph "Supabase Database"
+subgraph "Appwrite Database"
 U["users"]
 FP["freelancer_profiles"]
 EP["employer_profiles"]
 end
 subgraph "Application Layer"
-CFG["TABLES.USERS<br/>src/config/supabase.ts"]
+CFG["TABLES.USERS<br/>src/config/appwrite.ts"]
 REP["UserRepository<br/>src/repositories/user-repository.ts"]
 MAP["Entity Mapper<br/>src/utils/entity-mapper.ts"]
 AUTH["AuthService<br/>src/services/auth-service.ts"]
@@ -4606,10 +4606,10 @@ EP --> U
 ## Core Components
 - users table: Central identity store with UUID primary key, unique email, password hash, role enumeration, optional wallet address and name, and audit timestamps.
 - Role-specific profiles: freelancer_profiles and employer_profiles link to users via unique foreign keys, enabling role-scoped attributes.
-- Programmatic access: TABLES.USERS constant defines the table name; UserRepository encapsulates CRUD operations; AuthService integrates with Supabase Auth; AuthMiddleware enforces role-based access control.
+- Programmatic access: TABLES.USERS constant defines the table name; UserRepository encapsulates CRUD operations; AuthService integrates with Appwrite Auth; AuthMiddleware enforces role-based access control.
 
 ## Architecture Overview
-The users table underpins identity and access control across the platform. Supabase Auth manages authentication and user creation, while the application reads/writes user records through Supabase SQL API. RLS is enabled on all tables, and a service-role policy grants full access for backend operations. Application-level middleware validates tokens and enforces role-based route protection.
+The users table underpins identity and access control across the platform. Appwrite Auth manages authentication and user creation, while the application reads/writes user records through Appwrite SQL API. RLS is enabled on all tables, and a service-role policy grants full access for backend operations. Application-level middleware validates tokens and enforces role-based route protection.
 
 ```mermaid
 sequenceDiagram
@@ -4618,7 +4618,7 @@ participant Routes as "Routes"
 participant MW as "Auth Middleware"
 participant Auth as "AuthService"
 participant Repo as "UserRepository"
-participant DB as "Supabase SQL API"
+participant DB as "Appwrite SQL API"
 Client->>Routes : "POST /api/auth/register"
 Routes->>Auth : "register(input)"
 Auth->>DB : "auth.signUp(email,password,options)"
@@ -4636,13 +4636,13 @@ Routes-->>Client : "AuthResult"
 ### Users Table Schema
 - id: UUID primary key with default generated by uuid_generate_v4().
 - email: Unique, not null.
-- password_hash: Not null; stores hashed credentials managed by Supabase Auth.
+- password_hash: Not null; stores hashed credentials managed by Appwrite Auth.
 - role: Enumerated type constrained to 'freelancer', 'employer', or 'admin'.
 - wallet_address: Optional, defaults to empty string.
 - name: Optional, defaults to empty string.
 - created_at, updated_at: Timestamps with timezone, defaulting to current time.
 
-These constraints and defaults define a robust identity model with clear separation of concerns between authentication (Supabase Auth) and application-level user metadata (wallet_address, name).
+These constraints and defaults define a robust identity model with clear separation of concerns between authentication (Appwrite Auth) and application-level user metadata (wallet_address, name).
 
 ### Relationship with Role-Specific Profiles
 - freelancer_profiles.user_id: Unique foreign key referencing users.id with cascade delete.
@@ -4688,13 +4688,13 @@ USERS ||--o{ EMPLOYER_PROFILES : "has profile"
 ### Programmatic Access via TABLES.USERS
 - TABLES.USERS is defined as a constant and used by repositories to target the users table.
 - UserRepository extends a base repository and constructs queries against TABLES.USERS.
-- The application initializes the Supabase client and verifies connectivity to TABLES.USERS.
+- The application initializes the Appwrite client and verifies connectivity to TABLES.USERS.
 
 ```mermaid
 classDiagram
-class SupabaseConfig {
+class AppwriteConfig {
 +TABLES.USERS : string
-+getSupabaseClient() SupabaseClient
++getAppwriteClient() AppwriteClient
 +initializeDatabase() Promise<void>
 }
 class UserRepository {
@@ -4717,7 +4717,7 @@ class UserEntity {
 +created_at : string
 +updated_at : string
 }
-SupabaseConfig --> UserRepository : "provides tableName"
+AppwriteConfig --> UserRepository : "provides tableName"
 UserRepository --> UserEntity : "operates on"
 ```
 
@@ -4726,19 +4726,19 @@ UserRepository --> UserEntity : "operates on"
 - This mapping ensures consistent serialization/deserialization across repositories and services.
 
 ### Authentication and Registration Flow
-- Supabase Auth creates users and sends confirmation emails; the application waits briefly for triggers to populate public.users, then falls back to manual creation if needed.
-- Registration passes role, wallet_address, and name to Supabase Auth options; the application retrieves the created user from public.users and returns an AuthResult.
+- Appwrite Auth creates users and sends confirmation emails; the application waits briefly for triggers to populate public.users, then falls back to manual creation if needed.
+- Registration passes role, wallet_address, and name to Appwrite Auth options; the application retrieves the created user from public.users and returns an AuthResult.
 
 ```mermaid
 sequenceDiagram
 participant Client as "Client"
 participant AuthSvc as "AuthService"
-participant Supabase as "Supabase Auth"
+participant Appwrite as "Appwrite Auth"
 participant Repo as "UserRepository"
-participant DB as "Supabase SQL API"
+participant DB as "Appwrite SQL API"
 Client->>AuthSvc : "register(input)"
-AuthSvc->>Supabase : "signUp(email,password,options)"
-Supabase-->>AuthSvc : "session,user"
+AuthSvc->>Appwrite : "signUp(email,password,options)"
+Appwrite-->>AuthSvc : "session,user"
 AuthSvc->>Repo : "getUserById(user.id)"
 Repo->>DB : "SELECT users WHERE id=..."
 DB-->>Repo : "UserEntity"
@@ -4765,19 +4765,19 @@ Next --> End
 ```
 
 ### Security Considerations
-- Password hashing: The users table stores password_hash; Supabase Auth manages hashing and verification during sign-up and sign-in flows.
+- Password hashing: The users table stores password_hash; Appwrite Auth manages hashing and verification during sign-up and sign-in flows.
 - Row Level Security (RLS): RLS is enabled on all tables, including users. Service-role policies grant full access for backend operations, while public read policies exist for specific tables (e.g., skill categories, skills, open projects).
-- Token validation: The application validates access tokens via Supabase Auth and enriches requests with user identity and role for downstream authorization checks.
+- Token validation: The application validates access tokens via Appwrite Auth and enriches requests with user identity and role for downstream authorization checks.
 
 ## Dependency Analysis
-- users depends on Supabase Auth for identity lifecycle and on the application’s Supabase client for database operations.
+- users depends on Appwrite Auth for identity lifecycle and on the application’s Appwrite client for database operations.
 - freelancer_profiles and employer_profiles depend on users via foreign keys, enabling role-scoped profile management.
-- Application middleware depends on AuthService for token validation and on Supabase Auth for user retrieval.
+- Application middleware depends on AuthService for token validation and on Appwrite Auth for user retrieval.
 
 ```mermaid
 graph LR
-SupabaseAuth["Supabase Auth"] --> AuthService["AuthService"]
-SupabaseClient["Supabase Client"] --> UserRepository["UserRepository"]
+AppwriteAuth["Appwrite Auth"] --> AuthService["AuthService"]
+AppwriteClient["Appwrite Client"] --> UserRepository["UserRepository"]
 AuthService --> UserRepository
 UserRepository --> Users["users"]
 Users --> FreelancerProfiles["freelancer_profiles"]
@@ -4798,7 +4798,7 @@ Routes["Routes"] --> AuthMiddleware
 - Insufficient permissions: Requests with valid tokens but incorrect roles receive a 403 response with a standardized error code.
 
 ## Conclusion
-The users table is the foundation of identity and access control in FreelanceXchain. Its schema enforces strong constraints on identity fields, while role-specific profiles enable scalable, role-scoped data management. Programmatic access is centralized through TABLES.USERS and UserRepository, with Supabase Auth handling credential management. Application-level middleware and route guards enforce role-based access control, and RLS policies provide database-level safeguards. Together, these components deliver a secure, extensible identity model aligned with platform roles.
+The users table is the foundation of identity and access control in FreelanceXchain. Its schema enforces strong constraints on identity fields, while role-specific profiles enable scalable, role-scoped data management. Programmatic access is centralized through TABLES.USERS and UserRepository, with Appwrite Auth handling credential management. Application-level middleware and route guards enforce role-based access control, and RLS policies provide database-level safeguards. Together, these components deliver a secure, extensible identity model aligned with platform roles.
 
 ---
 
@@ -4849,7 +4849,7 @@ The FreelanceXchain API implements a comprehensive security framework to protect
 ## HTTP Header Hardening with Helmet.js
 The FreelanceXchain API employs Helmet.js middleware to enhance security through HTTP header configuration. This approach mitigates several common web vulnerabilities by setting appropriate security headers that browsers and clients will respect. The security headers are implemented as middleware in the application stack, ensuring they are applied to all responses.
 
-The Content Security Policy (CSP) is configured with a restrictive directive set that limits content sources to the same origin by default. The policy allows scripts from the same origin and includes 'unsafe-inline' to accommodate Swagger UI functionality and Supabase integration. The connect-src directive specifically permits connections to the Supabase database, ensuring secure data access while preventing unauthorized external connections.
+The Content Security Policy (CSP) is configured with a restrictive directive set that limits content sources to the same origin by default. The policy allows scripts from the same origin and includes 'unsafe-inline' to accommodate Swagger UI functionality and Appwrite integration. The connect-src directive specifically permits connections to the Appwrite database, ensuring secure data access while preventing unauthorized external connections.
 
 ```mermaid
 flowchart TD
@@ -5155,7 +5155,7 @@ The FreelanceXchain API security measures effectively mitigate multiple OWASP To
 
 ### Injection Prevention
 The system prevents injection attacks through rigorous input validation and parameterized operations:
-- **SQL Injection**: Prevented by using Supabase with parameterized queries and input validation
+- **SQL Injection**: Prevented by using Appwrite with parameterized queries and input validation
 - **NoSQL Injection**: Mitigated through schema validation and type checking
 - **Command Injection**: Prevented by avoiding system command execution
 - **Expression Language Injection**: Mitigated by not using expression languages in the API layer
@@ -5249,13 +5249,13 @@ The documented security measures demonstrate a mature approach to API security t
 4. [Authentication Middleware](#authentication-middleware)
 5. [Error Handling](#error-handling)
 6. [Security Implementation](#security-implementation)
-7. [Integration with Supabase](#integration-with-supabase)
+7. [Integration with Appwrite](#integration-with-appwrite)
 8. [Secure Token Storage Recommendations](#secure-token-storage-recommendations)
 9. [Authentication Sequence Diagrams](#authentication-sequence-diagrams)
 10. [Security Best Practices](#security-best-practices)
 
 ## Introduction
-The FreelanceXchain authentication security system implements a robust JWT-based authentication mechanism with comprehensive security measures. This documentation details the authentication flow, token management, error handling, and integration with Supabase authentication. The system provides secure access control for freelancers, employers, and administrators in the blockchain-based freelance marketplace.
+The FreelanceXchain authentication security system implements a robust JWT-based authentication mechanism with comprehensive security measures. This documentation details the authentication flow, token management, error handling, and integration with Appwrite authentication. The system provides secure access control for freelancers, employers, and administrators in the blockchain-based freelance marketplace.
 
 ## Authentication Flow Overview
 The authentication system in FreelanceXchain follows a standard JWT-based flow with access and refresh tokens. The process begins with user registration or login, followed by token issuance and validation for subsequent requests. The system supports both traditional email/password authentication and OAuth-based authentication through various providers including Google, GitHub, Azure, and LinkedIn.
@@ -5266,15 +5266,15 @@ The authentication flow is protected by rate limiting to prevent brute force att
 sequenceDiagram
 participant Client
 participant Server
-participant Supabase
+participant Appwrite
 Client->>Server : POST /api/auth/login
-Server->>Supabase : Validate credentials
-Supabase-->>Server : User data and session
+Server->>Appwrite : Validate credentials
+Appwrite-->>Server : User data and session
 Server->>Server : Create AuthResult with tokens
 Server-->>Client : 200 OK with accessToken and refreshToken
 Client->>Server : Subsequent requests with Bearer token
-Server->>Supabase : Validate token
-Supabase-->>Server : User validation result
+Server->>Appwrite : Validate token
+Appwrite-->>Server : User validation result
 Server->>Server : Check user in public.users
 Server-->>Client : Process request or return error
 ```
@@ -5392,41 +5392,41 @@ In production environments, the system enforces HTTPS by redirecting HTTP reques
 sequenceDiagram
 participant Client
 participant Server
-participant Supabase
+participant Appwrite
 Client->>Server : GET /api/auth/oauth/google
 Server->>Server : Apply security headers
 Server->>Server : Generate request ID
-Server->>Supabase : Redirect to OAuth provider
-Supabase-->>Client : OAuth consent screen
+Server->>Appwrite : Redirect to OAuth provider
+Appwrite-->>Client : OAuth consent screen
 Client->>Server : Redirect to /api/auth/callback with code
-Server->>Supabase : Exchange code for tokens
-Supabase-->>Server : Access and refresh tokens
+Server->>Appwrite : Exchange code for tokens
+Appwrite-->>Server : Access and refresh tokens
 Server->>Server : Validate user in public.users
 Server-->>Client : AuthResult with tokens
 ```
 
-## Integration with Supabase
-FreelanceXchain leverages Supabase authentication for user management while extending it with custom functionality for the freelance marketplace.
+## Integration with Appwrite
+FreelanceXchain leverages Appwrite authentication for user management while extending it with custom functionality for the freelance marketplace.
 
-### Supabase Authentication Flow
-The system uses Supabase Auth for:
+### Appwrite Authentication Flow
+The system uses Appwrite Auth for:
 - User registration and login
 - Email verification and password reset
 - OAuth integration with external providers
 - Session management
 
 When a user registers or logs in, the system:
-1. Authenticates with Supabase Auth
+1. Authenticates with Appwrite Auth
 2. Creates or updates the user record in the public.users table
 3. Returns custom authentication tokens with additional user data
 
 ### Custom User Data
-The system extends Supabase user metadata with additional fields:
+The system extends Appwrite user metadata with additional fields:
 - role: User's role on the platform (freelancer, employer, admin)
 - walletAddress: Ethereum wallet address for blockchain interactions
 - name: User's full name
 
-This data is stored in both Supabase Auth metadata and the public.users table for redundancy and performance.
+This data is stored in both Appwrite Auth metadata and the public.users table for redundancy and performance.
 
 ## Secure Token Storage Recommendations
 To ensure the security of authentication tokens, the following storage recommendations should be followed:
@@ -5462,17 +5462,17 @@ The following sequence diagrams illustrate the key authentication flows in Freel
 sequenceDiagram
 participant Client
 participant Server
-participant Supabase
+participant Appwrite
 Client->>Server : POST /api/auth/login
 Server->>Server : Validate input format
-Server->>Supabase : signInWithPassword(email, password)
-Supabase-->>Server : User and session data
+Server->>Appwrite : signInWithPassword(email, password)
+Appwrite-->>Server : User and session data
 Server->>Server : Get user from public.users
 Server->>Server : Create AuthResult with tokens
 Server-->>Client : 200 OK with accessToken and refreshToken
 Client->>Server : Subsequent requests with Bearer token
-Server->>Supabase : getUser(accessToken)
-Supabase-->>Server : User data
+Server->>Appwrite : getUser(accessToken)
+Appwrite-->>Server : User data
 Server->>Server : Validate user in public.users
 Server->>Server : Attach user to request
 Server-->>Client : Process request
@@ -5483,11 +5483,11 @@ Server-->>Client : Process request
 sequenceDiagram
 participant Client
 participant Server
-participant Supabase
+participant Appwrite
 Client->>Server : POST /api/auth/login
 Server->>Server : Validate input format
-Server->>Supabase : signInWithPassword(email, password)
-Supabase-->>Server : Authentication error
+Server->>Appwrite : signInWithPassword(email, password)
+Appwrite-->>Server : Authentication error
 Server->>Server : Map to AUTH_INVALID_CREDENTIALS
 Server-->>Client : 401 Unauthorized with error details
 Client->>Server : GET /api/projects
@@ -5500,8 +5500,8 @@ Server->>Server : Invalid format (not Bearer token)
 Server-->>Client : 401 Unauthorized with AUTH_INVALID_FORMAT
 Client->>Server : GET /api/projects
 Server->>Server : Extract Bearer token
-Server->>Supabase : getUser(token)
-Supabase-->>Server : TOKEN_EXPIRED error
+Server->>Appwrite : getUser(token)
+Appwrite-->>Server : TOKEN_EXPIRED error
 Server->>Server : Map to AUTH_TOKEN_EXPIRED
 Server-->>Client : 401 Unauthorized with AUTH_TOKEN_EXPIRED
 ```
@@ -6049,7 +6049,7 @@ app.use(cors({
 ## Table of Contents
 1. [Introduction](#introduction)
 2. [Row Level Security Overview](#row-level-security-overview)
-3. [Supabase Authentication Integration](#supabase-authentication-integration)
+3. [Appwrite Authentication Integration](#appwrite-authentication-integration)
 4. [RLS Policy Implementation](#rls-policy-implementation)
 5. [Service Role Configuration](#service-role-configuration)
 6. [Secure Query Examples](#secure-query-examples)
@@ -6058,17 +6058,17 @@ app.use(cors({
 9. [Conclusion](#conclusion)
 
 ## Introduction
-The FreelanceXchain platform implements a robust database security model using Supabase Row Level Security (RLS) to ensure data isolation and privacy. This documentation details the comprehensive security architecture that prevents unauthorized access to sensitive user data across all application tables. The system leverages PostgreSQL's RLS capabilities integrated with Supabase's authentication framework to enforce strict access controls, ensuring users can only access their own data or data they are explicitly authorized to view. The security model covers all core entities including users, projects, contracts, and payments, with policies designed to prevent data leakage and unauthorized operations.
+The FreelanceXchain platform implements a robust database security model using Appwrite Row Level Security (RLS) to ensure data isolation and privacy. This documentation details the comprehensive security architecture that prevents unauthorized access to sensitive user data across all application tables. The system leverages PostgreSQL's RLS capabilities integrated with Appwrite's authentication framework to enforce strict access controls, ensuring users can only access their own data or data they are explicitly authorized to view. The security model covers all core entities including users, projects, contracts, and payments, with policies designed to prevent data leakage and unauthorized operations.
 
 ## Row Level Security Overview
 FreelanceXchain employs Row Level Security (RLS) as the primary mechanism for data access control at the database layer. RLS policies are enabled on all tables in the system, creating a security boundary that prevents unauthorized access even if application-level controls fail. The RLS implementation follows the principle of least privilege, where access is denied by default and only granted through explicitly defined policies. Each table in the database has RLS enabled through the `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` command, establishing the foundation for fine-grained access control.
 
-The security model is designed around user ownership and role-based access patterns. For most tables, users can only access records where they are the owner (identified by their user ID) or have a specific relationship to the data (such as being a contract party). The system uses Supabase's built-in `auth.uid()` function to extract the authenticated user's ID from JWT tokens, which is then used in policy expressions to determine access eligibility. This approach ensures that data access decisions are made at the database level, providing an additional security layer beyond application logic.
+The security model is designed around user ownership and role-based access patterns. For most tables, users can only access records where they are the owner (identified by their user ID) or have a specific relationship to the data (such as being a contract party). The system uses Appwrite's built-in `auth.uid()` function to extract the authenticated user's ID from JWT tokens, which is then used in policy expressions to determine access eligibility. This approach ensures that data access decisions are made at the database level, providing an additional security layer beyond application logic.
 
 ```mermaid
 graph TD
 A[Client Request] --> B[JWT Authentication]
-B --> C[Supabase Auth]
+B --> C[Appwrite Auth]
 C --> D[Extract User ID]
 D --> E[Database RLS Policies]
 E --> F{Access Allowed?}
@@ -6076,20 +6076,20 @@ F --> |Yes| G[Return Data]
 F --> |No| H[Return 403 Forbidden]
 ```
 
-## Supabase Authentication Integration
-The security model is tightly integrated with Supabase Authentication, which provides the foundation for user identity and session management. When a user authenticates, Supabase generates a JWT token containing the user's ID and other claims, which is then used to enforce RLS policies at the database level. The authentication flow begins with the `authMiddleware` in the application, which validates the JWT token and extracts user information before allowing requests to proceed to business logic.
+## Appwrite Authentication Integration
+The security model is tightly integrated with Appwrite Authentication, which provides the foundation for user identity and session management. When a user authenticates, Appwrite generates a JWT token containing the user's ID and other claims, which is then used to enforce RLS policies at the database level. The authentication flow begins with the `authMiddleware` in the application, which validates the JWT token and extracts user information before allowing requests to proceed to business logic.
 
-The `auth-service.ts` file contains the core authentication logic, including registration, login, and token validation functions. During login, the system verifies credentials with Supabase Auth and then retrieves the corresponding user record from the public.users table to ensure profile completeness. The JWT token generated by Supabase contains the user's ID in the `sub` claim, which is accessible to RLS policies through the `auth.uid()` function. This integration creates a seamless security flow where authentication at the application level directly enables authorization at the database level.
+The `auth-service.ts` file contains the core authentication logic, including registration, login, and token validation functions. During login, the system verifies credentials with Appwrite Auth and then retrieves the corresponding user record from the public.users table to ensure profile completeness. The JWT token generated by Appwrite contains the user's ID in the `sub` claim, which is accessible to RLS policies through the `auth.uid()` function. This integration creates a seamless security flow where authentication at the application level directly enables authorization at the database level.
 
 ```mermaid
 sequenceDiagram
 participant Client
 participant AppServer
-participant SupabaseAuth
+participant AppwriteAuth
 participant Database
 Client->>AppServer : Login Request
-AppServer->>SupabaseAuth : Validate Credentials
-SupabaseAuth-->>AppServer : JWT Token
+AppServer->>AppwriteAuth : Validate Credentials
+AppwriteAuth-->>AppServer : JWT Token
 AppServer->>Database : Query with JWT
 Database->>Database : auth.uid() extracts user ID
 Database->>Database : Apply RLS Policies
@@ -6143,7 +6143,7 @@ ProjectsTable --> ContractsTable : "contains"
 ## Service Role Configuration
 The system implements a service role bypass mechanism to allow backend operations that require broader data access than individual users. This is achieved through service role policies that grant full access to all tables when the service role is used. The `schema.sql` file contains a series of policies named "Service role full access [table_name]" that use a USING expression of `true`, effectively bypassing RLS restrictions for the service role.
 
-These service role policies are essential for administrative functions, batch operations, and certain business logic that needs to access data across multiple users. The service role is configured with elevated privileges in Supabase, allowing it to bypass RLS checks while still maintaining audit trails and other security controls. This approach enables the backend application to perform necessary operations without compromising the security model for end users.
+These service role policies are essential for administrative functions, batch operations, and certain business logic that needs to access data across multiple users. The service role is configured with elevated privileges in Appwrite, allowing it to bypass RLS checks while still maintaining audit trails and other security controls. This approach enables the backend application to perform necessary operations without compromising the security model for end users.
 
 The service role configuration follows the principle of least privilege for the backend, where the service role has the minimum necessary permissions to perform its functions. While it has full access to all tables, this access is only used in specific, controlled circumstances within the application code. The separation between user roles and service roles creates a clear security boundary, ensuring that user-level restrictions are maintained while allowing the system to function effectively.
 
@@ -6161,7 +6161,7 @@ H --> I
 ```
 
 ## Secure Query Examples
-The RLS implementation ensures that all database queries are automatically filtered based on the authenticated user's identity. When a user makes a request to access their data, the application uses the Supabase client with the user's JWT token, and the database automatically applies the relevant RLS policies. For example, when a freelancer requests their contracts, the query in `contract-repository.ts` uses the Supabase client to fetch records, but the actual results are filtered by the RLS policy on the contracts table.
+The RLS implementation ensures that all database queries are automatically filtered based on the authenticated user's identity. When a user makes a request to access their data, the application uses the Appwrite client with the user's JWT token, and the database automatically applies the relevant RLS policies. For example, when a freelancer requests their contracts, the query in `contract-repository.ts` uses the Appwrite client to fetch records, but the actual results are filtered by the RLS policy on the contracts table.
 
 The repository pattern in the application code works in conjunction with RLS to provide an additional layer of security. While the RLS policies at the database level provide the primary security boundary, the repository methods include explicit filtering by user ID as a defense-in-depth measure. This dual-layer approach ensures security even if one layer fails. For instance, the `getUserContracts` method in `contract-repository.ts` explicitly filters by both freelancer_id and employer_id, reinforcing the RLS policy that performs the same check.
 
@@ -6175,14 +6175,14 @@ The enforcement mechanism operates on multiple levels to provide defense in dept
 For sensitive operations like modifying contracts or releasing payments, the system implements additional verification steps. The application code in services like `payment-service.ts` includes explicit checks to ensure that only contract parties can perform certain actions, reinforcing the RLS policies that provide the primary security boundary. This approach ensures that security is not dependent on any single control, creating a robust defense against unauthorized access.
 
 ## Debugging and Testing RLS Policies
-Debugging and testing RLS policies is critical to ensure the security model functions as intended. During development, policies can be tested by simulating different user contexts and verifying that data access is properly restricted. The Supabase dashboard provides tools for testing RLS policies, allowing developers to execute queries as different users and observe the results.
+Debugging and testing RLS policies is critical to ensure the security model functions as intended. During development, policies can be tested by simulating different user contexts and verifying that data access is properly restricted. The Appwrite dashboard provides tools for testing RLS policies, allowing developers to execute queries as different users and observe the results.
 
 For local development and testing, the system can temporarily disable RLS on specific tables to facilitate debugging, though this should never be done in production. Unit tests in the application code verify that repository methods return the expected results for different user roles and data ownership scenarios. Integration tests validate that the complete flow from authentication to data access works correctly and that unauthorized access attempts are properly blocked.
 
 Monitoring and logging are also important for detecting potential security issues. The application logs failed access attempts and other security-relevant events, which can be analyzed to identify potential attacks or policy weaknesses. Regular security audits should include verification of RLS policies to ensure they continue to provide adequate protection as the application evolves.
 
 ## Conclusion
-The database security model in FreelanceXchain provides a robust foundation for protecting user data through comprehensive Row Level Security implementation. By leveraging Supabase's RLS capabilities in conjunction with proper authentication and application-level controls, the system ensures that users can only access their own data and data they are authorized to view. The multi-layered approach combining database policies, service role configuration, and application-level authorization creates a defense-in-depth security posture that protects against both accidental and malicious data access.
+The database security model in FreelanceXchain provides a robust foundation for protecting user data through comprehensive Row Level Security implementation. By leveraging Appwrite's RLS capabilities in conjunction with proper authentication and application-level controls, the system ensures that users can only access their own data and data they are authorized to view. The multi-layered approach combining database policies, service role configuration, and application-level authorization creates a defense-in-depth security posture that protects against both accidental and malicious data access.
 
 The implementation demonstrates best practices in database security, including the use of consistent policy patterns, defense-in-depth through multiple security layers, and proper role-based access control. As the application evolves, it is important to maintain this security model by reviewing and updating RLS policies for new tables and features, conducting regular security audits, and ensuring that all data access paths are properly protected.
 
@@ -6195,7 +6195,7 @@ The implementation demonstrates best practices in database security, including t
 2. [Authentication Mechanisms](#authentication-mechanisms)
 3. [Authorization Strategies](#authorization-strategies)
 4. [Input Validation Practices](#input-validation-practices)
-5. [Supabase Row Level Security](#supabase-row-level-security)
+5. [Appwrite Row Level Security](#appwrite-row-level-security)
 6. [Blockchain Security Patterns](#blockchain-security-patterns)
 7. [API Security Measures](#api-security-measures)
 8. [Data Privacy Considerations](#data-privacy-considerations)
@@ -6203,13 +6203,13 @@ The implementation demonstrates best practices in database security, including t
 10. [Conclusion](#conclusion)
 
 ## Introduction
-FreelanceXchain implements a comprehensive security framework across multiple layers of the application stack. The system combines traditional web security practices with blockchain-specific protections to ensure data integrity, user privacy, and system reliability. This document details the security architecture, covering authentication, authorization, input validation, database security, blockchain patterns, API protections, and data privacy compliance. The implementation leverages Supabase for authentication and database security, while incorporating blockchain technology for transparent and immutable operations.
+FreelanceXchain implements a comprehensive security framework across multiple layers of the application stack. The system combines traditional web security practices with blockchain-specific protections to ensure data integrity, user privacy, and system reliability. This document details the security architecture, covering authentication, authorization, input validation, database security, blockchain patterns, API protections, and data privacy compliance. The implementation leverages Appwrite for authentication and database security, while incorporating blockchain technology for transparent and immutable operations.
 
 ## Authentication Mechanisms
 
 FreelanceXchain employs a robust JWT-based authentication system with token rotation and expiration policies. The authentication flow begins with user registration or login, where credentials are validated before issuing tokens. The system generates two types of JWT tokens: access tokens with a 1-hour expiration and refresh tokens with a 7-day expiration. These tokens are signed with separate secrets for enhanced security, as defined in the environment configuration.
 
-The authentication middleware validates incoming requests by checking for the presence of a Bearer token in the Authorization header. If present, the token is verified against the Supabase authentication system and the local user database. The system supports both traditional email/password authentication and OAuth flows with providers like Google, GitHub, Azure, and LinkedIn. For OAuth users, the system implements a two-step registration process where new users must select a role (freelancer or employer) after initial authentication.
+The authentication middleware validates incoming requests by checking for the presence of a Bearer token in the Authorization header. If present, the token is verified against the Appwrite authentication system and the local user database. The system supports both traditional email/password authentication and OAuth flows with providers like Google, GitHub, Azure, and LinkedIn. For OAuth users, the system implements a two-step registration process where new users must select a role (freelancer or employer) after initial authentication.
 
 Password security is enforced through strength validation requiring a minimum of 8 characters with uppercase, lowercase, numeric, and special characters. The system also implements rate limiting on authentication endpoints to prevent brute force attacks, allowing only 10 attempts per 15 minutes per IP address.
 
@@ -6218,11 +6218,11 @@ sequenceDiagram
 participant Client
 participant AuthMiddleware
 participant AuthService
-participant Supabase
+participant Appwrite
 Client->>AuthMiddleware : Request with Bearer Token
 AuthMiddleware->>AuthService : validateToken(token)
-AuthService->>Supabase : getUser(accessToken)
-Supabase-->>AuthService : User data or error
+AuthService->>Appwrite : getUser(accessToken)
+Appwrite-->>AuthService : User data or error
 AuthService->>AuthService : Validate against public.users
 AuthService-->>AuthMiddleware : Validated user or AuthError
 AuthMiddleware->>Client : 401 if invalid, proceed if valid
@@ -6278,9 +6278,9 @@ ProcessRequest --> End([Request Handled])
 ReturnError --> End
 ```
 
-## Supabase Row Level Security
+## Appwrite Row Level Security
 
-The application leverages Supabase Row Level Security (RLS) to ensure users can only access their own data. RLS policies are implemented at the database level, providing an additional security layer beyond application-level checks. The system uses Supabase's built-in authentication to identify users and enforce data access rules.
+The application leverages Appwrite Row Level Security (RLS) to ensure users can only access their own data. RLS policies are implemented at the database level, providing an additional security layer beyond application-level checks. The system uses Appwrite's built-in authentication to identify users and enforce data access rules.
 
 Each table in the database has RLS policies that restrict read and write operations based on the authenticated user's ID. For example, users can only read and update their own profile information, while employers can only access projects they have created. The RLS policies work in conjunction with the application's authorization middleware to provide defense in depth.
 
@@ -6292,7 +6292,7 @@ subgraph "Security Layers"
 A[Transport Security: HTTPS/TLS]
 B[Authentication: JWT Bearer Tokens]
 C[Authorization: Role-Based Access Control]
-D[Database Security: Supabase Row Level Security]
+D[Database Security: Appwrite Row Level Security]
 E[Smart Contract Security]
 end
 A --> B --> C --> D --> E
@@ -6351,7 +6351,7 @@ H --> |Exceeded| J[Return 429]
 
 ## Data Privacy Considerations
 
-FreelanceXchain addresses data privacy through careful handling of KYC information and compliance with GDPR principles. The system stores personal data in encrypted form and implements strict access controls to limit who can view sensitive information. KYC data is stored off-chain in the Supabase database with access restricted to authorized personnel.
+FreelanceXchain addresses data privacy through careful handling of KYC information and compliance with GDPR principles. The system stores personal data in encrypted form and implements strict access controls to limit who can view sensitive information. KYC data is stored off-chain in the Appwrite database with access restricted to authorized personnel.
 
 The blockchain implementation follows a privacy-preserving approach by storing only verification status and data hashes on-chain, rather than personal information. This design ensures transparency and immutability while protecting user privacy. The KYCVerification contract explicitly notes that it stores "proof without revealing data" to maintain GDPR compliance.
 
@@ -6373,7 +6373,7 @@ The application includes functions for clearing test data and resetting the bloc
 
 FreelanceXchain implements a multi-layered security approach that combines traditional web security practices with blockchain-specific protections. The system's authentication mechanism uses JWT tokens with appropriate expiration policies and rate limiting to prevent abuse. Authorization is enforced through role-based access control, ensuring users can only perform actions appropriate to their role.
 
-Input validation is comprehensive, using JSON schemas to validate all incoming data and prevent injection attacks. Database security is enhanced through Supabase Row Level Security, providing an additional layer of protection for user data. The blockchain implementation follows security best practices with access controls, input validation, and privacy-preserving design.
+Input validation is comprehensive, using JSON schemas to validate all incoming data and prevent injection attacks. Database security is enhanced through Appwrite Row Level Security, providing an additional layer of protection for user data. The blockchain implementation follows security best practices with access controls, input validation, and privacy-preserving design.
 
 API security is strengthened through helmet.js protections, rate limiting, CORS configuration, and HTTPS enforcement. Data privacy is prioritized through careful handling of KYC information and GDPR compliance. The system provides clear guidelines for security testing to identify and prevent common vulnerabilities.
 
@@ -6663,7 +6663,7 @@ graph TD
     end
     
     subgraph "Data Layer"
-        G --> J[(Supabase)]
+        G --> J[(Appwrite)]
         H --> K[(Didit Storage)]
     end
     
@@ -6688,7 +6688,7 @@ src/
 └── routes/
     └── didit-kyc-routes.ts       # API endpoints
 
-supabase/
+appwrite/
 └── migrations/
     └── 003_didit_kyc_verifications.sql
 ```
@@ -6759,7 +6759,7 @@ D --> M[Skill Management]
 ```
 
 ## Role Assignment During Registration
-User roles are assigned during the registration process, where new users must select their role as either 'freelancer' or 'employer'. This selection is a required field in the registration input, ensuring that every user has a defined role upon account creation. The role is stored in the user's metadata within the Supabase Auth system and in the public.users table in the database. Admin roles are not available for self-selection during registration and are typically assigned manually by existing admins or through administrative processes. This approach ensures that role assignment is intentional and controlled, preventing unauthorized access to privileged operations.
+User roles are assigned during the registration process, where new users must select their role as either 'freelancer' or 'employer'. This selection is a required field in the registration input, ensuring that every user has a defined role upon account creation. The role is stored in the user's metadata within the Appwrite Auth system and in the public.users table in the database. Admin roles are not available for self-selection during registration and are typically assigned manually by existing admins or through administrative processes. This approach ensures that role assignment is intentional and controlled, preventing unauthorized access to privileged operations.
 
 ## JWT Token Authentication and Role Extraction
 The RBAC system in FreelanceXchain relies on JWT token authentication to verify user identities and extract their roles. During the authentication process, when a user logs in or registers, a JWT token is generated that includes the user's role as part of the payload. This token is validated by the `authMiddleware` function, which decodes the token and extracts the user's role. The extracted role is then attached to the request object, making it available for subsequent authorization checks. This mechanism ensures that every request to the API can be authenticated and that the user's role is readily accessible for enforcing access controls.
@@ -6826,7 +6826,7 @@ ROLE }|--|| PERMISSION : "has many"
 Admins in the FreelanceXchain platform have elevated privileges that allow them to perform critical system operations. These include resolving disputes, managing the skill taxonomy, and accessing all system data. Admins can resolve disputes by reviewing evidence and making decisions that affect payment releases. They can also create and deprecate skills, ensuring that the platform's skill categories remain relevant and up-to-date. Escalation paths for users to gain admin privileges are not available through self-service and require manual intervention by existing admins, ensuring that administrative access is tightly controlled and secure.
 
 ## Common Issues and Security Considerations
-Common issues in the RBAC system include privilege misalignment and token tampering. Privilege misalignment can occur if a user's role is incorrectly assigned or updated, leading to unauthorized access or restricted functionality. This can be mitigated by rigorous validation during role assignment and regular audits of user roles. Token tampering is a security concern where an attacker attempts to modify a JWT token to gain elevated privileges. This is prevented by using strong cryptographic signatures for tokens and validating them on every request. Additionally, the use of Supabase's service role policies ensures that backend operations can bypass row-level security when necessary, while still maintaining overall system security.
+Common issues in the RBAC system include privilege misalignment and token tampering. Privilege misalignment can occur if a user's role is incorrectly assigned or updated, leading to unauthorized access or restricted functionality. This can be mitigated by rigorous validation during role assignment and regular audits of user roles. Token tampering is a security concern where an attacker attempts to modify a JWT token to gain elevated privileges. This is prevented by using strong cryptographic signatures for tokens and validating them on every request. Additionally, the use of Appwrite's service role policies ensures that backend operations can bypass row-level security when necessary, while still maintaining overall system security.
 
 ## Conclusion
 The role-based access control system in FreelanceXchain effectively manages user permissions through a well-defined three-tier role model. By leveraging JWT token authentication and middleware-based authorization checks, the system ensures that users can only access features appropriate to their role. The clear separation of permissions between freelancers, employers, and admins maintains the security and integrity of the platform, while the integration of middleware functions provides a scalable and maintainable approach to access control. Addressing common issues such as privilege misalignment and token tampering further strengthens the system's security, making it a robust foundation for the FreelanceXchain platform.

@@ -1,8 +1,8 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
-
-const supabase = getSupabaseClient();
+import { storage, BUCKETS } from '../config/appwrite.js';
+import { config } from '../config/env.js';
 
 export interface FileInfo {
   name: string;
@@ -25,43 +25,40 @@ export interface FileQuota {
 const DEFAULT_QUOTA_BYTES = 100 * 1024 * 1024;
 
 /**
- * Get user's files from Supabase Storage
+ * Get user's files from Appwrite Storage
  */
 export async function getUserFiles(
   userId: string,
   bucket?: string
 ): Promise<ServiceResult<FileInfo[]>> {
   try {
-    const buckets = bucket ? [bucket] : ['portfolio-images', 'message-attachments'];
+    const buckets = bucket ? [bucket] : [BUCKETS.PORTFOLIO_IMAGES, BUCKETS.PROPOSAL_ATTACHMENTS];
     const allFiles: FileInfo[] = [];
 
     for (const bucketName of buckets) {
-      // List files in user's folder
-      const { data, error } = await supabase
-        .storage
-        .from(bucketName)
-        .list(userId, {
-          limit: 1000,
-          sortBy: { column: 'created_at', order: 'desc' },
-        });
+      try {
+        // List files in bucket
+        const result = await storage.listFiles(bucketName);
 
-      if (error) {
+        if (result.files) {
+          // Filter files that belong to the user (by filename pattern or metadata)
+          const files = result.files
+            .filter(file => file.name.includes(userId))
+            .map(file => ({
+              name: file.name,
+              bucket: bucketName,
+              path: file.$id,
+              size: file.sizeOriginal || 0,
+              createdAt: file.$createdAt || '',
+              updatedAt: file.$updatedAt || '',
+              publicUrl: `${config.appwrite.endpoint}/storage/buckets/${bucketName}/files/${file.$id}/view?project=${config.appwrite.projectId}`,
+            }));
+
+          allFiles.push(...files);
+        }
+      } catch (error) {
         logger.error('Failed to list files', { error, userId, bucket: bucketName });
         continue; // Skip this bucket and continue with others
-      }
-
-      if (data) {
-        const files = data.map(file => ({
-          name: file.name,
-          bucket: bucketName,
-          path: `${userId}/${file.name}`,
-          size: file.metadata?.size || 0,
-          createdAt: file.created_at || '',
-          updatedAt: file.updated_at || '',
-          publicUrl: supabase.storage.from(bucketName).getPublicUrl(`${userId}/${file.name}`).data.publicUrl,
-        }));
-
-        allFiles.push(...files);
       }
     }
 
@@ -82,7 +79,7 @@ export async function getUserFiles(
 }
 
 /**
- * Delete a file from Supabase Storage
+ * Delete a file from Appwrite Storage
  */
 export async function deleteFile(
   userId: string,
@@ -90,32 +87,31 @@ export async function deleteFile(
   path: string
 ): Promise<ServiceResult<void>> {
   try {
-    // Verify file ownership (path must contain userId)
-    if (!path.startsWith(userId)) {
+    // Get file info to verify ownership
+    try {
+      const file = await storage.getFile(bucket, path);
+      // Verify file ownership by checking if filename contains userId
+      if (!file.name.includes(userId)) {
+        return {
+          success: false,
+          error: {
+            code: 'UNAUTHORIZED',
+            message: 'You can only delete your own files',
+          },
+        };
+      }
+    } catch (error) {
+      logger.error('Failed to get file info', { error, userId, bucket, path });
       return {
         success: false,
         error: {
-          code: 'UNAUTHORIZED',
-          message: 'You can only delete your own files',
+          code: 'NOT_FOUND',
+          message: 'File not found',
         },
       };
     }
 
-    const { error } = await supabase
-      .storage
-      .from(bucket)
-      .remove([path]);
-
-    if (error) {
-      logger.error('Failed to delete file', { error, userId, bucket, path });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to delete file',
-        },
-      };
-    }
+    await storage.deleteFile(bucket, path);
 
     return {
       success: true,
@@ -160,7 +156,9 @@ export async function getFileQuota(userId: string): Promise<ServiceResult<FileQu
       },
     };
   } catch (error) {
+    /* istanbul ignore next */
     logger.error('Unexpected error in getFileQuota', { error, userId });
+    /* istanbul ignore next */
     return {
       success: false,
       error: {

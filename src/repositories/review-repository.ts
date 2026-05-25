@@ -1,93 +1,103 @@
-import { BaseRepository, BaseEntity, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
 
-export type ReviewEntity = BaseEntity & {
+export type ReviewEntity = {
+  id: string;
   contract_id: string;
   reviewer_id: string;
   reviewee_id: string;
   rating: number;
   comment: string | null;
   reviewer_role: 'freelancer' | 'employer';
+  created_at: string;
+  updated_at: string;
 };
 
 export type CreateReviewInput = Omit<ReviewEntity, 'id' | 'created_at' | 'updated_at'>;
 
-class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
+class ReviewRepositoryClass extends BaseRepositoryPg<ReviewEntity> {
   constructor() {
-    super(TABLES.REVIEWS);
+    super('reviews');
   }
 
   async findByContractId(contractId: string): Promise<ReviewEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('contract_id', contractId)
-      .order('created_at', { ascending: false });
-
-    if (error) throw new Error(`Failed to find reviews: ${error.message}`);
-    return (data ?? []) as ReviewEntity[];
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE contract_id = $1
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await this.pool.query(query, [contractId]);
+      return result.rows as ReviewEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to find reviews: ${error.message}`);
+    }
   }
 
   async findByRevieweeId(revieweeId: string, options?: QueryOptions): Promise<PaginatedResult<ReviewEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('reviewee_id', revieweeId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE reviewee_id = $1`;
+    const countResult = await this.pool.query(countQuery, [revieweeId]);
+    const total = parseInt(countResult.rows[0].count, 10);
 
-    if (error) throw new Error(`Failed to find reviews: ${error.message}`);
-
-    return {
-      items: (data ?? []) as ReviewEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE reviewee_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
+    
+    try {
+      const result = await this.pool.query(dataQuery, [revieweeId, limit, offset]);
+      return {
+        items: result.rows as ReviewEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to find reviews: ${error.message}`);
+    }
   }
 
   async getAverageRating(revieweeId: string): Promise<{ average: number; count: number }> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('rating')
-      .eq('reviewee_id', revieweeId);
-
-    if (error) throw new Error(`Failed to get average rating: ${error.message}`);
-
-    const ratings = (data ?? []) as { rating: number }[];
-    if (ratings.length === 0) return { average: 0, count: 0 };
-
-    const sum = ratings.reduce((acc, r) => acc + r.rating, 0);
-    return { average: sum / ratings.length, count: ratings.length };
+    const query = `
+      SELECT AVG(rating) as average, COUNT(*) as count 
+      FROM ${this.tableName} 
+      WHERE reviewee_id = $1
+    `;
+    
+    try {
+      const result = await this.pool.query(query, [revieweeId]);
+      const row = result.rows[0];
+      return { 
+        average: row.average ? parseFloat(row.average) : 0, 
+        count: parseInt(row.count, 10) 
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get average rating: ${error.message}`);
+    }
   }
 
   async hasReviewed(contractId: string, reviewerId: string): Promise<boolean> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('id')
-      .eq('contract_id', contractId)
-      .eq('reviewer_id', reviewerId)
-      .limit(1);
-
-    if (error) throw new Error(`Failed to check review: ${error.message}`);
-    return (data?.length ?? 0) > 0;
+    const query = `
+      SELECT EXISTS (
+        SELECT 1 FROM ${this.tableName} 
+        WHERE contract_id = $1 AND reviewer_id = $2
+      )
+    `;
+    
+    try {
+      const result = await this.pool.query(query, [contractId, reviewerId]);
+      return result.rows[0].exists;
+    } catch (error: any) {
+      throw new Error(`Failed to check review: ${error.message}`);
+    }
   }
 
   async getAllReviews(): Promise<ReviewEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .order('created_at', { ascending: false });
-
-    if (error) throw new Error(`Failed to get all reviews: ${error.message}`);
-    return (data ?? []) as ReviewEntity[];
+    return this.queryAll('created_at', false);
   }
 }
 

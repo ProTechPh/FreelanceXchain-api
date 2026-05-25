@@ -153,21 +153,24 @@ describe('Dispute Service - Property-Based Tests', () => {
     mockProjectRepo.clear();
     mockNotificationRepo.clear();
 
-    // Mock Supabase RPC for evidence submission
-    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    mockSupabaseClient.rpc = jest.fn(async (functionName: string, params: any) => {
-      if (functionName === 'append_dispute_evidence') {
-        const dispute = disputeStore.get(params.p_dispute_id) as any;
-        if (!dispute) return { data: null, error: { message: 'Dispute not found' } };
+    // Mock pool.query for evidence submission
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('append_dispute_evidence')) {
+        const disputeId = params?.[0];
+        const dispute = disputeStore.get(disputeId) as any;
+        if (!dispute) {
+          return { rows: [], rowCount: 0 };
+        }
         
-        const newEvidence = params.p_evidence || [];
+        const newEvidence = params?.[1] ? JSON.parse(params[1]) : [];
         const updatedEvidence = [...(dispute.evidence || []), ...newEvidence];
         dispute.evidence = updatedEvidence;
         disputeStore.set(dispute.id, dispute);
         
-        return { data: updatedEvidence, error: null };
+        return { rows: [{ result: true }], rowCount: 1 };
       }
-      return { data: null, error: { message: 'Unsupported RPC function' } };
+      return { rows: [], rowCount: 0 };
     });
   });
 
@@ -334,21 +337,24 @@ describe('Dispute Service - Unit Tests', () => {
     mockProjectRepo.clear();
     mockNotificationRepo.clear();
 
-    // Mock Supabase RPC for evidence submission
-    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    mockSupabaseClient.rpc = jest.fn(async (functionName: string, params: any) => {
-      if (functionName === 'append_dispute_evidence') {
-        const dispute = disputeStore.get(params.p_dispute_id) as any;
-        if (!dispute) return { data: null, error: { message: 'Dispute not found' } };
+    // Mock pool.query for evidence submission
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('append_dispute_evidence')) {
+        const disputeId = params?.[0];
+        const dispute = disputeStore.get(disputeId) as any;
+        if (!dispute) {
+          return { rows: [], rowCount: 0 };
+        }
         
-        const newEvidence = params.p_evidence || [];
+        const newEvidence = params?.[1] ? JSON.parse(params[1]) : [];
         const updatedEvidence = [...(dispute.evidence || []), ...newEvidence];
         dispute.evidence = updatedEvidence;
         disputeStore.set(dispute.id, dispute);
         
-        return { data: updatedEvidence, error: null };
+        return { rows: [{ result: true }], rowCount: 1 };
       }
-      return { data: null, error: { message: 'Unsupported RPC function' } };
+      return { rows: [], rowCount: 0 };
     });
   });
 

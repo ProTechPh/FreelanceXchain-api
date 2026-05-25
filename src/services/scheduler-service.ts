@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { sendWeeklyDigestEmail } from './email-delivery-service.js';
 
@@ -8,25 +8,21 @@ import { sendWeeklyDigestEmail } from './email-delivery-service.js';
  */
 async function autoCloseExpiredProjects(): Promise<void> {
   try {
-    const supabase = getSupabaseClient();
-    
-    const { data: expiredProjects, error } = await supabase
-      .from('projects')
-      .select('id, title')
-      .eq('status', 'open')
-      .lt('deadline', new Date().toISOString());
+    const expiredProjects = await pool.query(
+      `SELECT id, title FROM projects 
+       WHERE status = 'open' AND deadline < NOW()`
+    );
 
-    if (error) throw error;
+    if (expiredProjects.rows.length > 0) {
+      const projectIds = expiredProjects.rows.map(p => p.id);
+      await pool.query(
+        `UPDATE projects 
+         SET status = 'closed', updated_at = NOW() 
+         WHERE id = ANY($1)`,
+        [projectIds]
+      );
 
-    if (expiredProjects && expiredProjects.length > 0) {
-      const { error: updateError } = await supabase
-        .from('projects')
-        .update({ status: 'closed', updated_at: new Date().toISOString() })
-        .in('id', expiredProjects.map(p => p.id));
-
-      if (updateError) throw updateError;
-
-      logger.info(`Auto-closed ${expiredProjects.length} expired projects`);
+      logger.info(`Auto-closed ${expiredProjects.rows.length} expired projects`);
     }
   } catch (error) {
     logger.error('Failed to auto-close expired projects:', error);
@@ -38,64 +34,62 @@ async function autoCloseExpiredProjects(): Promise<void> {
  */
 async function sendWeeklyDigests(): Promise<void> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get users with weekly digest enabled
-    const { data: users, error } = await supabase
-      .from('email_preferences')
-      .select('user_id, users!inner(email, full_name)')
-      .eq('weekly_digest', true);
+    const usersResult = await pool.query(
+      `SELECT ep.user_id, u.email, u.full_name 
+       FROM email_preferences ep
+       INNER JOIN users u ON u.id = ep.user_id
+       WHERE ep.weekly_digest = true`
+    );
 
-    if (error) throw error;
-
-    if (!users || users.length === 0) {
+    if (usersResult.rows.length === 0) {
       logger.info('No users with weekly digest enabled');
       return;
     }
 
-    for (const user of users) {
+    for (const user of usersResult.rows) {
       try {
         // Get user stats for the week
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
 
         // Count new projects
-        const { count: newProjects } = await supabase
-          .from('projects')
-          .select('*', { count: 'exact', head: true })
-          .gte('created_at', weekAgo.toISOString());
+        const newProjectsResult = await pool.query(
+          'SELECT COUNT(*) as count FROM projects WHERE created_at >= $1',
+          [weekAgo.toISOString()]
+        );
 
         // Count new messages
-        const { count: newMessages } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('receiver_id', user.user_id)
-          .eq('is_read', false);
+        const newMessagesResult = await pool.query(
+          'SELECT COUNT(*) as count FROM messages WHERE receiver_id = $1 AND is_read = false',
+          [user.user_id]
+        );
 
         // Count pending milestones
-        const { count: pendingMilestones } = await supabase
-          .from('milestones')
-          .select('*, contracts!inner(freelancer_id)', { count: 'exact', head: true })
-          .eq('contracts.freelancer_id', user.user_id)
-          .eq('status', 'pending');
+        const pendingMilestonesResult = await pool.query(
+          `SELECT COUNT(*) as count FROM milestones m
+           INNER JOIN contracts c ON c.id = m.contract_id
+           WHERE c.freelancer_id = $1 AND m.status = 'pending'`,
+          [user.user_id]
+        );
 
         // Get top projects
-        const { data: topProjects } = await supabase
-          .from('projects')
-          .select('title, budget')
-          .eq('status', 'open')
-          .order('created_at', { ascending: false })
-          .limit(5);
+        const topProjectsResult = await pool.query(
+          `SELECT id, title, budget FROM projects 
+           WHERE status = 'open' 
+           ORDER BY created_at DESC 
+           LIMIT 5`
+        );
 
-        await sendWeeklyDigestEmail((user.users as any).email, {
-          userName: (user.users as any).full_name || 'User',
-          newProjects: newProjects || 0,
-          newMessages: newMessages || 0,
-          pendingMilestones: pendingMilestones || 0,
-          topProjects: (topProjects || []).map(p => ({
+        await sendWeeklyDigestEmail(user.email, {
+          userName: user.full_name || 'User',
+          newProjects: parseInt(newProjectsResult.rows[0]?.count || '0'),
+          newMessages: parseInt(newMessagesResult.rows[0]?.count || '0'),
+          pendingMilestones: parseInt(pendingMilestonesResult.rows[0]?.count || '0'),
+          topProjects: topProjectsResult.rows.map(p => ({
             title: p.title,
             budget: `$${p.budget}`,
-            url: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${(p as any).id}`,
+            url: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${p.id}`,
           })),
         });
 
@@ -114,38 +108,42 @@ async function sendWeeklyDigests(): Promise<void> {
  */
 async function executeSavedSearches(): Promise<void> {
   try {
-    const supabase = getSupabaseClient();
-
     // Get saved searches with notifications enabled
-    const { data: searches, error } = await supabase
-      .from('saved_searches')
-      .select('*')
-      .eq('notify_on_new', true);
+    const searchesResult = await pool.query(
+      'SELECT * FROM saved_searches WHERE notify_on_new = true'
+    );
 
-    if (error) throw error;
-
-    if (!searches || searches.length === 0) {
+    if (searchesResult.rows.length === 0) {
       return;
     }
 
-    for (const search of searches) {
+    for (const search of searchesResult.rows) {
       try {
         // Execute search based on type
-        let query = supabase.from(search.search_type === 'project' ? 'projects' : 'freelancer_profiles').select('*');
-
-        // Apply filters from saved search
+        const tableName = search.search_type === 'project' ? 'projects' : 'freelancer_profiles';
         const filters = search.filters as Record<string, any>;
+        
+        // Build dynamic query (simplified - in production, use proper query builder)
+        const whereConditions: string[] = [];
+        const values: any[] = [];
+        let paramIndex = 1;
+
         Object.keys(filters).forEach(key => {
           if (filters[key] !== undefined && filters[key] !== null) {
-            query = query.eq(key, filters[key]);
+            whereConditions.push(`${key} = $${paramIndex++}`);
+            values.push(filters[key]);
           }
         });
 
-        const { data: results } = await query.limit(10);
+        const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
+        const results = await pool.query(
+          `SELECT * FROM ${tableName} ${whereClause} LIMIT 10`,
+          values
+        );
 
-        if (results && results.length > 0) {
+        if (results.rows.length > 0) {
           // TODO: Create notification for new matches
-          logger.info(`Found ${results.length} results for saved search ${search.id}`);
+          logger.info(`Found ${results.rows.length} results for saved search ${search.id}`);
         }
       } catch (error) {
         logger.error(`Failed to execute saved search ${search.id}:`, error);
@@ -161,19 +159,15 @@ async function executeSavedSearches(): Promise<void> {
  */
 async function cleanupOldNotifications(): Promise<void> {
   try {
-    const supabase = getSupabaseClient();
-
     // Delete read notifications older than 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    const { error } = await supabase
-      .from('notifications')
-      .delete()
-      .eq('is_read', true)
-      .lt('created_at', thirtyDaysAgo.toISOString());
-
-    if (error) throw error;
+    await pool.query(
+      `DELETE FROM notifications 
+       WHERE is_read = true AND created_at < $1`,
+      [thirtyDaysAgo.toISOString()]
+    );
 
     logger.info('Cleaned up old notifications');
   } catch (error) {

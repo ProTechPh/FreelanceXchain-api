@@ -73,10 +73,80 @@ describe('Message Routes Integration Tests', () => {
 
     it('should support pagination', async () => {
       const response = await request(app)
-        .get('/api/messages/conversations?limit=10&offset=0')
+        .get('/api/messages/conversations?limit=10&page=1')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect([200, 401]).toContain(response.status);
+    });
+
+    it('should require authentication', async () => {
+      const response = await request(app)
+        .get('/api/messages/conversations');
+
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe('GET /api/messages/conversations/:conversationId', () => {
+    it('should get conversation messages', async () => {
+      const conversationId = '123e4567-e89b-12d3-a456-426614174000';
+      const response = await request(app)
+        .get(`/api/messages/conversations/${conversationId}`)
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect([200, 400, 401, 403, 404]).toContain(response.status);
+    });
+
+    it('should support pagination', async () => {
+      const conversationId = '123e4567-e89b-12d3-a456-426614174000';
+      const response = await request(app)
+        .get(`/api/messages/conversations/${conversationId}?limit=20&page=1`)
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect([200, 400, 401, 403, 404]).toContain(response.status);
+    });
+
+    it('should require authentication', async () => {
+      const conversationId = '123e4567-e89b-12d3-a456-426614174000';
+      const response = await request(app)
+        .get(`/api/messages/conversations/${conversationId}`);
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should validate UUID format', async () => {
+      const response = await request(app)
+        .get('/api/messages/conversations/invalid-uuid')
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect([400, 401]).toContain(response.status);
+    });
+  });
+
+  describe('PATCH /api/messages/conversations/:conversationId/read', () => {
+    it('should mark conversation as read', async () => {
+      const conversationId = '123e4567-e89b-12d3-a456-426614174000';
+      const response = await request(app)
+        .patch(`/api/messages/conversations/${conversationId}/read`)
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect([200, 400, 401]).toContain(response.status);
+    });
+
+    it('should require authentication', async () => {
+      const conversationId = '123e4567-e89b-12d3-a456-426614174000';
+      const response = await request(app)
+        .patch(`/api/messages/conversations/${conversationId}/read`);
+
+      expect(response.status).toBe(401);
+    });
+
+    it('should validate UUID format', async () => {
+      const response = await request(app)
+        .patch('/api/messages/conversations/invalid-uuid/read')
+        .set('Authorization', `Bearer ${authToken}`);
+
+      expect([400, 401]).toContain(response.status);
     });
   });
 

@@ -48,11 +48,7 @@ const mockDisputeRepo = {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Mock Supabase client - return the global mock so beforeEach can modify it
-jest.unstable_mockModule(resolveModule('src/config/supabase.ts'), () => ({
-  getSupabaseClient: jest.fn(() => (globalThis as any).mockSupabaseClient),
-  getSupabaseServiceClient: jest.fn(() => (globalThis as any).mockSupabaseClient),
-}));
+// Mock Appwrite client - return the global mock so beforeEach can modify it
 
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -140,9 +136,9 @@ describe('Payment Service - Property-Based Tests', () => {
     escrowContract.clearEscrows();
     clearDisputes();
 
-    // Setup Supabase RPC mock for atomic milestone approval
-    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    mockSupabaseClient.rpc = jest.fn(async (functionName: string, params: any) => {
+    // Setup Appwrite RPC mock for atomic milestone approval
+    const mockAppwriteClient = (globalThis as any).mockAppwriteClient;
+    mockAppwriteClient.rpc = jest.fn(async (functionName: string, params: any) => {
       const contractId = params?.p_contract_id;
       const milestoneId = params?.p_milestone_id;
 
@@ -447,9 +443,9 @@ describe('Payment Service - Unit Tests', () => {
     escrowContract.clearEscrows();
     clearDisputes();
 
-    // Setup Supabase RPC mock (same as property tests)
-    const mockSupabaseClient = (globalThis as any).mockSupabaseClient;
-    mockSupabaseClient.rpc = jest.fn(async (functionName: string, params: any) => {
+    // Setup Appwrite RPC mock (same as property tests)
+    const mockAppwriteClient = (globalThis as any).mockAppwriteClient;
+    mockAppwriteClient.rpc = jest.fn(async (functionName: string, params: any) => {
       const contractId = params?.p_contract_id;
       const milestoneId = params?.p_milestone_id;
 

@@ -1,55 +1,53 @@
-import { createClient } from '@supabase/supabase-js';
+import pg from 'pg';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+const { Pool } = pg;
 
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Error: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set in .env');
+const databaseUrl = process.env.DATABASE_URL;
+
+if (!databaseUrl) {
+  console.error('Error: DATABASE_URL must be set in .env');
   process.exit(1);
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const pool = new Pool({
+  connectionString: databaseUrl,
+});
 
 async function listAdminUsers() {
   try {
     // Get all admin users
-    const { data, error } = await supabase
-      .from('users')
-      .select('id, email, name, role, is_active, created_at')
-      .eq('role', 'admin');
+    const result = await pool.query(
+      `SELECT id, email, full_name as name, role, is_active, created_at 
+       FROM users 
+       WHERE role = 'admin'`
+    );
 
-    if (error) {
-      console.error('Error fetching admin users:', error);
-      return;
-    }
-
-    if (!data || data.length === 0) {
+    if (result.rows.length === 0) {
       console.log('No admin users found in the database.');
       console.log('\nLet me check all users...\n');
       
       // Get all users
-      const { data: allUsers, error: allError } = await supabase
-        .from('users')
-        .select('id, email, name, role, is_active, created_at')
-        .limit(10);
-
-      if (allError) {
-        console.error('Error fetching users:', allError);
-        return;
-      }
+      const allResult = await pool.query(
+        `SELECT id, email, full_name as name, role, is_active, created_at 
+         FROM users 
+         LIMIT 10`
+      );
 
       console.log('First 10 users in database:');
-      console.table(allUsers);
+      console.table(allResult.rows);
+      await pool.end();
       return;
     }
 
     console.log('Admin users found:');
-    console.table(data);
+    console.table(result.rows);
+    await pool.end();
   } catch (err) {
     console.error('Error:', err);
+    await pool.end();
   }
 }
 

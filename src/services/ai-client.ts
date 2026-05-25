@@ -215,6 +215,7 @@ function extractResponseText(response: AIResponse): string | null {
   }
   
   const candidate = response.candidates[0];
+  /* istanbul ignore next */
   if (!candidate || !candidate.content?.parts || candidate.content.parts.length === 0) {
     return null;
   }
@@ -271,17 +272,21 @@ export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
       } catch { /* not double-encoded, continue */ }
     }
 
-    // Find the first JSON object with quoted keys (skip plain-text preamble).
-    // Use \{\s*" to handle both compact {"key" and pretty-printed {\n  "key" formats.
-    const jsonStart = cleanText.search(/\{\s*"/);
-    if (jsonStart >= 0) {
-      // Use brace-matching to find the exact closing } for this JSON object,
-      // avoiding lastIndexOf which picks up braces in any duplicated trailing text.
-      const matchingBrace = findMatchingBrace(cleanText, jsonStart);
-      if (matchingBrace !== -1) {
-        cleanText = cleanText.substring(jsonStart, matchingBrace + 1);
-      } else if (jsonStart > 0) {
-        cleanText = cleanText.substring(jsonStart);
+    // Only apply object-extraction heuristic for non-array responses.
+    // Array responses (starting with '[') are parsed directly.
+    if (!cleanText.startsWith('[')) {
+      // Find the first JSON object with quoted keys (skip plain-text preamble).
+      // Use \{\s*" to handle both compact {"key" and pretty-printed {\n  "key" formats.
+      const jsonStart = cleanText.search(/\{\s*"/);
+      if (jsonStart >= 0) {
+        // Use brace-matching to find the exact closing } for this JSON object,
+        // avoiding lastIndexOf which picks up braces in any duplicated trailing text.
+        const matchingBrace = findMatchingBrace(cleanText, jsonStart);
+        if (matchingBrace !== -1) {
+          cleanText = cleanText.substring(jsonStart, matchingBrace + 1);
+        } else if (jsonStart > 0) {
+          cleanText = cleanText.substring(jsonStart);
+        }
       }
     }
 

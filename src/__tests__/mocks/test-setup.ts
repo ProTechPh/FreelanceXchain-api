@@ -89,97 +89,6 @@ export const mockContractAddresses = {
   isContractDeployed: jest.fn(() => true),
 };
 
-// Mock Supabase Client
-export const mockSupabaseClient = {
-  from: jest.fn(() => ({
-    select: jest.fn().mockReturnThis(),
-    insert: jest.fn().mockReturnThis(),
-    update: jest.fn().mockReturnThis(),
-    delete: jest.fn().mockReturnThis(),
-    eq: jest.fn().mockReturnThis(),
-    neq: jest.fn().mockReturnThis(),
-    gt: jest.fn().mockReturnThis(),
-    gte: jest.fn().mockReturnThis(),
-    lt: jest.fn().mockReturnThis(),
-    lte: jest.fn().mockReturnThis(),
-    like: jest.fn().mockReturnThis(),
-    ilike: jest.fn().mockReturnThis(),
-    is: jest.fn().mockReturnThis(),
-    in: jest.fn().mockReturnThis(),
-    contains: jest.fn().mockReturnThis(),
-    containedBy: jest.fn().mockReturnThis(),
-    rangeGt: jest.fn().mockReturnThis(),
-    rangeGte: jest.fn().mockReturnThis(),
-    rangeLt: jest.fn().mockReturnThis(),
-    rangeLte: jest.fn().mockReturnThis(),
-    rangeAdjacent: jest.fn().mockReturnThis(),
-    overlaps: jest.fn().mockReturnThis(),
-    textSearch: jest.fn().mockReturnThis(),
-    match: jest.fn().mockReturnThis(),
-    not: jest.fn().mockReturnThis(),
-    or: jest.fn().mockReturnThis(),
-    filter: jest.fn().mockReturnThis(),
-    order: jest.fn().mockReturnThis(),
-    limit: jest.fn().mockReturnThis(),
-    range: jest.fn().mockReturnThis(),
-    abortSignal: jest.fn().mockReturnThis(),
-    single: (jest.fn() as any).mockResolvedValue({ data: null, error: null }),
-    maybeSingle: (jest.fn() as any).mockResolvedValue({ data: null, error: null }),
-    csv: jest.fn().mockReturnThis(),
-    geojson: jest.fn().mockReturnThis(),
-    explain: jest.fn().mockReturnThis(),
-    rollback: jest.fn().mockReturnThis(),
-    returns: jest.fn().mockReturnThis(),
-    then: (jest.fn() as any).mockResolvedValue({ data: [], error: null }),
-    catch: jest.fn(),
-  })),
-  auth: {
-    signUp: (jest.fn() as any).mockResolvedValue({ 
-      data: { user: { id: '1', email: 'test@example.com' }, session: null }, 
-      error: null 
-    }),
-    signInWithPassword: (jest.fn() as any).mockResolvedValue({ 
-      data: { user: { id: '1', email: 'test@example.com' }, session: null }, 
-      error: null 
-    }),
-    getUser: (jest.fn() as any).mockResolvedValue({ 
-      data: { user: { id: '1', email: 'test@example.com' } }, 
-      error: null 
-    }),
-    getSession: (jest.fn() as any).mockResolvedValue({ 
-      data: { session: null }, 
-      error: null 
-    }),
-    signInWithOAuth: (jest.fn() as any).mockResolvedValue({ 
-      data: { url: 'https://mock-oauth-url.com' }, 
-      error: null 
-    }),
-    refreshSession: (jest.fn() as any).mockResolvedValue({ 
-      data: { session: null }, 
-      error: null 
-    }),
-    setSession: (jest.fn() as any).mockResolvedValue({ 
-      data: { session: null }, 
-      error: null 
-    }),
-    updateUser: (jest.fn() as any).mockResolvedValue({ 
-      data: { user: null }, 
-      error: null 
-    }),
-    resetPasswordForEmail: (jest.fn() as any).mockResolvedValue({ 
-      data: null, 
-      error: null 
-    }),
-    resend: (jest.fn() as any).mockResolvedValue({ 
-      data: null, 
-      error: null 
-    }),
-    exchangeCodeForSession: (jest.fn() as any).mockResolvedValue({ 
-      data: { session: null }, 
-      error: null 
-    }),
-  },
-};
 
 // Mock KYC Repository
 export const mockKycRepository = {
@@ -193,21 +102,17 @@ export const mockKycRepository = {
 export function setupTestMocks() {
   // Mock ethers
   jest.mock('ethers', () => mockEthers, { virtual: true });
-  
+
   // Mock web3-client
   jest.mock('../../services/web3-client.js', () => mockWeb3Client, { virtual: true });
-  
+
   // Mock config
   jest.mock('../../config/env.js', () => mockBlockchainConfig, { virtual: true });
-  
+
   // Mock contracts config
   jest.mock('../../config/contracts.js', () => mockContractAddresses, { virtual: true });
-  
-  // Mock supabase config
-  jest.mock('../../config/supabase.js', () => ({
-    getSupabaseClient: jest.fn(() => mockSupabaseClient),
-  }), { virtual: true });
-  
+
+
   // Mock KYC repository
   jest.mock('../../repositories/didit-kyc-repository.js', () => mockKycRepository, { virtual: true });
 }

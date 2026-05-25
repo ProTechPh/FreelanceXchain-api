@@ -46,4 +46,4 @@ middleware:
 
 database:
   - changed-files:
-      - any-glob-to-any-file: ['supabase/**/*', 'src/repositories/**/*']
+      - any-glob-to-any-file: ['appwrite/**/*', 'src/repositories/**/*']

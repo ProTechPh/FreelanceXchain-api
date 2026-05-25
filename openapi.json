@@ -1128,7 +1128,7 @@
           "url": {
             "type": "string",
             "format": "uri",
-            "description": "Supabase Storage URL of the uploaded file"
+            "description": "Appwrite Storage URL of the uploaded file"
           },
           "filename": {
             "type": "string",
@@ -2069,8 +2069,8 @@
     },
     "/api/auth/oauth-login": {
       "post": {
-        "summary": "Login with Supabase OAuth",
-        "description": "Authenticates a user using a Supabase access token calling our backend to sync user and get app tokens",
+        "summary": "Login with Appwrite OAuth",
+        "description": "Authenticates a user using a Appwrite access token calling our backend to sync user and get app tokens",
         "tags": [
           "Authentication"
         ],
@@ -2112,7 +2112,7 @@
     "/api/auth/oauth/{provider}": {
       "get": {
         "summary": "Initiate OAuth flow",
-        "description": "Redirects to Supabase OAuth provider",
+        "description": "Redirects to Appwrite OAuth provider",
         "tags": [
           "Authentication"
         ],
@@ -2158,7 +2158,7 @@
                 "properties": {
                   "access_token": {
                     "type": "string",
-                    "description": "Supabase access token from OAuth redirect"
+                    "description": "Appwrite access token from OAuth redirect"
                   }
                 }
               }

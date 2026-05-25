@@ -41,7 +41,7 @@ Thank you for your interest in contributing to FreelanceXchain! This guide will 
 - Node.js 18+ (20 recommended)
 - pnpm package manager
 - Git
-- Supabase account
+- Appwrite account
 - Basic knowledge of TypeScript, Express, and Blockchain
 
 ### Initial Setup
@@ -568,7 +568,7 @@ Any other relevant information
 
 - [TypeScript Documentation](https://www.typescriptlang.org/docs/)
 - [Express.js Guide](https://expressjs.com/en/guide/routing.html)
-- [Supabase Documentation](https://supabase.com/docs)
+- [Appwrite Documentation](https://appwrite.com/docs)
 - [Hardhat Documentation](https://hardhat.org/docs)
 - [Jest Testing](https://jestjs.io/docs/getting-started)
 

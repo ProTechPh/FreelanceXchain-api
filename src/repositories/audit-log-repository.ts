@@ -1,5 +1,4 @@
-import { SupabaseClient } from '@supabase/supabase-js';
-import { getSupabaseServiceClient, TableName } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 
 export type AuditLogStatus = 'success' | 'failure' | 'pending';
 
@@ -24,15 +23,7 @@ export type BaseEntity = {
 };
 
 export class AuditLogRepository {
-  protected tableName: TableName;
-  protected client: SupabaseClient;
-
-  constructor() {
-    this.tableName = 'audit_log_entries' as TableName;
-    // Use service role client to bypass RLS for audit logs
-    // We still filter by user_id in queries for security
-    this.client = getSupabaseServiceClient();
-  }
+  protected tableName: string = 'audit_log_entries';
 
   async logAction(entry: Partial<CreateAuditLogEntry>): Promise<AuditLogEntry> {
     const now = new Date().toISOString();
@@ -50,89 +41,113 @@ export class AuditLogRepository {
       created_at: now,
     };
 
-    const { data, error } = await this.client
-      .from(this.tableName)
-      .insert(logEntry)
-      .select()
-      .single();
+    const keys = Object.keys(logEntry);
+    const values = Object.values(logEntry);
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+    const columns = keys.join(', ');
 
-    if (error) throw new Error(`Failed to create audit log: ${error.message}`);
-    return data as AuditLogEntry;
+    const query = `
+      INSERT INTO ${this.tableName} (${columns})
+      VALUES (${placeholders})
+      RETURNING *
+    `;
+
+    try {
+      const result = await pool.query(query, values);
+      return result.rows[0] as AuditLogEntry;
+    } catch (error: any) {
+      throw new Error(`Failed to create audit log: ${error.message}`);
+    }
   }
 
   async getById(id: string): Promise<AuditLogEntry | null> {
-    const { data, error } = await this.client
-      .from(this.tableName)
-      .select('*')
-      .eq('id', id)
-      .single();
+    const query = `SELECT * FROM ${this.tableName} WHERE id = $1`;
     
-    if (error) {
-      if (error.code === 'PGRST116') return null;
+    try {
+      const result = await pool.query(query, [id]);
+      return result.rows[0] as AuditLogEntry || null;
+    } catch (error: any) {
       throw new Error(`Failed to get audit log: ${error.message}`);
     }
-    return data as AuditLogEntry;
   }
 
   async getByUserId(userId: string, limit = 100): Promise<AuditLogEntry[]> {
-    const { data, error } = await this.client
-      .from(this.tableName)
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw new Error(`Failed to get audit logs: ${error.message}`);
-    return (data ?? []) as AuditLogEntry[];
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId, limit]);
+      return result.rows as AuditLogEntry[];
+    } catch (error: any) {
+      throw new Error(`Failed to get audit logs: ${error.message}`);
+    }
   }
 
   async getByAction(action: string, limit = 100): Promise<AuditLogEntry[]> {
-    const { data, error } = await this.client
-      .from(this.tableName)
-      .select('*')
-      .eq('action', action)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw new Error(`Failed to get audit logs: ${error.message}`);
-    return (data ?? []) as AuditLogEntry[];
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE action = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `;
+    
+    try {
+      const result = await pool.query(query, [action, limit]);
+      return result.rows as AuditLogEntry[];
+    } catch (error: any) {
+      throw new Error(`Failed to get audit logs: ${error.message}`);
+    }
   }
 
   async getByResource(resourceType: string, resourceId: string, limit = 100): Promise<AuditLogEntry[]> {
-    const { data, error } = await this.client
-      .from(this.tableName)
-      .select('*')
-      .eq('resource_type', resourceType)
-      .eq('resource_id', resourceId)
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw new Error(`Failed to get audit logs: ${error.message}`);
-    return (data ?? []) as AuditLogEntry[];
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE resource_type = $1 AND resource_id = $2
+      ORDER BY created_at DESC
+      LIMIT $3
+    `;
+    
+    try {
+      const result = await pool.query(query, [resourceType, resourceId, limit]);
+      return result.rows as AuditLogEntry[];
+    } catch (error: any) {
+      throw new Error(`Failed to get audit logs: ${error.message}`);
+    }
   }
 
   async getByDateRange(startDate: Date, endDate: Date, limit = 1000): Promise<AuditLogEntry[]> {
-    const { data, error } = await this.client
-      .from(this.tableName)
-      .select('*')
-      .gte('created_at', startDate.toISOString())
-      .lte('created_at', endDate.toISOString())
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw new Error(`Failed to get audit logs: ${error.message}`);
-    return (data ?? []) as AuditLogEntry[];
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE created_at >= $1 AND created_at <= $2
+      ORDER BY created_at DESC
+      LIMIT $3
+    `;
+    
+    try {
+      const result = await pool.query(query, [startDate.toISOString(), endDate.toISOString(), limit]);
+      return result.rows as AuditLogEntry[];
+    } catch (error: any) {
+      throw new Error(`Failed to get audit logs: ${error.message}`);
+    }
   }
 
   async getFailedActions(limit = 100): Promise<AuditLogEntry[]> {
-    const { data, error } = await this.client
-      .from(this.tableName)
-      .select('*')
-      .eq('status', 'failure')
-      .order('created_at', { ascending: false })
-      .limit(limit);
-
-    if (error) throw new Error(`Failed to get audit logs: ${error.message}`);
-    return (data ?? []) as AuditLogEntry[];
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE status = 'failure'
+      ORDER BY created_at DESC
+      LIMIT $1
+    `;
+    
+    try {
+      const result = await pool.query(query, [limit]);
+      return result.rows as AuditLogEntry[];
+    } catch (error: any) {
+      throw new Error(`Failed to get audit logs: ${error.message}`);
+    }
   }
 }

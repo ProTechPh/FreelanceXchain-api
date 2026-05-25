@@ -16,7 +16,7 @@ import {
   EscrowDeployment,
   TransactionReceipt,
 } from './blockchain-types.js';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 
 // Escrow state type (same interface, now backed by DB)
 type EscrowState = {
@@ -51,21 +51,19 @@ type MilestoneRow = {
 };
 
 async function loadEscrow(address: string): Promise<EscrowState | null> {
-  const supabase = getSupabaseServiceClient();
-  const { data: escrowRow, error } = await supabase
-    .from('blockchain_escrows')
-    .select('*')
-    .eq('address', address)
-    .single();
+  const escrowResult = await pool.query(
+    'SELECT * FROM blockchain_escrows WHERE address = $1',
+    [address]
+  );
 
-  if (error || !escrowRow) return null;
+  if (escrowResult.rows.length === 0) return null;
 
-  const { data: milestoneRows } = await supabase
-    .from('blockchain_escrow_milestones')
-    .select('*')
-    .eq('escrow_address', address);
+  const milestoneResult = await pool.query(
+    'SELECT * FROM blockchain_escrow_milestones WHERE escrow_address = $1',
+    [address]
+  );
 
-  const row = escrowRow as EscrowRow;
+  const row = escrowResult.rows[0] as EscrowRow;
   return {
     address: row.address,
     contractId: row.contract_id,
@@ -73,7 +71,7 @@ async function loadEscrow(address: string): Promise<EscrowState | null> {
     freelancerAddress: row.freelancer_address,
     totalAmount: BigInt(row.total_amount),
     balance: BigInt(row.balance),
-    milestones: (milestoneRows as MilestoneRow[] ?? []).map(m => ({
+    milestones: (milestoneResult.rows as MilestoneRow[]).map(m => ({
       id: m.id,
       amount: BigInt(m.amount),
       status: m.status,
@@ -84,33 +82,33 @@ async function loadEscrow(address: string): Promise<EscrowState | null> {
 }
 
 async function saveEscrow(escrow: EscrowState): Promise<void> {
-  const supabase = getSupabaseServiceClient();
-  await supabase
-    .from('blockchain_escrows')
-    .upsert({
-      address: escrow.address,
-      contract_id: escrow.contractId,
-      employer_address: escrow.employerAddress,
-      freelancer_address: escrow.freelancerAddress,
-      total_amount: escrow.totalAmount.toString(),
-      balance: escrow.balance.toString(),
-      deployed_at: escrow.deployedAt,
-      deployment_tx_hash: escrow.deploymentTxHash,
-      updated_at: new Date().toISOString(),
-    });
+  await pool.query(
+    `INSERT INTO blockchain_escrows 
+     (address, contract_id, employer_address, freelancer_address, total_amount, balance, deployed_at, deployment_tx_hash)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (address) DO UPDATE SET
+       balance = EXCLUDED.balance,
+       updated_at = NOW()`,
+    [
+      escrow.address,
+      escrow.contractId,
+      escrow.employerAddress,
+      escrow.freelancerAddress,
+      escrow.totalAmount.toString(),
+      escrow.balance.toString(),
+      escrow.deployedAt,
+      escrow.deploymentTxHash
+    ]
+  );
 
-  // Upsert milestones
-  if (escrow.milestones.length > 0) {
-    await supabase
-      .from('blockchain_escrow_milestones')
-      .upsert(
-        escrow.milestones.map(m => ({
-          id: m.id,
-          escrow_address: escrow.address,
-          amount: m.amount.toString(),
-          status: m.status,
-        }))
-      );
+  // Save milestones
+  for (const m of escrow.milestones) {
+    await pool.query(
+      `INSERT INTO blockchain_escrow_milestones (id, escrow_address, amount, status)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
+      [m.id, escrow.address, m.amount.toString(), m.status]
+    );
   }
 }
 
@@ -398,23 +396,19 @@ export async function areAllMilestonesReleased(escrowAddress: string): Promise<b
  * Clear all escrows (for testing)
  */
 export async function clearEscrows(): Promise<void> {
-  const supabase = getSupabaseServiceClient();
-  await supabase.from('blockchain_escrow_milestones').delete().neq('id', '');
-  await supabase.from('blockchain_escrows').delete().neq('address', '');
+  await pool.query('DELETE FROM blockchain_escrow_milestones');
+  await pool.query('DELETE FROM blockchain_escrows');
 }
 
 /**
  * Get escrow by contract ID
  */
 export async function getEscrowByContractId(contractId: string): Promise<EscrowState | null> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_escrows')
-    .select('address')
-    .eq('contract_id', contractId)
-    .limit(1)
-    .single();
+  const result = await pool.query(
+    'SELECT address FROM blockchain_escrows WHERE contract_id = $1',
+    [contractId]
+  );
 
-  if (error || !data) return null;
-  return loadEscrow((data as { address: string }).address);
+  if (result.rows.length === 0) return null;
+  return loadEscrow(result.rows[0].address);
 }

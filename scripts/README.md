@@ -73,8 +73,8 @@ node scripts/testing/test-workflow.cjs
 Before running scripts, ensure you have:
 
 1. **Environment Variables** - Copy `.env.example` to `.env` and configure:
-   - `SUPABASE_URL` - Supabase project URL
-   - `SUPABASE_SERVICE_ROLE_KEY` - Service role key for admin operations
+   - `APPWRITE_URL` - Appwrite project URL
+   - `APPWRITE_SERVICE_ROLE_KEY` - Service role key for admin operations
    - `BLOCKCHAIN_RPC_URL` - Blockchain RPC endpoint (default: http://127.0.0.1:7545)
    - `BLOCKCHAIN_PRIVATE_KEY` - Private key for contract deployment
 
@@ -103,7 +103,7 @@ Before running scripts, ensure you have:
 - Verify contract addresses after deployment
 
 ### Admin Scripts
-- Admin scripts require `SUPABASE_SERVICE_ROLE_KEY` for elevated permissions
+- Admin scripts require `APPWRITE_SERVICE_ROLE_KEY` for elevated permissions
 - Use with caution in production environments
 - Always backup data before running admin operations
 
@@ -137,8 +137,8 @@ When adding new scripts:
 - Check blockchain connection and RPC URL
 
 **Admin script fails with "permission denied"**
-- Verify `SUPABASE_SERVICE_ROLE_KEY` is set correctly
-- Check user permissions in Supabase dashboard
+- Verify `APPWRITE_SERVICE_ROLE_KEY` is set correctly
+- Check user permissions in Appwrite dashboard
 
 **TypeScript script won't run**
 - Use `tsx` or `ts-node` to run TypeScript files directly

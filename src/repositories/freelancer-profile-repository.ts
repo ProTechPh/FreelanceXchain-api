@@ -1,5 +1,4 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
 
 export type FreelancerProfileEntity = {
   id: string;
@@ -15,9 +14,9 @@ export type FreelancerProfileEntity = {
   updated_at: string;
 };
 
-export class FreelancerProfileRepository extends BaseRepository<FreelancerProfileEntity> {
+export class FreelancerProfileRepository extends BaseRepositoryPg<FreelancerProfileEntity> {
   constructor() {
-    super(TABLES.FREELANCER_PROFILES);
+    super('freelancer_profiles');
   }
 
   async createProfile(profile: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'>): Promise<FreelancerProfileEntity> {
@@ -45,83 +44,93 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   }
 
   async getProfilesBySkillId(skillId: string): Promise<FreelancerProfileEntity[]> {
-    // Note: Freelancer skills now use name-based structure { name, years_of_experience }
-    // not skill_id-based. This method is kept for backward compatibility but 
-    // searchBySkills(skillNames) should be preferred.
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*');
+    // Note: Freelancer skills use name-based structure { name, years_of_experience }
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE EXISTS (
+        SELECT 1 FROM jsonb_array_elements(skills) as skill
+        WHERE LOWER(skill->>'name') = LOWER($1)
+      )
+    `;
     
-    if (error) throw new Error(`Failed to get profiles by skill: ${error.message}`);
-    
-    // Filter in memory since JSONB contains won't match across different schema shapes
-    const profiles = (data ?? []) as FreelancerProfileEntity[];
-    return profiles.filter(profile =>
-      profile.skills.some(skill => skill.name.toLowerCase() === skillId.toLowerCase())
-    );
+    try {
+      const result = await this.pool.query(query, [skillId]);
+      return result.rows as FreelancerProfileEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get profiles by skill: ${error.message}`);
+    }
   }
 
   async getAvailableProfiles(): Promise<FreelancerProfileEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('availability', 'available')
-      .order('created_at', { ascending: false });
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE availability = 'available'
+      ORDER BY created_at DESC
+    `;
     
-    if (error) throw new Error(`Failed to get available profiles: ${error.message}`);
-    return (data ?? []) as FreelancerProfileEntity[];
+    try {
+      const result = await this.pool.query(query);
+      return result.rows as FreelancerProfileEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get available profiles: ${error.message}`);
+    }
   }
 
   async searchBySkills(skillNames: string[], options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
-
     const lowerSkillNames = skillNames.map(s => s.toLowerCase());
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .contains('skills', lowerSkillNames.map(name => ({ name })))
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const dataQuery = `
+      SELECT *, COUNT(*) OVER() as total_count FROM ${this.tableName}
+      WHERE EXISTS (
+        SELECT 1 FROM jsonb_array_elements(skills) as skill
+        WHERE LOWER(skill->>'name') = ANY($1)
+      )
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
 
-    if (error) throw new Error(`Failed to search by skills: ${error.message}`);
-
-    return {
-      items: (data ?? []) as FreelancerProfileEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [lowerSkillNames, limit, offset]);
+      const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+      
+      return {
+        items: result.rows as FreelancerProfileEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to search by skills: ${error.message}`);
+    }
   }
 
   async searchByKeyword(keyword: string, options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
+    const pattern = `%${keyword}%`;
 
-    // Sanitize keyword for PostgREST LIKE pattern to prevent injection
-    const sanitizedKeyword = keyword
-      .replace(/\\/g, '\\\\')
-      .replace(/%/g, '\\%')
-      .replace(/_/g, '\\_');
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE bio ILIKE $1`;
+    const countResult = await this.pool.query(countQuery, [pattern]);
+    const total = parseInt(countResult.rows[0].count, 10);
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .ilike('bio', `%${sanitizedKeyword}%`)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE bio ILIKE $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to search by keyword: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as FreelancerProfileEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [pattern, limit, offset]);
+      return {
+        items: result.rows as FreelancerProfileEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to search by keyword: ${error.message}`);
+    }
   }
 
   async getAllProfilesPaginated(options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {

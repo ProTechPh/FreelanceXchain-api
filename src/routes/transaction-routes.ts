@@ -4,10 +4,10 @@ import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
-import {
-  getUserTransactions,
-  getTransactionById,
-  getTransactionsByContract,
+import { 
+  getUserTransactions, 
+  getTransactionById, 
+  getContractTransactions 
 } from '../services/transaction-service.js';
 
 const router = Router();
@@ -91,10 +91,10 @@ router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID
     return;
   }
 
-  const result = await getTransactionsByContract(contractId, userId);
+  const result = await getContractTransactions(contractId, userId);
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
+    const statusCode = result.error?.code === 'CONTRACT_NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
     res.status(statusCode).json({
       error: { code: result.error?.code, message: result.error?.message },
       timestamp: new Date().toISOString(),

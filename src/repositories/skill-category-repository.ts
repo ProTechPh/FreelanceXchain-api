@@ -1,5 +1,4 @@
-import { BaseRepository } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepositoryPg } from './base-repository-pg.js';
 
 export type SkillCategoryEntity = {
   id: string;
@@ -10,9 +9,9 @@ export type SkillCategoryEntity = {
   updated_at: string;
 };
 
-export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity> {
+export class SkillCategoryRepository extends BaseRepositoryPg<SkillCategoryEntity> {
   constructor() {
-    super(TABLES.SKILL_CATEGORIES);
+    super('skill_categories');
   }
 
   async createCategory(category: Omit<SkillCategoryEntity, 'created_at' | 'updated_at'>): Promise<SkillCategoryEntity> {
@@ -32,41 +31,47 @@ export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity>
   }
 
   async getAllCategories(): Promise<SkillCategoryEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .order('name', { ascending: true });
+    const query = `
+      SELECT * FROM ${this.tableName}
+      ORDER BY name ASC
+    `;
     
-    if (error) throw new Error(`Failed to get all categories: ${error.message}`);
-    return (data ?? []) as SkillCategoryEntity[];
+    try {
+      const result = await this.pool.query(query);
+      return result.rows as SkillCategoryEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get all categories: ${error.message}`);
+    }
   }
 
   async getActiveCategories(): Promise<SkillCategoryEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('is_active', true)
-      .order('name', { ascending: true });
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE is_active = true
+      ORDER BY name ASC
+    `;
     
-    if (error) throw new Error(`Failed to get active categories: ${error.message}`);
-    return (data ?? []) as SkillCategoryEntity[];
+    try {
+      const result = await this.pool.query(query);
+      return result.rows as SkillCategoryEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get active categories: ${error.message}`);
+    }
   }
 
   async getCategoryByName(name: string): Promise<SkillCategoryEntity | null> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .ilike('name', name)
-      .single();
+    const query = `
+      SELECT * FROM ${this.tableName}
+      WHERE name ILIKE $1
+      LIMIT 1
+    `;
     
-    if (error) {
-      if (error.code === 'PGRST116') return null;
+    try {
+      const result = await this.pool.query(query, [name]);
+      return result.rows[0] || null;
+    } catch (error: any) {
       throw new Error(`Failed to get category by name: ${error.message}`);
     }
-    return data as SkillCategoryEntity;
   }
 }
 

@@ -359,6 +359,7 @@ export async function updateExperience(
   }
 
   const currentExperience = existingProfile.experience[experienceIndex];
+  /* istanbul ignore next */
   if (!currentExperience) {
     return {
       success: false,

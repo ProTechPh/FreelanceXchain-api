@@ -7,7 +7,7 @@
 
 import { config } from '../config/env.js';
 import { generateId } from '../utils/id.js';
-import { getSupabaseServiceClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import {
   Transaction,
   TransactionInput,
@@ -180,27 +180,25 @@ export async function submitTransaction(
   const confirmAt = Date.now() + 2000;
 
   // Persist to database
-  const supabase = getSupabaseServiceClient();
-  const { error } = await supabase
-    .from('blockchain_transactions')
-    .insert({
-      id: tx.id,
-      type: tx.type,
-      from_address: tx.from,
-      to_address: tx.to,
-      amount: tx.amount.toString(),
-      data: tx.data,
-      timestamp: tx.timestamp,
-      status: tx.status,
-      hash: tx.hash,
-      block_number: null,
-      gas_used: null,
-      confirm_at: confirmAt,
-    });
-
-  if (error) {
-    throw new Error(`Failed to store transaction: ${error.message}`);
-  }
+  await pool.query(
+    `INSERT INTO blockchain_transactions 
+     (id, type, from_address, to_address, amount, data, timestamp, status, hash, block_number, gas_used, confirm_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+    [
+      tx.id,
+      tx.type,
+      tx.from,
+      tx.to,
+      tx.amount.toString(),
+      JSON.stringify(tx.data),
+      tx.timestamp,
+      tx.status,
+      tx.hash,
+      null,
+      null,
+      confirmAt,
+    ]
+  );
 
   return tx;
 }
@@ -210,31 +208,26 @@ export async function submitTransaction(
  * Get transaction by ID
  */
 export async function getTransaction(txId: string): Promise<Transaction | null> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_transactions')
-    .select('*')
-    .eq('id', txId)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_transactions WHERE id = $1',
+    [txId]
+  );
 
-  if (error || !data) return null;
-  return rowToTransaction(data as TransactionRow);
+  if (result.rows.length === 0) return null;
+  return rowToTransaction(result.rows[0] as TransactionRow);
 }
 
 /**
  * Get transaction by hash
  */
 export async function getTransactionByHash(hash: string): Promise<Transaction | null> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_transactions')
-    .select('*')
-    .eq('hash', hash)
-    .limit(1)
-    .single();
+  const result = await pool.query(
+    'SELECT * FROM blockchain_transactions WHERE hash = $1',
+    [hash]
+  );
 
-  if (error || !data) return null;
-  return rowToTransaction(data as TransactionRow);
+  if (result.rows.length === 0) return null;
+  return rowToTransaction(result.rows[0] as TransactionRow);
 }
 
 /**
@@ -254,14 +247,12 @@ export async function pollTransactionStatus(
     }
 
     // Check if transaction should be confirmed (simulation)
-    const supabase = getSupabaseServiceClient();
-    const { data: row } = await supabase
-      .from('blockchain_transactions')
-      .select('confirm_at')
-      .eq('id', txId)
-      .single();
+    const result = await pool.query(
+      'SELECT confirm_at FROM blockchain_transactions WHERE id = $1',
+      [txId]
+    );
 
-    const confirmAt = (row as TransactionRow | null)?.confirm_at;
+    const confirmAt = result.rows[0]?.confirm_at;
     if (confirmAt && Date.now() >= confirmAt) {
       // Confirm the transaction
       const confirmed = await confirmTransaction(txId);
@@ -307,40 +298,32 @@ export async function confirmTransaction(txId: string): Promise<Transaction | nu
   const blockNumber = Math.floor(Math.random() * 1000000) + 1;
   const gasUsed = BigInt(21000 + Math.floor(Math.random() * 50000));
 
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_transactions')
-    .update({
-      status: 'confirmed',
-      block_number: blockNumber,
-      gas_used: gasUsed.toString(),
-      confirm_at: null,
-    })
-    .eq('id', txId)
-    .select('*')
-    .single();
+  const result = await pool.query(
+    `UPDATE blockchain_transactions 
+     SET status = $1, block_number = $2, gas_used = $3, confirm_at = NULL
+     WHERE id = $4
+     RETURNING *`,
+    ['confirmed', blockNumber, gasUsed.toString(), txId]
+  );
 
-  if (error || !data) return null;
-  return rowToTransaction(data as TransactionRow);
+  if (result.rows.length === 0) return null;
+  return rowToTransaction(result.rows[0] as TransactionRow);
 }
 
 /**
  * Fail a transaction (for testing)
  */
 export async function failTransaction(txId: string): Promise<Transaction | null> {
-  const supabase = getSupabaseServiceClient();
-  const { data, error } = await supabase
-    .from('blockchain_transactions')
-    .update({
-      status: 'failed',
-      confirm_at: null,
-    })
-    .eq('id', txId)
-    .select('*')
-    .single();
+  const result = await pool.query(
+    `UPDATE blockchain_transactions 
+     SET status = $1, confirm_at = NULL
+     WHERE id = $2
+     RETURNING *`,
+    ['failed', txId]
+  );
 
-  if (error || !data) return null;
-  return rowToTransaction(data as TransactionRow);
+  if (result.rows.length === 0) return null;
+  return rowToTransaction(result.rows[0] as TransactionRow);
 }
 
 /**
@@ -348,8 +331,7 @@ export async function failTransaction(txId: string): Promise<Transaction | null>
  */
 export async function clearTransactions(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  const supabase = getSupabaseServiceClient();
-  await supabase.from('blockchain_transactions').delete().neq('id', '');
+  await pool.query('DELETE FROM blockchain_transactions');
 }
 
 /**

@@ -1,5 +1,4 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
 import { FileAttachment } from '../utils/file-validator.js';
 export type { ProjectStatus, MilestoneStatus } from '../models/project.js';
 import type { ProjectStatus, MilestoneStatus } from '../models/project.js';
@@ -50,9 +49,9 @@ export type ProjectEntity = {
   updated_at: string;
 };
 
-export class ProjectRepository extends BaseRepository<ProjectEntity> {
+export class ProjectRepository extends BaseRepositoryPg<ProjectEntity> {
   constructor() {
-    super(TABLES.PROJECTS);
+    super('projects');
   }
 
   async createProject(project: Omit<ProjectEntity, 'created_at' | 'updated_at'>): Promise<ProjectEntity> {
@@ -76,203 +75,240 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
   }
 
   async getProjectsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('employer_id', employerId)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE employer_id = $1`;
+    const countResult = await this.pool.query(countQuery, [employerId]);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE employer_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to get projects by employer: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as ProjectEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [employerId, limit, offset]);
+      return {
+        items: result.rows as ProjectEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get projects by employer: ${error.message}`);
+    }
   }
 
   async getAllOpenProjects(options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('status', 'open')
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = 'open'`;
+    const countResult = await this.pool.query(countQuery);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE status = 'open'
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
     
-    if (error) throw new Error(`Failed to get open projects: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as ProjectEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [limit, offset]);
+      return {
+        items: result.rows as ProjectEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get open projects: ${error.message}`);
+    }
   }
 
   async getProjectsByStatus(status: ProjectStatus, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('status', status)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = $1`;
+    const countResult = await this.pool.query(countQuery, [status]);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE status = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to get projects by status: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as ProjectEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [status, limit, offset]);
+      return {
+        items: result.rows as ProjectEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get projects by status: ${error.message}`);
+    }
   }
 
   async getProjectsBySkills(skillIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('status', 'open')
-      .contains('required_skills', skillIds.map(id => ({ skill_id: id })))
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    // In PostgreSQL, querying JSONB for skill existence
+    const countQuery = `
+      SELECT COUNT(*) FROM ${this.tableName} 
+      WHERE status = 'open' AND required_skills @> $1
+    `;
+    const skillsJson = JSON.stringify(skillIds.map(id => ({ skill_id: id })));
+    const countResult = await this.pool.query(countQuery, [skillsJson]);
+    const total = parseInt(countResult.rows[0].count, 10);
 
-    if (error) throw new Error(`Failed to get projects by skills: ${error.message}`);
-
-    return {
-      items: (data ?? []) as ProjectEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE status = 'open' AND required_skills @> $3
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
+    
+    try {
+      const result = await this.pool.query(dataQuery, [limit, offset, skillsJson]);
+      return {
+        items: result.rows as ProjectEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get projects by skills: ${error.message}`);
+    }
   }
 
   async getProjectsByBudgetRange(minBudget: number, maxBudget: number, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('status', 'open')
-      .gte('budget', minBudget)
-      .lte('budget', maxBudget)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = 'open' AND budget >= $1 AND budget <= $2`;
+    const countResult = await this.pool.query(countQuery, [minBudget, maxBudget]);
+    const total = parseInt(countResult.rows[0].count, 10);
+
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE status = 'open' AND budget >= $1 AND budget <= $2
+      ORDER BY created_at DESC
+      LIMIT $3 OFFSET $4
+    `;
     
-    if (error) throw new Error(`Failed to get projects by budget: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as ProjectEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [minBudget, maxBudget, limit, offset]);
+      return {
+        items: result.rows as ProjectEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get projects by budget: ${error.message}`);
+    }
   }
 
   async searchProjects(keyword: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
+    const pattern = `%${keyword}%`;
 
-    // Sanitize keyword for PostgREST filter: escape characters that have special
-    // meaning in PostgREST filter strings (commas, dots, parentheses, backslashes, percent)
-    const sanitized = keyword
-      .replace(/\\/g, '\\\\')
-      .replace(/%/g, '\\%')
-      .replace(/,/g, '\\,')
-      .replace(/\./g, '\\.')
-      .replace(/\(/g, '\\(')
-      .replace(/\)/g, '\\)');
+    const countQuery = `
+      SELECT COUNT(*) FROM ${this.tableName} 
+      WHERE status = 'open' AND (title ILIKE $1 OR description ILIKE $1)
+    `;
+    const countResult = await this.pool.query(countQuery, [pattern]);
+    const total = parseInt(countResult.rows[0].count, 10);
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('status', 'open')
-      .or(`title.ilike.%${sanitized}%,description.ilike.%${sanitized}%`)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE status = 'open' AND (title ILIKE $1 OR description ILIKE $1)
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
     
-    if (error) throw new Error(`Failed to search projects: ${error.message}`);
-    
-    return {
-      items: (data ?? []) as ProjectEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [pattern, limit, offset]);
+      return {
+        items: result.rows as ProjectEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to search projects: ${error.message}`);
+    }
   }
 
   async getAllProjects(): Promise<ProjectEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .limit(1000);
-    
-    if (error) throw new Error(`Failed to get all projects: ${error.message}`);
-    return (data ?? []) as ProjectEntity[];
+    return this.queryAll();
   }
 
   async getProjectsByCategory(categoryId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
+    
+    // Using JSONB path query for category_id existence in the required_skills array
+    const queryJson = JSON.stringify([{ category_id: categoryId }]);
+    
+    const countQuery = `
+      SELECT COUNT(*) FROM ${this.tableName} 
+      WHERE status = 'open' AND required_skills @> $1
+    `;
+    const countResult = await this.pool.query(countQuery, [queryJson]);
+    const total = parseInt(countResult.rows[0].count, 10);
 
-    const { data, error, count } = await client
-      .from(this.tableName)
-      .select('*', { count: 'exact' })
-      .eq('status', 'open')
-      .contains('required_skills', [{ category_id: categoryId }])
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
-
-    if (error) throw new Error(`Failed to get projects by category: ${error.message}`);
-
-    return {
-      items: (data ?? []) as ProjectEntity[],
-      hasMore: count ? offset + limit < count : false,
-      total: count ?? undefined,
-    };
+    const dataQuery = `
+      SELECT * FROM ${this.tableName}
+      WHERE status = 'open' AND required_skills @> $3
+      ORDER BY created_at DESC
+      LIMIT $1 OFFSET $2
+    `;
+    
+    try {
+      const result = await this.pool.query(dataQuery, [limit, offset, queryJson]);
+      return {
+        items: result.rows as ProjectEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get projects by category: ${error.message}`);
+    }
   }
 
   async getProjectsByMultipleCategories(categoryIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const client = this.getClient();
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('status', 'open')
-      .order('created_at', { ascending: false });
+    // Complex JSONB filtering for multiple categories - using EXISTS in subquery or JSONB arrows
+    const dataQuery = `
+      SELECT *, COUNT(*) OVER() as total_count FROM ${this.tableName}
+      WHERE status = 'open' AND EXISTS (
+        SELECT 1 FROM jsonb_array_elements(required_skills) as skill
+        WHERE skill->>'category_id' = ANY($1)
+      )
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `;
 
-    if (error) throw new Error(`Failed to get projects by categories: ${error.message}`);
-
-    const allMatched = (data ?? []).filter((project: ProjectEntity) =>
-      project.required_skills.some(skill => categoryIds.includes(skill.category_id))
-    );
-
-    const total = allMatched.length;
-    const paginatedItems = allMatched.slice(offset, offset + limit);
-
-    return {
-      items: paginatedItems as ProjectEntity[],
-      hasMore: offset + limit < total,
-      total,
-    };
+    try {
+      const result = await this.pool.query(dataQuery, [categoryIds, limit, offset]);
+      const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
+      
+      return {
+        items: result.rows as ProjectEntity[],
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error: any) {
+      throw new Error(`Failed to get projects by categories: ${error.message}`);
+    }
   }
 }
 

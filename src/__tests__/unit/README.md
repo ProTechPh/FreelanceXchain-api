@@ -141,10 +141,10 @@ describe('ServiceName', () => {
 
 Use mocks from `../mocks/` folder:
 ```typescript
-import { mockSupabase } from '../mocks/supabase-mocks.js';
+import { mockAppwrite } from '../mocks/appwrite-mocks.js';
 import { mockBlockchain } from '../mocks/blockchain-mocks.js';
 
-jest.mock('../../config/supabase.js', () => mockSupabase);
+jest.mock('../../config/database.js', () => mockAppwrite);
 ```
 
 ---

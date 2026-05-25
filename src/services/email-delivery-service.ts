@@ -4,10 +4,6 @@ import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import fs from 'fs/promises';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export type EmailTemplate = 
   | 'proposal_accepted'
@@ -66,7 +62,7 @@ function getTransporter(): Transporter {
  */
 async function renderTemplate(template: EmailTemplate, data: Record<string, any>): Promise<string> {
   try {
-    const templatePath = path.join(__dirname, '../../docs/email-templates', `${template}.html`);
+    const templatePath = path.join(process.cwd(), 'docs/email-templates', `${template}.html`);
     let html = await fs.readFile(templatePath, 'utf-8');
 
     // Simple template variable replacement

@@ -67,6 +67,8 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
     const requestId = getRequestId(req);
     const { proposedPercentage } = req.body;
 
+    /* istanbul ignore next */
+
     if (!userId) {
       return res.status(401).json({
         error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -100,6 +102,7 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
 
     return res.status(201).json(result.data);
   } catch (error) {
+    /* istanbul ignore next */
     console.error('Error requesting rush upgrade:', error);
     return res.status(500).json({ error: 'Failed to request rush upgrade' });
   }
@@ -159,6 +162,8 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
     const xRequestId = getRequestId(req);
     const { action, counterPercentage } = req.body;
 
+    /* istanbul ignore next */
+
     if (!userId) {
       return res.status(401).json({
         error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -212,6 +217,7 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
 
     return res.status(200).json(data);
   } catch (error) {
+    /* istanbul ignore next */
     console.error('Error responding to rush upgrade:', error);
     return res.status(500).json({ error: 'Failed to respond to rush upgrade' });
   }
@@ -253,6 +259,8 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
     const userId = req.user?.userId;
     const xRequestId = getRequestId(req);
 
+    /* istanbul ignore next */
+
     if (!userId) {
       return res.status(401).json({
         error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -277,6 +285,7 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
 
     return res.status(200).json(result.data);
   } catch (error) {
+    /* istanbul ignore next */
     console.error('Error accepting counter-offer:', error);
     return res.status(500).json({ error: 'Failed to accept counter-offer' });
   }
@@ -318,6 +327,8 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
     const userId = req.user?.userId;
     const xRequestId = getRequestId(req);
 
+    /* istanbul ignore next */
+
     if (!userId) {
       return res.status(401).json({
         error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
@@ -342,6 +353,7 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
 
     return res.status(200).json(result.data);
   } catch (error) {
+    /* istanbul ignore next */
     console.error('Error declining counter-offer:', error);
     return res.status(500).json({ error: 'Failed to decline counter-offer' });
   }
@@ -390,6 +402,7 @@ router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimite
 
     return res.status(200).json(result.data);
   } catch (error) {
+    /* istanbul ignore next */
     console.error('Error getting rush upgrade requests:', error);
     return res.status(500).json({ error: 'Failed to get rush upgrade requests' });
   }

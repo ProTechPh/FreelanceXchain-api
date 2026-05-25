@@ -62,7 +62,7 @@ Please include the following information in your report:
 This project implements multiple security layers:
 
 ### Application Security
-- ✅ Authentication via Supabase with JWT tokens
+- ✅ Authentication via Appwrite with JWT tokens
 - ✅ CSRF protection on all state-changing endpoints
 - ✅ Rate limiting to prevent abuse
 - ✅ Input validation and sanitization

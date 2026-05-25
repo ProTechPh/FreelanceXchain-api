@@ -109,6 +109,7 @@ class Logger {
 
     if (error) {
       if (error instanceof Error) {
+        /* istanbul ignore next */
         logMeta.error = sanitizeError(error);
       } else {
         logMeta.error = sanitizeLogData(error);

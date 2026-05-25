@@ -8,7 +8,7 @@ import { logger } from '../config/logger.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { PaymentRepository, PaymentType } from '../repositories/payment-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { generateId } from '../utils/id.js';
@@ -420,15 +420,10 @@ export async function approveMilestone(
 
   // Also update the separate milestones table so the UI reflects the change
   try {
-    const supabase = getSupabaseClient();
-    await supabase
-      .from('milestones')
-      .update({
-        status: 'approved',
-        approved_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', milestoneId);
+    await pool.query(
+      "UPDATE milestones SET status = 'approved', approved_at = NOW(), updated_at = NOW() WHERE id = $1",
+      [milestoneId]
+    );
   } catch (milestoneTableError) {
     logger.error('Failed to update milestones table (non-critical)', { error: milestoneTableError });
   }
@@ -855,7 +850,7 @@ export async function initializeContractEscrow(
         logger.error('Failed to save simulated escrow state (non-critical)', { error: simError });
       }
     } else {
-      // Simulated mode: deploy escrow in Supabase tables
+      // Simulated mode: deploy escrow in Appwrite tables
       const deployment = await escrowOps.deployEscrow({
         contractId: contract.id,
         employerAddress: employerWalletAddress,

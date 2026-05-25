@@ -53,7 +53,7 @@ The AI Matching API follows a layered architecture:
 - Presentation Layer: Express routes define endpoints and handle request validation.
 - Application Layer: Matching service coordinates repositories and AI client.
 - AI Layer: AI client communicates with LLM API and provides fallbacks.
-- Persistence Layer: Supabase-backed repositories manage data access.
+- Persistence Layer: Appwrite-backed repositories manage data access.
 
 ```mermaid
 sequenceDiagram
@@ -320,7 +320,7 @@ The AI Matching API provides robust, extensible endpoints for skill-based recomm
 - LLM_API_KEY: LLM API key for AI features
 - LLM_API_URL: LLM API base URL
 - JWT_SECRET: Secret for JWT signing
-- SUPABASE_URL, SUPABASE_ANON_KEY: Supabase connection credentials
+- APPWRITE_URL, APPWRITE_ANON_KEY: Appwrite connection credentials
 
 ### Example Request/Response Mapping
 - Project Recommendations
@@ -919,7 +919,7 @@ Routes --> Middleware["Auth Middleware"]
 Middleware --> Service["Matching Service<br/>extractSkillsFromText()"]
 Service --> AI["AI Client<br/>extractSkills()/generateContent()"]
 AI --> LLM["Google Gemini API"]
-Service --> DB["Skill Taxonomy<br/>Supabase skills table"]
+Service --> DB["Skill Taxonomy<br/>Appwrite skills table"]
 Service --> Routes
 Routes --> Client
 ```
@@ -932,7 +932,7 @@ Routes --> Client
 - AI Pipeline: Uses Google Gemini via the AI client; falls back to keyword extraction if AI is unavailable
 
 ## Architecture Overview
-The skill extraction pipeline integrates the Express route, authentication middleware, matching service, AI client, and the Supabase skill taxonomy. The service retrieves active skills from the taxonomy, attempts AI extraction, and falls back to keyword-based extraction when AI is unavailable.
+The skill extraction pipeline integrates the Express route, authentication middleware, matching service, AI client, and the Appwrite skill taxonomy. The service retrieves active skills from the taxonomy, attempts AI extraction, and falls back to keyword-based extraction when AI is unavailable.
 
 ```mermaid
 sequenceDiagram
@@ -942,7 +942,7 @@ participant M as "Auth Middleware"
 participant S as "Matching Service"
 participant A as "AI Client"
 participant G as "Gemini API"
-participant D as "Supabase Skills"
+participant D as "Appwrite Skills"
 C->>R : POST /api/matching/extract-skills {text}
 R->>M : Verify JWT
 M-->>R : Authorized user
@@ -1011,7 +1011,7 @@ Filter --> Return200["Return ExtractedSkill[]"]
 These types define the shape of requests and responses exchanged between the route, service, and AI client.
 
 ### Skill Taxonomy and Validation
-The service loads active skills from the Supabase skills table to form the taxonomy used for mapping. The service filters extracted skills to ensure their IDs correspond to active skills in the taxonomy.
+The service loads active skills from the Appwrite skills table to form the taxonomy used for mapping. The service filters extracted skills to ensure their IDs correspond to active skills in the taxonomy.
 
 ```mermaid
 erDiagram
@@ -1040,7 +1040,7 @@ boolean is_active
     ]
 
 Notes:
-- The actual skillId values are UUIDs from the Supabase skills table.
+- The actual skillId values are UUIDs from the Appwrite skills table.
 - Confidence values are normalized to 0–1.
 
 ### Error Handling
@@ -1057,7 +1057,7 @@ The skill extraction endpoint depends on:
 - Express route handler for authentication and request validation
 - Matching service for orchestration and fallback logic
 - AI client for Gemini integration and response parsing
-- Supabase skills table for the taxonomy
+- Appwrite skills table for the taxonomy
 
 ```mermaid
 graph LR
@@ -1380,7 +1380,7 @@ References:
 ## Introduction
 This document provides comprehensive API documentation for the authentication module of the FreelanceXchain system. It covers all authentication endpoints, including user registration, login, token refresh, OAuth integration, and password recovery. It also documents request/response schemas, JWT-based authentication requirements, rate limiting policies, and client implementation guidance for JavaScript/TypeScript.
 
-The authentication endpoints are implemented under the base path /api/auth and integrate with Supabase Auth for secure user management, email verification, and OAuth providers.
+The authentication endpoints are implemented under the base path /api/auth and integrate with Appwrite Auth for secure user management, email verification, and OAuth providers.
 
 ## Project Structure
 The authentication module is organized into routes, services, middleware, and shared types. The OpenAPI/Swagger specification is configured to document the authentication endpoints.
@@ -1416,34 +1416,34 @@ CSwag --> RAuth
 
 ## Core Components
 - Authentication routes: Define endpoints for registration, login, token refresh, OAuth, and password recovery.
-- Authentication service: Implements business logic for Supabase Auth integration, token validation, and user synchronization.
+- Authentication service: Implements business logic for Appwrite Auth integration, token validation, and user synchronization.
 - Rate limiter middleware: Applies rate limits to authentication endpoints.
 - Auth middleware: Validates JWT Bearer tokens and enforces role-based access control.
 - Shared types: Define request/response schemas and error codes.
 
 ## Architecture Overview
-The authentication flow integrates with Supabase Auth for secure user management. The routes validate inputs, apply rate limiting, and delegate to the service layer. The service layer interacts with Supabase Auth and the database to manage users and tokens. The auth middleware validates JWT Bearer tokens for protected routes.
+The authentication flow integrates with Appwrite Auth for secure user management. The routes validate inputs, apply rate limiting, and delegate to the service layer. The service layer interacts with Appwrite Auth and the database to manage users and tokens. The auth middleware validates JWT Bearer tokens for protected routes.
 
 ```mermaid
 sequenceDiagram
 participant Client as "Client"
 participant Routes as "auth-routes.ts"
 participant Service as "auth-service.ts"
-participant Supabase as "Supabase Auth"
+participant Appwrite as "Appwrite Auth"
 participant DB as "User Repository"
 Client->>Routes : POST /api/auth/register
 Routes->>Routes : Validate input
 Routes->>Service : register(RegisterInput)
-Service->>Supabase : signUp(email, password, role, metadata)
-Supabase-->>Service : { user, session }
+Service->>Appwrite : signUp(email, password, role, metadata)
+Appwrite-->>Service : { user, session }
 Service->>DB : getUserById(userId) or createUser(...)
 DB-->>Service : UserEntity
 Service-->>Routes : AuthResult
 Routes-->>Client : 201 AuthResult
 Client->>Routes : POST /api/auth/login
 Routes->>Service : login(LoginInput)
-Service->>Supabase : signInWithPassword(email, password)
-Supabase-->>Service : { user, session }
+Service->>Appwrite : signInWithPassword(email, password)
+Appwrite-->>Service : { user, session }
 Service->>DB : getUserById(userId)
 DB-->>Service : UserEntity
 Service-->>Routes : AuthResult
@@ -1471,7 +1471,7 @@ Rate limiting: Yes (authRateLimiter)
 
 Security considerations:
 - Password strength enforced by service-level validation.
-- Duplicate email detection via Supabase Auth and database checks.
+- Duplicate email detection via Appwrite Auth and database checks.
 
 #### POST /api/auth/login
 - Purpose: Authenticate a user with email/password.
@@ -1505,7 +1505,7 @@ Notes:
 - Purpose: Handle OAuth callback. Supports PKCE flow (code in query) and implicit flow (tokens in URL fragment).
 - Responses:
   - 200: AuthResult with tokens and user
-  - 202: Registration required (user exists in Supabase but not in local users)
+  - 202: Registration required (user exists in Appwrite but not in local users)
   - 400: AuthError with OAUTH_ERROR
 
 #### POST /api/auth/oauth/callback
@@ -1615,7 +1615,7 @@ The auth endpoints use authRateLimiter. Exceeding the limit returns 429 with Ret
 - Implicit flow: Tokens in URL fragment; backend serves minimal HTML to extract tokens and POST to /api/auth/oauth/callback.
 
 ### Password Recovery
-- forgot-password: Sends reset email via Supabase Auth.
+- forgot-password: Sends reset email via Appwrite Auth.
 - reset-password: Updates password using reset token.
 
 ### Client Implementation Examples (JavaScript/TypeScript)
@@ -1656,13 +1656,13 @@ Below are conceptual examples of how clients should interact with the authentica
 [No sources needed since this section provides conceptual client usage guidance]
 
 ## Dependency Analysis
-The authentication routes depend on the service layer for business logic and on the rate limiter middleware for throttling. The service layer depends on Supabase Auth and the user repository. The auth middleware depends on the service layer for token validation.
+The authentication routes depend on the service layer for business logic and on the rate limiter middleware for throttling. The service layer depends on Appwrite Auth and the user repository. The auth middleware depends on the service layer for token validation.
 
 ```mermaid
 graph LR
 Routes["auth-routes.ts"] --> Service["auth-service.ts"]
 Routes --> Rate["rate-limiter.ts"]
-Service --> Supabase["Supabase Auth"]
+Service --> Appwrite["Appwrite Auth"]
 Service --> Repo["User Repository"]
 AuthMW["auth-middleware.ts"] --> Service
 Types["auth-types.ts"] --> Service
@@ -1673,7 +1673,7 @@ Env["env.ts"] --> Service
 
 ## Performance Considerations
 - Rate limiting reduces load on authentication endpoints and protects against brute force attacks.
-- Token refresh and OAuth flows rely on external Supabase Auth; network latency affects response times.
+- Token refresh and OAuth flows rely on external Appwrite Auth; network latency affects response times.
 - Avoid excessive polling of resend-confirmation and forgot-password endpoints.
 
 [No sources needed since this section provides general guidance]
@@ -1687,13 +1687,13 @@ Common issues and resolutions:
 - OAuth errors: Confirm provider configuration and redirect URLs; ensure correct provider name.
 
 ## Security Considerations
-- Password storage: Supabase Auth manages password hashing; do not store raw passwords.
+- Password storage: Appwrite Auth manages password hashing; do not store raw passwords.
 - Token expiration: Configure JWT secrets and expirations via environment variables.
-- Brute force protection: Rate limiting and Supabase Auth constraints mitigate repeated login attempts.
+- Brute force protection: Rate limiting and Appwrite Auth constraints mitigate repeated login attempts.
 - Token handling: Store refresh tokens securely; prefer short-lived access tokens and rotate refresh tokens.
 
 ## Conclusion
-The authentication module provides a robust, standards-compliant API for user registration, login, token refresh, OAuth integration, and password recovery. It leverages Supabase Auth for secure identity management and includes built-in rate limiting and JWT-based authorization. Clients should implement proper error handling, token rotation, and secure storage of credentials and tokens.
+The authentication module provides a robust, standards-compliant API for user registration, login, token refresh, OAuth integration, and password recovery. It leverages Appwrite Auth for secure identity management and includes built-in rate limiting and JWT-based authorization. Clients should implement proper error handling, token rotation, and secure storage of credentials and tokens.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -1712,11 +1712,11 @@ The authentication module provides a robust, standards-compliant API for user re
 2. [Password Recovery Endpoints](#password-recovery-endpoints)
 3. [Email Verification Process](#email-verification-process)
 4. [Security Measures](#security-measures)
-5. [Integration with Supabase](#integration-with-supabase)
+5. [Integration with Appwrite](#integration-with-appwrite)
 6. [Implementation Details](#implementation-details)
 
 ## Introduction
-The FreelanceXchain system provides a secure password recovery mechanism that allows users to reset their passwords through an email-based verification process. This documentation details the implementation of the password recovery functionality, including the requestPasswordReset and updatePassword flows, security measures, and integration with Supabase's authentication system.
+The FreelanceXchain system provides a secure password recovery mechanism that allows users to reset their passwords through an email-based verification process. This documentation details the implementation of the password recovery functionality, including the requestPasswordReset and updatePassword flows, security measures, and integration with Appwrite's authentication system.
 
 ## Password Recovery Endpoints
 The password recovery functionality is exposed through two primary endpoints that handle the initiation and completion of the password reset process.
@@ -1728,12 +1728,12 @@ The `/api/auth/forgot-password` endpoint initiates the password recovery process
 sequenceDiagram
 participant Client
 participant Server
-participant Supabase
+participant Appwrite
 Client->>Server : POST /api/auth/forgot-password
 Server->>Server : Validate email format
 Server->>Server : Apply rate limiting
-Server->>Supabase : resetPasswordForEmail(email)
-Supabase-->>Server : Send reset email
+Server->>Appwrite : resetPasswordForEmail(email)
+Appwrite-->>Server : Send reset email
 Server-->>Client : 200 OK
 ```
 
@@ -1744,13 +1744,13 @@ The `/api/auth/reset-password` endpoint completes the password recovery process 
 sequenceDiagram
 participant Client
 participant Server
-participant Supabase
+participant Appwrite
 Client->>Server : POST /api/auth/reset-password
 Server->>Server : Validate access token and password
 Server->>Server : Apply rate limiting
-Server->>Supabase : setSession(accessToken)
-Server->>Supabase : updateUser(password)
-Supabase-->>Server : Password updated
+Server->>Appwrite : setSession(accessToken)
+Server->>Appwrite : updateUser(password)
+Appwrite-->>Server : Password updated
 Server-->>Client : 200 OK
 ```
 
@@ -1758,7 +1758,7 @@ Server-->>Client : 200 OK
 The password recovery process uses an email-based verification system to ensure that only the legitimate account owner can reset their password.
 
 ### Token Generation and Expiration
-When a user requests a password reset, Supabase generates a time-limited access token that is included in the reset email. The token has the following characteristics:
+When a user requests a password reset, Appwrite generates a time-limited access token that is included in the reset email. The token has the following characteristics:
 
 - **Expiration**: The reset token expires after a configurable period (default: 1 hour)
 - **Single Use**: The token becomes invalid after it is used to update the password
@@ -1772,8 +1772,8 @@ The redirect URL is configured based on the environment:
 flowchart TD
 Start([User Requests Password Reset]) --> ValidateEmail["Validate Email Format"]
 ValidateEmail --> RateLimit["Apply Rate Limiting"]
-RateLimit --> SendRequest["Call Supabase resetPasswordForEmail()"]
-SendRequest --> GenerateToken["Supabase Generates Reset Token"]
+RateLimit --> SendRequest["Call Appwrite resetPasswordForEmail()"]
+SendRequest --> GenerateToken["Appwrite Generates Reset Token"]
 GenerateToken --> SendEmail["Send Email with Reset Link"]
 SendEmail --> Complete([Reset Email Sent])
 ```
@@ -1805,19 +1805,19 @@ The system enforces strong password policies to enhance account security:
 - At least one number
 - At least one special character (@$!%*?&)
 
-## Integration with Supabase
-The password recovery functionality integrates with Supabase's authentication system while maintaining application-specific user data and session management.
+## Integration with Appwrite
+The password recovery functionality integrates with Appwrite's authentication system while maintaining application-specific user data and session management.
 
-### Supabase Authentication Flow
-The implementation leverages Supabase's built-in password reset functionality while extending it with custom business logic:
+### Appwrite Authentication Flow
+The implementation leverages Appwrite's built-in password reset functionality while extending it with custom business logic:
 
-1. **Token Handling**: The access token from Supabase is used to authenticate the password update request
+1. **Token Handling**: The access token from Appwrite is used to authenticate the password update request
 2. **Session Management**: The system sets the session with the provided access token before updating the password
 3. **User Data Synchronization**: Application-specific user data is maintained in the public.users table
 
 ```mermaid
 classDiagram
-class SupabaseAuth {
+class AppwriteAuth {
 +resetPasswordForEmail(email)
 +setSession(session)
 +updateUser(user)
@@ -1831,16 +1831,16 @@ class UserRepository {
 +getUserById(id)
 +getUserByEmail(email)
 }
-SupabaseAuth <.. AuthService : uses
+AppwriteAuth <.. AuthService : uses
 AuthService <.. UserRepository : uses
 ```
 
 ### Application-Specific User Management
-While Supabase handles the core authentication, the application maintains its own user data in the public.users table:
+While Appwrite handles the core authentication, the application maintains its own user data in the public.users table:
 
 - **User Profile Data**: Role, wallet address, name, and other application-specific attributes
-- **Data Synchronization**: User records are created and updated to maintain consistency between Supabase Auth and the application database
-- **Session Integration**: The system combines Supabase tokens with application user data in the authentication response
+- **Data Synchronization**: User records are created and updated to maintain consistency between Appwrite Auth and the application database
+- **Session Integration**: The system combines Appwrite tokens with application user data in the authentication response
 
 ## Implementation Details
 The password recovery functionality is implemented across multiple service and route files, with clear separation of concerns.
@@ -1848,7 +1848,7 @@ The password recovery functionality is implemented across multiple service and r
 ### Service Layer Implementation
 The core password recovery logic is implemented in the `auth-service.ts` file with two primary functions:
 
-- **requestPasswordReset(email)**: Initiates the password recovery process by requesting Supabase to send a reset email
+- **requestPasswordReset(email)**: Initiates the password recovery process by requesting Appwrite to send a reset email
 - **updatePassword(accessToken, newPassword)**: Completes the recovery by updating the user's password using the provided access token
 
 Both functions include comprehensive error handling and return standardized response objects.
@@ -1892,7 +1892,7 @@ The token refresh flow spans routing, service logic, and configuration:
 graph TB
 Client["Client App"] --> Routes["auth-routes.ts<br/>POST /api/auth/refresh"]
 Routes --> Service["auth-service.ts<br/>refreshTokens()"]
-Service --> Supabase["Supabase Auth"]
+Service --> Appwrite["Appwrite Auth"]
 Service --> Repo["User Repository"]
 Routes --> Types["auth-types.ts<br/>RefreshInput, AuthResult, AuthError"]
 Middleware["auth-middleware.ts<br/>validateToken()"] --> Service
@@ -1901,7 +1901,7 @@ Swagger["swagger.ts<br/>OpenAPI schemas"]
 Routes --> Types
 Service --> Types
 Service --> Repo
-Service --> Supabase
+Service --> Appwrite
 Service --> Config
 Routes --> Swagger
 ```
@@ -1916,12 +1916,12 @@ Routes --> Swagger
 
 Key implementation references:
 - Route handler and OpenAPI schema for RefreshInput and AuthResult
-- Service function refreshTokens that calls Supabase auth refreshSession
+- Service function refreshTokens that calls Appwrite auth refreshSession
 - Type definitions for RefreshInput, AuthResult, AuthError
 - JWT configuration for secrets and expirations
 
 ## Architecture Overview
-The refresh flow integrates with Supabase Auth to rotate tokens while ensuring the user still exists in the application’s database.
+The refresh flow integrates with Appwrite Auth to rotate tokens while ensuring the user still exists in the application’s database.
 
 ```mermaid
 sequenceDiagram
@@ -1929,7 +1929,7 @@ participant C as "Client"
 participant R as "auth-routes.ts"
 participant S as "auth-service.ts"
 participant U as "User Repository"
-participant SB as "Supabase Auth"
+participant SB as "Appwrite Auth"
 C->>R : "POST /api/auth/refresh { refreshToken }"
 R->>R : "Validate refreshToken presence/type"
 alt "Missing or invalid"
@@ -1972,21 +1972,21 @@ Validation logic:
 
 ### Service Implementation: refreshTokens(refreshToken)
 Behavior:
-- Calls Supabase auth refreshSession with the provided refresh token
+- Calls Appwrite auth refreshSession with the provided refresh token
 - On success, retrieves the associated user from the application’s user repository
 - Returns AuthResult with updated access and refresh tokens
 - On failure, returns AuthError with INVALID_TOKEN and explanatory message
 
 JWT validation:
 - Access tokens are validated by auth-middleware.ts using validateToken
-- validateToken calls Supabase getUser with the access token to verify signature and expiration
-- The service itself relies on Supabase for refresh token validation
+- validateToken calls Appwrite getUser with the access token to verify signature and expiration
+- The service itself relies on Appwrite for refresh token validation
 
 ### Token Rotation Strategy
 - Access tokens are short-lived (configured via JWT_EXPIRES_IN)
 - Refresh tokens are long-lived (configured via JWT_REFRESH_EXPIRES_IN)
 - On successful refresh, both access and refresh tokens are rotated
-- The system delegates signature verification and expiration checks to Supabase Auth
+- The system delegates signature verification and expiration checks to Appwrite Auth
 
 JWT configuration:
 - JWT_SECRET and JWT_REFRESH_SECRET are loaded from environment
@@ -2018,19 +2018,19 @@ Notes:
 ### JWT Signature and Expiration Validation
 - Access token validation:
   - auth-middleware.ts splits Authorization header and calls validateToken
-  - validateToken uses Supabase getUser to verify token signature and expiration
+  - validateToken uses Appwrite getUser to verify token signature and expiration
   - Returns user claims or AuthError on failure
 - Refresh token validation:
-  - refreshTokens uses Supabase refreshSession
+  - refreshTokens uses Appwrite refreshSession
   - On error or missing session/user, returns AuthError INVALID_TOKEN
 
-This design leverages Supabase’s JWT verification, ensuring robust signature and expiration checks without manual decoding.
+This design leverages Appwrite’s JWT verification, ensuring robust signature and expiration checks without manual decoding.
 
 ## Dependency Analysis
 The refresh flow depends on:
 - Route handler for input validation and response formatting
 - Service layer for token rotation and user lookup
-- Supabase Auth for JWT validation and rotation
+- Appwrite Auth for JWT validation and rotation
 - User repository for user existence and profile data
 - Configuration for JWT secrets and expirations
 - OpenAPI schemas for documentation
@@ -2039,7 +2039,7 @@ The refresh flow depends on:
 graph LR
 Routes["auth-routes.ts"] --> Service["auth-service.ts"]
 Routes --> Types["auth-types.ts"]
-Service --> Supabase["Supabase Auth"]
+Service --> Appwrite["Appwrite Auth"]
 Service --> Repo["User Repository"]
 Service --> Config["env.ts"]
 Routes --> Swagger["swagger.ts"]
@@ -2047,7 +2047,7 @@ Middleware["auth-middleware.ts"] --> Service
 ```
 
 ## Performance Considerations
-- Refresh calls involve network latency to Supabase; consider caching user data locally for short periods to reduce repeated lookups.
+- Refresh calls involve network latency to Appwrite; consider caching user data locally for short periods to reduce repeated lookups.
 - Rate limiting is applied at the route level to mitigate abuse.
 - Keep access token lifetime small and refresh token lifetime larger to balance security and UX.
 
@@ -2062,16 +2062,16 @@ Common issues and resolutions:
   - Cause: Refresh token is invalid or expired
   - Resolution: Require the user to log in again to obtain a fresh refresh token
 - Internal errors:
-  - Cause: Unexpected failures from Supabase or user repository
-  - Resolution: Check Supabase connectivity and logs; retry after verifying environment configuration
+  - Cause: Unexpected failures from Appwrite or user repository
+  - Resolution: Check Appwrite connectivity and logs; retry after verifying environment configuration
 
 Operational checks:
 - Verify JWT_SECRET/JWT_REFRESH_SECRET and expirations are set correctly
-- Confirm Supabase URL and keys are configured
+- Confirm Appwrite URL and keys are configured
 - Ensure the user still exists in the application database
 
 ## Conclusion
-The token refresh mechanism in FreelanceXchain is implemented via a dedicated endpoint that rotates both access and refresh tokens using Supabase Auth. The route enforces input validation, while the service performs token rotation and user verification. JWT signature and expiration are validated by Supabase, ensuring secure sessions. Proper configuration of JWT secrets and expirations is essential for balancing security and usability.
+The token refresh mechanism in FreelanceXchain is implemented via a dedicated endpoint that rotates both access and refresh tokens using Appwrite Auth. The route enforces input validation, while the service performs token rotation and user verification. JWT signature and expiration are validated by Appwrite, ensuring secure sessions. Proper configuration of JWT secrets and expirations is essential for balancing security and usability.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -2112,7 +2112,7 @@ The token refresh mechanism in FreelanceXchain is implemented via a dedicated en
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive API documentation for the POST /api/auth/login endpoint in the FreelanceXchain system. It covers the LoginInput schema, authentication flow, credential validation, JWT token generation, response format, error handling, and security measures including the authRateLimiter middleware. It also explains how the auth-routes.ts integration works with the login function in auth-service.ts and how the system validates credentials against Supabase authentication while maintaining application-specific user data and roles.
+This document provides comprehensive API documentation for the POST /api/auth/login endpoint in the FreelanceXchain system. It covers the LoginInput schema, authentication flow, credential validation, JWT token generation, response format, error handling, and security measures including the authRateLimiter middleware. It also explains how the auth-routes.ts integration works with the login function in auth-service.ts and how the system validates credentials against Appwrite authentication while maintaining application-specific user data and roles.
 
 ## Project Structure
 The login endpoint is implemented as part of the authentication module:
@@ -2122,7 +2122,7 @@ The login endpoint is implemented as part of the authentication module:
 - Types: src/services/auth-types.ts
 - Data access: src/repositories/user-repository.ts
 - User model: src/models/user.ts
-- Supabase client: src/config/supabase.ts
+- Appwrite client: src/config/appwrite.ts
 - OpenAPI/Swagger definitions: src/config/swagger.ts
 
 ```mermaid
@@ -2130,9 +2130,9 @@ graph TB
 Client["Client"] --> Routes["auth-routes.ts<br/>POST /api/auth/login"]
 Routes --> Limiter["rate-limiter.ts<br/>authRateLimiter"]
 Routes --> Service["auth-service.ts<br/>login()"]
-Service --> Supabase["supabase.ts<br/>Supabase Auth"]
+Service --> Appwrite["appwrite.ts<br/>Appwrite Auth"]
 Service --> Repo["user-repository.ts<br/>getUserById()"]
-Repo --> DB["Supabase Postgres<br/>users table"]
+Repo --> DB["Appwrite Postgres<br/>users table"]
 Service --> Types["auth-types.ts<br/>AuthResult, AuthError"]
 Routes --> Swagger["swagger.ts<br/>OpenAPI schemas"]
 ```
@@ -2143,10 +2143,10 @@ Routes --> Swagger["swagger.ts<br/>OpenAPI schemas"]
 - Response: AuthResult with user data, accessToken, and refreshToken
 - Error responses: 400 for validation errors, 401 for invalid credentials
 - Security: authRateLimiter middleware enforces rate limits to prevent brute force attacks
-- Integration: Route handler delegates to auth-service.login; service validates against Supabase Auth and enriches with application user data
+- Integration: Route handler delegates to auth-service.login; service validates against Appwrite Auth and enriches with application user data
 
 ## Architecture Overview
-The login flow integrates route validation, rate limiting, Supabase authentication, and application user data retrieval.
+The login flow integrates route validation, rate limiting, Appwrite authentication, and application user data retrieval.
 
 ```mermaid
 sequenceDiagram
@@ -2154,7 +2154,7 @@ participant C as "Client"
 participant R as "auth-routes.ts"
 participant L as "rate-limiter.ts"
 participant S as "auth-service.ts"
-participant SB as "supabase.ts"
+participant SB as "appwrite.ts"
 participant U as "user-repository.ts"
 C->>R : POST /api/auth/login {email,password}
 R->>L : authRateLimiter
@@ -2206,18 +2206,18 @@ OpenAPI/Swagger schema definitions:
 
 ### Service Layer: login()
 - Normalizes email to lowercase
-- Calls Supabase Auth signInWithPassword
-- Handles Supabase errors:
+- Calls Appwrite Auth signInWithPassword
+- Handles Appwrite errors:
   - Email not confirmed -> INVALID_CREDENTIALS
   - Other auth failures -> INVALID_CREDENTIALS
-- Retrieves application user data from Supabase Postgres users table via user-repository
-- Constructs AuthResult with accessToken and refreshToken from Supabase session
+- Retrieves application user data from Appwrite Postgres users table via user-repository
+- Constructs AuthResult with accessToken and refreshToken from Appwrite session
 
 ```mermaid
 flowchart TD
 Start(["login(LoginInput)"]) --> Normalize["Normalize email to lowercase"]
-Normalize --> CallSupabase["Call Supabase signInWithPassword"]
-CallSupabase --> HasError{"Supabase error?"}
+Normalize --> CallAppwrite["Call Appwrite signInWithPassword"]
+CallAppwrite --> HasError{"Appwrite error?"}
 HasError --> |Yes| MapError["Map to INVALID_CREDENTIALS"]
 MapError --> ReturnError["Return AuthError"]
 HasError --> |No| HasUser{"Has user and session?"}
@@ -2264,12 +2264,12 @@ Block --> End(["Stop"])
 Next --> End
 ```
 
-### Supabase Integration and Application User Data
-- Supabase Auth manages email/password credentials and sessions
-- Application user data (role, walletAddress, timestamps) is stored in Supabase Postgres users table
-- After successful Supabase login, the service retrieves the application user record and returns it alongside tokens
+### Appwrite Integration and Application User Data
+- Appwrite Auth manages email/password credentials and sessions
+- Application user data (role, walletAddress, timestamps) is stored in Appwrite Postgres users table
+- After successful Appwrite login, the service retrieves the application user record and returns it alongside tokens
 - This ensures:
-  - Strong credential validation via Supabase
+  - Strong credential validation via Appwrite
   - Application-specific roles and metadata remain synchronized
 
 ### Error Handling and Codes
@@ -2277,7 +2277,7 @@ Next --> End
   - VALIDATION_ERROR with details array
 - Authentication errors (401):
   - AUTH_INVALID_CREDENTIALS for invalid email/password
-  - INVALID_CREDENTIALS for Supabase-level failures (e.g., unconfirmed email)
+  - INVALID_CREDENTIALS for Appwrite-level failures (e.g., unconfirmed email)
 - Rate limiting (429):
   - RATE_LIMIT_EXCEEDED with Retry-After
 
@@ -2300,24 +2300,24 @@ The login endpoint depends on:
 - Route handler for request parsing and response formatting
 - Rate limiter for security
 - Service layer for business logic and external integrations
-- Supabase client for authentication
+- Appwrite client for authentication
 - Repository for application user data
 
 ```mermaid
 graph LR
 Routes["auth-routes.ts"] --> Limiter["rate-limiter.ts"]
 Routes --> Service["auth-service.ts"]
-Service --> Supabase["supabase.ts"]
+Service --> Appwrite["appwrite.ts"]
 Service --> Repo["user-repository.ts"]
 Repo --> Types["auth-types.ts"]
 Routes --> Swagger["swagger.ts"]
 ```
 
 ## Performance Considerations
-- Supabase calls incur network latency; keep payloads minimal
+- Appwrite calls incur network latency; keep payloads minimal
 - Rate limiting reduces load during brute force attempts
 - Consider caching user roles and metadata for subsequent requests if appropriate
-- Monitor Supabase rate limits and adjust authRateLimiter as needed
+- Monitor Appwrite rate limits and adjust authRateLimiter as needed
 
 [No sources needed since this section provides general guidance]
 
@@ -2328,17 +2328,17 @@ Common issues and resolutions:
   - Check for typos in field names
 - 401 Invalid Credentials:
   - Verify email and password are correct
-  - Confirm email is verified in Supabase
+  - Confirm email is verified in Appwrite
   - Check that the user exists in the application users table
 - 429 Rate Limit Exceeded:
   - Wait until the window resets (Retry-After seconds)
   - Reduce login attempts or adjust client-side retry logic
 - Internal errors:
-  - Inspect Supabase connectivity and configuration
+  - Inspect Appwrite connectivity and configuration
   - Verify JWT secret and expiration settings
 
 ## Conclusion
-The POST /api/auth/login endpoint provides a secure, validated authentication flow that leverages Supabase for credential management while preserving application-specific user data and roles. The route handler performs input validation and applies rate limiting, while the service layer coordinates with Supabase Auth and the application user repository to produce a standardized AuthResult. Clear error responses and rate limiting protect the system from abuse and provide predictable client experiences.
+The POST /api/auth/login endpoint provides a secure, validated authentication flow that leverages Appwrite for credential management while preserving application-specific user data and roles. The route handler performs input validation and applies rate limiting, while the service layer coordinates with Appwrite Auth and the application user repository to produce a standardized AuthResult. Clear error responses and rate limiting protect the system from abuse and provide predictable client experiences.
 
 ---
 
@@ -2356,22 +2356,22 @@ The POST /api/auth/login endpoint provides a secure, validated authentication fl
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive API documentation for the user registration endpoint in the FreelanceXchain system. It covers the POST /api/auth/register endpoint, including request body schema, validation rules, success and error responses, and the interaction between the route handler and the authentication service. It also explains how the authRateLimiter middleware protects against abuse and how Supabase handles initial OAuth user creation before role assignment.
+This document provides comprehensive API documentation for the user registration endpoint in the FreelanceXchain system. It covers the POST /api/auth/register endpoint, including request body schema, validation rules, success and error responses, and the interaction between the route handler and the authentication service. It also explains how the authRateLimiter middleware protects against abuse and how Appwrite handles initial OAuth user creation before role assignment.
 
 ## Project Structure
 The registration flow spans several layers:
 - Route handler: validates inputs, applies rate limiting, and delegates to the service layer
-- Service layer: orchestrates Supabase Auth and database operations
-- Repository layer: interacts with the Supabase Postgres users table
+- Service layer: orchestrates Appwrite Auth and database operations
+- Repository layer: interacts with the Appwrite Postgres users table
 - Middleware: enforces rate limits and request validation
-- Configuration: Supabase client initialization and Swagger/OpenAPI definitions
+- Configuration: Appwrite client initialization and Swagger/OpenAPI definitions
 
 ```mermaid
 graph TB
 Client["Client"] --> Routes["auth-routes.ts<br/>POST /api/auth/register"]
 Routes --> Limiter["rate-limiter.ts<br/>authRateLimiter"]
 Routes --> Service["auth-service.ts<br/>register()"]
-Service --> Supabase["supabase.ts<br/>Supabase Auth & DB"]
+Service --> Appwrite["appwrite.ts<br/>Appwrite Auth & DB"]
 Service --> Repo["user-repository.ts<br/>public.users"]
 Routes --> Swagger["swagger.ts<br/>OpenAPI schemas"]
 ```
@@ -2384,7 +2384,7 @@ Routes --> Swagger["swagger.ts<br/>OpenAPI schemas"]
 - Rate limiting: authRateLimiter configured for 10 requests per 15 minutes
 
 ## Architecture Overview
-The registration flow integrates Supabase Auth for identity and the application’s database for user profiles. The route handler performs input validation and rate limiting, then calls the service layer to register the user. The service layer registers with Supabase Auth, waits for the database trigger to populate public.users, and returns an AuthResult with tokens.
+The registration flow integrates Appwrite Auth for identity and the application’s database for user profiles. The route handler performs input validation and rate limiting, then calls the service layer to register the user. The service layer registers with Appwrite Auth, waits for the database trigger to populate public.users, and returns an AuthResult with tokens.
 
 ```mermaid
 sequenceDiagram
@@ -2392,7 +2392,7 @@ participant C as "Client"
 participant R as "auth-routes.ts"
 participant RL as "rate-limiter.ts"
 participant S as "auth-service.ts"
-participant SB as "supabase.ts"
+participant SB as "appwrite.ts"
 participant DB as "user-repository.ts"
 C->>R : POST /api/auth/register {email,password,role,name?,walletAddress?}
 R->>RL : apply authRateLimiter
@@ -2457,7 +2457,7 @@ On successful registration, the endpoint returns:
   - accessToken: string
   - refreshToken: string
 
-The service constructs AuthResult from the Supabase user and session, and from the public.users row.
+The service constructs AuthResult from the Appwrite user and session, and from the public.users row.
 
 ### Error Responses
 - 400 Bad Request:
@@ -2476,28 +2476,28 @@ The route handler translates service errors into appropriate HTTP status codes.
 
 The middleware uses X-Forwarded-For when present, otherwise falls back to req.ip.
 
-### Interaction Between auth-routes.ts and registerWithSupabase
+### Interaction Between auth-routes.ts and registerWithAppwrite
 - The route handler calls register(RegisterInput) in auth-service.ts
-- registerWithSupabase is used for OAuth registration (separate endpoint)
+- registerWithAppwrite is used for OAuth registration (separate endpoint)
 - For email/password registration, the route handler calls register, which internally:
   - Normalizes email
   - Checks for duplicate email in public.users
-  - Calls Supabase Auth signUp with role, wallet_address, and name in user options
+  - Calls Appwrite Auth signUp with role, wallet_address, and name in user options
   - Waits briefly for trigger to create public.users
   - Returns AuthResult with tokens
 
-### Supabase OAuth User Creation and Role Assignment
+### Appwrite OAuth User Creation and Role Assignment
 - Initial OAuth flow:
   - getOAuthUrl redirects to provider
   - exchangeCodeForSession exchanges authorization code for tokens
-  - loginWithSupabase validates access token and checks if a public.users record exists
+  - loginWithAppwrite validates access token and checks if a public.users record exists
   - If not found, returns AUTH_REQUIRE_REGISTRATION indicating role selection is required
 - OAuth registration:
   - /api/auth/oauth/register accepts accessToken, role, optional name, optional walletAddress
-  - registerWithSupabase updates user metadata in Supabase Auth and creates a record in public.users
+  - registerWithAppwrite updates user metadata in Appwrite Auth and creates a record in public.users
   - Returns AuthResult with tokens
 
-This separation ensures that Supabase creates the user record first, then the application assigns role and profile attributes.
+This separation ensures that Appwrite creates the user record first, then the application assigns role and profile attributes.
 
 ### Wallet Address Pattern
 - Pattern: 0x[a-fA-F0-9]{40}
@@ -2506,7 +2506,7 @@ This separation ensures that Supabase creates the user record first, then the ap
 
 ## Dependency Analysis
 The registration flow depends on:
-- Supabase client for Auth operations and database access
+- Appwrite client for Auth operations and database access
 - User repository for database interactions
 - Rate limiter middleware for abuse protection
 - Swagger/OpenAPI for schema definitions
@@ -2515,13 +2515,13 @@ The registration flow depends on:
 graph LR
 Routes["auth-routes.ts"] --> Service["auth-service.ts"]
 Routes --> Limiter["rate-limiter.ts"]
-Service --> Supabase["supabase.ts"]
+Service --> Appwrite["appwrite.ts"]
 Service --> Repo["user-repository.ts"]
 Swagger["swagger.ts"] --> Routes
 ```
 
 ## Performance Considerations
-- Input validation occurs in-memory before hitting Supabase, reducing unnecessary network calls
+- Input validation occurs in-memory before hitting Appwrite, reducing unnecessary network calls
 - The service waits briefly for a database trigger to populate public.users; this introduces a small latency but ensures consistency
 - Rate limiting prevents brute-force attempts and protects downstream systems
 
@@ -2541,10 +2541,10 @@ Common issues and resolutions:
 - Rate limit exceeded (429):
   - Exceeded 10 requests in 15 minutes; wait for Retry-After seconds before retrying
 - Internal errors:
-  - Occur when Supabase operations fail; check logs and environment variables for Supabase configuration
+  - Occur when Appwrite operations fail; check logs and environment variables for Appwrite configuration
 
 ## Conclusion
-The POST /api/auth/register endpoint provides a robust, validated, and rate-limited pathway to create new user accounts. It integrates tightly with Supabase Auth for identity while persisting user profiles in the application database. The endpoint returns a standardized AuthResult on success and clearly defined error responses for validation and conflict scenarios. The authRateLimiter helps protect the system from abuse, and the separation of concerns across route, service, and repository layers keeps the code maintainable and testable.
+The POST /api/auth/register endpoint provides a robust, validated, and rate-limited pathway to create new user accounts. It integrates tightly with Appwrite Auth for identity while persisting user profiles in the application database. The endpoint returns a standardized AuthResult on success and clearly defined error responses for validation and conflict scenarios. The authRateLimiter helps protect the system from abuse, and the separation of concerns across route, service, and repository layers keeps the code maintainable and testable.
 
 ---
 
@@ -2563,22 +2563,22 @@ The POST /api/auth/register endpoint provides a robust, validated, and rate-limi
 10. [Appendices](#appendices)
 
 ## Introduction
-This document provides comprehensive API documentation for the OAuth integration system in FreelanceXchain. It covers the complete OAuth flow including initiating provider login, handling callbacks for both PKCE and implicit flows, and the “registration required” flow for new OAuth users. It also documents the exchangeCodeForSession and loginWithSupabase functions, explains security considerations around state management and token validation, and outlines how external identities are securely linked to internal user accounts with optional blockchain wallet integration.
+This document provides comprehensive API documentation for the OAuth integration system in FreelanceXchain. It covers the complete OAuth flow including initiating provider login, handling callbacks for both PKCE and implicit flows, and the “registration required” flow for new OAuth users. It also documents the exchangeCodeForSession and loginWithAppwrite functions, explains security considerations around state management and token validation, and outlines how external identities are securely linked to internal user accounts with optional blockchain wallet integration.
 
 ## Project Structure
 The OAuth integration spans routing, service logic, configuration, and data access layers:
 - Routes define the OAuth endpoints and handle request/response flows.
-- Services encapsulate Supabase OAuth interactions and internal user synchronization.
-- Configuration supplies Supabase client initialization and environment variables.
+- Services encapsulate Appwrite OAuth interactions and internal user synchronization.
+- Configuration supplies Appwrite client initialization and environment variables.
 - Repositories manage persistence of user records in the database.
 
 ```mermaid
 graph TB
 Client["Client App"] --> Routes["Express Routes<br/>auth-routes.ts"]
 Routes --> Service["Auth Service<br/>auth-service.ts"]
-Service --> Supabase["Supabase Client<br/>supabase.ts"]
+Service --> Appwrite["Appwrite Client<br/>appwrite.ts"]
 Service --> Repo["User Repository<br/>user-repository.ts"]
-Repo --> DB["Supabase Database"]
+Repo --> DB["Appwrite Database"]
 ```
 
 ## Core Components
@@ -2588,20 +2588,20 @@ Repo --> DB["Supabase Database"]
 - Supporting service functions:
   - getOAuthUrl(provider)
   - exchangeCodeForSession(code)
-  - loginWithSupabase(accessToken)
-  - registerWithSupabase(accessToken, role, walletAddress, name)
+  - loginWithAppwrite(accessToken)
+  - registerWithAppwrite(accessToken, role, walletAddress, name)
 
-These components collectively implement a robust OAuth integration with Supabase, including handling new user registration and linking external identities to internal user profiles.
+These components collectively implement a robust OAuth integration with Appwrite, including handling new user registration and linking external identities to internal user profiles.
 
 ## Architecture Overview
-The OAuth flow integrates with Supabase for provider redirection and token exchange. The backend validates tokens, checks for existing user records, and either returns app tokens or signals that registration is required.
+The OAuth flow integrates with Appwrite for provider redirection and token exchange. The backend validates tokens, checks for existing user records, and either returns app tokens or signals that registration is required.
 
 ```mermaid
 sequenceDiagram
 participant C as "Client App"
 participant R as "Routes<br/>auth-routes.ts"
 participant S as "Service<br/>auth-service.ts"
-participant SB as "Supabase"
+participant SB as "Appwrite"
 participant U as "User Repository<br/>user-repository.ts"
 C->>R : "GET /api/auth/oauth/ : provider"
 R->>S : "getOAuthUrl(provider)"
@@ -2615,7 +2615,7 @@ R->>S : "exchangeCodeForSession(code)"
 S->>SB : "exchangeCodeForSession(code)"
 SB-->>S : "{access_token, refresh_token}"
 S-->>R : "{access_token, refresh_token}"
-R->>S : "loginWithSupabase(access_token)"
+R->>S : "loginWithAppwrite(access_token)"
 S->>SB : "getUser(access_token)"
 SB-->>S : "User"
 S->>U : "getUserByEmail(user.email)"
@@ -2636,19 +2636,19 @@ end
 - Providers supported: google, github, azure, linkedin.
 - Behavior:
   - Validates provider parameter.
-  - Calls getOAuthUrl(provider) to obtain a Supabase OAuth URL with configured redirect and parameters.
+  - Calls getOAuthUrl(provider) to obtain a Appwrite OAuth URL with configured redirect and parameters.
   - Responds with a 302 redirect to the provider.
 
 Security considerations:
 - The redirect URL is built from environment configuration and points to the backend’s callback endpoint.
-- The provider mapping adjusts LinkedIn to the OIDC provider alias recognized by Supabase.
+- The provider mapping adjusts LinkedIn to the OIDC provider alias recognized by Appwrite.
 
 ### Callback Handler: GET /api/auth/callback (PKCE)
 - Purpose: Handle provider redirects containing an authorization code.
 - Flow:
   - If an error is present, returns a 400 with error details.
   - If a code is present, exchanges it for session tokens via exchangeCodeForSession(code).
-  - Validates the resulting access token with loginWithSupabase(access_token).
+  - Validates the resulting access token with loginWithAppwrite(access_token).
   - If the user exists, returns 200 with app tokens.
   - If the user does not exist, returns 202 with registration_required and the provider access token.
 
@@ -2659,7 +2659,7 @@ Implicit flow note:
 - Purpose: Legacy support for implicit flow where tokens arrive in the URL fragment.
 - Behavior:
   - Validates presence of access_token.
-  - Calls loginWithSupabase(access_token).
+  - Calls loginWithAppwrite(access_token).
   - Returns 200 on success or 202 if registration is required.
   - Returns 401 on invalid token.
 
@@ -2672,28 +2672,28 @@ Implicit flow note:
   - walletAddress (optional, validated as Ethereum address)
 - Behavior:
   - Validates inputs.
-  - Calls registerWithSupabase(accessToken, role, walletAddress, name).
+  - Calls registerWithAppwrite(accessToken, role, walletAddress, name).
   - On success, returns 201 with app tokens and user profile.
   - On failure, returns 401 with error details.
 
-### Service Functions: exchangeCodeForSession and loginWithSupabase
+### Service Functions: exchangeCodeForSession and loginWithAppwrite
 - exchangeCodeForSession(code):
-  - Exchanges the authorization code received from the provider for Supabase session tokens.
+  - Exchanges the authorization code received from the provider for Appwrite session tokens.
   - Returns either an AuthError or a tuple of access and refresh tokens.
 
-- loginWithSupabase(accessToken):
-  - Validates the Supabase access token and retrieves the user.
+- loginWithAppwrite(accessToken):
+  - Validates the Appwrite access token and retrieves the user.
   - Checks if a corresponding user record exists in the application database.
   - Returns AUTH_REQUIRE_REGISTRATION if the user does not exist.
   - Otherwise, returns an AuthResult with app tokens and user profile.
 
 ```mermaid
 flowchart TD
-Start(["exchangeCodeForSession(code)"]) --> CallSupabase["Call Supabase exchangeCodeForSession(code)"]
-CallSupabase --> HasError{"Error or no session?"}
+Start(["exchangeCodeForSession(code)"]) --> CallAppwrite["Call Appwrite exchangeCodeForSession(code)"]
+CallAppwrite --> HasError{"Error or no session?"}
 HasError --> |Yes| ReturnError["Return AuthError"]
 HasError --> |No| ReturnTokens["Return {access_token, refresh_token}"]
-subgraph "loginWithSupabase(accessToken)"
+subgraph "loginWithAppwrite(accessToken)"
 A["getUser(access_token)"] --> B{"User found?"}
 B --> |No| E["Return INVALID_TOKEN"]
 B --> |Yes| C["getUserByEmail(user.email)"]
@@ -2712,20 +2712,20 @@ end
 ### Security Considerations
 - Provider selection validation prevents unsupported providers.
 - Redirect URL is constructed from environment variables to ensure callbacks reach the intended backend.
-- Token validation occurs via Supabase getUser and local user lookup.
+- Token validation occurs via Appwrite getUser and local user lookup.
 - The implicit flow handler responds with a minimal HTML page that posts tokens to a dedicated endpoint to reduce exposure of tokens in browser history.
 - Registration requires explicit role selection, preventing ambiguous identity states.
 
 ### Frontend Integration Examples
 - PKCE flow:
   - Client navigates to GET /api/auth/oauth/:provider.
-  - After provider login, Supabase redirects to GET /api/auth/callback with an authorization code.
+  - After provider login, Appwrite redirects to GET /api/auth/callback with an authorization code.
   - Backend exchanges code for tokens and returns either 200 with tokens or 202 with registration_required.
   - For new users, client calls POST /api/auth/oauth/register with accessToken and role.
 
 - Implicit flow:
   - Client navigates to GET /api/auth/oauth/:provider.
-  - After provider login, Supabase redirects to GET /api/auth/callback with tokens in the URL fragment.
+  - After provider login, Appwrite redirects to GET /api/auth/callback with tokens in the URL fragment.
   - The route serves a minimal HTML page that extracts tokens and posts them to POST /api/auth/oauth/callback.
   - Backend validates the token and returns 200 or 202.
 
@@ -2734,30 +2734,30 @@ end
 
 ### Identity Linking and Blockchain Wallet Integration
 - External identity linkage:
-  - loginWithSupabase validates the provider token and checks for a corresponding user in the application database.
+  - loginWithAppwrite validates the provider token and checks for a corresponding user in the application database.
   - If the user does not exist, the system signals registration_required, prompting the client to call POST /api/auth/oauth/register.
-  - registerWithSupabase updates Supabase user metadata (role, name, wallet address) and creates a record in the application database.
+  - registerWithAppwrite updates Appwrite user metadata (role, name, wallet address) and creates a record in the application database.
 
 - Wallet integration:
   - The registration endpoint accepts an optional walletAddress parameter.
   - The user model includes a wallet_address field, enabling downstream blockchain features.
 
 ## Dependency Analysis
-The OAuth integration depends on Supabase for provider authentication and token management, while the application maintains user records in the database.
+The OAuth integration depends on Appwrite for provider authentication and token management, while the application maintains user records in the database.
 
 ```mermaid
 graph LR
 Routes["auth-routes.ts"] --> Service["auth-service.ts"]
-Service --> Supabase["supabase.ts"]
+Service --> Appwrite["appwrite.ts"]
 Service --> Repo["user-repository.ts"]
-Repo --> DB["Supabase DB"]
+Repo --> DB["Appwrite DB"]
 Service --> Types["auth-types.ts"]
 Service --> Models["user.ts"]
 Routes --> Env["env.ts"]
 ```
 
 ## Performance Considerations
-- Token exchange and user lookup are lightweight operations; ensure Supabase connectivity is reliable and consider caching refresh tokens on the client to minimize repeated exchanges.
+- Token exchange and user lookup are lightweight operations; ensure Appwrite connectivity is reliable and consider caching refresh tokens on the client to minimize repeated exchanges.
 - Rate limiting is applied to authentication endpoints to mitigate abuse.
 - Avoid long-running synchronous operations in the callback handlers; keep them asynchronous to reduce latency.
 
@@ -2818,8 +2818,8 @@ This document explains the OAuth callback handling system used by FreelanceXchai
 ## Project Structure
 The OAuth callback handling spans routing, service-layer logic, and configuration:
 - Routes define the endpoints and orchestrate the flow
-- Services encapsulate Supabase interactions and token validation
-- Configuration provides the Supabase client used by services
+- Services encapsulate Appwrite interactions and token validation
+- Configuration provides the Appwrite client used by services
 
 ```mermaid
 graph TB
@@ -2830,11 +2830,11 @@ R3["GET /api/auth/oauth/:provider"]
 end
 subgraph "Services"
 S1["exchangeCodeForSession(code)"]
-S2["loginWithSupabase(accessToken)"]
-S3["registerWithSupabase(accessToken, role, walletAddress, name)"]
+S2["loginWithAppwrite(accessToken)"]
+S3["registerWithAppwrite(accessToken, role, walletAddress, name)"]
 end
 subgraph "Config"
-C1["getSupabaseClient()"]
+C1["getAppwriteClient()"]
 end
 R1 --> S1
 R1 --> S2
@@ -2850,33 +2850,33 @@ S3 --> C1
   - GET /api/auth/callback: PKCE flow handler; validates errors, exchanges code, logs in, and responds with either tokens or 202 registration required
   - POST /api/auth/oauth/callback: Implicit flow handler; validates access_token, logs in, and responds with success or 202/401
 - Service functions:
-  - exchangeCodeForSession(code): Exchanges an authorization code for Supabase session tokens
-  - loginWithSupabase(accessToken): Validates a Supabase access token and returns app tokens; triggers 202 when user does not exist in the app
-  - registerWithSupabase(accessToken, role, walletAddress, name): Completes OAuth registration by updating user metadata and creating a local user record
+  - exchangeCodeForSession(code): Exchanges an authorization code for Appwrite session tokens
+  - loginWithAppwrite(accessToken): Validates a Appwrite access token and returns app tokens; triggers 202 when user does not exist in the app
+  - registerWithAppwrite(accessToken, role, walletAddress, name): Completes OAuth registration by updating user metadata and creating a local user record
 - Types and errors:
   - AuthResult and AuthError types define response shapes and error codes used across routes and services
 
 ## Architecture Overview
-The system integrates with Supabase Auth to handle OAuth providers and exchange authorization codes for session tokens. The backend verifies tokens and synchronizes user records, returning either app JWT tokens or guiding the client to complete registration.
+The system integrates with Appwrite Auth to handle OAuth providers and exchange authorization codes for session tokens. The backend verifies tokens and synchronizes user records, returning either app JWT tokens or guiding the client to complete registration.
 
 ```mermaid
 sequenceDiagram
 participant Client as "Client Browser"
 participant Routes as "Auth Routes"
 participant Service as "Auth Service"
-participant Supabase as "Supabase Auth"
-participant DB as "Supabase DB"
+participant Appwrite as "Appwrite Auth"
+participant DB as "Appwrite DB"
 Client->>Routes : GET /api/auth/oauth/ : provider
-Routes->>Supabase : signInWithOAuth(options)
-Supabase-->>Routes : redirect_url
+Routes->>Appwrite : signInWithOAuth(options)
+Appwrite-->>Routes : redirect_url
 Routes-->>Client : 302 Redirect
 Client->>Routes : GET /api/auth/callback?code=...
 Routes->>Service : exchangeCodeForSession(code)
-Service->>Supabase : exchangeCodeForSession(code)
-Supabase-->>Service : {access_token, refresh_token}
+Service->>Appwrite : exchangeCodeForSession(code)
+Appwrite-->>Service : {access_token, refresh_token}
 Service-->>Routes : tokens
-Routes->>Service : loginWithSupabase(access_token)
-Service->>Supabase : getUser(access_token)
+Routes->>Service : loginWithAppwrite(access_token)
+Service->>Appwrite : getUser(access_token)
 alt User exists in app
 Service->>DB : fetch user profile
 DB-->>Service : user
@@ -2894,7 +2894,7 @@ end
 Behavior:
 - Validates OAuth error query parameters and returns 400 on failure
 - If code is present, exchanges it for session tokens using exchangeCodeForSession
-- Calls loginWithSupabase with the returned access token
+- Calls loginWithAppwrite with the returned access token
 - Responds with 200 and tokens if the user exists in the app
 - Responds with 202 and access_token if the user does not exist in the app (registration required)
 - Responds with 401 on invalid token or exchange failure
@@ -2909,7 +2909,7 @@ HasCode --> |No| ImplicitFlow["Serve implicit flow HTML<br/>extract tokens from 
 HasCode --> |Yes| Exchange["exchangeCodeForSession(code)"]
 Exchange --> ExchangeOK{"Exchange success?"}
 ExchangeOK --> |No| Return401["Return 401 AUTH_EXCHANGE_FAILED"]
-ExchangeOK --> |Yes| Login["loginWithSupabase(access_token)"]
+ExchangeOK --> |Yes| Login["loginWithAppwrite(access_token)"]
 Login --> LoginOK{"Login success?"}
 LoginOK --> |No| RegReq{"Is AUTH_REQUIRE_REGISTRATION?"}
 RegReq --> |Yes| Return202["Return 202 registration_required"]
@@ -2920,7 +2920,7 @@ LoginOK --> |Yes| Return200["Return 200 {access_token, refresh_token, user}"]
 ### POST /api/auth/oauth/callback (Implicit Flow)
 Behavior:
 - Validates presence of access_token in request body
-- Calls loginWithSupabase with the access_token
+- Calls loginWithAppwrite with the access_token
 - Responds with 200 on success
 - Responds with 202 when registration is required
 - Responds with 401 on invalid token
@@ -2930,10 +2930,10 @@ sequenceDiagram
 participant Client as "Client Browser"
 participant Routes as "Auth Routes"
 participant Service as "Auth Service"
-participant Supabase as "Supabase Auth"
+participant Appwrite as "Appwrite Auth"
 Client->>Routes : POST /api/auth/oauth/callback {access_token}
-Routes->>Service : loginWithSupabase(access_token)
-Service->>Supabase : getUser(access_token)
+Routes->>Service : loginWithAppwrite(access_token)
+Service->>Appwrite : getUser(access_token)
 alt User exists in app
 Service-->>Routes : AuthResult
 Routes-->>Client : 200 {status : "success"}
@@ -2948,10 +2948,10 @@ end
 
 ### exchangeCodeForSession(code)
 Purpose:
-- Exchanges an authorization code received from the OAuth provider into a Supabase session containing access and refresh tokens
+- Exchanges an authorization code received from the OAuth provider into a Appwrite session containing access and refresh tokens
 
 Implementation highlights:
-- Uses the Supabase client to call exchangeCodeForSession
+- Uses the Appwrite client to call exchangeCodeForSession
 - Returns AuthError on failure with code AUTH_EXCHANGE_FAILED
 - Returns token pair on success
 
@@ -2959,33 +2959,33 @@ Security considerations:
 - The code is short-lived and bound to the original authorization request
 - The exchange occurs server-side, preventing exposure of tokens to the client except via the intended flow
 
-### loginWithSupabase(accessToken)
+### loginWithAppwrite(accessToken)
 Purpose:
-- Validates a Supabase access token and returns app tokens
+- Validates a Appwrite access token and returns app tokens
 - If the user does not exist in the app’s database, returns AUTH_REQUIRE_REGISTRATION (202)
 
 Implementation highlights:
-- Validates token via Supabase getUser
+- Validates token via Appwrite getUser
 - Checks for user existence in the app’s user table
 - Retrieves current session refresh token for completeness
 - Returns AuthError with code AUTH_REQUIRE_REGISTRATION when user not found in app
 
 Security considerations:
-- Validates token with Supabase before proceeding
+- Validates token with Appwrite before proceeding
 - Ensures the user’s email is available for app-level checks
 
-### registerWithSupabase(accessToken, role, walletAddress, name)
+### registerWithAppwrite(accessToken, role, walletAddress, name)
 Purpose:
 - Completes OAuth registration by updating user metadata and creating a local user record
 
 Implementation highlights:
 - Validates access token and extracts user email
-- Updates Supabase user metadata (role, wallet address, name)
+- Updates Appwrite user metadata (role, wallet address, name)
 - Creates a local user record in the app’s database
 - Returns AuthResult with app tokens
 
 Security considerations:
-- Requires a valid Supabase access token
+- Requires a valid Appwrite access token
 - Role must be one of the supported values
 - Wallet address follows a strict format when provided
 
@@ -3003,20 +3003,20 @@ Documentation references:
 
 ## Dependency Analysis
 The OAuth callback system depends on:
-- Supabase client for OAuth initiation, token exchange, and user validation
+- Appwrite client for OAuth initiation, token exchange, and user validation
 - Auth routes to coordinate flows and respond with standardized statuses
 - Auth service functions to encapsulate business logic and error handling
 
 ```mermaid
 graph LR
 Routes["auth-routes.ts"] --> Service["auth-service.ts"]
-Service --> Config["supabase.ts"]
+Service --> Config["appwrite.ts"]
 Routes --> Types["auth-types.ts"]
 Service --> Types
 ```
 
 ## Performance Considerations
-- Minimal latency: exchangeCodeForSession and loginWithSupabase perform a single Supabase call each
+- Minimal latency: exchangeCodeForSession and loginWithAppwrite perform a single Appwrite call each
 - Reduced round trips: implicit flow HTML page posts tokens directly to the backend
 - Caching: consider caching frequent user lookups if traffic increases
 - Rate limiting: authentication endpoints are protected by rate limiter middleware
@@ -3027,19 +3027,19 @@ Service --> Types
 Common issues and resolutions:
 - OAuth error returned (400): Indicates provider-level error; inspect error and error_description query parameters
 - Exchange failure (401): The authorization code may be invalid or expired; retry the OAuth flow
-- Registration required (202): The user authenticated with Supabase but does not exist in the app; call POST /api/auth/oauth/register to complete onboarding
+- Registration required (202): The user authenticated with Appwrite but does not exist in the app; call POST /api/auth/oauth/register to complete onboarding
 - Invalid token (401): The access token is invalid or expired; re-authenticate or refresh tokens
 
 Error codes and handling:
 - AUTH_EXCHANGE_FAILED: exchangeCodeForSession returned an error
-- AUTH_REQUIRE_REGISTRATION: user exists in Supabase but not in the app
-- AUTH_INVALID_TOKEN: loginWithSupabase failed due to invalid token
+- AUTH_REQUIRE_REGISTRATION: user exists in Appwrite but not in the app
+- AUTH_INVALID_TOKEN: loginWithAppwrite failed due to invalid token
 
 ## Conclusion
 FreelanceXchain’s OAuth callback handling provides robust support for both PKCE and implicit flows:
 - PKCE flow securely exchanges authorization codes for session tokens and returns either app tokens or registration-required status
 - Implicit flow extracts tokens from URL fragments and forwards them to the backend for validation
-- The system centralizes token validation and user synchronization via Supabase, returning standardized responses and error codes
+- The system centralizes token validation and user synchronization via Appwrite, returning standardized responses and error codes
 - Security is strengthened by server-side exchanges and token verification before issuing app tokens
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -3054,7 +3054,7 @@ FreelanceXchain’s OAuth callback handling provides robust support for both PKC
 
 ### Security Notes
 - State validation: The current implementation does not validate state parameters in the callback. If you require state validation, add state parameter handling in getOAuthUrl and validate it in the callback route.
-- Token verification: loginWithSupabase validates the Supabase access token before proceeding; ensure clients store tokens securely and rotate refresh tokens appropriately.
+- Token verification: loginWithAppwrite validates the Appwrite access token before proceeding; ensure clients store tokens securely and rotate refresh tokens appropriately.
 - Redirect URLs: getOAuthUrl constructs redirect URLs using PUBLIC_URL or localhost; ensure PUBLIC_URL is configured correctly for production.
 
 ---
@@ -3080,7 +3080,7 @@ The OAuth initiation flow spans routing, service-layer logic, and configuration:
 
 - Route handler: GET /api/auth/oauth/:provider
 - Service function: getOAuthUrl(provider)
-- Supabase client initialization
+- Appwrite client initialization
 - Environment configuration for redirect URL and base URL
 - OpenAPI/Swagger documentation
 
@@ -3088,32 +3088,32 @@ The OAuth initiation flow spans routing, service-layer logic, and configuration:
 graph TB
 Client["Client Browser"] --> Route["GET /api/auth/oauth/:provider<br/>in auth-routes.ts"]
 Route --> Service["getOAuthUrl(provider)<br/>in auth-service.ts"]
-Service --> Supabase["Supabase Auth Client<br/>in supabase.ts"]
-Supabase --> Provider["OAuth Provider Login Page"]
+Service --> Appwrite["Appwrite Auth Client<br/>in appwrite.ts"]
+Appwrite --> Provider["OAuth Provider Login Page"]
 Provider --> Callback["/api/auth/callback<br/>PKCE or implicit flow"]
 ```
 
 ## Core Components
 - Route handler: Validates provider parameter and delegates to getOAuthUrl, then redirects to the generated URL. It returns 400 for invalid provider and 500 for internal errors.
-- Service function: Builds the provider-specific Supabase OAuth URL, sets redirect URL and PKCE-related query parameters, and returns the URL.
-- Supabase client: Provides the Supabase Auth client used to generate the OAuth URL.
+- Service function: Builds the provider-specific Appwrite OAuth URL, sets redirect URL and PKCE-related query parameters, and returns the URL.
+- Appwrite client: Provides the Appwrite Auth client used to generate the OAuth URL.
 - Environment configuration: Determines the redirect URL and base URL used in the OAuth flow.
 
 Key behaviors:
 - Supported providers: google, github, azure, linkedin
 - Redirect URL: Uses PUBLIC_URL or falls back to http://localhost:<port>/api/auth/callback
 - PKCE parameters: access_type=offline and prompt=consent are included
-- No state parameter is explicitly set in getOAuthUrl; state management is handled by Supabase
+- No state parameter is explicitly set in getOAuthUrl; state management is handled by Appwrite
 
 ## Architecture Overview
-The OAuth initiation flow is a thin controller that delegates to a service function which uses the Supabase client to generate the provider URL. The browser is redirected to the provider’s OAuth page. After authentication, the provider redirects back to the configured callback endpoint.
+The OAuth initiation flow is a thin controller that delegates to a service function which uses the Appwrite client to generate the provider URL. The browser is redirected to the provider’s OAuth page. After authentication, the provider redirects back to the configured callback endpoint.
 
 ```mermaid
 sequenceDiagram
 participant C as "Client"
 participant R as "Route Handler<br/>GET /api/auth/oauth/ : provider"
 participant S as "Service<br/>getOAuthUrl()"
-participant SB as "Supabase Client"
+participant SB as "Appwrite Client"
 participant P as "OAuth Provider"
 participant CB as "Callback Endpoint<br/>/api/auth/callback"
 C->>R : "GET /api/auth/oauth/google"
@@ -3140,7 +3140,7 @@ Responsibilities:
 
 Security and validation:
 - Provider validation prevents unsupported values
-- No additional state parameter is set here; state is managed by Supabase
+- No additional state parameter is set here; state is managed by Appwrite
 
 Error handling:
 - 400: VALIDATION_ERROR with message “Invalid provider”
@@ -3157,9 +3157,9 @@ Notes:
 
 ### Service Function: getOAuthUrl(provider)
 Responsibilities:
-- Selects the correct provider identifier for Supabase (linkedin_oidc for LinkedIn)
+- Selects the correct provider identifier for Appwrite (linkedin_oidc for LinkedIn)
 - Determines redirect URL using PUBLIC_URL or falls back to configured base URL and port
-- Calls Supabase signInWithOAuth with:
+- Calls Appwrite signInWithOAuth with:
   - redirectTo set to the computed callback URL
   - skipBrowserRedirect set to true (client handles redirect)
   - queryParams: access_type=offline and prompt=consent for PKCE
@@ -3168,15 +3168,15 @@ Responsibilities:
 Security and PKCE:
 - access_type=offline and prompt=consent enable offline access and re-consent prompts
 - skipBrowserRedirect=true ensures the server returns the URL instead of performing automatic browser redirect
-- No explicit state parameter is passed; Supabase manages state internally
+- No explicit state parameter is passed; Appwrite manages state internally
 
 Redirect URL resolution:
 - Uses PUBLIC_URL environment variable if present
 - Otherwise constructs http://localhost:<port>/api/auth/callback using config
 
-### Supabase Client Initialization
-- Ensures SUPABASE_URL and SUPABASE_ANON_KEY are configured
-- Provides a singleton Supabase client instance used by getOAuthUrl
+### Appwrite Client Initialization
+- Ensures APPWRITE_URL and APPWRITE_ANON_KEY are configured
+- Provides a singleton Appwrite client instance used by getOAuthUrl
 
 ### OpenAPI/Swagger Documentation
 - The route is documented with path parameter provider constrained to [google, github, azure, linkedin]
@@ -3188,32 +3188,32 @@ Redirect URL resolution:
   - prompt=consent
 - State management:
   - The service does not explicitly pass a state parameter
-  - Supabase handles state internally during signInWithOAuth
+  - Appwrite handles state internally during signInWithOAuth
 
 Note: The callback endpoint supports both PKCE (code in query) and implicit (tokens in URL fragment). The initiation endpoint focuses on generating the URL with PKCE parameters.
 
 ### Error Handling During URL Generation
 - Validation failure: 400 with VALIDATION_ERROR
 - Internal failure: 500 with INTERNAL_ERROR
-- getOAuthUrl throws on Supabase error; the route catches and returns 500
+- getOAuthUrl throws on Appwrite error; the route catches and returns 500
 
 ## Dependency Analysis
 The OAuth initiation endpoint depends on:
 - Route handler for parameter validation and redirection
 - Service function for URL generation and PKCE parameters
-- Supabase client for OAuth integration
+- Appwrite client for OAuth integration
 - Environment configuration for redirect URL and base URL
 
 ```mermaid
 graph LR
 Routes["auth-routes.ts"] --> Service["auth-service.ts"]
-Service --> Supabase["supabase.ts"]
+Service --> Appwrite["appwrite.ts"]
 Service --> Env["env.ts"]
 Routes --> Docs["API-DOCUMENTATION.md"]
 ```
 
 ## Performance Considerations
-- The route is lightweight and delegates to a single service call; latency is dominated by network round-trips to Supabase and the OAuth provider.
+- The route is lightweight and delegates to a single service call; latency is dominated by network round-trips to Appwrite and the OAuth provider.
 - Using skipBrowserRedirect=true avoids unnecessary client-side redirects and lets the server return the URL promptly.
 - Ensure PUBLIC_URL is configured correctly to minimize redirect hops and avoid mixed-content issues.
 
@@ -3222,9 +3222,9 @@ Common issues and resolutions:
 - Unsupported provider:
   - Symptom: 400 VALIDATION_ERROR with message “Invalid provider”
   - Resolution: Use one of google, github, azure, linkedin
-- Missing Supabase configuration:
+- Missing Appwrite configuration:
   - Symptom: 500 INTERNAL_ERROR during URL generation
-  - Resolution: Set SUPABASE_URL and SUPABASE_ANON_KEY
+  - Resolution: Set APPWRITE_URL and APPWRITE_ANON_KEY
 - Incorrect redirect URL:
   - Symptom: Redirect loops or callback failures
   - Resolution: Set PUBLIC_URL to your production origin or ensure local PORT is correct
@@ -3233,7 +3233,7 @@ Common issues and resolutions:
   - Resolution: Verify provider OAuth app settings and allowed redirect URIs match PUBLIC_URL/api/auth/callback
 
 ## Conclusion
-The GET /api/auth/oauth/:provider endpoint provides a secure and standardized way to initiate OAuth with supported providers. It validates inputs, generates a provider-specific URL with PKCE parameters, and redirects the client to the provider’s login page. Redirect URL configuration and environment variables are central to correctness. The service layer encapsulates Supabase integration, while the route enforces validation and error handling. For unsupported providers or server-side failures, the endpoint returns appropriate error responses.
+The GET /api/auth/oauth/:provider endpoint provides a secure and standardized way to initiate OAuth with supported providers. It validates inputs, generates a provider-specific URL with PKCE parameters, and redirects the client to the provider’s login page. Redirect URL configuration and environment variables are central to correctness. The service layer encapsulates Appwrite integration, while the route enforces validation and error handling. For unsupported providers or server-side failures, the endpoint returns appropriate error responses.
 
 ---
 
@@ -3251,31 +3251,31 @@ The GET /api/auth/oauth/:provider endpoint provides a secure and standardized wa
 9. [Conclusion](#conclusion)
 
 ## Introduction
-This document provides comprehensive API documentation for the OAuth registration completion endpoint POST /api/auth/oauth/register in FreelanceXchain. The endpoint finalizes account creation for new OAuth users by assigning a role (freelancer or employer), optionally setting a full name, and validating an Ethereum wallet address format. It integrates with registerWithSupabase in auth-service.ts to validate the Supabase access token, synchronize user metadata in Supabase Auth, and create a corresponding user record in the public.users table. The document explains validation rules, response formats, error handling, and security considerations for token validation and role assignment.
+This document provides comprehensive API documentation for the OAuth registration completion endpoint POST /api/auth/oauth/register in FreelanceXchain. The endpoint finalizes account creation for new OAuth users by assigning a role (freelancer or employer), optionally setting a full name, and validating an Ethereum wallet address format. It integrates with registerWithAppwrite in auth-service.ts to validate the Appwrite access token, synchronize user metadata in Appwrite Auth, and create a corresponding user record in the public.users table. The document explains validation rules, response formats, error handling, and security considerations for token validation and role assignment.
 
 ## Project Structure
-The OAuth registration flow spans route handlers, service logic, repository access, and Supabase integration. The following diagram shows the primary components involved in the POST /api/auth/oauth/register endpoint.
+The OAuth registration flow spans route handlers, service logic, repository access, and Appwrite integration. The following diagram shows the primary components involved in the POST /api/auth/oauth/register endpoint.
 
 ```mermaid
 graph TB
 Client["Client Application"] --> Routes["Auth Routes<br/>auth-routes.ts"]
 Routes --> Service["Auth Service<br/>auth-service.ts"]
 Service --> Repo["User Repository<br/>user-repository.ts"]
-Service --> Supabase["Supabase Client<br/>supabase.ts"]
+Service --> Appwrite["Appwrite Client<br/>appwrite.ts"]
 Repo --> DB["PostgreSQL Table<br/>public.users"]
-Supabase --> Auth["Supabase Auth"]
+Appwrite --> Auth["Appwrite Auth"]
 ```
 
 ## Core Components
-- Route handler for POST /api/auth/oauth/register validates request fields and invokes registerWithSupabase.
-- Service function registerWithSupabase validates the Supabase access token, checks for existing user records, updates Supabase user metadata, and creates a public.users record.
+- Route handler for POST /api/auth/oauth/register validates request fields and invokes registerWithAppwrite.
+- Service function registerWithAppwrite validates the Appwrite access token, checks for existing user records, updates Appwrite user metadata, and creates a public.users record.
 - Repository layer persists user data to the public.users table.
-- Supabase client manages authentication and user metadata synchronization.
+- Appwrite client manages authentication and user metadata synchronization.
 
 Key responsibilities:
 - Validate accessToken presence and role selection.
 - Validate optional name length and wallet address format.
-- Authenticate and authorize via Supabase access token.
+- Authenticate and authorize via Appwrite access token.
 - Assign role (freelancer or employer) and optional profile metadata.
 - Create user record in public.users and return AuthResult.
 
@@ -3284,7 +3284,7 @@ The OAuth registration completion follows a layered architecture:
 - Presentation: Express route validates input and delegates to service.
 - Application: Service validates token, updates metadata, and creates user.
 - Persistence: Repository writes to public.users.
-- Integration: Supabase client synchronizes user metadata and sessions.
+- Integration: Appwrite client synchronizes user metadata and sessions.
 
 ```mermaid
 sequenceDiagram
@@ -3292,11 +3292,11 @@ participant C as "Client"
 participant R as "Auth Routes"
 participant S as "Auth Service"
 participant URepo as "User Repository"
-participant Sup as "Supabase Client"
+participant Sup as "Appwrite Client"
 participant DB as "public.users"
 C->>R : POST /api/auth/oauth/register {accessToken, role, name?, walletAddress?}
 R->>R : Validate accessToken, role, name, walletAddress
-R->>S : registerWithSupabase(accessToken, role, walletAddress, name)
+R->>S : registerWithAppwrite(accessToken, role, walletAddress, name)
 S->>Sup : auth.getUser(accessToken)
 Sup-->>S : {user} or error
 S->>URepo : getUserByEmail(user.email)
@@ -3319,7 +3319,7 @@ R-->>C : 201 AuthResult or 400/401/500
 - Purpose: Finalize OAuth user registration by assigning role and optional profile metadata.
 
 Request body fields:
-- accessToken: string, required. Supabase access token obtained from OAuth flow.
+- accessToken: string, required. Appwrite access token obtained from OAuth flow.
 - role: string, required. Must be freelancer or employer.
 - name: string, optional. Minimum 2 characters if provided.
 - walletAddress: string, optional. Must match Ethereum address pattern 0x followed by 40 hexadecimal characters.
@@ -3331,7 +3331,7 @@ Response:
 - 500 Internal Server Error: Unexpected error during registration.
 
 Security considerations:
-- Access token must be validated via Supabase getUser before proceeding.
+- Access token must be validated via Appwrite getUser before proceeding.
 - Role must be one of the allowed values.
 - Wallet address must conform to Ethereum address format.
 - Name must meet minimum length requirement when present.
@@ -3343,15 +3343,15 @@ Validation logic highlights:
 - walletAddress format enforced using regex pattern.
 
 Integration points:
-- registerWithSupabase performs token validation and metadata update.
+- registerWithAppwrite performs token validation and metadata update.
 - User creation occurs in public.users via repository.
 - Session refresh token is included in AuthResult.
 
-### Service Layer: registerWithSupabase
+### Service Layer: registerWithAppwrite
 Behavior:
-- Validates access token by calling Supabase getUser.
+- Validates access token by calling Appwrite getUser.
 - Checks if user already exists in public.users by email.
-- Updates Supabase user metadata with role, wallet_address, and name.
+- Updates Appwrite user metadata with role, wallet_address, and name.
 - Creates a new user record in public.users with normalized email and provided attributes.
 - Retrieves session refresh token and constructs AuthResult.
 
@@ -3372,23 +3372,23 @@ Responsibilities:
 - emailExists checks for duplicate emails.
 
 Database integration:
-- Uses Supabase client to perform CRUD operations on the users table.
+- Uses Appwrite client to perform CRUD operations on the users table.
 - Handles row-not-found errors gracefully.
 
-### Supabase Integration
-- getSupabaseClient initializes the Supabase client with configured URL and anon key.
+### Appwrite Integration
+- getAppwriteClient initializes the Appwrite client with configured URL and anon key.
 - TABLES defines the users table constant used by the repository.
-- registerWithSupabase uses Supabase auth.getUser to validate token and auth.updateUser to set metadata.
+- registerWithAppwrite uses Appwrite auth.getUser to validate token and auth.updateUser to set metadata.
 
 ### Example Requests and Responses
 
 - Successful registration request:
   - POST /api/auth/oauth/register
-  - Body: { "accessToken": "<valid_supabase_access_token>", "role": "freelancer", "name": "John Doe", "walletAddress": "0x1234567890123456789012345678901234567890" }
+  - Body: { "accessToken": "<valid_appwrite_access_token>", "role": "freelancer", "name": "John Doe", "walletAddress": "0x1234567890123456789012345678901234567890" }
 
 - Minimal registration request:
   - POST /api/auth/oauth/register
-  - Body: { "accessToken": "<valid_supabase_access_token>", "role": "employer" }
+  - Body: { "accessToken": "<valid_appwrite_access_token>", "role": "employer" }
 
 - Validation error response (invalid role):
   - Status: 400
@@ -3409,13 +3409,13 @@ The endpoint depends on:
 - Route handler for input validation and orchestration.
 - Service function for token validation, metadata update, and user creation.
 - Repository for persistence to public.users.
-- Supabase client for authentication and metadata synchronization.
+- Appwrite client for authentication and metadata synchronization.
 
 ```mermaid
 graph LR
 Routes["auth-routes.ts"] --> Service["auth-service.ts"]
 Service --> Repo["user-repository.ts"]
-Service --> Supabase["supabase.ts"]
+Service --> Appwrite["appwrite.ts"]
 Repo --> DB["public.users"]
 Service --> Types["auth-types.ts"]
 Service --> Models["user.ts"]
@@ -3423,10 +3423,10 @@ Service --> Mapper["entity-mapper.ts"]
 ```
 
 ## Performance Considerations
-- Token validation is performed synchronously via Supabase getUser; ensure low-latency network connectivity to Supabase.
+- Token validation is performed synchronously via Appwrite getUser; ensure low-latency network connectivity to Appwrite.
 - Public users table creation uses a short delay before querying; consider adjusting timing if triggers are slow.
 - Repository operations are single-row queries; keep indexes on id and email for optimal performance.
-- Avoid excessive retries on transient Supabase errors; implement exponential backoff if needed.
+- Avoid excessive retries on transient Appwrite errors; implement exponential backoff if needed.
 
 [No sources needed since this section provides general guidance]
 
@@ -3447,16 +3447,16 @@ Common issues and resolutions:
   - Cause: User already exists in public.users.
   - Resolution: Log in with existing credentials or use a different OAuth account.
 
-- Supabase metadata update failures:
+- Appwrite metadata update failures:
   - Symptom: Registration proceeds but metadata not updated.
-  - Resolution: Verify Supabase configuration and retry; check logs for error details.
+  - Resolution: Verify Appwrite configuration and retry; check logs for error details.
 
 - Internal server errors:
   - Symptom: 500 INTERNAL_ERROR.
-  - Resolution: Inspect server logs and retry; confirm Supabase connectivity and database health.
+  - Resolution: Inspect server logs and retry; confirm Appwrite connectivity and database health.
 
 ## Conclusion
-The POST /api/auth/oauth/register endpoint securely finalizes OAuth user registration by validating the access token, enforcing role and profile constraints, updating Supabase user metadata, and creating a public.users record. The service layer encapsulates Supabase integration and repository persistence, while the route layer enforces input validation and returns standardized responses. Following the documented validation rules and error handling ensures robust integration with the FreelanceXchain platform.
+The POST /api/auth/oauth/register endpoint securely finalizes OAuth user registration by validating the access token, enforcing role and profile constraints, updating Appwrite user metadata, and creating a public.users record. The service layer encapsulates Appwrite integration and repository persistence, while the route layer enforces input validation and returns standardized responses. Following the documented validation rules and error handling ensures robust integration with the FreelanceXchain platform.
 
 ---
 
@@ -3784,7 +3784,7 @@ Routes --> Service["Dispute Service<br/>src/services/dispute-service.ts"]
 Service --> Repo["Dispute Repository<br/>src/repositories/dispute-repository.ts"]
 Service --> Mapper["Entity Mapper<br/>src/utils/entity-mapper.ts"]
 Service --> Registry["Dispute Registry (Blockchain)<br/>src/services/dispute-registry.ts"]
-Repo --> DB["Supabase (via BaseRepository)"]
+Repo --> DB["Appwrite (via BaseRepository)"]
 Registry --> Chain["Mock Blockchain Layer"]
 ```
 
@@ -3801,7 +3801,7 @@ Registry --> Chain["Mock Blockchain Layer"]
 The dispute API follows a layered architecture:
 - HTTP Layer: Routes define endpoints and apply middleware.
 - Service Layer: Orchestrates business logic, repository interactions, and blockchain operations.
-- Persistence Layer: Supabase-backed repository with typed entities.
+- Persistence Layer: Appwrite-backed repository with typed entities.
 - Presentation Layer: Entity mapper exposes API-friendly models.
 - Security Layer: JWT authentication and role checks.
 
@@ -4049,7 +4049,7 @@ Routes --> Service["dispute-service.ts"]
 Service --> Repo["dispute-repository.ts"]
 Service --> Mapper["entity-mapper.ts"]
 Service --> Registry["dispute-registry.ts"]
-Repo --> DB["Supabase"]
+Repo --> DB["Appwrite"]
 Registry --> Chain["Blockchain Layer"]
 ```
 
@@ -4713,7 +4713,7 @@ AuthMW["Auth Middleware<br/>auth-middleware.ts"]
 ValMW["Validation Middleware<br/>validation-middleware.ts"]
 Service["Dispute Service<br/>dispute-service.ts"]
 Repo["Dispute Repository<br/>dispute-repository.ts"]
-DB["Supabase DB<br/>schema.sql"]
+DB["Appwrite DB<br/>schema.sql"]
 Client --> Router
 Router --> AuthMW
 Router --> ValMW
@@ -4725,7 +4725,7 @@ Repo --> DB
 ## Core Components
 - Route handlers enforce JWT authentication and UUID parameter validation, then delegate to the service layer.
 - Service layer enforces access control by verifying the user’s association with the contract and performs database queries.
-- Repository layer encapsulates Supabase queries for dispute records.
+- Repository layer encapsulates Appwrite queries for dispute records.
 - Swagger defines the JWT security scheme and response schemas for Dispute, Evidence, and DisputeResolution.
 
 Key responsibilities:
@@ -4744,7 +4744,7 @@ participant A as "Auth Middleware"
 participant V as "UUID Validation"
 participant S as "Dispute Service"
 participant P as "Dispute Repository"
-participant D as "Supabase DB"
+participant D as "Appwrite DB"
 C->>R : "GET /api/disputes/{disputeId}<br/>Authorization : Bearer <token>"
 R->>A : "Validate JWT"
 A-->>R : "User validated or error"
@@ -4822,7 +4822,7 @@ Auth --> |Valid| UUID["Validate UUID Param(s)"]
 UUID --> |Invalid| E400["400 Bad Request"]
 UUID --> |Valid| ServiceCall["Call Service Layer"]
 ServiceCall --> RepoCall["Repository Query"]
-RepoCall --> DBQuery["Supabase SELECT"]
+RepoCall --> DBQuery["Appwrite SELECT"]
 DBQuery --> Result{"Found?"}
 Result --> |No| E404["404 Not Found"]
 Result --> |Yes| Map["Map Entity to Model"]
@@ -4839,7 +4839,7 @@ Map --> Ok["200 OK JSON"]
   - Contract repository to verify user association.
   - User repository to map wallets for blockchain recording.
 - Repository depends on:
-  - Supabase client configured in base repository.
+  - Appwrite client configured in base repository.
   - Disputes table schema.
 
 ```mermaid
@@ -4877,7 +4877,7 @@ Operational tips:
 - Verify the user belongs to the contract for contract-level retrieval.
 
 ## Conclusion
-The dispute retrieval endpoints are secured with JWT and enforce strict access control. The service layer ensures only parties involved in a contract can view its disputes. Responses conform to Swagger-defined schemas, and the repository layer efficiently queries the Supabase database with proper indexing and ordering.
+The dispute retrieval endpoints are secured with JWT and enforce strict access control. The service layer ensures only parties involved in a contract can view its disputes. Responses conform to Swagger-defined schemas, and the repository layer efficiently queries the Appwrite database with proper indexing and ordering.
 
 [No sources needed since this section summarizes without analyzing specific files]
 
@@ -4967,7 +4967,7 @@ Route --> Service["Dispute Service.submitEvidence()"]
 Service --> Repo["Dispute Repository"]
 Service --> Registry["Dispute Registry (Blockchain)"]
 Registry --> Contract["DisputeResolution.sol"]
-Repo --> DB["Supabase"]
+Repo --> DB["Appwrite"]
 Contract --> Chain["Ethereum-like Chain"]
 ```
 
@@ -5191,7 +5191,7 @@ ContractSvc --> Contract["KYCVerification.sol"]
 ## Core Components
 - Routes: Define endpoints, request/response schemas, and security requirements.
 - Service: Orchestrates validation, business rules, repository updates, and blockchain submissions.
-- Repository: Persists KYC records to Supabase and maps entities to models.
+- Repository: Persists KYC records to Appwrite and maps entities to models.
 - Models: Strongly typed request/response schemas and enums.
 - Blockchain Service: Submits KYC to the smart contract and manages approvals/rejections.
 - Smart Contract: Stores on-chain verification status and metadata.
@@ -5200,7 +5200,7 @@ ContractSvc --> Contract["KYCVerification.sol"]
 The KYC API follows a layered architecture:
 - Presentation Layer: Express routes expose REST endpoints.
 - Application Layer: Services encapsulate business logic and integrate with repositories and blockchain.
-- Persistence Layer: Repository maps models to Supabase entities and performs CRUD.
+- Persistence Layer: Repository maps models to Appwrite entities and performs CRUD.
 - Integration Layer: Blockchain service interacts with the KYC smart contract.
 
 ```mermaid
@@ -5601,7 +5601,7 @@ Note: The score is simulated in the current implementation.
 ## Dependency Analysis
 - Route depends on auth middleware and service
 - Service depends on repository and models
-- Repository depends on Supabase client and entity mapping
+- Repository depends on Appwrite client and entity mapping
 - Swagger config defines the bearerAuth security scheme
 
 ```mermaid
@@ -5685,7 +5685,7 @@ Client["Admin Client"] --> Routes["KYC Routes<br/>src/routes/kyc-routes.ts"]
 Routes --> AuthMW["Auth Middleware<br/>src/middleware/auth-middleware.ts"]
 Routes --> Service["KYC Service<br/>src/services/kyc-service.ts"]
 Service --> Repo["KYC Repository<br/>src/repositories/kyc-repository.ts"]
-Repo --> DB["Supabase DB"]
+Repo --> DB["Appwrite DB"]
 Routes --> Swagger["Swagger Config<br/>src/config/swagger.ts"]
 ```
 
@@ -5857,7 +5857,7 @@ graph LR
 Routes["kyc-routes.ts"] --> Auth["auth-middleware.ts"]
 Routes --> Service["kyc-service.ts"]
 Service --> Repo["kyc-repository.ts"]
-Repo --> DB["Supabase"]
+Repo --> DB["Appwrite"]
 Routes --> Swagger["swagger.ts"]
 ```
 
@@ -5914,7 +5914,7 @@ This document specifies the KYC data retrieval API for the FreelanceXchain syste
 It defines HTTP methods, authentication requirements (JWT for status endpoint), response schemas, and error handling. It also explains the KycVerification response schema lifecycle (pending, submitted, under_review, approved, rejected) and tier levels (basic, standard, enhanced). Guidance is included for building dynamic KYC forms based on country requirements.
 
 ## Project Structure
-The KYC endpoints are implemented in the routing layer, backed by service logic, typed models, and a repository that persists to Supabase. Swagger definitions are centralized for OpenAPI documentation.
+The KYC endpoints are implemented in the routing layer, backed by service logic, typed models, and a repository that persists to Appwrite. Swagger definitions are centralized for OpenAPI documentation.
 
 ```mermaid
 graph TB
@@ -5922,7 +5922,7 @@ Client["Client App"] --> Routes["Routes: kyc-routes.ts"]
 Routes --> Auth["Auth Middleware"]
 Routes --> Service["Service: kyc-service.ts"]
 Service --> Repo["Repository: kyc-repository.ts"]
-Repo --> DB["Supabase: kyc_verifications"]
+Repo --> DB["Appwrite: kyc_verifications"]
 Service --> Contract["Contract: KYCVerification.sol"]
 Swagger["Swagger Config"] --> Routes
 ```
@@ -5931,7 +5931,7 @@ Swagger["Swagger Config"] --> Routes
 - Routes define endpoints, request validation, and response formatting.
 - Service encapsulates business logic, country requirement checks, and integration with the repository and blockchain contract.
 - Models define the KycVerification schema and related types.
-- Repository maps domain models to Supabase entities and performs persistence.
+- Repository maps domain models to Appwrite entities and performs persistence.
 - Swagger centralizes OpenAPI definitions for interactive docs and schema references.
 
 ## Architecture Overview
@@ -5944,7 +5944,7 @@ participant R as "kyc-routes.ts"
 participant A as "auth-middleware.ts"
 participant S as "kyc-service.ts"
 participant P as "kyc-repository.ts"
-participant D as "Supabase DB"
+participant D as "Appwrite DB"
 C->>R : GET /api/kyc/status
 R->>A : authMiddleware()
 A-->>R : validated user or 401
@@ -6173,7 +6173,7 @@ Clients should:
 - Service dependencies:
   - kyc-service.ts depends on kyc-repository.ts for persistence and on KYCVerification.sol for blockchain integration.
 - Repository dependencies:
-  - kyc-repository.ts depends on supabase.ts for table names and DB client.
+  - kyc-repository.ts depends on appwrite.ts for table names and DB client.
 - Swagger dependencies:
   - swagger.ts defines OpenAPI components and security schemes used by the routes.
 
@@ -6182,7 +6182,7 @@ graph LR
 Routes["kyc-routes.ts"] --> Auth["auth-middleware.ts"]
 Routes --> Service["kyc-service.ts"]
 Service --> Repo["kyc-repository.ts"]
-Repo --> Supabase["supabase.ts"]
+Repo --> Appwrite["appwrite.ts"]
 Service --> Contract["KYCVerification.sol"]
 Swagger["swagger.ts"] --> Routes
 ```
@@ -6794,7 +6794,7 @@ The POST /api/kyc/submit endpoint provides a robust, standards-aligned internati
 This document provides comprehensive API documentation for the notification system endpoints in the FreelanceXchain platform. It covers HTTP methods, URL patterns, request/response schemas, authentication requirements (JWT Bearer), and pagination mechanisms. It also documents notification types, payload structures, and client implementation guidance for building a notification center with real-time updates. The goal is to enable developers to integrate notification retrieval, marking as read, and unread counts into their applications reliably and efficiently.
 
 ## Project Structure
-The notification API is implemented as part of the Express route layer, backed by a service layer and a repository that interacts with the Supabase database. Authentication is enforced via a JWT Bearer middleware. The OpenAPI/Swagger specification defines response schemas and security schemes.
+The notification API is implemented as part of the Express route layer, backed by a service layer and a repository that interacts with the Appwrite database. Authentication is enforced via a JWT Bearer middleware. The OpenAPI/Swagger specification defines response schemas and security schemes.
 
 ```mermaid
 graph TB
@@ -6802,13 +6802,13 @@ Client["Client Application"] --> Routes["Routes: notification-routes.ts"]
 Routes --> Auth["Auth Middleware: auth-middleware.ts"]
 Routes --> Service["Service: notification-service.ts"]
 Service --> Repo["Repository: notification-repository.ts"]
-Repo --> DB["Supabase: notifications table"]
+Repo --> DB["Appwrite: notifications table"]
 ```
 
 ## Core Components
 - Routes: Define endpoints for listing notifications, marking a notification as read, marking all as read, and retrieving unread counts. All endpoints require JWT Bearer authentication.
 - Service: Orchestrates business logic for creating, retrieving, and updating notifications, and exposes helper functions for specific notification types.
-- Repository: Implements database operations using Supabase client, including paginated queries, unread counts, and bulk updates.
+- Repository: Implements database operations using Appwrite client, including paginated queries, unread counts, and bulk updates.
 - Auth Middleware: Validates Authorization header format and verifies JWT tokens.
 - Swagger: Defines the Notification schema, error schema, and security scheme for Bearer JWT.
 
@@ -6822,7 +6822,7 @@ Key responsibilities:
 The notification API follows a layered architecture:
 - Route handlers accept requests, enforce authentication, and delegate to the service.
 - Services translate request options into repository calls and map entities to API models.
-- Repositories encapsulate Supabase queries and handle pagination metadata.
+- Repositories encapsulate Appwrite queries and handle pagination metadata.
 - Swagger documents schemas and security for clients.
 
 ```mermaid
@@ -6832,7 +6832,7 @@ participant R as "Routes"
 participant A as "Auth Middleware"
 participant S as "Service"
 participant P as "Repository"
-participant D as "Supabase DB"
+participant D as "Appwrite DB"
 C->>R : "GET /api/notifications"
 R->>A : "Validate Authorization header"
 A-->>R : "Attach validated user"
@@ -6879,7 +6879,7 @@ Notification schema (selected fields):
 - createdAt: string (ISO 8601)
 
 Pagination:
-- Uses Supabase range queries with ORDER BY created_at DESC.
+- Uses Appwrite range queries with ORDER BY created_at DESC.
 - hasMore indicates whether more records exist beyond the current page.
 - total may be included depending on count mode.
 
@@ -6931,7 +6931,7 @@ Supported notification types:
 These types are defined in the repository and mapped to the API model. Additional helper functions exist in the service to create notifications for specific workflow events.
 
 ### Pagination Mechanism
-- The repository uses Supabase range queries with ORDER BY created_at DESC.
+- The repository uses Appwrite range queries with ORDER BY created_at DESC.
 - QueryOptions supports limit/offset semantics; the route handler forwards maxItemCount and continuationToken to the service, which maps them to repository options.
 - Response includes hasMore and total to guide client-side pagination.
 
@@ -6940,7 +6940,7 @@ flowchart TD
 Start(["Route Handler"]) --> Parse["Parse query params<br/>maxItemCount, continuationToken"]
 Parse --> BuildOptions["Build QueryOptions<br/>limit/offset"]
 BuildOptions --> RepoCall["Repository getNotificationsByUser(userId, options)"]
-RepoCall --> RangeQuery["Supabase range + order by created_at desc"]
+RepoCall --> RangeQuery["Appwrite range + order by created_at desc"]
 RangeQuery --> Result["PaginatedResult { items, hasMore, total }"]
 Result --> Map["Map entities to API models"]
 Map --> Respond["Return 200 with items, hasMore, total"]
@@ -7110,7 +7110,7 @@ The endpoint is implemented using a layered architecture:
 - Route handler validates authentication and delegates to the service layer.
 - Service layer orchestrates repository operations.
 - Repository executes a database query optimized for counting unread notifications.
-- Supabase client and table constants define the data access layer.
+- Appwrite client and table constants define the data access layer.
 
 ```mermaid
 graph TB
@@ -7118,8 +7118,8 @@ Client["Client App"] --> Routes["Routes: notification-routes.ts"]
 Routes --> Auth["Auth Middleware: auth-middleware.ts"]
 Routes --> Service["Service: notification-service.ts"]
 Service --> Repo["Repository: notification-repository.ts"]
-Repo --> Supabase["Supabase Client: supabase.ts"]
-Supabase --> DB["PostgreSQL Table: notifications"]
+Repo --> Appwrite["Appwrite Client: appwrite.ts"]
+Appwrite --> DB["PostgreSQL Table: notifications"]
 ```
 
 ## Core Components
@@ -7138,7 +7138,7 @@ Implementation highlights:
 The endpoint follows a clean separation of concerns:
 - Route layer: Validates authentication and constructs the response
 - Service layer: Provides business logic and error handling wrapper
-- Repository layer: Performs database operations with Supabase client
+- Repository layer: Performs database operations with Appwrite client
 - Data model: Uses the notifications table with indexes for performance
 
 ```mermaid
@@ -7148,7 +7148,7 @@ participant R as "Routes"
 participant A as "Auth Middleware"
 participant S as "Service"
 participant P as "Repository"
-participant D as "Supabase/DB"
+participant D as "Appwrite/DB"
 C->>R : "GET /api/notifications/unread-count"
 R->>A : "Validate Bearer token"
 A-->>R : "Authenticated user info"
@@ -7216,7 +7216,7 @@ Database schema and indexes:
 
 ```mermaid
 flowchart TD
-StartRepo(["getUnreadCount(userId)"]) --> BuildQuery["Build Supabase Query"]
+StartRepo(["getUnreadCount(userId)"]) --> BuildQuery["Build Appwrite Query"]
 BuildQuery --> ApplyFilters["Apply filters:<br/>user_id = userId<br/>is_read = false"]
 ApplyFilters --> SelectCount["Select with count: 'exact'<br/>head: true"]
 SelectCount --> ExecQuery["Execute Query"]
@@ -7244,7 +7244,7 @@ graph LR
 Routes["notification-routes.ts"] --> Auth["auth-middleware.ts"]
 Routes --> Service["notification-service.ts"]
 Service --> Repo["notification-repository.ts"]
-Repo --> Supabase["supabase.ts"]
+Repo --> Appwrite["appwrite.ts"]
 Repo --> Schema["schema.sql (notifications)"]
 ```
 
@@ -7278,8 +7278,8 @@ Common issues and resolutions:
   - Service-level error from getUnreadCount
   - Resolution: Retry after a short delay; check server logs
 - Database errors:
-  - Supabase client errors during COUNT query
-  - Resolution: Verify database connectivity and indexes; check Supabase logs
+  - Appwrite client errors during COUNT query
+  - Resolution: Verify database connectivity and indexes; check Appwrite logs
 
 Operational checks:
 - Confirm auth middleware attaches user info to the request
@@ -7323,7 +7323,7 @@ Routes --> AuthMW["Auth Middleware<br/>auth-middleware.ts"]
 Routes --> Validator["UUID Validator<br/>validation-middleware.ts"]
 Routes --> Service["Notification Service<br/>notification-service.ts"]
 Service --> Repo["Notification Repository<br/>notification-repository.ts"]
-Repo --> DB["Supabase Table<br/>notifications"]
+Repo --> DB["Appwrite Table<br/>notifications"]
 Service --> Mapper["Entity Mapper<br/>entity-mapper.ts"]
 ```
 
@@ -7445,7 +7445,7 @@ Key dependencies and interactions:
 - Routes depend on auth-middleware and validation-middleware
 - Routes call notification-service
 - Service depends on notification-repository and entity-mapper
-- Repository interacts with Supabase notifications table
+- Repository interacts with Appwrite notifications table
 
 ```mermaid
 graph LR
@@ -7454,7 +7454,7 @@ Routes --> Validator["validation-middleware.ts"]
 Routes --> Service["notification-service.ts"]
 Service --> Repo["notification-repository.ts"]
 Service --> Mapper["entity-mapper.ts"]
-Repo --> DB["Supabase notifications table"]
+Repo --> DB["Appwrite notifications table"]
 ```
 
 ## Performance Considerations
@@ -7535,10 +7535,10 @@ This document provides API documentation for retrieving a user’s notifications
 The notifications feature is implemented across several layers:
 - Route handler: defines the endpoint, validates JWT, parses query parameters, and returns paginated results.
 - Service layer: orchestrates business logic and delegates database operations.
-- Repository layer: encapsulates database queries using Supabase client.
+- Repository layer: encapsulates database queries using Appwrite client.
 - Entity mapping: converts database entities to API models.
 - Middleware: enforces JWT authentication.
-- Configuration: exposes table names and Supabase client.
+- Configuration: exposes table names and Appwrite client.
 
 ```mermaid
 graph TB
@@ -7546,8 +7546,8 @@ Client["Client"] --> Routes["Routes: notification-routes.ts"]
 Routes --> AuthMW["Middleware: auth-middleware.ts"]
 Routes --> Service["Service: notification-service.ts"]
 Service --> Repo["Repository: notification-repository.ts"]
-Repo --> Supabase["Supabase Client"]
-Repo --> Config["Config: supabase.ts"]
+Repo --> Appwrite["Appwrite Client"]
+Repo --> Config["Config: appwrite.ts"]
 Service --> Mapper["Mapper: entity-mapper.ts"]
 Routes --> Response["JSON Response"]
 ```
@@ -7576,7 +7576,7 @@ Each notification includes:
 Supported notification types include proposal_received, proposal_accepted, proposal_rejected, milestone_submitted, milestone_approved, payment_released, dispute_created, dispute_resolved, rating_received, and message.
 
 ## Architecture Overview
-The GET /api/notifications flow integrates the route handler, authentication middleware, service, repository, and Supabase client.
+The GET /api/notifications flow integrates the route handler, authentication middleware, service, repository, and Appwrite client.
 
 ```mermaid
 sequenceDiagram
@@ -7585,7 +7585,7 @@ participant R as "Route Handler<br/>notification-routes.ts"
 participant MW as "Auth Middleware<br/>auth-middleware.ts"
 participant S as "Service<br/>notification-service.ts"
 participant RP as "Repository<br/>notification-repository.ts"
-participant DB as "Supabase Client"
+participant DB as "Appwrite Client"
 C->>R : "GET /api/notifications<br/>Authorization : Bearer <token><br/>maxItemCount, continuationToken"
 R->>MW : "Validate JWT"
 MW-->>R : "User info or 401"
@@ -7645,7 +7645,7 @@ NotificationService --> EntityMapper : "maps"
 
 ### Repository Layer: NotificationRepository
 - getNotificationsByUser(userId, options):
-  - Uses Supabase client to select notifications for the given user.
+  - Uses Appwrite client to select notifications for the given user.
   - Orders by created_at descending.
   - Applies LIMIT and OFFSET derived from options.
   - Computes hasMore and total count.
@@ -7703,7 +7703,7 @@ Note: The repository currently uses LIMIT/OFFSET semantics. The route handler do
   - notification-repository for data access
   - entity-mapper for model conversion
 - Repository depends on:
-  - Supabase client from configuration
+  - Appwrite client from configuration
   - TABLES constant for table name
 
 ```mermaid
@@ -7711,7 +7711,7 @@ graph LR
 Routes["notification-routes.ts"] --> Auth["auth-middleware.ts"]
 Routes --> Service["notification-service.ts"]
 Service --> Repo["notification-repository.ts"]
-Repo --> Config["supabase.ts"]
+Repo --> Config["appwrite.ts"]
 Service --> Mapper["entity-mapper.ts"]
 ```
 
@@ -7735,7 +7735,7 @@ Common issues and resolutions:
 - 400 Bad Request:
   - Validation errors from service or repository. Check query parameters and retry.
 - 500 Internal Server Error:
-  - Database connectivity or query failures. Verify Supabase configuration and network.
+  - Database connectivity or query failures. Verify Appwrite configuration and network.
 
 Client-side guidance:
 - Infinite scroll:
@@ -7814,7 +7814,7 @@ All endpoints require authentication via JWT bearer tokens, except for public en
 
 ## Authentication Endpoints
 
-The authentication system provides standard user registration and login functionality with JWT token management. It also supports OAuth integration with external providers (Google, GitHub, Azure, LinkedIn) through Supabase.
+The authentication system provides standard user registration and login functionality with JWT token management. It also supports OAuth integration with external providers (Google, GitHub, Azure, LinkedIn) through Appwrite.
 
 ```mermaid
 sequenceDiagram
@@ -11153,8 +11153,8 @@ Router --> UUIDMW["UUID Validation Middleware"]
 Router --> Service["Payment Service<br/>getContractPaymentStatus()"]
 Service --> ContractRepo["Contract Repository"]
 Service --> ProjectRepo["Project Repository"]
-ContractRepo --> DB["Supabase Contracts Table"]
-ProjectRepo --> DB2["Supabase Projects Table"]
+ContractRepo --> DB["Appwrite Contracts Table"]
+ProjectRepo --> DB2["Appwrite Projects Table"]
 Service --> Chain["Blockchain (Escrow Address)"]
 Router --> Client
 ```
@@ -11177,7 +11177,7 @@ Router --> Client
 The endpoint follows a layered architecture:
 - Presentation layer: Express route handler
 - Application layer: Payment service orchestrating repositories and blockchain data
-- Data layer: Supabase repositories for contracts and projects
+- Data layer: Appwrite repositories for contracts and projects
 - Security layer: JWT auth middleware and UUID validation middleware
 
 ```mermaid
@@ -12167,7 +12167,7 @@ graph TB
 Client["Client"] --> Routes["Routes<br/>project-routes.ts"]
 Routes --> Service["Services<br/>project-service.ts"]
 Service --> Repo["Repositories<br/>project-repository.ts"]
-Repo --> DB["Supabase DB"]
+Repo --> DB["Appwrite DB"]
 Routes --> Swagger["Swagger Schemas<br/>swagger.ts"]
 Routes --> Validator["Validation Middleware<br/>validation-middleware.ts"]
 Service --> Mapper["Entity Mapper<br/>entity-mapper.ts"]
@@ -12177,7 +12177,7 @@ Repo --> BaseRepo["Base Repository<br/>base-repository.ts"]
 ## Core Components
 - Route handlers for GET /api/projects and GET /api/projects/{id}
 - Service functions orchestrating filtering and pagination
-- Repository methods querying Supabase with filters and pagination
+- Repository methods querying Appwrite with filters and pagination
 - Validation middleware for UUID and query parameters
 - Swagger schemas for Project and pagination metadata
 - Entity mapper for consistent API model shape
@@ -12195,7 +12195,7 @@ participant C as "Client"
 participant R as "Routes<br/>project-routes.ts"
 participant S as "Service<br/>project-service.ts"
 participant P as "Repository<br/>project-repository.ts"
-participant D as "Supabase DB"
+participant D as "Appwrite DB"
 C->>R : GET /api/projects?keyword=...&skills=...&minBudget=...&maxBudget=...&limit=...&continuationToken=...
 R->>R : validateUUID() middleware (for id path)
 R->>R : parse query params and options
@@ -12280,7 +12280,7 @@ participant C as "Client"
 participant R as "Routes<br/>project-routes.ts"
 participant S as "Service<br/>project-service.ts"
 participant P as "Repository<br/>project-repository.ts"
-participant D as "Supabase DB"
+participant D as "Appwrite DB"
 C->>R : GET /api/projects/{id}
 R->>R : validateUUID()
 R->>S : getProjectById(id)
@@ -12383,7 +12383,7 @@ Standardized error envelope:
 - All errors include error.code, error.message, optional details, timestamp, and requestId
 
 ## Conclusion
-The project retrieval endpoints provide flexible filtering (keyword, skills, budget range) and robust pagination. The route handlers delegate to services, which orchestrate repository queries to Supabase. Swagger schemas define the Project model and pagination metadata, while validation middleware ensures parameter correctness. Use the documented query parameters and response structure to integrate project listing and single-project retrieval seamlessly.
+The project retrieval endpoints provide flexible filtering (keyword, skills, budget range) and robust pagination. The route handlers delegate to services, which orchestrate repository queries to Appwrite. Swagger schemas define the Project model and pagination metadata, while validation middleware ensures parameter correctness. Use the documented query parameters and response structure to integrate project listing and single-project retrieval seamlessly.
 
 ---
 
@@ -12546,7 +12546,7 @@ Swagger schema for Project:
 The update flow depends on:
 - Route handler depends on auth middleware, role middleware, and UUID validator.
 - Service depends on project repository and proposal repository.
-- Repositories depend on shared base repository and Supabase client.
+- Repositories depend on shared base repository and Appwrite client.
 
 ```mermaid
 graph LR
@@ -12608,7 +12608,7 @@ Client["Client"] --> Routes["Project Routes<br/>GET /api/projects/:id/proposals"
 Routes --> Auth["Auth Middleware<br/>Bearer + Role Check"]
 Auth --> Service["Proposal Service<br/>getProposalsByProject"]
 Service --> Repo["Proposal Repository<br/>getProposalsByProject"]
-Repo --> DB["Supabase DB"]
+Repo --> DB["Appwrite DB"]
 Service --> Mapper["Entity Mapper<br/>mapProposalFromEntity"]
 Routes --> Client
 ```
@@ -12637,7 +12637,7 @@ participant R as "Project Routes"
 participant A as "Auth Middleware"
 participant S as "Proposal Service"
 participant P as "Proposal Repository"
-participant D as "Supabase DB"
+participant D as "Appwrite DB"
 C->>R : "GET /api/projects/{id}/proposals"
 R->>A : "authMiddleware + requireRole('employer')"
 A-->>R : "Authenticated user"
@@ -12812,7 +12812,7 @@ Routes --> Swagger
 The proposal API follows a layered architecture:
 - HTTP layer: Express routes
 - Application layer: Service functions
-- Persistence layer: Supabase repository
+- Persistence layer: Appwrite repository
 - Mapping layer: Entity mappers
 - Security layer: JWT auth and role checks
 
@@ -13507,8 +13507,8 @@ Scenario: An employer rejects a proposal because the freelancer’s skills do no
   - proposal-repository for persistence
   - entity-mapper for model conversion
   - notification-service for creating notifications
-- proposal-repository depends on Supabase client and the proposals table
-- notification-service depends on notification-repository and Supabase
+- proposal-repository depends on Appwrite client and the proposals table
+- notification-service depends on notification-repository and Appwrite
 
 ```mermaid
 graph LR
@@ -13518,7 +13518,7 @@ Routes --> Service["proposal-service.ts"]
 Service --> Repo["proposal-repository.ts"]
 Service --> Mapper["entity-mapper.ts"]
 Service --> Notify["notification-service.ts"]
-Repo --> DB["Supabase"]
+Repo --> DB["Appwrite"]
 Mapper --> DB
 Notify --> DB
 ```
@@ -13863,7 +13863,7 @@ Key behaviors:
 ### Repository Layer: ProposalRepository
 - Provides createProposal, findProposalById, updateProposal
 - Supports duplicate detection and project-scoped queries
-- Uses Supabase client with explicit error handling
+- Uses Appwrite client with explicit error handling
 
 ### Response Schema: Proposal Model
 The Proposal model includes:
@@ -13915,7 +13915,7 @@ Notify --> Return201["Return 201 Created"]
 ## Dependency Analysis
 - Routes depend on auth middleware and proposal service
 - Service depends on proposal repository, project repository, user repository, and notification service
-- Repositories depend on Supabase client and shared base repository
+- Repositories depend on Appwrite client and shared base repository
 - Swagger defines schemas consumed by routes and docs
 
 ```mermaid
@@ -13930,7 +13930,7 @@ Swagger["swagger.ts"] --- Docs["API-DOCUMENTATION.md"]
 
 ## Performance Considerations
 - Input validation occurs before database calls to minimize unnecessary operations.
-- Repository methods encapsulate Supabase queries; ensure indexes exist on project_id and freelancer_id for efficient duplicate checks.
+- Repository methods encapsulate Appwrite queries; ensure indexes exist on project_id and freelancer_id for efficient duplicate checks.
 - Notification creation is lightweight; ensure database indexing on user_id for notification retrieval.
 - Consider caching project metadata if frequently accessed during proposal submissions.
 
@@ -14088,7 +14088,7 @@ sequenceDiagram
     "coverLetter": null,
     "attachments": [
       {
-        "url": "https://storage.supabase.co/...",
+        "url": "https://storage.appwrite.co/...",
         "filename": "portfolio.pdf",
         "size": 1024000,
         "mimeType": "application/pdf"
@@ -15710,7 +15710,7 @@ The rating submission endpoint enforces strict validation and eligibility rules,
 ## Introduction
 This document explains the work history retrieval endpoint for the FreelanceXchain platform. It covers:
 - Endpoint definition and authentication via JWT
-- How the service combines on-chain reputation data from the smart contract with off-chain project metadata from Supabase
+- How the service combines on-chain reputation data from the smart contract with off-chain project metadata from Appwrite
 - Response structure and enrichment fields
 - Real-world example of a client reviewing a freelancer’s history
 - Pagination and performance considerations
@@ -15842,7 +15842,7 @@ ReputationContractInterface <|.. FreelanceReputation : "simulated interface"
 ```
 
 ### Off-chain Project Metadata
-- Project titles and statuses are fetched from Supabase via ProjectRepository.getProjectById(projectId).
+- Project titles and statuses are fetched from Appwrite via ProjectRepository.getProjectById(projectId).
 - The entity mapper converts database entities to API models for consistent field names.
 
 ### Response Structure
@@ -15886,7 +15886,7 @@ If future enhancements are introduced:
 High-level dependencies:
 - Routes depend on auth middleware and reputation service.
 - Service depends on repositories and reputation contract interface.
-- Repositories depend on Supabase client and shared query options.
+- Repositories depend on Appwrite client and shared query options.
 - Blockchain client provides transaction simulation and confirmation.
 
 ```mermaid
@@ -15931,7 +15931,7 @@ Common issues and resolutions:
 Operational tips:
 - Verify JWT token format: Bearer <token>.
 - Confirm userId is a valid UUID.
-- Check Supabase connectivity for project metadata.
+- Check Appwrite connectivity for project metadata.
 - Monitor blockchain client availability and transaction confirmation status.
 
 ## Conclusion
@@ -16490,7 +16490,7 @@ function ProjectSearch() {
 The search system is designed to handle large datasets efficiently through several optimization strategies:
 
 ### Database Indexing
-The system leverages Supabase/PostgreSQL indexing to accelerate search queries:
+The system leverages Appwrite/PostgreSQL indexing to accelerate search queries:
 - **Text search**: GIN indexes on project title and description columns for ILIKE operations
 - **Skill filtering**: GIN indexes on the required_skills JSONB array column
 - **Budget filtering**: B-tree indexes on the budget column for range queries
@@ -16602,7 +16602,7 @@ The freelancer search endpoint is implemented as follows:
 - Route handler: GET /api/search/freelancers
 - Validation and pagination logic: route layer
 - Business logic: search-service module
-- Data access: freelancer-profile-repository using Supabase
+- Data access: freelancer-profile-repository using Appwrite
 - Pagination model: shared base-repository abstraction
 - Documentation: OpenAPI/Swagger definitions and API docs
 
@@ -16612,7 +16612,7 @@ Client["Client"] --> Routes["Routes: search-routes.ts"]
 Routes --> Service["Service: search-service.ts"]
 Service --> Repo["Repository: freelancer-profile-repository.ts"]
 Repo --> BaseRepo["Base Repository: base-repository.ts"]
-BaseRepo --> DB["Supabase: freelancer_profiles table"]
+BaseRepo --> DB["Appwrite: freelancer_profiles table"]
 ```
 
 ## Core Components
@@ -16637,7 +16637,7 @@ The endpoint flow:
 2. Builds filters and pagination objects
 3. Calls search-service.searchFreelancers
 4. search-service applies normalization and delegates to repository methods
-5. Repository executes Supabase queries with ilike and JSONB array matching
+5. Repository executes Appwrite queries with ilike and JSONB array matching
 6. Results mapped to API models and returned with pagination metadata
 
 ```mermaid
@@ -16647,7 +16647,7 @@ participant R as "Route : search-routes.ts"
 participant S as "Service : search-service.ts"
 participant P as "Repo : freelancer-profile-repository.ts"
 participant B as "Base Repo : base-repository.ts"
-participant D as "Supabase DB"
+participant D as "Appwrite DB"
 C->>R : GET /api/search/freelancers?keyword=...&skills=...&pageSize=...&continuationToken=...
 R->>R : Parse and validate query params<br/>Normalize pageSize
 R->>S : searchFreelancers(filters, pagination)
@@ -16762,7 +16762,7 @@ graph LR
 Routes["search-routes.ts"] --> Service["search-service.ts"]
 Service --> Repo["freelancer-profile-repository.ts"]
 Repo --> BaseRepo["base-repository.ts"]
-BaseRepo --> Supabase["Supabase Client"]
+BaseRepo --> Appwrite["Appwrite Client"]
 ```
 
 ## Performance Considerations
@@ -16814,7 +16814,7 @@ The project search endpoint is implemented as follows:
 - Route handler: GET /api/search/projects
 - Validation: Built-in parameter parsing and validation in the route handler
 - Service layer: searchProjects(filter, pagination) orchestrating repository calls
-- Repository layer: Supabase client queries with database-level filters and in-memory filtering for multi-criteria
+- Repository layer: Appwrite client queries with database-level filters and in-memory filtering for multi-criteria
 - Response mapping: Entities mapped to API models
 
 ```mermaid
@@ -16822,7 +16822,7 @@ graph TB
 Client["Client"] --> Routes["Routes: GET /api/search/projects"]
 Routes --> Service["Service: searchProjects(filters, pagination)"]
 Service --> Repo["Repository: ProjectRepository"]
-Repo --> DB["Supabase: Projects table"]
+Repo --> DB["Appwrite: Projects table"]
 Service --> Mapper["Mapper: mapProjectFromEntity"]
 Mapper --> Routes
 Routes --> Client
@@ -16852,7 +16852,7 @@ participant R as "Route Handler"
 participant S as "Search Service"
 participant P as "Project Repository"
 participant M as "Entity Mapper"
-participant D as "Supabase"
+participant D as "Appwrite"
 C->>R : GET /api/search/projects?keyword=&skills=&minBudget=&maxBudget=&pageSize=&continuationToken=
 R->>R : Parse and validate query params
 R->>S : searchProjects(filters, pagination)
@@ -16922,7 +16922,7 @@ Swagger/OpenAPI schemas define:
 ### Repository Layer and Database Indexing Strategy
 - searchProjects(keyword, options):
   - Database-level ILIKE search on title and description for open projects
-  - Uses Supabase orients query with or(title.ilike, description.ilike)
+  - Uses Appwrite orients query with or(title.ilike, description.ilike)
 - getProjectsBySkills(skillIds, options):
   - Fetches open projects and filters in-memory by required_skills.skill_id
 - getProjectsByBudgetRange(minBudget, maxBudget, options):

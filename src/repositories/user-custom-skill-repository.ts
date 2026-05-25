@@ -1,4 +1,4 @@
-import { getSupabaseServiceClient } from "../config/supabase.js";
+import { pool } from '../config/database.js';
 
 export type UserCustomSkillEntity = {
   id: string;
@@ -28,49 +28,54 @@ export type SkillSuggestionEntity = {
 
 export class UserCustomSkillRepository {
   async createUserCustomSkill(skill: Omit<UserCustomSkillEntity, "created_at" | "updated_at">): Promise<UserCustomSkillEntity> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("user_custom_skills")
-      .insert(skill)
-      .select()
-      .single();
+    const now = new Date().toISOString();
+    const keys = Object.keys(skill);
+    const values = Object.values(skill);
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+    const columns = keys.join(', ');
 
-    if (error) {
+    const query = `
+      INSERT INTO user_custom_skills (${columns}, created_at, updated_at)
+      VALUES (${placeholders}, $${keys.length + 1}, $${keys.length + 1})
+      RETURNING *
+    `;
+    
+    try {
+      const result = await pool.query(query, [...values, now]);
+      return result.rows[0];
+    } catch (error: any) {
       throw new Error(`Failed to create user custom skill: ${error.message}`);
     }
-
-    return data;
   }
 
   async getUserCustomSkills(userId: string): Promise<UserCustomSkillEntity[]> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("user_custom_skills")
-      .select("*")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false });
-
-    if (error) {
+    const query = `
+      SELECT * FROM user_custom_skills 
+      WHERE user_id = $1 
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId]);
+      return result.rows as UserCustomSkillEntity[];
+    } catch (error: any) {
       throw new Error(`Failed to get user custom skills: ${error.message}`);
     }
-
-    return data || [];
   }
 
   async getUserCustomSkillById(id: string, userId: string): Promise<UserCustomSkillEntity | null> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("user_custom_skills")
-      .select("*")
-      .eq("id", id)
-      .eq("user_id", userId)
-      .single();
-
-    if (error) {
-      if (error.code === "PGRST116") {
-        return null;
-      }
+    const query = `
+      SELECT * FROM user_custom_skills 
+      WHERE id = $1 AND user_id = $2
+      LIMIT 1
+    `;
+    
+    try {
+      const result = await pool.query(query, [id, userId]);
+      return result.rows[0] || null;
+    } catch (error: any) {
       throw new Error(`Failed to get user custom skill: ${error.message}`);
     }
-
-    return data;
   }
 
   async updateUserCustomSkill(
@@ -78,143 +83,133 @@ export class UserCustomSkillRepository {
     userId: string, 
     updates: Partial<Omit<UserCustomSkillEntity, "id" | "user_id" | "created_at" | "updated_at">>
   ): Promise<UserCustomSkillEntity | null> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("user_custom_skills")
-      .update(updates)
-      .eq("id", id)
-      .eq("user_id", userId)
-      .select()
-      .single();
+    const now = new Date().toISOString();
+    const keys = Object.keys(updates);
+    const values = Object.values(updates);
+    const setClause = keys.map((key, i) => `${key} = $${i + 2}`).join(', ');
 
-    if (error) {
-      if (error.code === "PGRST116") {
-        return null;
-      }
+    const query = `
+      UPDATE user_custom_skills 
+      SET ${setClause}, updated_at = $1
+      WHERE id = $${keys.length + 2} AND user_id = $${keys.length + 3}
+      RETURNING *
+    `;
+    
+    try {
+      const result = await pool.query(query, [now, ...values, id, userId]);
+      return result.rows[0] || null;
+    } catch (error: any) {
       throw new Error(`Failed to update user custom skill: ${error.message}`);
     }
-
-    return data;
   }
 
   async deleteUserCustomSkill(id: string, userId: string): Promise<boolean> {
-    const { error } = await getSupabaseServiceClient()
-      .from("user_custom_skills")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId);
-
-    if (error) {
+    const query = `DELETE FROM user_custom_skills WHERE id = $1 AND user_id = $2`;
+    
+    try {
+      const result = await pool.query(query, [id, userId]);
+      return (result.rowCount ?? 0) > 0;
+    } catch (error: any) {
       throw new Error(`Failed to delete user custom skill: ${error.message}`);
     }
-
-    return true;
   }
 
   async searchUserCustomSkills(userId: string, keyword: string): Promise<UserCustomSkillEntity[]> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("user_custom_skills")
-      .select("*")
-      .eq("user_id", userId)
-      .or(`name.ilike.%${keyword}%,description.ilike.%${keyword}%`)
-      .order("created_at", { ascending: false });
-
-    if (error) {
+    const pattern = `%${keyword}%`;
+    const query = `
+      SELECT * FROM user_custom_skills 
+      WHERE user_id = $1 AND (name ILIKE $2 OR description ILIKE $2)
+      ORDER BY created_at DESC
+    `;
+    
+    try {
+      const result = await pool.query(query, [userId, pattern]);
+      return result.rows as UserCustomSkillEntity[];
+    } catch (error: any) {
       throw new Error(`Failed to search user custom skills: ${error.message}`);
     }
-
-    return data || [];
   }
 
   async createSkillSuggestion(suggestion: Omit<SkillSuggestionEntity, "created_at" | "updated_at">): Promise<SkillSuggestionEntity> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("skill_suggestions")
-      .insert(suggestion)
-      .select()
-      .single();
+    const now = new Date().toISOString();
+    const keys = Object.keys(suggestion);
+    const values = Object.values(suggestion);
+    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
+    const columns = keys.join(', ');
 
-    if (error) {
+    const query = `
+      INSERT INTO skill_suggestions (${columns}, created_at, updated_at)
+      VALUES (${placeholders}, $${keys.length + 1}, $${keys.length + 1})
+      RETURNING *
+    `;
+    
+    try {
+      const result = await pool.query(query, [...values, now]);
+      return result.rows[0];
+    } catch (error: any) {
       throw new Error(`Failed to create skill suggestion: ${error.message}`);
     }
-
-    return data;
   }
 
   async getSkillSuggestionByName(skillName: string): Promise<SkillSuggestionEntity | null> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("skill_suggestions")
-      .select("*")
-      .eq("skill_name", skillName)
-      .single();
-
-    if (error) {
-      if (error.code === "PGRST116") {
-        return null;
-      }
+    const query = `SELECT * FROM skill_suggestions WHERE skill_name = $1 LIMIT 1`;
+    
+    try {
+      const result = await pool.query(query, [skillName]);
+      return result.rows[0] || null;
+    } catch (error: any) {
       throw new Error(`Failed to get skill suggestion: ${error.message}`);
     }
-
-    return data;
   }
 
   async incrementSkillSuggestionCount(id: string): Promise<SkillSuggestionEntity | null> {
-    const supabase = getSupabaseServiceClient();
+    const query = `
+      UPDATE skill_suggestions 
+      SET times_requested = times_requested + 1, updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `;
     
-    // First get the current suggestion
-    const { data: current, error: fetchError } = await supabase
-      .from("skill_suggestions")
-      .select("times_requested")
-      .eq("id", id)
-      .single();
-
-    if (fetchError) {
-      throw new Error(`Failed to fetch skill suggestion: ${fetchError.message}`);
-    }
-
-    // Then update with incremented count
-    const { data, error } = await supabase
-      .from("skill_suggestions")
-      .update({ times_requested: current.times_requested + 1 })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
+    try {
+      const result = await pool.query(query, [id]);
+      return result.rows[0] || null;
+    } catch (error: any) {
       throw new Error(`Failed to increment skill suggestion count: ${error.message}`);
     }
-
-    return data;
   }
 
   async getPendingSkillSuggestions(): Promise<SkillSuggestionEntity[]> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("skill_suggestions")
-      .select("*")
-      .eq("status", "pending")
-      .order("times_requested", { ascending: false });
-
-    if (error) {
+    const query = `
+      SELECT * FROM skill_suggestions 
+      WHERE status = 'pending' 
+      ORDER BY times_requested DESC
+    `;
+    
+    try {
+      const result = await pool.query(query);
+      return result.rows as SkillSuggestionEntity[];
+    } catch (error: any) {
       throw new Error(`Failed to get pending skill suggestions: ${error.message}`);
     }
-
-    return data || [];
   }
 
   async updateSkillSuggestionStatus(
     id: string, 
     status: "approved" | "rejected"
   ): Promise<SkillSuggestionEntity | null> {
-    const { data, error } = await getSupabaseServiceClient()
-      .from("skill_suggestions")
-      .update({ status })
-      .eq("id", id)
-      .select()
-      .single();
-
-    if (error) {
+    const query = `
+      UPDATE skill_suggestions 
+      SET status = $1, updated_at = NOW()
+      WHERE id = $2
+      RETURNING *
+    `;
+    
+    try {
+      const result = await pool.query(query, [status, id]);
+      return result.rows[0] || null;
+    } catch (error: any) {
       throw new Error(`Failed to update skill suggestion status: ${error.message}`);
     }
-
-    return data;
   }
 }
 

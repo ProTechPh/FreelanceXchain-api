@@ -1,6 +1,6 @@
 # FreelanceXchain Email Templates
 
-Professional, branded email templates for Supabase authentication flows.
+Professional, branded email templates for Appwrite authentication flows.
 
 ## 📧 Available Templates
 
@@ -23,9 +23,9 @@ Professional, branded email templates for Supabase authentication flows.
 
 ## 🚀 How to Apply Templates
 
-### Method 1: Via Supabase Dashboard (Recommended)
+### Method 1: Via Appwrite Dashboard (Recommended)
 
-1. Go to your Supabase Dashboard: https://supabase.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates
+1. Go to your Appwrite Dashboard: https://appwrite.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates
 
 2. For each template:
    - Click on the template name (e.g., "Confirm signup")
@@ -47,19 +47,19 @@ Professional, branded email templates for Supabase authentication flows.
 
 ### Method 2: Via Management API
 
-You can also update templates programmatically using the Supabase Management API. You'll need:
-- Your Supabase access token from: https://supabase.com/dashboard/account/tokens
+You can also update templates programmatically using the Appwrite Management API. You'll need:
+- Your Appwrite access token from: https://appwrite.com/dashboard/account/tokens
 - Your project ref: `nfcfgxfpidfvcpkyjgih`
 
 Example using curl:
 
 ```bash
-export SUPABASE_ACCESS_TOKEN="your-access-token"
+export APPWRITE_ACCESS_TOKEN="your-access-token"
 export PROJECT_REF="nfcfgxfpidfvcpkyjgih"
 
 # Update confirmation email
-curl -X PATCH "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
-  -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
+curl -X PATCH "https://api.appwrite.com/v1/projects/$PROJECT_REF/config/auth" \
+  -H "Authorization: Bearer $APPWRITE_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "mailer_subjects_confirmation": "Welcome to FreelanceXchain - Confirm Your Email",
@@ -69,7 +69,7 @@ curl -X PATCH "https://api.supabase.com/v1/projects/$PROJECT_REF/config/auth" \
 
 ## 📝 Template Variables
 
-All templates support these Supabase variables:
+All templates support these Appwrite variables:
 
 - `{{ .ConfirmationURL }}` - Full confirmation link
 - `{{ .Token }}` - 6-digit OTP code
@@ -126,7 +126,7 @@ Change the CTA button text:
 
 ## 📱 Testing Templates
 
-1. Create a test user in your Supabase project
+1. Create a test user in your Appwrite project
 2. Trigger the authentication flow
 3. Check the email in your inbox
 4. Verify all links and codes work correctly
@@ -135,7 +135,7 @@ Change the CTA button text:
 ## 🆘 Support
 
 If you encounter issues:
-- Check Supabase Auth logs in the dashboard
+- Check Appwrite Auth logs in the dashboard
 - Verify template variables are correctly formatted
 - Ensure HTML is valid and properly escaped
 - Test with different email providers

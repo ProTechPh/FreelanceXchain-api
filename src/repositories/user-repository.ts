@@ -1,5 +1,9 @@
-import { BaseRepository } from './base-repository.js';
-import { TABLES } from '../config/supabase.js';
+/**
+ * User Repository
+ * Migrated to PostgreSQL - uses direct pg pool queries
+ */
+
+import { BaseRepositoryPg } from './base-repository-pg.js';
 
 export type UserEntity = {
   id: string;
@@ -10,13 +14,14 @@ export type UserEntity = {
   name: string;
   is_suspended: boolean;
   suspension_reason: string | null;
+  mfa_enabled: boolean;
   created_at: string;
   updated_at: string;
 };
 
-export class UserRepository extends BaseRepository<UserEntity> {
+export class UserRepository extends BaseRepositoryPg<UserEntity> {
   constructor() {
-    super(TABLES.USERS);
+    super('users');
   }
 
   async createUser(user: Omit<UserEntity, 'created_at' | 'updated_at'>): Promise<UserEntity> {
@@ -28,18 +33,14 @@ export class UserRepository extends BaseRepository<UserEntity> {
   }
 
   async getUserByEmail(email: string): Promise<UserEntity | null> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .ilike('email', email.toLowerCase())
-      .single();
+    const query = `SELECT * FROM ${this.tableName} WHERE LOWER(email) = LOWER($1) LIMIT 1`;
     
-    if (error) {
-      if (error.code === 'PGRST116') return null;
+    try {
+      const result = await this.executeQuery(query, [email]);
+      return result.rows.length > 0 ? (result.rows[0] as UserEntity) : null;
+    } catch (error: any) {
       throw new Error(`Failed to get user by email: ${error.message}`);
     }
-    return data as UserEntity;
   }
 
   async updateUser(id: string, updates: Partial<UserEntity>): Promise<UserEntity | null> {
@@ -56,28 +57,29 @@ export class UserRepository extends BaseRepository<UserEntity> {
   }
 
   async getAllUsers(): Promise<UserEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*');
+    const query = `SELECT * FROM ${this.tableName}`;
     
-    if (error) throw new Error(`Failed to get all users: ${error.message}`);
-    return (data ?? []) as UserEntity[];
+    try {
+      const result = await this.executeQuery(query);
+      return result.rows as UserEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get all users: ${error.message}`);
+    }
   }
 
   async updateUserName(id: string, name: string): Promise<UserEntity | null> {
-    return this.update(id, { name });
+    return this.update(id, { name } as Partial<UserEntity>);
   }
 
   async getUsersByRole(role: 'freelancer' | 'employer' | 'admin'): Promise<UserEntity[]> {
-    const client = this.getClient();
-    const { data, error } = await client
-      .from(this.tableName)
-      .select('*')
-      .eq('role', role);
-
-    if (error) throw new Error(`Failed to get users by role: ${error.message}`);
-    return (data ?? []) as UserEntity[];
+    const query = `SELECT * FROM ${this.tableName} WHERE role = $1`;
+    
+    try {
+      const result = await this.executeQuery(query, [role]);
+      return result.rows as UserEntity[];
+    } catch (error: any) {
+      throw new Error(`Failed to get users by role: ${error.message}`);
+    }
   }
 }
 

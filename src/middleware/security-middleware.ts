@@ -24,7 +24,7 @@ export const securityHeaders = helmetMiddleware({
             scriptSrcAttr: ["'none'"],
             styleSrc: ["'self'"],
             imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'", process.env['SUPABASE_URL'] || ""].filter(Boolean),
+            connectSrc: ["'self'"],
             fontSrc: ["'self'"],
             objectSrc: ["'none'"],
             frameSrc: ["'none'"],

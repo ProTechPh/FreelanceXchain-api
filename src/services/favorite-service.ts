@@ -1,9 +1,7 @@
-import { getSupabaseClient } from '../config/supabase.js';
+import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { Favorite, FavoriteEntity } from '../models/favorite.js';
 import type { ServiceResult } from '../types/service-result.js';
-
-const supabase = getSupabaseClient();
 
 /**
  * Add a favorite (project or freelancer)
@@ -15,15 +13,12 @@ export async function addFavorite(
 ): Promise<ServiceResult<Favorite>> {
   try {
     // Check if already favorited
-    const { data: existing } = await supabase
-      .from('favorites')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('target_type', targetType)
-      .eq('target_id', targetId)
-      .single();
+    const existingResult = await pool.query(
+      'SELECT * FROM favorites WHERE user_id = $1 AND target_type = $2 AND target_id = $3',
+      [userId, targetType, targetId]
+    );
 
-    if (existing) {
+    if (existingResult.rows.length > 0) {
       return {
         success: false,
         error: {
@@ -35,13 +30,12 @@ export async function addFavorite(
 
     // Verify target exists
     const targetTable = targetType === 'project' ? 'projects' : 'users';
-    const { data: target, error: targetError } = await supabase
-      .from(targetTable)
-      .select('id')
-      .eq('id', targetId)
-      .single();
+    const targetResult = await pool.query(
+      `SELECT id FROM ${targetTable} WHERE id = $1`,
+      [targetId]
+    );
 
-    if (targetError || !target) {
+    if (targetResult.rows.length === 0) {
       return {
         success: false,
         error: {
@@ -52,30 +46,16 @@ export async function addFavorite(
     }
 
     // Create favorite
-    const { data, error } = await supabase
-      .from('favorites')
-      .insert({
-        user_id: userId,
-        target_type: targetType,
-        target_id: targetId,
-      })
-      .select('*')
-      .single();
-
-    if (error) {
-      logger.error('Failed to add favorite', { error, userId, targetType, targetId });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to add favorite',
-        },
-      };
-    }
+    const insertResult = await pool.query(
+      `INSERT INTO favorites (user_id, target_type, target_id, created_at, updated_at) 
+       VALUES ($1, $2, $3, NOW(), NOW()) 
+       RETURNING *`,
+      [userId, targetType, targetId]
+    );
 
     return {
       success: true,
-      data: data as Favorite,
+      data: insertResult.rows[0] as Favorite,
     };
   } catch (error) {
     logger.error('Unexpected error in addFavorite', { error, userId, targetType, targetId });
@@ -98,23 +78,10 @@ export async function removeFavorite(
   targetId: string
 ): Promise<ServiceResult<void>> {
   try {
-    const { error } = await supabase
-      .from('favorites')
-      .delete()
-      .eq('user_id', userId)
-      .eq('target_type', targetType)
-      .eq('target_id', targetId);
-
-    if (error) {
-      logger.error('Failed to remove favorite', { error, userId, targetType, targetId });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to remove favorite',
-        },
-      };
-    }
+    await pool.query(
+      'DELETE FROM favorites WHERE user_id = $1 AND target_type = $2 AND target_id = $3',
+      [userId, targetType, targetId]
+    );
 
     return {
       success: true,
@@ -140,30 +107,18 @@ export async function getUserFavorites(
   targetType?: 'project' | 'freelancer'
 ): Promise<ServiceResult<Favorite[]>> {
   try {
-    let query = supabase
-      .from('favorites')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false });
+    let query = 'SELECT * FROM favorites WHERE user_id = $1';
+    const params: any[] = [userId];
 
     if (targetType) {
-      query = query.eq('target_type', targetType);
+      query += ' AND target_type = $2';
+      params.push(targetType);
     }
 
-    const { data, error } = await query;
+    query += ' ORDER BY created_at DESC';
 
-    if (error) {
-      logger.error('Failed to get favorites', { error, userId, targetType });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to fetch favorites',
-        },
-      };
-    }
-
-    const favorites = (data || []) as FavoriteEntity[];
+    const result = await pool.query(query, params);
+    const favorites = result.rows as FavoriteEntity[];
 
     // Batch-fetch target details instead of N+1 queries
     const projectIds = favorites.filter(f => f.target_type === 'project').map(f => f.target_id);
@@ -171,16 +126,16 @@ export async function getUserFavorites(
 
     const [projectMap, userMap] = await Promise.all([
       projectIds.length > 0
-        ? supabase.from('projects').select('*').in('id', projectIds).then(({ data: d }) => {
+        ? pool.query('SELECT * FROM projects WHERE id = ANY($1)', [projectIds]).then(res => {
             const m = new Map<string, any>();
-            for (const item of (d ?? [])) m.set(item.id, item);
+            for (const item of res.rows) m.set(item.id, item);
             return m;
           })
         : Promise.resolve(new Map<string, any>()),
       userIds.length > 0
-        ? supabase.from('users').select('*').in('id', userIds).then(({ data: d }) => {
+        ? pool.query('SELECT * FROM users WHERE id = ANY($1)', [userIds]).then(res => {
             const m = new Map<string, any>();
-            for (const item of (d ?? [])) m.set(item.id, item);
+            for (const item of res.rows) m.set(item.id, item);
             return m;
           })
         : Promise.resolve(new Map<string, any>()),
@@ -223,28 +178,14 @@ export async function isFavorited(
   targetId: string
 ): Promise<ServiceResult<boolean>> {
   try {
-    const { data, error } = await supabase
-      .from('favorites')
-      .select('id')
-      .eq('user_id', userId)
-      .eq('target_type', targetType)
-      .eq('target_id', targetId)
-      .single();
-
-    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-      logger.error('Failed to check favorite status', { error, userId, targetType, targetId });
-      return {
-        success: false,
-        error: {
-          code: 'DATABASE_ERROR',
-          message: 'Failed to check favorite status',
-        },
-      };
-    }
+    const result = await pool.query(
+      'SELECT id FROM favorites WHERE user_id = $1 AND target_type = $2 AND target_id = $3',
+      [userId, targetType, targetId]
+    );
 
     return {
       success: true,
-      data: !!data,
+      data: result.rows.length > 0,
     };
   } catch (error) {
     logger.error('Unexpected error in isFavorited', { error, userId, targetType, targetId });
