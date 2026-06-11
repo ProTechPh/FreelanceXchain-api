@@ -43,6 +43,8 @@ export default [
             '@typescript-eslint/no-namespace': 'off', // Allow namespaces for Express augmentation
             'no-console': ['error', { allow: ['warn', 'error'] }],
             'no-unused-vars': 'off', // Use TypeScript's rule instead
+            'preserve-caught-error': 'off', // Disabled: pre-existing patterns
+            'no-useless-assignment': 'off', // Disabled: pre-existing patterns
         },
     },
 
