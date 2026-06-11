@@ -1,56 +1,55 @@
-import { Pool } from 'pg';
-import { config } from './env.js';
 import { logger } from './logger.js';
 
-// Create PostgreSQL connection pool
-export const pool = new Pool({
-  connectionString: config.database.url,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
-});
+const PG_DISABLED_MSG = 'PostgreSQL is not configured — this project uses Appwrite only.';
 
-pool.on('error', (err) => {
-  logger.error('Unexpected error on idle PostgreSQL client', err);
-  process.exit(-1);
+/**
+ * Stub pool that throws when PostgreSQL is accessed.
+ * All pool.query() / pool.connect() calls across the codebase will hit this
+ * and produce a clear error instead of a cryptic "Cannot read property of null".
+ */
+export const pool = new Proxy({} as any, {
+  get(_target, prop) {
+    if (prop === 'query' || prop === 'connect') {
+      return () => Promise.reject(new Error(PG_DISABLED_MSG));
+    }
+    if (prop === 'on') {
+      return () => pool; // no-op chainable
+    }
+    throw new Error(PG_DISABLED_MSG);
+  },
 });
 
 /**
- * Initialize and verify database connection
+ * Always throws — PostgreSQL is not available.
+ */
+export function getPool(): never {
+  throw new Error(PG_DISABLED_MSG);
+}
+
+/**
+ * Always returns false — PostgreSQL is not available.
+ */
+export function isPostgresAvailable(): boolean {
+  return false;
+}
+
+/**
+ * No-op — PostgreSQL is not configured.
  */
 export async function initializeDatabase(): Promise<void> {
-  try {
-    const client = await pool.connect();
-    const result = await client.query('SELECT NOW()');
-    client.release();
-    logger.info('PostgreSQL connection verified', { 
-      timestamp: result.rows[0].now,
-      database: config.database.url.split('@')[1]?.split('/')[1] || 'unknown',
-    });
-  } catch (error) {
-    logger.error('Failed to connect to PostgreSQL', error);
-    throw new Error(`Database connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
+  logger.info('PostgreSQL disabled — using Appwrite-only mode');
 }
 
 /**
- * Execute a query and return all rows
+ * Stub — always throws.
  */
-export async function query<T = any>(text: string, params?: any[]): Promise<T[]> {
-  const client = await pool.connect();
-  try {
-    const result = await client.query(text, params);
-    return result.rows as T[];
-  } finally {
-    client.release();
-  }
+export async function query<T = any>(_text: string, _params?: any[]): Promise<T[]> {
+  throw new Error(PG_DISABLED_MSG);
 }
 
 /**
- * Execute a query and return a single row
+ * Stub — always throws.
  */
-export async function queryOne<T = any>(text: string, params?: any[]): Promise<T | null> {
-  const rows = await query<T>(text, params);
-  const row = rows[0];
-  return row !== undefined ? row : null;
+export async function queryOne<T = any>(_text: string, _params?: any[]): Promise<T | null> {
+  throw new Error(PG_DISABLED_MSG);
 }

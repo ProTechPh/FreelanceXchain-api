@@ -4,9 +4,9 @@
  */
 
 import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
-import type { QueryOptions, PaginatedResult, BaseEntity } from './base-repository-pg.js';
+import type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
 
-export type { QueryOptions, PaginatedResult, BaseEntity };
+export type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
 
 // Map Appwrite document to entity (remove $ prefixed fields)
 function mapDocument<T extends BaseEntity>(doc: Record<string, any>): T {

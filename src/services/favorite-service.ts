@@ -126,14 +126,14 @@ export async function getUserFavorites(
 
     const [projectMap, userMap] = await Promise.all([
       projectIds.length > 0
-        ? pool.query('SELECT * FROM projects WHERE id = ANY($1)', [projectIds]).then(res => {
+        ? pool.query('SELECT * FROM projects WHERE id = ANY($1)', [projectIds]).then((res: any) => {
             const m = new Map<string, any>();
             for (const item of res.rows) m.set(item.id, item);
             return m;
           })
         : Promise.resolve(new Map<string, any>()),
       userIds.length > 0
-        ? pool.query('SELECT * FROM users WHERE id = ANY($1)', [userIds]).then(res => {
+        ? pool.query('SELECT * FROM users WHERE id = ANY($1)', [userIds]).then((res: any) => {
             const m = new Map<string, any>();
             for (const item of res.rows) m.set(item.id, item);
             return m;

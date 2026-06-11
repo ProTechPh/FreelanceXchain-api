@@ -55,9 +55,6 @@ export const config = {
     baseUrl: getBaseUrl(),
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
   },
-  database: {
-    url: getEnvVar('DATABASE_URL'),
-  },
   appwrite: {
     endpoint: getEnvVar('APPWRITE_ENDPOINT'),
     projectId: getEnvVar('APPWRITE_PROJECT_ID'),
