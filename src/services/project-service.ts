@@ -49,7 +49,7 @@ type SkillRef = { skill_id: string; skill_name: string; category_id: string; yea
 
 function validateMilestoneBudget(milestones: MilestoneEntity[], totalBudget: number): { valid: boolean; message?: string } {
   const milestoneSum = milestones.reduce((sum, m) => sum + m.amount, 0);
-  if (milestoneSum !== totalBudget) {
+  if (Math.abs(milestoneSum - totalBudget) > 0.01) {
     return {
       valid: false,
       message: `Milestone amounts sum (${milestoneSum}) must equal total budget (${totalBudget})`,
@@ -278,6 +278,8 @@ export async function updateProject(
     ...(input.rushFeePercentage !== undefined && { rush_fee_percentage: input.rushFeePercentage }),
     ...(input.freelancerLimit !== undefined && { freelancer_limit: input.freelancerLimit }),
     ...(input.status && { status: input.status }),
+    ...(input.tags !== undefined && { tags: input.tags }),
+    ...(input.attachments !== undefined && { attachments: input.attachments }),
   };
 
   const updated = await projectRepository.updateProject(projectId, updates);

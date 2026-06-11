@@ -1,6 +1,5 @@
-import { Client, Account, Storage, Users } from 'node-appwrite';
+import { Client, Account, Storage, Users, Databases, Query, ID, Permission, Role } from 'node-appwrite';
 import { config } from './env.js';
-import { logger } from './logger.js';
 
 // Initialize Appwrite client for server-side operations
 const client = new Client()
@@ -12,6 +11,13 @@ const client = new Client()
 export const account = new Account(client);
 export const storage = new Storage(client);
 export const users = new Users(client);
+export const databases = new Databases(client);
+
+// Database ID (all collections live under one database)
+export const DATABASE_ID = config.appwrite.databaseId || 'freelancexchain';
+
+// Re-export utilities
+export { Query, ID, Permission, Role };
 
 // Storage Bucket IDs
 export const BUCKETS = {
@@ -32,22 +38,4 @@ export function createUserClient(jwt: string): Client {
     .setEndpoint(config.appwrite.endpoint)
     .setProject(config.appwrite.projectId)
     .setJWT(jwt);
-}
-
-/**
- * Initialize and verify Appwrite connection
- */
-export async function initializeAppwrite(): Promise<void> {
-  try {
-    // Test connection by listing buckets
-    const buckets = await storage.listBuckets();
-    logger.info('Appwrite connection verified', { 
-      bucketsCount: buckets.total,
-      endpoint: config.appwrite.endpoint,
-      projectId: config.appwrite.projectId,
-    });
-  } catch (error) {
-    logger.error('Failed to connect to Appwrite', error);
-    throw new Error(`Appwrite connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-  }
 }

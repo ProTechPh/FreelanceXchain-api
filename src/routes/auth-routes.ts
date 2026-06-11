@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import {
   register,
   login,
@@ -22,10 +22,14 @@ import {
   disableMFA,
   consumeMfaSession,
   validateTokenAndGetUser,
+  requestPhoneOtp,
+  requestEmailOtp,
+  requestMagicUrl,
+  verifyAuthToken,
 } from '../services/auth-service.js';
 import { RegisterInput, LoginInput, MfaRequiredResult } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
-import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limiter.js';
+import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
@@ -35,6 +39,15 @@ import { userRepository } from '../repositories/user-repository.js';
 const router = Router();
 
 const WALLET_REGEX = /^0x[a-fA-F0-9]{40}$/;
+
+/**
+ * Wraps async route handlers to catch unhandled rejections (Express 4 does not).
+ */
+function asyncHandler(fn: (req: Request, res: Response, next: NextFunction) => Promise<void>) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    fn(req, res, next).catch(next);
+  };
+}
 
 function extractBearerToken(req: Request, res: Response): string | null {
   const authHeader = req.headers.authorization;
@@ -73,10 +86,6 @@ function extractBearerToken(req: Request, res: Response): string | null {
  *           type: string
  *           enum: [freelancer, employer]
  *           description: User's role on the platform
- *         walletAddress:
- *           type: string
- *           pattern: ^0x[a-fA-F0-9]{40}$
- *           description: Optional Ethereum wallet address
  *     LoginInput:
  *       type: object
  *       required:
@@ -192,8 +201,8 @@ function validateRole(role: unknown): role is UserRole {
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/register', registerRateLimiter, async (req: Request, res: Response) => {
-  const { email, password, role, walletAddress } = req.body;
+router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { email, password, role } = req.body;
   const requestId = getRequestId(req);
 
   // Validate input
@@ -219,13 +228,6 @@ router.post('/register', registerRateLimiter, async (req: Request, res: Response
     errors.push({ field: 'role', message: 'Role must be freelancer or employer' });
   }
 
-  // Validate wallet address format if provided
-  if (walletAddress && typeof walletAddress === 'string' && walletAddress.trim() !== '') {
-    if (!WALLET_REGEX.test(walletAddress)) {
-      errors.push({ field: 'walletAddress', message: 'Invalid Ethereum wallet address format' });
-    }
-  }
-
   if (errors.length > 0) {
     res.status(400).json({
       error: {
@@ -242,8 +244,7 @@ router.post('/register', registerRateLimiter, async (req: Request, res: Response
   const input: RegisterInput = { 
     email, 
     password, 
-    role, 
-    walletAddress 
+    role
   };
   const result = await register(input);
 
@@ -261,7 +262,7 @@ router.post('/register', registerRateLimiter, async (req: Request, res: Response
   }
 
   res.status(201).json(result);
-});
+}));
 
 
 /**
@@ -298,7 +299,7 @@ router.post('/register', registerRateLimiter, async (req: Request, res: Response
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { email, password } = req.body;
   const requestId = getRequestId(req);
 
@@ -352,7 +353,7 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
   }
 
   res.status(200).json(result);
-});
+}));
 
 /**
  * @swagger
@@ -392,7 +393,7 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { mfaSessionId, factorId, code } = req.body;
   const requestId = getRequestId(req);
 
@@ -477,7 +478,7 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
   };
 
   res.status(200).json(finalResult);
-});
+}));
 
 
 /**
@@ -514,7 +515,7 @@ router.post('/login/mfa-verify', authRateLimiter, async (req: Request, res: Resp
  *             schema:
  *               $ref: '#/components/schemas/AuthError'
  */
-router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { refreshToken } = req.body;
   const requestId = getRequestId(req);
 
@@ -534,7 +535,7 @@ router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => 
   const result = await refreshTokens(refreshToken);
 
   if (isAuthError(result)) {
-    const statusCode = result.code === 'TOKEN_EXPIRED' ? 401 : 401;
+    const statusCode = result.code === 'TOKEN_EXPIRED' ? 401 : 400;
     res.status(statusCode).json({
       error: {
         code: result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN',
@@ -547,7 +548,7 @@ router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => 
   }
 
   res.status(200).json(result);
-});
+}));
 
 /**
  * @swagger
@@ -578,7 +579,7 @@ router.post('/refresh', authRateLimiter, async (req: Request, res: Response) => 
  *       401:
  *         description: Authentication failed
  */
-router.get('/callback', authRateLimiter, async (req: Request, res: Response) => {
+router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { code, error, error_description } = req.query;
   const requestId = getRequestId(req);
 
@@ -614,7 +615,7 @@ router.get('/callback', authRateLimiter, async (req: Request, res: Response) => 
           success: true,
           status: 'registration_required',
           message: 'User does not exist. Please register with a role.',
-          access_token: sessionResult.accessToken,
+          access_token: sessionResult.accessToken, // pass this to frontend so they can call /oauth/register
         });
         return;
       }
@@ -651,12 +652,162 @@ router.get('/callback', authRateLimiter, async (req: Request, res: Response) => 
     if(!t){el.textContent=JSON.stringify({success:false,error:'No tokens found in URL fragment'},null,2);return;}
     fetch('/api/auth/oauth/callback',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({access_token:t})})
       .then(function(resp){return resp.json();})
-      .then(function(d){el.textContent=JSON.stringify({success:true,access_token:t,refresh_token:r,user:d.user},null,2);})
+      .then(function(d){el.textContent=JSON.stringify(d,null,2);})
       .catch(function(e){el.textContent=JSON.stringify({success:false,error:e.message},null,2);});
   }catch(e){el.textContent=JSON.stringify({success:false,error:'Failed to process OAuth callback'},null,2);}
 })();
 </script></body></html>`);
-});
+}));
+
+/**
+ * @swagger
+ * /api/auth/oauth/register:
+ *   post:
+ *     summary: Complete OAuth registration
+ *     description: Finalizes OAuth registration by providing a role.
+ *     tags:
+ *       - Authentication
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - accessToken
+ *               - role
+ *             properties:
+ *               accessToken:
+ *                 type: string
+ *               role:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Successfully registered
+ *       400:
+ *         description: Validation error
+ */
+router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { accessToken, role } = req.body;
+  const requestId = getRequestId(req);
+
+  if (!accessToken || typeof accessToken !== 'string') {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'accessToken is required' }, timestamp: new Date().toISOString(), requestId });
+    return;
+  }
+  if (!validateRole(role)) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Valid role is required (freelancer or employer)' }, timestamp: new Date().toISOString(), requestId });
+    return;
+  }
+
+  const result = await registerWithAppwrite(accessToken, role);
+
+  if (isAuthError(result)) {
+    const status = result.code === 'AUTH_INVALID_TOKEN' ? 401 : 400;
+    res.status(status).json({
+      error: { code: result.code, message: result.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  res.status(201).json(result);
+}));
+
+/**
+ * @swagger
+ * /api/auth/login/phone:
+ *   post:
+ *     summary: Request Phone OTP
+ *     tags: [Authentication]
+ */
+router.post('/login/phone', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { phone } = req.body;
+  if (!phone) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Phone is required' } });
+    return;
+  }
+  const result = await requestPhoneOtp(phone);
+  if (isAuthError(result)) {
+    res.status(400).json({ error: result });
+    return;
+  }
+  res.status(200).json(result);
+}));
+
+/**
+ * @swagger
+ * /api/auth/login/email-otp:
+ *   post:
+ *     summary: Request Email OTP
+ *     tags: [Authentication]
+ */
+router.post('/login/email-otp', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { email } = req.body;
+  if (!email || !validateEmail(email)) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Valid email is required' } });
+    return;
+  }
+  const result = await requestEmailOtp(email);
+  if (isAuthError(result)) {
+    res.status(400).json({ error: result });
+    return;
+  }
+  res.status(200).json(result);
+}));
+
+/**
+ * @swagger
+ * /api/auth/login/magic-url:
+ *   post:
+ *     summary: Request Magic URL
+ *     tags: [Authentication]
+ */
+router.post('/login/magic-url', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { email } = req.body;
+  if (!email || !validateEmail(email)) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Valid email is required' } });
+    return;
+  }
+  const result = await requestMagicUrl(email);
+  if (isAuthError(result)) {
+    res.status(400).json({ error: result });
+    return;
+  }
+  res.status(200).json(result);
+}));
+
+/**
+ * @swagger
+ * /api/auth/login/verify-token:
+ *   post:
+ *     summary: Verify token (Phone, Email OTP, or Magic URL)
+ *     tags: [Authentication]
+ */
+router.post('/login/verify-token', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { userId, secret } = req.body;
+  const requestId = getRequestId(req);
+  if (!userId || !secret) {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'userId and secret are required' } });
+    return;
+  }
+  const result = await verifyAuthToken(userId, secret);
+  if (isAuthError(result)) {
+    if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
+      res.status(202).json({
+        success: true,
+        status: 'registration_required',
+        message: 'User does not exist. Please register with a role.',
+        access_token: secret, // Use secret to register
+      });
+      return;
+    }
+    res.status(400).json({ error: result, requestId });
+    return;
+  }
+  res.status(200).json(result);
+}));
 
 /**
  * @swagger
@@ -701,18 +852,18 @@ router.get('/callback', authRateLimiter, async (req: Request, res: Response) => 
  *         required: true
  *         schema:
  *           type: string
- *           enum: [google, github, azure, linkedin]
+ *           enum: [google, github]
  *     responses:
  *       302:
  *         description: Redirect to provider
  */
-router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Response) => {
+router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { provider } = req.params as { provider: string };
   const requestId = getRequestId(req);
 
   try {
     // Valid provider check
-    if (!['google', 'github', 'azure', 'linkedin'].includes(provider)) {
+    if (!['google', 'github'].includes(provider)) {
       res.status(400).json({
         error: {
           code: 'VALIDATION_ERROR',
@@ -737,7 +888,7 @@ router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Respon
       requestId,
     });
   }
-});
+}));
 
 /**
  * @swagger
@@ -771,7 +922,7 @@ router.get('/oauth/:provider', authRateLimiter, async (req: Request, res: Respon
  *       401:
  *         description: Invalid token
  */
-router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Response) => {
+router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { access_token } = req.body;
   const requestId = getRequestId(req);
 
@@ -816,7 +967,6 @@ router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Respon
       res.status(202).json({
         status: 'registration_required',
         message: 'User does not exist. Please register with a role.',
-        accessToken: access_token,
       });
       return;
     }
@@ -844,7 +994,7 @@ router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Respon
 
   // Return the full auth result with user and tokens
   res.status(200).json(result);
-});
+}));
 
 /**
  * @swagger
@@ -869,10 +1019,6 @@ router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Respon
  *               role:
  *                 type: string
  *                 enum: [freelancer, employer]
- *               walletAddress:
- *                 type: string
- *                 pattern: ^0x[a-fA-F0-9]{40}$
- *                 description: Optional Ethereum wallet address
  *     responses:
  *       201:
  *         description: User registered successfully
@@ -885,8 +1031,8 @@ router.post('/oauth/callback', authRateLimiter, async (req: Request, res: Respon
  *       401:
  *         description: Invalid token
  */
-router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Response) => {
-  const { accessToken, role, walletAddress } = req.body;
+router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { accessToken, role } = req.body;
   const requestId = getRequestId(req);
 
   const errors: { field: string; message: string }[] = [];
@@ -897,13 +1043,6 @@ router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Re
 
   if (!role || (role !== 'freelancer' && role !== 'employer')) {
     errors.push({ field: 'role', message: 'Valid role (freelancer or employer) is required' });
-  }
-
-  // Validate wallet address format if provided
-  if (walletAddress && typeof walletAddress === 'string' && walletAddress.trim() !== '') {
-    if (!WALLET_REGEX.test(walletAddress)) {
-      errors.push({ field: 'walletAddress', message: 'Invalid Ethereum wallet address format' });
-    }
   }
 
   if (errors.length > 0) {
@@ -922,8 +1061,7 @@ router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Re
   try {
     const result = await registerWithAppwrite(
       accessToken, 
-      role, 
-      walletAddress ?? ''
+      role
     );
 
     if (isAuthError(result)) {
@@ -950,7 +1088,7 @@ router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Re
       requestId,
     });
   }
-});
+}));
 
 /**
  * @swagger
@@ -978,7 +1116,7 @@ router.post('/oauth/register', registerRateLimiter, async (req: Request, res: Re
  *       400:
  *         description: Validation error
  */
-router.post('/resend-confirmation', passwordResetRateLimiter, async (req: Request, res: Response) => {
+router.post('/resend-confirmation', passwordResetRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { email } = req.body;
   const requestId = getRequestId(req);
 
@@ -1003,7 +1141,7 @@ router.post('/resend-confirmation', passwordResetRateLimiter, async (req: Reques
   }
 
   res.status(200).json({ message: 'Confirmation email sent' });
-});
+}));
 
 /**
  * @swagger
@@ -1031,7 +1169,7 @@ router.post('/resend-confirmation', passwordResetRateLimiter, async (req: Reques
  *       400:
  *         description: Validation error
  */
-router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
+router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { email } = req.body;
   const requestId = getRequestId(req);
 
@@ -1049,7 +1187,7 @@ router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, r
     await requestPasswordReset(email);
   } catch {
     // Swallow errors intentionally - don't reveal if the email exists
-    logger.info('Password reset requested', { requestId });
+    logger.info('Password reset request processed (email may not exist)', { requestId });
   }
 
   // Always return success message regardless of whether email exists
@@ -1058,7 +1196,7 @@ router.post('/forgot-password', passwordResetRateLimiter, async (req: Request, r
     timestamp: new Date().toISOString(),
     requestId,
   });
-});
+}));
 
 /**
  * @swagger
@@ -1123,7 +1261,7 @@ router.post('/csrf-token', authRateLimiter, (req: Request, res: Response) => {
  *       401:
  *         description: Invalid token
  */
-router.post('/reset-password', passwordResetRateLimiter, async (req: Request, res: Response) => {
+router.post('/reset-password', passwordResetRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { accessToken, password } = req.body;
   const requestId = getRequestId(req);
 
@@ -1166,7 +1304,7 @@ router.post('/reset-password', passwordResetRateLimiter, async (req: Request, re
   }
 
   res.status(200).json({ message: 'Password updated successfully' });
-});
+}));
 
 /**
  * @swagger
@@ -1194,7 +1332,7 @@ router.post('/reset-password', passwordResetRateLimiter, async (req: Request, re
  *       500:
  *         description: Internal server error
  */
-router.post('/logout', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+router.post('/logout', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const userId = req.user?.userId;
 
@@ -1222,14 +1360,14 @@ router.post('/logout', authMiddleware, authRateLimiter, async (req: Request, res
 
   logger.info('User logout successful', { userId, requestId });
   res.status(200).json({ message: 'Logout successful' });
-});
+}));
 
 /**
  * @swagger
  * /api/auth/mfa/enroll:
  *   post:
  *     summary: Enroll MFA for user
- *     description: Initiates MFA enrollment and returns QR code for authenticator app
+ *     description: Initiates MFA enrollment via Email OTP
  *     tags:
  *       - Authentication
  *     security:
@@ -1242,19 +1380,12 @@ router.post('/logout', authMiddleware, authRateLimiter, async (req: Request, res
  *             schema:
  *               type: object
  *               properties:
- *                 qrCode:
- *                   type: string
- *                   description: QR code data URL for authenticator app
- *                 secret:
- *                   type: string
- *                   description: Secret key for manual entry
- *                 factorId:
- *                   type: string
- *                   description: Factor ID for verification
+ *                 success:
+ *                   type: boolean
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+router.post('/mfa/enroll', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
@@ -1274,14 +1405,14 @@ router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request,
   }
 
   res.status(200).json(result);
-});
+}));
 
 /**
  * @swagger
  * /api/auth/mfa/verify-enrollment:
  *   post:
  *     summary: Verify MFA enrollment
- *     description: Verifies the TOTP code to complete MFA enrollment
+ *     description: Verifies the OTP code to complete MFA enrollment
  *     tags:
  *       - Authentication
  *     security:
@@ -1300,7 +1431,7 @@ router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request,
  *                 type: string
  *               code:
  *                 type: string
- *                 description: 6-digit TOTP code
+ *                 description: OTP code
  *     responses:
  *       200:
  *         description: MFA enrollment verified
@@ -1309,7 +1440,7 @@ router.post('/mfa/enroll', authMiddleware, authRateLimiter, async (req: Request,
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { factorId, code } = req.body;
   const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
@@ -1342,7 +1473,7 @@ router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, async (re
   }
 
   res.status(200).json({ message: 'MFA enrollment verified successfully' });
-});
+}));
 
 /**
  * @swagger
@@ -1378,7 +1509,7 @@ router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, async (re
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/challenge', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+router.post('/mfa/challenge', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { factorId } = req.body;
   const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
@@ -1411,7 +1542,7 @@ router.post('/mfa/challenge', authMiddleware, authRateLimiter, async (req: Reque
   }
 
   res.status(200).json(result);
-});
+}));
 
 /**
  * @swagger
@@ -1449,7 +1580,7 @@ router.post('/mfa/challenge', authMiddleware, authRateLimiter, async (req: Reque
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/verify', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+router.post('/mfa/verify', authMiddleware, mfaVerifyRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { factorId, challengeId, code } = req.body;
   const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
@@ -1482,7 +1613,7 @@ router.post('/mfa/verify', authMiddleware, authRateLimiter, async (req: Request,
   }
 
   res.status(200).json({ message: 'MFA verified successfully' });
-});
+}));
 
 /**
  * @swagger
@@ -1509,7 +1640,7 @@ router.post('/mfa/verify', authMiddleware, authRateLimiter, async (req: Request,
  *       401:
  *         description: Unauthorized
  */
-router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+router.get('/mfa/factors', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
@@ -1529,7 +1660,7 @@ router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request,
   }
 
   res.status(200).json(result);
-});
+}));
 
 /**
  * @swagger
@@ -1552,6 +1683,8 @@ router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request,
  *             properties:
  *               factorId:
  *                 type: string
+ *               otpCode:
+ *                 type: string
  *     responses:
  *       200:
  *         description: MFA disabled successfully
@@ -1560,8 +1693,8 @@ router.get('/mfa/factors', authMiddleware, authRateLimiter, async (req: Request,
  *       401:
  *         description: Unauthorized
  */
-router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
-  const { factorId, totpCode } = req.body;
+router.post('/mfa/disable', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const { factorId, otpCode } = req.body;
   const requestId = getRequestId(req);
   const token = extractBearerToken(req, res);
   if (!token) return;
@@ -1578,11 +1711,11 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request
     return;
   }
 
-  if (!totpCode || typeof totpCode !== 'string') {
+  if (!otpCode || typeof otpCode !== 'string') {
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'totpCode is required for re-authentication',
+        message: 'otpCode is required for re-authentication',
       },
       timestamp: new Date().toISOString(),
       requestId,
@@ -1590,7 +1723,7 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request
     return;
   }
 
-  const result = await disableMFA(token, factorId, totpCode);
+  const result = await disableMFA(token, factorId, otpCode);
 
   if (isAuthError(result)) {
     res.status(400).json({
@@ -1605,7 +1738,7 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request
   }
 
   res.status(200).json({ message: 'MFA disabled successfully' });
-});
+}));
 
 /**
  * @swagger
@@ -1643,7 +1776,7 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, async (req: Request
  *       401:
  *         description: Unauthorized
  */
-router.get('/me', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+router.get('/me', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -1675,7 +1808,7 @@ router.get('/me', authMiddleware, authRateLimiter, async (req: Request, res: Res
   }
 
   res.status(200).json({ user: result });
-});
+}));
 
 /**
  * @swagger
@@ -1722,7 +1855,7 @@ router.get('/me', authMiddleware, authRateLimiter, async (req: Request, res: Res
  *       404:
  *         description: User not found
  */
-router.patch('/wallet', authMiddleware, authRateLimiter, async (req: Request, res: Response) => {
+router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { walletAddress } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -1783,6 +1916,6 @@ router.patch('/wallet', authMiddleware, authRateLimiter, async (req: Request, re
       requestId,
     });
   }
-});
+}));
 
 export default router;

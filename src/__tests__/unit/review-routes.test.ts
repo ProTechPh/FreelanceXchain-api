@@ -34,7 +34,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
   fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
@@ -311,17 +312,17 @@ describe('Review Routes', () => {
     it('should return true when user can review', async () => {
       mockCanUserReview.mockResolvedValue({ success: true, data: { canRate: true } });
 
-      const res = await request(app).get(`/api/reviews/can-review/${contractId}`);
+      const res = await request(app).get(`/api/reviews/can-review/${contractId}?rateeId=some-user-id`);
 
       expect(res.status).toBe(200);
       expect(res.body.canRate).toBe(true);
-      expect(mockCanUserReview).toHaveBeenCalledWith('user-1', 'user-1', contractId);
+      expect(mockCanUserReview).toHaveBeenCalledWith('user-1', 'some-user-id', contractId);
     });
 
     it('should return false when user cannot review', async () => {
       mockCanUserReview.mockResolvedValue({ success: true, data: { canRate: false, reason: 'Already reviewed' } });
 
-      const res = await request(app).get(`/api/reviews/can-review/${contractId}`);
+      const res = await request(app).get(`/api/reviews/can-review/${contractId}?rateeId=some-user-id`);
 
       expect(res.status).toBe(200);
       expect(res.body.canRate).toBe(false);
@@ -345,7 +346,7 @@ describe('Review Routes', () => {
         error: { code: 'DB_ERROR', message: 'Database error' },
       });
 
-      const res = await request(app).get(`/api/reviews/can-review/${contractId}`);
+      const res = await request(app).get(`/api/reviews/can-review/${contractId}?rateeId=some-user-id`);
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('DB_ERROR');

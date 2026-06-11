@@ -23,7 +23,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
   registerRateLimiter: (_req: any, _res: any, next: any) => next(),
   passwordResetRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'test-request-id',
@@ -79,6 +80,10 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   disableMFA: jest.fn<any>(),
   consumeMfaSession: jest.fn<any>(),
   validateTokenAndGetUser: jest.fn<any>(),
+  requestPhoneOtp: jest.fn<any>(),
+  requestEmailOtp: jest.fn<any>(),
+  requestMagicUrl: jest.fn<any>(),
+  verifyAuthToken: jest.fn<any>(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/auth-types.ts'), () => ({}));

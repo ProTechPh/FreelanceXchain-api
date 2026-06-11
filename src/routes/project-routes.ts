@@ -8,6 +8,7 @@ import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uplo
 import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
 import { generateId } from '../utils/id.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
+import { logger } from '../config/logger.js';
 import {
   createProject,
   getProjectById,
@@ -158,7 +159,6 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
    const categoryParam = req.query['category'] as string | undefined;
    const categoriesParam = req.query['categories'] as string | undefined;
    const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
-   const _continuationToken = req.query['continuationToken'] as string | undefined;
 
   const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
   const options = { limit, offset };
@@ -275,6 +275,95 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
     ...result.data,
     items: mappedItems
   });
+});
+
+/**
+ * @swagger
+ * /api/projects/stats/categories:
+ *   get:
+ *     summary: Get project statistics by category
+ *     description: Retrieves project counts grouped by skill categories
+ *     tags:
+ *       - Projects
+ *       - Statistics
+ *     parameters:
+ *       - in: query
+ *         name: includeInactive
+ *         schema:
+ *           type: boolean
+ *           default: false
+ *         description: Include inactive categories in results
+ *     responses:
+ *       200:
+ *         description: Category statistics retrieved successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 categories:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       categoryId:
+ *                         type: string
+ *                       categoryName:
+ *                         type: string
+ *                       projectCount:
+ *                         type: integer
+ *                       totalBudget:
+ *                         type: number
+ */
+router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
+
+  try {
+    const rawLimit = parseInt(String(req.query['limit'] ?? '100'), 10);
+    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 10000) : 100;
+
+    const result = await listOpenProjects({ limit, offset: 0 });
+    
+    if (!result.success) {
+      res.status(500).json({
+        error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
+    }
+
+    const categoryStats = new Map<string, { categoryId: string; categoryName: string; projectCount: number; totalBudget: number }>();
+    
+    result.data.items.forEach(project => {
+      project.required_skills.forEach(skill => {
+        const key = skill.category_id;
+        if (!categoryStats.has(key)) {
+          categoryStats.set(key, {
+            categoryId: skill.category_id,
+            categoryName: skill.skill_name || skill.category_id,
+            projectCount: 0,
+            totalBudget: 0
+          });
+        }
+        
+        const stats = categoryStats.get(key)!;
+        stats.projectCount += 1;
+        stats.totalBudget += Number(project.budget);
+      });
+    });
+
+    res.status(200).json({
+      categories: Array.from(categoryStats.values()),
+    });
+  } catch (error) {
+    logger.error('Failed to get project category statistics', { error });
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+  }
 });
 
 /**
@@ -547,7 +636,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
 
   // Validate input
   const errors: { field: string; message: string }[] = [];
-  if (!title || typeof title !== 'string' || title.trim().length <= 5) {
+  if (!title || typeof title !== 'string' || title.trim().length < 5) {
     errors.push({ field: 'title', message: 'Title must be at least 5 characters' });
   }
   if (!description || typeof description !== 'string' || description.trim().length < 20) {
@@ -1033,94 +1122,6 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
   }
 
   res.status(200).json(result.data);
-});
-
-/**
- * @swagger
- * /api/projects/stats/categories:
- *   get:
- *     summary: Get project statistics by category
- *     description: Retrieves project counts grouped by skill categories
- *     tags:
- *       - Projects
- *       - Statistics
- *     parameters:
- *       - in: query
- *         name: includeInactive
- *         schema:
- *           type: boolean
- *           default: false
- *         description: Include inactive categories in results
- *     responses:
- *       200:
- *         description: Category statistics retrieved successfully
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 categories:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       categoryId:
- *                         type: string
- *                       categoryName:
- *                         type: string
- *                       projectCount:
- *                         type: integer
- *                       totalBudget:
- *                         type: number
- */
-router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Response) => {
-  const _includeInactive = req.query['includeInactive'] === 'true';
-  const requestId = getRequestId(req);
-
-  try {
-    // This is a simplified implementation - in production you'd want to optimize this query
-    const result = await listOpenProjects({ limit: 10000, offset: 0 });
-    
-    if (!result.success) {
-      res.status(500).json({
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
-      return;
-    }
-
-    // Group projects by categories
-    const categoryStats = new Map<string, { categoryId: string; categoryName: string; projectCount: number; totalBudget: number }>();
-    
-    result.data.items.forEach(project => {
-      project.required_skills.forEach(skill => {
-        const key = skill.category_id;
-        if (!categoryStats.has(key)) {
-          categoryStats.set(key, {
-            categoryId: skill.category_id,
-            categoryName: skill.category_id, // In production, you'd fetch the actual category name
-            projectCount: 0,
-            totalBudget: 0
-          });
-        }
-        
-        const stats = categoryStats.get(key)!;
-        stats.projectCount += 1;
-        stats.totalBudget += project.budget;
-      });
-    });
-
-    res.status(200).json({
-      categories: Array.from(categoryStats.values()).sort((a, b) => b.projectCount - a.projectCount)
-    });
-  } catch {
-    res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-  }
 });
 
 export default router;

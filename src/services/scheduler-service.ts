@@ -1,5 +1,6 @@
 import cron from 'node-cron';
-import { pool } from '../config/database.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
 import { sendWeeklyDigestEmail } from './email-delivery-service.js';
 
@@ -8,21 +9,35 @@ import { sendWeeklyDigestEmail } from './email-delivery-service.js';
  */
 async function autoCloseExpiredProjects(): Promise<void> {
   try {
-    const expiredProjects = await pool.query(
-      `SELECT id, title FROM projects 
-       WHERE status = 'open' AND deadline < NOW()`
+    // Fetch open projects and filter by deadline in memory
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.PROJECTS,
+      [
+        Query.equal('status', 'open'),
+        Query.limit(1000),
+      ]
     );
 
-    if (expiredProjects.rows.length > 0) {
-      const projectIds = expiredProjects.rows.map(p => p.id);
-      await pool.query(
-        `UPDATE projects 
-         SET status = 'closed', updated_at = NOW() 
-         WHERE id = ANY($1)`,
-        [projectIds]
-      );
+    const now = new Date();
+    const expiredProjects = response.documents.filter(
+      (p: any) => p.deadline && new Date(p.deadline) < now
+    );
 
-      logger.info(`Auto-closed ${expiredProjects.rows.length} expired projects`);
+    if (expiredProjects.length > 0) {
+      for (const project of expiredProjects) {
+        await databases.updateDocument(
+          DATABASE_ID,
+          COLLECTIONS.PROJECTS,
+          project.$id,
+          {
+            status: 'closed',
+            updated_at: new Date().toISOString(),
+          }
+        );
+      }
+
+      logger.info(`Auto-closed ${expiredProjects.length} expired projects`);
     }
   } catch (error) {
     logger.error('Failed to auto-close expired projects:', error);
@@ -35,67 +50,112 @@ async function autoCloseExpiredProjects(): Promise<void> {
 async function sendWeeklyDigests(): Promise<void> {
   try {
     // Get users with weekly digest enabled
-    const usersResult = await pool.query(
-      `SELECT ep.user_id, u.email, u.full_name 
-       FROM email_preferences ep
-       INNER JOIN users u ON u.id = ep.user_id
-       WHERE ep.weekly_digest = true`
+    const emailPrefsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.EMAIL_PREFERENCES,
+      [
+        Query.equal('weekly_digest', true),
+        Query.limit(1000),
+      ]
     );
 
-    if (usersResult.rows.length === 0) {
+    if (emailPrefsResponse.documents.length === 0) {
       logger.info('No users with weekly digest enabled');
       return;
     }
 
-    for (const user of usersResult.rows) {
+    for (const pref of emailPrefsResponse.documents) {
       try {
+        const userId = (pref as any).user_id;
+
+        // Fetch user info
+        let userDoc: Record<string, any> | null = null;
+        try {
+          userDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, userId) as any;
+        } catch {
+          continue;
+        }
+
+        const userEmail = (userDoc as any).email;
+        const userFullName = (userDoc as any).full_name || (userDoc as any).name || 'User';
+
         // Get user stats for the week
         const weekAgo = new Date();
         weekAgo.setDate(weekAgo.getDate() - 7);
 
-        // Count new projects
-        const newProjectsResult = await pool.query(
-          'SELECT COUNT(*) as count FROM projects WHERE created_at >= $1',
-          [weekAgo.toISOString()]
+        // Count new projects (filter by created_at in memory)
+        const projectsResponse = await databases.listDocuments(
+          DATABASE_ID,
+          COLLECTIONS.PROJECTS,
+          [Query.limit(1000)]
         );
+        const newProjectsCount = projectsResponse.documents.filter(
+          (p: any) => new Date(p.created_at) >= weekAgo
+        ).length;
 
         // Count new messages
-        const newMessagesResult = await pool.query(
-          'SELECT COUNT(*) as count FROM messages WHERE receiver_id = $1 AND is_read = false',
-          [user.user_id]
+        const messagesResponse = await databases.listDocuments(
+          DATABASE_ID,
+          COLLECTIONS.MESSAGES,
+          [
+            Query.equal('receiver_id', userId),
+            Query.equal('is_read', false),
+            Query.limit(1000),
+          ]
+        );
+        const newMessagesCount = messagesResponse.total;
+
+        // Count pending milestones (from project entities)
+        const contractsResponse = await databases.listDocuments(
+          DATABASE_ID,
+          COLLECTIONS.CONTRACTS,
+          [
+            Query.equal('freelancer_id', userId),
+            Query.limit(1000),
+          ]
         );
 
-        // Count pending milestones
-        const pendingMilestonesResult = await pool.query(
-          `SELECT COUNT(*) as count FROM milestones m
-           INNER JOIN contracts c ON c.id = m.contract_id
-           WHERE c.freelancer_id = $1 AND m.status = 'pending'`,
-          [user.user_id]
-        );
+        let pendingMilestonesCount = 0;
+        for (const contract of contractsResponse.documents) {
+          try {
+            const projectDoc = await databases.getDocument(
+              DATABASE_ID,
+              COLLECTIONS.PROJECTS,
+              (contract as any).project_id
+            );
+            const milestones = typeof (projectDoc as any).milestones === 'string'
+              ? JSON.parse((projectDoc as any).milestones)
+              : (projectDoc as any).milestones || [];
+            pendingMilestonesCount += milestones.filter((m: any) => m.status === 'pending').length;
+          } catch { /* skip */ }
+        }
 
         // Get top projects
-        const topProjectsResult = await pool.query(
-          `SELECT id, title, budget FROM projects 
-           WHERE status = 'open' 
-           ORDER BY created_at DESC 
-           LIMIT 5`
+        const topProjectsResponse = await databases.listDocuments(
+          DATABASE_ID,
+          COLLECTIONS.PROJECTS,
+          [
+            Query.equal('status', 'open'),
+            Query.orderDesc('created_at'),
+            Query.limit(5),
+          ]
         );
 
-        await sendWeeklyDigestEmail(user.email, {
-          userName: user.full_name || 'User',
-          newProjects: parseInt(newProjectsResult.rows[0]?.count || '0'),
-          newMessages: parseInt(newMessagesResult.rows[0]?.count || '0'),
-          pendingMilestones: parseInt(pendingMilestonesResult.rows[0]?.count || '0'),
-          topProjects: topProjectsResult.rows.map(p => ({
+        await sendWeeklyDigestEmail(userEmail, {
+          userName: userFullName,
+          newProjects: newProjectsCount,
+          newMessages: newMessagesCount,
+          pendingMilestones: pendingMilestonesCount,
+          topProjects: topProjectsResponse.documents.map((p: any) => ({
             title: p.title,
             budget: `$${p.budget}`,
-            url: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${p.id}`,
+            url: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${p.$id}`,
           })),
         });
 
-        logger.info(`Weekly digest sent to user ${user.user_id}`);
+        logger.info(`Weekly digest sent to user ${userId}`);
       } catch (error) {
-        logger.error(`Failed to send weekly digest to user ${user.user_id}:`, error);
+        logger.error(`Failed to send weekly digest to user:`, error);
       }
     }
   } catch (error) {
@@ -109,44 +169,50 @@ async function sendWeeklyDigests(): Promise<void> {
 async function executeSavedSearches(): Promise<void> {
   try {
     // Get saved searches with notifications enabled
-    const searchesResult = await pool.query(
-      'SELECT * FROM saved_searches WHERE notify_on_new = true'
+    const searchesResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.SAVED_SEARCHES,
+      [
+        Query.equal('notify_on_new', true),
+        Query.limit(100),
+      ]
     );
 
-    if (searchesResult.rows.length === 0) {
+    if (searchesResponse.documents.length === 0) {
       return;
     }
 
-    for (const search of searchesResult.rows) {
+    for (const search of searchesResponse.documents) {
       try {
-        // Execute search based on type
-        const tableName = search.search_type === 'project' ? 'projects' : 'freelancer_profiles';
-        const filters = search.filters as Record<string, any>;
-        
-        // Build dynamic query (simplified - in production, use proper query builder)
-        const whereConditions: string[] = [];
-        const values: any[] = [];
-        let paramIndex = 1;
+        const filters = typeof (search as any).filters === 'string'
+          ? JSON.parse((search as any).filters)
+          : (search as any).filters || {};
+        const searchType = (search as any).search_type;
+        const collectionId = searchType === 'project' ? COLLECTIONS.PROJECTS : 'freelancer_profiles';
 
-        Object.keys(filters).forEach(key => {
-          if (filters[key] !== undefined && filters[key] !== null) {
-            whereConditions.push(`${key} = $${paramIndex++}`);
-            values.push(filters[key]);
+        // Build Appwrite queries from filters
+        const queries: any[] = [Query.limit(10)];
+        const ALLOWED_COLUMNS = new Set(['status', 'budget', 'category', 'title']);
+
+        for (const [key, value] of Object.entries(filters)) {
+          if (!ALLOWED_COLUMNS.has(key)) continue;
+          if (value !== undefined && value !== null) {
+            queries.push(Query.equal(key, value as any));
           }
-        });
+        }
 
-        const whereClause = whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : '';
-        const results = await pool.query(
-          `SELECT * FROM ${tableName} ${whereClause} LIMIT 10`,
-          values
+        const results = await databases.listDocuments(
+          DATABASE_ID,
+          collectionId,
+          queries
         );
 
-        if (results.rows.length > 0) {
+        if (results.documents.length > 0) {
           // TODO: Create notification for new matches
-          logger.info(`Found ${results.rows.length} results for saved search ${search.id}`);
+          logger.info(`Found ${results.documents.length} results for saved search ${(search as any).$id}`);
         }
       } catch (error) {
-        logger.error(`Failed to execute saved search ${search.id}:`, error);
+        logger.error(`Failed to execute saved search ${(search as any).$id}:`, error);
       }
     }
   } catch (error) {
@@ -159,17 +225,36 @@ async function executeSavedSearches(): Promise<void> {
  */
 async function cleanupOldNotifications(): Promise<void> {
   try {
-    // Delete read notifications older than 30 days
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    await pool.query(
-      `DELETE FROM notifications 
-       WHERE is_read = true AND created_at < $1`,
-      [thirtyDaysAgo.toISOString()]
+    // Fetch read notifications older than 30 days and delete in batches
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.NOTIFICATIONS,
+      [
+        Query.equal('is_read', true),
+        Query.limit(1000),
+      ]
     );
 
-    logger.info('Cleaned up old notifications');
+    const oldNotifications = response.documents.filter(
+      (n: any) => new Date(n.created_at) < thirtyDaysAgo
+    );
+
+    let deletedTotal = 0;
+    for (const notification of oldNotifications) {
+      try {
+        await databases.deleteDocument(
+          DATABASE_ID,
+          COLLECTIONS.NOTIFICATIONS,
+          notification.$id
+        );
+        deletedTotal++;
+      } catch { /* skip individual failures */ }
+    }
+
+    logger.info('Cleaned up old notifications', { deletedTotal });
   } catch (error) {
     logger.error('Failed to cleanup old notifications:', error);
   }

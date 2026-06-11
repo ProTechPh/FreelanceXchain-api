@@ -1,4 +1,5 @@
-import { BaseRepositoryPg } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type RushUpgradeRequestStatus = 'pending' | 'accepted' | 'declined' | 'counter_offered' | 'expired';
 
@@ -15,9 +16,11 @@ export type RushUpgradeRequestEntity = {
   updated_at: string;
 };
 
-export class RushUpgradeRequestRepository extends BaseRepositoryPg<RushUpgradeRequestEntity> {
+const COLLECTION_ID = 'rush_upgrade_requests';
+
+export class RushUpgradeRequestRepository extends BaseRepositoryAppwrite<RushUpgradeRequestEntity> {
   constructor() {
-    super('rush_upgrade_requests');
+    super(COLLECTION_ID);
   }
 
   async createRequest(request: Omit<RushUpgradeRequestEntity, 'created_at' | 'updated_at'>): Promise<RushUpgradeRequestEntity> {
@@ -33,33 +36,53 @@ export class RushUpgradeRequestRepository extends BaseRepositoryPg<RushUpgradeRe
   }
 
   async getRequestsByContract(contractId: string): Promise<RushUpgradeRequestEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE contract_id = $1
-      ORDER BY created_at DESC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [contractId]);
-      return result.rows as RushUpgradeRequestEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get rush upgrade requests by contract: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('contract_id', contractId),
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as RushUpgradeRequestEntity;
+      });
+    } catch {
+      return [];
     }
   }
 
   async getPendingRequestByContract(contractId: string): Promise<RushUpgradeRequestEntity | null> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE contract_id = $1 AND status IN ('pending', 'counter_offered')
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
-    
     try {
-      const result = await this.pool.query(query, [contractId]);
-      return result.rows[0] || null;
-    } catch (error: any) {
-      throw new Error(`Failed to get pending rush upgrade request: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('contract_id', contractId),
+          Query.equal('status', ['pending', 'counter_offered']),
+          Query.orderDesc('created_at'),
+          Query.limit(1),
+        ]
+      );
+      if (response.documents.length === 0) return null;
+      const doc = response.documents[0];
+      const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+      return {
+        id: $id,
+        ...attrs,
+        created_at: attrs.created_at ?? $createdAt,
+        updated_at: attrs.updated_at ?? $updatedAt,
+      } as RushUpgradeRequestEntity;
+    } catch {
+      return null;
     }
   }
 }

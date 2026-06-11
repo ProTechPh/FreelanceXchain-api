@@ -26,9 +26,14 @@ Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized
 
 Test invocations must always use `node --experimental-vm-modules` (it's in the npm script, but not in `jest` directly).
 
-## CI pipeline order
+## CI pipeline (`.github/workflows/ci.yml`)
 
-`compile` → `tsc --noEmit` → `lint` → `test:ci` + coverage upload → `build`
+Three **parallel** jobs, each independently installing and compiling:
+- **typecheck**: `compile` → `tsc --noEmit` → `lint`
+- **test**: `compile` → `test:ci` + coverage upload
+- **build**: `compile` → `build`
+
+Local verification order (mirrors what CI checks): `compile` → `tsc --noEmit` → `lint` → `test` → `build`
 
 ## Architecture
 
@@ -37,6 +42,8 @@ Entry point: `src/index.ts` calls `createApp()` from `src/app.ts`.
 Routes barrel: `src/routes/index.ts` mounts 30+ route modules under `/api`.
 
 Blockchain uses an adapter pattern (`IBlockchainAdapter` in `src/services/blockchain/adapter.ts`). Switch modes via `BLOCKCHAIN_MODE=real|simulated` (default `simulated`). Dev targets Ganache at `http://127.0.0.1:7545`. Production targets Polygon Amoy testnet.
+
+Note: `pnpm run dev` overrides to `BLOCKCHAIN_MODE=real` with Ganache. If you need simulated mode locally, set `BLOCKCHAIN_MODE=simulated` explicitly.
 
 ## Testing quirks
 

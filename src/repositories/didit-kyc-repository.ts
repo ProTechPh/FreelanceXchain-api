@@ -1,15 +1,35 @@
 /**
  * Didit KYC Repository
- * Database operations for KYC verifications using PostgreSQL
- * 
+ * Database operations for KYC verifications using Appwrite SDK
+ *
  * Note: We only store session info and decision - Didit handles all verification data.
  */
 
-import { pool } from '../config/database.js';
+import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
 import { KycVerification, UpdateKycVerificationInput } from '../models/didit-kyc.js';
 import { logger } from '../config/logger.js';
 
 const TABLE_NAME = 'kyc_verifications';
+
+function mapKyc(doc: Record<string, any>): KycVerification {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+  const result: Record<string, any> = {
+    id: $id,
+    ...attrs,
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  };
+  if (typeof result.decline_reasons === 'string') {
+    result.decline_reasons = JSON.parse(result.decline_reasons);
+  }
+  if (typeof result.review_reasons === 'string') {
+    result.review_reasons = JSON.parse(result.review_reasons);
+  }
+  if (typeof result.metadata === 'string') {
+    result.metadata = JSON.parse(result.metadata);
+  }
+  return result as KycVerification;
+}
 
 /**
  * Create a new KYC verification record
@@ -18,21 +38,23 @@ export async function createKycVerification(
   verification: Omit<KycVerification, 'created_at' | 'updated_at'>
 ): Promise<KycVerification | null> {
   const now = new Date().toISOString();
-  const keys = Object.keys(verification);
-  const values = Object.values(verification);
-  
-  const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
-  const columns = keys.join(', ');
-
-  const query = `
-    INSERT INTO ${TABLE_NAME} (${columns}, created_at, updated_at)
-    VALUES (${placeholders}, $${keys.length + 1}, $${keys.length + 2})
-    RETURNING *
-  `;
+  const attrs: Record<string, any> = {};
+  for (const [key, value] of Object.entries(verification)) {
+    if (value !== undefined) {
+      attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
+    }
+  }
+  attrs.created_at = now;
+  attrs.updated_at = now;
 
   try {
-    const result = await pool.query(query, [...values, now, now]);
-    return result.rows[0] as KycVerification;
+    const doc = await databases.createDocument(
+      DATABASE_ID,
+      TABLE_NAME,
+      (verification as any).id || ID.unique(),
+      attrs
+    );
+    return mapKyc(doc);
   } catch (error) {
     logger.error('Error creating KYC verification', error as Error);
     return null;
@@ -43,11 +65,9 @@ export async function createKycVerification(
  * Get KYC verification by ID
  */
 export async function getKycVerificationById(id: string): Promise<KycVerification | null> {
-  const query = `SELECT * FROM ${TABLE_NAME} WHERE id = $1`;
-  
   try {
-    const result = await pool.query(query, [id]);
-    return result.rows[0] as KycVerification || null;
+    const doc = await databases.getDocument(DATABASE_ID, TABLE_NAME, id);
+    return mapKyc(doc);
   } catch (error) {
     logger.error('Error fetching KYC verification', error as Error);
     return null;
@@ -58,16 +78,18 @@ export async function getKycVerificationById(id: string): Promise<KycVerificatio
  * Get KYC verification by user ID
  */
 export async function getKycVerificationByUserId(userId: string): Promise<KycVerification | null> {
-  const query = `
-    SELECT * FROM ${TABLE_NAME} 
-    WHERE user_id = $1 
-    ORDER BY created_at DESC 
-    LIMIT 1
-  `;
-  
   try {
-    const result = await pool.query(query, [userId]);
-    return result.rows[0] as KycVerification || null;
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      TABLE_NAME,
+      [
+        Query.equal('user_id', userId),
+        Query.orderDesc('created_at'),
+        Query.limit(1),
+      ]
+    );
+    const doc = response.documents[0];
+    return doc ? mapKyc(doc) : null;
   } catch (error) {
     logger.error('Error fetching KYC verification by user', error as Error);
     return null;
@@ -78,11 +100,17 @@ export async function getKycVerificationByUserId(userId: string): Promise<KycVer
  * Get KYC verification by Didit session ID
  */
 export async function getKycVerificationBySessionId(sessionId: string): Promise<KycVerification | null> {
-  const query = `SELECT * FROM ${TABLE_NAME} WHERE didit_session_id = $1 LIMIT 1`;
-  
   try {
-    const result = await pool.query(query, [sessionId]);
-    return result.rows[0] as KycVerification || null;
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      TABLE_NAME,
+      [
+        Query.equal('didit_session_id', sessionId),
+        Query.limit(1),
+      ]
+    );
+    const doc = response.documents[0];
+    return doc ? mapKyc(doc) : null;
   } catch (error) {
     logger.error('Error fetching KYC verification by session', error as Error);
     return null;
@@ -96,24 +124,25 @@ export async function updateKycVerification(
   id: string,
   updates: UpdateKycVerificationInput
 ): Promise<KycVerification | null> {
-  const now = new Date().toISOString();
-  const keys = Object.keys(updates);
-  const values = Object.values(updates);
-  
-  if (keys.length === 0) return getKycVerificationById(id);
+  if (Object.keys(updates).length === 0) return getKycVerificationById(id);
 
-  const setClause = keys.map((key, i) => `${key} = $${i + 2}`).join(', ');
-  
-  const query = `
-    UPDATE ${TABLE_NAME}
-    SET ${setClause}, updated_at = $1
-    WHERE id = $${keys.length + 2}
-    RETURNING *
-  `;
+  const now = new Date().toISOString();
+  const attrs: Record<string, any> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (key !== 'id' && key !== 'user_id' && key !== 'created_at' && value !== undefined) {
+      attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
+    }
+  }
+  attrs.updated_at = now;
 
   try {
-    const result = await pool.query(query, [now, ...values, id]);
-    return result.rows[0] as KycVerification || null;
+    const doc = await databases.updateDocument(
+      DATABASE_ID,
+      TABLE_NAME,
+      id,
+      attrs
+    );
+    return mapKyc(doc);
   } catch (error) {
     logger.error('Error updating KYC verification', error as Error);
     return null;
@@ -124,15 +153,17 @@ export async function updateKycVerification(
  * Get all KYC verifications by status
  */
 export async function getKycVerificationsByStatus(status: KycVerification['status']): Promise<KycVerification[]> {
-  const query = `
-    SELECT * FROM ${TABLE_NAME} 
-    WHERE status = $1 
-    ORDER BY created_at DESC
-  `;
-  
   try {
-    const result = await pool.query(query, [status]);
-    return result.rows as KycVerification[];
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      TABLE_NAME,
+      [
+        Query.equal('status', status),
+        Query.orderDesc('created_at'),
+        Query.limit(1000),
+      ]
+    );
+    return response.documents.map(mapKyc);
   } catch (error) {
     logger.error('Error fetching KYC verifications by status', error as Error);
     return [];
@@ -143,15 +174,18 @@ export async function getKycVerificationsByStatus(status: KycVerification['statu
  * Get pending reviews (completed but not yet approved/rejected by admin)
  */
 export async function getPendingReviews(): Promise<KycVerification[]> {
-  const query = `
-    SELECT * FROM ${TABLE_NAME} 
-    WHERE status = 'completed' AND reviewed_by IS NULL 
-    ORDER BY completed_at ASC
-  `;
-  
   try {
-    const result = await pool.query(query);
-    return result.rows as KycVerification[];
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      TABLE_NAME,
+      [
+        Query.equal('status', 'completed'),
+        Query.isNull('reviewed_by'),
+        Query.orderAsc('completed_at'),
+        Query.limit(1000),
+      ]
+    );
+    return response.documents.map(mapKyc);
   } catch (error) {
     logger.error('Error fetching pending reviews', error as Error);
     return [];
@@ -162,10 +196,8 @@ export async function getPendingReviews(): Promise<KycVerification[]> {
  * Delete KYC verification (for testing/cleanup)
  */
 export async function deleteKycVerification(id: string): Promise<boolean> {
-  const query = `DELETE FROM ${TABLE_NAME} WHERE id = $1`;
-  
   try {
-    await pool.query(query, [id]);
+    await databases.deleteDocument(DATABASE_ID, TABLE_NAME, id);
     return true;
   } catch (error) {
     logger.error('Error deleting KYC verification', error as Error);
@@ -177,15 +209,17 @@ export async function deleteKycVerification(id: string): Promise<boolean> {
  * Get all KYC verifications for a user (history)
  */
 export async function getKycVerificationHistory(userId: string): Promise<KycVerification[]> {
-  const query = `
-    SELECT * FROM ${TABLE_NAME} 
-    WHERE user_id = $1 
-    ORDER BY created_at DESC
-  `;
-  
   try {
-    const result = await pool.query(query, [userId]);
-    return result.rows as KycVerification[];
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      TABLE_NAME,
+      [
+        Query.equal('user_id', userId),
+        Query.orderDesc('created_at'),
+        Query.limit(1000),
+      ]
+    );
+    return response.documents.map(mapKyc);
   } catch (error) {
     logger.error('Error fetching KYC verification history', error as Error);
     return [];

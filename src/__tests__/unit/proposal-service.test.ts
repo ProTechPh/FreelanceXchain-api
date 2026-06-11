@@ -103,6 +103,9 @@ describe('Proposal Service - Property-Based Tests', () => {
     // Mock pool.query for atomic proposal acceptance
     const mockPoolObj = (globalThis as any).mockPool;
     mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('COUNT(*)') && text.includes('proposals')) {
+        return { rows: [{ count: '0' }], rowCount: 1 };
+      }
       if (text.includes('accept_proposal_atomic')) {
         const proposalId = params?.[0];
         const employerId = params?.[1];
@@ -140,7 +143,18 @@ describe('Proposal Service - Property-Based Tests', () => {
           }
         }
         
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1, contract_id: contractId, limit_reached: true };
+        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
+      }
+      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
+        const proposalId = params?.[0];
+        // Find the contract for this proposal
+        for (const [, c] of contractStore.entries()) {
+          const contract = c as any;
+          if (contract.proposal_id === proposalId) {
+            return { rows: [{ id: contract.id }], rowCount: 1 };
+          }
+        }
+        return { rows: [], rowCount: 0 };
       }
       return { rows: [], rowCount: 0 };
     });
@@ -387,6 +401,9 @@ describe('Proposal Service - Unit Tests', () => {
     // Mock pool.query for atomic proposal acceptance
     const mockPoolObj = (globalThis as any).mockPool;
     mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('COUNT(*)') && text.includes('proposals')) {
+        return { rows: [{ count: '0' }], rowCount: 1 };
+      }
       if (text.includes('accept_proposal_atomic')) {
         const proposalId = params?.[0];
         const employerId = params?.[1];
@@ -424,7 +441,17 @@ describe('Proposal Service - Unit Tests', () => {
           }
         }
         
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1, contract_id: contractId, limit_reached: true };
+        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
+      }
+      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
+        const proposalId = params?.[0];
+        for (const [, c] of contractStore.entries()) {
+          const contract = c as any;
+          if (contract.proposal_id === proposalId) {
+            return { rows: [{ id: contract.id }], rowCount: 1 };
+          }
+        }
+        return { rows: [], rowCount: 0 };
       }
       return { rows: [], rowCount: 0 };
     });

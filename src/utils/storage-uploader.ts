@@ -204,6 +204,11 @@ export function extractFileIdFromUrl(url: string): string | null {
 }
 
 /**
+ * Alias for extractFileIdFromUrl (backward compatibility)
+ */
+export const extractFilePathFromUrl = extractFileIdFromUrl;
+
+/**
  * Cleanup uploaded files in case of transaction failure
  * @param fileMetadata - Array of file metadata to cleanup
  * @param bucket - Storage bucket ID
@@ -231,11 +236,6 @@ export async function cleanupUploadedFiles(
     });
   }
 }
-
-/**
- * Alias for extractFileIdFromUrl for backward compatibility
- */
-export const extractFilePathFromUrl = extractFileIdFromUrl;
 
 /**
  * Compatibility wrapper for legacy uploadFile calls

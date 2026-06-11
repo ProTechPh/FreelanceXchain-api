@@ -18,7 +18,8 @@ jest.unstable_mockModule(resolveModule('src/services/file-service.ts'), () => ({
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'freelancer' }; next(); },

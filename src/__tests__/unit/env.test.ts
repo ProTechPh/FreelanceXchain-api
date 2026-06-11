@@ -152,6 +152,34 @@ describe('Env Config', () => {
       const { config } = await importModule();
       expect(config.jwt.refreshSecret).toBe('test-jwt-secret');
     });
+
+    it('should use default LLM_MODEL', async () => {
+      setupRequiredEnv();
+      delete process.env.LLM_MODEL;
+      const { config } = await importModule();
+      expect(config.llm.model).toBe('claude-haiku-4.5');
+    });
+
+    it('should allow missing BLOCKCHAIN_RPC_URL', async () => {
+      setupRequiredEnv();
+      delete process.env.BLOCKCHAIN_RPC_URL;
+      const { config } = await importModule();
+      expect(config.blockchain.rpcUrl).toBeUndefined();
+    });
+
+    it('should allow missing BLOCKCHAIN_PRIVATE_KEY', async () => {
+      setupRequiredEnv();
+      delete process.env.BLOCKCHAIN_PRIVATE_KEY;
+      const { config } = await importModule();
+      expect(config.blockchain.privateKey).toBeUndefined();
+    });
+
+    it('should allow missing LLM_API_KEY', async () => {
+      setupRequiredEnv();
+      delete process.env.LLM_API_KEY;
+      const { config } = await importModule();
+      expect(config.llm.apiKey).toBeUndefined();
+    });
   });
 
   describe('error cases', () => {
@@ -177,7 +205,7 @@ describe('Env Config', () => {
       setupRequiredEnv();
       process.env.NODE_ENV = 'production';
       delete process.env.JWT_REFRESH_SECRET;
-      await expect(importModule()).rejects.toThrow('JWT_REFRESH_SECRET is required in production');
+      await expect(importModule()).rejects.toThrow('JWT_REFRESH_SECRET not set');
     });
 
     it('should not throw when JWT_REFRESH_SECRET is set in production', async () => {

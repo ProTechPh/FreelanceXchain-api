@@ -51,6 +51,7 @@ jest.unstable_mockModule('node-appwrite', () => ({
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   createUserClient: jest.fn(() => ({})),
   users: mockAppwriteUsers,
   storage: {},
@@ -429,13 +430,13 @@ describe('getCurrentUserWithKyc', () => {
     expect(result).toEqual({ code: 'USER_NOT_FOUND', message: 'User not found' });
   });
 
-  it('detects OAuth user when password_hash is empty', async () => {
+  it('detects email user when password_hash is empty (Appwrite manages passwords externally)', async () => {
     (mockUserRepository.getUserById as jest.Mock).mockResolvedValue(createMockUser({ password_hash: '' }) as never);
     (mockGetKycVerificationByUserId).mockResolvedValue(null as never);
 
     const result = await getCurrentUserWithKyc('user-123');
     if (!isAuthError(result)) {
-      expect(result.authProvider).toBe('oauth');
+      expect(result.authProvider).toBe('email');
     }
   });
 
@@ -568,18 +569,11 @@ describe('enrollMFA', () => {
     jest.clearAllMocks();
   });
 
-  it('returns QR code and secret on success', async () => {
-    mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({
-      uri: 'otpauth://totp/test?secret=SECRET123',
-      secret: 'SECRET123',
-    } as never);
+  it('returns success on enrollment', async () => {
+    mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({} as never);
 
     const result = await enrollMFA('valid-token');
-    if (!isAuthError(result)) {
-      expect(result.factorId).toBe('totp');
-      expect(result.secret).toBe('SECRET123');
-      expect(result.qrCode).toContain('otpauth://totp/');
-    }
+    expect(result).toEqual({ success: true });
   });
 
   it('returns INVALID_TOKEN when getUser fails', async () => {
@@ -593,15 +587,10 @@ describe('enrollMFA', () => {
   });
 
   it('handles listFactors error gracefully', async () => {
-    mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({
-      uri: 'otpauth://totp/test?secret=SEC',
-      secret: 'SEC',
-    } as never);
+    mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({} as never);
 
     const result = await enrollMFA('valid-token');
-    if (!isAuthError(result)) {
-      expect(result.factorId).toBe('totp');
-    }
+    expect(result).toEqual({ success: true });
   });
 
   it('cleans up unverified factors before enrollment', async () => {
@@ -653,15 +642,10 @@ describe('enrollMFA', () => {
   });
 
   it('handles unenroll error gracefully during cleanup', async () => {
-    mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({
-      uri: 'otpauth://totp/test?secret=SEC',
-      secret: 'SEC',
-    } as never);
+    mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({} as never);
 
     const result = await enrollMFA('valid-token');
-    if (!isAuthError(result)) {
-      expect(result.factorId).toBe('totp');
-    }
+    expect(result).toEqual({ success: true });
   });
 });
 
@@ -1049,14 +1033,14 @@ describe('exchangeCodeForSession', () => {
     }
   });
 
-  it('returns AUTH_EXCHANGE_FAILED when no session returned', async () => {
+  it('returns AUTH_REQUIRE_REGISTRATION when no session returned', async () => {
     mockAppwriteAccount.get.mockResolvedValue({ $id: 'user-123' } as never);
     (mockUserRepository.getUserById as jest.Mock).mockResolvedValue(null as never);
 
     const result = await exchangeCodeForSession('bad-code');
     expect(isAuthError(result)).toBe(true);
     if (isAuthError(result)) {
-      expect(result.code).toBe('USER_NOT_FOUND');
+      expect(result.code).toBe('AUTH_REQUIRE_REGISTRATION');
     }
   });
 });

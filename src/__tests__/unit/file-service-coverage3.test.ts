@@ -20,6 +20,7 @@ const mockStorage = {
 };
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   storage: mockStorage,
   BUCKETS: { PORTFOLIO_IMAGES: 'portfolio', PROPOSAL_ATTACHMENTS: 'proposals' },
 }));
@@ -39,22 +40,22 @@ describe('File Service - Coverage3', () => {
     it('should return files from multiple buckets', async () => {
       mockStorage.listFiles.mockResolvedValue({
         files: [
-          { name: 'user-1-photo.jpg', $id: 'f-1', sizeOriginal: 1024, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
-          { name: 'other-user-photo.jpg', $id: 'f-2', sizeOriginal: 2048, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+          { name: 'user-1/photo.jpg', $id: 'f-1', sizeOriginal: 1024, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+          { name: 'other-user/photo.jpg', $id: 'f-2', sizeOriginal: 2048, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
         ],
       });
 
       const result = await getUserFiles('user-1');
       expect(result.success).toBe(true);
       if (result.success) {
-        // Only files containing userId should be returned
-        expect(result.data.every(f => f.name.includes('user-1'))).toBe(true);
+        // Only files belonging to userId should be returned
+        expect(result.data.every(f => f.name.startsWith('user-1/'))).toBe(true);
       }
     });
 
     it('should return files from specific bucket', async () => {
       mockStorage.listFiles.mockResolvedValue({
-        files: [{ name: 'user-1-doc.pdf', $id: 'f-1', sizeOriginal: 5000, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' }],
+        files: [{ name: 'user-1/doc.pdf', $id: 'f-1', sizeOriginal: 5000, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' }],
       });
 
       const result = await getUserFiles('user-1', 'portfolio');
@@ -96,7 +97,7 @@ describe('File Service - Coverage3', () => {
     });
 
     it('should delete file successfully', async () => {
-      mockStorage.getFile.mockResolvedValue({ name: 'user-1-photo.jpg' });
+      mockStorage.getFile.mockResolvedValue({ name: 'user-1/photo.jpg' });
       mockStorage.deleteFile.mockResolvedValue(undefined);
 
       const result = await deleteFile('user-1', 'portfolio', 'f-1');
@@ -104,7 +105,7 @@ describe('File Service - Coverage3', () => {
     });
 
     it('should handle unexpected error during delete', async () => {
-      mockStorage.getFile.mockResolvedValue({ name: 'user-1-photo.jpg' });
+      mockStorage.getFile.mockResolvedValue({ name: 'user-1/photo.jpg' });
       mockStorage.deleteFile.mockRejectedValue(new Error('Storage error'));
 
       const result = await deleteFile('user-1', 'portfolio', 'f-1');
@@ -117,8 +118,8 @@ describe('File Service - Coverage3', () => {
     it('should return quota information', async () => {
       mockStorage.listFiles.mockResolvedValue({
         files: [
-          { name: 'user-1-photo.jpg', $id: 'f-1', sizeOriginal: 1024, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
-          { name: 'user-1-doc.pdf', $id: 'f-2', sizeOriginal: 2048, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+          { name: 'user-1/photo.jpg', $id: 'f-1', sizeOriginal: 1024, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+          { name: 'user-1/doc.pdf', $id: 'f-2', sizeOriginal: 2048, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
         ],
       });
 

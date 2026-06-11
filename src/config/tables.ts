@@ -1,7 +1,3 @@
-/**
- * Database table names
- * Centralized table name constants for PostgreSQL
- */
 export const TABLES = {
   USERS: 'users',
   FREELANCER_PROFILES: 'freelancer_profiles',
@@ -21,5 +17,3 @@ export const TABLES = {
   AUDIT_LOG_ENTRIES: 'audit_log_entries',
   PENDING_MFA_SESSIONS: 'pending_mfa_sessions',
 } as const;
-
-export type TableName = typeof TABLES[keyof typeof TABLES];

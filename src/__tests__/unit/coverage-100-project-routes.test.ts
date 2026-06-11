@@ -49,7 +49,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
   fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 const mockIsValidUUID = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
@@ -78,6 +79,7 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => (
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   BUCKETS: { PROJECT_ATTACHMENTS: 'project-attachments' },
 }));
 

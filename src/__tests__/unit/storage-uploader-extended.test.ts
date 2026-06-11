@@ -8,6 +8,7 @@ const mockDeleteFile = jest.fn();
 const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   storage: {
     createFile: jest.fn().mockResolvedValue({ $id: 'file-id-123' }),
     deleteFile: mockDeleteFile,

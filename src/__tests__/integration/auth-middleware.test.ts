@@ -4,7 +4,6 @@ import express from 'express';
 import { authMiddleware } from '../../middleware/auth-middleware.js';
 
 // Mocks are handled by jest.setup.ts
-const { pool } = await import('../../config/database.js');
 
 describe('Auth Middleware Integration', () => {
   let app: express.Express;
@@ -21,9 +20,9 @@ describe('Auth Middleware Integration', () => {
   });
 
   it('should allow access with valid token', async () => {
-    // Mock database check in validateToken (which is called by authMiddleware)
-    (pool.query as any).mockResolvedValueOnce({ 
-      rows: [{ id: 'test-user-id', email: 'test@test.com', role: 'freelancer', is_suspended: false }] 
+    // Mock Appwrite databases.getDocument to return a valid user
+    (globalThis as any).__mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'test-user-id', email: 'test@test.com', role: 'freelancer', is_suspended: false,
     });
 
     const response = await request(app)
@@ -41,8 +40,9 @@ describe('Auth Middleware Integration', () => {
   });
 
   it('should deny access for suspended user', async () => {
-    (pool.query as any).mockResolvedValueOnce({ 
-      rows: [{ id: 'test-user-id', is_suspended: true, suspension_reason: 'banned' }] 
+    // Mock Appwrite databases.getDocument to return a suspended user
+    (globalThis as any).__mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'test-user-id', email: 'test@test.com', role: 'freelancer', is_suspended: true, suspension_reason: 'banned',
     });
 
     const response = await request(app)

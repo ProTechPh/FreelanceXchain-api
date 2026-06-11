@@ -153,8 +153,24 @@ describe('Dispute Service - Property-Based Tests', () => {
     mockProjectRepo.clear();
     mockNotificationRepo.clear();
 
-    // Mock pool.query for evidence submission
+    // Mock pool.connect for transaction support in createDispute
     const mockPoolObj = (globalThis as any).mockPool;
+    const mockClientQuery = jest.fn<any>().mockImplementation(async (text: string, params?: any[]) => {
+      if (typeof text === 'string' && text.includes('SELECT id FROM project_milestones')) {
+        return { rows: [{ id: params?.[0] || 'm-1' }], rowCount: 1 };
+      }
+      if (typeof text === 'string' && text.includes('SELECT id FROM disputes WHERE milestone_id')) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const mockClient = {
+      query: mockClientQuery,
+      release: jest.fn(),
+    };
+    mockPoolObj.connect.mockResolvedValue(mockClient);
+
+    // Mock pool.query for evidence submission and dispute lock queries
     mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
       if (text.includes('append_dispute_evidence')) {
         const disputeId = params?.[0];
@@ -169,6 +185,11 @@ describe('Dispute Service - Property-Based Tests', () => {
         disputeStore.set(dispute.id, dispute);
         
         return { rows: [{ result: true }], rowCount: 1 };
+      }
+      if (text.includes('SELECT * FROM disputes') && text.includes('FOR UPDATE')) {
+        const disputeId = params?.[0];
+        const dispute = disputeStore.get(disputeId);
+        return { rows: dispute ? [dispute] : [], rowCount: dispute ? 1 : 0 };
       }
       return { rows: [], rowCount: 0 };
     });
@@ -337,8 +358,24 @@ describe('Dispute Service - Unit Tests', () => {
     mockProjectRepo.clear();
     mockNotificationRepo.clear();
 
-    // Mock pool.query for evidence submission
+    // Mock pool.connect for transaction support in createDispute
     const mockPoolObj = (globalThis as any).mockPool;
+    const mockClientQuery = jest.fn<any>().mockImplementation(async (text: string, params?: any[]) => {
+      if (typeof text === 'string' && text.includes('SELECT id FROM project_milestones')) {
+        return { rows: [{ id: params?.[0] || 'm-1' }], rowCount: 1 };
+      }
+      if (typeof text === 'string' && text.includes('SELECT id FROM disputes WHERE milestone_id')) {
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    const mockClient = {
+      query: mockClientQuery,
+      release: jest.fn(),
+    };
+    mockPoolObj.connect.mockResolvedValue(mockClient);
+
+    // Mock pool.query for evidence submission and dispute lock queries
     mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
       if (text.includes('append_dispute_evidence')) {
         const disputeId = params?.[0];
@@ -353,6 +390,11 @@ describe('Dispute Service - Unit Tests', () => {
         disputeStore.set(dispute.id, dispute);
         
         return { rows: [{ result: true }], rowCount: 1 };
+      }
+      if (text.includes('SELECT * FROM disputes') && text.includes('FOR UPDATE')) {
+        const disputeId = params?.[0];
+        const dispute = disputeStore.get(disputeId);
+        return { rows: dispute ? [dispute] : [], rowCount: dispute ? 1 : 0 };
       }
       return { rows: [], rowCount: 0 };
     });

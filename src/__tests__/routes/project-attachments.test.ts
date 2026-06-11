@@ -178,7 +178,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   authRateLimiter: (req: any, res: any, next: any) => next(),
   sensitiveRateLimiter: (req: any, res: any, next: any) => next(),
   withdrawalRateLimiter: (req: any, res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 // Mock milestone service
 jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () => ({
@@ -634,7 +635,7 @@ describe('Project Attachments API', () => {
       const response = await request(app)
         .post('/api/projects/with-attachments')
         .set('Authorization', authToken)
-        .field('title', 'Short') // Too short
+        .field('title', 'Hi') // Too short (needs 5+ chars)
         .field('description', 'Short desc') // Too short
         .field('requiredSkills', 'invalid json')
         .field('budget', '0') // Invalid budget
@@ -646,7 +647,8 @@ describe('Project Attachments API', () => {
           expect.objectContaining({ field: 'title' }),
           expect.objectContaining({ field: 'description' }),
           expect.objectContaining({ field: 'requiredSkills' }),
-          expect.objectContaining({ field: 'budget' })
+          expect.objectContaining({ field: 'budget' }),
+          expect.objectContaining({ field: 'deadline' })
         ])
       );
     });

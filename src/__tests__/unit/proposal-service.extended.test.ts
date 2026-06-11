@@ -268,11 +268,26 @@ describe('Proposal Service - Extended Coverage', () => {
       const contract = makeContract(p.id, proposal.id);
 
       const mockPoolObj = (globalThis as any).mockPool;
+      // 1st call: pre-check accepted count
       mockPoolObj.query.mockResolvedValueOnce({
-        rows: [{ result: true, contract_id: contract.id, limit_reached: false }],
+        rows: [{ count: '0' }],
         rowCount: 1,
-        contract_id: contract.id,
-        limit_reached: false,
+      });
+      // 2nd call: atomic RPC
+      mockPoolObj.query.mockImplementationOnce(async (...args: any[]) => {
+        const proposalInStore = proposalStore.get(proposal.id) as any;
+        if (proposalInStore) {
+          proposalStore.set(proposal.id, { ...proposalInStore, status: 'accepted' });
+        }
+        return {
+          rows: [{ result: true, contract_id: contract.id, limit_reached: true }],
+          rowCount: 1,
+        };
+      });
+      // 3rd call: look up created contract
+      mockPoolObj.query.mockResolvedValueOnce({
+        rows: [{ id: contract.id }],
+        rowCount: 1,
       });
 
       const result = await acceptProposal(proposal.id, EMP);
@@ -288,11 +303,27 @@ describe('Proposal Service - Extended Coverage', () => {
       const contract = makeContract(p.id, proposal.id);
 
       const mockPoolObj = (globalThis as any).mockPool;
+      // 1st call: pre-check accepted count
       mockPoolObj.query.mockResolvedValueOnce({
-        rows: [{ result: true, contract_id: contract.id, limit_reached: true }],
+        rows: [{ count: '0' }],
         rowCount: 1,
-        contract_id: contract.id,
-        limit_reached: true,
+      });
+      // 2nd call: atomic RPC
+      mockPoolObj.query.mockImplementationOnce(async (...args: any[]) => {
+        // The RPC mock: update proposal status in store to 'accepted'
+        const proposalInStore = proposalStore.get(proposal.id) as any;
+        if (proposalInStore) {
+          proposalStore.set(proposal.id, { ...proposalInStore, status: 'accepted' });
+        }
+        return {
+          rows: [{ result: true, contract_id: contract.id, limit_reached: true }],
+          rowCount: 1,
+        };
+      });
+      // 3rd call: look up created contract
+      mockPoolObj.query.mockResolvedValueOnce({
+        rows: [{ id: contract.id }],
+        rowCount: 1,
       });
 
       const result = await acceptProposal(proposal.id, EMP);

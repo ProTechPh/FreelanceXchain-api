@@ -31,8 +31,7 @@ describe('DiditKycRepository - branch gaps', () => {
   });
 
   it('updateKycVerification should return null when updated row is empty (line 116 || null)', async () => {
-    const mp = (globalThis as any).mockPool;
-    mp.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    (globalThis as any).__mockDatabases.updateDocument.mockRejectedValueOnce(new Error('Document not found'));
     const result = await updateKycVerification('k1', { status: 'approved' });
     expect(result).toBeNull();
   });

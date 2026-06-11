@@ -47,7 +47,31 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   userRepository: mockUserRepository,
 }));
 
-const mockPool = { query: jest.fn<any>() };
+const mockClientQuery = jest.fn<any>().mockImplementation(async (text: string, params?: any[]) => {
+  if (typeof text === 'string' && text.includes('SELECT id FROM project_milestones')) {
+    return { rows: [{ id: params?.[0] || 'm-1' }], rowCount: 1 };
+  }
+  if (typeof text === 'string' && text.includes('SELECT id FROM disputes WHERE milestone_id')) {
+    return { rows: [], rowCount: 0 };
+  }
+  return { rows: [], rowCount: 0 };
+});
+const mockClient = {
+  query: mockClientQuery,
+  release: jest.fn(),
+};
+
+const coverageDisputeStore = new Map<string, any>();
+
+const mockPool = { query: jest.fn<any>().mockImplementation(async (text: string, params?: any[]) => {
+  if (typeof text === 'string' && text.includes('SELECT * FROM disputes') && text.includes('FOR UPDATE')) {
+    const disputeId = params?.[0];
+    const dispute = coverageDisputeStore.get(disputeId);
+    if (dispute) return { rows: [dispute], rowCount: 1 };
+    return { rows: [], rowCount: 0 };
+  }
+  return { rows: [], rowCount: 0 };
+}), connect: jest.fn<any>().mockResolvedValue(mockClient) };
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   pool: mockPool,
 }));
@@ -118,6 +142,32 @@ const {
 describe('Dispute Service - Coverage2', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    coverageDisputeStore.clear();
+    // Re-apply pool.query mock implementation after clearAllMocks
+    mockPool.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (typeof text === 'string' && text.includes('SELECT * FROM disputes') && text.includes('FOR UPDATE')) {
+        const disputeId = params?.[0];
+        const dispute = coverageDisputeStore.get(disputeId);
+        if (dispute) return { rows: [dispute], rowCount: 1 };
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+    mockClientQuery.mockImplementation(async (text: string, params?: any[]) => {
+      if (typeof text === 'string' && text.includes('SELECT id FROM project_milestones')) {
+        return { rows: [{ id: params?.[0] || 'm-1' }], rowCount: 1 };
+      }
+      if (typeof text === 'string' && text.includes('SELECT id FROM disputes WHERE milestone_id')) {
+        const milestoneId = params?.[0];
+        for (const dispute of coverageDisputeStore.values()) {
+          if (dispute.milestone_id === milestoneId && dispute.status !== 'resolved') {
+            return { rows: [{ id: dispute.id }], rowCount: 1 };
+          }
+        }
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
   });
 
   describe('createDispute', () => {
@@ -235,6 +285,8 @@ describe('Dispute Service - Coverage2', () => {
       mockProjectRepository.findProjectById.mockResolvedValue({
         id: 'p-1', milestones: [{ id: 'm-1', status: 'submitted', amount: 100, title: 'MS1' }],
       });
+      // Pre-populate store with an existing active dispute for this milestone
+      coverageDisputeStore.set('d-existing', { id: 'd-existing', milestone_id: 'm-1', status: 'open' });
       mockDisputeRepository.getDisputeByMilestone.mockResolvedValue({ id: 'd-existing', status: 'open' });
 
       const result = await createDispute({
@@ -369,9 +421,11 @@ describe('Dispute Service - Coverage2', () => {
 
   describe('resolveDispute - additional paths', () => {
     const setupResolveDispute = () => {
-      mockDisputeRepository.getDisputeById.mockResolvedValue({
+      const disputeData = {
         id: 'd-1', status: 'open', contract_id: 'c-1', milestone_id: 'm-1',
-      });
+      };
+      mockDisputeRepository.getDisputeById.mockResolvedValue(disputeData);
+      coverageDisputeStore.set('d-1', disputeData);
       mockContractRepository.getContractById.mockResolvedValue({
         id: 'c-1', employer_id: 'emp-1', freelancer_id: 'free-1', project_id: 'p-1',
       });
@@ -515,9 +569,11 @@ describe('Dispute Service - Coverage2', () => {
 
     it('should set contract to active when not all milestones done (line 476)', async () => {
       // Setup with multiple milestones - one disputed (being resolved), one still pending
-      mockDisputeRepository.getDisputeById.mockResolvedValue({
+      const disputeData = {
         id: 'd-1', status: 'open', contract_id: 'c-1', milestone_id: 'm-1',
-      });
+      };
+      mockDisputeRepository.getDisputeById.mockResolvedValue(disputeData);
+      coverageDisputeStore.set('d-1', disputeData);
       mockContractRepository.getContractById.mockResolvedValue({
         id: 'c-1', employer_id: 'emp-1', freelancer_id: 'free-1', project_id: 'p-1',
       });
@@ -574,9 +630,11 @@ describe('Dispute Service - Coverage2', () => {
     });
 
     it('should mark contract completed when all milestones done', async () => {
-      mockDisputeRepository.getDisputeById.mockResolvedValue({
+      const disputeData = {
         id: 'd-1', status: 'open', contract_id: 'c-1', milestone_id: 'm-1',
-      });
+      };
+      mockDisputeRepository.getDisputeById.mockResolvedValue(disputeData);
+      coverageDisputeStore.set('d-1', disputeData);
       mockContractRepository.getContractById.mockResolvedValue({
         id: 'c-1', employer_id: 'emp-1', freelancer_id: 'free-1', project_id: 'p-1',
       });

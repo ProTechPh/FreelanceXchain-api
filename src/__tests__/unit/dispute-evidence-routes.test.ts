@@ -20,7 +20,8 @@ jest.unstable_mockModule(resolveModule('src/services/dispute-evidence-service.ts
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { id: 'user-1', userId: 'user-1', role: 'freelancer' }; next(); },
@@ -53,7 +54,7 @@ describe('Dispute Evidence Routes', () => {
     it('should return 400 for missing required fields', async () => {
       const res = await request(app).post('/api/disputes/d-1/evidence').send({});
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('required');
+      expect(res.body.error.message).toContain('required');
     });
 
     it('should return 400 on service failure', async () => {

@@ -1,4 +1,5 @@
-import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite, PaginatedResult, QueryOptions } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 export type { NotificationType } from '../models/notification.js';
 import type { NotificationType } from '../models/notification.js';
 
@@ -14,9 +15,25 @@ export type NotificationEntity = {
   updated_at: string;
 };
 
-export class NotificationRepository extends BaseRepositoryPg<NotificationEntity> {
+const COLLECTION_ID = 'notifications';
+
+function mapNotification(doc: Record<string, any>): NotificationEntity {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+  const result: Record<string, any> = {
+    id: $id,
+    ...attrs,
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  };
+  if (typeof result.data === 'string') {
+    result.data = JSON.parse(result.data);
+  }
+  return result as NotificationEntity;
+}
+
+export class NotificationRepository extends BaseRepositoryAppwrite<NotificationEntity> {
   constructor() {
-    super('notifications');
+    super(COLLECTION_ID);
   }
 
   async createNotification(notification: Omit<NotificationEntity, 'created_at' | 'updated_at'>): Promise<NotificationEntity> {
@@ -31,59 +48,59 @@ export class NotificationRepository extends BaseRepositoryPg<NotificationEntity>
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    // Get total count
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE user_id = $1`;
-    const countResult = await this.pool.query(countQuery, [userId]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    // Get paginated data
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
     try {
-      const result = await this.pool.query(dataQuery, [userId, limit, offset]);
-      
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('user_id', userId),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+          Query.offset(offset),
+        ]
+      );
       return {
-        items: result.rows as NotificationEntity[],
-        hasMore: offset + limit < total,
-        total,
+        items: response.documents.map(mapNotification),
+        hasMore: response.documents.length === limit,
+        total: response.total,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to get notifications by user: ${error.message}`);
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
     }
   }
 
   async getAllNotificationsByUser(userId: string): Promise<NotificationEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [userId]);
-      return result.rows as NotificationEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get all notifications by user: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('user_id', userId),
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map(mapNotification);
+    } catch {
+      return [];
     }
   }
 
   async getUnreadNotificationsByUser(userId: string): Promise<NotificationEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE user_id = $1 AND is_read = false
-      ORDER BY created_at DESC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [userId]);
-      return result.rows as NotificationEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get unread notifications: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('user_id', userId),
+          Query.equal('is_read', false),
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map(mapNotification);
+    } catch {
+      return [];
     }
   }
 
@@ -92,32 +109,46 @@ export class NotificationRepository extends BaseRepositoryPg<NotificationEntity>
   }
 
   async markAllAsRead(userId: string): Promise<number> {
-    const query = `
-      UPDATE ${this.tableName}
-      SET is_read = true, updated_at = $1
-      WHERE user_id = $2 AND is_read = false
-      RETURNING id
-    `;
-    
     try {
-      const result = await this.pool.query(query, [new Date().toISOString(), userId]);
-      return result.rowCount ?? 0;
-    } catch (error: any) {
-      throw new Error(`Failed to mark all as read: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('user_id', userId),
+          Query.equal('is_read', false),
+          Query.limit(1000),
+        ]
+      );
+      let updatedCount = 0;
+      for (const doc of response.documents) {
+        await databases.updateDocument(
+          DATABASE_ID,
+          COLLECTION_ID,
+          doc.$id,
+          { is_read: true, updated_at: new Date().toISOString() }
+        );
+        updatedCount++;
+      }
+      return updatedCount;
+    } catch {
+      return 0;
     }
   }
 
   async getUnreadCount(userId: string): Promise<number> {
-    const query = `
-      SELECT COUNT(*) FROM ${this.tableName}
-      WHERE user_id = $1 AND is_read = false
-    `;
-    
     try {
-      const result = await this.pool.query(query, [userId]);
-      return parseInt(result.rows[0].count, 10);
-    } catch (error: any) {
-      throw new Error(`Failed to get unread count: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('user_id', userId),
+          Query.equal('is_read', false),
+          Query.limit(1),
+        ]
+      );
+      return response.total;
+    } catch {
+      return 0;
     }
   }
 }

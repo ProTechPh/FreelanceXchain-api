@@ -1,7 +1,7 @@
-import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
-import type { ContractStatus } from '../models/contract.js';
+import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
-export type { ContractStatus };
+export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'resolved' | 'cancelled';
 
 export type ContractEntity = {
   id: string;
@@ -18,213 +18,156 @@ export type ContractEntity = {
   updated_at: string;
 };
 
-export class ContractRepository extends BaseRepositoryPg<ContractEntity> {
-  constructor() {
-    super('contracts');
-  }
+const COLLECTION_ID = 'contracts';
 
-  async createContract(contract: Omit<ContractEntity, 'created_at' | 'updated_at'>): Promise<ContractEntity> {
-    return this.create(contract);
+function mapDoc(doc: Record<string, any>): ContractEntity {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+  return {
+    id: $id,
+    ...attrs,
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  } as ContractEntity;
+}
+
+export class ContractRepository extends BaseRepositoryAppwrite<ContractEntity> {
+  constructor() {
+    super(COLLECTION_ID);
   }
 
   async getContractById(id: string): Promise<ContractEntity | null> {
-    return this.getById(id);
+    const doc = await this.getById(id);
+    return doc ? mapDoc(doc as any) : null;
   }
 
   async getContractByIdWithRelations(id: string): Promise<any | null> {
-    const query = `
-      SELECT 
-        c.*,
-        json_build_object(
-          'id', p.id,
-          'title', p.title,
-          'description', p.description,
-          'deadline', p.deadline,
-          'milestones', p.milestones
-        ) as project,
-        json_build_object(
-          'id', f.id,
-          'email', f.email,
-          'role', f.role,
-          'name', f.name,
-          'freelancer_profile', json_build_object(
-            'bio', fp.bio,
-            'hourly_rate', fp.hourly_rate,
-            'skills', fp.skills,
-            'experience', fp.experience,
-            'availability', fp.availability
-          )
-        ) as freelancer,
-        json_build_object(
-          'id', e.id,
-          'email', e.email,
-          'role', e.role,
-          'name', e.name,
-          'employer_profile', json_build_object(
-            'company_name', ep.company_name,
-            'description', ep.description,
-            'industry', ep.industry
-          )
-        ) as employer
-      FROM contracts c
-      JOIN projects p ON c.project_id = p.id
-      JOIN users f ON c.freelancer_id = f.id
-      LEFT JOIN freelancer_profiles fp ON f.id = fp.user_id
-      JOIN users e ON c.employer_id = e.id
-      LEFT JOIN employer_profiles ep ON e.id = ep.user_id
-      WHERE c.id = $1
-    `;
-    
     try {
-      const result = await this.pool.query(query, [id]);
-      return result.rows[0] || null;
-    } catch (error: any) {
-      throw new Error(`Failed to get contract with relations: ${error.message}`);
+      const doc = await databases.getDocument(DATABASE_ID, COLLECTION_ID, id);
+      const contract = mapDoc(doc as any);
+
+      // Fetch related entities
+      const [projectDoc, freelancerDoc, employerDoc] = await Promise.all([
+        databases.getDocument(DATABASE_ID, 'projects', contract.project_id).catch(() => null),
+        databases.getDocument(DATABASE_ID, 'users', contract.freelancer_id).catch(() => null),
+        databases.getDocument(DATABASE_ID, 'users', contract.employer_id).catch(() => null),
+      ]);
+
+      let freelancerProfile = null;
+      if (freelancerDoc) {
+        try {
+          const resp = await databases.listDocuments(DATABASE_ID, 'freelancer_profiles', [
+            Query.equal('user_id', contract.freelancer_id),
+            Query.limit(1),
+          ]);
+          freelancerProfile = resp.documents[0] ?? null;
+        } catch { /* ignore */ }
+      }
+
+      let employerProfile = null;
+      if (employerDoc) {
+        try {
+          const resp = await databases.listDocuments(DATABASE_ID, 'employer_profiles', [
+            Query.equal('user_id', contract.employer_id),
+            Query.limit(1),
+          ]);
+          employerProfile = resp.documents[0] ?? null;
+        } catch { /* ignore */ }
+      }
+
+      const mapUser = (d: any) => d ? { id: d.$id, name: d.name, email: d.email } : null;
+
+      return {
+        ...contract,
+        project: projectDoc ? { id: projectDoc.$id, title: (projectDoc as any).title, description: (projectDoc as any).description } : null,
+        freelancer: {
+          ...mapUser(freelancerDoc),
+          profile: freelancerProfile ? {
+            id: freelancerProfile.$id,
+            hourly_rate: (freelancerProfile as any).hourly_rate,
+            skills: typeof (freelancerProfile as any).skills === 'string' ? JSON.parse((freelancerProfile as any).skills) : (freelancerProfile as any).skills,
+          } : null,
+        },
+        employer: {
+          ...mapUser(employerDoc),
+          profile: employerProfile ? {
+            id: employerProfile.$id,
+            company_name: (employerProfile as any).company_name,
+            industry: (employerProfile as any).industry,
+          } : null,
+        },
+      };
+    } catch {
+      return null;
     }
   }
 
   async updateContract(id: string, updates: Partial<ContractEntity>): Promise<ContractEntity | null> {
-    return this.update(id, updates);
+    const doc = await this.update(id, updates);
+    return doc ? mapDoc(doc as any) : null;
   }
 
   async findContractByProposalId(proposalId: string): Promise<ContractEntity | null> {
-    return this.findOne('proposal_id', proposalId);
+    try {
+      const response = await databases.listDocuments(
+        DATABASE_ID, COLLECTION_ID,
+        [Query.equal('proposal_id', proposalId), Query.limit(1)]
+      );
+      return response.documents.length > 0 ? mapDoc(response.documents[0]!) : null;
+    } catch {
+      return null;
+    }
   }
 
   async getContractsByFreelancer(freelancerId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
-    const limit = options?.limit ?? 100;
-    const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE freelancer_id = $1`;
-    const countResult = await this.pool.query(countQuery, [freelancerId]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE freelancer_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [freelancerId, limit, offset]);
-      return {
-        items: result.rows as ContractEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get contracts by freelancer: ${error.message}`);
-    }
+    return this.paginatedWithQueries<ContractEntity>(
+      [Query.equal('freelancer_id', freelancerId), Query.orderDesc('created_at')],
+      options?.limit ?? 20,
+      options?.offset ?? 0,
+      mapDoc
+    );
   }
 
   async getContractsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
-    const limit = options?.limit ?? 100;
-    const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE employer_id = $1`;
-    const countResult = await this.pool.query(countQuery, [employerId]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE employer_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [employerId, limit, offset]);
-      return {
-        items: result.rows as ContractEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get contracts by employer: ${error.message}`);
-    }
+    return this.paginatedWithQueries<ContractEntity>(
+      [Query.equal('employer_id', employerId), Query.orderDesc('created_at')],
+      options?.limit ?? 20,
+      options?.offset ?? 0,
+      mapDoc
+    );
   }
 
   async getContractsByProject(projectId: string): Promise<ContractEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE project_id = $1
-      ORDER BY created_at DESC
-    `;
-    
-    try {
-      const result = await this.pool.query(query, [projectId]);
-      return result.rows as ContractEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get contracts by project: ${error.message}`);
-    }
-  }
-
-  async getContractsByStatus(status: ContractStatus, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
-    const limit = options?.limit ?? 100;
-    const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = $1`;
-    const countResult = await this.pool.query(countQuery, [status]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [status, limit, offset]);
-      return {
-        items: result.rows as ContractEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get contracts by status: ${error.message}`);
-    }
+    return this.listWithQueries<ContractEntity>(
+      [Query.equal('project_id', projectId), Query.orderDesc('created_at')],
+      mapDoc
+    );
   }
 
   async getUserContracts(userId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
-    const limit = options?.limit ?? 100;
-    const offset = options?.offset ?? 0;
+    // Appwrite doesn't support OR in queries; combine both
+    const [freelancer, employer] = await Promise.all([
+      this.paginatedWithQueries<ContractEntity>(
+        [Query.equal('freelancer_id', userId), Query.orderDesc('created_at')],
+        options?.limit ?? 20,
+        options?.offset ?? 0,
+        mapDoc
+      ),
+      this.paginatedWithQueries<ContractEntity>(
+        [Query.equal('employer_id', userId), Query.orderDesc('created_at')],
+        options?.limit ?? 20,
+        options?.offset ?? 0,
+        mapDoc
+      ),
+    ]);
 
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE freelancer_id = $1 OR employer_id = $1`;
-    const countResult = await this.pool.query(countQuery, [userId]);
-    const total = parseInt(countResult.rows[0].count, 10);
+    const all = [...freelancer.items, ...employer.items]
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    const dataQuery = `
-      SELECT c.*, 
-             json_build_object(
-               'id', p.id,
-               'title', p.title,
-               'description', p.description,
-               'deadline', p.deadline,
-               'milestones', p.milestones
-             ) as project
-      FROM contracts c
-      JOIN projects p ON c.project_id = p.id
-      WHERE c.freelancer_id = $1 OR c.employer_id = $1
-      ORDER BY c.created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [userId, limit, offset]);
-      return {
-        items: result.rows as ContractEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get user contracts: ${error.message}`);
-    }
-  }
-
-  async getAllContracts(): Promise<ContractEntity[]> {
-    return this.queryAll();
+    return {
+      items: all.slice(0, options?.limit ?? 20),
+      hasMore: all.length > (options?.limit ?? 20),
+      total: all.length,
+    };
   }
 }
 

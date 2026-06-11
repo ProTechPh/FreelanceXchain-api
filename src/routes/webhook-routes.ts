@@ -79,10 +79,12 @@ function verifyBlockchainSignature(payload: string, signature: string): boolean 
     .digest('hex');
 
   try {
-    return crypto.timingSafeEqual(
-      Buffer.from(signature),
-      Buffer.from(expectedSignature)
-    );
+    const sigBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+    if (sigBuffer.length !== expectedBuffer.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(sigBuffer, expectedBuffer);
   } catch {
     return false;
   }
@@ -111,7 +113,7 @@ function verifyBlockchainSignature(payload: string, signature: string): boolean 
 router.post('/blockchain', async (req: Request, res: Response) => {
   try {
     const signature = req.headers['x-blockchain-signature'] as string | undefined;
-    const payload = JSON.stringify(req.body);
+    const payload = req.rawBody ?? JSON.stringify(req.body);
 
     if (signature === undefined) {
       logger.warn('Missing blockchain webhook signature');

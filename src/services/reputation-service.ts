@@ -9,7 +9,8 @@ import {
   submitRatingToBlockchain,
   BlockchainRating,
 } from './reputation-blockchain.js';
-import { pool } from '../config/database.js';
+import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
+import { COLLECTIONS } from '../config/collections.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
@@ -138,12 +139,18 @@ export async function submitRating(
   };
 }
 
-const existingReviewResult = await pool.query(
-  'SELECT id FROM reviews WHERE contract_id = $1 AND reviewer_id = $2',
-  [input.contractId, input.raterId]
+// Check for duplicate review
+const existingReviewResponse = await databases.listDocuments(
+  DATABASE_ID,
+  COLLECTIONS.REVIEWS,
+  [
+    Query.equal('contract_id', input.contractId),
+    Query.equal('reviewer_id', input.raterId),
+    Query.limit(1),
+  ]
 );
 
-if (existingReviewResult.rows.length > 0) {
+if (existingReviewResponse.total > 0) {
   return {
     success: false,
     error: {
@@ -155,55 +162,65 @@ if (existingReviewResult.rows.length > 0) {
 
 const reviewerRole = input.reviewerRole ?? (contract.employerId === input.raterId ? 'employer' : 'freelancer');
 
-// Build dynamic insert query
-const baseColumns = ['contract_id', 'project_id', 'reviewer_id', 'reviewee_id', 'rating', 'comment', 'reviewer_role'];
-const baseValues: any[] = [input.contractId, contract.projectId, input.raterId, rateeId, input.rating, input.comment || null, reviewerRole];
-let paramCount = baseValues.length;
+const reviewData: Record<string, any> = {
+  contract_id: input.contractId,
+  project_id: contract.projectId,
+  reviewer_id: input.raterId,
+  reviewee_id: rateeId,
+  rating: input.rating,
+  comment: input.comment || null,
+  reviewer_role: reviewerRole,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+};
 
-const optionalFields: { column: string; value: any }[] = [];
 if (input.workQuality !== undefined) {
-  optionalFields.push({ column: 'work_quality', value: input.workQuality });
+  reviewData.work_quality = input.workQuality;
 }
 if (input.communication !== undefined) {
-  optionalFields.push({ column: 'communication', value: input.communication });
+  reviewData.communication = input.communication;
 }
 if (input.professionalism !== undefined) {
-  optionalFields.push({ column: 'professionalism', value: input.professionalism });
+  reviewData.professionalism = input.professionalism;
 }
 if (input.wouldWorkAgain !== undefined) {
-  optionalFields.push({ column: 'would_work_again', value: input.wouldWorkAgain });
+  reviewData.would_work_again = input.wouldWorkAgain;
 }
 
-const allColumns = [...baseColumns, ...optionalFields.map(f => f.column), 'created_at', 'updated_at'];
-const allValues = [...baseValues, ...optionalFields.map(f => f.value)];
-const placeholders = allValues.map((_, i) => `$${i + 1}`).join(', ') + ', NOW(), NOW()';
-
-const reviewResult = await pool.query(
-  `INSERT INTO reviews (${allColumns.join(', ')}) VALUES (${placeholders}) RETURNING *`,
-  allValues
+const reviewDoc = await databases.createDocument(
+  DATABASE_ID,
+  COLLECTIONS.REVIEWS,
+  ID.unique(),
+  reviewData
 );
 
-if (reviewResult.rows.length === 0) {
-  logger.error('Failed to save rating', { contractId: input.contractId });
-  return {
-    success: false,
-    error: {
-      code: 'DATABASE_ERROR',
-      message: 'Failed to save rating',
-    },
-  };
-}
-
-const review = reviewResult.rows[0];
+const reviewAttrs = reviewDoc as any;
+const review = {
+  id: reviewAttrs.$id,
+  contract_id: reviewAttrs.contract_id,
+  project_id: reviewAttrs.project_id,
+  reviewer_id: reviewAttrs.reviewer_id,
+  reviewee_id: reviewAttrs.reviewee_id,
+  rating: reviewAttrs.rating,
+  comment: reviewAttrs.comment,
+  reviewer_role: reviewAttrs.reviewer_role,
+  work_quality: reviewAttrs.work_quality,
+  communication: reviewAttrs.communication,
+  professionalism: reviewAttrs.professionalism,
+  would_work_again: reviewAttrs.would_work_again,
+  created_at: reviewAttrs.created_at,
+  updated_at: reviewAttrs.updated_at,
+};
 
 let transactionHash = '';
 try {
-  const usersResult = await pool.query(
-    'SELECT id, wallet_address FROM users WHERE id = ANY($1)',
-    [[input.raterId, rateeId]]
-  );
+  // Look up ratee wallet address for blockchain sync
+  let rateeDoc: Record<string, any> | null = null;
+  try {
+    rateeDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, rateeId) as any;
+  } catch { /* ignore */ }
 
-  const rateeWallet = usersResult.rows.find((u: any) => u.id === rateeId)?.wallet_address;
+  const rateeWallet = (rateeDoc as any)?.wallet_address;
 
   if (rateeWallet) {
     const { isWeb3Available } = await import('./web3-client.js');
@@ -278,13 +295,18 @@ export async function getReputation(
   decayLambda: number = 0.01
 ): Promise<ServiceResult<ReputationScore>> {
   try {
-    const reviewsResult = await pool.query(
-      'SELECT * FROM reviews WHERE reviewee_id = $1 ORDER BY created_at DESC',
-      [userId]
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.REVIEWS,
+      [
+        Query.equal('reviewee_id', userId),
+        Query.orderDesc('created_at'),
+        Query.limit(1000),
+      ]
     );
 
-    const ratings: RatingData[] = reviewsResult.rows.map((r: any) => ({
-      id: r.id,
+    const ratings: RatingData[] = response.documents.map((r: any) => ({
+      id: r.$id,
       contractId: r.contract_id,
       raterId: r.reviewer_id,
       rateeId: r.reviewee_id,
@@ -333,8 +355,9 @@ function computeAggregateScore(ratings: RatingData[], decayLambda: number = 0.01
   let weightSum = 0;
 
   for (const rating of ratings) {
-    const age = now - rating.timestamp;
-    const weight = Math.exp(-decayLambda * age);
+    const ageInSeconds = now - rating.timestamp;
+    const ageInDays = ageInSeconds / 86400;
+    const weight = Math.exp(-decayLambda * ageInDays);
     weightedSum += rating.rating * weight;
     weightSum += weight;
   }
@@ -354,9 +377,13 @@ export async function getWorkHistory(
 
     const completedContracts = contractEntities.filter(c => c.status === 'completed');
 
-    const userReviewsResult = await pool.query(
-      'SELECT * FROM reviews WHERE reviewee_id = $1',
-      [userId]
+    const reviewsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.REVIEWS,
+      [
+        Query.equal('reviewee_id', userId),
+        Query.limit(1000),
+      ]
     );
 
     const workHistory: WorkHistoryEntry[] = [];
@@ -370,7 +397,7 @@ export async function getWorkHistory(
       const projectEntity = await projectRepository.getProjectById(contract.projectId);
       const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
-      const receivedRating = userReviewsResult.rows.find((r: any) => r.contract_id === contract.id);
+      const receivedRating = reviewsResponse.documents.find((r: any) => r.contract_id === contract.id);
 
       workHistory.push({
         contractId: contract.id,
@@ -410,13 +437,17 @@ export async function getContractRatings(
   contractId: string
 ): Promise<ServiceResult<RatingData[]>> {
   try {
-    const reviewsResult = await pool.query(
-      'SELECT * FROM reviews WHERE contract_id = $1',
-      [contractId]
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.REVIEWS,
+      [
+        Query.equal('contract_id', contractId),
+        Query.limit(1000),
+      ]
     );
 
-    const ratings: RatingData[] = reviewsResult.rows.map((r: any) => ({
-      id: r.id,
+    const ratings: RatingData[] = response.documents.map((r: any) => ({
+      id: r.$id,
       contractId: r.contract_id,
       raterId: r.reviewer_id,
       rateeId: r.reviewee_id,
@@ -488,12 +519,17 @@ export async function canUserRate(
     };
   }
 
-  const existingReviewResult = await pool.query(
-    'SELECT id FROM reviews WHERE contract_id = $1 AND reviewer_id = $2',
-    [contractId, raterId]
+  const existingReviewResponse = await databases.listDocuments(
+    DATABASE_ID,
+    COLLECTIONS.REVIEWS,
+    [
+      Query.equal('contract_id', contractId),
+      Query.equal('reviewer_id', raterId),
+      Query.limit(1),
+    ]
   );
 
-  if (existingReviewResult.rows.length > 0) {
+  if (existingReviewResponse.total > 0) {
     return {
       success: true,
       data: { canRate: false, reason: 'You have already rated this user for this contract' },
@@ -523,27 +559,17 @@ export async function canUserRate(
  */
 export async function getReviewById(reviewId: string): Promise<ServiceResult<Review>> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM reviews WHERE id = $1',
-      [reviewId]
-    );
-
-    if (result.rows.length === 0) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Review not found' },
-      };
-    }
+    const doc = await databases.getDocument(DATABASE_ID, COLLECTIONS.REVIEWS, reviewId);
 
     return {
       success: true,
-      data: mapReviewFromEntity(result.rows[0] as ReviewEntity),
+      data: mapReviewFromEntity(doc as any as ReviewEntity),
     };
   } catch (error) {
     logger.error('Failed to get review by ID', { error, reviewId });
     return {
       success: false,
-      error: { code: 'DATABASE_ERROR', message: 'Failed to fetch review' },
+      error: { code: 'NOT_FOUND', message: 'Review not found' },
     };
   }
 }
@@ -553,14 +579,19 @@ export async function getReviewById(reviewId: string): Promise<ServiceResult<Rev
  */
 export async function getUserReviews(userId: string): Promise<ServiceResult<Review[]>> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM reviews WHERE reviewee_id = $1 ORDER BY created_at DESC',
-      [userId]
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.REVIEWS,
+      [
+        Query.equal('reviewee_id', userId),
+        Query.orderDesc('created_at'),
+        Query.limit(1000),
+      ]
     );
 
     return {
       success: true,
-      data: result.rows.map((r: any) => mapReviewFromEntity(r as ReviewEntity)),
+      data: response.documents.map((r: any) => mapReviewFromEntity(r as ReviewEntity)),
     };
   } catch (error) {
     logger.error('Failed to get user reviews', { error, userId });
@@ -576,14 +607,19 @@ export async function getUserReviews(userId: string): Promise<ServiceResult<Revi
  */
 export async function getProjectReviews(projectId: string): Promise<ServiceResult<Review[]>> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM reviews WHERE project_id = $1 ORDER BY created_at DESC',
-      [projectId]
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.REVIEWS,
+      [
+        Query.equal('project_id', projectId),
+        Query.orderDesc('created_at'),
+        Query.limit(1000),
+      ]
     );
 
     return {
       success: true,
-      data: result.rows.map((r: any) => mapReviewFromEntity(r as ReviewEntity)),
+      data: response.documents.map((r: any) => mapReviewFromEntity(r as ReviewEntity)),
     };
   } catch (error) {
     logger.error('Failed to get project reviews', { error, projectId });

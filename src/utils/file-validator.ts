@@ -21,22 +21,58 @@ export const ALLOWED_MIME_TYPES = [
   'application/pdf',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
+  'text/csv',
   // Images
   'image/png',
   'image/jpeg',
+  'image/jpg',
   'image/gif',
+  'image/webp',
+  'image/svg+xml',
+  // Archives
+  'application/zip',
+  'application/x-rar-compressed',
+  'application/x-7z-compressed',
+  // Code files
+  'text/html',
+  'text/css',
+  'text/javascript',
+  'application/json',
+  'text/xml',
+  // Video
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
 ] as const;
 
 export const ALLOWED_EXTENSIONS = [
   '.pdf',
   '.doc',
   '.docx',
+  '.xlsx',
+  '.pptx',
   '.txt',
+  '.csv',
   '.png',
   '.jpg',
   '.jpeg',
   '.gif',
+  '.webp',
+  '.svg',
+  '.zip',
+  '.rar',
+  '.7z',
+  '.html',
+  '.css',
+  '.js',
+  '.json',
+  '.xml',
+  '.mp4',
+  '.webm',
+  '.mov',
 ] as const;
 
 // File size limits
@@ -49,6 +85,37 @@ export const MAX_FILE_COUNT = 5;
 
 // Project-specific limits
 export const MAX_PROJECT_FILES = 10;
+
+/**
+ * Check if an object is a valid FileAttachment
+ */
+export function isFileAttachment(obj: unknown): obj is FileAttachment {
+  if (!obj || typeof obj !== 'object') return false;
+  const att = obj as Record<string, unknown>;
+  return (
+    typeof att.url === 'string' &&
+    typeof att.filename === 'string' &&
+    typeof att.size === 'number' &&
+    typeof att.mimeType === 'string'
+  );
+}
+
+/**
+ * Check if a filename has a valid extension
+ */
+export function hasValidExtension(filename: string): boolean {
+  if (!filename || typeof filename !== 'string') return false;
+  const lower = filename.toLowerCase();
+  return ALLOWED_EXTENSIONS.some(ext => lower.endsWith(ext));
+}
+
+/**
+ * Check if a MIME type is allowed
+ */
+export function isAllowedMimeType(mimeType: string): boolean {
+  if (!mimeType || typeof mimeType !== 'string') return false;
+  return ALLOWED_MIME_TYPES.includes(mimeType as any);
+}
 
 export type ValidationOptions = {
   maxFiles?: number;
@@ -226,40 +293,4 @@ function validateFileUrl(url: string): string[] {
   }
 
   return errors;
-}
-
-/**
- * Type guard to check if an object is a valid FileAttachment
- * @param obj - Object to check
- * @returns True if object is a valid FileAttachment
- */
-export function isFileAttachment(obj: unknown): obj is FileAttachment {
-  if (typeof obj !== 'object' || obj === null) return false;
-  
-  const att = obj as Record<string, unknown>;
-  return (
-    typeof att.url === 'string' &&
-    typeof att.filename === 'string' &&
-    typeof att.size === 'number' &&
-    typeof att.mimeType === 'string'
-  );
-}
-
-/**
- * Check if a file extension is allowed
- * @param filename - Filename to check
- * @returns True if extension is allowed
- */
-export function hasValidExtension(filename: string): boolean {
-  const lowerFilename = filename.toLowerCase();
-  return ALLOWED_EXTENSIONS.some(ext => lowerFilename.endsWith(ext));
-}
-
-/**
- * Check if a MIME type is allowed
- * @param mimeType - MIME type to check
- * @returns True if MIME type is allowed
- */
-export function isAllowedMimeType(mimeType: string): boolean {
-  return ALLOWED_MIME_TYPES.includes(mimeType as any);
 }

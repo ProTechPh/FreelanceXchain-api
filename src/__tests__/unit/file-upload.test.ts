@@ -33,7 +33,8 @@ const mockFileUploadRateLimiter = jest.fn((req: any, _res: any, next: any) => ne
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   fileUploadRateLimiter: mockFileUploadRateLimiter,
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 let shouldProvideFile = true;
 

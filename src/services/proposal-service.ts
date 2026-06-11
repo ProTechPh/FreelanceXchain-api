@@ -328,6 +328,20 @@ export async function acceptProposal(
   const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
   const totalAmount = proposalRate + rushFee;
 
+  // Pre-check: Verify freelancer limit hasn't been reached before atomic RPC
+  const freelancerLimit = projectEntity.freelancer_limit ?? 1;
+  const acceptedCountResult = await pool.query(
+    'SELECT COUNT(*) as count FROM proposals WHERE project_id = $1 AND status = $2',
+    [proposalEntity.project_id, 'accepted']
+  );
+  const preCheckAcceptedCount = parseInt(acceptedCountResult.rows[0]?.count ?? '0', 10);
+  if (preCheckAcceptedCount >= freelancerLimit) {
+    return {
+      success: false,
+      error: { code: 'FREELANCER_LIMIT_REACHED', message: `This project has already accepted the maximum number of freelancers (${freelancerLimit})` },
+    };
+  }
+
   // RACE CONDITION FIX: Use atomic PostgreSQL function to prevent double-accepting proposals
   const result = await pool.query(
     'SELECT accept_proposal_atomic($1, $2) as result',
@@ -345,12 +359,26 @@ export async function acceptProposal(
     };
   }
 
-  // Map the new values returned from the RPC
-  const createdContractId = (result as any).contract_id;
-  const limitReached = (result as any).limit_reached ?? true; // Default true for backward compat if RPC doesn't return it
+  // The atomic RPC returns a boolean; look up the created contract from the contracts table
+  const updatedProposalEntity = await proposalRepository.findProposalById(proposalId);
+  
+  // Find the contract created for this proposal (contract references the proposal)
+  const contractResult = await pool.query(
+    'SELECT id FROM contracts WHERE proposal_id = $1 LIMIT 1',
+    [proposalId]
+  );
+  const createdContractId = contractResult.rows[0]?.id;
+  if (!createdContractId) {
+    return {
+      success: false,
+      error: { 
+        code: 'UPDATE_FAILED', 
+        message: 'Proposal accepted but no contract was created' 
+      },
+    };
+  }
 
   // Get the updated entities
-  const updatedProposalEntity = await proposalRepository.findProposalById(proposalId);
   const updatedProposal = mapProposalFromEntity(updatedProposalEntity!);
   
   const createdContractEntity = await contractRepository.getContractById(createdContractId);
@@ -407,6 +435,11 @@ export async function acceptProposal(
 
   // Update project status based on freelancer limit
   // Only transition to in_progress when all freelancer slots are filled
+  const maxFreelancers = project.freelancerLimit ?? 1;
+  const acceptedProposals = await proposalRepository.getProposalsByProject(project.id, { limit: 1000, offset: 0 });
+  const acceptedCount = acceptedProposals.items.filter(p => p.status === 'accepted').length;
+  const limitReached = acceptedCount >= maxFreelancers;
+
   if (limitReached) {
     // All freelancer slots filled — transition project to in_progress and activate first milestone
     const updatedMilestones = project.milestones?.map((milestone, index) => {

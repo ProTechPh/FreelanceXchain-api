@@ -34,7 +34,10 @@ export class BaseRepositoryPg<T extends BaseEntity> {
     this.pool = pool;
   }
 
-  protected getPool(): Pool {
+  /**
+   * Get the pool instance
+   */
+  getPool(): Pool {
     return this.pool;
   }
 
@@ -132,6 +135,10 @@ export class BaseRepositoryPg<T extends BaseEntity> {
    * Find one record by column value
    */
   async findOne(column: string, value: unknown): Promise<T | null> {
+    const ALLOWED_COLUMNS = new Set(['id', 'user_id', 'contract_id', 'project_id', 'email', 'status', 'role']);
+    if (!ALLOWED_COLUMNS.has(column)) {
+      throw new Error(`Invalid column name: ${column}`);
+    }
     const query = `SELECT * FROM ${this.tableName} WHERE ${column} = $1 LIMIT 1`;
     
     try {
@@ -173,7 +180,7 @@ export class BaseRepositoryPg<T extends BaseEntity> {
     const offset = options?.offset ?? 0;
     const direction = ascending ? 'ASC' : 'DESC';
 
-    // Get total count
+    // Get total count (note: this counts all rows; subclasses should override for filtered counts)
     const countQuery = `SELECT COUNT(*) FROM ${this.tableName}`;
     const countResult = await this.pool.query(countQuery);
     const total = parseInt(countResult.rows[0].count, 10);

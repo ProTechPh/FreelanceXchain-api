@@ -123,6 +123,7 @@ router.get('/project/:projectId', apiRateLimiter, validateUUID(['projectId']), a
 router.get('/can-review/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
+  const rateeId = req.query['rateeId'] as string | undefined;
   const requestId = getRequestId(req);
 
   if (!userId) {
@@ -134,7 +135,16 @@ router.get('/can-review/:contractId', authMiddleware, apiRateLimiter, validateUU
     return;
   }
 
-  const result = await canUserReview(userId, userId, contractId);
+  if (!rateeId) {
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'rateeId query parameter is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const result = await canUserReview(userId, rateeId, contractId);
 
   if (!result.success) {
     res.status(400).json({

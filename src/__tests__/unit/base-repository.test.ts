@@ -95,21 +95,25 @@ describe('BaseRepository', () => {
 
   describe('findOne', () => {
     it('should return entity matching column and value', async () => {
-      const entity = { id: 'e1', name: 'Test' };
+      const entity = { id: 'e1', email: 'test@test.com' };
       mockAppwriteResult({ data: entity });
-      const result = await repo.findOne('name', 'Test');
+      const result = await repo.findOne('email', 'test@test.com');
       expect(result).toEqual(entity);
     });
 
     it('should return null when not found', async () => {
       mockAppwriteResult({ data: null });
-      const result = await repo.findOne('name', 'Test');
+      const result = await repo.findOne('email', 'test@test.com');
       expect(result).toBeNull();
+    });
+
+    it('should throw on invalid column name', async () => {
+      await expect(repo.findOne('name', 'Test')).rejects.toThrow('Invalid column name');
     });
 
     it('should throw on other database errors', async () => {
       mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.findOne('name', 'Test')).rejects.toThrow('Failed to find');
+      await expect(repo.findOne('email', 'test@test.com')).rejects.toThrow('Failed to find');
     });
   });
 

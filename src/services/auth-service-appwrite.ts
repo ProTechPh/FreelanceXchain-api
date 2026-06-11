@@ -5,7 +5,7 @@
  */
 
 import { ID, Account, Models, OAuthProvider, AuthenticatorType } from 'node-appwrite';
-import { randomUUID, createCipheriv, createDecipheriv, scryptSync } from 'crypto';
+import { randomBytes, randomUUID, createCipheriv, createDecipheriv, scryptSync } from 'crypto';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
 import { createUserClient, users } from '../config/appwrite.js';
@@ -23,18 +23,20 @@ import {
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
 
-const MFA_ENCRYPTION_KEY = process.env['MFA_ENCRYPTION_KEY'] ?? config.jwt.secret;
+const MFA_ENCRYPTION_KEY = process.env['MFA_ENCRYPTION_KEY'];
+if (!MFA_ENCRYPTION_KEY) {
+  logger.warn('MFA_ENCRYPTION_KEY not set — falling back to JWT_SECRET (insecure in production)');
+}
 const MFA_ENCRYPTION_ALGO = 'aes-256-gcm';
 
-// SECURITY TODO: Static salt weakens key derivation. Migrate to per-user salts
-// stored in the database for proper key isolation between users.
 function getMfaEncryptionKey(): Buffer {
-  return scryptSync(MFA_ENCRYPTION_KEY, 'mfa-salt-freelancex', 32);
+  const keyMaterial = MFA_ENCRYPTION_KEY ?? config.jwt.secret;
+  return scryptSync(keyMaterial, 'mfa-salt-freelancex', 32);
 }
 
 function encryptToken(plaintext: string): string {
   const key = getMfaEncryptionKey();
-  const iv = randomUUID().replace(/-/g, '').slice(0, 16);
+  const iv = randomBytes(12); // AES-256-GCM requires exactly 12-byte IV
   const cipher = createCipheriv(MFA_ENCRYPTION_ALGO, key, iv);
   let encrypted = cipher.update(plaintext, 'utf8', 'hex');
   encrypted += cipher.final('hex');
@@ -243,9 +245,10 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
     };
   }
 
+  let appwriteUser: any;
   try {
     // Create user in Appwrite
-    const appwriteUser = await users.create(
+    appwriteUser = await users.create(
       ID.unique(),
       normalizedEmail,
       undefined, // phone (optional)
@@ -253,13 +256,13 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       input.email.split('@')[0] // name from email
     );
 
-    // Create user record in PostgreSQL
+    // Create user record in database
     const publicUser = await userRepository.createUser({
       id: appwriteUser.$id,
       email: normalizedEmail,
       password_hash: '', // Appwrite handles password
       role: input.role,
-      wallet_address: input.walletAddress ?? '',
+      wallet_address: '',
       name: input.email.split('@')[0] || 'User',
       is_suspended: false,
       suspension_reason: null,
@@ -285,6 +288,23 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       refreshToken: session.secret, // Same for now, can be enhanced
     };
   } catch (error: any) {
+    // Compensate: if Appwrite user was created but PostgreSQL or session failed, delete the Appwrite user
+    if (appwriteUser?.$id) {
+      try {
+        await users.delete(appwriteUser.$id);
+        logger.warn('Compensated: deleted orphaned Appwrite user after registration failure', {
+          appwriteUserId: appwriteUser.$id,
+          email: normalizedEmail,
+        });
+      } catch (deleteError) {
+        logger.error('CRITICAL: Failed to delete orphaned Appwrite user', {
+          appwriteUserId: appwriteUser.$id,
+          email: normalizedEmail,
+          deleteError: deleteError instanceof Error ? deleteError.message : String(deleteError),
+        });
+      }
+    }
+
     logger.error('Registration failed', { error: error.message, email: normalizedEmail });
     
     if (error.message?.includes('already exists') || error.code === 409) {
@@ -540,7 +560,10 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     };
   }
 
-  const authProvider: 'email' | 'oauth' = user.password_hash === '' ? 'oauth' : 'email';
+  // Default to 'email' since Appwrite manages passwords externally.
+  // password_hash is always empty for Appwrite-managed users.
+  // OAuth-only users would need a separate flag to distinguish.
+  const authProvider: 'email' | 'oauth' = 'email';
 
   // Admins are automatically considered KYC approved
   if (user.role === 'admin') {
@@ -611,8 +634,8 @@ export async function exchangeCodeForSession(accessToken: string): Promise<{ acc
     if (!publicUser) {
       // User authenticated with OAuth but no DB profile yet
       return {
-        code: 'USER_NOT_FOUND',
-        message: 'OAuth authentication successful, but user profile not found. Please complete registration.',
+        code: 'AUTH_REQUIRE_REGISTRATION',
+        message: 'OAuth authentication successful, but user profile not found. Please complete registration with a role.',
       };
     }
 
@@ -630,21 +653,17 @@ export async function exchangeCodeForSession(accessToken: string): Promise<{ acc
 }
 
 /**
- * Enroll user in MFA (TOTP)
+ * Enroll user in MFA (Email OTP)
  */
-export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; secret: string; factorId: string } | AuthError> {
+export async function enrollMFA(accessToken: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Appwrite MFA implementation (v1.5+)
-    const mfaType = await account.createMFAAuthenticator({ type: AuthenticatorType.Totp });
+    // Enroll in Email OTP
+    await account.createMFAAuthenticator({ type: 'email' as any });
     
-    return {
-      qrCode: mfaType.uri,
-      secret: mfaType.secret,
-      factorId: 'totp',
-    };
+    return { success: true };
   } catch (error: any) {
     logger.error('MFA enrollment failed', { error: error.message });
     return {
@@ -655,7 +674,7 @@ export async function enrollMFA(accessToken: string): Promise<{ qrCode: string; 
 }
 
 /**
- * Verify MFA enrollment
+ * Verify MFA enrollment (Email OTP)
  */
 export async function verifyMFAEnrollment(accessToken: string, factorId: string, code: string): Promise<{ success: boolean } | AuthError> {
   try {
@@ -664,7 +683,7 @@ export async function verifyMFAEnrollment(accessToken: string, factorId: string,
 
     // Verify and enable MFA
     await account.updateMFAAuthenticator({
-      type: AuthenticatorType.Totp,
+      type: 'email' as any,
       otp: code
     });
     
@@ -748,7 +767,7 @@ export async function getMFAFactors(accessToken: string): Promise<{ factors: any
 /**
  * Disable MFA
  */
-export async function disableMFA(accessToken: string, factorId: string, totpCode?: string): Promise<{ success: boolean } | AuthError> {
+export async function disableMFA(accessToken: string, factorId: string, _otpCode?: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
@@ -782,6 +801,7 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
     
     // await account.createVerification(redirectUrl);
     
+    logger.warn('resendConfirmationEmail called but Appwrite email verification is not implemented', { email });
     return { success: true };
   } catch (error: any) {
     return {
@@ -792,21 +812,146 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
 }
 
 /**
- * Migration helper: Login with Appwrite token (unused after migration)
+ * OAuth/JWT Login: Validates token and returns local auth session
  */
-export async function loginWithAppwrite(accessToken: string): Promise<AuthResponse> {
-  return {
-    code: 'INTERNAL_ERROR',
-    message: 'Appwrite authentication is no longer supported. Please login with your email and password.',
-  };
+export async function loginWithAppwrite(accessToken: string): Promise<AuthResult | AuthError> {
+  try {
+    const userClient = createUserClient(accessToken);
+    const account = new Account(userClient);
+    
+    // Validate session/token with Appwrite
+    const appwriteUser = await account.get();
+    
+    // Check if user exists in local PostgreSQL database
+    const publicUser = await userRepository.getUserById(appwriteUser.$id);
+    
+    if (!publicUser) {
+      return {
+        code: 'AUTH_REQUIRE_REGISTRATION',
+        message: 'User authenticated but profile not found. Please register.',
+      };
+    }
+    
+    return createAuthResult(publicUser, accessToken, accessToken);
+  } catch (error: any) {
+    logger.error('Login with Appwrite token failed', { error: error.message });
+    return {
+      code: 'AUTH_INVALID_TOKEN',
+      message: 'Invalid or expired authentication token.',
+    };
+  }
 }
 
 /**
- * Migration helper: Register with Appwrite info
+ * OAuth/Token Registration: Create DB user after OAuth or Magic URL
  */
-export async function registerWithAppwrite(accessToken: string, role: UserRole, walletAddress: string): Promise<AuthResult | AuthError> {
-  return {
-    code: 'INTERNAL_ERROR',
-    message: 'Appwrite registration is no longer supported. Please register using the new system.',
-  };
+export async function registerWithAppwrite(accessToken: string, role: UserRole): Promise<AuthResult | AuthError> {
+  try {
+    const userClient = createUserClient(accessToken);
+    const account = new Account(userClient);
+    
+    // Validate token and get user details from Appwrite
+    const appwriteUser = await account.get();
+    
+    // Check if user already exists
+    const existingUser = await userRepository.getUserById(appwriteUser.$id);
+    if (existingUser) {
+      return {
+        code: 'DUPLICATE_EMAIL',
+        message: 'User already exists.',
+      };
+    }
+    
+    // Create the user in local database
+    const publicUser = await userRepository.createUser({
+      id: appwriteUser.$id,
+      email: appwriteUser.email,
+      password_hash: '', // Handled by Appwrite
+      role,
+      wallet_address: '',
+      name: appwriteUser.name || appwriteUser.email.split('@')[0] || 'User',
+      is_suspended: false,
+      suspension_reason: null,
+      mfa_enabled: appwriteUser.mfa || false,
+    });
+    
+    return createAuthResult(publicUser, accessToken, accessToken);
+  } catch (error: any) {
+    logger.error('Appwrite registration failed', { error: error.message });
+    return {
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to complete registration.',
+    };
+  }
+}
+
+/**
+ * Request Phone OTP
+ */
+export async function requestPhoneOtp(phone: string): Promise<{ userId: string } | AuthError> {
+  try {
+    const userClient = createUserClient('');
+    const account = new Account(userClient);
+    
+    // Appwrite creates or uses existing user with this phone
+    const token = await account.createPhoneToken(ID.unique(), phone);
+    return { userId: token.userId };
+  } catch (error: any) {
+    logger.error('Phone OTP request failed', { error: error.message, phone });
+    return { code: 'INTERNAL_ERROR', message: error.message || 'Failed to send OTP to phone' };
+  }
+}
+
+/**
+ * Request Email OTP
+ */
+export async function requestEmailOtp(email: string): Promise<{ userId: string } | AuthError> {
+  try {
+    const userClient = createUserClient('');
+    const account = new Account(userClient);
+    
+    const token = await account.createEmailToken(ID.unique(), email.toLowerCase().trim());
+    return { userId: token.userId };
+  } catch (error: any) {
+    logger.error('Email OTP request failed', { error: error.message, email });
+    return { code: 'INTERNAL_ERROR', message: error.message || 'Failed to send OTP to email' };
+  }
+}
+
+/**
+ * Request Magic URL
+ */
+export async function requestMagicUrl(email: string): Promise<{ userId: string } | AuthError> {
+  try {
+    const userClient = createUserClient('');
+    const account = new Account(userClient);
+    
+    const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
+    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/auth/magic-url-callback`;
+    
+    const token = await account.createMagicURLToken(ID.unique(), email.toLowerCase().trim(), redirectUrl);
+    return { userId: token.userId };
+  } catch (error: any) {
+    logger.error('Magic URL request failed', { error: error.message, email });
+    return { code: 'INTERNAL_ERROR', message: error.message || 'Failed to send Magic URL' };
+  }
+}
+
+/**
+ * Verify Token (Phone OTP, Email OTP, or Magic URL)
+ */
+export async function verifyAuthToken(userId: string, secret: string): Promise<AuthResult | AuthError> {
+  try {
+    const userClient = createUserClient('');
+    const account = new Account(userClient);
+    
+    // Verify the secret and create a session
+    const session = await account.createSession(userId, secret);
+    
+    // Now that session is created, log in using the session secret
+    return await loginWithAppwrite(session.secret);
+  } catch (error: any) {
+    logger.error('Token verification failed', { error: error.message });
+    return { code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid or expired code/token' };
+  }
 }

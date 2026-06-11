@@ -1,122 +1,126 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 const { AuditLogRepository } = await import('../../repositories/audit-log-repository.js');
 
 describe('AuditLogRepository', () => {
   let repo: any;
+  let mockDatabases: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     repo = new AuditLogRepository();
-  });
-
-  describe('logAction', () => {
-    it('should create and return an audit log entry', async () => {
-      const entry = { id: 'a1', action: 'login', user_id: 'u1' };
-      mockAppwriteResult({ data: entry });
-      const result = await repo.logAction({ action: 'login', user_id: 'u1' } as any);
-      expect(result).toEqual(entry);
-    });
-
-    it('should use defaults for missing fields', async () => {
-      mockAppwriteResult({ data: { id: 'a1' } });
-      const result = await repo.logAction({} as any);
-      expect(result.id).toBe('a1');
-    });
-
-    it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'insert failed' } });
-      await expect(repo.logAction({} as any)).rejects.toThrow('Failed to create audit log');
-    });
+    mockDatabases = (globalThis as any).__mockDatabases;
   });
 
   describe('getById', () => {
     it('should return an entry', async () => {
-      const entry = { id: 'a1' };
-      mockAppwriteResult({ data: entry });
+      const entry = { $id: 'a1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01' };
+      mockDatabases.getDocument.mockResolvedValueOnce(entry);
       const result = await repo.getById('a1');
-      expect(result).toEqual(entry);
+      expect(result).toEqual(expect.objectContaining({ id: 'a1' }));
     });
 
     it('should return null when not found', async () => {
-      mockAppwriteResult({ data: null });
+      mockDatabases.getDocument.mockRejectedValueOnce(new Error('not found'));
       const result = await repo.getById('a1');
       expect(result).toBeNull();
     });
 
-    it('should throw on other database errors', async () => {
-      mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.getById('a1')).rejects.toThrow('Failed to get audit log');
+    it('should return null on other database errors', async () => {
+      mockDatabases.getDocument.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.getById('a1');
+      expect(result).toBeNull();
     });
   });
 
   describe('getByUserId', () => {
     it('should return entries for a user', async () => {
-      const entries = [{ id: 'a1', user_id: 'u1' }];
-      mockAppwriteResult({ data: entries });
+      const entries = [
+        { $id: 'a1', user_id: 'u1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: entries, total: 1 });
       const result = await repo.getByUserId('u1');
-      expect(result).toEqual(entries);
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('a1');
     });
 
-    it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.getByUserId('u1')).rejects.toThrow('Failed to get audit logs');
+    it('should return empty array on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.getByUserId('u1');
+      expect(result).toEqual([]);
     });
   });
 
   describe('getByAction', () => {
     it('should return entries by action', async () => {
-      const entries = [{ id: 'a1', action: 'login' }];
-      mockAppwriteResult({ data: entries });
+      const entries = [
+        { $id: 'a1', action: 'login', $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: entries, total: 1 });
       const result = await repo.getByAction('login');
-      expect(result).toEqual(entries);
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('a1');
     });
 
-    it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.getByAction('login')).rejects.toThrow('Failed to get audit logs');
+    it('should return empty array on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.getByAction('login');
+      expect(result).toEqual([]);
     });
   });
 
   describe('getByResource', () => {
     it('should return entries by resource type and id', async () => {
-      const entries = [{ id: 'a1', resource_type: 'project', resource_id: 'p1' }];
-      mockAppwriteResult({ data: entries });
+      const entries = [
+        { $id: 'a1', resource_type: 'project', resource_id: 'p1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: entries, total: 1 });
       const result = await repo.getByResource('project', 'p1');
-      expect(result).toEqual(entries);
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('a1');
     });
 
-    it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.getByResource('project', 'p1')).rejects.toThrow('Failed to get audit logs');
+    it('should return empty array on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.getByResource('project', 'p1');
+      expect(result).toEqual([]);
     });
   });
 
   describe('getByDateRange', () => {
     it('should return entries in date range', async () => {
-      const entries = [{ id: 'a1' }];
-      mockAppwriteResult({ data: entries });
-      const result = await repo.getByDateRange(new Date('2024-01-01'), new Date('2024-12-31'));
-      expect(result).toEqual(entries);
+      const entries = [
+        { $id: 'a1', $createdAt: '2025-06-01', $updatedAt: '2025-06-01' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: entries, total: 1 });
+      const result = await repo.getByDateRange(new Date('2025-01-01'), new Date('2025-12-31'));
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('a1');
     });
 
-    it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.getByDateRange(new Date(), new Date())).rejects.toThrow('Failed to get audit logs');
+    it('should return empty array on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.getByDateRange(new Date(), new Date());
+      expect(result).toEqual([]);
     });
   });
 
   describe('getFailedActions', () => {
     it('should return failed actions', async () => {
-      const entries = [{ id: 'a1', status: 'failure' }];
-      mockAppwriteResult({ data: entries });
+      const entries = [
+        { $id: 'a1', status: 'failure', $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: entries, total: 1 });
       const result = await repo.getFailedActions();
-      expect(result).toEqual(entries);
+      expect(result).toHaveLength(1);
+      expect(result[0]!.id).toBe('a1');
     });
 
-    it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.getFailedActions()).rejects.toThrow('Failed to get audit logs');
+    it('should return empty array on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.getFailedActions();
+      expect(result).toEqual([]);
     });
   });
 });

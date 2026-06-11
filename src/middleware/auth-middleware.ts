@@ -152,25 +152,22 @@ export async function requireMFA(req: Request, res: Response, next: NextFunction
 
     const user = result.rows[0];
     
-    // For now, we'll allow access if MFA is not enabled
-    // When Appwrite MFA is fully implemented, we'll enforce MFA verification
     if (user.mfa_enabled) {
-      logger.warn('MFA is enabled but verification not yet implemented with Appwrite', {
+      logger.warn('MFA enabled — blocking request until MFA verification is implemented', {
         userId: req.user.userId,
         requestId,
         path: req.path,
       });
       
-      // TODO: Uncomment when Appwrite MFA is implemented
-      // res.status(403).json({
-      //   error: {
-      //     code: 'MFA_REQUIRED',
-      //     message: 'Multi-factor authentication is required for this operation.',
-      //   },
-      //   timestamp: new Date().toISOString(),
-      //   requestId,
-      // });
-      // return;
+      res.status(403).json({
+        error: {
+          code: 'MFA_REQUIRED',
+          message: 'Multi-factor authentication is required for this operation.',
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+      return;
     }
   } catch (err) {
     logger.auth('MFA check exception — blocking request (fail-closed)', req.user?.userId, {

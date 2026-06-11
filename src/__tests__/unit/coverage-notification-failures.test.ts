@@ -10,7 +10,11 @@ import path from 'node:path';
 
 const resolveModule = (p: string) => path.resolve(process.cwd(), p);
 
-const mockPool = { query: jest.fn<any>() };
+const mockClient = {
+  query: jest.fn<any>().mockResolvedValue({ rows: [{ id: 'm-1' }], rowCount: 1 }),
+  release: jest.fn(),
+};
+const mockPool = { query: jest.fn<any>(), connect: jest.fn<any>().mockResolvedValue(mockClient) };
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   pool: mockPool,
 }));
@@ -39,7 +43,7 @@ const mockProposalRepository = {
   findProposalById: jest.fn<any>(),
   createProposal: jest.fn<any>(),
   updateProposal: jest.fn<any>(),
-  getProposalsByProject: jest.fn<any>(),
+  getProposalsByProject: jest.fn<any>().mockResolvedValue({ items: [], hasMore: false, total: 0 }),
   getProposalsByFreelancer: jest.fn<any>(),
   getExistingProposal: jest.fn<any>(),
   getAcceptedProposalCount: jest.fn<any>(),
@@ -116,6 +120,8 @@ describe('Proposal Service - notification failure catch blocks', () => {
     mockNotificationRepository.createNotification.mockRejectedValue(
       new Error('Notification DB error')
     );
+    // Re-set proposal repository mocks that may have been cleared
+    mockProposalRepository.getProposalsByProject.mockResolvedValue({ items: [], hasMore: false, total: 0 });
   });
 
   // Lines 129-131: submitProposal notification failure
@@ -157,16 +163,20 @@ describe('Proposal Service - notification failure catch blocks', () => {
       freelancer_limit: 1,
     });
 
-    // Mock the RPC call for accept
-    mockPool.query.mockResolvedValue({
-      rows: [{ result: JSON.stringify({
-        contract: { id: 'c-1', freelancer_id: 'f-1', employer_id: 'emp-1', project_id: 'p-1', status: 'pending', total_amount: 1000 },
-        proposal: { id: 'prop-1', status: 'accepted' },
-        project: { id: 'p-1', status: 'in_progress' },
-        milestones: [{ id: 'm-1', title: 'MS1', amount: 1000 }],
-        limitReached: true,
-      }) }],
-    });
+    // Mock the multiple pool queries for accept:
+    // 1) COUNT check, 2) RPC call, 3) contract lookup
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 })  // COUNT pre-check
+      .mockResolvedValueOnce({  // accept_proposal_atomic RPC
+        rows: [{ result: JSON.stringify({
+          contract: { id: 'c-1', freelancer_id: 'f-1', employer_id: 'emp-1', project_id: 'p-1', status: 'pending', total_amount: 1000 },
+          proposal: { id: 'prop-1', status: 'accepted' },
+          project: { id: 'p-1', status: 'in_progress' },
+          milestones: [{ id: 'm-1', title: 'MS1', amount: 1000 }],
+          limitReached: true,
+        }) }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 'c-1' }], rowCount: 1 });  // contract lookup
 
     const result = await acceptProposal('prop-1', 'emp-1');
     expect(result.success).toBe(true);
@@ -212,15 +222,20 @@ describe('Proposal Service - notification failure catch blocks', () => {
       freelancer_limit: 1,
     });
 
-    mockPool.query.mockResolvedValue({
-      rows: [{ result: JSON.stringify({
-        contract: { id: 'c-1', freelancer_id: 'f-1', employer_id: 'emp-1', project_id: 'p-1', status: 'pending', total_amount: 1000 },
-        proposal: { id: 'prop-1', status: 'accepted' },
-        project: { id: 'p-1', status: 'in_progress' },
-        milestones: [{ id: 'm-1', title: 'MS1', amount: 1000 }],
-        limitReached: true,
-      }) }],
-    });
+    // Mock the multiple pool queries for accept:
+    // 1) COUNT check, 2) RPC call, 3) contract lookup
+    mockPool.query
+      .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 })  // COUNT pre-check
+      .mockResolvedValueOnce({  // accept_proposal_atomic RPC
+        rows: [{ result: JSON.stringify({
+          contract: { id: 'c-1', freelancer_id: 'f-1', employer_id: 'emp-1', project_id: 'p-1', status: 'pending', total_amount: 1000 },
+          proposal: { id: 'prop-1', status: 'accepted' },
+          project: { id: 'p-1', status: 'in_progress' },
+          milestones: [{ id: 'm-1', title: 'MS1', amount: 1000 }],
+          limitReached: true,
+        }) }],
+      })
+      .mockResolvedValueOnce({ rows: [{ id: 'c-1' }], rowCount: 1 });  // contract lookup
 
     // Should succeed even when blockchain throws (line 404 catch block)
     const result = await acceptProposal('prop-1', 'emp-1');

@@ -3,13 +3,20 @@ import { doubleCsrf } from 'csrf-csrf';
 import { config } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
-const csrfSecret = process.env['CSRF_SECRET'] ?? config.jwt.secret;
+const csrfSecret = process.env['CSRF_SECRET'];
+if (!csrfSecret) {
+  const msg = 'CSRF_SECRET not set — using JWT_SECRET as fallback (insecure in production)';
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error(msg);
+  }
+  logger.warn(msg);
+}
 
 const {
   generateCsrfToken: csrfTokenGenerator,
   doubleCsrfProtection,
 } = doubleCsrf({
-  getSecret: () => csrfSecret,
+  getSecret: () => csrfSecret ?? config.jwt.secret,
   /* istanbul ignore next */
   cookieName: process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token',
   cookieOptions: {
@@ -33,7 +40,7 @@ const {
 const CSRF_EXEMPT_PATHS = [
   '/health',
   '/api/health',
-  '/api/webhooks',
+  '/api/webhooks', // All webhooks (verified by HMAC)
   '/api/auth/login',
   '/api/auth/login/mfa-verify',
   '/api/auth/register',

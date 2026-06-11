@@ -32,12 +32,17 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
 const { initializeScheduler, stopScheduler } = await import('../../services/scheduler-service.js');
 
 describe('Scheduler Service', () => {
-  let mockPool: any;
+  let mockDatabases: any;
   let scheduledCallbacks: Map<string, () => void>;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.updateDocument.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.deleteDocument.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
     scheduledCallbacks = new Map();
 
     mockCronSchedule.mockImplementation((expression: any, callback: any) => {
@@ -68,14 +73,21 @@ describe('Scheduler Service', () => {
     it('should close expired projects', async () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 0 * * *');
-      
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ id: 'p1' }, { id: 'p2' }] }) // find expired
-        .mockResolvedValueOnce({ rows: [] }); // update status
+
+      const pastDate = new Date(Date.now() - 86400000).toISOString();
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', deadline: pastDate },
+          { $id: 'p2', deadline: pastDate },
+        ],
+        total: 2,
+      });
+      mockDatabases.updateDocument.mockResolvedValue({ $id: 'p1' });
 
       if (callback) {
         callback();
         await new Promise(resolve => setTimeout(resolve, 10));
+        expect(mockDatabases.updateDocument).toHaveBeenCalledTimes(2);
         expect(mockLogger.info).toHaveBeenCalledWith('Auto-closed 2 expired projects');
       }
     });
@@ -85,13 +97,34 @@ describe('Scheduler Service', () => {
     it('should send digest emails', async () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 9 * * 1');
-      
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ user_id: 'u1', email: 'u1@test.com', full_name: 'User 1' }] }) // get users
-        .mockResolvedValueOnce({ rows: [{ count: '5' }] }) // new projects
-        .mockResolvedValueOnce({ rows: [{ count: '2' }] }) // new messages
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] }) // pending milestones
-        .mockResolvedValueOnce({ rows: [{ id: 'proj1', title: 'Top Project', budget: 1000 }] }); // top projects
+
+      mockDatabases.listDocuments
+        // email prefs
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'ep1', user_id: 'u1' }],
+          total: 1,
+        })
+        // projects
+        .mockResolvedValueOnce({
+          documents: [],
+          total: 0,
+        })
+        // messages
+        .mockResolvedValueOnce({ documents: [], total: 2 })
+        // contracts
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        // top projects
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'proj1', title: 'Top Project', budget: 1000 }],
+          total: 1,
+        });
+
+      // getDocument for user info
+      mockDatabases.getDocument.mockResolvedValueOnce({
+        $id: 'u1',
+        email: 'u1@test.com',
+        full_name: 'User 1',
+      });
 
       if (callback) {
         callback();
@@ -105,10 +138,18 @@ describe('Scheduler Service', () => {
     it('should execute searches and log results', async () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 */6 * * *');
-      
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1', search_type: 'project', filters: {} }] }) // get searches
-        .mockResolvedValueOnce({ rows: [{ id: 'r1' }] }); // execute search
+
+      mockDatabases.listDocuments
+        // saved searches
+        .mockResolvedValueOnce({
+          documents: [{ $id: 's1', search_type: 'project', filters: {} }],
+          total: 1,
+        })
+        // search results
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'r1' }],
+          total: 1,
+        });
 
       if (callback) {
         callback();
@@ -122,13 +163,22 @@ describe('Scheduler Service', () => {
     it('should delete old notifications', async () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 2 * * *');
-      
-      mockPool.query.mockResolvedValueOnce({ rowCount: 10 });
+
+      const oldDate = new Date(Date.now() - 60 * 86400000).toISOString();
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'n1', created_at: oldDate },
+          { $id: 'n2', created_at: oldDate },
+        ],
+        total: 2,
+      });
+      mockDatabases.deleteDocument.mockImplementation(() => Promise.resolve({}));
 
       if (callback) {
         callback();
-        await new Promise(resolve => setTimeout(resolve, 10));
-        expect(mockLogger.info).toHaveBeenCalledWith('Cleaned up old notifications');
+        await new Promise(resolve => setTimeout(resolve, 100));
+        expect(mockDatabases.deleteDocument).toHaveBeenCalledTimes(2);
+        expect(mockLogger.info).toHaveBeenCalledWith('Cleaned up old notifications', { deletedTotal: 2 });
       }
     });
   });

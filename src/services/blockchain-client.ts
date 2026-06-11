@@ -146,16 +146,6 @@ export function generateWalletAddress(): string {
 }
 
 /**
- * Sign a transaction (simulated)
- * In production, this would use actual cryptographic signing
- */
-export function signTransaction(tx: Transaction, _privateKey: string): string {
-  // Simulated signature - in production would use actual signing
-  const txData = JSON.stringify(serializeTransaction(tx));
-  return '0x' + Buffer.from(txData).toString('hex').slice(0, 130);
-}
-
-/**
  * Create and submit a transaction to the blockchain
  */
 export async function submitTransaction(
@@ -335,16 +325,15 @@ export async function clearTransactions(): Promise<void> {
 }
 
 /**
- * Get blockchain client configuration
+ * Get the current blockchain configuration
  */
 export function getBlockchainConfig(): BlockchainConfig {
   return { ...defaultConfig };
 }
 
 /**
- * Check if blockchain is available
+ * Check if blockchain is configured and available
  */
-export async function isBlockchainAvailable(): Promise<boolean> {
-  // In production, this would ping the RPC endpoint
-  return !!config.blockchain.rpcUrl;
+export function isBlockchainAvailable(): boolean {
+  return Boolean(defaultConfig.rpcUrl && defaultConfig.privateKey);
 }

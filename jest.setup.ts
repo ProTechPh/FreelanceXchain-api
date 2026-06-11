@@ -30,30 +30,69 @@ const mockPool = {
 global.mockPool = mockPool;
 
 /**
- * Mock helper for PG query results
+ * Mock helper for Appwrite database results
  * Usage: mockAppwriteResult({ data: [...] }) for success
- *        mockAppwriteResult({ data: null }) for empty/no results (returns empty rows)
- *        mockAppwriteResult({ error: { code: 'PGRST116', message: '...' } }) for "not found" (returns empty rows)
- *        mockAppwriteResult({ error: { message: '...' } }) for error (rejects query)
+ *        mockAppwriteResult({ data: null }) for empty/no results
+ *        mockAppwriteResult({ error: { code: 'PGRST116', message: '...' } }) for "not found"
+ *        mockAppwriteResult({ error: { message: '...' } }) for error
  */
 global.mockAppwriteResult = (result: { data?: any; error?: any; count?: any }) => {
+  const db = (globalThis as any).__mockDatabases;
+  if (!db) return;
+
+  const toAppwriteDoc = (item: any) => {
+    if (!item || typeof item !== 'object') return item;
+    const { id, created_at, updated_at, ...rest } = item;
+    const doc: any = { ...rest };
+    if (id !== undefined) doc.$id = id;
+    else doc.$id = 'mock-id';
+    if (created_at !== undefined) doc.$createdAt = created_at;
+    if (updated_at !== undefined) doc.$updatedAt = updated_at;
+    return doc;
+  };
+
+  // Reset all methods to clear queued mockResolvedValueOnce values
+  db.listDocuments.mockReset();
+  db.getDocument.mockReset();
+  db.createDocument.mockReset();
+  db.updateDocument.mockReset();
+  db.deleteDocument.mockReset();
+
   if (result.error) {
-    // PGRST116 error code means "not found" in the old Appwrite convention
-    // Map this to empty rows for PG instead of throwing
-    if (result.error.code === 'PGRST116') {
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      return;
-    }
-    mockPool.query.mockRejectedValueOnce(new Error(result.error.message || 'Database error'));
+    const err = new Error(result.error.message || 'Database error');
+    db.listDocuments.mockRejectedValue(err);
+    db.getDocument.mockRejectedValue(err);
+    db.createDocument.mockRejectedValue(err);
+    db.updateDocument.mockRejectedValue(err);
+    mockPool.query.mockReset();
+    mockPool.query.mockRejectedValue(err);
     return;
   }
-  
-  const rows = Array.isArray(result.data) ? result.data : (result.data === null || result.data === undefined ? [] : [result.data]);
-  
-  mockPool.query.mockResolvedValueOnce({ 
-    rows,
-    rowCount: rows.length
-  });
+
+  if (result.data === null || result.data === undefined) {
+    db.getDocument.mockRejectedValue(new Error('Document not found'));
+    db.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    db.createDocument.mockResolvedValue({ $id: 'mock-id' });
+    db.updateDocument.mockRejectedValue(new Error('Document not found'));
+    mockPool.query.mockReset();
+    mockPool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+  } else if (Array.isArray(result.data)) {
+    const docs = result.data.map(toAppwriteDoc);
+    db.listDocuments.mockResolvedValue({ documents: docs, total: docs.length });
+    db.getDocument.mockResolvedValue(docs[0] || { $id: 'mock-id' });
+    db.createDocument.mockResolvedValue(docs[0] || { $id: 'mock-id' });
+    db.updateDocument.mockResolvedValue(docs[0] || { $id: 'mock-id' });
+    mockPool.query.mockReset();
+    mockPool.query.mockResolvedValue({ rows: result.data, rowCount: result.data.length });
+  } else {
+    const doc = toAppwriteDoc(result.data);
+    db.getDocument.mockResolvedValue(doc);
+    db.createDocument.mockResolvedValue(doc);
+    db.updateDocument.mockResolvedValue(doc);
+    db.listDocuments.mockResolvedValue({ documents: [doc], total: 1 });
+    mockPool.query.mockReset();
+    mockPool.query.mockResolvedValue({ rows: [result.data], rowCount: 1 });
+  }
 };
 
 // Also mock the global client for files that use it directly
@@ -227,9 +266,18 @@ jest.unstable_mockModule('node-appwrite', () => ({
   Account: jest.fn(() => mockAppwriteAccount),
   Users: jest.fn(() => mockAppwriteUsers),
   Storage: jest.fn(() => mockAppwriteStorage),
+  Databases: jest.fn().mockImplementation(() => ({
+    listDocuments: jest.fn().mockResolvedValue({ documents: [], total: 0 }),
+    getDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+    createDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+    updateDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+    deleteDocument: jest.fn().mockResolvedValue({}),
+  })),
   ID: { unique: () => 'unique-id' },
   OAuthProvider: { Google: 'google' },
   AuthenticatorType: { Totp: 'totp' },
+  Permission: { read: 'read', write: 'write', create: 'create', update: 'update', delete: 'delete' },
+  Role: { any: () => 'any', user: (id: string) => `user:${id}` },
   InputFile: {
     fromBuffer: jest.fn().mockReturnValue({ name: 'mock-file', type: 'image/png', size: 100 }),
     fromPath: jest.fn().mockReturnValue({ name: 'mock-file', type: 'image/png', size: 100 }),
@@ -255,6 +303,44 @@ global.fetch = jest.fn(() =>
     json: () => Promise.resolve({ error: 'Mocked fetch error' }),
   })
 );
+
+// Mock appwrite config module
+const mockDatabases = {
+  listDocuments: jest.fn().mockResolvedValue({ documents: [], total: 0 }),
+  getDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+  createDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+  updateDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+  deleteDocument: jest.fn().mockResolvedValue({}),
+};
+
+(globalThis as any).__mockDatabases = mockDatabases;
+
+jest.unstable_mockModule('./src/config/appwrite.js', () => ({
+  account: mockAppwriteAccount,
+  storage: mockAppwriteStorage,
+  users: mockAppwriteUsers,
+  databases: mockDatabases,
+  DATABASE_ID: 'freelancexchain',
+  Query: { equal: jest.fn(), notEqual: jest.fn(), orderDesc: jest.fn(), orderAsc: jest.fn(), limit: jest.fn(), offset: jest.fn() },
+  ID: { unique: () => 'unique-id' },
+  Permission: { read: 'read', write: 'write', create: 'create', update: 'update', delete: 'delete' },
+  Role: { any: () => 'any', user: (id: string) => `user:${id}` },
+  BUCKETS: {
+    PROPOSAL_ATTACHMENTS: 'proposal-attachments',
+    PROJECT_ATTACHMENTS: 'project-attachments',
+    DISPUTE_EVIDENCE: 'dispute-evidence',
+    PORTFOLIO_IMAGES: 'portfolio-images',
+    MILESTONE_DELIVERABLES: 'milestone-deliverables',
+  },
+  createUserClient: jest.fn().mockReturnValue({
+    setEndpoint: jest.fn().mockReturnThis(),
+    setProject: jest.fn().mockReturnThis(),
+    setJWT: jest.fn().mockReturnThis(),
+  }),
+}));
+
+// Rate-limiter is NOT mocked globally. The real module short-circuits in test mode
+// (nodeEnv='test') and calls next(), providing the same no-op behavior as the mock.
 
 // Export createMockBuilder globally
 global.createMockBuilder = (result) => {

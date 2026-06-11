@@ -44,7 +44,7 @@ describe('file-service - coverage gaps', () => {
   describe('deleteFile - outer catch block', () => {
     it('should return INTERNAL_ERROR when deleteFile throws after ownership check', async () => {
       const userId = 'user-123';
-      mockAppwriteStorage.getFile.mockResolvedValueOnce({ name: `image-${userId}.jpg` });
+      mockAppwriteStorage.getFile.mockResolvedValueOnce({ name: `${userId}/image.jpg` });
       mockAppwriteStorage.deleteFile.mockRejectedValueOnce(new Error('Storage unavailable'));
 
       const result = await deleteFile(userId, 'bucket', 'file-id');
@@ -75,7 +75,7 @@ describe('file-service - coverage gaps', () => {
       // Make listFiles return something that causes getUserFiles to succeed
       // but then the reduce or calculation throws
       mockAppwriteStorage.listFiles
-        .mockResolvedValueOnce({ files: [{ $id: 'f1', name: 'user-1-file', sizeOriginal: 100 }] })
+        .mockResolvedValueOnce({ files: [{ $id: 'f1', name: 'user-1/file', sizeOriginal: 100 }] })
         .mockResolvedValueOnce({ files: [] });
 
       const result = await getFileQuota('user-1');

@@ -240,8 +240,8 @@ describe('file-validator', () => {
 
     it('should return false for disallowed MIME types', () => {
       expect(isAllowedMimeType('application/x-msdownload')).toBe(false);
-      expect(isAllowedMimeType('text/html')).toBe(false);
-      expect(isAllowedMimeType('video/mp4')).toBe(false);
+      expect(isAllowedMimeType('application/x-bat')).toBe(false);
+      expect(isAllowedMimeType('application/x-unknown')).toBe(false);
     });
   });
 });

@@ -315,6 +315,45 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
 
 
 // ============================================================
+// Specific routes MUST be registered BEFORE parameterized routes
+// ============================================================
+
+/**
+ * @swagger
+ * /api/reputation/leaderboard:
+ *   get:
+ *     summary: Get platform leaderboard
+ *     tags:
+ *       - Reputation
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *     responses:
+ *       200:
+ *         description: Top rated users
+ */
+router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(req.query['limit'] as string) || 10;
+
+    const result = await getReputationLeaderboard(limit);
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error.message });
+    }
+
+    return res.json(result.data);
+  } catch (error) {
+    logger.error('Error getting reputation leaderboard', { error });
+    return res.status(500).json({ error: 'Failed to get leaderboard' });
+  }
+});
+
+
+// ============================================================
 // Parameterized routes AFTER specific routes
 // ============================================================
 
@@ -434,40 +473,6 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (
 
 /**
  * @swagger
- * /api/reputation/leaderboard:
- *   get:
- *     summary: Get platform leaderboard
- *     tags:
- *       - Reputation
- *     parameters:
- *       - in: query
- *         name: limit
- *         schema:
- *           type: integer
- *           default: 10
- *     responses:
- *       200:
- *         description: Top rated users
- */
-router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) => {
-  try {
-    const limit = parseInt(req.query['limit'] as string) || 10;
-
-    const result = await getReputationLeaderboard(limit);
-
-    if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
-    }
-
-    return res.json(result.data);
-  } catch (error) {
-    logger.error('Error getting reputation leaderboard', { error });
-    return res.status(500).json({ error: 'Failed to get leaderboard' });
-  }
-});
-
-/**
- * @swagger
  * /api/reputation/{userId}/score:
  *   get:
  *     summary: Get aggregated reputation score
@@ -483,7 +488,7 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
  *       200:
  *         description: Aggregated reputation score
  */
-router.get('/:userId/score', validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -517,7 +522,7 @@ router.get('/:userId/score', validateUUID(), apiRateLimiter, async (req: Request
  *       200:
  *         description: Reputation breakdown by stars
  */
-router.get('/:userId/breakdown', validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -556,7 +561,7 @@ router.get('/:userId/breakdown', validateUUID(), apiRateLimiter, async (req: Req
  *       200:
  *         description: Reputation history
  */
-router.get('/:userId/reputation-history', validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/reputation-history', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
     const months = parseInt(req.query['months'] as string) || 12;

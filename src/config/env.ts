@@ -62,6 +62,7 @@ export const config = {
     endpoint: getEnvVar('APPWRITE_ENDPOINT'),
     projectId: getEnvVar('APPWRITE_PROJECT_ID'),
     apiKey: getEnvVar('APPWRITE_API_KEY'),
+    databaseId: getEnvVar('APPWRITE_DATABASE_ID', 'freelancexchain'),
     buckets: {
       proposalAttachments: getEnvVar('APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET', 'proposal-attachments'),
       projectAttachments: getEnvVar('APPWRITE_PROJECT_ATTACHMENTS_BUCKET', 'project-attachments'),
@@ -79,8 +80,12 @@ export const config = {
     secret: getEnvVar('JWT_SECRET'),
     refreshSecret: (() => {
       const refreshSecret = getEnvVarOptional('JWT_REFRESH_SECRET');
-      if (!refreshSecret && getEnvVar('NODE_ENV', 'development') === 'production') {
-        throw new Error('JWT_REFRESH_SECRET is required in production. Using the same secret for access and refresh tokens is a security risk.');
+      if (!refreshSecret) {
+        const msg = 'JWT_REFRESH_SECRET not set — access and refresh tokens share the same signing key (insecure in production)';
+        if (getEnvVar('NODE_ENV', 'development') === 'production') {
+          throw new Error(msg);
+        }
+        console.warn(msg);
       }
       return refreshSecret ?? getEnvVar('JWT_SECRET');
     })(),

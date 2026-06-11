@@ -13,38 +13,30 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 }));
 
 describe('Analytics Service - Extended Tests', () => {
-  let mockPool: any;
+  let mockDatabases: any;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool ?? { query: jest.fn() };
-    // Use the global mockPool from jest.setup.ts
-    const globalMock = (globalThis as any);
-    if (globalMock.mockAppwriteClient) {
-      // reset appwrite mock if present
-    }
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDatabases.getDocument.mockResolvedValue({ $id: 'doc-id' });
+    // Clear analytics caches to avoid cross-test interference
+    const cache = await import('../../utils/cache.js');
+    cache.platformMetricsCache?.clear();
+    cache.skillTrendsCache?.clear();
+    cache.adminAnalyticsCache?.clear();
   });
 
   const importModule = async () => {
     return await import('../../services/analytics-service.js');
   };
 
-  const getMockPool = () => {
-    // Access the pool mock set up in jest.setup.ts via the database module mock
-    return (jest as any)._mockPool || (globalThis as any)._mockPool;
-  };
-
-  // Helper to get the mocked pool.query from the database module
-  const getPoolQuery = async () => {
-    const db = await import('../../config/database.js');
-    return (db.pool as any).query as jest.MockedFunction<any>;
-  };
-
   describe('getFreelancerAnalytics - catch block and edge cases', () => {
     it('should handle thrown errors gracefully', async () => {
       const { getFreelancerAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
-      poolQuery.mockRejectedValueOnce(new Error('Unexpected'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('Unexpected'));
 
       const result = await getFreelancerAnalytics('user-1');
 
@@ -56,34 +48,42 @@ describe('Analytics Service - Extended Tests', () => {
 
     it('should apply both startDate and endDate filters', async () => {
       const { getFreelancerAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
 
-      poolQuery.mockResolvedValue({ rows: [] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'c1', total_amount: 1000, created_at: '2024-06-15T00:00:00Z' },
+            { $id: 'c2', total_amount: 500, created_at: '2025-06-15T00:00:00Z' },
+          ],
+          total: 2,
+        })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
-      await getFreelancerAnalytics('user-1', {
+      const result = await getFreelancerAnalytics('user-1', {
         startDate: '2024-01-01',
         endDate: '2024-12-31',
       });
 
-      const calls = poolQuery.mock.calls as any[][];
-      const contractCall = calls.find((c) => c[0].includes('contracts'));
-      expect(contractCall).toBeDefined();
-      expect(contractCall![0]).toContain('created_at >=');
-      expect(contractCall![0]).toContain('created_at <=');
-      expect(contractCall![1]).toContain('2024-01-01');
-      expect(contractCall![1]).toContain('2024-12-31');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.projectsCompleted).toBe(1);
+        expect(result.data.totalEarnings).toBe(1000);
+      }
     });
 
     it('should handle null reviews', async () => {
       const { getFreelancerAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
 
-      poolQuery.mockImplementation(async (sql: string) => {
-        if (sql.includes('contracts') && sql.includes('freelancer_id')) return { rows: [{ id: 'c-1', total_amount: 1000, created_at: '2024-01-01T00:00:00Z' }] };
-        if (sql.includes('reviews')) return { rows: [] };
-        if (sql.includes('proposals')) return { rows: [] };
-        return { rows: [] };
-      });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'c-1', total_amount: 1000, created_at: '2024-01-01T00:00:00Z' }],
+          total: 1,
+        })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getFreelancerAnalytics('user-1');
 
@@ -95,14 +95,15 @@ describe('Analytics Service - Extended Tests', () => {
 
     it('should handle no proposals', async () => {
       const { getFreelancerAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
 
-      poolQuery.mockImplementation(async (sql: string) => {
-        if (sql.includes('contracts') && sql.includes('freelancer_id')) return { rows: [] };
-        if (sql.includes('reviews')) return { rows: [{ rating: 5 }] };
-        if (sql.includes('proposals')) return { rows: [] };
-        return { rows: [] };
-      });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'r1', rating: 5 }],
+          total: 1,
+        })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getFreelancerAnalytics('user-1');
 
@@ -116,8 +117,7 @@ describe('Analytics Service - Extended Tests', () => {
   describe('getEmployerAnalytics - catch block and edge cases', () => {
     it('should handle thrown errors gracefully', async () => {
       const { getEmployerAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
-      poolQuery.mockRejectedValueOnce(new Error('Unexpected'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('Unexpected'));
 
       const result = await getEmployerAnalytics('user-1');
 
@@ -129,29 +129,36 @@ describe('Analytics Service - Extended Tests', () => {
 
     it('should apply date range filters', async () => {
       const { getEmployerAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
 
-      poolQuery.mockResolvedValue({ rows: [] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'p1', budget: 5000, created_at: '2024-06-15T00:00:00Z' },
+            { $id: 'p2', budget: 3000, created_at: '2025-06-15T00:00:00Z' },
+          ],
+          total: 2,
+        })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
-      await getEmployerAnalytics('user-1', {
+      const result = await getEmployerAnalytics('user-1', {
         startDate: '2024-01-01',
         endDate: '2024-12-31',
       });
 
-      const calls = poolQuery.mock.calls as any[][];
-      const projectCall = calls.find((c) => c[0].includes('projects') && c[0].includes('employer_id'));
-      expect(projectCall).toBeDefined();
-      expect(projectCall![0]).toContain('created_at >=');
-      expect(projectCall![0]).toContain('created_at <=');
-      expect(projectCall![1]).toContain('2024-01-01');
-      expect(projectCall![1]).toContain('2024-12-31');
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.projectsPosted).toBe(1);
+      }
     });
 
     it('should handle zero projects posted', async () => {
       const { getEmployerAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
 
-      poolQuery.mockResolvedValue({ rows: [] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getEmployerAnalytics('user-1');
 
@@ -165,9 +172,7 @@ describe('Analytics Service - Extended Tests', () => {
   describe('getSkillDemandTrends - edge cases', () => {
     it('should handle empty skill results', async () => {
       const { getSkillDemandTrends } = await importModule();
-      const poolQuery = await getPoolQuery();
-
-      poolQuery.mockResolvedValue({ rows: [] });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getSkillDemandTrends();
 
@@ -177,16 +182,17 @@ describe('Analytics Service - Extended Tests', () => {
       }
     });
 
-    it('should return skill trends from pool query', async () => {
+    it('should return skill trends from projects', async () => {
       const { getSkillDemandTrends } = await importModule();
-      const poolQuery = await getPoolQuery();
 
-      poolQuery.mockResolvedValue({
-        rows: [
-          { skillName: 'JavaScript', projectCount: '11', averageBudget: '1000', demandLevel: 'high', growthRate: '10.5' },
-          { skillName: 'Python', projectCount: '5', averageBudget: '800', demandLevel: 'high', growthRate: '10.5' },
-          { skillName: 'CSS', projectCount: '1', averageBudget: '500', demandLevel: 'high', growthRate: '10.5' },
+      const now = new Date();
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', required_skills: ['JavaScript', 'Python'], budget: 1000, created_at: now.toISOString() },
+          { $id: 'p2', required_skills: ['JavaScript', 'CSS'], budget: 500, created_at: now.toISOString() },
+          { $id: 'p3', required_skills: ['JavaScript'], budget: 800, created_at: now.toISOString() },
         ],
+        total: 3,
       });
 
       const result = await getSkillDemandTrends();
@@ -194,14 +200,15 @@ describe('Analytics Service - Extended Tests', () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.length).toBeGreaterThan(0);
+        const jsSkill = result.data.find((s: any) => s.skillName === 'JavaScript');
+        expect(jsSkill).toBeDefined();
+        expect(jsSkill!.projectCount).toBe(3);
       }
     });
 
     it('should handle thrown errors gracefully', async () => {
       const { getSkillDemandTrends } = await importModule();
-      const poolQuery = await getPoolQuery();
-
-      poolQuery.mockRejectedValueOnce(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getSkillDemandTrends();
 
@@ -215,21 +222,28 @@ describe('Analytics Service - Extended Tests', () => {
   describe('getAdminAnalytics - edge cases', () => {
     it('should handle user growth data with items', async () => {
       const { getAdminAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
-
       const now = new Date();
       const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
-      const monthKey = `${sixMonthsAgo.getFullYear()}-${String(sixMonthsAgo.getMonth() + 1).padStart(2, '0')}`;
 
-      poolQuery.mockImplementation(async (sql: string) => {
-        if (sql.includes('TO_CHAR') && sql.includes('users')) return { rows: [{ month: monthKey, count: '3' }] };
-        if (sql.includes('TO_CHAR') && sql.includes('projects')) return { rows: [{ month: monthKey, count: '2' }] };
-        if (sql.includes('COUNT') && sql.includes('users')) return { rows: [{ count: '10' }] };
-        if (sql.includes('COUNT') && sql.includes('projects')) return { rows: [{ count: '8' }] };
-        if (sql.includes('SUM') && sql.includes('revenue')) return { rows: [{ revenue: '500' }] };
-        if (sql.includes('COUNT') && sql.includes('contracts')) return { rows: [{ count: '5' }] };
-        return { rows: [{ count: '0' }] };
-      });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 10 })
+        .mockResolvedValueOnce({ documents: [], total: 8 })
+        .mockResolvedValueOnce({ documents: [{ total_amount: 500 }], total: 5 })
+        .mockResolvedValueOnce({ documents: [], total: 3 })
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'u1', created_at: sixMonthsAgo.toISOString() },
+            { $id: 'u2', created_at: now.toISOString() },
+          ],
+          total: 2,
+        })
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'p1', created_at: sixMonthsAgo.toISOString() },
+            { $id: 'p2', created_at: now.toISOString() },
+          ],
+          total: 2,
+        });
 
       const result = await getAdminAnalytics();
 
@@ -242,12 +256,14 @@ describe('Analytics Service - Extended Tests', () => {
 
     it('should handle null counts for growth calculations', async () => {
       const { getAdminAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
 
-      poolQuery.mockImplementation(async (sql: string) => {
-        if (sql.includes('TO_CHAR')) return { rows: [] };
-        return { rows: [{ count: '0', revenue: null, sum: null }] };
-      });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getAdminAnalytics();
 
@@ -260,9 +276,7 @@ describe('Analytics Service - Extended Tests', () => {
 
     it('should handle thrown errors gracefully', async () => {
       const { getAdminAnalytics } = await importModule();
-      const poolQuery = await getPoolQuery();
-
-      poolQuery.mockRejectedValueOnce(new Error('Unexpected'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('Unexpected'));
 
       const result = await getAdminAnalytics();
 
@@ -276,9 +290,14 @@ describe('Analytics Service - Extended Tests', () => {
   describe('getPlatformMetrics - edge cases', () => {
     it('should handle null counts', async () => {
       const { getPlatformMetrics } = await importModule();
-      const poolQuery = await getPoolQuery();
 
-      poolQuery.mockResolvedValue({ rows: [{ count: '0', sum: null }] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getPlatformMetrics();
 
@@ -291,9 +310,7 @@ describe('Analytics Service - Extended Tests', () => {
 
     it('should handle thrown errors gracefully', async () => {
       const { getPlatformMetrics } = await importModule();
-      const poolQuery = await getPoolQuery();
-
-      poolQuery.mockRejectedValueOnce(new Error('Unexpected'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('Unexpected'));
 
       const result = await getPlatformMetrics();
 

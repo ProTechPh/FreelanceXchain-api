@@ -11,6 +11,7 @@ const mockStorage = {
 };
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   storage: mockStorage,
   BUCKETS: {
     USER_DOCUMENTS: 'user-documents',

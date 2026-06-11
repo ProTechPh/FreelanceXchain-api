@@ -293,21 +293,6 @@ export function getChecksumAddress(address: string): string {
 }
 
 /**
- * Sign a message with the wallet
- */
-export async function signMessage(message: string): Promise<string> {
-  const w = getWallet();
-  return w.signMessage(message);
-}
-
-/**
- * Verify a signed message
- */
-export function verifyMessage(message: string, signature: string): string {
-  return ethers.verifyMessage(message, signature);
-}
-
-/**
  * Get network information
  */
 export async function getNetworkInfo(): Promise<{ name: string; chainId: number }> {
@@ -371,4 +356,12 @@ export function getContractWithSigner(
 ): ethers.Contract {
   const w = getWallet();
   return new ethers.Contract(address, abi, w);
+}
+
+/**
+ * Sign a message with the wallet's private key
+ */
+export async function signMessage(message: string): Promise<string> {
+  const w = getWallet();
+  return w.signMessage(message);
 }

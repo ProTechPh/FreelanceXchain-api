@@ -58,13 +58,17 @@ function makeContractEntity(overrides = {}) {
 }
 
 describe('Reputation Service - Extended Coverage (submitRating validation)', () => {
-  let mockPool: any;
+  let mockDatabases: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
-    mockPool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.createDocument.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDatabases.getDocument.mockRejectedValue(new Error('Document not found'));
+    mockDatabases.createDocument.mockResolvedValue({ $id: 'mock-review-id' });
     mockNotifyRatingReceived.mockResolvedValue({ success: true });
     mockSubmitRatingToBlockchain.mockResolvedValue({ transactionHash: '0xabc' });
   });
@@ -74,14 +78,18 @@ describe('Reputation Service - Extended Coverage (submitRating validation)', () 
       const contract = makeContractEntity();
       mockGetContractById.mockResolvedValueOnce(contract);
       // Check for existing review - none
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       // Insert review
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'rev-1', contract_id: 'c-1', reviewer_id: 'emp-1', reviewee_id: 'fl-1', rating: 4, created_at: new Date().toISOString() }],
-        rowCount: 1,
+      mockDatabases.createDocument.mockResolvedValueOnce({
+        $id: 'rev-1',
+        contract_id: 'c-1',
+        reviewer_id: 'emp-1',
+        reviewee_id: 'fl-1',
+        rating: 4,
+        created_at: new Date().toISOString(),
       });
-      // Get users for blockchain sync
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'fl-1', wallet_address: null }], rowCount: 1 });
+      // Get users for blockchain sync - web3 not available
+      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'fl-1', wallet_address: null });
       // Get project for notification
       mockGetProjectById.mockResolvedValueOnce({ id: 'proj-1', title: 'Test Project' });
 
@@ -129,7 +137,10 @@ describe('Reputation Service - Extended Coverage (submitRating validation)', () 
       const contract = makeContractEntity();
       mockGetContractById.mockResolvedValueOnce(contract);
       // Existing review found
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'existing-review' }], rowCount: 1 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'existing-review' }],
+        total: 1,
+      });
 
       const result = await submitRating({
         contractId: 'c-1',
@@ -191,12 +202,16 @@ describe('Reputation Service - Extended Coverage (submitRating validation)', () 
     it('should handle optional fields (workQuality, communication, professionalism)', async () => {
       const contract = makeContractEntity();
       mockGetContractById.mockResolvedValueOnce(contract);
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'rev-2', contract_id: 'c-1', reviewer_id: 'emp-1', reviewee_id: 'fl-1', rating: 5, created_at: new Date().toISOString() }],
-        rowCount: 1,
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      mockDatabases.createDocument.mockResolvedValueOnce({
+        $id: 'rev-2',
+        contract_id: 'c-1',
+        reviewer_id: 'emp-1',
+        reviewee_id: 'fl-1',
+        rating: 5,
+        created_at: new Date().toISOString(),
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'fl-1', wallet_address: null }], rowCount: 1 });
+      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'fl-1', wallet_address: null });
       mockGetProjectById.mockResolvedValueOnce({ id: 'proj-1', title: 'Test' });
 
       const result = await submitRating({
@@ -215,11 +230,11 @@ describe('Reputation Service - Extended Coverage (submitRating validation)', () 
 
   describe('getReputation', () => {
     it('should return reputation score for user with reviews', async () => {
-      const rows = [
-        { id: 'r1', contract_id: 'c-1', reviewer_id: 'emp-1', reviewee_id: 'fl-1', rating: 5, comment: 'Great', created_at: new Date().toISOString() },
-        { id: 'r2', contract_id: 'c-2', reviewer_id: 'emp-2', reviewee_id: 'fl-1', rating: 4, comment: null, created_at: new Date(Date.now() - 86400000).toISOString() },
+      const docs = [
+        { $id: 'r1', contract_id: 'c-1', reviewer_id: 'emp-1', reviewee_id: 'fl-1', rating: 5, comment: 'Great', created_at: new Date().toISOString() },
+        { $id: 'r2', contract_id: 'c-2', reviewer_id: 'emp-2', reviewee_id: 'fl-1', rating: 4, comment: null, created_at: new Date(Date.now() - 86400000).toISOString() },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows, rowCount: 2 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 2 });
 
       const result = await getReputation('fl-1');
       expect(result.success).toBe(true);
@@ -231,7 +246,7 @@ describe('Reputation Service - Extended Coverage (submitRating validation)', () 
     });
 
     it('should return zero score for user with no reviews', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getReputation('new-user');
       expect(result.success).toBe(true);
@@ -248,7 +263,10 @@ describe('Reputation Service - Extended Coverage (submitRating validation)', () 
       const contract = makeContractEntity({ status: 'completed', freelancer_id: 'fl-1' });
       mockGetUserContracts.mockResolvedValueOnce({ items: [contract] });
       mockGetProjectById.mockResolvedValueOnce({ id: 'proj-1', title: 'My Project' });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ contract_id: 'c-1', rating: 5, comment: 'Excellent' }], rowCount: 1 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [{ contract_id: 'c-1', rating: 5, comment: 'Excellent' }],
+        total: 1,
+      });
 
       const result = await getWorkHistory('fl-1');
       expect(result.success).toBe(true);
@@ -272,7 +290,7 @@ describe('Reputation Service - Extended Coverage (submitRating validation)', () 
     it('should return canRate true when eligible', async () => {
       const contract = makeContractEntity({ status: 'completed' });
       mockGetContractById.mockResolvedValueOnce(contract);
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await canUserRate('emp-1', 'fl-1', 'c-1');
       expect(result.success).toBe(true);
@@ -282,7 +300,10 @@ describe('Reputation Service - Extended Coverage (submitRating validation)', () 
     it('should return canRate false when already rated', async () => {
       const contract = makeContractEntity({ status: 'completed' });
       mockGetContractById.mockResolvedValueOnce(contract);
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'existing' }], rowCount: 1 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'existing' }],
+        total: 1,
+      });
 
       const result = await canUserRate('emp-1', 'fl-1', 'c-1');
       expect(result.success).toBe(true);

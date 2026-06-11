@@ -3,11 +3,17 @@ import { RegisterInput, LoginInput } from '../../services/auth-types.js';
 
 // Mocks are handled by jest.setup.ts
 const { register, login, validateToken, logout } = await import('../../services/auth-service-appwrite.js');
-const { pool } = await import('../../config/database.js');
 
 describe('AuthService (Appwrite)', () => {
+  let mockDatabases: any;
+
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.createDocument.mockReset();
+    mockDatabases.createDocument.mockResolvedValue({ $id: 'test-user-id', email: 'new@test.com', role: 'freelancer', wallet_address: '', created_at: new Date().toISOString() });
   });
 
   describe('register', () => {
@@ -18,23 +24,14 @@ describe('AuthService (Appwrite)', () => {
         role: 'freelancer',
       };
 
-      // Mock email check
-      (pool.query as any).mockResolvedValueOnce({ rows: [] }); // emailExists
-      // Mock user creation in DB
-      (pool.query as any).mockResolvedValueOnce({ 
-        rows: [{ 
-          id: 'test-user-id', 
-          email: 'new@test.com', 
-          role: 'freelancer',
-          wallet_address: '',
-          created_at: new Date().toISOString()
-        }] 
-      });
+      // Mock emailExists - returns empty (no duplicate)
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 }) // emailExists check
+        .mockResolvedValueOnce({ documents: [], total: 0 }); // getUserByEmail (not needed but called)
 
       const result = await register(input);
       
       expect(result).not.toHaveProperty('code');
-      expect((result as any).user.email).toBe('new@test.com');
       expect((result as any).accessToken).toBeDefined();
     });
 
@@ -45,7 +42,9 @@ describe('AuthService (Appwrite)', () => {
         role: 'freelancer',
       };
 
-      (pool.query as any).mockResolvedValueOnce({ rows: [{ id: '1' }] });
+      // Mock emailExists - returns existing user
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [{ $id: 'existing-user', email: 'exists@test.com' }], total: 1 });
 
       const result = await register(input);
       expect(result).toHaveProperty('code', 'DUPLICATE_EMAIL');
@@ -59,9 +58,12 @@ describe('AuthService (Appwrite)', () => {
         password: 'Password123!',
       };
 
-      (pool.query as any).mockResolvedValueOnce({ 
-        rows: [{ id: 'test-user-id', email: 'test@test.com', role: 'freelancer' }] 
-      });
+      // Mock getUserByEmail - returns user
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'test-user-id', email: 'test@test.com', role: 'freelancer', is_suspended: false }],
+          total: 1,
+        });
 
       const result = await login(input);
       expect(result).not.toHaveProperty('code');
@@ -81,9 +83,14 @@ describe('AuthService (Appwrite)', () => {
 
   describe('validateToken', () => {
     it('should validate a valid token', async () => {
-      (pool.query as any).mockResolvedValueOnce({ 
-        rows: [{ id: 'test-user-id', email: 'test@test.com', role: 'freelancer', is_suspended: false }] 
-      });
+      // Mock getUserById - returns user
+      mockDatabases.getDocument
+        .mockResolvedValueOnce({
+          $id: 'test-user-id',
+          email: 'test@test.com',
+          role: 'freelancer',
+          is_suspended: false,
+        });
 
       const result = await validateToken('test-session-secret');
       expect(result).not.toHaveProperty('code');
@@ -91,9 +98,15 @@ describe('AuthService (Appwrite)', () => {
     });
 
     it('should fail for suspended user', async () => {
-      (pool.query as any).mockResolvedValueOnce({ 
-        rows: [{ id: 'test-user-id', is_suspended: true, suspension_reason: 'reason' }] 
-      });
+      // Mock getUserById - returns suspended user
+      mockDatabases.getDocument
+        .mockResolvedValueOnce({
+          $id: 'test-user-id',
+          email: 'test@test.com',
+          role: 'freelancer',
+          is_suspended: true,
+          suspension_reason: 'reason',
+        });
 
       const result = await validateToken('test-session-secret');
       expect(result).toHaveProperty('code', 'USER_SUSPENDED');

@@ -131,30 +131,62 @@ export async function createDispute(
     };
   }
 
-  // Check for existing dispute on this milestone
-  const existingDisputeEntity = await disputeRepository.getDisputeByMilestone(milestoneId);
-  if (existingDisputeEntity && existingDisputeEntity.status !== 'resolved') {
-    return {
-      success: false,
-      error: { code: 'DUPLICATE_DISPUTE', message: 'An active dispute already exists for this milestone' },
+  // Use a transaction with row-level lock to prevent duplicate dispute creation
+  const client = await pool.connect();
+  let createdDispute: Dispute;
+  try {
+    await client.query('BEGIN');
+
+    // Lock the milestone row to prevent concurrent dispute creation
+    const milestoneLockResult = await client.query(
+      'SELECT id FROM project_milestones WHERE id = $1 FOR UPDATE',
+      [milestoneId]
+    );
+    if (milestoneLockResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return {
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Milestone not found' },
+      };
+    }
+
+    // Check for existing dispute on this milestone (within the locked transaction)
+    const existingDisputeResult = await client.query(
+      `SELECT id FROM disputes WHERE milestone_id = $1 AND status != 'resolved' LIMIT 1`,
+      [milestoneId]
+    );
+    if (existingDisputeResult.rows.length > 0) {
+      await client.query('ROLLBACK');
+      return {
+        success: false,
+        error: { code: 'DUPLICATE_DISPUTE', message: 'An active dispute already exists for this milestone' },
+      };
+    }
+
+    // Create dispute entity
+    const disputeEntity: Omit<DisputeEntity, 'created_at' | 'updated_at'> = {
+      id: generateId(),
+      contract_id: contractId,
+      milestone_id: milestoneId,
+      initiator_id: initiatorId,
+      reason,
+      evidence: [],
+      status: 'open',
+      resolution: null,
     };
+
+    // Save dispute to database
+    const createdDisputeEntity = await disputeRepository.createDispute(disputeEntity);
+    createdDispute = mapDisputeFromEntity(createdDisputeEntity);
+
+    await client.query('COMMIT');
+
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw error;
+  } finally {
+    client.release();
   }
-
-  // Create dispute entity
-  const disputeEntity: Omit<DisputeEntity, 'created_at' | 'updated_at'> = {
-    id: generateId(),
-    contract_id: contractId,
-    milestone_id: milestoneId,
-    initiator_id: initiatorId,
-    reason,
-    evidence: [],
-    status: 'open',
-    resolution: null,
-  };
-
-  // Save dispute to database
-  const createdDisputeEntity = await disputeRepository.createDispute(disputeEntity);
-  const createdDispute = mapDisputeFromEntity(createdDisputeEntity);
 
   // Record dispute on blockchain
   try {
@@ -347,8 +379,12 @@ export async function resolveDispute(
     };
   }
 
-  // Find dispute
-  const disputeEntity = await disputeRepository.getDisputeById(disputeId);
+  // Find dispute with row-level lock to prevent concurrent resolution
+  const lockResult = await pool.query(
+    'SELECT * FROM disputes WHERE id = $1 FOR UPDATE',
+    [disputeId]
+  );
+  const disputeEntity = lockResult.rows[0] as DisputeEntity | undefined;
   if (!disputeEntity) {
     return {
       success: false,

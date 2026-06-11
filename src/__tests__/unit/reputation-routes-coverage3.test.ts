@@ -39,7 +39,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
@@ -205,11 +206,10 @@ describe('Reputation Routes - Coverage3', () => {
   });
 
   describe('GET /leaderboard', () => {
-    it('should return leaderboard (matched as userId param)', async () => {
-      // Note: Due to route ordering, /leaderboard is matched by /:userId route
-      mockGetReputation.mockResolvedValue({
+    it('should return leaderboard', async () => {
+      mockGetReputationLeaderboard.mockResolvedValue({
         success: true,
-        data: { userId: 'leaderboard', score: 0 },
+        data: [{ userId: 'user-1', score: 4.5 }],
       });
       const res = await request(app).get('/api/reputation/leaderboard');
       expect(res.status).toBe(200);

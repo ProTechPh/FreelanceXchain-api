@@ -61,9 +61,25 @@ describe('route-helpers', () => {
       sendError(res, 500, { code: 'INTERNAL', message: 'oops' }, 'rid-4');
       expect(res.status).toHaveBeenCalledWith(500);
     });
+
+    it('defaults requestId to unknown when not provided', () => {
+      const res = mockRes();
+      sendError(res, 400, { code: 'ERR', message: 'msg' });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ requestId: 'unknown' })
+      );
+    });
   });
 
   describe('sendServiceError', () => {
+    it('does nothing when result is successful', () => {
+      const res = mockRes();
+      const result: ServiceResult<never> = { success: true, data: 'ok' as never };
+      sendServiceError(res, result, 'rid-0');
+      expect(res.status).not.toHaveBeenCalled();
+      expect(res.json).not.toHaveBeenCalled();
+    });
+
     it('defaults to 400 when no statusMap is provided', () => {
       const res = mockRes();
       const result: ServiceResult<never> = {
@@ -78,7 +94,7 @@ describe('route-helpers', () => {
       const res = mockRes();
       const result: ServiceResult<never> = {
         success: false,
-        error: { code: 'FORBIDDEN', message: 'No access' },
+        error: { code: 'CUSTOM_ERROR', message: 'No access' },
       };
       sendServiceError(res, result, 'rid-2', { NOT_FOUND: 404 });
       expect(res.status).toHaveBeenCalledWith(400);

@@ -14,12 +14,15 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 }));
 
 describe('Reputation Aggregation Service', () => {
-  let mockPool: any;
+  let mockDatabases: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDatabases.getDocument.mockResolvedValue({ $id: 'doc-id' });
   });
 
   const importModule = async () => {
@@ -30,7 +33,7 @@ describe('Reputation Aggregation Service', () => {
     it('should return zero scores when no reviews exist', async () => {
       const { getAggregatedScore } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getAggregatedScore('user-1');
 
@@ -50,21 +53,32 @@ describe('Reputation Aggregation Service', () => {
       const { getAggregatedScore } = await importModule();
 
       const reviews = [
-        { rating: 5, work_quality: 5, communication: 4, professionalism: 5, would_work_again: true },
-        { rating: 4, work_quality: 4, communication: 5, professionalism: 4, would_work_again: true },
-        { rating: 3, work_quality: 3, communication: 3, professionalism: 3, would_work_again: false },
+        { $id: 'r1', rating: 5, work_quality: 5, communication: 4, professionalism: 5, would_work_again: true },
+        { $id: 'r2', rating: 4, work_quality: 4, communication: 5, professionalism: 4, would_work_again: true },
+        { $id: 'r3', rating: 3, work_quality: 3, communication: 3, professionalism: 3, would_work_again: false },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 3 });
-      // Completed contracts count
-      mockPool.query.mockResolvedValueOnce({ rows: [{ count: '5' }], rowCount: 1 });
-      // Milestones for on-time delivery
-      mockPool.query.mockResolvedValueOnce({
-        rows: [
-          { due_date: '2025-01-15', approved_at: '2025-01-14' }, // on time
-          { due_date: '2025-01-20', approved_at: '2025-01-25' }, // late
+      // 1st listDocuments: reviews
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 3 });
+      // 2nd listDocuments: completed contracts count
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 5 });
+      // 3rd listDocuments: all contracts
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'c1', project_id: 'p1' },
+          { $id: 'c2', project_id: 'p2' },
         ],
-        rowCount: 2,
+        total: 2,
       });
+      // getDocument for project milestones
+      mockDatabases.getDocument
+        .mockResolvedValueOnce({
+          $id: 'p1',
+          milestones: JSON.stringify([
+            { status: 'approved', approved_at: '2025-01-14', due_date: '2025-01-15' },
+            { status: 'approved', approved_at: '2025-01-25', due_date: '2025-01-20' },
+          ]),
+        })
+        .mockResolvedValueOnce({ $id: 'p2', milestones: '[]' });
 
       const result = await getAggregatedScore('user-1');
 
@@ -82,15 +96,19 @@ describe('Reputation Aggregation Service', () => {
     it('should handle milestones with null dates', async () => {
       const { getAggregatedScore } = await importModule();
 
-      const reviews = [{ rating: 5, work_quality: 5, communication: 5, professionalism: 5, would_work_again: true }];
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ count: '1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({
-        rows: [
-          { due_date: null, approved_at: '2025-01-14' },
-          { due_date: '2025-01-20', approved_at: null },
-        ],
-        rowCount: 2,
+      const reviews = [{ $id: 'r1', rating: 5, work_quality: 5, communication: 5, professionalism: 5, would_work_again: true }];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 1 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'p1' }],
+        total: 1,
+      });
+      mockDatabases.getDocument.mockResolvedValueOnce({
+        $id: 'p1',
+        milestones: JSON.stringify([
+          { status: 'approved', due_date: null, approved_at: '2025-01-14' },
+          { status: 'approved', due_date: '2025-01-20', approved_at: null },
+        ]),
       });
 
       const result = await getAggregatedScore('user-1');
@@ -102,10 +120,10 @@ describe('Reputation Aggregation Service', () => {
     it('should handle zero milestones for on-time rate', async () => {
       const { getAggregatedScore } = await importModule();
 
-      const reviews = [{ rating: 4, work_quality: 4, communication: 4, professionalism: 4, would_work_again: true }];
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const reviews = [{ $id: 'r1', rating: 4, work_quality: 4, communication: 4, professionalism: 4, would_work_again: true }];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getAggregatedScore('user-1');
 
@@ -116,7 +134,7 @@ describe('Reputation Aggregation Service', () => {
     it('should handle database errors', async () => {
       const { getAggregatedScore } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getAggregatedScore('user-1');
 
@@ -129,7 +147,7 @@ describe('Reputation Aggregation Service', () => {
     it('should return empty breakdown when no reviews', async () => {
       const { getReputationBreakdown } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getReputationBreakdown('user-1');
 
@@ -146,13 +164,24 @@ describe('Reputation Aggregation Service', () => {
       const { getReputationBreakdown } = await importModule();
 
       const reviews = [
-        { rating: 5, comment: 'Great', reviewer_name: 'Alice', project_title: 'Project A', created_at: '2025-01-01' },
-        { rating: 5, comment: 'Excellent', reviewer_name: 'Bob', project_title: 'Project B', created_at: '2025-01-02' },
-        { rating: 4, comment: 'Good', reviewer_name: 'Charlie', project_title: 'Project C', created_at: '2025-01-03' },
-        { rating: 3, comment: 'OK', reviewer_name: null, project_title: null, created_at: '2025-01-04' },
-        { rating: 1, comment: 'Bad', reviewer_name: 'Dave', project_title: 'Project D', created_at: '2025-01-05' },
+        { $id: 'r1', rating: 5, comment: 'Great', reviewer_id: 'u1', project_id: 'p1', created_at: '2025-01-01' },
+        { $id: 'r2', rating: 5, comment: 'Excellent', reviewer_id: 'u2', project_id: 'p2', created_at: '2025-01-02' },
+        { $id: 'r3', rating: 4, comment: 'Good', reviewer_id: 'u3', project_id: 'p3', created_at: '2025-01-03' },
+        { $id: 'r4', rating: 3, comment: 'OK', reviewer_id: null, project_id: null, created_at: '2025-01-04' },
+        { $id: 'r5', rating: 1, comment: 'Bad', reviewer_id: 'u5', project_id: 'p5', created_at: '2025-01-05' },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 5 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 5 });
+      // getDocument for reviewers and projects
+      mockDatabases.getDocument
+        .mockResolvedValueOnce({ $id: 'u1', name: 'Alice' })
+        .mockResolvedValueOnce({ $id: 'p1', title: 'Project A' })
+        .mockResolvedValueOnce({ $id: 'u2', name: 'Bob' })
+        .mockResolvedValueOnce({ $id: 'p2', title: 'Project B' })
+        .mockResolvedValueOnce({ $id: 'u3', name: 'Charlie' })
+        .mockResolvedValueOnce({ $id: 'p3', title: 'Project C' })
+        .mockRejectedValueOnce(new Error('Not found'))
+        .mockResolvedValueOnce({ $id: 'u5', name: 'Dave' })
+        .mockResolvedValueOnce({ $id: 'p5', title: 'Project D' });
 
       const result = await getReputationBreakdown('user-1');
 
@@ -172,13 +201,20 @@ describe('Reputation Aggregation Service', () => {
       const { getReputationBreakdown } = await importModule();
 
       const reviews = Array.from({ length: 15 }, (_, i) => ({
+        $id: `r${i}`,
         rating: 5,
         comment: `Review ${i}`,
-        reviewer_name: `User ${i}`,
-        project_title: `Project ${i}`,
+        reviewer_id: `u${i}`,
+        project_id: `p${i}`,
         created_at: `2025-01-${String(i + 1).padStart(2, '0')}`,
       }));
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 15 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 15 });
+      // getDocument for the 10 most recent reviewers + projects (20 calls)
+      for (let i = 0; i < 10; i++) {
+        mockDatabases.getDocument
+          .mockResolvedValueOnce({ $id: `u${14 - i}`, name: `User ${14 - i}` })
+          .mockResolvedValueOnce({ $id: `p${14 - i}`, title: `Project ${14 - i}` });
+      }
 
       const result = await getReputationBreakdown('user-1');
 
@@ -189,7 +225,7 @@ describe('Reputation Aggregation Service', () => {
     it('should handle database errors', async () => {
       const { getReputationBreakdown } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getReputationBreakdown('user-1');
 
@@ -202,7 +238,7 @@ describe('Reputation Aggregation Service', () => {
     it('should return empty array when no reviews in period', async () => {
       const { getReputationHistory } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getReputationHistory('user-1');
 
@@ -213,21 +249,26 @@ describe('Reputation Aggregation Service', () => {
     it('should group reviews by month', async () => {
       const { getReputationHistory } = await importModule();
 
+      const now = new Date();
+      const d1 = new Date(now.getFullYear(), now.getMonth() - 1, 10);
+      const d2 = new Date(now.getFullYear(), now.getMonth() - 1, 20);
+      const d3 = new Date(now.getFullYear(), now.getMonth(), 15);
+
       const reviews = [
-        { rating: 5, created_at: '2025-01-10' },
-        { rating: 4, created_at: '2025-01-20' },
-        { rating: 3, created_at: '2025-02-15' },
+        { $id: 'r1', rating: 5, created_at: d1.toISOString() },
+        { $id: 'r2', rating: 4, created_at: d2.toISOString() },
+        { $id: 'r3', rating: 3, created_at: d3.toISOString() },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 3 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 3 });
 
       const result = await getReputationHistory('user-1');
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(2);
-      expect(result.data[0].month).toBe('2025-01');
+      expect(result.data[0].month).toBe(`${d1.getFullYear()}-${String(d1.getMonth() + 1).padStart(2, '0')}`);
       expect(result.data[0].averageRating).toBe(4.5);
       expect(result.data[0].count).toBe(2);
-      expect(result.data[1].month).toBe('2025-02');
+      expect(result.data[1].month).toBe(`${d3.getFullYear()}-${String(d3.getMonth() + 1).padStart(2, '0')}`);
       expect(result.data[1].averageRating).toBe(3);
       expect(result.data[1].count).toBe(1);
     });
@@ -235,7 +276,7 @@ describe('Reputation Aggregation Service', () => {
     it('should accept custom months parameter', async () => {
       const { getReputationHistory } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getReputationHistory('user-1', 6);
 
@@ -245,7 +286,7 @@ describe('Reputation Aggregation Service', () => {
     it('should handle database errors', async () => {
       const { getReputationHistory } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getReputationHistory('user-1');
 
@@ -258,7 +299,7 @@ describe('Reputation Aggregation Service', () => {
     it('should return empty array when no reviews', async () => {
       const { getReputationLeaderboard } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getReputationLeaderboard();
 
@@ -270,18 +311,23 @@ describe('Reputation Aggregation Service', () => {
       const { getReputationLeaderboard } = await importModule();
 
       const reviews = [
-        { reviewee_id: 'user-1', rating: 5, user_name: 'Alice' },
-        { reviewee_id: 'user-1', rating: 5, user_name: 'Alice' },
-        { reviewee_id: 'user-1', rating: 5, user_name: 'Alice' },
-        { reviewee_id: 'user-2', rating: 4, user_name: 'Bob' },
-        { reviewee_id: 'user-2', rating: 4, user_name: 'Bob' },
-        { reviewee_id: 'user-2', rating: 4, user_name: 'Bob' },
-        { reviewee_id: 'user-3', rating: 5, user_name: 'Charlie' },
-        { reviewee_id: 'user-3', rating: 5, user_name: 'Charlie' },
-        { reviewee_id: 'user-3', rating: 5, user_name: 'Charlie' },
-        { reviewee_id: 'user-3', rating: 5, user_name: 'Charlie' },
+        { $id: 'r1', reviewee_id: 'user-1', rating: 5 },
+        { $id: 'r2', reviewee_id: 'user-1', rating: 5 },
+        { $id: 'r3', reviewee_id: 'user-1', rating: 5 },
+        { $id: 'r4', reviewee_id: 'user-2', rating: 4 },
+        { $id: 'r5', reviewee_id: 'user-2', rating: 4 },
+        { $id: 'r6', reviewee_id: 'user-2', rating: 4 },
+        { $id: 'r7', reviewee_id: 'user-3', rating: 5 },
+        { $id: 'r8', reviewee_id: 'user-3', rating: 5 },
+        { $id: 'r9', reviewee_id: 'user-3', rating: 5 },
+        { $id: 'r10', reviewee_id: 'user-3', rating: 5 },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 10 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 10 });
+      // getDocument for user names (3 candidates)
+      mockDatabases.getDocument
+        .mockResolvedValueOnce({ $id: 'user-3', name: 'Charlie' })
+        .mockResolvedValueOnce({ $id: 'user-1', name: 'Alice' })
+        .mockResolvedValueOnce({ $id: 'user-2', name: 'Bob' });
 
       const result = await getReputationLeaderboard();
 
@@ -298,13 +344,14 @@ describe('Reputation Aggregation Service', () => {
       const { getReputationLeaderboard } = await importModule();
 
       const reviews = [
-        { reviewee_id: 'user-1', rating: 5, user_name: 'Alice' },
-        { reviewee_id: 'user-1', rating: 5, user_name: 'Alice' },
-        { reviewee_id: 'user-1', rating: 5, user_name: 'Alice' },
-        { reviewee_id: 'user-2', rating: 5, user_name: 'Bob' },
-        { reviewee_id: 'user-2', rating: 5, user_name: 'Bob' },
+        { $id: 'r1', reviewee_id: 'user-1', rating: 5 },
+        { $id: 'r2', reviewee_id: 'user-1', rating: 5 },
+        { $id: 'r3', reviewee_id: 'user-1', rating: 5 },
+        { $id: 'r4', reviewee_id: 'user-2', rating: 5 },
+        { $id: 'r5', reviewee_id: 'user-2', rating: 5 },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 5 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 5 });
+      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'user-1', name: 'Alice' });
 
       const result = await getReputationLeaderboard();
 
@@ -317,11 +364,15 @@ describe('Reputation Aggregation Service', () => {
       const { getReputationLeaderboard } = await importModule();
 
       const reviews = Array.from({ length: 30 }, (_, i) => ({
+        $id: `r${i}`,
         reviewee_id: `user-${i % 5}`,
         rating: 5,
-        user_name: `User ${i % 5}`,
       }));
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 30 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 30 });
+      // 3 candidates * 1 getDocument each
+      for (let i = 0; i < 3; i++) {
+        mockDatabases.getDocument.mockResolvedValueOnce({ $id: `user-${i}`, name: `User ${i}` });
+      }
 
       const result = await getReputationLeaderboard(3);
 
@@ -333,11 +384,12 @@ describe('Reputation Aggregation Service', () => {
       const { getReputationLeaderboard } = await importModule();
 
       const reviews = [
-        { reviewee_id: 'user-1', rating: 5, user_name: null },
-        { reviewee_id: 'user-1', rating: 5, user_name: null },
-        { reviewee_id: 'user-1', rating: 5, user_name: null },
+        { $id: 'r1', reviewee_id: 'user-1', rating: 5 },
+        { $id: 'r2', reviewee_id: 'user-1', rating: 5 },
+        { $id: 'r3', reviewee_id: 'user-1', rating: 5 },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: reviews, rowCount: 3 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 3 });
+      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'user-1', name: null });
 
       const result = await getReputationLeaderboard();
 
@@ -348,7 +400,7 @@ describe('Reputation Aggregation Service', () => {
     it('should handle database errors', async () => {
       const { getReputationLeaderboard } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getReputationLeaderboard();
 

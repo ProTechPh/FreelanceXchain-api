@@ -1,4 +1,5 @@
-import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite, PaginatedResult, QueryOptions } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type FreelancerProfileEntity = {
   id: string;
@@ -14,17 +15,32 @@ export type FreelancerProfileEntity = {
   updated_at: string;
 };
 
-export class FreelancerProfileRepository extends BaseRepositoryPg<FreelancerProfileEntity> {
+const COLLECTION_ID = 'freelancer_profiles';
+
+function mapProfile(doc: Record<string, any>): FreelancerProfileEntity {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+  const result: Record<string, any> = {
+    id: $id,
+    ...attrs,
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  };
+  if (typeof result.skills === 'string') {
+    result.skills = JSON.parse(result.skills);
+  }
+  if (typeof result.experience === 'string') {
+    result.experience = JSON.parse(result.experience);
+  }
+  return result as FreelancerProfileEntity;
+}
+
+export class FreelancerProfileRepository extends BaseRepositoryAppwrite<FreelancerProfileEntity> {
   constructor() {
-    super('freelancer_profiles');
+    super(COLLECTION_ID);
   }
 
   async createProfile(profile: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'>): Promise<FreelancerProfileEntity> {
     return this.create(profile);
-  }
-
-  async getProfileById(id: string): Promise<FreelancerProfileEntity | null> {
-    return this.getById(id);
   }
 
   async getProfileByUserId(userId: string): Promise<FreelancerProfileEntity | null> {
@@ -35,44 +51,20 @@ export class FreelancerProfileRepository extends BaseRepositoryPg<FreelancerProf
     return this.update(id, updates);
   }
 
-  async deleteProfile(id: string): Promise<boolean> {
-    return this.delete(id);
-  }
-
-  async getAllProfiles(): Promise<FreelancerProfileEntity[]> {
-    return this.queryAll('created_at', false);
-  }
-
-  async getProfilesBySkillId(skillId: string): Promise<FreelancerProfileEntity[]> {
-    // Note: Freelancer skills use name-based structure { name, years_of_experience }
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE EXISTS (
-        SELECT 1 FROM jsonb_array_elements(skills) as skill
-        WHERE LOWER(skill->>'name') = LOWER($1)
-      )
-    `;
-    
-    try {
-      const result = await this.pool.query(query, [skillId]);
-      return result.rows as FreelancerProfileEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get profiles by skill: ${error.message}`);
-    }
-  }
-
   async getAvailableProfiles(): Promise<FreelancerProfileEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE availability = 'available'
-      ORDER BY created_at DESC
-    `;
-    
     try {
-      const result = await this.pool.query(query);
-      return result.rows as FreelancerProfileEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get available profiles: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('availability', 'available'),
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map(mapProfile);
+    } catch {
+      return [];
     }
   }
 
@@ -81,55 +73,58 @@ export class FreelancerProfileRepository extends BaseRepositoryPg<FreelancerProf
     const offset = options?.offset ?? 0;
     const lowerSkillNames = skillNames.map(s => s.toLowerCase());
 
-    const dataQuery = `
-      SELECT *, COUNT(*) OVER() as total_count FROM ${this.tableName}
-      WHERE EXISTS (
-        SELECT 1 FROM jsonb_array_elements(skills) as skill
-        WHERE LOWER(skill->>'name') = ANY($1)
-      )
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-
     try {
-      const result = await this.pool.query(dataQuery, [lowerSkillNames, limit, offset]);
-      const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
-      
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      const allProfiles = response.documents.map(mapProfile);
+      const filtered = allProfiles.filter(profile =>
+        profile.skills.some(skill => lowerSkillNames.includes(skill.name.toLowerCase()))
+      );
+      const total = filtered.length;
+      const items = filtered.slice(offset, offset + limit);
       return {
-        items: result.rows as FreelancerProfileEntity[],
+        items,
         hasMore: offset + limit < total,
         total,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to search by skills: ${error.message}`);
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
     }
   }
 
   async searchByKeyword(keyword: string, options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
-    const pattern = `%${keyword}%`;
 
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE bio ILIKE $1`;
-    const countResult = await this.pool.query(countQuery, [pattern]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE bio ILIKE $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
     try {
-      const result = await this.pool.query(dataQuery, [pattern, limit, offset]);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      const allProfiles = response.documents.map(mapProfile);
+      const lowerKeyword = keyword.toLowerCase();
+      const filtered = allProfiles.filter(profile =>
+        profile.bio.toLowerCase().includes(lowerKeyword)
+      );
+      const total = filtered.length;
+      const items = filtered.slice(offset, offset + limit);
       return {
-        items: result.rows as FreelancerProfileEntity[],
+        items,
         hasMore: offset + limit < total,
         total,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to search by keyword: ${error.message}`);
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
     }
   }
 

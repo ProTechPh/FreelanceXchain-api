@@ -30,7 +30,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
   fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 const emailPreferenceRouter = (await import('../../routes/email-preference-routes.js')).default;
 

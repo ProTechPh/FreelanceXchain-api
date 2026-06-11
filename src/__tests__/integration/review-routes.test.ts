@@ -174,7 +174,7 @@ describe('Review Routes Integration Tests', () => {
   describe('GET /api/reviews/can-review/:contractId', () => {
     it('should check if user can review', async () => {
       const response = await request(app)
-        .get('/api/reviews/can-review/123e4567-e89b-12d3-a456-426614174000')
+        .get('/api/reviews/can-review/123e4567-e89b-12d3-a456-426614174000?rateeId=some-user-id')
         .set('Authorization', 'Bearer mock-token');
 
       expect(response.status).toBe(200);

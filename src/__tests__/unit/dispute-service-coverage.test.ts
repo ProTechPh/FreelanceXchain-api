@@ -159,7 +159,6 @@ describe('Dispute Service - Coverage', () => {
     });
   });
 
-  // Lines 444-457: resolveDispute - unauthorized
   describe('resolveDispute', () => {
     it('should return UNAUTHORIZED when resolver is not admin', async () => {
       const result = await resolveDispute({
@@ -181,7 +180,7 @@ describe('Dispute Service - Coverage', () => {
     });
 
     it('should return ALREADY_RESOLVED when dispute is already resolved', async () => {
-      mockDisputeRepository.getDisputeById.mockResolvedValue({ id: 'd-1', status: 'resolved', contract_id: 'c-1' });
+      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'd-1', status: 'resolved', contract_id: 'c-1' }], rowCount: 1 });
 
       const result = await resolveDispute({
         disputeId: 'd-1', decision: 'freelancer_favor', reasoning: 'test', resolvedBy: 'admin-1', resolverRole: 'admin',

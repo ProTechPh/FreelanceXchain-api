@@ -1,4 +1,5 @@
-import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite, PaginatedResult, QueryOptions } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type ReviewEntity = {
   id: string;
@@ -14,90 +15,142 @@ export type ReviewEntity = {
 
 export type CreateReviewInput = Omit<ReviewEntity, 'id' | 'created_at' | 'updated_at'>;
 
-class ReviewRepositoryClass extends BaseRepositoryPg<ReviewEntity> {
+const COLLECTION_ID = 'reviews';
+
+class ReviewRepositoryClass extends BaseRepositoryAppwrite<ReviewEntity> {
   constructor() {
-    super('reviews');
+    super(COLLECTION_ID);
   }
 
   async findByContractId(contractId: string): Promise<ReviewEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE contract_id = $1
-      ORDER BY created_at DESC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [contractId]);
-      return result.rows as ReviewEntity[];
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('contract_id', contractId),
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as ReviewEntity;
+      });
     } catch (error: any) {
       throw new Error(`Failed to find reviews: ${error.message}`);
     }
   }
 
-  async findByRevieweeId(revieweeId: string, options?: QueryOptions): Promise<PaginatedResult<ReviewEntity>> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE reviewee_id = $1`;
-    const countResult = await this.pool.query(countQuery, [revieweeId]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE reviewee_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
+  async findByRevieweeId(
+    revieweeId: string,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{ items: ReviewEntity[]; total: number; hasMore: boolean }> {
+    const { limit = 20, offset = 0 } = options;
     try {
-      const result = await this.pool.query(dataQuery, [revieweeId, limit, offset]);
-      return {
-        items: result.rows as ReviewEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
+      const countResponse = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('reviewee_id', revieweeId),
+          Query.limit(1),
+        ]
+      );
+      const total = countResponse.total;
+
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('reviewee_id', revieweeId),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+          Query.offset(offset),
+        ]
+      );
+      const items = response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as ReviewEntity;
+      });
+      return { items, total, hasMore: items.length === limit };
     } catch (error: any) {
       throw new Error(`Failed to find reviews: ${error.message}`);
     }
   }
 
   async getAverageRating(revieweeId: string): Promise<{ average: number; count: number }> {
-    const query = `
-      SELECT AVG(rating) as average, COUNT(*) as count 
-      FROM ${this.tableName} 
-      WHERE reviewee_id = $1
-    `;
-    
     try {
-      const result = await this.pool.query(query, [revieweeId]);
-      const row = result.rows[0];
-      return { 
-        average: row.average ? parseFloat(row.average) : 0, 
-        count: parseInt(row.count, 10) 
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('reviewee_id', revieweeId),
+          Query.limit(1000),
+        ]
+      );
+      const reviews = response.documents;
+      if (reviews.length === 0) {
+        return { average: 0, count: 0 };
+      }
+      const totalRating = reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0);
+      return {
+        average: totalRating / reviews.length,
+        count: reviews.length,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to get average rating: ${error.message}`);
+    } catch {
+      return { average: 0, count: 0 };
     }
   }
 
   async hasReviewed(contractId: string, reviewerId: string): Promise<boolean> {
-    const query = `
-      SELECT EXISTS (
-        SELECT 1 FROM ${this.tableName} 
-        WHERE contract_id = $1 AND reviewer_id = $2
-      )
-    `;
-    
     try {
-      const result = await this.pool.query(query, [contractId, reviewerId]);
-      return result.rows[0].exists;
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('contract_id', contractId),
+          Query.equal('reviewer_id', reviewerId),
+          Query.limit(1),
+        ]
+      );
+      return response.documents.length > 0;
     } catch (error: any) {
       throw new Error(`Failed to check review: ${error.message}`);
     }
   }
 
   async getAllReviews(): Promise<ReviewEntity[]> {
-    return this.queryAll('created_at', false);
+    try {
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as ReviewEntity;
+      });
+    } catch (error: any) {
+      throw new Error(`Failed to query reviews: ${error.message}`);
+    }
   }
 }
 

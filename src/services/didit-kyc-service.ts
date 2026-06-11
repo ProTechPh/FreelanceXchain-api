@@ -243,7 +243,7 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
 
   // Handle final statuses with decision data
   if (['Approved', 'Declined', 'In Review'].includes(payload.status)) {
-    updates.completed_at = new Date(payload.timestamp * 1000).toISOString();
+    updates.completed_at = payload.timestamp ? new Date(payload.timestamp * 1000).toISOString() : new Date().toISOString();
     
     // Map Didit status to our decision field
     if (payload.status === 'Approved') {

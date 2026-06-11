@@ -99,35 +99,43 @@ describe('Analytics Routes Integration Tests', () => {
   describe('GET /api/analytics/skill-trends', () => {
     it('should get skill demand trends', async () => {
       const response = await request(app)
-        .get('/api/analytics/skill-trends');
+        .get('/api/analytics/skill-trends')
+        .set('Authorization', `Bearer ${freelancerToken}`);
 
-      expect([200, 500]).toContain(response.status);
+      expect([200, 401, 500]).toContain(response.status);
       
       if (response.status === 200) {
         expect(Array.isArray(response.body)).toBe(true);
       }
     });
 
-    it('should not require authentication', async () => {
+    it('should require authentication', async () => {
       const response = await request(app)
         .get('/api/analytics/skill-trends');
 
-      // Public endpoint
-      expect(response.status).not.toBe(401);
+      expect(response.status).toBe(401);
     });
   });
 
   describe('GET /api/analytics/platform', () => {
     it('should get platform metrics', async () => {
       const response = await request(app)
-        .get('/api/analytics/platform');
+        .get('/api/analytics/platform')
+        .set('Authorization', `Bearer ${freelancerToken}`);
 
-      expect([200, 400, 500]).toContain(response.status);
+      expect([200, 401, 400, 500]).toContain(response.status);
       
       if (response.status === 200) {
         expect(response.body).toHaveProperty('totalUsers');
         expect(response.body).toHaveProperty('totalProjects');
       }
+    });
+
+    it('should require authentication', async () => {
+      const response = await request(app)
+        .get('/api/analytics/platform');
+
+      expect(response.status).toBe(401);
     });
   });
 });

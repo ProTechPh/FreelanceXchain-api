@@ -35,9 +35,20 @@ const mockStorage = {
   getFile: jest.fn<any>(),
   deleteFile: jest.fn<any>(),
 };
+const mockDatabases = {
+    listDocuments: jest.fn().mockResolvedValue({ documents: [], total: 0 }),
+    createDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+    updateDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+    deleteDocument: jest.fn().mockResolvedValue({}),
+    getDocument: jest.fn().mockResolvedValue({ $id: 'doc-id' }),
+  };
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   storage: mockStorage,
+  databases: mockDatabases,
   BUCKETS: { PORTFOLIO_IMAGES: 'portfolio', PROPOSAL_ATTACHMENTS: 'proposals' },
+  ID: { unique: jest.fn(() => 'mock-unique-id') },
+  Query: { equal: jest.fn(), limit: jest.fn(), orderDesc: jest.fn(), offset: jest.fn() },
 }));
 
 // ===== Matching service mocks =====
@@ -123,7 +134,7 @@ describe('Email Preference Service - catch blocks', () => {
 
   // Lines 88-89: getEmailPreferences catch block
   it('returns INTERNAL_ERROR when DB query throws', async () => {
-    mockPool.query.mockRejectedValue(new Error('Connection refused'));
+    mockDatabases.listDocuments.mockRejectedValue(new Error('Connection refused'));
     const result = await getEmailPreferences('user-1');
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('INTERNAL_ERROR');
@@ -131,7 +142,7 @@ describe('Email Preference Service - catch blocks', () => {
 
   // Lines 181-183: unsubscribeAll catch block
   it('unsubscribeAll returns INTERNAL_ERROR on DB failure', async () => {
-    mockPool.query.mockRejectedValue(new Error('Timeout'));
+    mockDatabases.listDocuments.mockRejectedValue(new Error('Timeout'));
     const result = await unsubscribeAll('user-1');
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('INTERNAL_ERROR');
@@ -139,14 +150,14 @@ describe('Email Preference Service - catch blocks', () => {
 
   // Lines 181-182: shouldSendEmail catch block
   it('should return INTERNAL_ERROR when shouldSendEmail throws (lines 181-183)', async () => {
-    mockPool.query.mockRejectedValue(new Error('Connection lost'));
+    mockDatabases.listDocuments.mockRejectedValue(new Error('Connection lost'));
     const result = await shouldSendEmail('user-1', 'payment_notifications');
     // Should return true for critical email types even on error
     expect(result).toBe(true);
   });
 
   it('should return false for non-critical emails when shouldSendEmail throws', async () => {
-    mockPool.query.mockRejectedValue(new Error('Connection lost'));
+    mockDatabases.listDocuments.mockRejectedValue(new Error('Connection lost'));
     const result = await shouldSendEmail('user-1', 'marketing_emails');
     expect(result).toBe(false);
   });
@@ -156,7 +167,7 @@ describe('File Service - deleteFile outer catch (lines 159-167)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('returns INTERNAL_ERROR when storage.deleteFile throws', async () => {
-    mockStorage.getFile.mockResolvedValue({ name: 'user-1-photo.jpg' });
+    mockStorage.getFile.mockResolvedValue({ name: 'user-1/photo.jpg' });
     mockStorage.deleteFile.mockRejectedValue(new Error('Storage unavailable'));
 
     const result = await deleteFile('user-1', 'portfolio', 'file-123');

@@ -56,15 +56,16 @@ describe('SkillCategoryRepository', () => {
 
   describe('deleteCategory', () => {
     it('should delete and return true when exists', async () => {
-      mockAppwriteResult({ data: { id: 'c1' } });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
       const result = await repo.deleteCategory('c1');
       expect(result).toBe(true);
     });
 
     it('should return false when not found', async () => {
-      mockAppwriteResult({ data: null });
-      const result = await repo.deleteCategory('c1');
+      const { SkillCategoryRepository: SCR } = await import('../../repositories/skill-category-repository.js');
+      const repo2 = new SCR();
+      const db = (globalThis as any).__mockDatabases;
+      db.deleteDocument.mockRejectedValueOnce(new Error('not found'));
+      const result = await repo2.deleteCategory('c1');
       expect(result).toBe(false);
     });
   });

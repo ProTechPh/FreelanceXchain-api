@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from 'express';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { logger } from '../config/logger.js';
 import {
   createRefundRequest,
   approveRefund,
@@ -42,10 +43,10 @@ const router = Router();
  *       200:
  *         description: Refund request created successfully
  */
-router.post('/:contractId/refund-request', authMiddleware, validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:contractId/refund-request', authMiddleware, validateUUID(['contractId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const contractId = req.params['contractId'] ?? '';
-    const userId = req.user?.id ?? '';
+    const userId = req.user?.userId ?? '';
     const { amount, reason } = req.body;
 
     if (!reason) {
@@ -87,10 +88,10 @@ router.post('/:contractId/refund-request', authMiddleware, validateUUID(), apiRa
  *       200:
  *         description: List of refund requests
  */
-router.get('/:contractId/refunds', authMiddleware, validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:contractId/refunds', authMiddleware, validateUUID(['contractId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const contractId = req.params['contractId'] ?? '';
-    const userId = req.user?.id ?? '';
+    const userId = req.user?.userId ?? '';
 
     const result = await getContractRefunds(contractId, userId);
 
@@ -122,10 +123,10 @@ router.get('/:contractId/refunds', authMiddleware, validateUUID(), apiRateLimite
  *       200:
  *         description: Refund approved successfully
  */
-router.post('/refunds/:refundId/approve', authMiddleware, validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/refunds/:refundId/approve', authMiddleware, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const refundId = req.params['refundId'] ?? '';
-    const userId = req.user?.id ?? '';
+    const userId = req.user?.userId ?? '';
 
     const result = await approveRefund({
       refundId,
@@ -138,7 +139,7 @@ router.post('/refunds/:refundId/approve', authMiddleware, validateUUID(), apiRat
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error approving refund:', error);
+    logger.error('Error approving refund:', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ error: 'Failed to approve refund' });
   }
 });
@@ -171,10 +172,10 @@ router.post('/refunds/:refundId/approve', authMiddleware, validateUUID(), apiRat
  *       200:
  *         description: Refund rejected successfully
  */
-router.post('/refunds/:refundId/reject', authMiddleware, validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/refunds/:refundId/reject', authMiddleware, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const refundId = req.params['refundId'] ?? '';
-    const userId = req.user?.id ?? '';
+    const userId = req.user?.userId ?? '';
     const { reason } = req.body;
 
     if (!reason) {
@@ -193,7 +194,7 @@ router.post('/refunds/:refundId/reject', authMiddleware, validateUUID(), apiRate
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error rejecting refund:', error);
+    logger.error('Error rejecting refund:', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ error: 'Failed to reject refund' });
   }
 });

@@ -6,6 +6,11 @@ import request from 'supertest';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+const mockPoolQuery = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockPoolQuery },
+}));
+
 const mockGetPlatformStats = jest.fn<any>();
 const mockGetUserManagement = jest.fn<any>();
 const mockSuspendUser = jest.fn<any>();
@@ -38,7 +43,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
@@ -207,6 +213,7 @@ describe('Admin Routes', () => {
   describe('GET /platform-stats', () => {
     it('should return public platform stats', async () => {
       mockGetPlatformStats.mockResolvedValue({ success: true, data: { totalUsers: 100, totalTransactionVolume: 50000.5 } });
+      mockPoolQuery.mockResolvedValue({ rows: [{ positive: 5, total: 5 }] });
       const res = await request(app).get('/api/admin/platform-stats');
       expect(res.status).toBe(200);
       expect(res.body.totalPaidOut).toBe('50000.50');

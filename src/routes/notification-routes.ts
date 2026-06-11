@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -338,7 +338,7 @@ router.get('/stream', authMiddleware, (req: Request, res: Response) => {
  *       200:
  *         description: SSE statistics
  */
-router.get('/sse-stats', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/sse-stats', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
   const result = getSSEStats();
   
   if (!result.success) {

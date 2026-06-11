@@ -134,3 +134,9 @@ export const withdrawalRateLimiter = rateLimiter('withdrawal', {
   maxRequests: 10, // 10 withdrawal attempts per hour
   message: 'Too many withdrawal attempts, please try again later',
 });
+
+export const mfaVerifyRateLimiter = rateLimiter('mfa-verify', {
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  maxRequests: 5, // 5 MFA verify attempts per 5 minutes
+  message: 'Too many MFA verification attempts, please try again later',
+});

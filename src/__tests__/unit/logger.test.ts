@@ -217,4 +217,51 @@ describe('Logger', () => {
       expect(mockSanitizeLogData).not.toHaveBeenCalled();
     });
   });
+
+  describe('LogLevel enum', () => {
+    it('should export LogLevel enum', async () => {
+      const { LogLevel } = await importModule();
+      expect(LogLevel.DEBUG).toBe('debug');
+      expect(LogLevel.INFO).toBe('info');
+      expect(LogLevel.WARN).toBe('warn');
+      expect(LogLevel.ERROR).toBe('error');
+    });
+  });
+
+  describe('default export', () => {
+    it('should export logger as default', async () => {
+      const mod = await importModule();
+      expect(mod.default).toBe(mod.logger);
+    });
+  });
+
+  describe('non-string message handling', () => {
+    beforeEach(() => {
+      process.env.LOG_LEVEL = 'debug';
+    });
+
+    it('should handle non-string messages in debug', async () => {
+      const { logger } = await importModule();
+      logger.debug(123 as any);
+      expect(consoleOutput.some(o => o.level === 'log')).toBe(true);
+    });
+
+    it('should handle non-string messages in info', async () => {
+      const { logger } = await importModule();
+      logger.info(123 as any);
+      expect(consoleOutput.some(o => o.level === 'log')).toBe(true);
+    });
+
+    it('should handle non-string messages in warn', async () => {
+      const { logger } = await importModule();
+      logger.warn(123 as any);
+      expect(consoleOutput.some(o => o.level === 'warn')).toBe(true);
+    });
+
+    it('should handle non-string messages in error', async () => {
+      const { logger } = await importModule();
+      logger.error(123 as any);
+      expect(consoleOutput.some(o => o.level === 'error')).toBe(true);
+    });
+  });
 });

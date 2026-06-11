@@ -18,7 +18,8 @@ jest.unstable_mockModule(resolveModule('src/services/file-service.ts'), () => ({
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 // Auth middleware that does NOT set req.user (unauthenticated)
 const mockAuthMiddleware = jest.fn<any>();

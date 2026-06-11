@@ -229,7 +229,7 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: R
  *       200:
  *         description: List of milestones
  */
-router.get('/contract/:contractId', authMiddleware, validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const contractId = req.params['contractId'] ?? '';
     const result = await getContractMilestones(contractId);

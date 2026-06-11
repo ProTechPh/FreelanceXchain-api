@@ -1,10 +1,14 @@
 import { createApp } from './app.js';
 import { config } from './config/index.js';
-import { stopScheduler } from './services/scheduler-service.js';
+import { initializeDatabase } from './config/database.js';
+import { initializeScheduler, stopScheduler } from './services/scheduler-service.js';
 import { stopHeartbeat } from './services/notification-delivery-service.js';
 import { logger } from './config/logger.js';
 
 async function main(): Promise<void> {
+  await initializeDatabase();
+  initializeScheduler();
+
   const app = await createApp();
 
   const server = app.listen(config.server.port, () => {

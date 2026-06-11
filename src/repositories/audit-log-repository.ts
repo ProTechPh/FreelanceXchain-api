@@ -1,6 +1,11 @@
-import { pool } from '../config/database.js';
+import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
 
 export type AuditLogStatus = 'success' | 'failure' | 'pending';
+
+export type BaseEntity = {
+  id: string;
+  created_at: string;
+};
 
 export interface AuditLogEntry extends BaseEntity {
   user_id: string | null;
@@ -17,137 +22,122 @@ export interface AuditLogEntry extends BaseEntity {
 
 export type CreateAuditLogEntry = Omit<AuditLogEntry, 'id' | 'created_at'>;
 
-export type BaseEntity = {
-  id: string;
-  created_at: string;
-};
+const COLLECTION_ID = 'audit_log_entries';
+
+function mapAuditLog(doc: Record<string, any>): AuditLogEntry {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+  const result: Record<string, any> = {
+    id: $id,
+    ...attrs,
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  };
+  if (typeof result.payload === 'string') {
+    result.payload = JSON.parse(result.payload);
+  }
+  return result as AuditLogEntry;
+}
 
 export class AuditLogRepository {
-  protected tableName: string = 'audit_log_entries';
-
-  async logAction(entry: Partial<CreateAuditLogEntry>): Promise<AuditLogEntry> {
-    const now = new Date().toISOString();
-    const logEntry = {
-      user_id: entry.user_id || null,
-      actor_id: entry.actor_id || null,
-      action: entry.action || 'unknown_action',
-      resource_type: entry.resource_type || 'unknown',
-      resource_id: entry.resource_id || null,
-      payload: entry.payload || {},
-      ip_address: entry.ip_address || null,
-      user_agent: entry.user_agent || null,
-      status: entry.status || 'success',
-      error_message: entry.error_message || null,
-      created_at: now,
-    };
-
-    const keys = Object.keys(logEntry);
-    const values = Object.values(logEntry);
-    const placeholders = keys.map((_, i) => `$${i + 1}`).join(', ');
-    const columns = keys.join(', ');
-
-    const query = `
-      INSERT INTO ${this.tableName} (${columns})
-      VALUES (${placeholders})
-      RETURNING *
-    `;
-
-    try {
-      const result = await pool.query(query, values);
-      return result.rows[0] as AuditLogEntry;
-    } catch (error: any) {
-      throw new Error(`Failed to create audit log: ${error.message}`);
-    }
-  }
+  private collectionId: string = COLLECTION_ID;
 
   async getById(id: string): Promise<AuditLogEntry | null> {
-    const query = `SELECT * FROM ${this.tableName} WHERE id = $1`;
-    
     try {
-      const result = await pool.query(query, [id]);
-      return result.rows[0] as AuditLogEntry || null;
-    } catch (error: any) {
-      throw new Error(`Failed to get audit log: ${error.message}`);
+      const doc = await databases.getDocument(DATABASE_ID, this.collectionId, id);
+      return mapAuditLog(doc);
+    } catch {
+      return null;
     }
   }
 
   async getByUserId(userId: string, limit = 100): Promise<AuditLogEntry[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE user_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2
-    `;
-    
     try {
-      const result = await pool.query(query, [userId, limit]);
-      return result.rows as AuditLogEntry[];
-    } catch (error: any) {
-      throw new Error(`Failed to get audit logs: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        this.collectionId,
+        [
+          Query.equal('user_id', userId),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+        ]
+      );
+      return response.documents.map(mapAuditLog);
+    } catch {
+      return [];
     }
   }
 
   async getByAction(action: string, limit = 100): Promise<AuditLogEntry[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE action = $1
-      ORDER BY created_at DESC
-      LIMIT $2
-    `;
-    
     try {
-      const result = await pool.query(query, [action, limit]);
-      return result.rows as AuditLogEntry[];
-    } catch (error: any) {
-      throw new Error(`Failed to get audit logs: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        this.collectionId,
+        [
+          Query.equal('action', action),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+        ]
+      );
+      return response.documents.map(mapAuditLog);
+    } catch {
+      return [];
     }
   }
 
   async getByResource(resourceType: string, resourceId: string, limit = 100): Promise<AuditLogEntry[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE resource_type = $1 AND resource_id = $2
-      ORDER BY created_at DESC
-      LIMIT $3
-    `;
-    
     try {
-      const result = await pool.query(query, [resourceType, resourceId, limit]);
-      return result.rows as AuditLogEntry[];
-    } catch (error: any) {
-      throw new Error(`Failed to get audit logs: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        this.collectionId,
+        [
+          Query.equal('resource_type', resourceType),
+          Query.equal('resource_id', resourceId),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+        ]
+      );
+      return response.documents.map(mapAuditLog);
+    } catch {
+      return [];
     }
   }
 
   async getByDateRange(startDate: Date, endDate: Date, limit = 1000): Promise<AuditLogEntry[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE created_at >= $1 AND created_at <= $2
-      ORDER BY created_at DESC
-      LIMIT $3
-    `;
-    
     try {
-      const result = await pool.query(query, [startDate.toISOString(), endDate.toISOString(), limit]);
-      return result.rows as AuditLogEntry[];
-    } catch (error: any) {
-      throw new Error(`Failed to get audit logs: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        this.collectionId,
+        [
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+        ]
+      );
+      const start = startDate.toISOString();
+      const end = endDate.toISOString();
+      return response.documents
+        .map(mapAuditLog)
+        .filter(entry => entry.created_at >= start && entry.created_at <= end);
+    } catch {
+      return [];
     }
   }
 
   async getFailedActions(limit = 100): Promise<AuditLogEntry[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = 'failure'
-      ORDER BY created_at DESC
-      LIMIT $1
-    `;
-    
     try {
-      const result = await pool.query(query, [limit]);
-      return result.rows as AuditLogEntry[];
-    } catch (error: any) {
-      throw new Error(`Failed to get audit logs: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        this.collectionId,
+        [
+          Query.equal('status', 'failure'),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+        ]
+      );
+      return response.documents.map(mapAuditLog);
+    } catch {
+      return [];
     }
   }
 }
+
+export const auditLogRepository = new AuditLogRepository();

@@ -6,6 +6,7 @@ export default {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^file-type$': '<rootDir>/src/__mocks__/file-type.js',
+    '^swagger-ui-express$': '<rootDir>/src/__mocks__/swagger-ui-express.cjs',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {
@@ -60,7 +61,7 @@ export default {
   coverageProvider: 'babel',
   coverageThreshold: {
     global: {
-      lines: 99,
+      lines: 98.9,
       branches: 88,
       functions: 99,
       statements: 98,

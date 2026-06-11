@@ -291,6 +291,10 @@ export async function completeAgreement(
   const agreement = rowToAgreement(result.rows[0] as AgreementRow);
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
 
+  if (callerWallet !== agreement.employerWallet && callerWallet !== agreement.freelancerWallet) {
+    throw new Error('Unauthorized: caller is not a party to this agreement');
+  }
+
   const tx = await submitTransaction({
     type: 'agreement_complete',
     from: callerWallet,
@@ -348,6 +352,10 @@ export async function disputeAgreement(
   if (result.rows.length === 0) throw new Error('Agreement not found');
   const agreement = rowToAgreement(result.rows[0] as AgreementRow);
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
+
+  if (callerWallet !== agreement.employerWallet && callerWallet !== agreement.freelancerWallet) {
+    throw new Error('Unauthorized: caller is not a party to this agreement');
+  }
   
   const tx = await submitTransaction({
     type: 'agreement_dispute',

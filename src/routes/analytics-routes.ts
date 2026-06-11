@@ -76,13 +76,15 @@ router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res
   res.status(200).json(result.data);
 });
 
-router.get('/skill-trends', apiRateLimiter, async (_req: Request, res: Response) => {
+router.get('/skill-trends', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
   const result = await getSkillTrends();
   
   if (!result.success) {
     res.status(400).json({
       error: { code: result.error?.code, message: result.error?.message },
       timestamp: new Date().toISOString(),
+      requestId,
     });
     return;
   }
@@ -90,12 +92,15 @@ router.get('/skill-trends', apiRateLimiter, async (_req: Request, res: Response)
   res.status(200).json(result.data);
 });
 
-router.get('/platform', apiRateLimiter, async (_req: Request, res: Response) => {
+router.get('/platform', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+  const requestId = getRequestId(req);
   const result = await getPlatformMetrics();
 
   if (!result.success) {
     res.status(400).json({
       error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
     });
     return;
   }

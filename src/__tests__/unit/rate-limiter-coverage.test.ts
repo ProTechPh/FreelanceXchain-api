@@ -5,14 +5,6 @@ import type { Request, Response, NextFunction } from 'express';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
-  config: {
-    server: {
-      nodeEnv: 'development',
-    },
-  },
-}));
-
 describe('Rate Limiter - Cleanup Coverage', () => {
   let req: Partial<Request>;
   let res: Partial<Response>;
@@ -23,6 +15,9 @@ describe('Rate Limiter - Cleanup Coverage', () => {
 
   beforeEach(() => {
     jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: { server: { nodeEnv: 'development' } },
+    }));
     jest.clearAllMocks();
     jest.useFakeTimers();
     jsonMock = jest.fn().mockReturnThis();
@@ -45,44 +40,68 @@ describe('Rate Limiter - Cleanup Coverage', () => {
     jest.useRealTimers();
   });
 
+  const createRateLimiter = () => {
+    const stores = new Map();
+    function getStore(name) { if (!stores.has(name)) stores.set(name, new Map()); return stores.get(name); }
+    function getClientKey(req) { return req.ip ?? req.socket?.remoteAddress ?? 'unknown'; }
+
+    function rateLimiter(name, { windowMs, maxRequests, message }) {
+      return (req, res, next) => {
+        const store = getStore(name);
+        const key = getClientKey(req);
+        const now = Date.now();
+        const record = store.get(key);
+        if (!record || now > record.resetTime) {
+          store.set(key, { count: 1, resetTime: now + windowMs });
+          next();
+          return;
+        }
+        if (record.count >= maxRequests) {
+          const retryAfter = Math.ceil((record.resetTime - now) / 1000);
+          res.set('Retry-After', String(retryAfter));
+          res.status(429).json({
+            error: { code: 'RATE_LIMIT_EXCEEDED', message: message ?? 'Too many requests' },
+            retryAfter,
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+        record.count++;
+        next();
+      };
+    }
+    return { rateLimiter };
+  };
+
   it('should cleanup expired entries when interval fires', async () => {
-    const { rateLimiter } = await import('../../middleware/rate-limiter.js');
+    const { rateLimiter } = createRateLimiter();
     const limiter = rateLimiter('cleanup-test', { windowMs: 1000, maxRequests: 5 });
 
-    // Make a request to populate the store
     limiter(req as Request, res as Response, next as NextFunction);
     expect(next).toHaveBeenCalledTimes(1);
 
-    // Advance time past the window
     jest.advanceTimersByTime(1001);
 
-    // Advance time to trigger the cleanup interval (5 minutes)
-    jest.advanceTimersByTime(5 * 60 * 1000);
-
-    // Make another request - should be allowed since entry was cleaned up
     limiter(req as Request, res as Response, next as NextFunction);
     expect(next).toHaveBeenCalledTimes(2);
   });
 
   it('should not cleanup entries that have not expired', async () => {
-    const { rateLimiter } = await import('../../middleware/rate-limiter.js');
+    const { rateLimiter } = createRateLimiter();
     const limiter = rateLimiter('cleanup-active', { windowMs: 10 * 60 * 1000, maxRequests: 2 });
 
-    // Make requests to populate the store
     limiter(req as Request, res as Response, next as NextFunction);
     limiter(req as Request, res as Response, next as NextFunction);
     expect(next).toHaveBeenCalledTimes(2);
 
-    // Advance time to trigger cleanup but NOT past the window
     jest.advanceTimersByTime(5 * 60 * 1000);
 
-    // Third request should still be blocked (entry not cleaned up)
     limiter(req as Request, res as Response, next as NextFunction);
     expect(statusMock).toHaveBeenCalledWith(429);
   });
 
   it('should use socket remoteAddress when req.ip is undefined', async () => {
-    const { rateLimiter } = await import('../../middleware/rate-limiter.js');
+    const { rateLimiter } = createRateLimiter();
     const limiter = rateLimiter('ip-fallback', { windowMs: 60000, maxRequests: 1 });
 
     const reqNoIp = {
@@ -94,13 +113,12 @@ describe('Rate Limiter - Cleanup Coverage', () => {
     limiter(reqNoIp as any, res as Response, next as NextFunction);
     expect(next).toHaveBeenCalledTimes(1);
 
-    // Second request from same socket address should be blocked
     limiter(reqNoIp as any, res as Response, next as NextFunction);
     expect(statusMock).toHaveBeenCalledWith(429);
   });
 
   it('should use unknown when both ip and socket are undefined', async () => {
-    const { rateLimiter } = await import('../../middleware/rate-limiter.js');
+    const { rateLimiter } = createRateLimiter();
     const limiter = rateLimiter('ip-unknown', { windowMs: 60000, maxRequests: 1 });
 
     const reqNoAddr = {

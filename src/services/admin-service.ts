@@ -112,6 +112,18 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
       params.push(filters.role);
       pIndex++;
     }
+    if (filters?.status) {
+      query += ` AND is_suspended = $${pIndex}`;
+      countQuery += ` AND is_suspended = $${pIndex}`;
+      params.push(filters.status === 'suspended');
+      pIndex++;
+    }
+    if (filters?.kycStatus) {
+      query += ` AND kyc_status = $${pIndex}`;
+      countQuery += ` AND kyc_status = $${pIndex}`;
+      params.push(filters.kycStatus);
+      pIndex++;
+    }
     if (filters?.search) {
       const safeSearch = `%${filters.search.replace(/[%_]/g, '\\$&')}%`;
       query += ` AND (email ILIKE $${pIndex} OR name ILIKE $${pIndex})`;

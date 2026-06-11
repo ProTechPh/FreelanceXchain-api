@@ -68,22 +68,6 @@ function rowToRating(row: RatingRow): SimulatedBlockchainRating {
 }
 
 /**
- * Serialize a SimulatedBlockchainRating to JSON-compatible format
- * (Identity operation — types are already JSON-compatible)
- */
-export function serializeBlockchainRating(rating: SimulatedBlockchainRating): SimulatedBlockchainRating {
-  return rating;
-}
-
-/**
- * Deserialize a JSON object back to SimulatedBlockchainRating
- * (Identity operation — types are already JSON-compatible)
- */
-export function deserializeBlockchainRating(json: SimulatedBlockchainRating): SimulatedBlockchainRating {
-  return json;
-}
-
-/**
  * Submit a rating record to the blockchain
  * Called when a contract completes and users rate each other
  */
@@ -296,6 +280,20 @@ export async function hasUserRatedForContract(
 export async function clearBlockchainRatings(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
   await pool.query('DELETE FROM blockchain_ratings');
+}
+
+/**
+ * Serialize a BlockchainRating to JSON-compatible format (identity function for simulated mode)
+ */
+export function serializeBlockchainRating(rating: BlockchainRating): BlockchainRating {
+  return rating;
+}
+
+/**
+ * Deserialize a JSON object back to BlockchainRating (identity function for simulated mode)
+ */
+export function deserializeBlockchainRating(json: BlockchainRating): BlockchainRating {
+  return json;
 }
 
 /**

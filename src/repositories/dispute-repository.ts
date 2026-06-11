@@ -1,4 +1,5 @@
-import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite, PaginatedResult, QueryOptions } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import type { DisputeStatus } from '../models/dispute.js';
 
 export type { DisputeStatus };
@@ -31,9 +32,28 @@ export type DisputeEntity = {
   updated_at: string;
 };
 
-export class DisputeRepository extends BaseRepositoryPg<DisputeEntity> {
+const COLLECTION_ID = 'disputes';
+
+function mapDispute(doc: Record<string, any>): DisputeEntity {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+  const result: Record<string, any> = {
+    id: $id,
+    ...attrs,
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  };
+  if (typeof result.evidence === 'string') {
+    result.evidence = JSON.parse(result.evidence);
+  }
+  if (typeof result.resolution === 'string') {
+    result.resolution = JSON.parse(result.resolution);
+  }
+  return result as DisputeEntity;
+}
+
+export class DisputeRepository extends BaseRepositoryAppwrite<DisputeEntity> {
   constructor() {
-    super('disputes');
+    super(COLLECTION_ID);
   }
 
   async createDispute(dispute: Omit<DisputeEntity, 'created_at' | 'updated_at'>): Promise<DisputeEntity> {
@@ -52,56 +72,59 @@ export class DisputeRepository extends BaseRepositoryPg<DisputeEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE contract_id = $1`;
-    const countResult = await this.pool.query(countQuery, [contractId]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE contract_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
     try {
-      const result = await this.pool.query(dataQuery, [contractId, limit, offset]);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('contract_id', contractId),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+          Query.offset(offset),
+        ]
+      );
       return {
-        items: result.rows as DisputeEntity[],
-        hasMore: offset + limit < total,
-        total,
+        items: response.documents.map(mapDispute),
+        hasMore: response.documents.length === limit,
+        total: response.total,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to get disputes by contract: ${error.message}`);
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
     }
   }
 
   async getAllDisputesByContract(contractId: string): Promise<DisputeEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE contract_id = $1
-      ORDER BY created_at DESC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [contractId]);
-      return result.rows as DisputeEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get all disputes by contract: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('contract_id', contractId),
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map(mapDispute);
+    } catch {
+      return [];
     }
   }
 
   async getDisputeByMilestone(milestoneId: string): Promise<DisputeEntity | null> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE milestone_id = $1 AND status != 'resolved'
-      LIMIT 1
-    `;
-    
     try {
-      const result = await this.pool.query(query, [milestoneId]);
-      return result.rows[0] || null;
-    } catch (error: any) {
-      throw new Error(`Failed to get dispute by milestone: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('milestone_id', milestoneId),
+          Query.notEqual('status', 'resolved'),
+          Query.limit(1),
+        ]
+      );
+      const doc = response.documents[0];
+      return doc ? mapDispute(doc) : null;
+    } catch {
+      return null;
     }
   }
 
@@ -109,26 +132,24 @@ export class DisputeRepository extends BaseRepositoryPg<DisputeEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = $1`;
-    const countResult = await this.pool.query(countQuery, [status]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
     try {
-      const result = await this.pool.query(dataQuery, [status, limit, offset]);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('status', status),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+          Query.offset(offset),
+        ]
+      );
       return {
-        items: result.rows as DisputeEntity[],
-        hasMore: offset + limit < total,
-        total,
+        items: response.documents.map(mapDispute),
+        hasMore: response.documents.length === limit,
+        total: response.total,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to get disputes by status: ${error.message}`);
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
     }
   }
 
@@ -136,26 +157,24 @@ export class DisputeRepository extends BaseRepositoryPg<DisputeEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE initiator_id = $1`;
-    const countResult = await this.pool.query(countQuery, [initiatorId]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE initiator_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
     try {
-      const result = await this.pool.query(dataQuery, [initiatorId, limit, offset]);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('initiator_id', initiatorId),
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+          Query.offset(offset),
+        ]
+      );
       return {
-        items: result.rows as DisputeEntity[],
-        hasMore: offset + limit < total,
-        total,
+        items: response.documents.map(mapDispute),
+        hasMore: response.documents.length === limit,
+        total: response.total,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to get disputes by initiator: ${error.message}`);
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
     }
   }
 
@@ -163,31 +182,28 @@ export class DisputeRepository extends BaseRepositoryPg<DisputeEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    let countQuery = `SELECT COUNT(*) FROM ${this.tableName}`;
-    let dataQuery = `SELECT * FROM ${this.tableName}`;
-    const params: any[] = [];
-
-    if (options?.status) {
-      countQuery += ` WHERE status = $1`;
-      dataQuery += ` WHERE status = $1`;
-      params.push(options.status);
-    }
-
-    dataQuery += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-    
     try {
-      const countResult = await this.pool.query(countQuery, params);
-      const total = parseInt(countResult.rows[0].count, 10);
-      
-      const result = await this.pool.query(dataQuery, [...params, limit, offset]);
-      
+      const queries: any[] = [
+        Query.orderDesc('created_at'),
+        Query.limit(limit),
+        Query.offset(offset),
+      ];
+      if (options?.status) {
+        queries.unshift(Query.equal('status', options.status));
+      }
+
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        queries
+      );
       return {
-        items: result.rows as DisputeEntity[],
-        hasMore: offset + limit < total,
-        total,
+        items: response.documents.map(mapDispute),
+        hasMore: response.documents.length === limit,
+        total: response.total,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to get all disputes: ${error.message}`);
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
     }
   }
 
@@ -195,45 +211,28 @@ export class DisputeRepository extends BaseRepositoryPg<DisputeEntity> {
     const limit = options?.limit ?? 100;
     const offset = options?.offset ?? 0;
 
-    let whereClause = `
-      WHERE d.initiator_id = $1 
-         OR c.employer_id = $1 
-         OR c.freelancer_id = $1
-    `;
-    const params: any[] = [userId];
-
-    if (options?.status) {
-      whereClause += ` AND d.status = $2`;
-      params.push(options.status);
-    }
-
-    const countQuery = `
-      SELECT COUNT(*) FROM ${this.tableName} d
-      JOIN contracts c ON d.contract_id = c.id
-      ${whereClause}
-    `;
-
-    const dataQuery = `
-      SELECT d.* FROM ${this.tableName} d
-      JOIN contracts c ON d.contract_id = c.id
-      ${whereClause}
-      ORDER BY d.created_at DESC
-      LIMIT $${params.length + 1} OFFSET $${params.length + 2}
-    `;
-    
     try {
-      const countResult = await this.pool.query(countQuery, params);
-      const total = parseInt(countResult.rows[0].count, 10);
-      
-      const result = await this.pool.query(dataQuery, [...params, limit, offset]);
-      
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      let disputes = response.documents.map(mapDispute);
+      if (options?.status) {
+        disputes = disputes.filter(d => d.status === options.status);
+      }
+      const total = disputes.length;
+      const items = disputes.slice(offset, offset + limit);
       return {
-        items: result.rows as DisputeEntity[],
+        items,
         hasMore: offset + limit < total,
         total,
       };
-    } catch (error: any) {
-      throw new Error(`Failed to get disputes by user: ${error.message}`);
+    } catch {
+      return { items: [], hasMore: false, total: 0 };
     }
   }
 }

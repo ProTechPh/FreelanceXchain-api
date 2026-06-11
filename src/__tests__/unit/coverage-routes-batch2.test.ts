@@ -14,7 +14,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   apiRateLimiter: (_req, _res, next) => next(),
   authRateLimiter: (_req, _res, next) => next(),
   fileUploadRateLimiter: (_req, _res, next) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req, _res, next) => { req.user = { userId: 'user-1', role: 'freelancer' }; next(); },
@@ -114,6 +115,7 @@ jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () =>
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   BUCKETS: { PROJECT_ATTACHMENTS: 'project-attachments' },
 }));
 

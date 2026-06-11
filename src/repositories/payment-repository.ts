@@ -1,4 +1,5 @@
-import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite, PaginatedResult, QueryOptions } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 export type PaymentType = 'escrow_deposit' | 'milestone_release' | 'refund' | 'dispute_resolution';
@@ -20,91 +21,123 @@ export type PaymentEntity = {
 
 export type CreatePaymentInput = Omit<PaymentEntity, 'id' | 'created_at' | 'updated_at'>;
 
-class PaymentRepositoryClass extends BaseRepositoryPg<PaymentEntity> {
+const COLLECTION_ID = 'payments';
+
+function mapPayment(doc: any): PaymentEntity {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+  return {
+    id: $id,
+    ...attrs,
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  } as PaymentEntity;
+}
+
+class PaymentRepositoryClass extends BaseRepositoryAppwrite<PaymentEntity> {
   constructor() {
-    super('payments');
+    super(COLLECTION_ID);
   }
 
   async findByContractId(contractId: string): Promise<PaymentEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE contract_id = $1
-      ORDER BY created_at DESC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [contractId]);
-      return result.rows as PaymentEntity[];
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('contract_id', contractId),
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map(mapPayment);
     } catch (error: any) {
       throw new Error(`Failed to find payments: ${error.message}`);
     }
   }
 
-  async findByUserId(userId: string, options?: QueryOptions): Promise<PaginatedResult<PaymentEntity>> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE payer_id = $1 OR payee_id = $1`;
-    const countResult = await this.pool.query(countQuery, [userId]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE payer_id = $1 OR payee_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
+  async findByUserId(
+    userId: string,
+    options: { limit?: number; offset?: number } = {}
+  ): Promise<{ items: PaymentEntity[]; total: number; hasMore: boolean }> {
+    const { limit = 20, offset = 0 } = options;
     try {
-      const result = await this.pool.query(dataQuery, [userId, limit, offset]);
-      return {
-        items: result.rows as PaymentEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
+      const countResponse = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.limit(1),
+        ]
+      );
+      const total = countResponse.total;
+
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.orderDesc('created_at'),
+          Query.limit(limit),
+          Query.offset(offset),
+        ]
+      );
+      const items = response.documents.map(mapPayment);
+      return { items, total, hasMore: items.length === limit };
     } catch (error: any) {
       throw new Error(`Failed to find payments: ${error.message}`);
     }
   }
 
   async findByTxHash(txHash: string): Promise<PaymentEntity | null> {
-    return this.findOne('tx_hash', txHash);
+    try {
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('tx_hash', txHash),
+          Query.limit(1),
+        ]
+      );
+      if (response.documents.length === 0) return null;
+      return mapPayment(response.documents[0]);
+    } catch {
+      return null;
+    }
   }
 
-  async updateStatus(id: string, status: PaymentStatus, txHash?: string): Promise<PaymentEntity | null> {
-    const updates: Partial<PaymentEntity> = { status };
-    /* istanbul ignore next */
-    if (txHash) updates.tx_hash = txHash;
-    return this.update(id, updates);
+  async updateStatus(id: string, status: PaymentStatus): Promise<PaymentEntity | null> {
+    return this.update(id, { status } as Partial<PaymentEntity>);
   }
 
   async getTotalEarnings(userId: string): Promise<number> {
-    const query = `
-      SELECT SUM(amount) as total 
-      FROM ${this.tableName} 
-      WHERE payee_id = $1 AND status = 'completed'
-    `;
-    
     try {
-      const result = await this.pool.query(query, [userId]);
-      return result.rows[0].total ? parseFloat(result.rows[0].total) : 0;
-    } catch (error: any) {
-      throw new Error(`Failed to get earnings: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('payee_id', userId),
+          Query.equal('status', 'completed'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.reduce((sum: number, doc: any) => sum + Number(doc.amount || 0), 0);
+    } catch {
+      return 0;
     }
   }
 
   async getTotalSpent(userId: string): Promise<number> {
-    const query = `
-      SELECT SUM(amount) as total 
-      FROM ${this.tableName} 
-      WHERE payer_id = $1 AND status = 'completed'
-    `;
-    
     try {
-      const result = await this.pool.query(query, [userId]);
-      return result.rows[0].total ? parseFloat(result.rows[0].total) : 0;
-    } catch (error: any) {
-      throw new Error(`Failed to get spent: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('payer_id', userId),
+          Query.equal('status', 'completed'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.reduce((sum: number, doc: any) => sum + Number(doc.amount || 0), 0);
+    } catch {
+      return 0;
     }
   }
 }

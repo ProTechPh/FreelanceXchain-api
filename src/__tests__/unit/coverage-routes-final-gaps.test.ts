@@ -17,7 +17,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   registerRateLimiter: (_req, _res, next) => next(),
   passwordResetRateLimiter: (_req, _res, next) => next(),
   fileUploadRateLimiter: (_req, _res, next) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 const mockAuthMiddleware = jest.fn();
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({

@@ -1,4 +1,3 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { storage, BUCKETS } from '../config/appwrite.js';
@@ -43,7 +42,7 @@ export async function getUserFiles(
         if (result.files) {
           // Filter files that belong to the user (by filename pattern or metadata)
           const files = result.files
-            .filter(file => file.name.includes(userId))
+            .filter(file => file.name.startsWith(userId + '/') || file.name.startsWith(userId + '_'))
             .map(file => ({
               name: file.name,
               bucket: bucketName,
@@ -90,8 +89,8 @@ export async function deleteFile(
     // Get file info to verify ownership
     try {
       const file = await storage.getFile(bucket, path);
-      // Verify file ownership by checking if filename contains userId
-      if (!file.name.includes(userId)) {
+      // Verify file ownership by checking if filename starts with userId
+      if (!file.name.startsWith(userId + '/') && !file.name.startsWith(userId + '_')) {
         return {
           success: false,
           error: {

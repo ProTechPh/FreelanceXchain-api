@@ -15,6 +15,7 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 
 const mockDeleteFile = jest.fn<any>().mockResolvedValue({});
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   storage: { deleteFile: mockDeleteFile },
   BUCKETS: { PORTFOLIO_IMAGES: 'portfolio-images' },
 }));

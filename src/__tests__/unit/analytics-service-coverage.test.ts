@@ -13,6 +13,43 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { error: jest.fn(), info: jest.fn(), debug: jest.fn(), warn: jest.fn() },
 }));
 
+jest.unstable_mockModule(resolveModule('src/utils/cache.ts'), () => ({
+  platformMetricsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
+  skillTrendsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
+  adminAnalyticsCache: { get: jest.fn().mockReturnValue(null), set: jest.fn() },
+}));
+
+const mockDatabases = {
+  listDocuments: jest.fn<any>(),
+  getDocument: jest.fn<any>(),
+  createDocument: jest.fn<any>(),
+  updateDocument: jest.fn<any>(),
+  deleteDocument: jest.fn<any>(),
+};
+
+jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+  databases: mockDatabases,
+  DATABASE_ID: 'test-db',
+  Query: {
+    equal: jest.fn((...args: any[]) => ({ type: 'equal', args })),
+    orderDesc: jest.fn((...args: any[]) => ({ type: 'orderDesc', args })),
+    orderAsc: jest.fn((...args: any[]) => ({ type: 'orderAsc', args })),
+    limit: jest.fn((...args: any[]) => ({ type: 'limit', args })),
+    offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/config/collections.ts'), () => ({
+  COLLECTIONS: {
+    USERS: 'users',
+    PROJECTS: 'projects',
+    CONTRACTS: 'contracts',
+    PROPOSALS: 'proposals',
+    REVIEWS: 'reviews',
+    AUDIT_LOG_ENTRIES: 'audit_log_entries',
+  },
+}));
+
 const {
   getFreelancerAnalytics,
   getEmployerAnalytics,
@@ -27,11 +64,10 @@ describe('Analytics Service - Coverage', () => {
 
   describe('getFreelancerAnalytics', () => {
     it('should return analytics with date range filters', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ id: 'c-1', total_amount: 1000, created_at: '2025-01-01' }] })
-        .mockResolvedValueOnce({ rows: [{ rating: 4.5 }] })
-        .mockResolvedValueOnce({ rows: [{ status: 'accepted' }, { status: 'rejected' }] })
-        .mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [{ id: 'c-1', total_amount: 1000, created_at: '2025-01-01' }], total: 1 })
+        .mockResolvedValueOnce({ documents: [{ rating: 4.5 }], total: 1 })
+        .mockResolvedValueOnce({ documents: [{ status: 'accepted' }, { status: 'rejected' }], total: 2 });
 
       const result = await getFreelancerAnalytics('u-1', { startDate: '2025-01-01', endDate: '2025-12-31' });
       expect(result.success).toBe(true);
@@ -42,11 +78,10 @@ describe('Analytics Service - Coverage', () => {
     });
 
     it('should handle zero proposals', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getFreelancerAnalytics('u-1');
       expect(result.success).toBe(true);
@@ -57,7 +92,7 @@ describe('Analytics Service - Coverage', () => {
     });
 
     it('should handle error', async () => {
-      mockPool.query.mockRejectedValue(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValue(new Error('DB error'));
       const result = await getFreelancerAnalytics('u-1');
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('INTERNAL_ERROR');
@@ -66,10 +101,9 @@ describe('Analytics Service - Coverage', () => {
 
   describe('getEmployerAnalytics', () => {
     it('should return analytics with date range filters', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ id: 'p-1', budget: 2000, created_at: '2025-01-01' }] })
-        .mockResolvedValueOnce({ rows: [{ total_amount: 1500, created_at: '2025-02-01' }] })
-        .mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [{ id: 'p-1', budget: 2000, created_at: '2025-01-01' }], total: 1 })
+        .mockResolvedValueOnce({ documents: [{ total_amount: 1500, created_at: '2025-02-01' }], total: 1 });
 
       const result = await getEmployerAnalytics('u-1', { startDate: '2025-01-01', endDate: '2025-12-31' });
       expect(result.success).toBe(true);
@@ -80,10 +114,9 @@ describe('Analytics Service - Coverage', () => {
     });
 
     it('should handle zero projects', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getEmployerAnalytics('u-1');
       expect(result.success).toBe(true);
@@ -93,7 +126,7 @@ describe('Analytics Service - Coverage', () => {
     });
 
     it('should handle error', async () => {
-      mockPool.query.mockRejectedValue(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValue(new Error('DB error'));
       const result = await getEmployerAnalytics('u-1');
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('INTERNAL_ERROR');
@@ -102,13 +135,13 @@ describe('Analytics Service - Coverage', () => {
 
   describe('getPlatformMetrics', () => {
     it('should return platform metrics', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ count: '100' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '50' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '30' }] })
-        .mockResolvedValueOnce({ rows: [{ sum: '50000' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '20' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '15' }] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 100 })
+        .mockResolvedValueOnce({ documents: [], total: 50 })
+        .mockResolvedValueOnce({ documents: [], total: 30 })
+        .mockResolvedValueOnce({ documents: [], total: 20 })
+        .mockResolvedValueOnce({ documents: [{ user_id: 'u1', created_at: new Date().toISOString() }], total: 1 })
+        .mockResolvedValueOnce({ documents: [{ total_amount: 50000 }], total: 1 });
 
       const result = await getPlatformMetrics();
       expect(result.success).toBe(true);
@@ -119,13 +152,13 @@ describe('Analytics Service - Coverage', () => {
     });
 
     it('should handle zero contracts for completion rate', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ count: '10' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '5' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] })
-        .mockResolvedValueOnce({ rows: [{ sum: null }] })
-        .mockResolvedValueOnce({ rows: [{ count: '3' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 10 })
+        .mockResolvedValueOnce({ documents: [], total: 5 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       const result = await getPlatformMetrics();
       expect(result.success).toBe(true);
@@ -135,7 +168,7 @@ describe('Analytics Service - Coverage', () => {
     });
 
     it('should handle error', async () => {
-      mockPool.query.mockRejectedValue(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValue(new Error('DB error'));
       const result = await getPlatformMetrics();
       expect(result.success).toBe(false);
     });
@@ -143,15 +176,13 @@ describe('Analytics Service - Coverage', () => {
 
   describe('getAdminAnalytics', () => {
     it('should return admin analytics', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ count: '100' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '50' }] })
-        .mockResolvedValueOnce({ rows: [{ revenue: '2500' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '10' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '15' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '8' }] })
-        .mockResolvedValueOnce({ rows: [{ month: '2025-01', count: '5' }] })
-        .mockResolvedValueOnce({ rows: [{ month: '2025-01', count: '3' }] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 100 })
+        .mockResolvedValueOnce({ documents: [], total: 50 })
+        .mockResolvedValueOnce({ documents: [{ total_amount: 50000 }], total: 1 })
+        .mockResolvedValueOnce({ documents: [], total: 10 })
+        .mockResolvedValueOnce({ documents: [{ created_at: new Date().toISOString() }], total: 100 })
+        .mockResolvedValueOnce({ documents: [{ created_at: new Date().toISOString() }], total: 50 });
 
       const result = await getAdminAnalytics();
       expect(result.success).toBe(true);
@@ -162,15 +193,13 @@ describe('Analytics Service - Coverage', () => {
     });
 
     it('should handle null revenue', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ count: '10' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '5' }] })
-        .mockResolvedValueOnce({ rows: [{ revenue: null }] })
-        .mockResolvedValueOnce({ rows: [{ count: '2' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '3' }] })
-        .mockResolvedValueOnce({ rows: [{ count: '1' }] })
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 10 })
+        .mockResolvedValueOnce({ documents: [], total: 5 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 2 })
+        .mockResolvedValueOnce({ documents: [], total: 10 })
+        .mockResolvedValueOnce({ documents: [], total: 5 });
 
       const result = await getAdminAnalytics();
       expect(result.success).toBe(true);
@@ -178,7 +207,7 @@ describe('Analytics Service - Coverage', () => {
     });
 
     it('should handle error', async () => {
-      mockPool.query.mockRejectedValue(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValue(new Error('DB error'));
       const result = await getAdminAnalytics();
       expect(result.success).toBe(false);
     });

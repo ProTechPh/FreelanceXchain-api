@@ -1,5 +1,7 @@
-import { pool } from '../config/database.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
+import { platformMetricsCache, skillTrendsCache, adminAnalyticsCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 
 export interface DateRangeOptions {
@@ -64,45 +66,57 @@ export async function getFreelancerAnalytics(
   try {
     const { startDate, endDate } = options;
 
-    // Get completed contracts
-    let contractQuery = "SELECT id, total_amount, created_at FROM contracts WHERE freelancer_id = $1 AND status = 'completed'";
-    const params: any[] = [userId];
-    let pIndex = 2;
+    // Get completed contracts for this freelancer
+    const contractsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.CONTRACTS,
+      [
+        Query.equal('freelancer_id', userId),
+        Query.equal('status', 'completed'),
+        Query.limit(1000),
+      ]
+    );
 
+    // Filter by date range in memory
+    let contracts = contractsResponse.documents;
     if (startDate) {
-      contractQuery += ` AND created_at >= $${pIndex++}`;
-      params.push(startDate);
+      contracts = contracts.filter((c: any) => new Date(c.created_at) >= new Date(startDate));
     }
     if (endDate) {
-      contractQuery += ` AND created_at <= $${pIndex++}`;
-      params.push(endDate);
+      contracts = contracts.filter((c: any) => new Date(c.created_at) <= new Date(endDate));
     }
 
-    const contractsResult = await pool.query(contractQuery, params);
-    const contracts = contractsResult.rows;
-
     // Calculate total earnings
-    const totalEarnings = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
+    const totalEarnings = contracts.reduce((sum: number, c: any) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
 
     // Get average rating
-    const reviewsResult = await pool.query(
-      'SELECT rating FROM reviews WHERE reviewee_id = $1',
-      [userId]
+    const reviewsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.REVIEWS,
+      [
+        Query.equal('reviewee_id', userId),
+        Query.limit(1000),
+      ]
     );
 
-    const averageRating = reviewsResult.rows.length > 0
-      ? reviewsResult.rows.reduce((sum, r) => sum + r.rating, 0) / reviewsResult.rows.length
+    const reviews = reviewsResponse.documents;
+    const averageRating = reviews.length > 0
+      ? reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length
       : 0;
 
     // Get proposal acceptance rate
-    const proposalsResult = await pool.query(
-      'SELECT status FROM proposals WHERE freelancer_id = $1',
-      [userId]
+    const proposalsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.PROPOSALS,
+      [
+        Query.equal('freelancer_id', userId),
+        Query.limit(1000),
+      ]
     );
     
-    const totalProposals = proposalsResult.rows.length;
-    const acceptedProposals = proposalsResult.rows.filter(p => p.status === 'accepted').length;
+    const totalProposals = proposalsResponse.documents.length;
+    const acceptedProposals = proposalsResponse.documents.filter((p: any) => p.status === 'accepted').length;
     const proposalAcceptanceRate = totalProposals > 0 ? (acceptedProposals / totalProposals) * 100 : 0;
 
     const earningsByMonth = calculateEarningsByMonth(contracts);
@@ -142,41 +156,47 @@ export async function getEmployerAnalytics(
     const { startDate, endDate } = options;
 
     // Projects posted
-    let postedQuery = 'SELECT id, budget, created_at FROM projects WHERE employer_id = $1';
-    const postedParams: any[] = [userId];
-    let ppIndex = 2;
+    const postedResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.PROJECTS,
+      [
+        Query.equal('employer_id', userId),
+        Query.limit(1000),
+      ]
+    );
 
+    let projectsPostedData = postedResponse.documents;
     if (startDate) {
-      postedQuery += ` AND created_at >= $${ppIndex++}`;
-      postedParams.push(startDate);
+      projectsPostedData = projectsPostedData.filter((p: any) => new Date(p.created_at) >= new Date(startDate));
     }
     if (endDate) {
-      postedQuery += ` AND created_at <= $${ppIndex++}`;
-      postedParams.push(endDate);
+      projectsPostedData = projectsPostedData.filter((p: any) => new Date(p.created_at) <= new Date(endDate));
     }
 
-    const postedResult = await pool.query(postedQuery, postedParams);
-    const projectsPosted = postedResult.rows.length;
-    const totalBudget = postedResult.rows.reduce((sum, p) => sum + Number(p.budget || 0), 0);
+    const projectsPosted = projectsPostedData.length;
+    const totalBudget = projectsPostedData.reduce((sum: number, p: any) => sum + Number(p.budget || 0), 0);
     const averageProjectBudget = projectsPosted > 0 ? totalBudget / projectsPosted : 0;
 
     // Completed contracts (spending)
-    let contractQuery = "SELECT total_amount, created_at FROM contracts WHERE employer_id = $1 AND status = 'completed'";
-    const cParams: any[] = [userId];
-    let cpIndex = 2;
+    const contractsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.CONTRACTS,
+      [
+        Query.equal('employer_id', userId),
+        Query.equal('status', 'completed'),
+        Query.limit(1000),
+      ]
+    );
 
+    let contracts = contractsResponse.documents;
     if (startDate) {
-      contractQuery += ` AND created_at >= $${cpIndex++}`;
-      cParams.push(startDate);
+      contracts = contracts.filter((c: any) => new Date(c.created_at) >= new Date(startDate));
     }
     if (endDate) {
-      contractQuery += ` AND created_at <= $${cpIndex++}`;
-      cParams.push(endDate);
+      contracts = contracts.filter((c: any) => new Date(c.created_at) <= new Date(endDate));
     }
 
-    const contractsResult = await pool.query(contractQuery, cParams);
-    const contracts = contractsResult.rows;
-    const totalSpent = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
+    const totalSpent = contracts.reduce((sum: number, c: any) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
 
     const spendingByMonth = calculateEarningsByMonth(contracts);
@@ -209,42 +229,78 @@ export async function getEmployerAnalytics(
  * Get platform metrics
  */
 export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetrics>> {
+  // Check cache first
+  const cached = platformMetricsCache.get('platform_metrics');
+  if (cached) {
+    return { success: true, data: cached };
+  }
+
   try {
     const [
-      usersResult,
-      projectsResult,
-      contractsResult,
-      volumeResult,
-      activeUsersResult
+      usersResponse,
+      projectsResponse,
+      contractsResponse,
+      completedContractsResponse,
+      auditLogsResponse,
     ] = await Promise.all([
-      pool.query('SELECT COUNT(*) FROM users'),
-      pool.query('SELECT COUNT(*) FROM projects'),
-      pool.query('SELECT COUNT(*) FROM contracts'),
-      pool.query("SELECT SUM(total_amount) FROM contracts WHERE status = 'completed'"),
-      pool.query("SELECT COUNT(DISTINCT user_id) FROM audit_logs WHERE created_at >= NOW() - INTERVAL '30 days'")
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.USERS, [Query.limit(1)]),
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.PROJECTS, [Query.limit(1)]),
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.CONTRACTS, [Query.limit(1)]),
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.CONTRACTS, [
+        Query.equal('status', 'completed'),
+        Query.limit(1),
+      ]),
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.AUDIT_LOG_ENTRIES, [
+        Query.limit(1000),
+      ]),
     ]);
 
-    const totalUsers = parseInt(usersResult.rows[0].count);
-    const totalProjects = parseInt(projectsResult.rows[0].count);
-    const totalContracts = parseInt(contractsResult.rows[0].count);
-    const totalTransactionVolume = Number(volumeResult.rows[0].sum || 0);
-    const activeUsers = parseInt(activeUsersResult.rows[0].count);
+    const totalUsers = usersResponse.total;
+    const totalProjects = projectsResponse.total;
+    const totalContracts = contractsResponse.total;
+    const completedContracts = completedContractsResponse.total;
 
-    // Calculate completion rate
-    const completedContractsResult = await pool.query("SELECT COUNT(*) FROM contracts WHERE status = 'completed'");
-    const completedContracts = parseInt(completedContractsResult.rows[0].count);
+    // Calculate total transaction volume from completed contracts
+    const completedDocs = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.CONTRACTS,
+      [
+        Query.equal('status', 'completed'),
+        Query.limit(1000),
+      ]
+    );
+    const totalTransactionVolume = completedDocs.documents.reduce(
+      (sum: number, c: any) => sum + Number(c.total_amount || 0), 0
+    );
+
+    // Count active users (those with audit log entries in last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const activeUserIds = new Set(
+      auditLogsResponse.documents
+        .filter((log: any) => new Date(log.created_at) >= thirtyDaysAgo)
+        .map((log: any) => log.user_id)
+        .filter(Boolean)
+    );
+    const activeUsers = activeUserIds.size;
+
     const completionRate = totalContracts > 0 ? (completedContracts / totalContracts) * 100 : 0;
+
+    const data = {
+      totalUsers,
+      totalProjects,
+      totalContracts,
+      totalTransactionVolume,
+      activeUsers,
+      completionRate: Math.round(completionRate * 10) / 10,
+    };
+
+    // Cache the result
+    platformMetricsCache.set('platform_metrics', data);
 
     return {
       success: true,
-      data: {
-        totalUsers,
-        totalProjects,
-        totalContracts,
-        totalTransactionVolume,
-        activeUsers,
-        completionRate: Math.round(completionRate * 10) / 10,
-      },
+      data,
     };
   } catch (error) {
     logger.error('Failed to get platform metrics', { error });
@@ -264,44 +320,64 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
 export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>> {
   try {
     const [
-      usersResult,
-      projectsResult,
-      revenueResult,
-      activeContractsResult,
-      userGrowthResult,
-      projectGrowthResult
+      usersResponse,
+      projectsResponse,
+      completedContractsResponse,
+      activeContractsResponse,
     ] = await Promise.all([
-      pool.query('SELECT COUNT(*) FROM users'),
-      pool.query('SELECT COUNT(*) FROM projects'),
-      pool.query("SELECT SUM(total_amount * 0.05) as revenue FROM contracts WHERE status = 'completed'"), // 5% fee example
-      pool.query("SELECT COUNT(*) FROM contracts WHERE status = 'active'"),
-      pool.query("SELECT COUNT(*) FROM users WHERE created_at >= NOW() - INTERVAL '30 days'"),
-      pool.query("SELECT COUNT(*) FROM projects WHERE created_at >= NOW() - INTERVAL '30 days'")
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.USERS, [Query.limit(1)]),
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.PROJECTS, [Query.limit(1)]),
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.CONTRACTS, [
+        Query.equal('status', 'completed'),
+        Query.limit(1000),
+      ]),
+      databases.listDocuments(DATABASE_ID, COLLECTIONS.CONTRACTS, [
+        Query.equal('status', 'active'),
+        Query.limit(1),
+      ]),
     ]);
 
-    const totalUsers = parseInt(usersResult.rows[0].count);
-    const totalProjects = parseInt(projectsResult.rows[0].count);
-    const totalRevenue = Number(revenueResult.rows[0].revenue || 0);
-    const activeContracts = parseInt(activeContractsResult.rows[0].count);
-    const userGrowth = parseInt(userGrowthResult.rows[0].count);
-    const projectGrowth = parseInt(projectGrowthResult.rows[0].count);
+    const totalUsers = usersResponse.total;
+    const totalProjects = projectsResponse.total;
+    const activeContracts = activeContractsResponse.total;
 
-    // Get growth data for charts
-    const userGrowthDataResult = await pool.query(`
-      SELECT TO_CHAR(created_at, 'YYYY-MM') as month, COUNT(*) as count 
-      FROM users 
-      WHERE created_at >= NOW() - INTERVAL '12 months'
-      GROUP BY month 
-      ORDER BY month ASC
-    `);
+    // Calculate total revenue (5% fee on completed contracts)
+    const totalRevenue = completedContractsResponse.documents.reduce(
+      (sum: number, c: any) => sum + Number(c.total_amount || 0) * 0.05, 0
+    );
 
-    const projectActivityDataResult = await pool.query(`
-      SELECT TO_CHAR(created_at, 'YYYY-MM') as month, COUNT(*) as count 
-      FROM projects 
-      WHERE created_at >= NOW() - INTERVAL '12 months'
-      GROUP BY month 
-      ORDER BY month ASC
-    `);
+    // Calculate user growth (last 30 days)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const allUsersResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.USERS,
+      [Query.limit(1000)]
+    );
+    const userGrowth = allUsersResponse.documents.filter(
+      (u: any) => new Date(u.created_at) >= thirtyDaysAgo
+    ).length;
+
+    const allProjectsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.PROJECTS,
+      [Query.limit(1000)]
+    );
+    const projectGrowth = allProjectsResponse.documents.filter(
+      (p: any) => new Date(p.created_at) >= thirtyDaysAgo
+    ).length;
+
+    // Get growth data for charts (last 12 months, group by month)
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+    const userGrowthData = computeMonthlyCounts(
+      allUsersResponse.documents.filter((u: any) => new Date(u.created_at) >= twelveMonthsAgo)
+    );
+    const projectActivityData = computeMonthlyCounts(
+      allProjectsResponse.documents.filter((p: any) => new Date(p.created_at) >= twelveMonthsAgo)
+    );
 
     return {
       success: true,
@@ -312,8 +388,8 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
         activeContracts,
         userGrowth,
         projectGrowth,
-        userGrowthData: userGrowthDataResult.rows,
-        projectActivityData: projectActivityDataResult.rows,
+        userGrowthData,
+        projectActivityData,
       },
     };
   } catch (error) {
@@ -332,38 +408,93 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
  * Get skill trends
  */
 export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
+  // Check cache first
+  const cached = skillTrendsCache.get('skill_trends');
+  if (cached) {
+    return { success: true, data: cached };
+  }
+
   try {
-    // This is a complex query that aggregates skill usage from projects
-    const result = await pool.query(`
-      WITH skill_usage AS (
-        SELECT 
-          jsonb_array_elements(required_skills)->>'name' as skill_name,
-          budget,
-          created_at
-        FROM projects
-      )
-      SELECT 
-        skill_name as "skillName",
-        COUNT(*) as "projectCount",
-        AVG(budget) as "averageBudget",
-        'high'::text as "demandLevel", -- Simplified for example
-        10.5 as "growthRate" -- Simplified for example
-      FROM skill_usage
-      WHERE skill_name IS NOT NULL
-      GROUP BY skill_name
-      ORDER BY "projectCount" DESC
-      LIMIT 20
-    `);
+    // Fetch all open projects and compute skill trends in memory
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.PROJECTS,
+      [
+        Query.equal('status', 'open'),
+        Query.limit(1000),
+      ]
+    );
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Extract skill usage from projects
+    const skillMap = new Map<string, {
+      projectCount: number;
+      totalBudget: number;
+      recentCount: number;
+      olderCount: number;
+    }>();
+
+    for (const project of response.documents) {
+      const skills = typeof (project as any).required_skills === 'string'
+        ? JSON.parse((project as any).required_skills)
+        : (project as any).required_skills || [];
+      const budget = Number((project as any).budget || 0);
+      const createdAt = new Date((project as any).created_at);
+      const isRecent = createdAt >= thirtyDaysAgo;
+
+      for (const skill of skills) {
+        const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
+        if (!skillName) continue;
+
+        const existing = skillMap.get(skillName) || { projectCount: 0, totalBudget: 0, recentCount: 0, olderCount: 0 };
+        existing.projectCount++;
+        existing.totalBudget += budget;
+        if (isRecent) {
+          existing.recentCount++;
+        } else {
+          existing.olderCount++;
+        }
+        skillMap.set(skillName, existing);
+      }
+    }
+
+    // Convert to SkillTrend array
+    const data: SkillTrend[] = Array.from(skillMap.entries())
+      .map(([skillName, stats]) => {
+        const avgBudget = stats.projectCount > 0 ? stats.totalBudget / stats.projectCount : 0;
+        const growthRate = stats.olderCount > 0
+          ? Math.round(((stats.recentCount - stats.olderCount) / stats.olderCount) * 100 * 10) / 10
+          : stats.recentCount > 0 ? 100.0 : 0.0;
+
+        let demandLevel: 'high' | 'medium' | 'low';
+        if (stats.projectCount >= 10) {
+          demandLevel = 'high';
+        } else if (stats.projectCount >= 3) {
+          demandLevel = 'medium';
+        } else {
+          demandLevel = 'low';
+        }
+
+        return {
+          skillId: skillName,
+          skillName,
+          demandLevel,
+          projectCount: stats.projectCount,
+          averageBudget: Math.round(avgBudget * 100) / 100,
+          growthRate,
+        };
+      })
+      .sort((a, b) => b.projectCount - a.projectCount)
+      .slice(0, 20);
+
+    // Cache the result
+    skillTrendsCache.set('skill_trends', data);
 
     return {
       success: true,
-      data: result.rows.map(row => ({
-        ...row,
-        skillId: row.skillName, // Simplified
-        averageBudget: Math.round(Number(row.averageBudget) * 100) / 100,
-        growthRate: Number(row.growthRate),
-        projectCount: parseInt(row.projectCount)
-      })) as SkillTrend[],
+      data,
     };
   } catch (error) {
     logger.error('Failed to get skill trends', { error });
@@ -395,34 +526,59 @@ function calculateEarningsByMonth(contracts: any[]): { month: string; amount: nu
     .sort((a, b) => a.month.localeCompare(b.month));
 }
 
+function computeMonthlyCounts(documents: any[]): { month: string; count: number }[] {
+  const monthMap = new Map<string, number>();
+
+  for (const doc of documents) {
+    const date = new Date(doc.created_at);
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + 1);
+  }
+
+  return Array.from(monthMap.entries())
+    .map(([month, count]) => ({ month, count }))
+    .sort((a, b) => a.month.localeCompare(b.month));
+}
+
 async function calculateTopSkills(userId: string, userType: 'freelancer' | 'employer'): Promise<{ skill: string; projectCount: number }[]> {
   try {
-    const idColumn = userType === 'freelancer' ? 'freelancer_id' : 'employer_id';
-    const contractsResult = await pool.query(
-      `SELECT project_id FROM contracts WHERE ${idColumn} = $1 AND status = 'completed'`,
-      [userId]
+    const idField = userType === 'freelancer' ? 'freelancer_id' : 'employer_id';
+
+    // Fetch completed contracts for this user
+    const contractsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.CONTRACTS,
+      [
+        Query.equal(idField, userId),
+        Query.equal('status', 'completed'),
+        Query.limit(1000),
+      ]
     );
 
-    if (contractsResult.rows.length === 0) {
+    if (contractsResponse.documents.length === 0) {
       return [];
     }
 
-    const projectIds = contractsResult.rows.map((c: any) => c.project_id);
-
-    const projectsResult = await pool.query(
-      'SELECT required_skills FROM projects WHERE id = ANY($1)',
-      [projectIds]
-    );
-
+    // Fetch projects for these contracts
+    const projectIds = contractsResponse.documents.map((c: any) => c.project_id);
     const skillMap = new Map<string, number>();
 
-    for (const project of projectsResult.rows) {
-      const skills = project.required_skills as any[];
-      for (const skill of skills || []) {
-        const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
-        if (skillName) {
-          skillMap.set(skillName, (skillMap.get(skillName) || 0) + 1);
+    // Fetch each project (Appwrite doesn't support IN queries)
+    for (const projectId of projectIds) {
+      try {
+        const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId);
+        const skills = typeof (projectDoc as any).required_skills === 'string'
+          ? JSON.parse((projectDoc as any).required_skills)
+          : (projectDoc as any).required_skills || [];
+
+        for (const skill of skills) {
+          const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
+          if (skillName) {
+            skillMap.set(skillName, (skillMap.get(skillName) || 0) + 1);
+          }
         }
+      } catch {
+        // Skip projects that can't be fetched
       }
     }
 

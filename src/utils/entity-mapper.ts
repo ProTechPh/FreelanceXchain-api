@@ -54,20 +54,6 @@ export function mapUserFromEntity(entity: UserEntity, kycStatus?: string): User 
   };
 }
 
-export function mapUserToEntity(user: Omit<User, 'createdAt' | 'updatedAt'>): Omit<UserEntity, 'created_at' | 'updated_at'> {
-  return {
-    id: user.id,
-    email: user.email,
-    password_hash: '',
-    role: user.role,
-    wallet_address: user.walletAddress,
-    name: user.name,
-    is_suspended: false,
-    suspension_reason: null,
-    mfa_enabled: false,
-  };
-}
-
 // Skill mapping functions
 export function mapSkillCategoryFromEntity(entity: SkillCategoryEntity): SkillCategory {
   if (!entity) {

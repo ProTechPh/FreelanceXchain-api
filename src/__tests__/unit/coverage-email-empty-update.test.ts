@@ -24,26 +24,41 @@ const mockPreferenceData = {
   updated_at: '2025-01-01T00:00:00Z',
 };
 
+const mappedPreferenceData = {
+  id: 'pref-1',
+  userId: 'user-1',
+  proposalReceived: true,
+  proposalAccepted: true,
+  milestoneUpdates: true,
+  paymentNotifications: true,
+  disputeNotifications: true,
+  marketingEmails: false,
+  weeklyDigest: true,
+  createdAt: new Date('2025-01-01T00:00:00Z'),
+  updatedAt: new Date('2025-01-01T00:00:00Z'),
+};
+
 describe('Email Preference Service - empty update (line 90)', () => {
-  let mockPool: any;
+  let mockDatabases: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
   });
 
   it('should fall back to getEmailPreferences when update has no fields', async () => {
-    mockPool.query.mockResolvedValueOnce({ rows: [{ ...mockPreferenceData }], rowCount: 1 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'pref-1', ...mockPreferenceData }],
+      total: 1,
+    });
 
     const result = await updateEmailPreferences('user-1', {});
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data).toEqual(mockPreferenceData);
+      expect(result.data.id).toBe('pref-1');
+      expect(result.data.userId).toBe('user-1');
     }
-    expect(mockPool.query).toHaveBeenCalledWith(
-      expect.stringContaining('SELECT * FROM email_preferences'),
-      expect.arrayContaining(['user-1'])
-    );
+    expect(mockDatabases.listDocuments).toHaveBeenCalled();
   });
 });

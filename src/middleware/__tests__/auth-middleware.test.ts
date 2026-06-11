@@ -297,13 +297,15 @@ describe('requireMFA', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('should call next() when user exists and mfa_enabled is true (MFA not yet enforced)', async () => {
+  it('should return 403 MFA_REQUIRED when mfa_enabled is true (MFA now enforced)', async () => {
     req.user = { id: '1', userId: '1', email: 'a@b.com', role: 'freelancer' };
     mockPoolQuery.mockResolvedValue({ rows: [{ mfa_enabled: true }] });
 
     await requireMFA(req, res, next);
 
-    expect(next).toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.body.error.code).toBe('MFA_REQUIRED');
+    expect(next).not.toHaveBeenCalled();
   });
 
   it('should return 401 AUTH_UNAUTHORIZED when user not found in DB', async () => {

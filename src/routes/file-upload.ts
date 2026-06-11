@@ -87,6 +87,11 @@ router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response) 
     return;
   }
 
+  if (filePath.includes('..') || filePath.includes('\\')) {
+    res.status(400).json({ error: 'Invalid file path' });
+    return;
+  }
+
   const pathStart = filePath.split('/')[0];
   if (pathStart && pathStart !== userId) {
     res.status(403).json({ error: 'Unauthorized: cannot delete another user\'s file' });
@@ -120,14 +125,16 @@ router.get('/signed-url/:bucket/*', authMiddleware, async (req: Request, res: Re
     return;
   }
 
+  if (filePath.includes('..') || filePath.includes('\\')) {
+    res.status(400).json({ error: 'Invalid file path' });
+    return;
+  }
+
   const pathStart = filePath.split('/')[0];
   if (pathStart && pathStart !== userId) {
     res.status(403).json({ error: 'Unauthorized: cannot access another user\'s file' });
     return;
   }
-
-  const rawExpiry = parseInt(req.query['expiresIn'] as string ?? '3600', 10);
-  const expiresIn = Math.min(Math.max(isNaN(rawExpiry) ? 3600 : rawExpiry, 60), 86400);
 
   try {
     const result = await getSignedUrl(bucket, filePath || userId);

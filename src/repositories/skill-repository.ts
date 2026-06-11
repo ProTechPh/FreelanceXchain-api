@@ -1,4 +1,5 @@
-import { BaseRepositoryPg } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type SkillCategoryEntity = {
   id: string;
@@ -19,17 +20,15 @@ export type SkillEntity = {
   updated_at: string;
 };
 
-export class SkillRepository extends BaseRepositoryPg<SkillEntity> {
+const COLLECTION_ID = 'skills';
+
+export class SkillRepository extends BaseRepositoryAppwrite<SkillEntity> {
   constructor() {
-    super('skills');
+    super(COLLECTION_ID);
   }
 
   async createSkill(skill: Omit<SkillEntity, 'created_at' | 'updated_at'>): Promise<SkillEntity> {
     return this.create(skill);
-  }
-
-  async getSkillById(id: string): Promise<SkillEntity | null> {
-    return this.getById(id);
   }
 
   async findSkillById(id: string): Promise<SkillEntity | null> {
@@ -40,97 +39,160 @@ export class SkillRepository extends BaseRepositoryPg<SkillEntity> {
     return this.update(id, updates);
   }
 
-  async deleteSkill(id: string): Promise<boolean> {
-    return this.delete(id);
-  }
-
   async getAllSkills(): Promise<SkillEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      ORDER BY name ASC
-    `;
-    
     try {
-      const result = await this.pool.query(query);
-      return result.rows as SkillEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get all skills: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.orderAsc('name'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as SkillEntity;
+      });
+    } catch {
+      return [];
     }
   }
 
   async getActiveSkills(): Promise<SkillEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE is_active = true
-      ORDER BY name ASC
-    `;
-    
     try {
-      const result = await this.pool.query(query);
-      return result.rows as SkillEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get active skills: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('is_active', true),
+          Query.orderAsc('name'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as SkillEntity;
+      });
+    } catch {
+      return [];
     }
   }
 
   async getSkillsByCategory(categoryId: string): Promise<SkillEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE category_id = $1
-      ORDER BY name ASC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [categoryId]);
-      return result.rows as SkillEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get skills by category: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('category_id', categoryId),
+          Query.orderAsc('name'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as SkillEntity;
+      });
+    } catch {
+      return [];
     }
   }
 
   async getActiveSkillsByCategory(categoryId: string): Promise<SkillEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE category_id = $1 AND is_active = true
-      ORDER BY name ASC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [categoryId]);
-      return result.rows as SkillEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get active skills by category: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('category_id', categoryId),
+          Query.equal('is_active', true),
+          Query.orderAsc('name'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as SkillEntity;
+      });
+    } catch {
+      return [];
     }
   }
 
   async searchSkillsByKeyword(keyword: string): Promise<SkillEntity[]> {
-    const pattern = `%${keyword}%`;
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE is_active = true AND (name ILIKE $1 OR description ILIKE $1)
-      ORDER BY name ASC
-    `;
-    
     try {
-      const result = await this.pool.query(query, [pattern]);
-      return result.rows as SkillEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to search skills: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('is_active', true),
+          Query.orderAsc('name'),
+          Query.limit(1000),
+        ]
+      );
+      const lowerKeyword = keyword.toLowerCase();
+      return response.documents
+        .map((doc: any) => {
+          const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+          return {
+            id: $id,
+            ...attrs,
+            created_at: attrs.created_at ?? $createdAt,
+            updated_at: attrs.updated_at ?? $updatedAt,
+          } as SkillEntity;
+        })
+        .filter(skill =>
+          skill.name.toLowerCase().includes(lowerKeyword) ||
+          skill.description.toLowerCase().includes(lowerKeyword)
+        );
+    } catch {
+      return [];
     }
   }
 
   async getSkillByNameInCategory(name: string, categoryId: string): Promise<SkillEntity | null> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE category_id = $1 AND name ILIKE $2
-      LIMIT 1
-    `;
-    
     try {
-      const result = await this.pool.query(query, [categoryId, name]);
-      return result.rows[0] || null;
-    } catch (error: any) {
-      throw new Error(`Failed to get skill by name in category: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('category_id', categoryId),
+          Query.limit(1000),
+        ]
+      );
+      const doc = response.documents.find(
+        (d: any) => d.name?.toLowerCase() === name.toLowerCase()
+      );
+      if (!doc) return null;
+      const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+      return {
+        id: $id,
+        ...attrs,
+        created_at: attrs.created_at ?? $createdAt,
+        updated_at: attrs.updated_at ?? $updatedAt,
+      } as SkillEntity;
+    } catch {
+      return null;
     }
   }
 }

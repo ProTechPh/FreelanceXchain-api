@@ -2,8 +2,8 @@
 import type { ProjectSkillReference } from './skill.js';
 import type { FileAttachment } from '../utils/file-validator.js';
 
-export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'approved' | 'disputed' | 'refunded';
-export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled';
+export type MilestoneStatus = 'pending' | 'in_progress' | 'submitted' | 'releasing' | 'approved' | 'disputed' | 'refunded';
+export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'disputed';
 
 export type Milestone = {
   id: string;

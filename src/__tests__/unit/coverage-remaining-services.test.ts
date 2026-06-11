@@ -138,7 +138,7 @@ describe('Analytics Service - calculateTopSkills catch block', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('getSkillTrends returns error when DB query throws', async () => {
-    mockPool.query.mockRejectedValue(new Error('DB error'));
+    (globalThis as any).__mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
     const { getSkillTrends } = await import('../../services/analytics-service.js');
     const result = await getSkillTrends();
     expect(result.success).toBe(false);

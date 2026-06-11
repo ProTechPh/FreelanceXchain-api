@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { pool } from '../config/database.js';
 
 import {
   getPlatformStats,
@@ -91,7 +92,7 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
 
   if (!result.success) {
     res.status(400).json({
-      error: { code: result.error.code ?? 'UNKNOWN', message: result.error.message ?? 'An error occurred' },
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
       timestamp: new Date().toISOString(),
       requestId,
     });
@@ -324,10 +325,25 @@ router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response
     return;
   }
 
+  // Calculate satisfaction rate from completed contracts (reviews with 4+ stars / total reviews)
+  let satisfactionRate = 0;
+  try {
+    const satisfactionResult = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE rating >= 4.0) as positive,
+        COUNT(*) as total
+      FROM reviews
+    `);
+    const { positive, total } = satisfactionResult.rows[0];
+    satisfactionRate = total > 0 ? Math.round((Number(positive) / Number(total)) * 100) : 0;
+  } catch {
+    satisfactionRate = 0;
+  }
+
   res.status(200).json({
     ...result.data,
     totalPaidOut: result.data.totalTransactionVolume.toFixed(2),
-    satisfactionRate: 100,
+    satisfactionRate,
   });
 });
 

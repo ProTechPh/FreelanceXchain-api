@@ -1,4 +1,5 @@
-import { BaseRepositoryPg } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type SkillCategoryEntity = {
   id: string;
@@ -9,13 +10,19 @@ export type SkillCategoryEntity = {
   updated_at: string;
 };
 
-export class SkillCategoryRepository extends BaseRepositoryPg<SkillCategoryEntity> {
+const COLLECTION_ID = 'skill_categories';
+
+export class SkillCategoryRepository extends BaseRepositoryAppwrite<SkillCategoryEntity> {
   constructor() {
-    super('skill_categories');
+    super(COLLECTION_ID);
   }
 
   async createCategory(category: Omit<SkillCategoryEntity, 'created_at' | 'updated_at'>): Promise<SkillCategoryEntity> {
-    return this.create(category);
+    try {
+      return await this.create(category);
+    } catch (error: any) {
+      throw new Error(`Failed to create: ${error.message}`);
+    }
   }
 
   async getCategoryById(id: string): Promise<SkillCategoryEntity | null> {
@@ -31,44 +38,74 @@ export class SkillCategoryRepository extends BaseRepositoryPg<SkillCategoryEntit
   }
 
   async getAllCategories(): Promise<SkillCategoryEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      ORDER BY name ASC
-    `;
-    
     try {
-      const result = await this.pool.query(query);
-      return result.rows as SkillCategoryEntity[];
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.orderAsc('name'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as SkillCategoryEntity;
+      });
     } catch (error: any) {
       throw new Error(`Failed to get all categories: ${error.message}`);
     }
   }
 
   async getActiveCategories(): Promise<SkillCategoryEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE is_active = true
-      ORDER BY name ASC
-    `;
-    
     try {
-      const result = await this.pool.query(query);
-      return result.rows as SkillCategoryEntity[];
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('is_active', true),
+          Query.orderAsc('name'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as SkillCategoryEntity;
+      });
     } catch (error: any) {
       throw new Error(`Failed to get active categories: ${error.message}`);
     }
   }
 
   async getCategoryByName(name: string): Promise<SkillCategoryEntity | null> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE name ILIKE $1
-      LIMIT 1
-    `;
-    
     try {
-      const result = await this.pool.query(query, [name]);
-      return result.rows[0] || null;
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.limit(1000),
+        ]
+      );
+      const doc = response.documents.find(
+        (d: any) => d.name?.toLowerCase() === name.toLowerCase()
+      );
+      if (!doc) return null;
+      const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+      return {
+        id: $id,
+        ...attrs,
+        created_at: attrs.created_at ?? $createdAt,
+        updated_at: attrs.updated_at ?? $updatedAt,
+      } as SkillCategoryEntity;
     } catch (error: any) {
       throw new Error(`Failed to get category by name: ${error.message}`);
     }

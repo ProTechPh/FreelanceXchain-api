@@ -8,7 +8,6 @@ import { logger } from '../config/logger.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
-import { pool } from '../config/database.js';
 import { PaymentRepository, PaymentType } from '../repositories/payment-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { generateId } from '../utils/id.js';
@@ -326,10 +325,21 @@ export async function approveMilestone(
           ? 'Milestone already approved' 
           : milestone.status === 'disputed'
           ? 'Milestone is under dispute and cannot be approved'
+          : milestone.status === 'releasing'
+          ? 'Milestone payment is already being processed'
           : `Milestone must be submitted before it can be approved (current status: ${milestone.status})` 
       },
     };
   }
+
+  // SAGA: Record intent before blockchain call
+  // Set milestone status to 'releasing' to prevent concurrent operations
+  const releasingMilestones = projectEntity.milestones.map((m, i) =>
+    i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
+  );
+  await projectRepository.updateProject(project.id, {
+    milestones: releasingMilestones,
+  });
 
   // Release payment from escrow - BLOCKCHAIN FIRST
   // Look up the employer's wallet address (NOT the UUID)
@@ -377,6 +387,15 @@ export async function approveMilestone(
         if (!transactionHash) {
           transactionHash = simReceipt.transactionHash;
         }
+      } else if (!transactionHash) {
+        // No escrow record and no real blockchain transaction — cannot release funds
+        return {
+          success: false,
+          error: {
+            code: 'ESCROW_NOT_FOUND',
+            message: 'No escrow record found for this contract. Payment cannot be released.',
+          },
+        };
       }
     } catch (simError) {
       // If real blockchain succeeded, simulated failure is non-critical
@@ -398,6 +417,20 @@ export async function approveMilestone(
       status: 'completed',
     });
   } catch (error) {
+    // SAGA: Rollback - revert milestone status from 'releasing' back to 'submitted'
+    try {
+      const rollbackMilestones = projectEntity.milestones.map((m, i) =>
+        i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
+      );
+      await projectRepository.updateProject(project.id, {
+        milestones: rollbackMilestones,
+      });
+    } catch (rollbackError) {
+      logger.error('CRITICAL: Failed to rollback milestone status after payment failure', {
+        milestoneId,
+        error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+      });
+    }
     return {
       success: false,
       error: {
@@ -418,15 +451,9 @@ export async function approveMilestone(
     milestones: updatedMilestones,
   });
 
-  // Also update the separate milestones table so the UI reflects the change
-  try {
-    await pool.query(
-      "UPDATE milestones SET status = 'approved', approved_at = NOW(), updated_at = NOW() WHERE id = $1",
-      [milestoneId]
-    );
-  } catch (milestoneTableError) {
-    logger.error('Failed to update milestones table (non-critical)', { error: milestoneTableError });
-  }
+  // Also update the milestone in the project entity so the UI reflects the change
+  // (milestones are stored as a JSONB array in the projects table)
+  // The project was already updated above with updatedMilestones
 
   // Approve milestone on blockchain registry
   try {
@@ -608,8 +635,8 @@ export async function disputeMilestone(
     milestones: updatedMilestones,
   });
 
-  // Update contract status to disputed
-  await contractRepository.updateContract(contractId, { status: 'disputed' });
+  // Do NOT update contract status — only the specific milestone is disputed
+  // Other milestones can still be worked on and approved
 
   // Send notifications to both parties
   await notifyDisputeCreated(
@@ -756,8 +783,14 @@ export function clearDisputes(): void {
  * e.g., 0.3 * 1e18 = 299999999999999940 (wrong), but this function returns 300000000000000000 (correct)
  */
 function toWei(amount: number): bigint {
-  // Convert to string and split on decimal point
-  const str = amount.toString();
+  // Handle scientific notation by converting to fixed-point string first
+  let str: string;
+  if (Math.abs(amount) >= 1e21 || (Math.abs(amount) < 1e-6 && amount !== 0)) {
+    // Use toFixed with enough precision to avoid scientific notation
+    str = amount.toFixed(18);
+  } else {
+    str = amount.toString();
+  }
   const parts = str.split('.');
   const whole = parts[0] ?? '0';
   const decimal = (parts[1] ?? '').padEnd(18, '0').slice(0, 18);
@@ -794,9 +827,10 @@ export async function initializeContractEscrow(
 
     // Calculate total from milestones to ensure consistency
     const totalFromMilestones = escrowMilestones.reduce((sum, m) => sum + m.amount, 0n);
-    const contractTotalAmount = toWei(contract.totalAmount);
+    // Convert contract.totalAmount to wei for comparison
+    const contractTotalWei = toWei(contract.totalAmount);
 
-    if (totalFromMilestones !== contractTotalAmount) {
+    if (totalFromMilestones !== contractTotalWei) {
       return {
         success: false,
         error: {
@@ -805,6 +839,9 @@ export async function initializeContractEscrow(
         },
       };
     }
+
+    // Use milestone sum as source of truth for escrow amount
+    const contractTotalAmount = totalFromMilestones;
 
     let escrowAddress: string;
 

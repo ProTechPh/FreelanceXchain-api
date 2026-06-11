@@ -33,12 +33,17 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
 const { initializeScheduler, stopScheduler } = await import('../../services/scheduler-service.js');
 
 describe('Scheduler Service - Coverage Gaps', () => {
-  let mockPool: any;
+  let mockDatabases: any;
   let scheduledCallbacks: Map<string, () => void>;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.updateDocument.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.deleteDocument.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
     scheduledCallbacks = new Map();
 
     mockCronSchedule.mockImplementation((expression: any, callback: any) => {
@@ -67,7 +72,7 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 0 * * *');
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB connection failed'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB connection failed'));
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
@@ -78,19 +83,19 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 0 * * *');
 
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
-      // Should not call update query
-      expect(mockPool.query).toHaveBeenCalledTimes(1);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+      expect(mockDatabases.updateDocument).not.toHaveBeenCalled();
     });
 
     it('should log running message', async () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 0 * * *');
 
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(mockLogger.info).toHaveBeenCalledWith('Running scheduled job: Auto-close expired projects');
@@ -102,7 +107,7 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 9 * * 1');
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
@@ -113,7 +118,7 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 9 * * 1');
 
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
@@ -124,14 +129,17 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 9 * * 1');
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ user_id: 'u1', email: 'u1@test.com', full_name: 'User 1' }] })
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'ep1', user_id: 'u1' }],
+          total: 1,
+        })
         .mockRejectedValueOnce(new Error('Stats query failed'));
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to send weekly digest to user u1'),
+        expect.stringContaining('Failed to send weekly digest to user'),
         expect.any(Error)
       );
     });
@@ -140,7 +148,7 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 9 * * 1');
 
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(mockLogger.info).toHaveBeenCalledWith('Running scheduled job: Send weekly digests');
@@ -152,18 +160,18 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 */6 * * *');
 
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
-      expect(mockPool.query).toHaveBeenCalledTimes(1);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
     });
 
     it('should log error when outer query fails', async () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 */6 * * *');
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
@@ -174,14 +182,17 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 */6 * * *');
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1', search_type: 'project', filters: { status: 'open' } }] })
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({
+          documents: [{ $id: 's1', search_type: 'project', filters: { status: 'open' } }],
+          total: 1,
+        })
         .mockRejectedValueOnce(new Error('Search query failed'));
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to execute saved search s1'),
+        expect.stringContaining('Failed to execute saved search'),
         expect.any(Error)
       );
     });
@@ -190,9 +201,15 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 */6 * * *');
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ id: 's1', search_type: 'project', filters: { status: 'open', budget: 1000 } }] })
-        .mockResolvedValueOnce({ rows: [{ id: 'p1' }, { id: 'p2' }] });
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({
+          documents: [{ $id: 's1', search_type: 'project', filters: { status: 'open', budget: 1000 } }],
+          total: 1,
+        })
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'p1' }, { $id: 'p2' }],
+          total: 2,
+        });
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
@@ -203,7 +220,7 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 */6 * * *');
 
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(mockLogger.info).toHaveBeenCalledWith('Running scheduled job: Execute saved searches');
@@ -215,7 +232,7 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 2 * * *');
 
-      mockPool.query.mockRejectedValueOnce(new Error('Delete failed'));
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('Delete failed'));
 
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
@@ -226,7 +243,7 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 2 * * *');
 
-      mockPool.query.mockResolvedValueOnce({ rowCount: 5 });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       callback();
       await new Promise(resolve => setTimeout(resolve, 20));
       expect(mockLogger.info).toHaveBeenCalledWith('Running scheduled job: Cleanup old notifications');
@@ -236,10 +253,20 @@ describe('Scheduler Service - Coverage Gaps', () => {
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 2 * * *');
 
-      mockPool.query.mockResolvedValueOnce({ rowCount: 3 });
+      const oldDate = new Date(Date.now() - 60 * 86400000).toISOString();
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'n1', created_at: oldDate },
+          { $id: 'n2', created_at: oldDate },
+        ],
+        total: 2,
+      });
+      mockDatabases.deleteDocument.mockImplementation(() => Promise.resolve({}));
+
       callback();
-      await new Promise(resolve => setTimeout(resolve, 20));
-      expect(mockLogger.info).toHaveBeenCalledWith('Cleaned up old notifications');
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(mockDatabases.deleteDocument).toHaveBeenCalledTimes(2);
+      expect(mockLogger.info).toHaveBeenCalledWith('Cleaned up old notifications', { deletedTotal: 2 });
     });
   });
 

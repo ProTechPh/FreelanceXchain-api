@@ -51,6 +51,10 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   disableMFA: mockDisableMFA,
   consumeMfaSession: mockConsumeMfaSession,
   validateTokenAndGetUser: mockValidateTokenAndGetUser,
+  requestPhoneOtp: jest.fn(),
+  requestEmailOtp: jest.fn(),
+  requestMagicUrl: jest.fn(),
+  verifyAuthToken: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -58,6 +62,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   registerRateLimiter: (_req: any, _res: any, next: any) => next(),
   passwordResetRateLimiter: (_req: any, _res: any, next: any) => next(),
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+  mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -122,10 +127,10 @@ describe('Auth Routes', () => {
       expect(res.body.error.details).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'role' })]));
     });
 
-    it('should return 400 for invalid wallet address', async () => {
+    it('should accept registration with optional wallet address (no validation on register)', async () => {
+      mockRegister.mockResolvedValue({ accessToken: 'token', refreshToken: 'refresh', user: { id: 'u-1', email: 'test@test.com', role: 'freelancer' } });
       const res = await request(app).post('/api/auth/register').send({ email: 'test@test.com', password: 'StrongPass1!', role: 'freelancer', walletAddress: 'invalid' });
-      expect(res.status).toBe(400);
-      expect(res.body.error.details).toEqual(expect.arrayContaining([expect.objectContaining({ field: 'walletAddress' })]));
+      expect(res.status).toBe(201);
     });
 
     it('should return 409 for duplicate email', async () => {
@@ -466,24 +471,24 @@ describe('Auth Routes', () => {
   describe('POST /mfa/disable', () => {
     it('should disable MFA successfully', async () => {
       mockDisableMFA.mockResolvedValue({ success: true });
-      const res = await request(app).post('/api/auth/mfa/disable').set('Authorization', 'Bearer test-token').send({ factorId: 'factor-1', totpCode: '123456' });
+      const res = await request(app).post('/api/auth/mfa/disable').set('Authorization', 'Bearer test-token').send({ factorId: 'factor-1', otpCode: '123456' });
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('MFA disabled successfully');
     });
 
     it('should return 400 for missing factorId', async () => {
-      const res = await request(app).post('/api/auth/mfa/disable').set('Authorization', 'Bearer test-token').send({ totpCode: '123456' });
+      const res = await request(app).post('/api/auth/mfa/disable').set('Authorization', 'Bearer test-token').send({ otpCode: '123456' });
       expect(res.status).toBe(400);
     });
 
-    it('should return 400 for missing totpCode', async () => {
+    it('should return 400 for missing otpCode', async () => {
       const res = await request(app).post('/api/auth/mfa/disable').set('Authorization', 'Bearer test-token').send({ factorId: 'factor-1' });
       expect(res.status).toBe(400);
     });
 
     it('should return 400 on disable error', async () => {
       mockDisableMFA.mockResolvedValue({ code: 'MFA_DISABLE_FAILED', message: 'Failed' });
-      const res = await request(app).post('/api/auth/mfa/disable').set('Authorization', 'Bearer test-token').send({ factorId: 'factor-1', totpCode: '123456' });
+      const res = await request(app).post('/api/auth/mfa/disable').set('Authorization', 'Bearer test-token').send({ factorId: 'factor-1', otpCode: '123456' });
       expect(res.status).toBe(400);
     });
   });

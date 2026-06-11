@@ -1,54 +1,60 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+
+function toAppwriteDoc(data: any) {
+  if (!data || typeof data !== 'object') return data;
+  const { id, created_at, updated_at, ...rest } = data;
+  const doc: any = { ...rest };
+  if (id !== undefined) doc.$id = id;
+  if (created_at !== undefined) doc.$createdAt = created_at;
+  if (updated_at !== undefined) doc.$updatedAt = updated_at;
+  return doc;
+}
 
 const { EmployerProfileRepository } = await import('../../repositories/employer-profile-repository.js');
 
 describe('EmployerProfileRepository', () => {
   let repo: any;
+  let mockDatabases: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockDatabases = (globalThis as any).__mockDatabases;
     repo = new EmployerProfileRepository();
   });
 
   describe('createProfile', () => {
     it('should create and return a profile', async () => {
-      const profile = { id: 'ep1', user_id: 'u1', company_name: 'Acme' };
-      mockAppwriteResult({ data: profile });
+      const profile = { id: 'ep1', user_id: 'u1', company_name: 'Acme', description: 'Tech company', industry: 'Tech' };
+      mockDatabases.createDocument.mockResolvedValueOnce(toAppwriteDoc(profile));
       const result = await repo.createProfile(profile as any);
-      expect(result).toEqual(profile);
+      expect(result.id).toBe('ep1');
+      expect(result.company_name).toBe('Acme');
     });
 
     it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'insert failed' } });
-      await expect(repo.createProfile({ id: 'ep1' } as any)).rejects.toThrow('Failed to create');
-    });
-  });
-
-  describe('getProfileById', () => {
-    it('should return a profile', async () => {
-      const profile = { id: 'ep1' };
-      mockAppwriteResult({ data: profile });
-      const result = await repo.getProfileById('ep1');
-      expect(result).toEqual(profile);
-    });
-
-    it('should return null when not found', async () => {
-      mockAppwriteResult({ data: null });
-      const result = await repo.getProfileById('ep1');
-      expect(result).toBeNull();
+      mockDatabases.createDocument.mockRejectedValueOnce(new Error('insert failed'));
+      await expect(repo.createProfile({ id: 'ep1' } as any)).rejects.toThrow();
     });
   });
 
   describe('getProfileByUserId', () => {
     it('should return a profile by user id', async () => {
-      const profile = { id: 'ep1', user_id: 'u1' };
-      mockAppwriteResult({ data: profile });
+      const doc = toAppwriteDoc({ id: 'ep1', user_id: 'u1', company_name: 'Acme' });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
       const result = await repo.getProfileByUserId('u1');
-      expect(result).toEqual(profile);
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('ep1');
     });
 
     it('should return null when not found', async () => {
-      mockAppwriteResult({ data: null });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await repo.getProfileByUserId('u1');
+      expect(result).toBeNull();
+    });
+
+    it('should return null on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
       const result = await repo.getProfileByUserId('u1');
       expect(result).toBeNull();
     });
@@ -56,59 +62,17 @@ describe('EmployerProfileRepository', () => {
 
   describe('updateProfile', () => {
     it('should update and return a profile', async () => {
-      const profile = { id: 'ep1', company_name: 'Updated' };
-      mockAppwriteResult({ data: profile });
+      const doc = toAppwriteDoc({ id: 'ep1', company_name: 'Updated' });
+      mockDatabases.updateDocument.mockResolvedValueOnce(doc);
       const result = await repo.updateProfile('ep1', { company_name: 'Updated' });
-      expect(result).toEqual(profile);
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('ep1');
     });
 
     it('should return null when not found', async () => {
-      mockAppwriteResult({ data: null });
+      mockDatabases.updateDocument.mockRejectedValueOnce(new Error('not found'));
       const result = await repo.updateProfile('ep1', { company_name: 'Updated' });
       expect(result).toBeNull();
-    });
-  });
-
-  describe('deleteProfile', () => {
-    it('should delete and return true when exists', async () => {
-      mockAppwriteResult({ data: { id: 'ep1' } });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
-      const result = await repo.deleteProfile('ep1');
-      expect(result).toBe(true);
-    });
-
-    it('should return false when not found', async () => {
-      mockAppwriteResult({ data: null });
-      const result = await repo.deleteProfile('ep1');
-      expect(result).toBe(false);
-    });
-  });
-
-  describe('getAllProfiles', () => {
-    it('should return all profiles', async () => {
-      const profiles = [{ id: 'ep1' }, { id: 'ep2' }];
-      mockAppwriteResult({ data: profiles });
-      const result = await repo.getAllProfiles();
-      expect(result).toEqual(profiles);
-    });
-
-    it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.getAllProfiles()).rejects.toThrow('Failed to query');
-    });
-  });
-
-  describe('getProfilesByIndustry', () => {
-    it('should return profiles by industry', async () => {
-      const profiles = [{ id: 'ep1', industry: 'Tech' }];
-      mockAppwriteResult({ data: profiles });
-      const result = await repo.getProfilesByIndustry('Tech');
-      expect(result).toEqual(profiles);
-    });
-
-    it('should throw on database error', async () => {
-      mockAppwriteResult({ error: { message: 'select failed' } });
-      await expect(repo.getProfilesByIndustry('Tech')).rejects.toThrow('Failed to get profiles by industry');
     });
   });
 });

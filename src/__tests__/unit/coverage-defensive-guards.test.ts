@@ -20,7 +20,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
   registerRateLimiter: (_req: any, _res: any, next: any) => next(),
   passwordResetRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'test-req-id',

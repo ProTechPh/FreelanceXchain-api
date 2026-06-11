@@ -19,68 +19,38 @@ export type ErrorResponse = {
 };
 
 export class AppError extends Error {
-  public readonly code: string;
-  public readonly statusCode: number;
-  public readonly details: ValidationError[] | undefined;
+  public statusCode: number;
+  public code: string;
+  public details?: ValidationError[] | undefined;
 
-  constructor(
-    code: string,
-    message: string,
-    statusCode: number,
-    details?: ValidationError[]
-  ) {
+  constructor(code: string, message: string, statusCode: number, details?: ValidationError[]) {
     super(message);
+    this.name = 'AppError';
     this.code = code;
     this.statusCode = statusCode;
     this.details = details;
-    this.name = 'AppError';
-    Error.captureStackTrace(this, this.constructor);
   }
 }
 
-// Common error factory functions
 export const errors = {
-  invalidCredentials: () =>
-    new AppError('AUTH_INVALID_CREDENTIALS', 'Invalid email or password', 401),
-  
-  tokenExpired: () =>
-    new AppError('AUTH_TOKEN_EXPIRED', 'JWT token has expired', 401),
-  
-  unauthorized: (message = 'User lacks permission for this action') =>
-    new AppError('AUTH_UNAUTHORIZED', message, 403),
-  
-  duplicateEmail: () =>
-    new AppError('DUPLICATE_EMAIL', 'Email already registered', 409),
-  
-  duplicateProposal: () =>
-    new AppError('DUPLICATE_PROPOSAL', 'Freelancer already submitted proposal for this project', 409),
-  
-  projectLocked: () =>
-    new AppError('PROJECT_LOCKED', 'Project has accepted proposals and cannot be modified', 409),
-  
-  invalidSkill: (skillId: string) =>
-    new AppError('INVALID_SKILL', `Skill ID ${skillId} not found in taxonomy`, 400),
-  
-  invalidDateRange: () =>
-    new AppError('INVALID_DATE_RANGE', 'Start date must be before or equal to end date', 400),
-  
-  invalidRating: () =>
-    new AppError('INVALID_RATING', 'Rating must be between 1 and 5', 400),
-  
-  milestoneSumMismatch: () =>
-    new AppError('MILESTONE_SUM_MISMATCH', 'Milestone amounts must equal total budget', 400),
-  
-  notFound: (resource: string) =>
-    new AppError('NOT_FOUND', `${resource} not found`, 404),
-  
-  validationError: (details: ValidationError[]) =>
-    new AppError('VALIDATION_ERROR', 'Request validation failed', 400, details),
-  
-  geminiUnavailable: () =>
-    new AppError('GEMINI_UNAVAILABLE', 'AI service temporarily unavailable', 503),
-  
-  blockchainError: (message: string) =>
-    new AppError('BLOCKCHAIN_ERROR', message, 503),
+  notFound: (resource = 'Resource') => new AppError('NOT_FOUND', `${resource} not found`, 404),
+  unauthorized: (message = 'User lacks permission for this action') => new AppError('UNAUTHORIZED', message, 403),
+  forbidden: (message = 'Access denied') => new AppError('FORBIDDEN', message, 403),
+  badRequest: (message = 'Bad request') => new AppError('BAD_REQUEST', message, 400),
+  conflict: (message = 'Resource already exists') => new AppError('CONFLICT', message, 409),
+  internal: (message = 'An unexpected error occurred') => new AppError('INTERNAL_ERROR', message, 500),
+  validationError: (details: ValidationError[]) => new AppError('VALIDATION_ERROR', 'Validation failed', 400, details),
+  blockchainError: (message = 'Blockchain operation failed') => new AppError('BLOCKCHAIN_ERROR', message, 503),
+  tokenExpired: () => new AppError('AUTH_TOKEN_EXPIRED', 'Authentication token has expired', 401),
+  invalidCredentials: (message = 'Invalid email or password') => new AppError('AUTH_INVALID_CREDENTIALS', message, 401),
+  duplicateEmail: (message = 'A user with this email already exists') => new AppError('DUPLICATE_EMAIL', message, 409),
+  duplicateProposal: (message = 'You have already submitted a proposal for this project') => new AppError('DUPLICATE_PROPOSAL', message, 409),
+  projectLocked: (message = 'This project is locked and cannot be modified') => new AppError('PROJECT_LOCKED', message, 409),
+  invalidSkill: (skillId: string) => new AppError('INVALID_SKILL', `Invalid skill: ${skillId}`, 400),
+  invalidDateRange: (message = 'Invalid date range') => new AppError('INVALID_DATE_RANGE', message, 400),
+  invalidRating: (message = 'Rating must be between 1 and 5') => new AppError('INVALID_RATING', message, 400),
+  milestoneSumMismatch: (message = 'Milestone amounts must sum to the contract total') => new AppError('MILESTONE_SUM_MISMATCH', message, 400),
+  geminiUnavailable: (message = 'AI service is temporarily unavailable') => new AppError('GEMINI_UNAVAILABLE', message, 503),
 };
 
 export function errorHandler(
@@ -90,25 +60,24 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   const requestId = (req.headers['x-request-id'] as string) ?? uuidv4();
-  
+
   if (err instanceof AppError) {
-    // Log application errors at appropriate level
     if (err.statusCode >= 500) {
       logger.error('Application error', err, {
         requestId,
-        code: err.code,
-        statusCode: err.statusCode,
         path: req.path,
         method: req.method,
+        statusCode: err.statusCode,
+        code: err.code,
       });
     } else if (err.statusCode >= 400) {
-      logger.warn('Client error', {
+      logger.warn('Application error', {
         requestId,
-        code: err.code,
-        message: err.message,
-        statusCode: err.statusCode,
         path: req.path,
         method: req.method,
+        statusCode: err.statusCode,
+        code: err.code,
+        message: err.message,
       });
     }
 
@@ -125,7 +94,6 @@ export function errorHandler(
     return;
   }
 
-  // Log unexpected errors with full context
   logger.error('Unexpected error', err, {
     requestId,
     path: req.path,

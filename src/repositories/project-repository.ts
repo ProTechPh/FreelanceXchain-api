@@ -1,7 +1,9 @@
-import { BaseRepositoryPg, PaginatedResult, QueryOptions } from './base-repository-pg.js';
-import { FileAttachment } from '../utils/file-validator.js';
-export type { ProjectStatus, MilestoneStatus } from '../models/project.js';
-import type { ProjectStatus, MilestoneStatus } from '../models/project.js';
+import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import type { MilestoneStatus } from '../models/project.js';
+export type { MilestoneStatus } from '../models/project.js';
+
+type FileAttachment = { url: string; filename: string; size: number; mimeType: string };
 
 export type MilestoneEntity = {
   id: string;
@@ -9,8 +11,8 @@ export type MilestoneEntity = {
   description: string;
   amount: number;
   due_date: string;
-  status: MilestoneStatus;
   dueDate?: string;
+  status: MilestoneStatus;
   contract_id?: string;
   contractId?: string;
   deliverable_files?: FileAttachment[];
@@ -29,6 +31,8 @@ export type MilestoneEntity = {
   revisionCount?: number;
   notes?: string;
 };
+
+export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'disputed';
 
 export type ProjectEntity = {
   id: string;
@@ -49,21 +53,56 @@ export type ProjectEntity = {
   updated_at: string;
 };
 
-export class ProjectRepository extends BaseRepositoryPg<ProjectEntity> {
+const COLLECTION_ID = 'projects';
+
+function mapDoc(doc: Record<string, any>): ProjectEntity {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+  const parse = (val: any, fallback: any = undefined) => {
+    if (val === undefined || val === null) return fallback;
+    if (typeof val === 'string') {
+      try { return JSON.parse(val); } catch { return fallback; }
+    }
+    return val;
+  };
+  return {
+    id: $id,
+    ...attrs,
+    required_skills: parse(attrs.required_skills, []),
+    milestones: parse(attrs.milestones, []),
+    tags: parse(attrs.tags, []),
+    attachments: parse(attrs.attachments, []),
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  } as ProjectEntity;
+}
+
+export class ProjectRepository extends BaseRepositoryAppwrite<ProjectEntity> {
   constructor() {
-    super('projects');
+    super(COLLECTION_ID);
   }
 
   async createProject(project: Omit<ProjectEntity, 'created_at' | 'updated_at'>): Promise<ProjectEntity> {
-    return this.create(project);
+    const data: Record<string, any> = { ...project };
+    if (data.required_skills) data.required_skills = JSON.stringify(data.required_skills);
+    if (data.milestones) data.milestones = JSON.stringify(data.milestones);
+    if (data.tags) data.tags = JSON.stringify(data.tags);
+    if (data.attachments) data.attachments = JSON.stringify(data.attachments);
+    return this.create(data as any);
   }
 
   async getProjectById(id: string): Promise<ProjectEntity | null> {
-    return this.getById(id);
+    const doc = await this.getById(id);
+    return doc ? mapDoc(doc as any) : null;
   }
 
   async updateProject(id: string, updates: Partial<ProjectEntity>): Promise<ProjectEntity | null> {
-    return this.update(id, updates);
+    const data: Record<string, any> = { ...updates };
+    if (data.required_skills) data.required_skills = JSON.stringify(data.required_skills);
+    if (data.milestones) data.milestones = JSON.stringify(data.milestones);
+    if (data.tags) data.tags = JSON.stringify(data.tags);
+    if (data.attachments) data.attachments = JSON.stringify(data.attachments);
+    const doc = await this.update(id, data as any);
+    return doc ? mapDoc(doc as any) : null;
   }
 
   async deleteProject(id: string): Promise<boolean> {
@@ -71,244 +110,135 @@ export class ProjectRepository extends BaseRepositoryPg<ProjectEntity> {
   }
 
   async findProjectById(id: string): Promise<ProjectEntity | null> {
-    return this.getById(id);
+    return this.getProjectById(id);
   }
 
   async getProjectsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 100;
+    const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE employer_id = $1`;
-    const countResult = await this.pool.query(countQuery, [employerId]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE employer_id = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [employerId, limit, offset]);
-      return {
-        items: result.rows as ProjectEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get projects by employer: ${error.message}`);
-    }
+    return this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('employer_id', employerId)],
+      limit,
+      offset,
+      mapDoc
+    );
   }
 
   async getAllOpenProjects(options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 100;
+    const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = 'open'`;
-    const countResult = await this.pool.query(countQuery);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = 'open'
-      ORDER BY created_at DESC
-      LIMIT $1 OFFSET $2
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [limit, offset]);
-      return {
-        items: result.rows as ProjectEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get open projects: ${error.message}`);
-    }
+    return this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open')],
+      limit,
+      offset,
+      mapDoc
+    );
   }
 
   async getProjectsByStatus(status: ProjectStatus, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 100;
+    const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = $1`;
-    const countResult = await this.pool.query(countQuery, [status]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = $1
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [status, limit, offset]);
-      return {
-        items: result.rows as ProjectEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get projects by status: ${error.message}`);
-    }
+    return this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', status)],
+      limit,
+      offset,
+      mapDoc
+    );
   }
 
   async getProjectsBySkills(skillIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 100;
+    // Appwrite doesn't support JSONB contains; filter in-memory
+    const all = await this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open'), Query.limit(1000)],
+      1000,
+      0,
+      mapDoc
+    );
+    const filtered = all.items.filter(p =>
+      skillIds.some(id => p.required_skills?.some(s => s.skill_id === id))
+    );
+    const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-
-    // In PostgreSQL, querying JSONB for skill existence
-    const countQuery = `
-      SELECT COUNT(*) FROM ${this.tableName} 
-      WHERE status = 'open' AND required_skills @> $1
-    `;
-    const skillsJson = JSON.stringify(skillIds.map(id => ({ skill_id: id })));
-    const countResult = await this.pool.query(countQuery, [skillsJson]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = 'open' AND required_skills @> $3
-      ORDER BY created_at DESC
-      LIMIT $1 OFFSET $2
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [limit, offset, skillsJson]);
-      return {
-        items: result.rows as ProjectEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get projects by skills: ${error.message}`);
-    }
+    return {
+      items: filtered.slice(offset, offset + limit),
+      hasMore: offset + limit < filtered.length,
+      total: filtered.length,
+    };
   }
 
   async getProjectsByBudgetRange(minBudget: number, maxBudget: number, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 100;
+    const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-
-    const countQuery = `SELECT COUNT(*) FROM ${this.tableName} WHERE status = 'open' AND budget >= $1 AND budget <= $2`;
-    const countResult = await this.pool.query(countQuery, [minBudget, maxBudget]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = 'open' AND budget >= $1 AND budget <= $2
-      ORDER BY created_at DESC
-      LIMIT $3 OFFSET $4
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [minBudget, maxBudget, limit, offset]);
-      return {
-        items: result.rows as ProjectEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get projects by budget: ${error.message}`);
-    }
+    const all = await this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open'), Query.limit(1000)],
+      1000,
+      0,
+      mapDoc
+    );
+    const filtered = all.items.filter(p => p.budget >= minBudget && p.budget <= maxBudget);
+    return {
+      items: filtered.slice(offset, offset + limit),
+      hasMore: offset + limit < filtered.length,
+      total: filtered.length,
+    };
   }
 
   async searchProjects(keyword: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 100;
+    const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-    const pattern = `%${keyword}%`;
-
-    const countQuery = `
-      SELECT COUNT(*) FROM ${this.tableName} 
-      WHERE status = 'open' AND (title ILIKE $1 OR description ILIKE $1)
-    `;
-    const countResult = await this.pool.query(countQuery, [pattern]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = 'open' AND (title ILIKE $1 OR description ILIKE $1)
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [pattern, limit, offset]);
-      return {
-        items: result.rows as ProjectEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to search projects: ${error.message}`);
-    }
-  }
-
-  async getAllProjects(): Promise<ProjectEntity[]> {
-    return this.queryAll();
+    const all = await this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open'), Query.limit(1000)],
+      1000,
+      0,
+      mapDoc
+    );
+    const kw = keyword.toLowerCase();
+    const filtered = all.items.filter(p =>
+      p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw)
+    );
+    return {
+      items: filtered.slice(offset, offset + limit),
+      hasMore: offset + limit < filtered.length,
+      total: filtered.length,
+    };
   }
 
   async getProjectsByCategory(categoryId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 100;
+    const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-    
-    // Using JSONB path query for category_id existence in the required_skills array
-    const queryJson = JSON.stringify([{ category_id: categoryId }]);
-    
-    const countQuery = `
-      SELECT COUNT(*) FROM ${this.tableName} 
-      WHERE status = 'open' AND required_skills @> $1
-    `;
-    const countResult = await this.pool.query(countQuery, [queryJson]);
-    const total = parseInt(countResult.rows[0].count, 10);
-
-    const dataQuery = `
-      SELECT * FROM ${this.tableName}
-      WHERE status = 'open' AND required_skills @> $3
-      ORDER BY created_at DESC
-      LIMIT $1 OFFSET $2
-    `;
-    
-    try {
-      const result = await this.pool.query(dataQuery, [limit, offset, queryJson]);
-      return {
-        items: result.rows as ProjectEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get projects by category: ${error.message}`);
-    }
+    const all = await this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open'), Query.limit(1000)],
+      1000,
+      0,
+      mapDoc
+    );
+    const filtered = all.items.filter(p =>
+      p.required_skills?.some(s => s.category_id === categoryId)
+    );
+    return {
+      items: filtered.slice(offset, offset + limit),
+      hasMore: offset + limit < filtered.length,
+      total: filtered.length,
+    };
   }
 
   async getProjectsByMultipleCategories(categoryIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 100;
+    const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-
-    // Complex JSONB filtering for multiple categories - using EXISTS in subquery or JSONB arrows
-    const dataQuery = `
-      SELECT *, COUNT(*) OVER() as total_count FROM ${this.tableName}
-      WHERE status = 'open' AND EXISTS (
-        SELECT 1 FROM jsonb_array_elements(required_skills) as skill
-        WHERE skill->>'category_id' = ANY($1)
-      )
-      ORDER BY created_at DESC
-      LIMIT $2 OFFSET $3
-    `;
-
-    try {
-      const result = await this.pool.query(dataQuery, [categoryIds, limit, offset]);
-      const total = result.rows.length > 0 ? parseInt(result.rows[0].total_count, 10) : 0;
-      
-      return {
-        items: result.rows as ProjectEntity[],
-        hasMore: offset + limit < total,
-        total,
-      };
-    } catch (error: any) {
-      throw new Error(`Failed to get projects by categories: ${error.message}`);
-    }
+    const all = await this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open'), Query.limit(1000)],
+      1000,
+      0,
+      mapDoc
+    );
+    const filtered = all.items.filter(p =>
+      p.required_skills?.some(s => categoryIds.includes(s.category_id))
+    );
+    return {
+      items: filtered.slice(offset, offset + limit),
+      hasMore: offset + limit < filtered.length,
+      total: filtered.length,
+    };
   }
 }
 

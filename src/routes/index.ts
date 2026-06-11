@@ -75,8 +75,11 @@ router.use('/payments', paymentRoutes);
 // Reputation routes
 router.use('/reputation', reputationRoutes);
 
-// Dispute routes
+// Dispute routes (must be before dispute evidence routes)
 router.use('/disputes', disputeRoutes);
+
+// Dispute evidence routes
+router.use('/disputes', disputeEvidenceRoutes);
 
 // KYC routes
 router.use('/kyc', kycRoutes);
@@ -119,9 +122,6 @@ router.use('/file-management', fileRoutes);
 
 // Milestone routes
 router.use('/milestones', milestoneRoutes);
-
-// Dispute evidence routes (nested under disputes)
-router.use('/disputes', disputeEvidenceRoutes);
 
 // Escrow refund routes
 router.use('/escrow', escrowRefundRoutes);

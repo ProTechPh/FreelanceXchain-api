@@ -1,4 +1,4 @@
-import { BaseRepositoryPg } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
 
 export type EmployerProfileEntity = {
   id: string;
@@ -12,17 +12,15 @@ export type EmployerProfileEntity = {
   updated_at: string;
 };
 
-export class EmployerProfileRepository extends BaseRepositoryPg<EmployerProfileEntity> {
+const COLLECTION_ID = 'employer_profiles';
+
+export class EmployerProfileRepository extends BaseRepositoryAppwrite<EmployerProfileEntity> {
   constructor() {
-    super('employer_profiles');
+    super(COLLECTION_ID);
   }
 
   async createProfile(profile: Omit<EmployerProfileEntity, 'created_at' | 'updated_at'>): Promise<EmployerProfileEntity> {
     return this.create(profile);
-  }
-
-  async getProfileById(id: string): Promise<EmployerProfileEntity | null> {
-    return this.getById(id);
   }
 
   async getProfileByUserId(userId: string): Promise<EmployerProfileEntity | null> {
@@ -31,29 +29,6 @@ export class EmployerProfileRepository extends BaseRepositoryPg<EmployerProfileE
 
   async updateProfile(id: string, updates: Partial<EmployerProfileEntity>): Promise<EmployerProfileEntity | null> {
     return this.update(id, updates);
-  }
-
-  async deleteProfile(id: string): Promise<boolean> {
-    return this.delete(id);
-  }
-
-  async getAllProfiles(): Promise<EmployerProfileEntity[]> {
-    return this.queryAll('created_at', false);
-  }
-
-  async getProfilesByIndustry(industry: string): Promise<EmployerProfileEntity[]> {
-    const query = `
-      SELECT * FROM ${this.tableName}
-      WHERE industry = $1
-      ORDER BY created_at DESC
-    `;
-    
-    try {
-      const result = await this.pool.query(query, [industry]);
-      return result.rows as EmployerProfileEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get profiles by industry: ${error.message}`);
-    }
   }
 }
 

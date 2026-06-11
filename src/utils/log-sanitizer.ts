@@ -190,18 +190,31 @@ export function sanitizeError(error: Error): any {
 }
 
 /**
- * Check if a string contains sensitive data
+ * Check if a string contains sensitive data patterns
  */
 export function containsSensitiveData(input: string): boolean {
   if (!input || typeof input !== 'string') {
     return false;
   }
 
-  // Reset lastIndex on all patterns before testing to avoid stateful regex bug.
-  // Regexes with the 'g' flag maintain internal state via lastIndex, causing
-  // alternating true/false results on repeated .test() calls with the same input.
-  return Object.values(SENSITIVE_PATTERNS).some(pattern => {
-    pattern.lastIndex = 0;
-    return pattern.test(input);
-  });
+  // Reset lastIndex for global regexes before testing
+  SENSITIVE_PATTERNS.jwt.lastIndex = 0;
+  SENSITIVE_PATTERNS.apiKey.lastIndex = 0;
+  SENSITIVE_PATTERNS.password.lastIndex = 0;
+  SENSITIVE_PATTERNS.creditCard.lastIndex = 0;
+  SENSITIVE_PATTERNS.email.lastIndex = 0;
+  SENSITIVE_PATTERNS.ssn.lastIndex = 0;
+  SENSITIVE_PATTERNS.authHeader.lastIndex = 0;
+  SENSITIVE_PATTERNS.privateKey.lastIndex = 0;
+
+  return (
+    SENSITIVE_PATTERNS.jwt.test(input) ||
+    SENSITIVE_PATTERNS.apiKey.test(input) ||
+    SENSITIVE_PATTERNS.password.test(input) ||
+    SENSITIVE_PATTERNS.creditCard.test(input) ||
+    SENSITIVE_PATTERNS.email.test(input) ||
+    SENSITIVE_PATTERNS.ssn.test(input) ||
+    SENSITIVE_PATTERNS.authHeader.test(input) ||
+    SENSITIVE_PATTERNS.privateKey.test(input)
+  );
 }

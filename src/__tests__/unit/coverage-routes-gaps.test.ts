@@ -27,7 +27,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
   registerRateLimiter: (_req: any, _res: any, next: any) => next(),
   passwordResetRateLimiter: (_req: any, _res: any, next: any) => next(),
-}));
+    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  }));
 
 // Single comprehensive auth-middleware mock
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -127,6 +128,10 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   disableMFA: jest.fn(),
   consumeMfaSession: jest.fn(),
   validateTokenAndGetUser: jest.fn(),
+  requestPhoneOtp: jest.fn(),
+  requestEmailOtp: jest.fn(),
+  requestMagicUrl: jest.fn(),
+  verifyAuthToken: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/csrf-middleware.ts'), () => ({

@@ -125,4 +125,152 @@ describe('Validation Middleware - Coverage Gaps', () => {
       expect(result.valid).toBe(true);
     });
   });
+
+  describe('type validation - boolean, array, object', () => {
+    it('should validate boolean type', () => {
+      const result = validateRequest(
+        { active: 'not-a-boolean' },
+        {
+          type: 'object',
+          properties: { active: { type: 'boolean' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be a boolean');
+    });
+
+    it('should validate array type', () => {
+      const result = validateRequest(
+        { tags: 'not-an-array' },
+        {
+          type: 'object',
+          properties: { tags: { type: 'array' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be an array');
+    });
+
+    it('should validate object type', () => {
+      const result = validateRequest(
+        { metadata: 'not-an-object' },
+        {
+          type: 'object',
+          properties: { metadata: { type: 'object' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be an object');
+    });
+
+    it('should reject array when object type expected', () => {
+      const result = validateRequest(
+        { metadata: [1, 2, 3] },
+        {
+          type: 'object',
+          properties: { metadata: { type: 'object' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be an object');
+    });
+  });
+
+  describe('schema without properties', () => {
+    it('should return valid when schema has no properties', () => {
+      const result = validateRequest(
+        { anything: 'goes' },
+        { type: 'object' }
+      );
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('nested object validation', () => {
+    it('should validate nested object number type', () => {
+      const result = validateRequest(
+        { config: { timeout: 'not-a-number' } },
+        {
+          type: 'object',
+          properties: {
+            config: {
+              type: 'object',
+              properties: {
+                timeout: { type: 'number' },
+              },
+            },
+          },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be a number');
+    });
+  });
+
+  describe('array items validation', () => {
+    it('should validate array items number type', () => {
+      const result = validateRequest(
+        { scores: [1, 'not-a-number', 3] },
+        {
+          type: 'object',
+          properties: {
+            scores: {
+              type: 'array',
+              items: { type: 'number' },
+            },
+          },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be a number');
+    });
+  });
+
+  describe('boolean coercion', () => {
+    it('should coerce "false" string to false boolean in query', () => {
+      const middleware = validate({
+        query: {
+          type: 'object',
+          properties: {
+            active: { type: 'boolean' },
+          },
+        },
+      });
+
+      const req = {
+        body: {},
+        query: { active: 'false' },
+        params: {},
+        headers: { 'x-request-id': 'test-id' },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      middleware(req as any, res as any, next);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should coerce "true" string to true boolean in query', () => {
+      const middleware = validate({
+        query: {
+          type: 'object',
+          properties: {
+            active: { type: 'boolean' },
+          },
+        },
+      });
+
+      const req = {
+        body: {},
+        query: { active: 'true' },
+        params: {},
+        headers: { 'x-request-id': 'test-id' },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      middleware(req as any, res as any, next);
+      expect(next).toHaveBeenCalled();
+    });
+  });
 });

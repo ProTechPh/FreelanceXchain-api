@@ -1,9 +1,5 @@
-/**
- * User Repository
- * Migrated to PostgreSQL - uses direct pg pool queries
- */
-
-import { BaseRepositoryPg } from './base-repository-pg.js';
+import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type UserEntity = {
   id: string;
@@ -19,9 +15,11 @@ export type UserEntity = {
   updated_at: string;
 };
 
-export class UserRepository extends BaseRepositoryPg<UserEntity> {
+const COLLECTION_ID = 'users';
+
+export class UserRepository extends BaseRepositoryAppwrite<UserEntity> {
   constructor() {
-    super('users');
+    super(COLLECTION_ID);
   }
 
   async createUser(user: Omit<UserEntity, 'created_at' | 'updated_at'>): Promise<UserEntity> {
@@ -33,11 +31,24 @@ export class UserRepository extends BaseRepositoryPg<UserEntity> {
   }
 
   async getUserByEmail(email: string): Promise<UserEntity | null> {
-    const query = `SELECT * FROM ${this.tableName} WHERE LOWER(email) = LOWER($1) LIMIT 1`;
-    
     try {
-      const result = await this.executeQuery(query, [email]);
-      return result.rows.length > 0 ? (result.rows[0] as UserEntity) : null;
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('email', email),
+          Query.limit(1),
+        ]
+      );
+      if (response.documents.length === 0) return null;
+      const doc = response.documents[0];
+      const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
+      return {
+        id: $id,
+        ...attrs,
+        created_at: attrs.created_at ?? $createdAt,
+        updated_at: attrs.updated_at ?? $updatedAt,
+      } as UserEntity;
     } catch (error: any) {
       throw new Error(`Failed to get user by email: ${error.message}`);
     }
@@ -47,23 +58,19 @@ export class UserRepository extends BaseRepositoryPg<UserEntity> {
     return this.update(id, updates);
   }
 
-  async deleteUser(id: string): Promise<boolean> {
-    return this.delete(id);
-  }
-
   async emailExists(email: string): Promise<boolean> {
-    const user = await this.getUserByEmail(email);
-    return user !== null;
-  }
-
-  async getAllUsers(): Promise<UserEntity[]> {
-    const query = `SELECT * FROM ${this.tableName}`;
-    
     try {
-      const result = await this.executeQuery(query);
-      return result.rows as UserEntity[];
-    } catch (error: any) {
-      throw new Error(`Failed to get all users: ${error.message}`);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('email', email),
+          Query.limit(1),
+        ]
+      );
+      return response.documents.length > 0;
+    } catch {
+      return false;
     }
   }
 
@@ -72,14 +79,36 @@ export class UserRepository extends BaseRepositoryPg<UserEntity> {
   }
 
   async getUsersByRole(role: 'freelancer' | 'employer' | 'admin'): Promise<UserEntity[]> {
-    const query = `SELECT * FROM ${this.tableName} WHERE role = $1`;
-    
     try {
-      const result = await this.executeQuery(query, [role]);
-      return result.rows as UserEntity[];
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [
+          Query.equal('role', role),
+          Query.orderDesc('created_at'),
+          Query.limit(1000),
+        ]
+      );
+      return response.documents.map((doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        return {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as UserEntity;
+      });
     } catch (error: any) {
       throw new Error(`Failed to get users by role: ${error.message}`);
     }
+  }
+
+  async getAllUsers(): Promise<UserEntity[]> {
+    return this.queryAll();
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    return this.delete(id);
   }
 }
 

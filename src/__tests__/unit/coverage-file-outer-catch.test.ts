@@ -8,6 +8,7 @@ const mockListFiles = jest.fn();
 const mockDeleteFile = jest.fn();
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+    DATABASE_ID: 'freelancexchain',
   storage: { listFiles: mockListFiles, deleteFile: mockDeleteFile },
   BUCKETS: {
     PROPOSAL_ATTACHMENTS: 'proposal-attachments',

@@ -1,4 +1,5 @@
 import { pool } from '../config/database.js';
+import { logger } from '../config/logger.js';
 import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
@@ -183,7 +184,7 @@ export async function cancelPendingContract(contractId: string, userId: string):
   );
 
   if (!result.rows[0]?.result) {
-    console.error('Failed to cancel pending contract (RPC)');
+    logger.error('Failed to cancel pending contract (RPC)');
     return {
       success: false,
       error: { 

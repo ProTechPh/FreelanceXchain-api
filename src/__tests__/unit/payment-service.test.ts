@@ -355,7 +355,8 @@ describe('Payment Service - Property-Based Tests', () => {
           expect(updatedMilestone?.status).toBe('disputed');
 
           const updatedContract = contractStore.get(contract.id) as any;
-          expect(updatedContract?.status).toBe('disputed');
+          // Contract status stays 'active' — only the milestone is disputed
+          expect(updatedContract?.status).toBe('active');
         }
       ),
       { numRuns: 50 }
