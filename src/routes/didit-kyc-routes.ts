@@ -52,11 +52,14 @@ const VALID_WEBHOOK_TYPES: ReadonlySet<DiditWebhookType> = new Set(['status.upda
 const VALID_WEBHOOK_STATUSES: ReadonlySet<DiditWebhookStatus> = new Set([
   'Not Started',
   'In Progress',
+  'Awaiting User',
+  'In Review',
   'Approved',
   'Declined',
-  'In Review',
-  'Expired',
+  'Resubmitted',
   'Abandoned',
+  'Expired',
+  'Kyc Expired',
 ]);
 
 function parseUnixTimestamp(value: unknown): number | null {
@@ -77,6 +80,7 @@ function parseWebhookPayload(payload: unknown): DiditWebhookPayload | null {
   }
 
   const webhookPayload = payload as Record<string, unknown>;
+  const eventId = webhookPayload['event_id'];
   const webhookType = webhookPayload['webhook_type'];
   const sessionId = webhookPayload['session_id'];
   const status = webhookPayload['status'];
@@ -84,6 +88,8 @@ function parseWebhookPayload(payload: unknown): DiditWebhookPayload | null {
   const createdAt = parseUnixTimestamp(webhookPayload['created_at']);
 
   if (
+    typeof eventId !== 'string' ||
+    eventId.trim().length === 0 ||
     typeof webhookType !== 'string' ||
     !VALID_WEBHOOK_TYPES.has(webhookType as DiditWebhookType) ||
     typeof sessionId !== 'string' ||
@@ -97,7 +103,8 @@ function parseWebhookPayload(payload: unknown): DiditWebhookPayload | null {
   }
 
   return {
-    ...(webhookPayload as Omit<DiditWebhookPayload, 'webhook_type' | 'session_id' | 'status' | 'timestamp' | 'created_at'>),
+    ...(webhookPayload as Omit<DiditWebhookPayload, 'event_id' | 'webhook_type' | 'session_id' | 'status' | 'timestamp' | 'created_at'>),
+    event_id: eventId,
     webhook_type: webhookType as DiditWebhookType,
     session_id: sessionId,
     status: status as DiditWebhookStatus,
@@ -478,7 +485,7 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
  */
 router.post('/webhook', async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
-  const signature = typeof req.headers['x-signature'] === 'string' ? req.headers['x-signature'] : '';
+  const signature = typeof req.headers['x-signature-v2'] === 'string' ? req.headers['x-signature-v2'] : '';
   const timestamp = typeof req.headers['x-timestamp'] === 'string' ? req.headers['x-timestamp'] : '';
   const payload = typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body ?? {});
   const webhookPayload = parseWebhookPayload(req.body);

@@ -412,7 +412,7 @@ describe('Auth Routes - Uncovered Phone/Email/Magic/Verify Routes', () => {
     login: jest.fn(),
     refreshTokens: jest.fn(),
     isAuthError: (result: any) =>
-      result && typeof result === 'object' && 'code' in result && !('accessToken' in result),
+      result && typeof result === 'object' && 'code' in result && 'message' in result && !('user' in result) && !('success' in result),
     validatePasswordStrength: jest.fn().mockReturnValue({ valid: true, errors: [] }),
     loginWithAppwrite: mockLoginWithAppwrite,
     registerWithAppwrite: mockRegisterWithAppwrite,
@@ -478,32 +478,6 @@ describe('Auth Routes - Uncovered Phone/Email/Magic/Verify Routes', () => {
     app = express();
     app.use(express.json());
     app.use('/api/auth', router);
-  });
-
-  describe('POST /login/phone', () => {
-    it('should return 400 when phone is missing', async () => {
-      const res = await request(app)
-        .post('/api/auth/login/phone')
-        .send({});
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
-    });
-
-    it('should return 400 when requestPhoneOtp returns auth error', async () => {
-      mockRequestPhoneOtp.mockResolvedValue({ code: 'PHONE_ERROR', message: 'Invalid phone' });
-      const res = await request(app)
-        .post('/api/auth/login/phone')
-        .send({ phone: '+1234567890' });
-      expect(res.status).toBe(400);
-    });
-
-    it('should return 200 when requestPhoneOtp succeeds', async () => {
-      mockRequestPhoneOtp.mockResolvedValue({ secret: 'otp-secret', userId: 'user-1' });
-      const res = await request(app)
-        .post('/api/auth/login/phone')
-        .send({ phone: '+1234567890' });
-      expect(res.status).toBe(200);
-    });
   });
 
   describe('POST /login/email-otp', () => {

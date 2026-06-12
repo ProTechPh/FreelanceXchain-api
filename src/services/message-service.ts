@@ -5,7 +5,7 @@ import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/m
 import { notificationEmitter } from './notification-delivery-service.js';
 import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
-import type { PaginatedResult } from '../repositories/base-repository-pg.js';
+import type { PaginatedResult } from '../repositories/types.js';
 
 export interface PaginationOptions {
   page?: number;

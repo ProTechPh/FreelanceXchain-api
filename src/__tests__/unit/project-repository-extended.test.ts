@@ -8,25 +8,13 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
-const mockQuery = jest.fn<any>();
-
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery },
+  pool: new Proxy({}, { get: () => { throw new Error('Database not available'); } }),
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: jest.fn().mockRejectedValue(new Error('Database not available')),
+  queryOne: jest.fn().mockRejectedValue(new Error('Database not available')),
+  initializeDatabase: jest.fn(),
 }));
-
-jest.unstable_mockModule(resolveModule('src/repositories/base-repository-pg.ts'), () => {
-  class MockBaseRepositoryPg {
-    tableName: string;
-    pool = { query: mockQuery };
-    constructor(tableName: string) { this.tableName = tableName; }
-    async create(data: any) { return data; }
-    async getById(id: string) { return null; }
-    async update(id: string, data: any) { return data; }
-    async delete(id: string) { return true; }
-    async queryAll() { return []; }
-  }
-  return { BaseRepositoryPg: MockBaseRepositoryPg };
-});
 
 const { ProjectRepository } = await import('../../repositories/project-repository.js');
 

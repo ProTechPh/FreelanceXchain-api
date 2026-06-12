@@ -8,6 +8,11 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
 }));
 
+const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: mockPoolObj,
+}));
+
 const mockContractRepo = {
   getContractById: jest.fn<any>(),
   updateContract: jest.fn<any>(),
@@ -90,7 +95,7 @@ describe('Dispute Service - Extended Coverage', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
+    mockPool = mockPoolObj;
     mockPool.query.mockReset();
     mockPool.connect.mockReset();
   });

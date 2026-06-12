@@ -29,7 +29,6 @@ describe('Env Config', () => {
   });
 
   const setupRequiredEnv = () => {
-    process.env.DATABASE_URL = 'postgresql://postgres:postgres@localhost:5432/freelancexchain_test';
     process.env.APPWRITE_ENDPOINT = 'https://cloud.appwrite.io/v1';
     process.env.APPWRITE_PROJECT_ID = 'test-project-id';
     process.env.APPWRITE_API_KEY = 'test-api-key';
@@ -183,12 +182,6 @@ describe('Env Config', () => {
   });
 
   describe('error cases', () => {
-    it('should throw when required env var is missing', async () => {
-      setupRequiredEnv();
-      delete process.env.DATABASE_URL;
-      await expect(importModule()).rejects.toThrow('Environment variable DATABASE_URL is required but not set');
-    });
-
     it('should throw when PORT is not a number', async () => {
       setupRequiredEnv();
       process.env.PORT = 'not-a-number';

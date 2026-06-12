@@ -1,7 +1,7 @@
 import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
-import type { PaginatedResult } from '../repositories/base-repository-pg.js';
+import type { PaginatedResult } from '../repositories/types.js';
 
 export interface Transaction {
   id: string;

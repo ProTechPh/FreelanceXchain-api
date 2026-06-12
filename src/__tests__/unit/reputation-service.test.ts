@@ -28,6 +28,16 @@ mockContractRepo.getUserContracts = jest.fn<any>(async (userId: string) => {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Override database mock with controllable pool
+const mockQuery = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepo,
@@ -84,18 +94,15 @@ const invalidRatingArbitrary = () =>
   );
 
 describe('Reputation Service - Property-Based Tests', () => {
-  let mockPool: any;
-
   beforeEach(async () => {
     contractStore.clear();
     projectStore.clear();
     await clearBlockchainRatings();
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
+    mockQuery.mockReset();
     
     // Mock reviews table for duplicate check - return empty (no duplicates)
-    mockPool.query.mockImplementation(async (text: string, params?: any[]) => {
+    mockQuery.mockImplementation(async (text: string, params?: any[]) => {
       if (text.includes('reviews') && text.includes('SELECT') && text.includes('contract_id') && text.includes('reviewer_id')) {
         return { rows: [], rowCount: 0 };
       }
@@ -406,18 +413,15 @@ describe('Reputation Service - Property-Based Tests', () => {
 });
 
 describe('Reputation Service - Unit Tests', () => {
-  let mockPool: any;
-
   beforeEach(async () => {
     contractStore.clear();
     projectStore.clear();
     await clearBlockchainRatings();
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
+    mockQuery.mockReset();
     
     // Mock pool.query for various reputation operations
-    mockPool.query.mockImplementation(async (text: string, params?: any[]) => {
+    mockQuery.mockImplementation(async (text: string, params?: any[]) => {
       if (text.includes('reviews') && text.includes('SELECT') && text.includes('contract_id') && text.includes('reviewer_id')) {
         return { rows: [], rowCount: 0 };
       }

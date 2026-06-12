@@ -1,7 +1,20 @@
-import { describe, it, expect, beforeAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, jest } from '@jest/globals';
+import path from 'node:path';
 import request from 'supertest';
-import { createApp } from '../../app.js';
 import type { Express } from 'express';
+
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
+
+const mockQuery = jest.fn<any>().mockResolvedValue({ rows: [{ now: new Date().toISOString() }], rowCount: 1 });
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
+const { createApp } = await import('../../app.js');
 
 describe('Health Routes Integration Tests', () => {
   let app: Express;

@@ -32,7 +32,7 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   register: mockRegister,
   login: mockLogin,
   refreshTokens: mockRefreshTokens,
-  isAuthError: (result: any) => result && typeof result === 'object' && 'code' in result && !('accessToken' in result),
+  isAuthError: (result: any) => result && typeof result === 'object' && 'code' in result && 'message' in result && !('user' in result) && !('success' in result),
   validatePasswordStrength: mockValidatePasswordStrength,
   loginWithAppwrite: mockLoginWithAppwrite,
   registerWithAppwrite: mockRegisterWithAppwrite,
@@ -172,60 +172,54 @@ describe('Auth Routes', () => {
     });
 
     it('should handle MFA_REQUIRED response', async () => {
-      mockLogin.mockResolvedValue({ code: 'MFA_REQUIRED', message: 'MFA required', mfaSessionId: 'session-1', factorId: 'factor-1' });
+      mockLogin.mockResolvedValue({ code: 'MFA_REQUIRED', message: 'MFA required', accessToken: 'mfa-access-token' });
       const res = await request(app).post('/api/auth/login').send({ email: 'test@test.com', password: 'StrongPass1!' });
       expect(res.status).toBe(200);
       expect(res.body.mfaRequired).toBe(true);
-      expect(res.body.mfaSessionId).toBe('session-1');
-      expect(res.body.factorId).toBe('factor-1');
+      expect(res.body.accessToken).toBe('mfa-access-token');
     });
   });
 
   describe('POST /login/mfa-verify', () => {
     it('should verify MFA and return auth result', async () => {
-      mockConsumeMfaSession.mockResolvedValue({ accessToken: 'real-token', refreshToken: 'real-refresh' });
       mockChallengeMFA.mockResolvedValue({ challengeId: 'challenge-1' });
       mockVerifyMFAChallenge.mockResolvedValue({ success: true });
       mockValidateTokenAndGetUser.mockResolvedValue({ accessToken: 'real-token', user: { id: 'u-1' } });
-      const res = await request(app).post('/api/auth/login/mfa-verify').send({ mfaSessionId: 'session-1', factorId: 'factor-1', code: '123456' });
+      const res = await request(app).post('/api/auth/login/mfa-verify').send({ accessToken: 'mfa-access-token', factorId: 'factor-1', code: '123456' });
       expect(res.status).toBe(200);
       expect(res.body.user).toBeDefined();
     });
 
     it('should return 400 for missing fields', async () => {
-      const res = await request(app).post('/api/auth/login/mfa-verify').send({ mfaSessionId: 'session-1' });
+      const res = await request(app).post('/api/auth/login/mfa-verify').send({ accessToken: 'token' });
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
 
-    it('should return 401 for expired MFA session', async () => {
-      mockConsumeMfaSession.mockResolvedValue(null);
-      const res = await request(app).post('/api/auth/login/mfa-verify').send({ mfaSessionId: 'expired', factorId: 'factor-1', code: '123456' });
-      expect(res.status).toBe(401);
-      expect(res.body.error.code).toBe('MFA_SESSION_EXPIRED');
+    it('should return 400 when challengeMFA fails', async () => {
+      mockChallengeMFA.mockResolvedValue({ code: 'MFA_CHALLENGE_FAILED', message: 'Challenge failed' });
+      const res = await request(app).post('/api/auth/login/mfa-verify').send({ accessToken: 'mfa-access-token', factorId: 'factor-1', code: '123456' });
+      expect(res.status).toBe(400);
     });
 
     it('should return 400 if challenge fails', async () => {
-      mockConsumeMfaSession.mockResolvedValue({ accessToken: 'real-token', refreshToken: 'real-refresh' });
       mockChallengeMFA.mockResolvedValue({ code: 'MFA_CHALLENGE_FAILED', message: 'Challenge failed' });
-      const res = await request(app).post('/api/auth/login/mfa-verify').send({ mfaSessionId: 'session-1', factorId: 'factor-1', code: '123456' });
+      const res = await request(app).post('/api/auth/login/mfa-verify').send({ accessToken: 'mfa-access-token', factorId: 'factor-1', code: '123456' });
       expect(res.status).toBe(400);
     });
 
     it('should return 400 if verify fails', async () => {
-      mockConsumeMfaSession.mockResolvedValue({ accessToken: 'real-token', refreshToken: 'real-refresh' });
       mockChallengeMFA.mockResolvedValue({ challengeId: 'challenge-1' });
       mockVerifyMFAChallenge.mockResolvedValue({ code: 'INVALID_CODE', message: 'Invalid code' });
-      const res = await request(app).post('/api/auth/login/mfa-verify').send({ mfaSessionId: 'session-1', factorId: 'factor-1', code: '000000' });
+      const res = await request(app).post('/api/auth/login/mfa-verify').send({ accessToken: 'mfa-access-token', factorId: 'factor-1', code: '000000' });
       expect(res.status).toBe(400);
     });
 
     it('should return 401 if validateTokenAndGetUser fails', async () => {
-      mockConsumeMfaSession.mockResolvedValue({ accessToken: 'real-token', refreshToken: 'real-refresh' });
       mockChallengeMFA.mockResolvedValue({ challengeId: 'challenge-1' });
       mockVerifyMFAChallenge.mockResolvedValue({ success: true });
       mockValidateTokenAndGetUser.mockResolvedValue({ code: 'INVALID_TOKEN', message: 'Token invalid' });
-      const res = await request(app).post('/api/auth/login/mfa-verify').send({ mfaSessionId: 'session-1', factorId: 'factor-1', code: '123456' });
+      const res = await request(app).post('/api/auth/login/mfa-verify').send({ accessToken: 'mfa-access-token', factorId: 'factor-1', code: '123456' });
       expect(res.status).toBe(401);
     });
   });

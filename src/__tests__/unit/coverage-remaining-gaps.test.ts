@@ -63,23 +63,7 @@ describe('cache.ts - default constructor and stopCleanup', () => {
 });
 
 // ============================================================
-// 2. base-repository-pg.ts - line 149 (ascending: true)
-// ============================================================
-describe('base-repository-pg.ts - queryAll ascending=true', () => {
-  it('should query with ASC direction (line 149)', async () => {
-    mockPool.query.mockResolvedValue({ rows: [] });
-    const { BaseRepository } = await import('../../repositories/base-repository-pg.js');
-    const repo = new BaseRepository('test_table', mockPool);
-    const result = await repo.queryAll('created_at', true);
-    expect(result).toEqual([]);
-    expect(mockPool.query).toHaveBeenCalledWith(
-      expect.stringContaining('ASC'),
-    );
-  });
-});
-
-// ============================================================
-// 3. message-repository.ts - line 68 (empty results)
+// 2. message-repository.ts - line 68 (empty results)
 // ============================================================
 describe('message-repository.ts - empty conversation messages', () => {
   it('returns total=0 when no messages (line 68)', async () => {

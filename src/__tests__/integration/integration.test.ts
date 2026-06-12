@@ -27,6 +27,18 @@ let notificationStore: Map<string, Notification> = new Map();
 let skillStore: Map<string, Skill> = new Map();
 let skillCategoryStore: Map<string, SkillCategory> = new Map();
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
+
+// Override database mock with controllable pool
+const mockQuery = jest.fn<any>();
+const mockConnect = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockQuery, connect: mockConnect, on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 // Mock all repositories
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: {
@@ -836,7 +848,7 @@ function createTestSkillCategory(): SkillCategory {
 describe('Integration Tests - Critical Flows', () => {
   beforeEach(() => {
     clearAllStores();
-    (global as any).mockPool.query.mockImplementation((text: string, params?: any[]) => {
+    mockQuery.mockImplementation((text: string, params?: any[]) => {
       if (text && text.includes('accept_proposal_atomic')) {
         const proposalId = params?.[0];
         const employerIdArg = params?.[1];
@@ -1180,11 +1192,11 @@ describe('Integration Tests - Critical Flows', () => {
         }),
         release: jest.fn(),
       };
-      (global as any).mockPool.connect.mockResolvedValue(mockClient);
+      mockConnect.mockResolvedValue(mockClient);
 
       // Also handle dispute queries in the main pool.query mock
-      const origQueryImpl = (global as any).mockPool.query.getMockImplementation();
-      (global as any).mockPool.query.mockImplementation((text: string, params?: any[]) => {
+      const origQueryImpl = mockQuery.getMockImplementation();
+      mockQuery.mockImplementation((text: string, params?: any[]) => {
         if (text && text.includes('SELECT * FROM disputes WHERE id') && text.includes('FOR UPDATE')) {
           const disputeId = params?.[0];
           const row = disputeDb.get(disputeId);
@@ -1377,11 +1389,11 @@ describe('Integration Tests - Critical Flows', () => {
         }),
         release: jest.fn(),
       };
-      (global as any).mockPool.connect.mockResolvedValue(mockClient);
+      mockConnect.mockResolvedValue(mockClient);
 
       // Also handle dispute queries in the main pool.query mock
-      const origQueryImpl = (global as any).mockPool.query.getMockImplementation();
-      (global as any).mockPool.query.mockImplementation((text: string, params?: any[]) => {
+      const origQueryImpl = mockQuery.getMockImplementation();
+      mockQuery.mockImplementation((text: string, params?: any[]) => {
         if (text && text.includes('SELECT * FROM disputes WHERE id') && text.includes('FOR UPDATE')) {
           const disputeId = params?.[0];
           const row = disputeDb.get(disputeId);

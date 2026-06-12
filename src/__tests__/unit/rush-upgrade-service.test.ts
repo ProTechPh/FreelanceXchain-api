@@ -30,6 +30,16 @@ const mockNotificationRepo = createMockNotificationRepository(notificationStore)
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Override database mock with controllable pool
+const mockQuery = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/rush-upgrade-request-repository.ts'), () => ({
   rushUpgradeRequestRepository: mockRushUpgradeRepo,
@@ -101,8 +111,7 @@ function seedRushUpgradeRequest(overrides: Record<string, any> = {}) {
     userStore.clear();
     notificationStore.clear();
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+    mockQuery.mockImplementation(async (text: string, params?: any[]) => {
       if (text.includes('apply_rush_upgrade_atomic')) {
         return { rows: [{ result: true }], rowCount: 1 };
       }
@@ -215,8 +224,7 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
 
@@ -236,13 +244,12 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, counter_percentage: 20, status: 'counter_offered',
     });
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
 
     expect(result.success).toBe(true);
-    expect(mockPoolObj.query).toHaveBeenCalledWith(
+    expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('apply_rush_upgrade_atomic'),
       expect.arrayContaining([contract.id, 20]),
     );
@@ -257,8 +264,7 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(false);
@@ -387,15 +393,14 @@ describe('acceptCounterOffer', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, counter_percentage: 20, status: 'counter_offered',
     });
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
 
     const result = await acceptCounterOffer(employer.id, request.id);
 
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.request.status).toBe('accepted');
-    expect(mockPoolObj.query).toHaveBeenCalledWith(
+    expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('apply_rush_upgrade_atomic'),
       expect.arrayContaining([contract.id, 20]),
     );
@@ -437,8 +442,7 @@ describe('acceptCounterOffer', () => {
       contract_id: contract.id, requested_by: employer.id, counter_percentage: 20, status: 'counter_offered',
     });
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
     await acceptCounterOffer(employer.id, request.id);
 
     const notifications = Array.from(notificationStore.values()) as any[];
@@ -561,13 +565,12 @@ describe('Full rush upgrade negotiation flow', () => {
     expect((counterResult.data as any).counterPercentage).toBe(20);
 
     // 3. Employer accepts counter-offer
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
     const acceptResult = await acceptCounterOffer(employer.id, requestId);
     expect(acceptResult.success).toBe(true);
     if (!acceptResult.success) return;
     expect(acceptResult.data.request.status).toBe('accepted');
-    expect(mockPoolObj.query).toHaveBeenCalledWith(
+    expect(mockQuery).toHaveBeenCalledWith(
       expect.stringContaining('apply_rush_upgrade_atomic'),
       expect.arrayContaining([contract.id]),
     );

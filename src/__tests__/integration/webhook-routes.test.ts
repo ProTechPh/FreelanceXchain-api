@@ -42,23 +42,26 @@ describe('Webhook Routes Integration Tests', () => {
     app = await createApp();
   });
 
-  describe('POST /api/webhooks/didit', () => {
+  describe('POST /api/kyc/webhook', () => {
     it('should process a valid Didit webhook', async () => {
       const response = await request(app)
-        .post('/api/webhooks/didit')
-        .set('x-didit-signature', 'valid-signature')
-        .set('x-didit-timestamp', '1234567890')
+        .post('/api/kyc/webhook')
+        .set('x-signature-v2', 'valid-signature')
+        .set('x-timestamp', '1234567890')
         .send({
-          webhook_type: 'verification.completed',
+          event_id: 'evt-123',
+          webhook_type: 'status.updated',
           session_id: 'session-123',
-          status: 'approved',
-          decision: 'approved',
-          vendor_data: { user_id: 'user-123' },
+          status: 'Approved',
+          timestamp: 1234567890,
+          created_at: 1234567890,
+          decision: {},
+          vendor_data: 'user-123',
           metadata: {},
         });
 
       expect(response.status).toBe(200);
-      expect(response.body).toHaveProperty('received', true);
+      expect(response.body).toHaveProperty('message', 'Webhook processed');
     });
 
     it('should reject invalid signature', async () => {
@@ -66,21 +69,35 @@ describe('Webhook Routes Integration Tests', () => {
       (verifyWebhookSignature as jest.Mock).mockReturnValueOnce(false);
 
       const response = await request(app)
-        .post('/api/webhooks/didit')
-        .set('x-didit-signature', 'invalid-signature')
-        .set('x-didit-timestamp', '1234567890')
-        .send({ webhook_type: 'test' });
+        .post('/api/kyc/webhook')
+        .set('x-signature-v2', 'invalid-signature')
+        .set('x-timestamp', '1234567890')
+        .send({
+          event_id: 'evt-456',
+          webhook_type: 'status.updated',
+          session_id: 'session-123',
+          status: 'Approved',
+          timestamp: 1234567890,
+          created_at: 1234567890,
+        });
 
       expect(response.status).toBe(401);
-      expect(response.body).toHaveProperty('error', 'Invalid signature');
+      expect(response.body).toHaveProperty('error');
     });
 
     it('should not require authentication', async () => {
       const response = await request(app)
-        .post('/api/webhooks/didit')
-        .set('x-didit-signature', 'valid-signature')
-        .set('x-didit-timestamp', '1234567890')
-        .send({ webhook_type: 'test' });
+        .post('/api/kyc/webhook')
+        .set('x-signature-v2', 'valid-signature')
+        .set('x-timestamp', '1234567890')
+        .send({
+          event_id: 'evt-789',
+          webhook_type: 'status.updated',
+          session_id: 'session-123',
+          status: 'Approved',
+          timestamp: 1234567890,
+          created_at: 1234567890,
+        });
 
       expect(response.status).not.toBe(401);
     });

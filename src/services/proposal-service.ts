@@ -5,7 +5,7 @@ import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository-pg.js';
+import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
@@ -342,7 +342,7 @@ export async function acceptProposal(
     };
   }
 
-  // RACE CONDITION FIX: Use atomic PostgreSQL function to prevent double-accepting proposals
+  // RACE CONDITION FIX: Use atomic function to prevent double-accepting proposals
   const result = await pool.query(
     'SELECT accept_proposal_atomic($1, $2) as result',
     [proposalId, employerId]

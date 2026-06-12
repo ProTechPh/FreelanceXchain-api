@@ -45,6 +45,16 @@ const mockDeployRealEscrow = jest.fn<any>();
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Override database mock with controllable pool
+const mockQuery = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepo,

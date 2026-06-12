@@ -20,9 +20,7 @@ import {
   verifyMFAChallenge,
   getMFAFactors,
   disableMFA,
-  consumeMfaSession,
   validateTokenAndGetUser,
-  requestPhoneOtp,
   requestEmailOtp,
   requestMagicUrl,
   verifyAuthToken,
@@ -335,8 +333,7 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
       const mfaResult = result as MfaRequiredResult;
       res.status(200).json({
         mfaRequired: true,
-        mfaSessionId: mfaResult.mfaSessionId,
-        factorId: mfaResult.factorId,
+        accessToken: mfaResult.accessToken,
       });
       return;
     }
@@ -394,14 +391,14 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
  *         description: Unauthorized
  */
 router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { mfaSessionId, factorId, code } = req.body;
+  const { accessToken, factorId, code } = req.body;
   const requestId = getRequestId(req);
 
-  if (!mfaSessionId || !factorId || !code) {
+  if (!accessToken || !factorId || !code) {
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'mfaSessionId, factorId, and code are required',
+        message: 'accessToken, factorId, and code are required',
       },
       timestamp: new Date().toISOString(),
       requestId,
@@ -409,25 +406,8 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
     return;
   }
 
-  // Consume the pending MFA session to retrieve the real access token
-  const mfaSession = await consumeMfaSession(mfaSessionId);
-
-  if (!mfaSession) {
-    res.status(401).json({
-      error: {
-        code: 'MFA_SESSION_EXPIRED',
-        message: 'MFA session has expired or is invalid. Please log in again.',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
-  const realAccessToken = mfaSession.accessToken;
-
-  // Create challenge using the real access token
-  const challengeResult = await challengeMFA(realAccessToken, factorId);
+  // Create challenge using the session access token
+  const challengeResult = await challengeMFA(accessToken, factorId);
   
   if (isAuthError(challengeResult)) {
     res.status(400).json({
@@ -442,7 +422,7 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   }
 
   // Verify the code
-  const verifyResult = await verifyMFAChallenge(realAccessToken, factorId, challengeResult.challengeId, code);
+  const verifyResult = await verifyMFAChallenge(accessToken, factorId, challengeResult.challengeId, code);
   
   if (isAuthError(verifyResult)) {
     res.status(400).json({
@@ -457,7 +437,7 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   }
 
   // MFA verified - get user and return full auth result
-  const authResult = await validateTokenAndGetUser(realAccessToken);
+  const authResult = await validateTokenAndGetUser(accessToken);
   
   if (isAuthError(authResult)) {
     res.status(401).json({
@@ -471,13 +451,7 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
     return;
   }
 
-  // Return the auth result with tokens from MFA session
-  const finalResult = {
-    ...authResult,
-    refreshToken: mfaSession.refreshToken || authResult.refreshToken,
-  };
-
-  res.status(200).json(finalResult);
+  res.status(200).json(authResult);
 }));
 
 
@@ -717,27 +691,6 @@ router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Req
 
 /**
  * @swagger
- * /api/auth/login/phone:
- *   post:
- *     summary: Request Phone OTP
- *     tags: [Authentication]
- */
-router.post('/login/phone', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { phone } = req.body;
-  if (!phone) {
-    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Phone is required' } });
-    return;
-  }
-  const result = await requestPhoneOtp(phone);
-  if (isAuthError(result)) {
-    res.status(400).json({ error: result });
-    return;
-  }
-  res.status(200).json(result);
-}));
-
-/**
- * @swagger
  * /api/auth/login/email-otp:
  *   post:
  *     summary: Request Email OTP
@@ -956,8 +909,7 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
       const mfaResult = result as MfaRequiredResult;
       res.status(200).json({
         mfaRequired: true,
-        mfaSessionId: mfaResult.mfaSessionId,
-        factorId: mfaResult.factorId,
+        accessToken: mfaResult.accessToken,
       });
       return;
     }

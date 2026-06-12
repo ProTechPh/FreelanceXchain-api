@@ -5,6 +5,7 @@ const resolveModule = (p: string) => path.resolve(process.cwd(), p);
 
 const mockSubmitTx = jest.fn() as jest.Mock<any>;
 const mockConfirmTx = jest.fn() as jest.Mock<any>;
+const mockPoolQuery = jest.fn() as jest.Mock<any>;
 
 function makeConfirmed(hash = '0xabc123', blockNumber = 1) {
   return {
@@ -21,6 +22,14 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () 
   generateWalletAddress: jest.fn(() => '0x' + 'a'.repeat(40)),
 }));
 
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockPoolQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockPoolQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 const MILESTONE_ID = 'ms-1';
 const CONTRACT_ID = 'c-1';
 const FL_WALLET = '0xFreelancer';
@@ -31,7 +40,7 @@ describe('milestone-registry', () => {
     jest.clearAllMocks();
     mockSubmitTx.mockResolvedValue({ id: 'tx-1' });
     mockConfirmTx.mockResolvedValue(makeConfirmed());
-    (global as any).mockPool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   const importModule = async () => {
@@ -91,7 +100,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone already exists', async () => {
       const { submitMilestoneToRegistry } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ milestone_id_hash: 'existing' }],
         rowCount: 1,
       });
@@ -110,7 +119,7 @@ describe('milestone-registry', () => {
     it('should throw when transaction confirmation fails', async () => {
       const { submitMilestoneToRegistry } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
       mockConfirmTx.mockResolvedValueOnce(null);
 
       await expect(submitMilestoneToRegistry({
@@ -127,7 +136,7 @@ describe('milestone-registry', () => {
     it('should submit and return record + receipt on success', async () => {
       const { submitMilestoneToRegistry } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -151,7 +160,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone not found', async () => {
       const { approveMilestoneOnRegistry } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await expect(approveMilestoneOnRegistry(MILESTONE_ID, EM_WALLET)).rejects.toThrow('Milestone not found');
     });
@@ -159,7 +168,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone status is invalid', async () => {
       const { approveMilestoneOnRegistry } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [makeRegistryRow({ status: 'approved' })],
         rowCount: 1,
       });
@@ -170,7 +179,7 @@ describe('milestone-registry', () => {
     it('should approve successfully when status is submitted', async () => {
       const { approveMilestoneOnRegistry } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [makeRegistryRow({ status: 'submitted' })], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -182,7 +191,7 @@ describe('milestone-registry', () => {
     it('should approve successfully when status is disputed', async () => {
       const { approveMilestoneOnRegistry } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [makeRegistryRow({ status: 'disputed' })], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -195,7 +204,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone not found', async () => {
       const { rejectMilestoneOnRegistry } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await expect(rejectMilestoneOnRegistry(MILESTONE_ID, EM_WALLET, 'bad work')).rejects.toThrow('Milestone not found');
     });
@@ -203,7 +212,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone status is not submitted', async () => {
       const { rejectMilestoneOnRegistry } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [makeRegistryRow({ status: 'approved' })],
         rowCount: 1,
       });
@@ -214,7 +223,7 @@ describe('milestone-registry', () => {
     it('should reject successfully', async () => {
       const { rejectMilestoneOnRegistry } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [makeRegistryRow({ status: 'submitted' })], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -228,7 +237,7 @@ describe('milestone-registry', () => {
     it('should return null when not found', async () => {
       const { getMilestoneFromRegistry } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await getMilestoneFromRegistry(MILESTONE_ID);
       expect(result).toBeNull();
@@ -237,7 +246,7 @@ describe('milestone-registry', () => {
     it('should return the milestone record', async () => {
       const { getMilestoneFromRegistry } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [makeRegistryRow()],
         rowCount: 1,
       });
@@ -253,7 +262,7 @@ describe('milestone-registry', () => {
     it('should return zeroed stats when no milestones exist', async () => {
       const { getFreelancerStatsFromRegistry } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
@@ -265,7 +274,7 @@ describe('milestone-registry', () => {
     it('should calculate total earned from approved milestones', async () => {
       const { getFreelancerStatsFromRegistry } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [{ count: '5' }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [{ amount: 100 }, { amount: 250 }], rowCount: 2 });
 
@@ -280,7 +289,7 @@ describe('milestone-registry', () => {
     it('should return empty array when no approved milestones', async () => {
       const { getFreelancerPortfolio } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const portfolio = await getFreelancerPortfolio(FL_WALLET);
       expect(portfolio).toHaveLength(0);
@@ -289,7 +298,7 @@ describe('milestone-registry', () => {
     it('should return mapped records', async () => {
       const { getFreelancerPortfolio } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [makeRegistryRow({ status: 'approved', completed_at: Date.now() })],
         rowCount: 1,
       });
@@ -304,7 +313,7 @@ describe('milestone-registry', () => {
     it('should return false when milestone not found', async () => {
       const { verifyMilestoneWork } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       expect(await verifyMilestoneWork(MILESTONE_ID, 'deliverables')).toBe(false);
     });
@@ -314,7 +323,7 @@ describe('milestone-registry', () => {
 
       const deliverables = 'my work';
       const expectedHash = generateWorkHash(deliverables);
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ work_hash: expectedHash }],
         rowCount: 1,
       });
@@ -325,7 +334,7 @@ describe('milestone-registry', () => {
     it('should return false when work hash does not match', async () => {
       const { verifyMilestoneWork } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ work_hash: '0xWRONG' }],
         rowCount: 1,
       });
@@ -341,19 +350,19 @@ describe('milestone-registry', () => {
 
       const { clearMilestoneRegistry } = await importModule();
       await clearMilestoneRegistry();
-      expect((global as any).mockPool.query).not.toHaveBeenCalled();
+      expect(mockPoolQuery).not.toHaveBeenCalled();
 
       process.env['NODE_ENV'] = originalEnv;
     });
 
     it('should delete all rows in test environment', async () => {
       process.env['NODE_ENV'] = 'test';
-      (global as any).mockPool.query.mockClear();
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockClear();
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { clearMilestoneRegistry } = await importModule();
       await clearMilestoneRegistry();
-      expect((global as any).mockPool.query).toHaveBeenCalledWith(
+      expect(mockPoolQuery).toHaveBeenCalledWith(
         "DELETE FROM blockchain_milestones WHERE milestone_id_hash != ''"
       );
 

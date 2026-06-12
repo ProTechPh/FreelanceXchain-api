@@ -1,67 +1,8 @@
 import { Router, type Request, type Response } from 'express';
 import { logger } from '../config/logger.js';
-import { verifyWebhookSignature } from '../services/didit-client.js';
-import { processWebhook } from '../services/didit-kyc-service.js';
 import crypto from 'crypto';
 
 const router = Router();
-
-/**
- * @swagger
- * /api/webhooks/didit:
- *   post:
- *     summary: Didit KYC verification webhook
- *     description: Receives KYC verification status updates from Didit
- *     tags:
- *       - Webhooks
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *     responses:
- *       200:
- *         description: Webhook processed successfully
- *       401:
- *         description: Invalid signature
- */
-router.post('/didit', async (req: Request, res: Response) => {
-  try {
-    const signature = req.headers['x-didit-signature'] as string ?? '';
-    const timestamp = req.headers['x-didit-timestamp'] as string ?? '';
-    const payload = JSON.stringify(req.body);
-
-    if (!verifyWebhookSignature(payload, signature, timestamp)) {
-      logger.warn('Invalid Didit webhook signature');
-      return res.status(401).json({ error: 'Invalid signature' });
-    }
-
-    const { webhook_type, session_id, status, decision, vendor_data, metadata } = req.body;
-
-    logger.info('Received Didit webhook:', { webhook_type, session_id, status });
-
-    const result = await processWebhook({
-      webhook_type,
-      session_id,
-      status,
-      timestamp: req.body.timestamp ?? Math.floor(Date.now() / 1000),
-      created_at: req.body.created_at ?? Math.floor(Date.now() / 1000),
-      vendor_data,
-      metadata,
-      decision,
-    });
-
-    if (!result.success) {
-      logger.warn('Didit webhook processing failed', { error: result.error });
-    }
-
-    return res.status(200).json({ received: true });
-  } catch (error) {
-    logger.error('Failed to process Didit webhook:', error);
-    return res.status(500).json({ error: 'Webhook processing failed' });
-  }
-});
 
 /**
  * Verify blockchain webhook signature (HMAC-SHA256)

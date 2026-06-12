@@ -21,46 +21,6 @@ describe('Auth Service Appwrite - Extended Coverage (MFA sessions, registration 
     return await import('../../services/auth-service-appwrite.js');
   };
 
-  describe('consumeMfaSession', () => {
-    it('should return null when session not found', async () => {
-      const { consumeMfaSession } = await importModule();
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-
-      const result = await consumeMfaSession('mfa_nonexistent');
-      expect(result).toBeNull();
-    });
-
-    it('should return null when session is expired', async () => {
-      const { consumeMfaSession } = await importModule();
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ access_token: 'enc', refresh_token: 'enc', user_id: 'u-1', factor_id: 'f-1', expires_at: Date.now() - 10000 }],
-        rowCount: 1,
-      });
-
-      const result = await consumeMfaSession('mfa_expired');
-      expect(result).toBeNull();
-    });
-
-    it('should return null when decryption fails', async () => {
-      const { consumeMfaSession } = await importModule();
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ access_token: 'invalid:format', refresh_token: 'invalid:format', user_id: 'u-1', factor_id: 'f-1', expires_at: Date.now() + 300000 }],
-        rowCount: 1,
-      });
-
-      const result = await consumeMfaSession('mfa_bad_decrypt');
-      expect(result).toBeNull();
-    });
-
-    it('should return null when database query fails', async () => {
-      const { consumeMfaSession } = await importModule();
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
-
-      const result = await consumeMfaSession('mfa_db_error');
-      expect(result).toBeNull();
-    });
-  });
-
   describe('registerWithAppwrite', () => {
     it('should handle duplicate email error from Appwrite', async () => {
       const { registerWithAppwrite } = await importModule();

@@ -19,6 +19,8 @@ const mockAppwriteAccount = {
   updateMFAChallenge: jest.fn(),
   listMFAFactors: jest.fn(),
   deleteMFAAuthenticator: jest.fn(),
+  updateMFA: jest.fn(),
+  createMfaRecoveryCodes: jest.fn(),
 };
 
 const mockAppwriteUsers = {
@@ -76,7 +78,6 @@ const {
   isAuthError,
   createAuthResult,
   exchangeCodeForSession,
-  consumeMfaSession,
   validateToken,
   validateTokenAndGetUser,
   refreshTokens,
@@ -571,9 +572,10 @@ describe('enrollMFA', () => {
 
   it('returns success on enrollment', async () => {
     mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({} as never);
+    mockAppwriteAccount.createMfaRecoveryCodes.mockResolvedValue({ recoveryCodes: [] } as never);
 
     const result = await enrollMFA('valid-token');
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, recoveryCodes: [], secret: undefined, uri: undefined });
   });
 
   it('returns INVALID_TOKEN when getUser fails', async () => {
@@ -588,9 +590,10 @@ describe('enrollMFA', () => {
 
   it('handles listFactors error gracefully', async () => {
     mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({} as never);
+    mockAppwriteAccount.createMfaRecoveryCodes.mockResolvedValue({ recoveryCodes: [] } as never);
 
     const result = await enrollMFA('valid-token');
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, recoveryCodes: [], secret: undefined, uri: undefined });
   });
 
   it('cleans up unverified factors before enrollment', async () => {
@@ -643,9 +646,10 @@ describe('enrollMFA', () => {
 
   it('handles unenroll error gracefully during cleanup', async () => {
     mockAppwriteAccount.createMFAAuthenticator.mockResolvedValue({} as never);
+    mockAppwriteAccount.createMfaRecoveryCodes.mockResolvedValue({ recoveryCodes: [] } as never);
 
     const result = await enrollMFA('valid-token');
-    expect(result).toEqual({ success: true });
+    expect(result).toEqual({ success: true, recoveryCodes: [], secret: undefined, uri: undefined });
   });
 });
 
@@ -656,6 +660,7 @@ describe('verifyMFAEnrollment', () => {
 
   it('returns success on valid verification', async () => {
     mockAppwriteAccount.updateMFAAuthenticator.mockResolvedValue({} as never);
+    mockAppwriteAccount.updateMFA.mockResolvedValue({} as never);
     mockAppwriteAccount.get.mockResolvedValue({ $id: 'user-123' } as never);
     (mockUserRepository as any).update = jest.fn().mockResolvedValue({} as never);
 
@@ -815,13 +820,13 @@ describe('getMFAFactors', () => {
     expect(isAuthError(result)).toBe(true);
   });
 
-  it('returns INTERNAL_ERROR on error', async () => {
+  it('returns MFA_LIST_FAILED on error', async () => {
     mockAppwriteAccount.listMFAFactors.mockRejectedValue(new Error('fail') as never);
 
     const result = await getMFAFactors('valid-token');
     expect(isAuthError(result)).toBe(true);
     if (isAuthError(result)) {
-      expect(result.code).toBe('INTERNAL_ERROR');
+      expect(result.code).toBe('MFA_LIST_FAILED');
     }
   });
 
@@ -924,86 +929,6 @@ describe('disableMFA', () => {
     if (isAuthError(result)) {
       expect(result.code).toBe('MFA_DISABLE_FAILED');
     }
-  });
-});
-
-describe('consumeMfaSession - DB mode', () => {
-  let mockPoolQuery: any;
-
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    const db = await import('../../config/database.js');
-    mockPoolQuery = (db.pool as any).query;
-  });
-
-  it('returns null when session not found', async () => {
-    mockPoolQuery.mockResolvedValue({ rows: [] });
-
-    const result = await consumeMfaSession('nonexistent-id');
-    expect(result).toBeNull();
-  });
-
-  it('returns null when DB error occurs', async () => {
-    mockPoolQuery.mockRejectedValue(new Error('db error'));
-
-    const result = await consumeMfaSession('some-id');
-    expect(result).toBeNull();
-  });
-
-  it('returns null when session is expired (DB mode)', async () => {
-    mockPoolQuery.mockResolvedValue({
-      rows: [{
-        session_id: 'mfa-expired',
-        access_token: 'iv:tag:enc',
-        refresh_token: 'iv:tag:enc2',
-        user_id: 'user-123',
-        factor_id: 'factor-1',
-        expires_at: Date.now() - 1000,
-      }],
-    });
-
-    const result = await consumeMfaSession('mfa-expired');
-    expect(result).toBeNull();
-  });
-
-  it('returns null when decrypt fails', async () => {
-    mockPoolQuery.mockResolvedValue({
-      rows: [{
-        session_id: 'mfa-bad',
-        access_token: 'invalid-format',
-        refresh_token: 'also-invalid',
-        user_id: 'user-123',
-        factor_id: 'factor-1',
-        expires_at: Date.now() + 300000,
-      }],
-    });
-
-    const result = await consumeMfaSession('mfa-bad');
-    expect(result).toBeNull();
-  });
-});
-
-describe('consumeMfaSession - in-memory fallback', () => {
-  let mockPoolQuery: any;
-
-  beforeEach(async () => {
-    jest.clearAllMocks();
-    const db = await import('../../config/database.js');
-    mockPoolQuery = (db.pool as any).query;
-  });
-
-  it('returns null for non-existent session', async () => {
-    mockPoolQuery.mockResolvedValue({ rows: [] });
-
-    const result = await consumeMfaSession('nonexistent-inmem');
-    expect(result).toBeNull();
-  });
-
-  it('returns null when DB throws', async () => {
-    mockPoolQuery.mockRejectedValue(new Error('db error'));
-
-    const result1 = await consumeMfaSession('mfa-inmem-test');
-    expect(result1).toBeNull();
   });
 });
 

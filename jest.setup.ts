@@ -16,18 +16,8 @@ BigInt.prototype.toJSON = function() {
   return this.toString();
 };
 
-// Mock PostgreSQL pool
-const mockPool = {
-  query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
-  connect: jest.fn().mockResolvedValue({
-    query: jest.fn().mockResolvedValue({ rows: [], rowCount: 0 }),
-    release: jest.fn(),
-  }),
-  on: jest.fn(),
-};
-
 // Export to global for use in tests
-global.mockPool = mockPool;
+global.mockPool = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
 
 /**
  * Mock helper for Appwrite database results
@@ -64,8 +54,6 @@ global.mockAppwriteResult = (result: { data?: any; error?: any; count?: any }) =
     db.getDocument.mockRejectedValue(err);
     db.createDocument.mockRejectedValue(err);
     db.updateDocument.mockRejectedValue(err);
-    mockPool.query.mockReset();
-    mockPool.query.mockRejectedValue(err);
     return;
   }
 
@@ -74,24 +62,18 @@ global.mockAppwriteResult = (result: { data?: any; error?: any; count?: any }) =
     db.listDocuments.mockResolvedValue({ documents: [], total: 0 });
     db.createDocument.mockResolvedValue({ $id: 'mock-id' });
     db.updateDocument.mockRejectedValue(new Error('Document not found'));
-    mockPool.query.mockReset();
-    mockPool.query.mockResolvedValue({ rows: [], rowCount: 0 });
   } else if (Array.isArray(result.data)) {
     const docs = result.data.map(toAppwriteDoc);
     db.listDocuments.mockResolvedValue({ documents: docs, total: docs.length });
     db.getDocument.mockResolvedValue(docs[0] || { $id: 'mock-id' });
     db.createDocument.mockResolvedValue(docs[0] || { $id: 'mock-id' });
     db.updateDocument.mockResolvedValue(docs[0] || { $id: 'mock-id' });
-    mockPool.query.mockReset();
-    mockPool.query.mockResolvedValue({ rows: result.data, rowCount: result.data.length });
   } else {
     const doc = toAppwriteDoc(result.data);
     db.getDocument.mockResolvedValue(doc);
     db.createDocument.mockResolvedValue(doc);
     db.updateDocument.mockResolvedValue(doc);
     db.listDocuments.mockResolvedValue({ documents: [doc], total: 1 });
-    mockPool.query.mockReset();
-    mockPool.query.mockResolvedValue({ rows: [result.data], rowCount: 1 });
   }
 };
 
@@ -196,9 +178,10 @@ jest.unstable_mockModule('jsonwebtoken', () => ({
 
 // Mock the database pool and query functions
 jest.unstable_mockModule('./src/config/database.js', () => ({
-  pool: mockPool,
-  query: jest.fn().mockImplementation((text, params) => mockPool.query(text, params).then(res => res.rows)),
-  queryOne: jest.fn().mockImplementation((text, params) => mockPool.query(text, params).then(res => res.rows[0] || null)),
+  pool: new Proxy({}, { get: () => { throw new Error('Database not available'); } }),
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: jest.fn().mockRejectedValue(new Error('Database not available')),
+  queryOne: jest.fn().mockRejectedValue(new Error('Database not available')),
   initializeDatabase: jest.fn().mockResolvedValue(undefined),
 }));
 
@@ -247,12 +230,6 @@ jest.unstable_mockModule('./src/services/web3-client.js', () => ({
   deployContract: jest.fn().mockResolvedValue({ address: '0xmock', transactionHash: '0xmock' }),
   getContract: jest.fn().mockReturnValue(null),
   getContractWithSigner: jest.fn().mockReturnValue(null),
-}));
-
-// Mock pg module
-jest.unstable_mockModule('pg', () => ({
-  default: { Pool: jest.fn(() => mockPool) },
-  Pool: jest.fn(() => mockPool),
 }));
 
 jest.unstable_mockModule('node-appwrite', () => ({

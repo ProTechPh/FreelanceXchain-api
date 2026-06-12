@@ -9,11 +9,20 @@ const hash = (val: string) => '0x' + createHash('sha256').update(val).digest('he
 const mockSubmitTransaction = jest.fn() as any;
 const mockConfirmTransaction = jest.fn() as any;
 const mockGenerateWalletAddress = jest.fn().mockReturnValue('0xDisputeRegistry');
+const mockPoolQuery = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () => ({
   submitTransaction: mockSubmitTransaction,
   confirmTransaction: mockConfirmTransaction,
   generateWalletAddress: mockGenerateWalletAddress,
+}));
+
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockPoolQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockPoolQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
 }));
 
 function makeConfirmed() {
@@ -53,12 +62,12 @@ describe('Dispute Registry', () => {
     jest.clearAllMocks();
     mockSubmitTransaction.mockResolvedValue({ id: 'tx-1' });
     mockConfirmTransaction.mockResolvedValue(makeConfirmed());
-    (global as any).mockPool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   describe('createDisputeOnBlockchain', () => {
     it('creates a dispute record successfully', async () => {
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -77,7 +86,7 @@ describe('Dispute Registry', () => {
     });
 
     it('throws if dispute already exists on blockchain', async () => {
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ dispute_id_hash: hash('dispute-1') }],
         rowCount: 1,
       });
@@ -98,7 +107,7 @@ describe('Dispute Registry', () => {
 
     it('throws if transaction confirmation returns null', async () => {
       mockConfirmTransaction.mockResolvedValue(null);
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { createDisputeOnBlockchain } = await import('../../services/dispute-registry.js');
       await expect(
@@ -118,7 +127,7 @@ describe('Dispute Registry', () => {
   describe('updateDisputeEvidence', () => {
     it('updates evidence hash successfully', async () => {
       const row = makeDisputeRow();
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [row], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -129,7 +138,7 @@ describe('Dispute Registry', () => {
     });
 
     it('throws Dispute not found when row is missing', async () => {
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { updateDisputeEvidence } = await import('../../services/dispute-registry.js');
       await expect(
@@ -139,7 +148,7 @@ describe('Dispute Registry', () => {
 
     it('throws Dispute already resolved when outcome is not pending', async () => {
       const row = makeDisputeRow({ outcome: 'freelancer_favor' });
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
 
       const { updateDisputeEvidence } = await import('../../services/dispute-registry.js');
       await expect(
@@ -150,7 +159,7 @@ describe('Dispute Registry', () => {
     it('throws if confirmation fails during evidence update', async () => {
       const row = makeDisputeRow();
       mockConfirmTransaction.mockResolvedValue(null);
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
 
       const { updateDisputeEvidence } = await import('../../services/dispute-registry.js');
       await expect(
@@ -162,7 +171,7 @@ describe('Dispute Registry', () => {
   describe('resolveDisputeOnBlockchain', () => {
     it('resolves a dispute in freelancer favor successfully', async () => {
       const row = makeDisputeRow();
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [row], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -179,7 +188,7 @@ describe('Dispute Registry', () => {
     });
 
     it('throws Dispute not found when row is missing', async () => {
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { resolveDisputeOnBlockchain } = await import('../../services/dispute-registry.js');
       await expect(
@@ -194,7 +203,7 @@ describe('Dispute Registry', () => {
 
     it('throws Dispute already resolved when not pending', async () => {
       const row = makeDisputeRow({ outcome: 'employer_favor' });
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
 
       const { resolveDisputeOnBlockchain } = await import('../../services/dispute-registry.js');
       await expect(
@@ -210,7 +219,7 @@ describe('Dispute Registry', () => {
     it('throws if transaction confirmation fails during resolve', async () => {
       const row = makeDisputeRow();
       mockConfirmTransaction.mockResolvedValue(null);
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
 
       const { resolveDisputeOnBlockchain } = await import('../../services/dispute-registry.js');
       await expect(
@@ -227,7 +236,7 @@ describe('Dispute Registry', () => {
   describe('getDisputeFromBlockchain', () => {
     it('returns dispute record when found', async () => {
       const row = makeDisputeRow();
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
 
       const { getDisputeFromBlockchain } = await import('../../services/dispute-registry.js');
       const result = await getDisputeFromBlockchain('dispute-1');
@@ -237,7 +246,7 @@ describe('Dispute Registry', () => {
     });
 
     it('returns null when not found', async () => {
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { getDisputeFromBlockchain } = await import('../../services/dispute-registry.js');
       const result = await getDisputeFromBlockchain('nonexistent');
@@ -254,7 +263,7 @@ describe('Dispute Registry', () => {
         { outcome: 'employer_favor', freelancer_wallet: '0xUser', employer_wallet: '0xOther' },
       ];
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [{ count: '4' }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: allDisputeRows, rowCount: 4 });
 
@@ -266,7 +275,7 @@ describe('Dispute Registry', () => {
     });
 
     it('returns zero stats when wallet has no disputes', async () => {
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
@@ -278,7 +287,7 @@ describe('Dispute Registry', () => {
     });
 
     it('handles null resolved disputes gracefully', async () => {
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [{ count: '1' }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
@@ -293,7 +302,7 @@ describe('Dispute Registry', () => {
   describe('getUserDisputes', () => {
     it('returns mapped disputes for a wallet', async () => {
       const row = makeDisputeRow();
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [row], rowCount: 1 });
 
       const { getUserDisputes } = await import('../../services/dispute-registry.js');
       const disputes = await getUserDisputes('0xFreelancer');
@@ -302,7 +311,7 @@ describe('Dispute Registry', () => {
     });
 
     it('returns empty array when no disputes found', async () => {
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { getUserDisputes } = await import('../../services/dispute-registry.js');
       const disputes = await getUserDisputes('0xUser');
@@ -313,7 +322,7 @@ describe('Dispute Registry', () => {
   describe('clearDisputeRegistry', () => {
     it('executes delete in test environment', async () => {
       process.env['NODE_ENV'] = 'test';
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { clearDisputeRegistry } = await import('../../services/dispute-registry.js');
       await expect(clearDisputeRegistry()).resolves.toBeUndefined();
@@ -322,11 +331,11 @@ describe('Dispute Registry', () => {
     it('does nothing outside test environment', async () => {
       const originalEnv = process.env['NODE_ENV'];
       process.env['NODE_ENV'] = 'production';
-      (global as any).mockPool.query.mockClear();
+      mockPoolQuery.mockClear();
 
       const { clearDisputeRegistry } = await import('../../services/dispute-registry.js');
       await clearDisputeRegistry();
-      expect((global as any).mockPool.query).not.toHaveBeenCalled();
+      expect(mockPoolQuery).not.toHaveBeenCalled();
 
       process.env['NODE_ENV'] = originalEnv;
     });

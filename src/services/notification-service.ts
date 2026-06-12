@@ -1,6 +1,6 @@
 import { Notification, NotificationType, mapNotificationFromEntity } from '../utils/entity-mapper.js';
 import { notificationRepository, NotificationEntity } from '../repositories/notification-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository-pg.js';
+import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
 

@@ -578,16 +578,17 @@ export async function isUserVerified(userId: string): Promise<boolean> {
 }
 
 /**
- * Map Didit session status to our KYC status
- * The Didit session API returns different values than the webhook:
- *   Session API: 'Not Started', 'In Progress', 'Completed', 'Expired', 'Cancelled'
- *   Webhook:     'Approved', 'Declined', 'In Review'
+ * Map Didit session status to our KYC status (v3)
+ * Status strings: 'Not Started', 'In Progress', 'Awaiting User', 'In Review',
+ * 'Approved', 'Declined', 'Resubmitted', 'Abandoned', 'Expired', 'Kyc Expired'
  */
 function mapDiditStatusToKycStatus(diditStatus: string): KycStatus {
   switch (diditStatus) {
     case 'Not Started':
       return 'pending';
     case 'In Progress':
+    case 'Awaiting User':
+    case 'Resubmitted':
       return 'in_progress';
     case 'Completed':
     case 'Approved':
@@ -597,12 +598,11 @@ function mapDiditStatusToKycStatus(diditStatus: string): KycStatus {
     case 'In Review':
       return 'completed'; // Needs admin review
     case 'Expired':
-      return 'expired';
     case 'Abandoned':
+    case 'Kyc Expired':
       return 'expired';
     case 'Cancelled':
     default:
-      // Log unexpected statuses instead of silently defaulting
       /* istanbul ignore next */
       logger.warn('Unknown Didit status, defaulting to pending', { diditStatus });
       /* istanbul ignore next */

@@ -5,6 +5,7 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 
 const mockSubmitTransaction = jest.fn<(...args: any[]) => Promise<any>>();
 const mockConfirmTransaction = jest.fn<(...args: any[]) => Promise<any>>();
+const mockPoolQuery = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () => ({
   submitTransaction: mockSubmitTransaction,
@@ -12,10 +13,18 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () 
   generateWalletAddress: jest.fn(() => '0x' + 'a'.repeat(40)),
 }));
 
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockPoolQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockPoolQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 describe('Agreement Contract', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (global as any).mockPool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   const importModule = async () => {
@@ -76,7 +85,7 @@ describe('Agreement Contract', () => {
     it('should create agreement successfully', async () => {
       const { createAgreementOnBlockchain } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({ rows: [], rowCount: 0 })
         .mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
@@ -111,7 +120,7 @@ describe('Agreement Contract', () => {
     it('should throw when agreement already exists', async () => {
       const { createAgreementOnBlockchain } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ contract_id_hash: '0xhash' }],
         rowCount: 1,
       });
@@ -136,7 +145,7 @@ describe('Agreement Contract', () => {
     it('should throw when transaction confirmation fails', async () => {
       const { createAgreementOnBlockchain } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
       mockSubmitTransaction.mockResolvedValueOnce({ id: 'tx-1' });
       mockConfirmTransaction.mockResolvedValueOnce(null);
 
@@ -162,7 +171,7 @@ describe('Agreement Contract', () => {
     it('should sign agreement successfully', async () => {
       const { signAgreement } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({
           rows: [{
             contract_id_hash: '0xhash',
@@ -198,7 +207,7 @@ describe('Agreement Contract', () => {
     it('should throw when agreement not found', async () => {
       const { signAgreement } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       await expect(signAgreement('contract-1', '0xWallet')).rejects.toThrow('Agreement not found');
     });
@@ -206,7 +215,7 @@ describe('Agreement Contract', () => {
     it('should throw when agreement not pending', async () => {
       const { signAgreement } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash',
           terms_hash: '0xterms',
@@ -230,7 +239,7 @@ describe('Agreement Contract', () => {
     it('should throw when signer is not a party', async () => {
       const { signAgreement } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash',
           terms_hash: '0xterms',
@@ -256,7 +265,7 @@ describe('Agreement Contract', () => {
     it('should complete agreement successfully', async () => {
       const { completeAgreement } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({
           rows: [{
             contract_id_hash: '0xhash',
@@ -291,7 +300,7 @@ describe('Agreement Contract', () => {
     it('should throw when agreement not active', async () => {
       const { completeAgreement } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash',
           terms_hash: '0xterms',
@@ -317,7 +326,7 @@ describe('Agreement Contract', () => {
     it('should dispute agreement successfully', async () => {
       const { disputeAgreement } = await importModule();
 
-      (global as any).mockPool.query
+      mockPoolQuery
         .mockResolvedValueOnce({
           rows: [{
             contract_id_hash: '0xhash',
@@ -354,7 +363,7 @@ describe('Agreement Contract', () => {
     it('should return agreement when found', async () => {
       const { getAgreementFromBlockchain } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash',
           terms_hash: '0xterms',
@@ -381,7 +390,7 @@ describe('Agreement Contract', () => {
     it('should return null when not found', async () => {
       const { getAgreementFromBlockchain } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await getAgreementFromBlockchain('contract-1');
 
@@ -401,7 +410,7 @@ describe('Agreement Contract', () => {
       };
       const termsHash = generateTermsHash(terms);
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash',
           terms_hash: termsHash,
@@ -426,7 +435,7 @@ describe('Agreement Contract', () => {
     it('should return false when terms do not match', async () => {
       const { verifyAgreementTerms } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash',
           terms_hash: '0xdifferent',
@@ -456,7 +465,7 @@ describe('Agreement Contract', () => {
     it('should return false when agreement not found', async () => {
       const { verifyAgreementTerms } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await verifyAgreementTerms('contract-1', {
         projectTitle: 'Test',
@@ -472,7 +481,7 @@ describe('Agreement Contract', () => {
     it('should return true when both parties signed', async () => {
       const { isAgreementFullySigned } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash',
           terms_hash: '0xterms',
@@ -497,7 +506,7 @@ describe('Agreement Contract', () => {
     it('should return false when only employer signed', async () => {
       const { isAgreementFullySigned } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash',
           terms_hash: '0xterms',
@@ -522,7 +531,7 @@ describe('Agreement Contract', () => {
     it('should return false when agreement not found', async () => {
       const { isAgreementFullySigned } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await isAgreementFullySigned('contract-1');
       expect(result).toBe(false);
@@ -533,7 +542,7 @@ describe('Agreement Contract', () => {
     it('should return user agreements', async () => {
       const { getUserAgreements } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{
           contract_id_hash: '0xhash1',
           terms_hash: '0xterms1',
@@ -558,7 +567,7 @@ describe('Agreement Contract', () => {
     it('should return empty array on error', async () => {
       const { getUserAgreements } = await importModule();
 
-      (global as any).mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockPoolQuery.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getUserAgreements('0xWallet');
       expect(result).toHaveLength(0);
@@ -570,7 +579,7 @@ describe('Agreement Contract', () => {
       const originalNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = 'test';
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { clearBlockchainAgreements } = await importModule();
       await expect(clearBlockchainAgreements()).resolves.not.toThrow();
@@ -584,7 +593,7 @@ describe('Agreement Contract', () => {
 
       const { clearBlockchainAgreements } = await importModule();
       await clearBlockchainAgreements();
-      expect((global as any).mockPool.query).not.toHaveBeenCalled();
+      expect(mockPoolQuery).not.toHaveBeenCalled();
 
       process.env.NODE_ENV = originalNodeEnv;
     });

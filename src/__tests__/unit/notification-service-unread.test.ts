@@ -44,7 +44,6 @@ jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
   generateId: () => 'generated-id',
 }));
 
-jest.unstable_mockModule(resolveModule('src/repositories/base-repository-pg.ts'), () => ({}));
 
 const { getUnreadNotificationsByUser } = await import('../../services/notification-service.js');
 

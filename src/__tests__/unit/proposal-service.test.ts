@@ -80,6 +80,16 @@ jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), ()
   signAgreement: jest.fn<any>().mockResolvedValue(undefined),
 }));
 
+const mockQuery = jest.fn();
+(globalThis as any).mockPool = { query: mockQuery };
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 // Import after mocking
 const {
   submitProposal,

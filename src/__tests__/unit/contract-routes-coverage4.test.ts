@@ -59,7 +59,11 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: jest.fn() },
+  pool: new Proxy({}, { get: () => { throw new Error('Database not available'); } }),
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: jest.fn().mockRejectedValue(new Error('Database not available')),
+  queryOne: jest.fn().mockRejectedValue(new Error('Database not available')),
+  initializeDatabase: jest.fn(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -82,12 +86,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   userRepository: {
     getUserById: jest.fn(),
   },
-}));
-
-jest.unstable_mockModule(resolveModule('src/repositories/base-repository-pg.ts'), () => ({
-  PaginatedResult: {},
-  QueryOptions: {},
-  BaseRepositoryPg: class BaseRepositoryPg {},
 }));
 
 jest.unstable_mockModule(resolveModule('src/repositories/notification-repository.ts'), () => ({

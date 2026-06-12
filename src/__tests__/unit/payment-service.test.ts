@@ -48,6 +48,16 @@ const mockDisputeRepo = {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// Override database mock with controllable pool
+const mockQuery = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 // Mock Appwrite client - return the global mock so beforeEach can modify it
 
 // Mock repositories

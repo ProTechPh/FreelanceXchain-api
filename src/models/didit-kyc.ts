@@ -6,12 +6,19 @@
  * We only store session info and final decision locally.
  */
 
-// Session Management Types
+// Session Management Types (v3)
 export type DiditSessionStatus = 
   | 'Not Started'
   | 'In Progress'
-  | 'Completed'
+  | 'Awaiting User'
+  | 'In Review'
+  | 'Approved'
+  | 'Declined'
+  | 'Resubmitted'
+  | 'Abandoned'
   | 'Expired'
+  | 'Kyc Expired'
+  | 'Completed'
   | 'Cancelled';
 
 export type DiditVerificationDecision = 'approved' | 'declined' | 'review';
@@ -50,20 +57,27 @@ export type DiditWebhookType = 'status.updated' | 'data.updated';
 export type DiditWebhookStatus = 
   | 'Not Started'
   | 'In Progress'
+  | 'Awaiting User'
+  | 'In Review'
   | 'Approved'
   | 'Declined'
-  | 'In Review'
+  | 'Resubmitted'
+  | 'Abandoned'
   | 'Expired'
-  | 'Abandoned';
+  | 'Kyc Expired';
 
 export type DiditWebhookPayload = {
+  event_id: string;
   webhook_type: DiditWebhookType;
   session_id: string;
   status: DiditWebhookStatus;
   timestamp: number;
   created_at: number;
+  application_id?: string;
   vendor_data?: string;
   workflow_id?: string;
+  workflow_version?: number;
+  session_kind?: string;
   metadata?: Record<string, string | number | boolean>;
   decision?: DiditDecisionData;
 };

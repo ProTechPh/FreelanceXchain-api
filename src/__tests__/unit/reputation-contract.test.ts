@@ -5,6 +5,7 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 
 const mockSubmitTransaction = jest.fn<(...args: any[]) => Promise<any>>();
 const mockConfirmTransaction = jest.fn<(...args: any[]) => Promise<any>>();
+const mockPoolQuery = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () => ({
   submitTransaction: mockSubmitTransaction,
@@ -12,10 +13,18 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () 
   generateWalletAddress: jest.fn(() => '0x' + 'a'.repeat(40)),
 }));
 
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockPoolQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockPoolQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
 describe('Reputation Contract', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (global as any).mockPool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   const importModule = async () => {
@@ -64,7 +73,7 @@ describe('Reputation Contract', () => {
         blockNumber: 123,
         gasUsed: BigInt(21000),
       });
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 1 });
 
       const result = await submitRatingToBlockchain({
         contractId: 'contract-1',
@@ -139,7 +148,7 @@ describe('Reputation Contract', () => {
     it('should return ratings for user', async () => {
       const { getRatingsFromBlockchain } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [
           { id: 'r-1', contract_id: 'c-1', rater_id: 'u-1', ratee_id: 'u-2', rating: 5, comment: 'Great', timestamp: 1000, transaction_hash: '0xtx1' },
           { id: 'r-2', contract_id: 'c-2', rater_id: 'u-3', ratee_id: 'u-2', rating: 4, comment: null, timestamp: 2000, transaction_hash: '0xtx2' },
@@ -157,7 +166,7 @@ describe('Reputation Contract', () => {
     it('should return empty array on error', async () => {
       const { getRatingsFromBlockchain } = await importModule();
 
-      (global as any).mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockPoolQuery.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getRatingsFromBlockchain('u-1');
       expect(result).toHaveLength(0);
@@ -168,7 +177,7 @@ describe('Reputation Contract', () => {
     it('should return ratings given by user', async () => {
       const { getRatingsGivenByUser } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ id: 'r-1', contract_id: 'c-1', rater_id: 'u-1', ratee_id: 'u-2', rating: 5, comment: null, timestamp: 1000, transaction_hash: '0xtx' }],
         rowCount: 1,
       });
@@ -180,7 +189,7 @@ describe('Reputation Contract', () => {
     it('should return empty array on error', async () => {
       const { getRatingsGivenByUser } = await importModule();
 
-      (global as any).mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockPoolQuery.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getRatingsGivenByUser('u-1');
       expect(result).toHaveLength(0);
@@ -191,7 +200,7 @@ describe('Reputation Contract', () => {
     it('should return rating by id', async () => {
       const { getRatingById } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ id: 'r-1', contract_id: 'c-1', rater_id: 'u-1', ratee_id: 'u-2', rating: 5, comment: null, timestamp: 1000, transaction_hash: '0xtx' }],
         rowCount: 1,
       });
@@ -204,7 +213,7 @@ describe('Reputation Contract', () => {
     it('should return null when not found', async () => {
       const { getRatingById } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await getRatingById('r-1');
       expect(result).toBeNull();
@@ -215,7 +224,7 @@ describe('Reputation Contract', () => {
     it('should return ratings for contract', async () => {
       const { getRatingsByContract } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [
           { id: 'r-1', contract_id: 'c-1', rater_id: 'u-1', ratee_id: 'u-2', rating: 5, comment: null, timestamp: 1000, transaction_hash: '0xtx' },
         ],
@@ -229,7 +238,7 @@ describe('Reputation Contract', () => {
     it('should return empty array on error', async () => {
       const { getRatingsByContract } = await importModule();
 
-      (global as any).mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockPoolQuery.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getRatingsByContract('c-1');
       expect(result).toHaveLength(0);
@@ -277,7 +286,7 @@ describe('Reputation Contract', () => {
     it('should compute aggregate score for user', async () => {
       const { getAggregateScoreFromBlockchain } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [
           { id: 'r-1', contract_id: 'c-1', rater_id: 'u-1', ratee_id: 'u-2', rating: 5, comment: null, timestamp: Date.now(), transaction_hash: '0xtx' },
         ],
@@ -293,7 +302,7 @@ describe('Reputation Contract', () => {
     it('should return true when rating exists', async () => {
       const { hasUserRatedForContract } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ count: '1' }],
         rowCount: 1,
       });
@@ -305,7 +314,7 @@ describe('Reputation Contract', () => {
     it('should return false when no rating exists', async () => {
       const { hasUserRatedForContract } = await importModule();
 
-      (global as any).mockPool.query.mockResolvedValueOnce({
+      mockPoolQuery.mockResolvedValueOnce({
         rows: [{ count: '0' }],
         rowCount: 1,
       });
@@ -320,7 +329,7 @@ describe('Reputation Contract', () => {
       const originalNodeEnv = process.env.NODE_ENV;
       process.env.NODE_ENV = 'test';
 
-      (global as any).mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const { clearBlockchainRatings } = await importModule();
       await expect(clearBlockchainRatings()).resolves.not.toThrow();
@@ -334,7 +343,7 @@ describe('Reputation Contract', () => {
 
       const { clearBlockchainRatings } = await importModule();
       await clearBlockchainRatings();
-      expect((global as any).mockPool.query).not.toHaveBeenCalled();
+      expect(mockPoolQuery).not.toHaveBeenCalled();
 
       process.env.NODE_ENV = originalNodeEnv;
     });

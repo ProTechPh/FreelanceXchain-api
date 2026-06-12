@@ -1,7 +1,7 @@
 import { projectRepository, ProjectEntity, MilestoneEntity, ProjectStatus, MilestoneStatus } from '../repositories/project-repository.js';
 import { proposalRepository } from '../repositories/proposal-repository.js';
 import { skillRepository } from '../repositories/skill-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository-pg.js';
+import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 import type { ServiceResult } from '../types/service-result.js';

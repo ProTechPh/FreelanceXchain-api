@@ -17,13 +17,20 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-describe('Admin Service', () => {
-  let mockPool: any;
+const mockQuery = jest.fn<any>();
 
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockQuery },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
+
+describe('Admin Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
+    mockQuery.mockReset();
   });
 
   const importModule = async () => {
@@ -34,7 +41,7 @@ describe('Admin Service', () => {
     it('should return platform statistics successfully', async () => {
       const { getPlatformStats } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
+      mockQuery.mockResolvedValueOnce({
         rows: [{
           total_users: '10',
           total_freelancers: '6',
@@ -64,7 +71,7 @@ describe('Admin Service', () => {
     it('should handle thrown errors gracefully', async () => {
       const { getPlatformStats } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockQuery.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getPlatformStats();
 
@@ -77,7 +84,7 @@ describe('Admin Service', () => {
     it('should handle zero counts correctly', async () => {
       const { getPlatformStats } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
+      mockQuery.mockResolvedValueOnce({
         rows: [{
           total_users: '0',
           total_freelancers: '0',
@@ -112,7 +119,7 @@ describe('Admin Service', () => {
         { id: 'user-2', email: 'user2@test.com', name: 'User Two', role: 'employer' },
       ];
 
-      mockPool.query
+      mockQuery
         .mockResolvedValueOnce({ rows: mockUsers, rowCount: 2 })
         .mockResolvedValueOnce({ rows: [{ count: '2' }], rowCount: 1 });
 
@@ -128,7 +135,7 @@ describe('Admin Service', () => {
     it('should filter users by role', async () => {
       const { getUserManagement } = await importModule();
 
-      mockPool.query
+      mockQuery
         .mockResolvedValueOnce({ rows: [{ id: 'user-1', role: 'freelancer' }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [{ count: '1' }], rowCount: 1 });
 
@@ -143,7 +150,7 @@ describe('Admin Service', () => {
     it('should search users by email or name', async () => {
       const { getUserManagement } = await importModule();
 
-      mockPool.query
+      mockQuery
         .mockResolvedValueOnce({ rows: [{ id: 'user-1', email: 'john@test.com', name: 'John Doe' }], rowCount: 1 })
         .mockResolvedValueOnce({ rows: [{ count: '1' }], rowCount: 1 });
 
@@ -158,7 +165,7 @@ describe('Admin Service', () => {
     it('should handle database errors', async () => {
       const { getUserManagement } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('Database error'));
+      mockQuery.mockRejectedValueOnce(new Error('Database error'));
 
       const result = await getUserManagement();
 
@@ -174,7 +181,7 @@ describe('Admin Service', () => {
       const { suspendUser } = await importModule();
 
       const mockUser = { id: 'user-1', is_suspended: true, suspension_reason: 'Violation' };
-      mockPool.query.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
 
       const result = await suspendUser('user-1', 'Violation');
 
@@ -187,7 +194,7 @@ describe('Admin Service', () => {
     it('should handle database errors', async () => {
       const { suspendUser } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('Update failed'));
+      mockQuery.mockRejectedValueOnce(new Error('Update failed'));
 
       const result = await suspendUser('user-1', 'Reason');
 
@@ -203,7 +210,7 @@ describe('Admin Service', () => {
       const { unsuspendUser } = await importModule();
 
       const mockUser = { id: 'user-1', is_suspended: false, suspension_reason: null };
-      mockPool.query.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
 
       const result = await unsuspendUser('user-1');
 
@@ -219,7 +226,7 @@ describe('Admin Service', () => {
       const { verifyUser } = await importModule();
 
       const mockUser = { id: 'user-1', is_verified: true };
-      mockPool.query.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
 
       const result = await verifyUser('user-1');
 
@@ -235,7 +242,7 @@ describe('Admin Service', () => {
       const { updateUser } = await importModule();
 
       const mockUser = { id: 'user-1', name: 'New Name' };
-      mockPool.query.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
 
       const result = await updateUser('user-1', { name: 'New Name' });
 
@@ -249,7 +256,7 @@ describe('Admin Service', () => {
       const { updateUser } = await importModule();
 
       const mockUser = { id: 'user-1', role: 'admin' };
-      mockPool.query.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
 
       const result = await updateUser('user-1', { role: 'admin' });
 
@@ -263,7 +270,7 @@ describe('Admin Service', () => {
       const { updateUser } = await importModule();
 
       const mockUser = { id: 'user-1', is_suspended: true };
-      mockPool.query.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [mockUser], rowCount: 1 });
 
       const result = await updateUser('user-1', { isActive: true });
 
@@ -280,7 +287,7 @@ describe('Admin Service', () => {
         { id: 'd-2', status: 'resolved' },
       ];
 
-      mockPool.query.mockResolvedValueOnce({ rows: mockDisputes, rowCount: 2 });
+      mockQuery.mockResolvedValueOnce({ rows: mockDisputes, rowCount: 2 });
 
       const result = await getDisputeManagement();
 
@@ -296,7 +303,7 @@ describe('Admin Service', () => {
     it('should filter disputes by status', async () => {
       const { getDisputeManagement } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'd-1', status: 'pending' }], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'd-1', status: 'pending' }], rowCount: 1 });
 
       const result = await getDisputeManagement({ status: 'pending' });
 
@@ -309,7 +316,7 @@ describe('Admin Service', () => {
     it('should handle empty disputes array', async () => {
       const { getDisputeManagement } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
 
       const result = await getDisputeManagement();
 
@@ -325,7 +332,7 @@ describe('Admin Service', () => {
     it('should return healthy system status', async () => {
       const { getSystemHealth } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ result: 1 }], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [{ result: 1 }], rowCount: 1 });
 
       const result = await getSystemHealth();
 
@@ -341,7 +348,7 @@ describe('Admin Service', () => {
     it('should detect unhealthy database', async () => {
       const { getSystemHealth } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB connection lost'));
+      mockQuery.mockRejectedValueOnce(new Error('DB connection lost'));
 
       const result = await getSystemHealth();
 
@@ -355,7 +362,7 @@ describe('Admin Service', () => {
     it('should detect unhealthy storage', async () => {
       const { getSystemHealth } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ result: 1 }], rowCount: 1 });
+      mockQuery.mockResolvedValueOnce({ rows: [{ result: 1 }], rowCount: 1 });
 
       const result = await getSystemHealth();
 

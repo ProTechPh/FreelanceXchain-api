@@ -40,11 +40,11 @@ export async function createVerificationSession(
   request: DiditCreateSessionRequest
 ): Promise<DiditClientResult<DiditCreateSessionResponse>> {
   try {
-    const response = await fetch(`${DIDIT_API_URL}/v2/session/`, {
+    const response = await fetch(`${DIDIT_API_URL}/v3/session/`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Api-Key': DIDIT_API_KEY ?? '',
+        'x-api-key': DIDIT_API_KEY ?? '',
       },
       body: JSON.stringify(request),
     });
@@ -104,10 +104,10 @@ export async function getVerificationDecision(
     // Sanitize session ID to prevent SSRF attacks
     const sanitizedSessionId = sanitizeSessionId(sessionId);
     
-    const response = await fetch(`${DIDIT_API_URL}/v2/session/${sanitizedSessionId}/decision/`, {
+    const response = await fetch(`${DIDIT_API_URL}/v3/session/${sanitizedSessionId}/decision/`, {
       method: 'GET',
       headers: {
-        'X-Api-Key': DIDIT_API_KEY ?? '',
+        'x-api-key': DIDIT_API_KEY ?? '',
       },
     });
 
@@ -171,10 +171,10 @@ export async function getVerificationSession(sessionId: string): Promise<DiditCl
     // Sanitize session ID to prevent SSRF attacks
     const sanitizedSessionId = sanitizeSessionId(sessionId);
     
-    const response = await fetch(`${DIDIT_API_URL}/v2/session/${sanitizedSessionId}/`, {
+    const response = await fetch(`${DIDIT_API_URL}/v3/session/${sanitizedSessionId}/`, {
       method: 'GET',
       headers: {
-        'X-Api-Key': DIDIT_API_KEY ?? '',
+        'x-api-key': DIDIT_API_KEY ?? '',
       },
     });
 
@@ -236,8 +236,38 @@ export async function getVerificationSession(sessionId: string): Promise<DiditCl
 }
 
 /**
- * Verify webhook signature from Didit
- * Uses HMAC-SHA256 with timestamp for replay protection
+ * Normalize whole-number floats to integers (Didit v3 canonical JSON requirement)
+ */
+function shortenFloats(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(shortenFloats);
+  if (v && typeof v === 'object') {
+    return Object.fromEntries(
+      Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, shortenFloats(x)])
+    );
+  }
+  if (typeof v === 'number' && !Number.isInteger(v) && v % 1 === 0) return Math.trunc(v);
+  return v;
+}
+
+/**
+ * Recursively sort object keys (Didit v3 canonical JSON requirement)
+ */
+function sortKeys(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(sortKeys);
+  if (v && typeof v === 'object') {
+    return Object.keys(v as object)
+      .sort()
+      .reduce<Record<string, unknown>>((acc, k) => {
+        acc[k] = sortKeys((v as Record<string, unknown>)[k]);
+        return acc;
+      }, {});
+  }
+  return v;
+}
+
+/**
+ * Verify webhook signature from Didit (v3 canonical JSON approach)
+ * Uses X-Signature-V2 (HMAC-SHA256 of canonical JSON) + X-Timestamp (replay protection)
  */
 export function verifyWebhookSignature(
   payload: string,
@@ -267,7 +297,6 @@ export function verifyWebhookSignature(
       hasTimestamp: !!timestamp,
       nodeEnv: process.env['NODE_ENV'],
     });
-    // This prevents trivial forgery in staging environments
     return false;
   }
 
@@ -292,17 +321,13 @@ export function verifyWebhookSignature(
     return false;
   }
 
-  // Try different signature formats that Didit might use
-  const possiblePayloads = [
-    `${timestamp}${payload}`,           // timestamp + payload
-    payload,                             // just payload
-    `${timestamp}.${payload}`,           // timestamp.payload
-  ];
-
-  for (const signedPayload of possiblePayloads) {
+  // V3 canonical JSON: shortenFloats → sortKeys → JSON.stringify (unescaped Unicode)
+  try {
+    const parsed = JSON.parse(payload);
+    const canonical = JSON.stringify(sortKeys(shortenFloats(parsed)));
     const expectedSignature = crypto
       .createHmac('sha256', secret)
-      .update(signedPayload)
+      .update(canonical, 'utf8')
       .digest('hex');
 
     const normalizedSignature = signature.startsWith('sha256=')
@@ -318,11 +343,13 @@ export function verifyWebhookSignature(
         return true;
       }
     } catch {
-      // Length mismatch, try next
+      // Length mismatch
     }
+  } catch {
+    // JSON parse failure
+    logger.security('Failed to parse webhook payload for signature verification');
   }
 
-  // Log signature verification failure
   logger.security('Webhook signature verification failed', {
     timestampAge: Math.abs(now - timestampNum),
   });

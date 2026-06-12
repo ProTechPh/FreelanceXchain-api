@@ -170,42 +170,44 @@ describe('Didit Client - Extended Tests', () => {
       process.env.DIDIT_WEBHOOK_SECRET = originalSecret;
     });
 
-    it('should verify with timestamp.payload format', async () => {
+    it('should verify with canonical JSON format (v3)', async () => {
       const originalSecret = process.env['DIDIT_WEBHOOK_SECRET'];
       process.env['DIDIT_WEBHOOK_SECRET'] = 'test-webhook-secret';
       const { verifyWebhookSignature } = await importModule();
 
-      const payload = JSON.stringify({ session_id: 'test' });
+      const parsed = { session_id: 'test' };
+      const canonical = JSON.stringify(parsed); // Already sorted for single key
       const secret = 'test-webhook-secret';
       const timestamp = Math.floor(Date.now() / 1000).toString();
 
       const crypto = await import('crypto');
       const expectedSignature = crypto
         .createHmac('sha256', secret)
-        .update(`${timestamp}.${payload}`)
+        .update(canonical, 'utf8')
         .digest('hex');
 
-      const result = verifyWebhookSignature(payload, expectedSignature, timestamp);
+      const result = verifyWebhookSignature(JSON.stringify(parsed), expectedSignature, timestamp);
       process.env['DIDIT_WEBHOOK_SECRET'] = originalSecret;
       expect(result).toBe(true);
     });
 
-    it('should verify with just payload format', async () => {
+    it('should verify with sorted keys canonical JSON format', async () => {
       const originalSecret = process.env['DIDIT_WEBHOOK_SECRET'];
       process.env['DIDIT_WEBHOOK_SECRET'] = 'test-webhook-secret';
       const { verifyWebhookSignature } = await importModule();
 
-      const payload = JSON.stringify({ session_id: 'test' });
+      const parsed = { z_key: 'last', a_key: 'first', m_key: 'middle' };
+      const canonical = JSON.stringify({ a_key: 'first', m_key: 'middle', z_key: 'last' });
       const secret = 'test-webhook-secret';
       const timestamp = Math.floor(Date.now() / 1000).toString();
 
       const crypto = await import('crypto');
       const expectedSignature = crypto
         .createHmac('sha256', secret)
-        .update(payload)
+        .update(canonical, 'utf8')
         .digest('hex');
 
-      const result = verifyWebhookSignature(payload, expectedSignature, timestamp);
+      const result = verifyWebhookSignature(JSON.stringify(parsed), expectedSignature, timestamp);
       process.env['DIDIT_WEBHOOK_SECRET'] = originalSecret;
       expect(result).toBe(true);
     });

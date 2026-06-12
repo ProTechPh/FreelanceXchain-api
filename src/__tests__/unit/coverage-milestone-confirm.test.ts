@@ -6,6 +6,15 @@ const resolveModule = (p: string) => path.resolve(process.cwd(), p);
 
 const mockSubmitTx = jest.fn() as jest.Mock<any>;
 const mockConfirmTx = jest.fn() as jest.Mock<any>;
+const mockPoolQuery = jest.fn<any>();
+
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: { query: mockPoolQuery, connect: jest.fn(), on: jest.fn() },
+  isPostgresAvailable: jest.fn().mockReturnValue(false),
+  query: mockPoolQuery,
+  queryOne: jest.fn(),
+  initializeDatabase: jest.fn(),
+}));
 
 function makeConfirmed(hash = '0xabc123', blockNumber = 1) {
   return {
@@ -48,12 +57,12 @@ describe('Milestone Registry - confirm gap', () => {
     jest.clearAllMocks();
     mockSubmitTx.mockResolvedValue({ id: 'tx-1' });
     mockConfirmTx.mockResolvedValue(makeConfirmed());
-    (global as any).mockPool.query.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
   });
 
   it('approveMilestoneOnRegistry should throw when confirm returns null (line 213)', async () => {
     const { approveMilestoneOnRegistry } = await import('../../services/milestone-registry.js');
-    (global as any).mockPool.query.mockResolvedValueOnce({
+    mockPoolQuery.mockResolvedValueOnce({
       rows: [makeRegistryRow('submitted')],
       rowCount: 1,
     });
@@ -65,7 +74,7 @@ describe('Milestone Registry - confirm gap', () => {
 
   it('rejectMilestoneOnRegistry should throw when confirm returns null (line 271)', async () => {
     const { rejectMilestoneOnRegistry } = await import('../../services/milestone-registry.js');
-    (global as any).mockPool.query.mockResolvedValueOnce({
+    mockPoolQuery.mockResolvedValueOnce({
       rows: [makeRegistryRow('submitted')],
       rowCount: 1,
     });

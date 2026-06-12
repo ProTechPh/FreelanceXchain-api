@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
@@ -136,6 +137,11 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () =>
   refundMilestone: mockEscrowOps.refundMilestone,
 }));
 
+const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: mockPoolObj,
+}));
+
 // Import after mocking
 const {
   createDispute,
@@ -154,7 +160,6 @@ describe('Dispute Service - Property-Based Tests', () => {
     mockNotificationRepo.clear();
 
     // Mock pool.connect for transaction support in createDispute
-    const mockPoolObj = (globalThis as any).mockPool;
     const mockClientQuery = jest.fn<any>().mockImplementation(async (text: string, params?: any[]) => {
       if (typeof text === 'string' && text.includes('SELECT id FROM project_milestones')) {
         return { rows: [{ id: params?.[0] || 'm-1' }], rowCount: 1 };
@@ -359,7 +364,6 @@ describe('Dispute Service - Unit Tests', () => {
     mockNotificationRepo.clear();
 
     // Mock pool.connect for transaction support in createDispute
-    const mockPoolObj = (globalThis as any).mockPool;
     const mockClientQuery = jest.fn<any>().mockImplementation(async (text: string, params?: any[]) => {
       if (typeof text === 'string' && text.includes('SELECT id FROM project_milestones')) {
         return { rows: [{ id: params?.[0] || 'm-1' }], rowCount: 1 };

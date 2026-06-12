@@ -5,13 +5,11 @@
  */
 
 import { ID, Account, Models, OAuthProvider, AuthenticatorType } from 'node-appwrite';
-import { randomBytes, randomUUID, createCipheriv, createDecipheriv, scryptSync } from 'crypto';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { config } from '../config/env.js';
 import { createUserClient, users } from '../config/appwrite.js';
 import { UserRole } from '../models/user.js';
 import { logger } from '../config/logger.js';
-import { pool } from '../config/database.js';
 import {
   RegisterInput,
   LoginInput,
@@ -22,149 +20,6 @@ import {
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
-
-const MFA_ENCRYPTION_KEY = process.env['MFA_ENCRYPTION_KEY'];
-if (!MFA_ENCRYPTION_KEY) {
-  logger.warn('MFA_ENCRYPTION_KEY not set — falling back to JWT_SECRET (insecure in production)');
-}
-const MFA_ENCRYPTION_ALGO = 'aes-256-gcm';
-
-function getMfaEncryptionKey(): Buffer {
-  const keyMaterial = MFA_ENCRYPTION_KEY ?? config.jwt.secret;
-  return scryptSync(keyMaterial, 'mfa-salt-freelancex', 32);
-}
-
-function encryptToken(plaintext: string): string {
-  const key = getMfaEncryptionKey();
-  const iv = randomBytes(12); // AES-256-GCM requires exactly 12-byte IV
-  const cipher = createCipheriv(MFA_ENCRYPTION_ALGO, key, iv);
-  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
-  encrypted += cipher.final('hex');
-  const authTag = cipher.getAuthTag().toString('hex');
-  return `${iv}:${authTag}:${encrypted}`;
-}
-
-function decryptToken(encrypted: string): string {
-  const key = getMfaEncryptionKey();
-  const parts = encrypted.split(':');
-  if (parts.length !== 3) {
-    throw new Error('Invalid encrypted token format');
-  }
-  const [ivHex, authTagHex, data] = parts as [string, string, string];
-  const ivBuf = Buffer.from(ivHex, 'hex');
-  const decipher = createDecipheriv(MFA_ENCRYPTION_ALGO, key, ivBuf);
-  decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
-  const decrypted = decipher.update(data, 'hex', 'utf8') + decipher.final('utf8');
-  return decrypted;
-}
-
-// ============================================================
-// MFA Session Management
-// Uses PostgreSQL for persistence
-// ============================================================
-const MFA_SESSION_TTL_MS = 5 * 60 * 1000; // 5 minutes
-
-type PendingMfaSession = {
-  accessToken: string;
-  refreshToken: string;
-  userId: string;
-  factorId: string;
-  expiresAt: number;
-};
-
-function generateMfaSessionId(): string {
-  return `mfa_${randomUUID()}`;
-}
-
-/**
- * Store a pending MFA session in PostgreSQL
- */
-async function storeMfaSession(sessionId: string, session: PendingMfaSession): Promise<void> {
-  try {
-    await pool.query(
-      `INSERT INTO pending_mfa_sessions (session_id, access_token, refresh_token, user_id, factor_id, expires_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (session_id) DO UPDATE SET
-         access_token = EXCLUDED.access_token,
-         refresh_token = EXCLUDED.refresh_token,
-         expires_at = EXCLUDED.expires_at`,
-      [
-        sessionId,
-        encryptToken(session.accessToken),
-        encryptToken(session.refreshToken),
-        session.userId,
-        session.factorId,
-        session.expiresAt,
-      ]
-    );
-  } catch (error: any) {
-    logger.error('Failed to store MFA session', { error: error.message, sessionId });
-    throw new Error(`Failed to store MFA session: ${error.message}`);
-  }
-}
-
-/**
- * Retrieve and consume a pending MFA session
- */
-export async function consumeMfaSession(mfaSessionId: string): Promise<PendingMfaSession | null> {
-  try {
-    // Atomic delete-and-return
-    const result = await pool.query(
-      `DELETE FROM pending_mfa_sessions 
-       WHERE session_id = $1 
-       RETURNING access_token, refresh_token, user_id, factor_id, expires_at`,
-      [mfaSessionId]
-    );
-
-    if (result.rows.length === 0) {
-      return null;
-    }
-
-    const row = result.rows[0];
-
-    // Check expiry
-    if (row.expires_at < Date.now()) {
-      return null;
-    }
-
-    // Decrypt tokens
-    let accessToken: string;
-    let refreshToken: string;
-    try {
-      accessToken = decryptToken(row.access_token);
-      refreshToken = decryptToken(row.refresh_token);
-    } catch {
-      logger.error('Failed to decrypt MFA session tokens');
-      return null;
-    }
-
-    return {
-      accessToken,
-      refreshToken,
-      userId: row.user_id,
-      factorId: row.factor_id,
-      expiresAt: row.expires_at,
-    };
-  } catch (error: any) {
-    logger.error('Failed to consume MFA session', { error: error.message, mfaSessionId });
-    return null;
-  }
-}
-
-/**
- * Clean up expired MFA sessions periodically
- */
-async function cleanupExpiredMfaSessions(): Promise<void> {
-  try {
-    await pool.query('DELETE FROM pending_mfa_sessions WHERE expires_at < $1', [Date.now()]);
-  } catch (error: any) {
-    logger.error('Failed to cleanup expired MFA sessions', { error: error.message });
-  }
-}
-
-// Clean up expired sessions every 60 seconds
-const mfaCleanupTimer = setInterval(cleanupExpiredMfaSessions, 60_000);
-mfaCleanupTimer.unref(); // Don't prevent graceful shutdown
 
 export type PasswordValidationResult = {
   valid: boolean;
@@ -288,7 +143,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       refreshToken: session.secret, // Same for now, can be enhanced
     };
   } catch (error: any) {
-    // Compensate: if Appwrite user was created but PostgreSQL or session failed, delete the Appwrite user
+    // Compensate: if Appwrite user was created but session failed, delete the Appwrite user
     if (appwriteUser?.$id) {
       try {
         await users.delete(appwriteUser.$id);
@@ -335,6 +190,24 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
     // Create email session
     const session = await account.createEmailPasswordSession(normalizedEmail, input.password);
 
+    // Check if MFA is required by calling account.get()
+    // Appwrite throws user_more_factors_required if MFA is enabled
+    try {
+      await account.get();
+    } catch (mfaError: any) {
+      if (mfaError.type === 'user_more_factors_required') {
+        // MFA is required — return the session token so frontend can complete MFA
+        return {
+          code: 'MFA_REQUIRED',
+          message: 'Multi-factor authentication required',
+          mfaRequired: true,
+          accessToken: session.secret,
+        };
+      }
+      // Other error — rethrow
+      throw mfaError;
+    }
+
     // Get user from database
     const publicUser = await userRepository.getUserByEmail(normalizedEmail);
 
@@ -344,10 +217,6 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
         message: 'User profile not found',
       };
     }
-
-    // Check for MFA (Appwrite MFA support)
-    // Note: Appwrite MFA implementation would go here
-    // For now, we'll skip MFA and return the session
 
     return await createAuthResult(publicUser, session.secret, session.secret);
   } catch (error: any) {
@@ -653,16 +522,39 @@ export async function exchangeCodeForSession(accessToken: string): Promise<{ acc
 }
 
 /**
- * Enroll user in MFA (Email OTP)
+ * Enroll user in MFA
+ * Appwrite supports TOTP as an authenticator type
+ * Email and phone are challenge-based factors
+ * Returns recovery codes and TOTP secret/URI on enrollment
  */
-export async function enrollMFA(accessToken: string): Promise<{ success: boolean } | AuthError> {
+export async function enrollMFA(accessToken: string, factorType: 'totp' | 'email' = 'totp'): Promise<{ success: boolean; recoveryCodes?: string[]; secret?: string; uri?: string } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Enroll in Email OTP
-    await account.createMFAAuthenticator({ type: 'email' as any });
-    
+    if (factorType === 'totp') {
+      // TOTP enrollment returns secret and URI for QR code
+      const result = await account.createMFAAuthenticator({ type: 'totp' as any });
+      
+      // Generate recovery codes (only once per account)
+      let recoveryCodes: string[] = [];
+      try {
+        const codes = await account.createMfaRecoveryCodes();
+        recoveryCodes = codes.recoveryCodes;
+      } catch {
+        // Recovery codes may already exist — that's okay
+      }
+
+      return { 
+        success: true, 
+        recoveryCodes,
+        secret: (result as any).secret,
+        uri: (result as any).uri,
+      };
+    }
+
+    // Email is challenge-based, no enrollment needed
+    // They're verified through challenges during login
     return { success: true };
   } catch (error: any) {
     logger.error('MFA enrollment failed', { error: error.message });
@@ -674,18 +566,23 @@ export async function enrollMFA(accessToken: string): Promise<{ success: boolean
 }
 
 /**
- * Verify MFA enrollment (Email OTP)
+ * Verify MFA enrollment and enable MFA on the account
  */
-export async function verifyMFAEnrollment(accessToken: string, factorId: string, code: string): Promise<{ success: boolean } | AuthError> {
+export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp' | 'email', code: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Verify and enable MFA
-    await account.updateMFAAuthenticator({
-      type: 'email' as any,
-      otp: code
-    });
+    // Only TOTP needs authenticator verification
+    if (factorType === 'totp') {
+      await account.updateMFAAuthenticator({
+        type: 'totp' as any,
+        otp: code
+      });
+    }
+    
+    // Enable MFA on the account (Appwrite official step)
+    await account.updateMFA(true);
     
     // Update DB status
     const appwriteUser = await account.get();
@@ -749,16 +646,21 @@ export async function verifyMFAChallenge(accessToken: string, factorId: string, 
 /**
  * Get enrolled MFA factors
  */
-export async function getMFAFactors(accessToken: string): Promise<{ factors: any[] } | AuthError> {
+export async function getMFAFactors(accessToken: string): Promise<{ factors: { id: string; type: string }[] } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
     
     const factors = await account.listMFAFactors();
-    return { factors: factors.totp ? [{ id: 'totp', type: 'totp' }] : [] };
+    const result: { id: string; type: string }[] = [];
+    
+    if (factors.totp) result.push({ id: 'totp', type: 'totp' });
+    if (factors.email) result.push({ id: 'email', type: 'email' });
+    
+    return { factors: result };
   } catch (error: any) {
     return {
-      code: 'INTERNAL_ERROR',
+      code: 'MFA_LIST_FAILED',
       message: error.message,
     };
   }
@@ -767,14 +669,18 @@ export async function getMFAFactors(accessToken: string): Promise<{ factors: any
 /**
  * Disable MFA
  */
-export async function disableMFA(accessToken: string, factorId: string, _otpCode?: string): Promise<{ success: boolean } | AuthError> {
+export async function disableMFA(accessToken: string, factorType: 'totp' | 'email', _otpCode?: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    await account.deleteMFAAuthenticator({
-      type: AuthenticatorType.Totp
-    });
+    // Appwrite only supports TOTP as an authenticator type
+    // Email is challenge-based, not authenticator-based
+    if (factorType === 'totp') {
+      await account.deleteMFAAuthenticator({
+        type: AuthenticatorType.Totp
+      });
+    }
     
     const appwriteUser = await account.get();
     await userRepository.update(appwriteUser.$id, { mfa_enabled: false });
@@ -822,7 +728,7 @@ export async function loginWithAppwrite(accessToken: string): Promise<AuthResult
     // Validate session/token with Appwrite
     const appwriteUser = await account.get();
     
-    // Check if user exists in local PostgreSQL database
+    // Check if user exists in database
     const publicUser = await userRepository.getUserById(appwriteUser.$id);
     
     if (!publicUser) {
@@ -882,23 +788,6 @@ export async function registerWithAppwrite(accessToken: string, role: UserRole):
       code: 'INTERNAL_ERROR',
       message: 'Failed to complete registration.',
     };
-  }
-}
-
-/**
- * Request Phone OTP
- */
-export async function requestPhoneOtp(phone: string): Promise<{ userId: string } | AuthError> {
-  try {
-    const userClient = createUserClient('');
-    const account = new Account(userClient);
-    
-    // Appwrite creates or uses existing user with this phone
-    const token = await account.createPhoneToken(ID.unique(), phone);
-    return { userId: token.userId };
-  } catch (error: any) {
-    logger.error('Phone OTP request failed', { error: error.message, phone });
-    return { code: 'INTERNAL_ERROR', message: error.message || 'Failed to send OTP to phone' };
   }
 }
 

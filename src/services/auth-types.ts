@@ -78,8 +78,7 @@ export type MfaRequiredResult = {
   code: 'MFA_REQUIRED';
   message: string;
   mfaRequired: true;
-  mfaSessionId: string;
-  factorId?: string;
+  accessToken: string;
 };
 
 export type AuthResponse = AuthResult | AuthError | MfaRequiredResult;

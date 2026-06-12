@@ -13,6 +13,11 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
+const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: mockPoolObj,
+}));
+
 const mockEmitToUser = jest.fn();
 jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
   notificationEmitter: { emitToUser: mockEmitToUser },
@@ -50,7 +55,7 @@ describe('Message Service', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
+    mockPool = mockPoolObj;
     mockPool.query.mockReset();
   });
 

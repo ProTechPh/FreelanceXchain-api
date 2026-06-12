@@ -66,12 +66,12 @@ describe('Didit Client - Refactored', () => {
       }
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'https://test.didit.me/v2/session/',
+        'https://test.didit.me/v3/session/',
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
             'Content-Type': 'application/json',
-            'X-Api-Key': 'test-api-key',
+            'x-api-key': 'test-api-key',
           }),
         })
       );

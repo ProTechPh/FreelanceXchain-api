@@ -13,6 +13,11 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
+const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: mockPoolObj,
+}));
+
 const mockCreateNotification = jest.fn<any>().mockResolvedValue({ success: true, data: { id: 'notif-1' } });
 const mockSendNotificationToUser = jest.fn<any>().mockReturnValue({ success: true });
 
@@ -30,7 +35,7 @@ describe('Milestone Service', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
+    mockPool = mockPoolObj;
     mockPool.query.mockReset();
   });
 

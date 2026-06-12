@@ -1,7 +1,7 @@
 import { Project, FreelancerProfile, mapProjectFromEntity, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
 import { projectRepository, ProjectEntity } from '../repositories/project-repository.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
-import { PaginatedResult, QueryOptions } from '../repositories/base-repository-pg.js';
+import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
 

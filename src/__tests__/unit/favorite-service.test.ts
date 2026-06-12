@@ -13,12 +13,17 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
+const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
+jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
+  pool: mockPoolObj,
+}));
+
 describe('Favorite Service', () => {
   let mockPool: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
+    mockPool = mockPoolObj;
     mockPool.query.mockReset();
   });
 
