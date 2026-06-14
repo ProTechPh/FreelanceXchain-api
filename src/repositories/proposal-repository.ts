@@ -123,10 +123,12 @@ export class ProposalRepository extends BaseRepositoryAppwrite<ProposalEntity> {
 
   async getProposalCountsByProjects(projectIds: string[]): Promise<Map<string, number>> {
     const map = new Map<string, number>();
-    for (const pid of projectIds) {
-      const count = await this.getProposalCountByProject(pid);
-      map.set(pid, count);
-    }
+    const counts = await Promise.all(
+      projectIds.map(pid => this.getProposalCountByProject(pid))
+    );
+    projectIds.forEach((pid, index) => {
+      map.set(pid, counts[index]!);
+    });
     return map;
   }
 

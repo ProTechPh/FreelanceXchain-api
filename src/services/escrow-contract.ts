@@ -1,8 +1,8 @@
 /**
- * Escrow Smart Contract Interface
+ * Escrow Smart Contract Interface (Appwrite-only)
  * Handles escrow deployment, deposits, milestone releases, and refunds
- *
- * for persistent storage instead of in-memory Maps.
+ * 
+ * Uses Appwrite database for persistent storage.
  */
 
 import {
@@ -16,9 +16,14 @@ import {
   EscrowDeployment,
   TransactionReceipt,
 } from './blockchain-types.js';
-import { pool } from '../config/database.js';
+import { databases, DATABASE_ID } from '../config/appwrite.js';
+import { ID, Query } from '../config/appwrite.js';
 
-// Escrow state type (same interface, now backed by DB)
+// Collection IDs for escrow storage
+const ESCROW_COLLECTION = 'blockchain_escrows';
+const MILESTONE_COLLECTION = 'blockchain_escrow_milestones';
+
+// Escrow state type
 type EscrowState = {
   address: string;
   contractId: string;
@@ -31,8 +36,9 @@ type EscrowState = {
   deploymentTxHash: string;
 };
 
-// DB row types
-type EscrowRow = {
+// Appwrite document types
+type EscrowDoc = {
+  $id: string;
   address: string;
   contract_id: string;
   employer_address: string;
@@ -43,72 +49,123 @@ type EscrowRow = {
   deployment_tx_hash: string;
 };
 
-type MilestoneRow = {
-  id: string;
+type MilestoneDoc = {
+  $id: string;
   escrow_address: string;
+  milestone_id: string;
   amount: string;
   status: 'pending' | 'released' | 'refunded';
 };
 
 async function loadEscrow(address: string): Promise<EscrowState | null> {
-  const escrowResult = await pool.query(
-    'SELECT * FROM blockchain_escrows WHERE address = $1',
-    [address]
-  );
+  try {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      ESCROW_COLLECTION,
+      [Query.equal('address', address), Query.limit(1)]
+    );
 
-  if (escrowResult.rows.length === 0) return null;
+    if (response.documents.length === 0) return null;
 
-  const milestoneResult = await pool.query(
-    'SELECT * FROM blockchain_escrow_milestones WHERE escrow_address = $1',
-    [address]
-  );
+    const row = response.documents[0] as unknown as EscrowDoc;
 
-  const row = escrowResult.rows[0] as EscrowRow;
-  return {
-    address: row.address,
-    contractId: row.contract_id,
-    employerAddress: row.employer_address,
-    freelancerAddress: row.freelancer_address,
-    totalAmount: BigInt(row.total_amount),
-    balance: BigInt(row.balance),
-    milestones: (milestoneResult.rows as MilestoneRow[]).map(m => ({
-      id: m.id,
-      amount: BigInt(m.amount),
-      status: m.status,
-    })),
-    deployedAt: row.deployed_at,
-    deploymentTxHash: row.deployment_tx_hash,
-  };
+    const milestoneResponse = await databases.listDocuments(
+      DATABASE_ID,
+      MILESTONE_COLLECTION,
+      [Query.equal('escrow_address', address)]
+    );
+
+    return {
+      address: row.address,
+      contractId: row.contract_id,
+      employerAddress: row.employer_address,
+      freelancerAddress: row.freelancer_address,
+      totalAmount: BigInt(row.total_amount),
+      balance: BigInt(row.balance),
+      milestones: (milestoneResponse.documents as unknown as MilestoneDoc[]).map(m => ({
+        id: m.milestone_id,
+        amount: BigInt(m.amount),
+        status: m.status,
+      })),
+      deployedAt: row.deployed_at,
+      deploymentTxHash: row.deployment_tx_hash,
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function saveEscrow(escrow: EscrowState): Promise<void> {
-  await pool.query(
-    `INSERT INTO blockchain_escrows 
-     (address, contract_id, employer_address, freelancer_address, total_amount, balance, deployed_at, deployment_tx_hash)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (address) DO UPDATE SET
-       balance = EXCLUDED.balance,
-       updated_at = NOW()`,
-    [
-      escrow.address,
-      escrow.contractId,
-      escrow.employerAddress,
-      escrow.freelancerAddress,
-      escrow.totalAmount.toString(),
-      escrow.balance.toString(),
-      escrow.deployedAt,
-      escrow.deploymentTxHash
-    ]
+  // Upsert escrow document
+  const existing = await databases.listDocuments(
+    DATABASE_ID,
+    ESCROW_COLLECTION,
+    [Query.equal('address', escrow.address), Query.limit(1)]
   );
+
+  const escrowData = {
+    address: escrow.address,
+    contract_id: escrow.contractId,
+    employer_address: escrow.employerAddress,
+    freelancer_address: escrow.freelancerAddress,
+    total_amount: escrow.totalAmount.toString(),
+    balance: escrow.balance.toString(),
+    deployed_at: escrow.deployedAt,
+    deployment_tx_hash: escrow.deploymentTxHash,
+  };
+
+  if (existing.documents.length > 0) {
+    const docId = existing.documents[0]?.$id;
+    if (docId) {
+      await databases.updateDocument(
+        DATABASE_ID,
+        ESCROW_COLLECTION,
+        docId,
+        { balance: escrow.balance.toString() }
+      );
+    }
+  } else {
+    await databases.createDocument(
+      DATABASE_ID,
+      ESCROW_COLLECTION,
+      ID.unique(),
+      escrowData
+    );
+  }
 
   // Save milestones
   for (const m of escrow.milestones) {
-    await pool.query(
-      `INSERT INTO blockchain_escrow_milestones (id, escrow_address, amount, status)
-       VALUES ($1, $2, $3, $4)
-       ON CONFLICT (id) DO UPDATE SET status = EXCLUDED.status`,
-      [m.id, escrow.address, m.amount.toString(), m.status]
+    const existingMilestone = await databases.listDocuments(
+      DATABASE_ID,
+      MILESTONE_COLLECTION,
+      [Query.equal('escrow_address', escrow.address), Query.equal('milestone_id', m.id), Query.limit(1)]
     );
+
+    const milestoneData = {
+      escrow_address: escrow.address,
+      milestone_id: m.id,
+      amount: m.amount.toString(),
+      status: m.status,
+    };
+
+    if (existingMilestone.documents.length > 0) {
+      const milestoneDocId = existingMilestone.documents[0]?.$id;
+      if (milestoneDocId) {
+        await databases.updateDocument(
+          DATABASE_ID,
+          MILESTONE_COLLECTION,
+          milestoneDocId,
+          { status: m.status }
+        );
+      }
+    } else {
+      await databases.createDocument(
+        DATABASE_ID,
+        MILESTONE_COLLECTION,
+        ID.unique(),
+        milestoneData
+      );
+    }
   }
 }
 
@@ -137,7 +194,7 @@ export async function deployEscrow(params: EscrowParams): Promise<EscrowDeployme
   // Confirm the transaction (in production, would wait for blockchain confirmation)
   await confirmTransaction(tx.id);
 
-  // Store escrow state in DB
+  // Store escrow state in Appwrite
   const escrowState: EscrowState = {
     address: escrowAddress,
     contractId: params.contractId,
@@ -199,7 +256,7 @@ export async function depositToEscrow(
     throw new Error('Failed to confirm deposit transaction');
   }
 
-  // Update escrow balance in DB
+  // Update escrow balance in Appwrite
   escrow.balance += amount;
   await saveEscrow(escrow);
 
@@ -265,7 +322,7 @@ export async function releaseMilestone(
     throw new Error('Failed to confirm release transaction');
   }
 
-  // Update escrow state in DB
+  // Update escrow state in Appwrite
   milestone.status = 'released';
   escrow.balance -= milestone.amount;
   await saveEscrow(escrow);
@@ -335,7 +392,7 @@ export async function refundMilestone(
     throw new Error('Failed to confirm refund transaction');
   }
 
-  // Update escrow state in DB
+  // Update escrow state in Appwrite
   milestone.status = 'refunded';
   escrow.balance -= milestone.amount;
   await saveEscrow(escrow);
@@ -396,19 +453,26 @@ export async function areAllMilestonesReleased(escrowAddress: string): Promise<b
  * Clear all escrows (for testing)
  */
 export async function clearEscrows(): Promise<void> {
-  await pool.query('DELETE FROM blockchain_escrow_milestones');
-  await pool.query('DELETE FROM blockchain_escrows');
+  const escrows = await databases.listDocuments(DATABASE_ID, ESCROW_COLLECTION);
+  for (const doc of escrows.documents) {
+    await databases.deleteDocument(DATABASE_ID, ESCROW_COLLECTION, doc.$id);
+  }
+  const milestones = await databases.listDocuments(DATABASE_ID, MILESTONE_COLLECTION);
+  for (const doc of milestones.documents) {
+    await databases.deleteDocument(DATABASE_ID, MILESTONE_COLLECTION, doc.$id);
+  }
 }
 
 /**
  * Get escrow by contract ID
  */
 export async function getEscrowByContractId(contractId: string): Promise<EscrowState | null> {
-  const result = await pool.query(
-    'SELECT address FROM blockchain_escrows WHERE contract_id = $1',
-    [contractId]
+  const response = await databases.listDocuments(
+    DATABASE_ID,
+    ESCROW_COLLECTION,
+    [Query.equal('contract_id', contractId), Query.limit(1)]
   );
 
-  if (result.rows.length === 0) return null;
-  return loadEscrow(result.rows[0].address);
+  if (response.documents.length === 0) return null;
+  return loadEscrow((response.documents[0] as unknown as EscrowDoc).address);
 }

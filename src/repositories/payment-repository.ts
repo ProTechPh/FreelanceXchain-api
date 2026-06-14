@@ -65,6 +65,7 @@ class PaymentRepositoryClass extends BaseRepositoryAppwrite<PaymentEntity> {
         DATABASE_ID,
         COLLECTION_ID,
         [
+          Query.equal('user_id', userId),
           Query.limit(1),
         ]
       );
@@ -74,6 +75,7 @@ class PaymentRepositoryClass extends BaseRepositoryAppwrite<PaymentEntity> {
         DATABASE_ID,
         COLLECTION_ID,
         [
+          Query.equal('user_id', userId),
           Query.orderDesc('created_at'),
           Query.limit(limit),
           Query.offset(offset),

@@ -144,29 +144,32 @@ export class ContractRepository extends BaseRepositoryAppwrite<ContractEntity> {
   }
 
   async getUserContracts(userId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
+
     // Appwrite doesn't support OR in queries; combine both
+    // Fetch all contracts for both roles without pagination, then merge and paginate
     const [freelancer, employer] = await Promise.all([
-      this.paginatedWithQueries<ContractEntity>(
+      this.listWithQueries<ContractEntity>(
         [Query.equal('freelancer_id', userId), Query.orderDesc('created_at')],
-        options?.limit ?? 20,
-        options?.offset ?? 0,
         mapDoc
       ),
-      this.paginatedWithQueries<ContractEntity>(
+      this.listWithQueries<ContractEntity>(
         [Query.equal('employer_id', userId), Query.orderDesc('created_at')],
-        options?.limit ?? 20,
-        options?.offset ?? 0,
         mapDoc
       ),
     ]);
 
-    const all = [...freelancer.items, ...employer.items]
+    const all = [...freelancer, ...employer]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
+    const total = all.length;
+    const items = all.slice(offset, offset + limit);
+
     return {
-      items: all.slice(0, options?.limit ?? 20),
-      hasMore: all.length > (options?.limit ?? 20),
-      total: all.length,
+      items,
+      hasMore: offset + limit < total,
+      total,
     };
   }
 }

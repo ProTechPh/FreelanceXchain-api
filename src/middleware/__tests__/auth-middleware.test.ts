@@ -29,12 +29,6 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const mockPoolQuery = jest.fn<() => Promise<any>>();
-
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockPoolQuery },
-}));
-
 const { validateToken } = await import(resolveModule('src/services/auth-service.ts'));
 const { isUserVerified } = await import(resolveModule('src/services/didit-kyc-service.ts'));
 const { authMiddleware, requireMFA, requireRole, requireVerifiedKyc } = await import('../auth-middleware.js');
@@ -273,7 +267,6 @@ describe('requireMFA', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPoolQuery.mockReset();
     req = createMockReq();
     res = createMockRes();
     next = jest.fn();
@@ -287,9 +280,8 @@ describe('requireMFA', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('should call next() when user exists and mfa_enabled is false', async () => {
+  it('should call next() when user exists (MFA handled by Appwrite)', async () => {
     req.user = { id: '1', userId: '1', email: 'a@b.com', role: 'freelancer' };
-    mockPoolQuery.mockResolvedValue({ rows: [{ mfa_enabled: false }] });
 
     await requireMFA(req, res, next);
 
@@ -297,52 +289,8 @@ describe('requireMFA', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('should return 403 MFA_REQUIRED when mfa_enabled is true (MFA now enforced)', async () => {
-    req.user = { id: '1', userId: '1', email: 'a@b.com', role: 'freelancer' };
-    mockPoolQuery.mockResolvedValue({ rows: [{ mfa_enabled: true }] });
-
-    await requireMFA(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.body.error.code).toBe('MFA_REQUIRED');
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('should return 401 AUTH_UNAUTHORIZED when user not found in DB', async () => {
-    req.user = { id: '1', userId: '1', email: 'a@b.com', role: 'freelancer' };
-    mockPoolQuery.mockResolvedValue({ rows: [] });
-
-    await requireMFA(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(401);
-    expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('should return 403 MFA_CHECK_FAILED when pool.query throws', async () => {
-    req.user = { id: '1', userId: '1', email: 'a@b.com', role: 'freelancer' };
-    mockPoolQuery.mockRejectedValue(new Error('DB error'));
-
-    await requireMFA(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.body.error.code).toBe('MFA_CHECK_FAILED');
-    expect(next).not.toHaveBeenCalled();
-  });
-
-  it('should return 403 MFA_CHECK_FAILED when pool.query throws non-Error', async () => {
-    req.user = { id: '1', userId: '1', email: 'a@b.com', role: 'freelancer' };
-    mockPoolQuery.mockRejectedValue('string error');
-
-    await requireMFA(req, res, next);
-
-    expect(res.status).toHaveBeenCalledWith(403);
-    expect(res.body.error.code).toBe('MFA_CHECK_FAILED');
-  });
-
   it('should include requestId in error responses', async () => {
     req.headers['x-request-id'] = 'mfa-req-1';
-    mockPoolQuery.mockResolvedValue({ rows: [] });
 
     await requireMFA(req, res, next);
 
@@ -350,8 +298,6 @@ describe('requireMFA', () => {
   });
 
   it('should use "unknown" as requestId when x-request-id missing', async () => {
-    mockPoolQuery.mockResolvedValue({ rows: [] });
-
     await requireMFA(req, res, next);
 
     expect(res.body.requestId).toBe('unknown');

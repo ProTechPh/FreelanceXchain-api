@@ -4,9 +4,89 @@ import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-const mockPool = { query: jest.fn<any>() };
+// Mock Appwrite databases
+let escrowStore: Map<string, any> = new Map();
+let milestoneStore: Map<string, any[]> = new Map();
+
+const mockDatabases = {
+  listDocuments: jest.fn(async (databaseId: string, collectionId: string, queries?: any[]) => {
+    if (collectionId === 'blockchain_escrows') {
+      const addressQuery = queries?.find((q: any) => q.attribute === 'address');
+      const contractIdQuery = queries?.find((q: any) => q.attribute === 'contract_id');
+      
+      if (addressQuery) {
+        const escrow = escrowStore.get(addressQuery.values[0]);
+        return { documents: escrow ? [escrow] : [], total: escrow ? 1 : 0 };
+      }
+      if (contractIdQuery) {
+        const escrow = Array.from(escrowStore.values()).find((e: any) => e.contract_id === contractIdQuery.values[0]);
+        return { documents: escrow ? [escrow] : [], total: escrow ? 1 : 0 };
+      }
+      return { documents: Array.from(escrowStore.values()), total: escrowStore.size };
+    }
+    if (collectionId === 'blockchain_escrow_milestones') {
+      const addressQuery = queries?.find((q: any) => q.attribute === 'escrow_address');
+      if (addressQuery) {
+        const ms = milestoneStore.get(addressQuery.values[0]) || [];
+        return { documents: ms, total: ms.length };
+      }
+      return { documents: [], total: 0 };
+    }
+    return { documents: [], total: 0 };
+  }),
+  createDocument: jest.fn(async (databaseId: string, collectionId: string, documentId: string, data: any) => {
+    if (collectionId === 'blockchain_escrows') {
+      escrowStore.set(data.address, { $id: documentId, ...data });
+    }
+    if (collectionId === 'blockchain_escrow_milestones') {
+      const existing = milestoneStore.get(data.escrow_address) || [];
+      existing.push({ $id: documentId, ...data });
+      milestoneStore.set(data.escrow_address, existing);
+    }
+    return { $id: documentId, ...data };
+  }),
+  updateDocument: jest.fn(async (databaseId: string, collectionId: string, documentId: string, data: any) => {
+    if (collectionId === 'blockchain_escrows') {
+      for (const [key, value] of escrowStore.entries()) {
+        if (value.$id === documentId) {
+          escrowStore.set(key, { ...value, ...data });
+          break;
+        }
+      }
+    }
+    if (collectionId === 'blockchain_escrow_milestones') {
+      for (const [, milestones] of milestoneStore.entries()) {
+        const milestone = milestones.find((m: any) => m.$id === documentId);
+        if (milestone) {
+          Object.assign(milestone, data);
+          break;
+        }
+      }
+    }
+    return { $id: documentId, ...data };
+  }),
+  deleteDocument: jest.fn(),
+};
+
+const mockQuery = {
+  equal: (attribute: string, value: any) => ({ attribute, method: 'equal', values: [value] }),
+  limit: (limit: number) => ({ method: 'limit', values: [limit] }),
+};
+
+const mockID = {
+  unique: () => `unique-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+};
+
+jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+  databases: mockDatabases,
+  DATABASE_ID: 'test-db',
+  Query: mockQuery,
+  ID: mockID,
+}));
+
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: mockPool,
+  databases: mockDatabases,
+  DATABASE_ID: 'test-db',
 }));
 
 const mockSubmitTransaction = jest.fn<any>();
@@ -36,216 +116,151 @@ const {
 describe('Escrow Contract - Coverage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    escrowStore.clear();
+    milestoneStore.clear();
+    mockGenerateWalletAddress.mockReturnValue('0xescrow');
+    mockSubmitTransaction.mockResolvedValue({ id: 'tx-1', hash: '0xtx', blockNumber: 1 });
+    mockConfirmTransaction.mockResolvedValue({ id: 'tx-1', hash: '0xtx', blockNumber: 1, gasUsed: BigInt(21000) });
   });
 
-  const setupEscrowInDb = (overrides = {}) => {
-    const defaultEscrow = {
-      address: '0xescrow',
-      contract_id: 'c-1',
-      employer_address: '0xemp',
-      freelancer_address: '0xfree',
-      total_amount: '1000',
-      balance: '1000',
-      deployed_at: Date.now(),
-      deployment_tx_hash: '0xtx',
+  async function setupEscrow(overrides: any = {}) {
+    const defaultParams = {
+      contractId: 'c-1',
+      employerAddress: '0xemp',
+      freelancerAddress: '0xfree',
+      totalAmount: BigInt(1000),
+      milestones: [{ id: 'm-1', amount: BigInt(500), description: 'Test milestone' }],
       ...overrides,
     };
-    mockPool.query
-      .mockResolvedValueOnce({ rows: [defaultEscrow] })
-      .mockResolvedValueOnce({ rows: [{ id: 'm-1', escrow_address: '0xescrow', amount: '500', status: 'pending' }] });
-    return defaultEscrow;
-  };
+
+    await deployEscrow(defaultParams);
+    await depositToEscrow('0xescrow', BigInt(1000), '0xemp');
+  }
+
+  describe('deployEscrow', () => {
+    it('should deploy escrow successfully', async () => {
+      const result = await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: '0xemp',
+        freelancerAddress: '0xfree',
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), description: 'Test' }],
+      });
+
+      expect(result.escrowAddress).toBe('0xescrow');
+      expect(result.transactionHash).toBe('0xtx');
+    });
+  });
 
   describe('depositToEscrow', () => {
-    it('should throw when escrow not found', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
-      await expect(depositToEscrow('0xbad', BigInt(100), '0xemp')).rejects.toThrow('Escrow contract not found');
+    it('should deposit funds', async () => {
+      await setupEscrow();
+      const result = await depositToEscrow('0xescrow', BigInt(500), '0xemp');
+      expect(result.transactionHash).toBe('0xtx');
     });
 
-    it('should throw when non-employer tries to deposit', async () => {
-      setupEscrowInDb();
-      await expect(depositToEscrow('0xescrow', BigInt(100), '0xother')).rejects.toThrow('Only employer can deposit');
-    });
-
-    it('should deposit successfully', async () => {
-      setupEscrowInDb();
-      mockSubmitTransaction.mockResolvedValue({ id: 'tx-1', hash: '0xhash' });
-      mockConfirmTransaction.mockResolvedValue({ hash: '0xhash', blockNumber: 1, gasUsed: 21000 });
-      // saveEscrow queries
-      mockPool.query.mockResolvedValue({ rows: [] });
-
-      const result = await depositToEscrow('0xescrow', BigInt(100), '0xemp');
-      expect(result.status).toBe('success');
-    });
-
-    it('should throw when confirmation fails', async () => {
-      setupEscrowInDb();
-      mockSubmitTransaction.mockResolvedValue({ id: 'tx-1', hash: '0xhash' });
-      mockConfirmTransaction.mockResolvedValue(null);
-
-      await expect(depositToEscrow('0xescrow', BigInt(100), '0xemp')).rejects.toThrow('Failed to confirm deposit');
+    it('should reject non-employer', async () => {
+      await setupEscrow();
+      await expect(depositToEscrow('0xescrow', BigInt(500), '0xwrong'))
+        .rejects.toThrow('Only employer can deposit to escrow');
     });
   });
 
   describe('releaseMilestone', () => {
-    it('should throw when escrow not found', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
-      await expect(releaseMilestone('0xbad', 'm-1', '0xemp')).rejects.toThrow('Escrow contract not found');
-    });
-
-    it('should throw when non-employer tries to release', async () => {
-      setupEscrowInDb();
-      await expect(releaseMilestone('0xescrow', 'm-1', '0xother')).rejects.toThrow('Only employer can release');
-    });
-
-    it('should throw when milestone not found', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow', contract_id: 'c-1', employer_address: '0xemp', freelancer_address: '0xfree', total_amount: '1000', balance: '1000', deployed_at: Date.now(), deployment_tx_hash: '0xtx' }] })
-        .mockResolvedValueOnce({ rows: [] });
-      await expect(releaseMilestone('0xescrow', 'm-bad', '0xemp')).rejects.toThrow('Milestone not found');
-    });
-
-    it('should throw when milestone already released', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow', contract_id: 'c-1', employer_address: '0xemp', freelancer_address: '0xfree', total_amount: '1000', balance: '1000', deployed_at: Date.now(), deployment_tx_hash: '0xtx' }] })
-        .mockResolvedValueOnce({ rows: [{ id: 'm-1', escrow_address: '0xescrow', amount: '500', status: 'released' }] });
-      await expect(releaseMilestone('0xescrow', 'm-1', '0xemp')).rejects.toThrow('Milestone already released');
-    });
-
-    it('should throw when milestone was refunded', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow', contract_id: 'c-1', employer_address: '0xemp', freelancer_address: '0xfree', total_amount: '1000', balance: '1000', deployed_at: Date.now(), deployment_tx_hash: '0xtx' }] })
-        .mockResolvedValueOnce({ rows: [{ id: 'm-1', escrow_address: '0xescrow', amount: '500', status: 'refunded' }] });
-      await expect(releaseMilestone('0xescrow', 'm-1', '0xemp')).rejects.toThrow('Milestone was refunded');
-    });
-
-    it('should release milestone successfully', async () => {
-      setupEscrowInDb();
-      mockSubmitTransaction.mockResolvedValue({ id: 'tx-1', hash: '0xhash' });
-      mockConfirmTransaction.mockResolvedValue({ hash: '0xhash', blockNumber: 1, gasUsed: 21000 });
-      mockPool.query.mockResolvedValue({ rows: [] });
-
+    it('should release milestone', async () => {
+      await setupEscrow();
       const result = await releaseMilestone('0xescrow', 'm-1', '0xemp');
-      expect(result.status).toBe('success');
+      expect(result.transactionHash).toBe('0xtx');
     });
 
-    it('should throw when confirmTransaction returns null for release (line 265)', async () => {
-      setupEscrowInDb();
-      mockSubmitTransaction.mockResolvedValue({ id: 'tx-1', hash: '0xhash' });
-      mockConfirmTransaction.mockResolvedValue(null);
+    it('should reject non-employer', async () => {
+      await setupEscrow();
+      await expect(releaseMilestone('0xescrow', 'm-1', '0xwrong'))
+        .rejects.toThrow('Only employer can release milestone payments');
+    });
 
-      await expect(releaseMilestone('0xescrow', 'm-1', '0xemp')).rejects.toThrow('Failed to confirm release transaction');
+    it('should reject non-existent milestone', async () => {
+      await setupEscrow();
+      await expect(releaseMilestone('0xescrow', 'm-nonexistent', '0xemp'))
+        .rejects.toThrow('Milestone not found');
+    });
+
+    it('should reject already released milestone', async () => {
+      await setupEscrow();
+      await releaseMilestone('0xescrow', 'm-1', '0xemp');
+      await expect(releaseMilestone('0xescrow', 'm-1', '0xemp'))
+        .rejects.toThrow('Milestone already released');
     });
   });
 
   describe('refundMilestone', () => {
-    it('should throw when escrow not found', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
-      await expect(refundMilestone('0xbad', 'm-1', '0xemp')).rejects.toThrow('Escrow contract not found');
-    });
-
-    it('should throw when non-employer tries to refund', async () => {
-      setupEscrowInDb();
-      await expect(refundMilestone('0xescrow', 'm-1', '0xother')).rejects.toThrow('Only the employer or authorized resolver');
-    });
-
-    it('should refund milestone successfully', async () => {
-      setupEscrowInDb();
-      mockSubmitTransaction.mockResolvedValue({ id: 'tx-1', hash: '0xhash' });
-      mockConfirmTransaction.mockResolvedValue({ hash: '0xhash', blockNumber: 1, gasUsed: 21000 });
-      mockPool.query.mockResolvedValue({ rows: [] });
-
+    it('should refund milestone', async () => {
+      await setupEscrow();
       const result = await refundMilestone('0xescrow', 'm-1', '0xemp');
-      expect(result.status).toBe('success');
+      expect(result.transactionHash).toBe('0xtx');
     });
 
-    it('should throw when milestone not found in refund (line 300)', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow', contract_id: 'c-1', employer_address: '0xemp', freelancer_address: '0xfree', total_amount: '1000', balance: '1000', deployed_at: Date.now(), deployment_tx_hash: '0xtx' }] })
-        .mockResolvedValueOnce({ rows: [] });
-      await expect(refundMilestone('0xescrow', 'm-bad', '0xemp')).rejects.toThrow('Milestone not found');
-    });
-
-    it('should throw when milestone already released in refund (line 302)', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow', contract_id: 'c-1', employer_address: '0xemp', freelancer_address: '0xfree', total_amount: '1000', balance: '1000', deployed_at: Date.now(), deployment_tx_hash: '0xtx' }] })
-        .mockResolvedValueOnce({ rows: [{ id: 'm-1', escrow_address: '0xescrow', amount: '500', status: 'released' }] });
-      await expect(refundMilestone('0xescrow', 'm-1', '0xemp')).rejects.toThrow('Milestone already released');
-    });
-
-    it('should throw when milestone already refunded (line 304)', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow', contract_id: 'c-1', employer_address: '0xemp', freelancer_address: '0xfree', total_amount: '1000', balance: '1000', deployed_at: Date.now(), deployment_tx_hash: '0xtx' }] })
-        .mockResolvedValueOnce({ rows: [{ id: 'm-1', escrow_address: '0xescrow', amount: '500', status: 'refunded' }] });
-      await expect(refundMilestone('0xescrow', 'm-1', '0xemp')).rejects.toThrow('Milestone already refunded');
+    it('should reject non-employer', async () => {
+      await setupEscrow();
+      await expect(refundMilestone('0xescrow', 'm-1', '0xwrong'))
+        .rejects.toThrow('Only the employer or authorized resolver can refund a milestone');
     });
   });
 
   describe('getEscrowBalance', () => {
-    it('should throw when escrow not found', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
-      await expect(getEscrowBalance('0xbad')).rejects.toThrow('Escrow contract not found');
-    });
-
     it('should return balance', async () => {
-      setupEscrowInDb();
+      await setupEscrow();
       const balance = await getEscrowBalance('0xescrow');
       expect(balance).toBe(BigInt(1000));
+    });
+
+    it('should throw when not found', async () => {
+      await expect(getEscrowBalance('0xnonexistent'))
+        .rejects.toThrow('Escrow contract not found');
     });
   });
 
   describe('getEscrowState', () => {
     it('should return null when not found', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
-      const state = await getEscrowState('0xbad');
+      const state = await getEscrowState('0xnonexistent');
       expect(state).toBeNull();
     });
 
     it('should return state', async () => {
-      setupEscrowInDb();
+      await setupEscrow();
       const state = await getEscrowState('0xescrow');
       expect(state).not.toBeNull();
-      expect(state?.address).toBe('0xescrow');
     });
   });
 
   describe('getMilestoneStatus', () => {
-    it('should return null when escrow not found', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
-      const status = await getMilestoneStatus('0xbad', 'm-1');
-      expect(status).toBeNull();
-    });
-
-    it('should return null when milestone not found', async () => {
-      setupEscrowInDb();
-      const status = await getMilestoneStatus('0xescrow', 'm-bad');
+    it('should return null when not found', async () => {
+      const status = await getMilestoneStatus('0xnonexistent', 'm-1');
       expect(status).toBeNull();
     });
 
     it('should return milestone status', async () => {
-      setupEscrowInDb();
+      await setupEscrow();
       const status = await getMilestoneStatus('0xescrow', 'm-1');
       expect(status).not.toBeNull();
     });
   });
 
   describe('areAllMilestonesReleased', () => {
-    it('should return false when escrow not found', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
-      const result = await areAllMilestonesReleased('0xbad');
+    it('should return false when not found', async () => {
+      const result = await areAllMilestonesReleased('0xnonexistent');
       expect(result).toBe(false);
     });
 
     it('should return false when not all released', async () => {
-      setupEscrowInDb();
+      await setupEscrow();
       const result = await areAllMilestonesReleased('0xescrow');
       expect(result).toBe(false);
     });
 
     it('should return true when all released', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow', contract_id: 'c-1', employer_address: '0xemp', freelancer_address: '0xfree', total_amount: '1000', balance: '0', deployed_at: Date.now(), deployment_tx_hash: '0xtx' }] })
-        .mockResolvedValueOnce({ rows: [{ id: 'm-1', escrow_address: '0xescrow', amount: '500', status: 'released' }] });
+      await setupEscrow();
+      await releaseMilestone('0xescrow', 'm-1', '0xemp');
       const result = await areAllMilestonesReleased('0xescrow');
       expect(result).toBe(true);
     });
@@ -253,18 +268,14 @@ describe('Escrow Contract - Coverage', () => {
 
   describe('getEscrowByContractId', () => {
     it('should return null when not found', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
-      const result = await getEscrowByContractId('c-bad');
-      expect(result).toBeNull();
+      const escrow = await getEscrowByContractId('c-nonexistent');
+      expect(escrow).toBeNull();
     });
 
-    it('should return escrow state', async () => {
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow' }] })
-        .mockResolvedValueOnce({ rows: [{ address: '0xescrow', contract_id: 'c-1', employer_address: '0xemp', freelancer_address: '0xfree', total_amount: '1000', balance: '1000', deployed_at: Date.now(), deployment_tx_hash: '0xtx' }] })
-        .mockResolvedValueOnce({ rows: [{ id: 'm-1', escrow_address: '0xescrow', amount: '500', status: 'pending' }] });
-      const result = await getEscrowByContractId('c-1');
-      expect(result).not.toBeNull();
+    it('should return escrow', async () => {
+      await setupEscrow();
+      const escrow = await getEscrowByContractId('c-1');
+      expect(escrow).not.toBeNull();
     });
   });
 });

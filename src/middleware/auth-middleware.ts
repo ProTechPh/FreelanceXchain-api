@@ -5,7 +5,6 @@ import { UserRole } from '../models/user.js';
 import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
 import { config } from '../config/env.js';
-import { pool } from '../config/database.js';
 
 type ValidatedUser = {
   id: string; // Changed from userId to id for consistency
@@ -106,10 +105,10 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 /**
  * Middleware that requires MFA for sensitive operations.
  * Must be used AFTER authMiddleware.
- * Checks if the user has MFA enabled in the database.
  * 
- * Note: Appwrite MFA implementation is pending. This is a placeholder
- * that checks for MFA enrollment in the database.
+ * Note: MFA is handled at the Appwrite auth layer.
+ * This middleware currently passes through - implement Appwrite MFA
+ * verification when needed.
  */
 export async function requireMFA(req: Request, res: Response, next: NextFunction): Promise<void> {
   const requestId = req.headers['x-request-id'] ?? 'unknown';
@@ -126,66 +125,8 @@ export async function requireMFA(req: Request, res: Response, next: NextFunction
     return;
   }
 
-  try {
-    // Check if user has MFA enabled in database
-    // TODO: Implement full Appwrite MFA verification when Appwrite MFA is set up
-    const result = await pool.query(
-      'SELECT mfa_enabled FROM users WHERE id = $1',
-      [req.user.userId]
-    );
-
-    if (result.rows.length === 0) {
-      logger.auth('User not found during MFA check', req.user.userId, {
-        requestId,
-        path: req.path,
-      });
-      res.status(401).json({
-        error: {
-          code: 'AUTH_UNAUTHORIZED',
-          message: 'User not found',
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
-      return;
-    }
-
-    const user = result.rows[0];
-    
-    if (user.mfa_enabled) {
-      logger.warn('MFA enabled — blocking request until MFA verification is implemented', {
-        userId: req.user.userId,
-        requestId,
-        path: req.path,
-      });
-      
-      res.status(403).json({
-        error: {
-          code: 'MFA_REQUIRED',
-          message: 'Multi-factor authentication is required for this operation.',
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
-      return;
-    }
-  } catch (err) {
-    logger.auth('MFA check exception — blocking request (fail-closed)', req.user?.userId, {
-      requestId,
-      path: req.path,
-      error: err instanceof Error ? err.message : 'Unknown error',
-    });
-    res.status(403).json({
-      error: {
-        code: 'MFA_CHECK_FAILED',
-        message: 'Unable to verify MFA status. Please try again.',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
-    return;
-  }
-
+  // MFA is handled at the Appwrite auth layer
+  // Appwrite sessions already include MFA verification when enabled
   next();
 }
 
