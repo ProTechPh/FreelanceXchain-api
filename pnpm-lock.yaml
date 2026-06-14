@@ -31,6 +31,9 @@ importers:
 
   .:
     dependencies:
+      '@opencoredev/email-sdk':
+        specifier: ^0.6.1
+        version: 0.6.1
       bcrypt:
         specifier: ^6.0.0
         version: 6.0.0
@@ -76,9 +79,6 @@ importers:
       node-cron:
         specifier: ^4.2.1
         version: 4.2.1
-      nodemailer:
-        specifier: ^8.0.11
-        version: 8.0.11
       swagger-ui-express:
         specifier: ^5.0.1
         version: 5.0.1(express@4.22.2)
@@ -128,9 +128,6 @@ importers:
       '@types/node-cron':
         specifier: ^3.0.11
         version: 3.0.11
-      '@types/nodemailer':
-        specifier: ^8.0.1
-        version: 8.0.1
       '@types/supertest':
         specifier: ^7.2.0
         version: 7.2.0
@@ -839,6 +836,11 @@ packages:
     resolution: {integrity: sha512-q4n32/FNKIhQ3zQGGw5CvPF6GTvDCpYwIf7bEY/dZTZbgfDsHyjJwURxUJf3VQuuJj+fDIFl4+KkBVbw4Ef6jA==}
     engines: {node: '>= 12'}
 
+  '@opencoredev/email-sdk@0.6.1':
+    resolution: {integrity: sha512-b+4RNZ/9QIQkhr1y6niLT4YdUn+x0PtC8cXtervpkOdg3r86I7ykrHWRionEHkQ6CaGxCANhuwM8tYqXceZeSA==}
+    engines: {bun: '>=1.1.0', node: '>=20.0.0'}
+    hasBin: true
+
   '@paralleldrive/cuid2@2.3.1':
     resolution: {integrity: sha512-XO7cAxhnTZl0Yggq6jOgjiOHhbgcO4NqFqwSmQpjK3b6TEE6Uj/jfSk6wzYyemh3+I0sHirKSetjQwn5cZktFw==}
 
@@ -1000,9 +1002,6 @@ packages:
 
   '@types/node@25.9.3':
     resolution: {integrity: sha512-603BddQMv3pUcr4U2dhujk83N2tTDVr/34wII2B6bJy6g+8WD6yUb11jszNs0gdi4PesVWl7ABt8nYMVpnLUcg==}
-
-  '@types/nodemailer@8.0.1':
-    resolution: {integrity: sha512-PxpaInm8V1JQDd4j0ds5HfvWQk8JupS1C0Picb96QJsrrRDjBH+DlK7L4ZdNSqNULhiZRQHc40nLVShaGxXAMw==}
 
   '@types/qs@6.15.1':
     resolution: {integrity: sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw==}
@@ -2302,10 +2301,6 @@ packages:
   node-releases@2.0.47:
     resolution: {integrity: sha512-Uzmd6LXpouKo8EUK68IjH4+E01w/hXyV3R3g/geCJo+rXLNfh1xucB+LOzYEOQPSiUK3h/xZf0cQGcSsmyL2Og==}
     engines: {node: '>=18'}
-
-  nodemailer@8.0.11:
-    resolution: {integrity: sha512-nrO/pDAUKl+wXX+lx16tDLbnm0fW6sK/x8mgohaCpg+CdCEl482bD4tCuAZk2DyliruiNTIZxRCoWkDqJEnAiA==}
-    engines: {node: '>=6.0.0'}
 
   normalize-path@3.0.0:
     resolution: {integrity: sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2Pnb/mD4WYojCRwcwLA==}
@@ -3656,6 +3651,8 @@ snapshots:
       '@nomicfoundation/solidity-analyzer-linux-x64-musl': 0.1.2
       '@nomicfoundation/solidity-analyzer-win32-x64-msvc': 0.1.2
 
+  '@opencoredev/email-sdk@0.6.1': {}
+
   '@paralleldrive/cuid2@2.3.1':
     dependencies:
       '@noble/hashes': 1.8.0
@@ -3840,10 +3837,6 @@ snapshots:
   '@types/node@25.9.3':
     dependencies:
       undici-types: 7.24.6
-
-  '@types/nodemailer@8.0.1':
-    dependencies:
-      '@types/node': 22.19.21
 
   '@types/qs@6.15.1': {}
 
@@ -5517,8 +5510,6 @@ snapshots:
   node-int64@0.4.0: {}
 
   node-releases@2.0.47: {}
-
-  nodemailer@8.0.11: {}
 
   normalize-path@3.0.0: {}
 

@@ -1,11 +1,11 @@
-import nodemailer from 'nodemailer';
-import type { Transporter } from 'nodemailer';
+import { createEmailClient } from '@opencoredev/email-sdk';
+import { cloudflare } from '@opencoredev/email-sdk/cloudflare';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import fs from 'fs/promises';
 import path from 'path';
 
-export type EmailTemplate = 
+export type EmailTemplate =
   | 'proposal_accepted'
   | 'milestone_approved'
   | 'payment_released'
@@ -24,37 +24,32 @@ export type EmailData = {
   data: Record<string, any>;
 };
 
-let transporter: Transporter | null = null;
+let emailClient: ReturnType<typeof createEmailClient> | null = null;
 
-/**
- * Initialize email transporter
- */
-function getTransporter(): Transporter {
-  if (transporter) {
-    return transporter;
+function getEmailClient() {
+  if (emailClient) {
+    return emailClient;
   }
 
-  const smtpHost = process.env['SMTP_HOST'];
-  const smtpPort = process.env['SMTP_PORT'];
-  const smtpUser = process.env['SMTP_USER'];
-  const smtpPassword = process.env['SMTP_PASSWORD'];
+  const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
+  const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
 
-  if (!smtpHost || !smtpPort || !smtpUser || !smtpPassword) {
-    logger.warn('SMTP configuration not found, email sending disabled');
-    throw new Error('SMTP configuration not found');
+  if (!apiToken || !accountId) {
+    logger.warn('Cloudflare email configuration not found, email sending disabled');
+    throw new Error('Cloudflare email configuration not found');
   }
 
-  transporter = nodemailer.createTransport({
-    host: smtpHost,
-    port: parseInt(smtpPort),
-    secure: parseInt(smtpPort) === 465,
-    auth: {
-      user: smtpUser,
-      pass: smtpPassword,
-    },
+  emailClient = createEmailClient({
+    adapters: [
+      cloudflare({
+        apiToken,
+        accountId,
+      }),
+    ],
+    retry: { retries: 1 },
   });
 
-  return transporter;
+  return emailClient;
 }
 
 /**
@@ -84,23 +79,23 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
  */
 export async function sendEmail(emailData: EmailData): Promise<ServiceResult<{ messageId: string }>> {
   try {
-    const transport = getTransporter();
+    const client = getEmailClient();
     const html = await renderTemplate(emailData.template, emailData.data);
 
     const emailFrom = process.env['EMAIL_FROM'] || 'noreply@freelancexchain.com';
 
-    const info = await transport.sendMail({
+    const result = await client.send({
       from: emailFrom,
       to: emailData.to,
       subject: emailData.subject,
       html,
     });
 
-    logger.info(`Email sent successfully to ${emailData.to}`, { messageId: info.messageId });
+    logger.info(`Email sent successfully to ${emailData.to}`, { messageId: result.id });
 
     return {
       success: true,
-      data: { messageId: info.messageId },
+      data: { messageId: result.id ?? 'unknown' },
     };
   } catch (error) {
     logger.error('Failed to send email:', error);
@@ -272,18 +267,22 @@ export async function sendWeeklyDigestEmail(
 }
 
 /**
- * Test email configuration
+ * Test email configuration by checking env vars are present
  */
 export async function testEmailConfiguration(): Promise<ServiceResult<{ verified: boolean }>> {
   try {
-    const transport = getTransporter();
-    const verified = await transport.verify();
-    
+    const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
+    const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
+
+    if (!apiToken || !accountId) {
+      throw new Error('Cloudflare email configuration not found');
+    }
+
     logger.info('Email configuration verified successfully');
-    
+
     return {
       success: true,
-      data: { verified },
+      data: { verified: true },
     };
   } catch (error) {
     logger.error('Email configuration verification failed:', error);

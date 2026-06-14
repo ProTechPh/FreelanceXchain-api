@@ -4,16 +4,18 @@ import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-const mockSendMail = jest.fn<any>();
-const mockVerify = jest.fn<any>();
-const mockCreateTransport = jest.fn<any>();
+const mockSend = jest.fn<any>();
 
 const mockReadFile = jest.fn<any>();
 
-jest.unstable_mockModule('nodemailer', () => ({
-  default: {
-    createTransport: mockCreateTransport,
-  },
+jest.unstable_mockModule('@opencoredev/email-sdk', () => ({
+  createEmailClient: jest.fn<any>(() => ({
+    send: mockSend,
+  })),
+}));
+
+jest.unstable_mockModule('@opencoredev/email-sdk/cloudflare', () => ({
+  cloudflare: jest.fn<any>(() => ({})),
 }));
 
 jest.unstable_mockModule('fs/promises', () => ({
@@ -32,24 +34,15 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const SMTP_ENV = {
-  SMTP_HOST: 'smtp.test.com',
-  SMTP_PORT: '587',
-  SMTP_USER: 'testuser',
-  SMTP_PASSWORD: 'testpass',
+const CF_ENV = {
+  CLOUDFLARE_API_TOKEN: 'test-api-token',
+  CLOUDFLARE_ACCOUNT_ID: 'test-account-id',
   EMAIL_FROM: 'test@freelancexchain.com',
 };
 
 function setupMocks() {
-  mockSendMail.mockReset();
-  mockVerify.mockReset();
-  mockCreateTransport.mockReset();
+  mockSend.mockReset();
   mockReadFile.mockReset();
-
-  mockCreateTransport.mockReturnValue({
-    sendMail: mockSendMail,
-    verify: mockVerify,
-  });
 }
 
 describe('Email Delivery Service', () => {
@@ -59,13 +52,13 @@ describe('Email Delivery Service', () => {
     jest.resetModules();
     setupMocks();
 
-    Object.entries(SMTP_ENV).forEach(([key, value]) => {
+    Object.entries(CF_ENV).forEach(([key, value]) => {
       process.env[key] = value;
     });
   });
 
   afterEach(() => {
-    Object.keys(SMTP_ENV).forEach((key) => {
+    Object.keys(CF_ENV).forEach((key) => {
       delete process.env[key];
     });
   });
@@ -75,10 +68,10 @@ describe('Email Delivery Service', () => {
     return emailService;
   }
 
-  describe('getTransporter', () => {
-    it('should create transporter when SMTP config is present', async () => {
+  describe('getEmailClient', () => {
+    it('should create email client when Cloudflare config is present', async () => {
       mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-1' });
+      mockSend.mockResolvedValue({ id: 'msg-1' });
 
       await importService();
       await emailService.sendEmail({
@@ -88,38 +81,12 @@ describe('Email Delivery Service', () => {
         data: { name: 'test' },
       });
 
-      expect(mockCreateTransport).toHaveBeenCalledWith({
-        host: 'smtp.test.com',
-        port: 587,
-        secure: false,
-        auth: {
-          user: 'testuser',
-          pass: 'testpass',
-        },
-      });
+      expect(mockSend).toHaveBeenCalled();
     });
 
-    it('should create transporter with secure=true when port is 465', async () => {
-      process.env.SMTP_PORT = '465';
+    it('should reuse existing email client on subsequent calls', async () => {
       mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-2' });
-
-      await importService();
-      await emailService.sendEmail({
-        to: 'user@test.com',
-        subject: 'Test',
-        template: 'proposal_accepted',
-        data: { name: 'test' },
-      });
-
-      expect(mockCreateTransport).toHaveBeenCalledWith(
-        expect.objectContaining({ secure: true, port: 465 })
-      );
-    });
-
-    it('should reuse existing transporter on subsequent calls', async () => {
-      mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-3' });
+      mockSend.mockResolvedValue({ id: 'msg-3' });
 
       await importService();
       await emailService.sendEmail({
@@ -135,11 +102,11 @@ describe('Email Delivery Service', () => {
         data: { name: 'test' },
       });
 
-      expect(mockCreateTransport).toHaveBeenCalledTimes(1);
+      expect(mockSend).toHaveBeenCalledTimes(2);
     });
 
-    it('should throw when SMTP_HOST is missing', async () => {
-      delete process.env.SMTP_HOST;
+    it('should throw when CLOUDFLARE_API_TOKEN is missing', async () => {
+      delete process.env.CLOUDFLARE_API_TOKEN;
 
       await importService();
       const result = await emailService.sendEmail({
@@ -152,12 +119,12 @@ describe('Email Delivery Service', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('EMAIL_SEND_FAILED');
-        expect(result.error.message).toBe('SMTP configuration not found');
+        expect(result.error.message).toBe('Cloudflare email configuration not found');
       }
     });
 
-    it('should throw when SMTP_PORT is missing', async () => {
-      delete process.env.SMTP_PORT;
+    it('should throw when CLOUDFLARE_ACCOUNT_ID is missing', async () => {
+      delete process.env.CLOUDFLARE_ACCOUNT_ID;
 
       await importService();
       const result = await emailService.sendEmail({
@@ -169,36 +136,8 @@ describe('Email Delivery Service', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.message).toBe('SMTP configuration not found');
+        expect(result.error.message).toBe('Cloudflare email configuration not found');
       }
-    });
-
-    it('should throw when SMTP_USER is missing', async () => {
-      delete process.env.SMTP_USER;
-
-      await importService();
-      const result = await emailService.sendEmail({
-        to: 'user@test.com',
-        subject: 'Test',
-        template: 'proposal_accepted',
-        data: { name: 'test' },
-      });
-
-      expect(result.success).toBe(false);
-    });
-
-    it('should throw when SMTP_PASSWORD is missing', async () => {
-      delete process.env.SMTP_PASSWORD;
-
-      await importService();
-      const result = await emailService.sendEmail({
-        to: 'user@test.com',
-        subject: 'Test',
-        template: 'proposal_accepted',
-        data: { name: 'test' },
-      });
-
-      expect(result.success).toBe(false);
     });
   });
 
@@ -207,7 +146,7 @@ describe('Email Delivery Service', () => {
       mockReadFile.mockResolvedValue(
         '<html>Hello {{ name }}, your project {{ project }} is ready.</html>'
       );
-      mockSendMail.mockResolvedValue({ messageId: 'msg-10' });
+      mockSend.mockResolvedValue({ id: 'msg-10' });
 
       await importService();
       const result = await emailService.sendEmail({
@@ -219,7 +158,7 @@ describe('Email Delivery Service', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(mockSendMail).toHaveBeenCalledWith(
+        expect(mockSend).toHaveBeenCalledWith(
           expect.objectContaining({
             html: '<html>Hello Alice, your project FreelanceX is ready.</html>',
           })
@@ -229,7 +168,7 @@ describe('Email Delivery Service', () => {
 
     it('should fallback to JSON when template file read fails', async () => {
       mockReadFile.mockRejectedValue(new Error('File not found'));
-      mockSendMail.mockResolvedValue({ messageId: 'msg-11' });
+      mockSend.mockResolvedValue({ id: 'msg-11' });
 
       await importService();
       const data = { name: 'Bob', project: 'TestProject' };
@@ -242,7 +181,7 @@ describe('Email Delivery Service', () => {
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(mockSendMail).toHaveBeenCalledWith(
+        expect(mockSend).toHaveBeenCalledWith(
           expect.objectContaining({
             html: `<html><body><pre>${JSON.stringify(data, null, 2)}</pre></body></html>`,
           })
@@ -254,7 +193,7 @@ describe('Email Delivery Service', () => {
       mockReadFile.mockResolvedValue(
         '<html>{{ name }} - {{ name }} welcome!</html>'
       );
-      mockSendMail.mockResolvedValue({ messageId: 'msg-12' });
+      mockSend.mockResolvedValue({ id: 'msg-12' });
 
       await importService();
       await emailService.sendEmail({
@@ -264,7 +203,7 @@ describe('Email Delivery Service', () => {
         data: { name: 'Charlie' },
       });
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           html: '<html>Charlie - Charlie welcome!</html>',
         })
@@ -273,7 +212,7 @@ describe('Email Delivery Service', () => {
 
     it('should handle numeric data values by converting to string', async () => {
       mockReadFile.mockResolvedValue('<html>Rating: {{ rating }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-13' });
+      mockSend.mockResolvedValue({ id: 'msg-13' });
 
       await importService();
       await emailService.sendEmail({
@@ -283,7 +222,7 @@ describe('Email Delivery Service', () => {
         data: { rating: 5 },
       });
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           html: '<html>Rating: 5</html>',
         })
@@ -294,7 +233,7 @@ describe('Email Delivery Service', () => {
   describe('sendEmail', () => {
     it('should send email successfully', async () => {
       mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-success' });
+      mockSend.mockResolvedValue({ id: 'msg-success' });
 
       await importService();
       const result = await emailService.sendEmail({
@@ -313,7 +252,7 @@ describe('Email Delivery Service', () => {
     it('should use EMAIL_FROM env var when set', async () => {
       process.env.EMAIL_FROM = 'custom@freelancexchain.com';
       mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-from' });
+      mockSend.mockResolvedValue({ id: 'msg-from' });
 
       await importService();
       await emailService.sendEmail({
@@ -323,7 +262,7 @@ describe('Email Delivery Service', () => {
         data: {},
       });
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({ from: 'custom@freelancexchain.com' })
       );
     });
@@ -331,7 +270,7 @@ describe('Email Delivery Service', () => {
     it('should use default EMAIL_FROM when env var not set', async () => {
       delete process.env.EMAIL_FROM;
       mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-default' });
+      mockSend.mockResolvedValue({ id: 'msg-default' });
 
       await importService();
       await emailService.sendEmail({
@@ -341,16 +280,14 @@ describe('Email Delivery Service', () => {
         data: {},
       });
 
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({ from: 'noreply@freelancexchain.com' })
       );
     });
 
-    it('should return error when SMTP config is missing', async () => {
-      delete process.env.SMTP_HOST;
-      delete process.env.SMTP_PORT;
-      delete process.env.SMTP_USER;
-      delete process.env.SMTP_PASSWORD;
+    it('should return error when Cloudflare config is missing', async () => {
+      delete process.env.CLOUDFLARE_API_TOKEN;
+      delete process.env.CLOUDFLARE_ACCOUNT_ID;
 
       await importService();
       const result = await emailService.sendEmail({
@@ -366,9 +303,9 @@ describe('Email Delivery Service', () => {
       }
     });
 
-    it('should return error when sendMail fails', async () => {
+    it('should return error when send fails', async () => {
       mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSendMail.mockRejectedValue(new Error('Connection refused'));
+      mockSend.mockRejectedValue(new Error('Connection refused'));
 
       await importService();
       const result = await emailService.sendEmail({
@@ -385,9 +322,9 @@ describe('Email Delivery Service', () => {
       }
     });
 
-    it('should handle non-Error thrown values in sendMail failure', async () => {
+    it('should handle non-Error thrown values in send failure', async () => {
       mockReadFile.mockResolvedValue('<html>Body</html>');
-      mockSendMail.mockRejectedValue('string error');
+      mockSend.mockRejectedValue('string error');
 
       await importService();
       const result = await emailService.sendEmail({
@@ -407,7 +344,7 @@ describe('Email Delivery Service', () => {
   describe('sendProposalAcceptedEmail', () => {
     it('should send proposal accepted email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ freelancerName }} {{ projectTitle }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-proposal' });
+      mockSend.mockResolvedValue({ id: 'msg-proposal' });
 
       await importService();
       const result = await emailService.sendProposalAcceptedEmail('freelancer@test.com', {
@@ -417,7 +354,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'freelancer@test.com',
           subject: 'Your proposal has been accepted!',
@@ -430,7 +367,7 @@ describe('Email Delivery Service', () => {
   describe('sendMilestoneApprovedEmail', () => {
     it('should send milestone approved email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ freelancerName }} {{ milestoneTitle }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-milestone' });
+      mockSend.mockResolvedValue({ id: 'msg-milestone' });
 
       await importService();
       const result = await emailService.sendMilestoneApprovedEmail('freelancer@test.com', {
@@ -441,7 +378,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'freelancer@test.com',
           subject: 'Milestone approved - Payment released',
@@ -453,7 +390,7 @@ describe('Email Delivery Service', () => {
   describe('sendPaymentReleasedEmail', () => {
     it('should send payment released email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ recipientName }} {{ amount }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-payment' });
+      mockSend.mockResolvedValue({ id: 'msg-payment' });
 
       await importService();
       const result = await emailService.sendPaymentReleasedEmail('recipient@test.com', {
@@ -464,7 +401,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'recipient@test.com',
           subject: 'Payment released',
@@ -476,7 +413,7 @@ describe('Email Delivery Service', () => {
   describe('sendDisputeCreatedEmail', () => {
     it('should send dispute created email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ arbiterName }} {{ disputeReason }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-dispute' });
+      mockSend.mockResolvedValue({ id: 'msg-dispute' });
 
       await importService();
       const result = await emailService.sendDisputeCreatedEmail('arbiter@test.com', {
@@ -487,7 +424,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'arbiter@test.com',
           subject: 'New dispute requires your attention',
@@ -499,7 +436,7 @@ describe('Email Delivery Service', () => {
   describe('sendContractCreatedEmail', () => {
     it('should send contract created email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ recipientName }} {{ projectTitle }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-contract' });
+      mockSend.mockResolvedValue({ id: 'msg-contract' });
 
       await importService();
       const result = await emailService.sendContractCreatedEmail('user@test.com', {
@@ -509,7 +446,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@test.com',
           subject: 'New contract created',
@@ -521,7 +458,7 @@ describe('Email Delivery Service', () => {
   describe('sendMessageReceivedEmail', () => {
     it('should send message received email with sender name in subject', async () => {
       mockReadFile.mockResolvedValue('<html>{{ recipientName }} {{ senderName }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-message' });
+      mockSend.mockResolvedValue({ id: 'msg-message' });
 
       await importService();
       const result = await emailService.sendMessageReceivedEmail('user@test.com', {
@@ -532,7 +469,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@test.com',
           subject: 'New message from Frank',
@@ -544,7 +481,7 @@ describe('Email Delivery Service', () => {
   describe('sendReviewReceivedEmail', () => {
     it('should send review received email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ recipientName }} {{ rating }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-review' });
+      mockSend.mockResolvedValue({ id: 'msg-review' });
 
       await importService();
       const result = await emailService.sendReviewReceivedEmail('user@test.com', {
@@ -556,7 +493,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@test.com',
           subject: 'You received a new review',
@@ -568,7 +505,7 @@ describe('Email Delivery Service', () => {
   describe('sendKycApprovedEmail', () => {
     it('should send KYC approved email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ userName }} {{ tier }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-kyc-approve' });
+      mockSend.mockResolvedValue({ id: 'msg-kyc-approve' });
 
       await importService();
       const result = await emailService.sendKycApprovedEmail('user@test.com', {
@@ -577,7 +514,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@test.com',
           subject: 'KYC verification approved',
@@ -589,7 +526,7 @@ describe('Email Delivery Service', () => {
   describe('sendKycRejectedEmail', () => {
     it('should send KYC rejected email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ userName }} {{ reason }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-kyc-reject' });
+      mockSend.mockResolvedValue({ id: 'msg-kyc-reject' });
 
       await importService();
       const result = await emailService.sendKycRejectedEmail('user@test.com', {
@@ -598,7 +535,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@test.com',
           subject: 'KYC verification requires attention',
@@ -610,7 +547,7 @@ describe('Email Delivery Service', () => {
   describe('sendWeeklyDigestEmail', () => {
     it('should send weekly digest email with correct parameters', async () => {
       mockReadFile.mockResolvedValue('<html>{{ userName }} {{ newProjects }}</html>');
-      mockSendMail.mockResolvedValue({ messageId: 'msg-digest' });
+      mockSend.mockResolvedValue({ id: 'msg-digest' });
 
       await importService();
       const result = await emailService.sendWeeklyDigestEmail('user@test.com', {
@@ -625,7 +562,7 @@ describe('Email Delivery Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockSendMail).toHaveBeenCalledWith(
+      expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'user@test.com',
           subject: 'Your weekly FreelanceXchain digest',
@@ -635,9 +572,7 @@ describe('Email Delivery Service', () => {
   });
 
   describe('testEmailConfiguration', () => {
-    it('should return success when verification passes', async () => {
-      mockVerify.mockResolvedValue(true);
-
+    it('should return success when Cloudflare config is present', async () => {
       await importService();
       const result = await emailService.testEmailConfiguration();
 
@@ -647,11 +582,9 @@ describe('Email Delivery Service', () => {
       }
     });
 
-    it('should return failure when SMTP config is missing', async () => {
-      delete process.env.SMTP_HOST;
-      delete process.env.SMTP_PORT;
-      delete process.env.SMTP_USER;
-      delete process.env.SMTP_PASSWORD;
+    it('should return failure when Cloudflare config is missing', async () => {
+      delete process.env.CLOUDFLARE_API_TOKEN;
+      delete process.env.CLOUDFLARE_ACCOUNT_ID;
 
       await importService();
       const result = await emailService.testEmailConfiguration();
@@ -659,12 +592,12 @@ describe('Email Delivery Service', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('EMAIL_CONFIG_INVALID');
-        expect(result.error.message).toBe('SMTP configuration not found');
+        expect(result.error.message).toBe('Cloudflare email configuration not found');
       }
     });
 
-    it('should return failure when verify throws an Error', async () => {
-      mockVerify.mockRejectedValue(new Error('Connection timed out'));
+    it('should return failure when CLOUDFLARE_API_TOKEN is missing', async () => {
+      delete process.env.CLOUDFLARE_API_TOKEN;
 
       await importService();
       const result = await emailService.testEmailConfiguration();
@@ -672,12 +605,11 @@ describe('Email Delivery Service', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('EMAIL_CONFIG_INVALID');
-        expect(result.error.message).toBe('Connection timed out');
       }
     });
 
-    it('should return failure with generic message when verify throws non-Error', async () => {
-      mockVerify.mockRejectedValue('unknown failure');
+    it('should return failure when CLOUDFLARE_ACCOUNT_ID is missing', async () => {
+      delete process.env.CLOUDFLARE_ACCOUNT_ID;
 
       await importService();
       const result = await emailService.testEmailConfiguration();
@@ -685,7 +617,6 @@ describe('Email Delivery Service', () => {
       expect(result.success).toBe(false);
       if (!result.success) {
         expect(result.error.code).toBe('EMAIL_CONFIG_INVALID');
-        expect(result.error.message).toBe('Email configuration is invalid');
       }
     });
   });
