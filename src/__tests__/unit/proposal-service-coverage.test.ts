@@ -10,6 +10,7 @@ const mockProposalRepository = {
   updateProposal: jest.fn<any>(),
   getProposalsByProject: jest.fn<any>(),
   getProposalsByFreelancer: jest.fn<any>(),
+  getAcceptedProposalCount: jest.fn<any>(),
 };
 
 jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
@@ -168,11 +169,12 @@ describe('Proposal Service - Coverage', () => {
       if (!result.success) expect(result.error.code).toBe('INVALID_PROPOSAL_RATE');
     });
 
-    // Lines 532-534: RPC failed
-    it('should return UPDATE_FAILED when RPC fails', async () => {
+    // Lines 532-534: UPDATE_FAILED when updateProposal returns null
+    it('should return UPDATE_FAILED when updateProposal returns null', async () => {
       mockProposalRepository.findProposalById.mockResolvedValue({ id: 'prop-1', status: 'pending', project_id: 'p-1', proposed_rate: 1000, freelancer_id: 'f-1' });
       mockProjectRepository.findProjectById.mockResolvedValue({ id: 'p-1', employer_id: 'emp-1', milestones: [{ title: 'MS1', amount: 1000 }] });
-      mockPool.query.mockResolvedValue({ rows: [{ result: false }] });
+      mockProposalRepository.getAcceptedProposalCount.mockResolvedValue(0);
+      mockProposalRepository.updateProposal.mockResolvedValue(null);
 
       const result = await acceptProposal('prop-1', 'emp-1');
       expect(result.success).toBe(false);

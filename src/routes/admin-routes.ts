@@ -3,7 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { pool } from '../config/database.js';
+import { ReviewRepository } from '../repositories/review-repository.js';
 
 import {
   getPlatformStats,
@@ -325,17 +325,12 @@ router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response
     return;
   }
 
-  // Calculate satisfaction rate from completed contracts (reviews with 4+ stars / total reviews)
   let satisfactionRate = 0;
   try {
-    const satisfactionResult = await pool.query(`
-      SELECT 
-        COUNT(*) FILTER (WHERE rating >= 4.0) as positive,
-        COUNT(*) as total
-      FROM reviews
-    `);
-    const { positive, total } = satisfactionResult.rows[0];
-    satisfactionRate = total > 0 ? Math.round((Number(positive) / Number(total)) * 100) : 0;
+    const reviews = await ReviewRepository.getAllReviews();
+    const positive = reviews.filter(r => r.rating >= 4.0).length;
+    const total = reviews.length;
+    satisfactionRate = total > 0 ? Math.round((positive / total) * 100) : 0;
   } catch {
     satisfactionRate = 0;
   }

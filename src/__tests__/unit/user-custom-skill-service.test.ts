@@ -24,6 +24,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-custom-skill-repos
     updateUserCustomSkill: mockUpdateUserCustomSkillRepo,
     deleteUserCustomSkill: mockDeleteUserCustomSkillRepo,
     searchUserCustomSkills: mockSearchUserCustomSkillsRepo,
+  },
+  skillSuggestionRepository: {
     getSkillSuggestionByName: mockGetSkillSuggestionByName,
     incrementSkillSuggestionCount: mockIncrementSkillSuggestionCount,
     createSkillSuggestion: mockCreateSkillSuggestion,
@@ -101,6 +103,35 @@ describe('User Custom Skill Service', () => {
 
       expect(result.success).toBe(true);
       expect(mockCreateSkillSuggestion).toHaveBeenCalled();
+    });
+
+    it('should suggest for global without category name', async () => {
+      const { createUserCustomSkill } = await importModule();
+
+      mockSearchSkills.mockResolvedValueOnce([]);
+      mockGetUserCustomSkills.mockResolvedValueOnce([]);
+      const created = {
+        id: 'generated-id', user_id: 'user-1', name: 'Skill No Category',
+        description: 'Desc', years_of_experience: 1,
+        is_approved: false, suggested_for_global: true,
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      };
+      mockCreateUserCustomSkillRepo.mockResolvedValueOnce(created);
+      mockGetSkillSuggestionByName.mockResolvedValueOnce(null);
+      mockCreateSkillSuggestion.mockResolvedValueOnce(undefined);
+
+      const result = await createUserCustomSkill('user-1', 'Test User', {
+        name: 'Skill No Category',
+        description: 'Desc',
+        yearsOfExperience: 1,
+        suggestForGlobal: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSkillSuggestion).toHaveBeenCalledTimes(1);
+      const suggestionArg = mockCreateSkillSuggestion.mock.calls[0][0];
+      expect(suggestionArg.skill_name).toBe('Skill No Category');
+      expect(suggestionArg).not.toHaveProperty('category_name');
     });
 
     it('should increment suggestion count if suggestion already exists', async () => {
@@ -327,6 +358,53 @@ describe('User Custom Skill Service', () => {
 
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+
+    it('should skip duplicate check when name unchanged', async () => {
+      const { updateUserCustomSkill } = await importModule();
+
+      mockGetUserCustomSkillById.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'Same Name',
+        description: 'Old', years_of_experience: 1,
+        is_approved: false, suggested_for_global: false,
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      });
+      mockUpdateUserCustomSkillRepo.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'Same Name',
+        description: 'Updated', years_of_experience: 1,
+        is_approved: false, suggested_for_global: false,
+        created_at: '2025-01-01', updated_at: '2025-01-02',
+      });
+
+      const result = await updateUserCustomSkill('cs-1', 'user-1', { description: 'Updated' });
+
+      expect(result.success).toBe(true);
+      expect(mockGetUserCustomSkills).not.toHaveBeenCalled();
+    });
+
+    it('should update category name', async () => {
+      const { updateUserCustomSkill } = await importModule();
+
+      mockGetUserCustomSkillById.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'Skill',
+        description: 'Desc', years_of_experience: 1,
+        is_approved: false, suggested_for_global: false,
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      });
+      mockUpdateUserCustomSkillRepo.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'Skill',
+        description: 'Desc', years_of_experience: 1,
+        category_name: 'New Category',
+        is_approved: false, suggested_for_global: false,
+        created_at: '2025-01-01', updated_at: '2025-01-02',
+      });
+
+      const result = await updateUserCustomSkill('cs-1', 'user-1', { categoryName: 'New Category' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.categoryName).toBe('New Category');
+      }
     });
   });
 

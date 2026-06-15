@@ -1,7 +1,8 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type { PaginatedResult } from '../repositories/types.js';
+import { transactionRepository } from '../repositories/transaction-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
 
 export interface Transaction {
   id: string;
@@ -51,51 +52,30 @@ export async function getUserTransactions(
     const limit = options.limit || 20;
     const offset = (page - 1) * limit;
 
-    let query = 'SELECT * FROM transactions WHERE (from_user_id = $1 OR to_user_id = $1)';
-    let countQuery = 'SELECT COUNT(*) FROM transactions WHERE (from_user_id = $1 OR to_user_id = $1)';
-    const params: any[] = [userId];
-    let pIndex = 2;
+    const pagedResult = await transactionRepository.findByUser(userId, { limit: 1000, offset: 0 });
+    let filtered = pagedResult.items;
 
-    // Apply filters
+    // Apply filters in-memory (Appwrite doesn't support complex WHERE)
     if (options.type) {
-      query += ` AND type = $${pIndex}`;
-      countQuery += ` AND type = $${pIndex}`;
-      params.push(options.type);
-      pIndex++;
+      filtered = filtered.filter(t => t.type === options.type);
     }
     if (options.status) {
-      query += ` AND status = $${pIndex}`;
-      countQuery += ` AND status = $${pIndex}`;
-      params.push(options.status);
-      pIndex++;
+      filtered = filtered.filter(t => t.status === options.status);
     }
     if (options.startDate) {
-      query += ` AND created_at >= $${pIndex}`;
-      countQuery += ` AND created_at >= $${pIndex}`;
-      params.push(options.startDate);
-      pIndex++;
+      filtered = filtered.filter(t => new Date(t.created_at) >= new Date(options.startDate!));
     }
     if (options.endDate) {
-      query += ` AND created_at <= $${pIndex}`;
-      countQuery += ` AND created_at <= $${pIndex}`;
-      params.push(options.endDate);
-      pIndex++;
+      filtered = filtered.filter(t => new Date(t.created_at) <= new Date(options.endDate!));
     }
 
-    query += ` ORDER BY created_at DESC LIMIT $${pIndex} OFFSET $${pIndex + 1}`;
-    const queryParams = [...params, limit, offset];
-
-    const [results, countResult] = await Promise.all([
-      pool.query(query, queryParams),
-      pool.query(countQuery, params)
-    ]);
-
-    const total = parseInt(countResult.rows[0].count);
+    const total = filtered.length;
+    const items = filtered.slice(offset, offset + limit);
 
     return {
       success: true,
       data: {
-        items: results.rows as Transaction[],
+        items: items as Transaction[],
         total,
         hasMore: offset + limit < total,
       },
@@ -120,12 +100,9 @@ export async function getTransactionById(
   userId: string
 ): Promise<ServiceResult<Transaction>> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM transactions WHERE id = $1',
-      [transactionId]
-    );
+    const transaction = await transactionRepository.getById(transactionId);
 
-    if (result.rows.length === 0) {
+    if (!transaction) {
       return {
         success: false,
         error: {
@@ -134,8 +111,6 @@ export async function getTransactionById(
         },
       };
     }
-
-    const transaction = result.rows[0];
 
     // Verify ownership
     if (transaction.from_user_id !== userId && transaction.to_user_id !== userId) {
@@ -173,12 +148,9 @@ export async function getContractTransactions(
 ): Promise<ServiceResult<Transaction[]>> {
   try {
     // Verify user is part of contract
-    const contractResult = await pool.query(
-      'SELECT freelancer_id, employer_id FROM contracts WHERE id = $1',
-      [contractId]
-    );
+    const contract = await contractRepository.getContractById(contractId);
 
-    if (contractResult.rows.length === 0) {
+    if (!contract) {
       return {
         success: false,
         error: {
@@ -188,7 +160,6 @@ export async function getContractTransactions(
       };
     }
 
-    const contract = contractResult.rows[0];
     if (contract.freelancer_id !== userId && contract.employer_id !== userId) {
       return {
         success: false,
@@ -199,14 +170,11 @@ export async function getContractTransactions(
       };
     }
 
-    const result = await pool.query(
-      'SELECT * FROM transactions WHERE contract_id = $1 ORDER BY created_at DESC',
-      [contractId]
-    );
+    const transactions = await transactionRepository.findByContract(contractId);
 
     return {
       success: true,
-      data: result.rows as Transaction[],
+      data: transactions as Transaction[],
     };
   } catch (error) {
     logger.error('Unexpected error in getContractTransactions', { error, contractId, userId });
@@ -227,27 +195,21 @@ export async function createTransaction(
   input: TransactionInput
 ): Promise<ServiceResult<Transaction>> {
   try {
-    const result = await pool.query(
-      `INSERT INTO transactions 
-       (contract_id, milestone_id, from_user_id, to_user_id, amount, type, status, transaction_hash, metadata, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
-       RETURNING *`,
-      [
-        input.contract_id,
-        input.milestone_id,
-        input.from_user_id,
-        input.to_user_id,
-        input.amount,
-        input.type,
-        input.status,
-        input.transaction_hash,
-        input.metadata ? JSON.stringify(input.metadata) : null
-      ]
-    );
+    const created = await transactionRepository.create({
+      contract_id: input.contract_id,
+      milestone_id: input.milestone_id,
+      from_user_id: input.from_user_id,
+      to_user_id: input.to_user_id,
+      amount: input.amount,
+      type: input.type,
+      status: input.status,
+      transaction_hash: input.transaction_hash,
+      metadata: input.metadata ? JSON.stringify(input.metadata) : undefined,
+    } as any);
 
     return {
       success: true,
-      data: result.rows[0] as Transaction,
+      data: created as Transaction,
     };
   } catch (error) {
     logger.error('Unexpected error in createTransaction', { error, input });

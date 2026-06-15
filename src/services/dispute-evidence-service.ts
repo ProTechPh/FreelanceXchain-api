@@ -1,4 +1,6 @@
-import { pool } from '../config/database.js';
+import { disputeEvidenceRepository, DisputeEvidenceEntity } from '../repositories/dispute-evidence-repository.js';
+import { disputeRepository } from '../repositories/dispute-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type {
@@ -8,6 +10,7 @@ import type {
 } from '../models/dispute-evidence.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
+import { generateId } from '../utils/id.js';
 
 /**
  * Submit evidence for dispute
@@ -16,26 +19,27 @@ export async function submitEvidence(
   input: SubmitEvidenceInput
 ): Promise<ServiceResult<DisputeEvidence>> {
   try {
-    // Verify dispute exists and user is involved
-    const disputeResult = await pool.query(
-      `SELECT d.*, c.freelancer_id, c.employer_id 
-       FROM disputes d
-       INNER JOIN contracts c ON d.contract_id = c.id
-       WHERE d.id = $1`,
-      [input.disputeId]
-    );
-
-    if (disputeResult.rows.length === 0) {
+    // Verify dispute exists
+    const disputeEntity = await disputeRepository.getDisputeById(input.disputeId);
+    if (!disputeEntity) {
       return {
         success: false,
         error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
       };
     }
 
-    const dispute = disputeResult.rows[0];
+    // Get contract to check involvement
+    const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
+    if (!contractEntity) {
+      return {
+        success: false,
+        error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
+      };
+    }
+
     const isInvolved = 
-      dispute.freelancer_id === input.submittedBy || 
-      dispute.employer_id === input.submittedBy;
+      contractEntity.freelancer_id === input.submittedBy || 
+      contractEntity.employer_id === input.submittedBy;
 
     if (!isInvolved) {
       return {
@@ -44,24 +48,40 @@ export async function submitEvidence(
       };
     }
 
-    // Insert evidence
-    const evidenceResult = await pool.query(
-      `INSERT INTO dispute_evidence (dispute_id, submitted_by, evidence_type, file_url, description, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-       RETURNING *`,
-      [input.disputeId, input.submittedBy, input.evidenceType, input.fileUrl, input.description]
-    );
-
-    if (evidenceResult.rows.length === 0) {
-      throw new Error('Failed to insert evidence');
+    // Create evidence entity
+    const now = new Date().toISOString();
+    const evidenceEntity: DisputeEvidenceEntity = {
+      id: generateId(),
+      dispute_id: input.disputeId,
+      submitted_by: input.submittedBy,
+      evidence_type: input.evidenceType,
+      description: input.description,
+      created_at: now,
+      updated_at: now,
+    };
+    if (input.fileUrl) {
+      evidenceEntity.file_url = input.fileUrl;
     }
 
-    const evidence = evidenceResult.rows[0];
+    const createdEvidence = await disputeEvidenceRepository.createEvidence(evidenceEntity);
+
+    const evidence: DisputeEvidence = {
+      id: createdEvidence.id,
+      disputeId: createdEvidence.dispute_id,
+      submittedBy: createdEvidence.submitted_by,
+      evidenceType: createdEvidence.evidence_type as DisputeEvidence['evidenceType'],
+      fileUrl: createdEvidence.file_url ?? '',
+      description: createdEvidence.description,
+      createdAt: new Date(createdEvidence.created_at),
+      updatedAt: new Date(createdEvidence.updated_at),
+      ...(createdEvidence.verified_by ? { verifiedBy: createdEvidence.verified_by } : {}),
+      ...(createdEvidence.verified_at ? { verifiedAt: new Date(createdEvidence.verified_at) } : {}),
+    };
 
     // Notify arbiter if assigned
-    if (dispute.arbiter_id) {
+    if (disputeEntity.resolution?.resolved_by) {
       const notificationResult = await createNotification({
-        userId: dispute.arbiter_id,
+        userId: disputeEntity.resolution.resolved_by,
         type: 'dispute_evidence_submitted',
         title: 'New Evidence Submitted',
         message: `New evidence has been submitted for dispute #${input.disputeId.substring(0, 8)}`,
@@ -72,14 +92,14 @@ export async function submitEvidence(
       });
 
       if (notificationResult.success) {
-        await sendNotificationToUser(dispute.arbiter_id, notificationResult.data);
+        await sendNotificationToUser(disputeEntity.resolution.resolved_by, notificationResult.data);
       }
     }
 
     // Notify the other party
-    const otherPartyId = dispute.freelancer_id === input.submittedBy 
-      ? dispute.employer_id 
-      : dispute.freelancer_id;
+    const otherPartyId = contractEntity.freelancer_id === input.submittedBy 
+      ? contractEntity.employer_id 
+      : contractEntity.freelancer_id;
 
     const notificationResult = await createNotification({
       userId: otherPartyId,
@@ -98,7 +118,7 @@ export async function submitEvidence(
 
     logger.info(`Evidence submitted for dispute ${input.disputeId} by user ${input.submittedBy}`);
 
-    return { success: true, data: evidence as DisputeEvidence };
+    return { success: true, data: evidence };
   } catch (error) {
     logger.error('Failed to submit evidence:', error);
     return {
@@ -119,27 +139,28 @@ export async function getDisputeEvidence(
   userId: string
 ): Promise<ServiceResult<DisputeEvidence[]>> {
   try {
-    // Verify user is involved in dispute or is arbiter
-    const disputeResult = await pool.query(
-      `SELECT d.*, c.freelancer_id, c.employer_id 
-       FROM disputes d
-       INNER JOIN contracts c ON d.contract_id = c.id
-       WHERE d.id = $1`,
-      [disputeId]
-    );
-
-    if (disputeResult.rows.length === 0) {
+    // Verify dispute exists
+    const disputeEntity = await disputeRepository.getDisputeById(disputeId);
+    if (!disputeEntity) {
       return {
         success: false,
         error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
       };
     }
 
-    const dispute = disputeResult.rows[0];
+    // Get contract to check authorization
+    const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
+    if (!contractEntity) {
+      return {
+        success: false,
+        error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
+      };
+    }
+
     const isAuthorized = 
-      dispute.freelancer_id === userId || 
-      dispute.employer_id === userId ||
-      dispute.arbiter_id === userId;
+      contractEntity.freelancer_id === userId || 
+      contractEntity.employer_id === userId ||
+      disputeEntity.resolution?.resolved_by === userId;
 
     if (!isAuthorized) {
       return {
@@ -149,12 +170,22 @@ export async function getDisputeEvidence(
     }
 
     // Get all evidence
-    const evidenceResult = await pool.query(
-      'SELECT * FROM dispute_evidence WHERE dispute_id = $1 ORDER BY created_at ASC',
-      [disputeId]
-    );
+    const evidenceEntities = await disputeEvidenceRepository.findByDispute(disputeId);
 
-    return { success: true, data: evidenceResult.rows as DisputeEvidence[] };
+    const evidence: DisputeEvidence[] = evidenceEntities.map(e => ({
+      id: e.id,
+      disputeId: e.dispute_id,
+      submittedBy: e.submitted_by,
+      evidenceType: e.evidence_type as DisputeEvidence['evidenceType'],
+      fileUrl: e.file_url ?? '',
+      description: e.description,
+      createdAt: new Date(e.created_at),
+      updatedAt: new Date(e.updated_at),
+      ...(e.verified_by ? { verifiedBy: e.verified_by } : {}),
+      ...(e.verified_at ? { verifiedAt: new Date(e.verified_at) } : {}),
+    }));
+
+    return { success: true, data: evidence };
   } catch (error) {
     logger.error('Failed to get dispute evidence:', error);
     return {
@@ -176,22 +207,17 @@ export async function deleteEvidence(
 ): Promise<ServiceResult<void>> {
   try {
     // Get evidence
-    const evidenceResult = await pool.query(
-      'SELECT * FROM dispute_evidence WHERE id = $1',
-      [evidenceId]
-    );
+    const evidenceEntity = await disputeEvidenceRepository.getEvidenceById(evidenceId);
 
-    if (evidenceResult.rows.length === 0) {
+    if (!evidenceEntity) {
       return {
         success: false,
         error: { code: 'EVIDENCE_NOT_FOUND', message: 'Evidence not found' },
       };
     }
 
-    const evidence = evidenceResult.rows[0];
-
     // Check ownership
-    if (evidence.submitted_by !== userId) {
+    if (evidenceEntity.submitted_by !== userId) {
       return {
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'You can only delete your own evidence' },
@@ -199,7 +225,7 @@ export async function deleteEvidence(
     }
 
     // Check if already verified
-    if (evidence.verified_at) {
+    if (evidenceEntity.verified_at) {
       return {
         success: false,
         error: { code: 'ALREADY_VERIFIED', message: 'Cannot delete verified evidence' },
@@ -207,10 +233,7 @@ export async function deleteEvidence(
     }
 
     // Delete evidence
-    await pool.query(
-      'DELETE FROM dispute_evidence WHERE id = $1',
-      [evidenceId]
-    );
+    await disputeEvidenceRepository.deleteEvidence(evidenceId);
 
     logger.info(`Evidence ${evidenceId} deleted by user ${userId}`);
 
@@ -234,26 +257,27 @@ export async function verifyEvidence(
   input: VerifyEvidenceInput
 ): Promise<ServiceResult<DisputeEvidence>> {
   try {
-    // Get evidence and dispute
-    const evidenceResult = await pool.query(
-      `SELECT de.*, d.arbiter_id, d.id as dispute_id
-       FROM dispute_evidence de
-       INNER JOIN disputes d ON de.dispute_id = d.id
-       WHERE de.id = $1`,
-      [input.evidenceId]
-    );
+    // Get evidence
+    const evidenceEntity = await disputeEvidenceRepository.getEvidenceById(input.evidenceId);
 
-    if (evidenceResult.rows.length === 0) {
+    if (!evidenceEntity) {
       return {
         success: false,
         error: { code: 'EVIDENCE_NOT_FOUND', message: 'Evidence not found' },
       };
     }
 
-    const evidence = evidenceResult.rows[0];
+    // Get dispute to check arbiter
+    const disputeEntity = await disputeRepository.getDisputeById(evidenceEntity.dispute_id);
+    if (!disputeEntity) {
+      return {
+        success: false,
+        error: { code: 'EVIDENCE_NOT_FOUND', message: 'Evidence not found' },
+      };
+    }
 
     // Check if user is arbiter
-    if (evidence.arbiter_id !== input.verifiedBy) {
+    if (disputeEntity.resolution?.resolved_by !== input.verifiedBy) {
       return {
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'Only the assigned arbiter can verify evidence' },
@@ -261,23 +285,33 @@ export async function verifyEvidence(
     }
 
     // Update evidence
-    const updateResult = await pool.query(
-      `UPDATE dispute_evidence 
-       SET verified_by = $1, verified_at = NOW(), updated_at = NOW()
-       WHERE id = $2
-       RETURNING *`,
-      [input.verifiedBy, input.evidenceId]
-    );
+    const now = new Date().toISOString();
+    const updatedEntity = await disputeEvidenceRepository.updateEvidence(input.evidenceId, {
+      verified_by: input.verifiedBy,
+      verified_at: now,
+      updated_at: now,
+    });
 
-    if (updateResult.rows.length === 0) {
+    if (!updatedEntity) {
       throw new Error('Failed to verify evidence');
     }
 
-    const updated = updateResult.rows[0];
+    const updated: DisputeEvidence = {
+      id: updatedEntity.id,
+      disputeId: updatedEntity.dispute_id,
+      submittedBy: updatedEntity.submitted_by,
+      evidenceType: updatedEntity.evidence_type as DisputeEvidence['evidenceType'],
+      fileUrl: updatedEntity.file_url ?? '',
+      description: updatedEntity.description,
+      createdAt: new Date(updatedEntity.created_at),
+      updatedAt: new Date(updatedEntity.updated_at),
+      ...(updatedEntity.verified_by ? { verifiedBy: updatedEntity.verified_by } : {}),
+      ...(updatedEntity.verified_at ? { verifiedAt: new Date(updatedEntity.verified_at) } : {}),
+    };
 
     logger.info(`Evidence ${input.evidenceId} verified by arbiter ${input.verifiedBy}`);
 
-    return { success: true, data: updated as DisputeEvidence };
+    return { success: true, data: updated };
   } catch (error) {
     logger.error('Failed to verify evidence:', error);
     return {

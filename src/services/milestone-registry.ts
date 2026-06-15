@@ -12,7 +12,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
-import { pool } from '../config/database.js';
+import { blockchainMilestoneRecordRepository } from '../repositories/blockchain-milestone-record-repository.js';
 
 export type BlockchainMilestoneStatus = 'submitted' | 'approved' | 'rejected' | 'disputed';
 
@@ -49,8 +49,7 @@ export type SubmitMilestoneInput = {
 
 const MILESTONE_REGISTRY_ADDRESS = generateWalletAddress();
 
-// DB row type
-type MilestoneRow = {
+function entityToRecord(entity: {
   milestone_id_hash: string;
   contract_id_hash: string;
   work_hash: string;
@@ -59,26 +58,24 @@ type MilestoneRow = {
   amount: number;
   status: string;
   submitted_at: number;
-  completed_at: number | null;
+  completed_at?: number;
   title: string;
   transaction_hash: string;
   block_number: number;
-};
-
-function rowToRecord(row: MilestoneRow): BlockchainMilestoneRecord {
+}): BlockchainMilestoneRecord {
   return {
-    milestoneIdHash: row.milestone_id_hash,
-    contractIdHash: row.contract_id_hash,
-    workHash: row.work_hash,
-    freelancerWallet: row.freelancer_wallet,
-    employerWallet: row.employer_wallet,
-    amount: Number(row.amount),
-    status: row.status as BlockchainMilestoneStatus,
-    submittedAt: row.submitted_at,
-    completedAt: row.completed_at,
-    title: row.title,
-    transactionHash: row.transaction_hash,
-    blockNumber: row.block_number,
+    milestoneIdHash: entity.milestone_id_hash,
+    contractIdHash: entity.contract_id_hash,
+    workHash: entity.work_hash,
+    freelancerWallet: entity.freelancer_wallet,
+    employerWallet: entity.employer_wallet,
+    amount: Number(entity.amount),
+    status: entity.status as BlockchainMilestoneStatus,
+    submittedAt: entity.submitted_at,
+    completedAt: entity.completed_at ?? null,
+    title: entity.title,
+    transactionHash: entity.transaction_hash,
+    blockNumber: entity.block_number,
   };
 }
 
@@ -101,12 +98,9 @@ export async function submitMilestoneToRegistry(
   const workHash = generateWorkHash(input.deliverables);
 
   // Check if already exists
-  const existingResult = await pool.query(
-    'SELECT milestone_id_hash FROM blockchain_milestones WHERE milestone_id_hash = $1',
-    [milestoneIdHash]
-  );
+  const existing = await blockchainMilestoneRecordRepository.findByMilestoneIdHash(milestoneIdHash);
 
-  if (existingResult.rows.length > 0) {
+  if (existing) {
     throw new Error('Milestone already submitted');
   }
 
@@ -147,26 +141,20 @@ export async function submitMilestoneToRegistry(
   };
 
   // Persist to DB
-  await pool.query(
-    `INSERT INTO blockchain_milestones 
-     (milestone_id_hash, contract_id_hash, work_hash, freelancer_wallet, employer_wallet, 
-      amount, status, submitted_at, completed_at, title, transaction_hash, block_number)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-    [
-      record.milestoneIdHash,
-      record.contractIdHash,
-      record.workHash,
-      record.freelancerWallet,
-      record.employerWallet,
-      record.amount,
-      record.status,
-      record.submittedAt,
-      record.completedAt,
-      record.title,
-      record.transactionHash,
-      record.blockNumber
-    ]
-  );
+  await blockchainMilestoneRecordRepository.createMilestoneRecord({
+    id: milestoneIdHash,
+    milestone_id_hash: record.milestoneIdHash,
+    contract_id_hash: record.contractIdHash,
+    work_hash: record.workHash,
+    freelancer_wallet: record.freelancerWallet,
+    employer_wallet: record.employerWallet,
+    amount: record.amount,
+    status: record.status,
+    submitted_at: record.submittedAt,
+    title: record.title,
+    transaction_hash: record.transactionHash,
+    block_number: record.blockNumber,
+  } as any);
 
   return {
     record,
@@ -189,13 +177,10 @@ export async function approveMilestoneOnRegistry(
 ): Promise<{ record: BlockchainMilestoneRecord; receipt: TransactionReceipt }> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
 
-  const result = await pool.query(
-    'SELECT * FROM blockchain_milestones WHERE milestone_id_hash = $1',
-    [milestoneIdHash]
-  );
+  const entity = await blockchainMilestoneRecordRepository.findByMilestoneIdHash(milestoneIdHash);
 
-  if (result.rows.length === 0) throw new Error('Milestone not found');
-  const record = rowToRecord(result.rows[0] as MilestoneRow);
+  if (!entity) throw new Error('Milestone not found');
+  const record = entityToRecord(entity);
 
   if (record.status !== 'submitted' && record.status !== 'disputed') {
     throw new Error('Invalid milestone status');
@@ -215,12 +200,12 @@ export async function approveMilestoneOnRegistry(
   const now = Date.now();
 
   // Update in DB
-  await pool.query(
-    `UPDATE blockchain_milestones 
-     SET status = $1, completed_at = $2, transaction_hash = $3, block_number = $4, updated_at = NOW()
-     WHERE milestone_id_hash = $5`,
-    ['approved', now, confirmed.hash!, confirmed.blockNumber!, milestoneIdHash]
-  );
+  await blockchainMilestoneRecordRepository.updateMilestoneRecord(entity.id, {
+    status: 'approved',
+    completed_at: now,
+    transaction_hash: confirmed.hash!,
+    block_number: confirmed.blockNumber!,
+  });
 
   record.status = 'approved';
   record.completedAt = now;
@@ -249,13 +234,10 @@ export async function rejectMilestoneOnRegistry(
 ): Promise<{ record: BlockchainMilestoneRecord; receipt: TransactionReceipt }> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
 
-  const result = await pool.query(
-    'SELECT * FROM blockchain_milestones WHERE milestone_id_hash = $1',
-    [milestoneIdHash]
-  );
+  const entity = await blockchainMilestoneRecordRepository.findByMilestoneIdHash(milestoneIdHash);
 
-  if (result.rows.length === 0) throw new Error('Milestone not found');
-  const record = rowToRecord(result.rows[0] as MilestoneRow);
+  if (!entity) throw new Error('Milestone not found');
+  const record = entityToRecord(entity);
 
   if (record.status !== 'submitted') throw new Error('Invalid milestone status');
 
@@ -271,12 +253,11 @@ export async function rejectMilestoneOnRegistry(
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
   // Update in DB
-  await pool.query(
-    `UPDATE blockchain_milestones 
-     SET status = $1, transaction_hash = $2, block_number = $3, updated_at = NOW()
-     WHERE milestone_id_hash = $4`,
-    ['rejected', confirmed.hash!, confirmed.blockNumber!, milestoneIdHash]
-  );
+  await blockchainMilestoneRecordRepository.updateMilestoneRecord(entity.id, {
+    status: 'rejected',
+    transaction_hash: confirmed.hash!,
+    block_number: confirmed.blockNumber!,
+  });
 
   record.status = 'rejected';
   record.transactionHash = confirmed.hash!;
@@ -299,41 +280,29 @@ export async function rejectMilestoneOnRegistry(
  */
 export async function getMilestoneFromRegistry(milestoneId: string): Promise<BlockchainMilestoneRecord | null> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
-  const result = await pool.query(
-    'SELECT * FROM blockchain_milestones WHERE milestone_id_hash = $1',
-    [milestoneIdHash]
-  );
+  const entity = await blockchainMilestoneRecordRepository.findByMilestoneIdHash(milestoneIdHash);
 
-  if (result.rows.length === 0) return null;
-  return rowToRecord(result.rows[0] as MilestoneRow);
+  if (!entity) return null;
+  return entityToRecord(entity);
 }
 
 /**
- * Get freelancer stats from blockchain (derived via SQL aggregates)
+ * Get freelancer stats from blockchain (derived via in-memory computation)
  */
 export async function getFreelancerStatsFromRegistry(walletAddress: string): Promise<FreelancerStats> {
-  // Total milestones for this freelancer
-  const totalResult = await pool.query(
-    'SELECT COUNT(*) as count FROM blockchain_milestones WHERE freelancer_wallet = $1',
-    [walletAddress]
-  );
+  const allMilestones = await blockchainMilestoneRecordRepository.findByWallet(walletAddress);
 
-  // Approved milestones (completed) with sum of amounts
-  const approvedResult = await pool.query(
-    'SELECT amount FROM blockchain_milestones WHERE freelancer_wallet = $1 AND status = $2',
-    [walletAddress, 'approved']
-  );
-
-  const completedCount = approvedResult.rows.length;
+  const approvedMilestones = allMilestones.filter(m => m.status === 'approved');
+  const completedCount = approvedMilestones.length;
   let totalEarned = 0;
-  for (const row of approvedResult.rows) {
-    totalEarned += Number(row.amount);
+  for (const m of approvedMilestones) {
+    totalEarned += Number(m.amount);
   }
 
   return {
     completedCount,
     totalEarned,
-    totalMilestones: parseInt(totalResult.rows[0].count) || 0,
+    totalMilestones: allMilestones.length,
   };
 }
 
@@ -341,12 +310,11 @@ export async function getFreelancerStatsFromRegistry(walletAddress: string): Pro
  * Get freelancer's completed milestones (portfolio)
  */
 export async function getFreelancerPortfolio(walletAddress: string): Promise<BlockchainMilestoneRecord[]> {
-  const result = await pool.query(
-    'SELECT * FROM blockchain_milestones WHERE freelancer_wallet = $1 AND status = $2 ORDER BY completed_at DESC',
-    [walletAddress, 'approved']
-  );
-
-  return result.rows.map(rowToRecord);
+  const allMilestones = await blockchainMilestoneRecordRepository.findByWallet(walletAddress);
+  return allMilestones
+    .filter(m => m.status === 'approved')
+    .sort((a, b) => (b.completed_at ?? 0) - (a.completed_at ?? 0))
+    .map(entityToRecord);
 }
 
 /**
@@ -355,20 +323,20 @@ export async function getFreelancerPortfolio(walletAddress: string): Promise<Blo
 export async function verifyMilestoneWork(milestoneId: string, deliverables: string): Promise<boolean> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
   
-  const result = await pool.query(
-    'SELECT work_hash FROM blockchain_milestones WHERE milestone_id_hash = $1',
-    [milestoneIdHash]
-  );
+  const entity = await blockchainMilestoneRecordRepository.findByMilestoneIdHash(milestoneIdHash);
 
-  if (result.rows.length === 0) return false;
+  if (!entity) return false;
 
   const computedHash = generateWorkHash(deliverables);
-  return result.rows[0].work_hash === computedHash;
+  return entity.work_hash === computedHash;
 }
 
 export async function clearMilestoneRegistry(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  await pool.query("DELETE FROM blockchain_milestones WHERE milestone_id_hash != ''");
+  const all = await blockchainMilestoneRecordRepository.queryAll('submitted_at');
+  for (const record of all) {
+    await blockchainMilestoneRecordRepository.delete(record.id);
+  }
 }
 
 export function getMilestoneRegistryAddress(): string {

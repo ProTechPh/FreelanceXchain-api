@@ -11,7 +11,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
-import { pool } from '../config/database.js';
+import { blockchainAgreementRepository } from '../repositories/blockchain-agreement-repository.js';
 
 // Agreement status on blockchain
 export type BlockchainAgreementStatus = 'pending' | 'signed' | 'completed' | 'disputed' | 'cancelled';
@@ -53,39 +53,6 @@ export type CreateAgreementInput = {
 // Contract address (simulated)
 const AGREEMENT_CONTRACT_ADDRESS = generateWalletAddress();
 
-// DB row type
-type AgreementRow = {
-  contract_id_hash: string;
-  terms_hash: string;
-  employer_wallet: string;
-  freelancer_wallet: string;
-  total_amount: number;
-  milestone_count: number;
-  status: string;
-  employer_signed_at: number | null;
-  freelancer_signed_at: number | null;
-  created_at_ts: number;
-  transaction_hash: string;
-  block_number: number;
-};
-
-function rowToAgreement(row: AgreementRow): BlockchainAgreement {
-  return {
-    contractIdHash: row.contract_id_hash,
-    termsHash: row.terms_hash,
-    employerWallet: row.employer_wallet,
-    freelancerWallet: row.freelancer_wallet,
-    totalAmount: row.total_amount,
-    milestoneCount: row.milestone_count,
-    status: row.status as BlockchainAgreementStatus,
-    employerSignedAt: row.employer_signed_at,
-    freelancerSignedAt: row.freelancer_signed_at,
-    createdAt: row.created_at_ts,
-    transactionHash: row.transaction_hash,
-    blockNumber: row.block_number,
-  };
-}
-
 /**
  * Generate hash of contract ID
  */
@@ -116,12 +83,9 @@ export async function createAgreementOnBlockchain(
   const termsHash = generateTermsHash(input.terms);
 
   // Check if already exists
-  const existingResult = await pool.query(
-    'SELECT contract_id_hash FROM blockchain_agreements WHERE contract_id_hash = $1',
-    [contractIdHash]
-  );
+  const existing = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
-  if (existingResult.rows.length > 0) {
+  if (existing) {
     throw new Error('Agreement already exists for this contract');
   }
 
@@ -161,27 +125,22 @@ export async function createAgreementOnBlockchain(
   };
 
   // Persist to DB
-  await pool.query(
-    `INSERT INTO blockchain_agreements 
-     (contract_id_hash, terms_hash, employer_wallet, freelancer_wallet, total_amount, 
-      milestone_count, status, employer_signed_at, freelancer_signed_at, created_at_ts, 
-      transaction_hash, block_number, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())`,
-    [
-      agreement.contractIdHash,
-      agreement.termsHash,
-      agreement.employerWallet,
-      agreement.freelancerWallet,
-      agreement.totalAmount,
-      agreement.milestoneCount,
-      agreement.status,
-      agreement.employerSignedAt,
-      agreement.freelancerSignedAt,
-      agreement.createdAt,
-      agreement.transactionHash,
-      agreement.blockNumber
-    ]
-  );
+  const createData: Record<string, unknown> = {
+    id: contractIdHash,
+    contract_id_hash: agreement.contractIdHash,
+    terms_hash: agreement.termsHash,
+    employer_wallet: agreement.employerWallet,
+    freelancer_wallet: agreement.freelancerWallet,
+    total_amount: agreement.totalAmount,
+    milestone_count: agreement.milestoneCount,
+    status: agreement.status,
+    created_at_ts: agreement.createdAt,
+    transaction_hash: agreement.transactionHash,
+    block_number: agreement.blockNumber,
+  };
+  if (agreement.employerSignedAt != null) createData['employer_signed_at'] = agreement.employerSignedAt;
+  if (agreement.freelancerSignedAt != null) createData['freelancer_signed_at'] = agreement.freelancerSignedAt;
+  await blockchainAgreementRepository.createAgreement(createData as any);
 
   return {
     agreement,
@@ -204,13 +163,23 @@ export async function signAgreement(
 ): Promise<{ agreement: BlockchainAgreement; receipt: TransactionReceipt }> {
   const contractIdHash = generateContractIdHash(contractId);
 
-  const result = await pool.query(
-    'SELECT * FROM blockchain_agreements WHERE contract_id_hash = $1',
-    [contractIdHash]
-  );
+  const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
-  if (result.rows.length === 0) throw new Error('Agreement not found');
-  const agreement = rowToAgreement(result.rows[0] as AgreementRow);
+  if (!entity) throw new Error('Agreement not found');
+  const agreement: BlockchainAgreement = {
+    contractIdHash: entity.contract_id_hash,
+    termsHash: entity.terms_hash,
+    employerWallet: entity.employer_wallet,
+    freelancerWallet: entity.freelancer_wallet,
+    totalAmount: entity.total_amount,
+    milestoneCount: entity.milestone_count,
+    status: entity.status as BlockchainAgreementStatus,
+    employerSignedAt: entity.employer_signed_at ?? null,
+    freelancerSignedAt: entity.freelancer_signed_at ?? null,
+    createdAt: entity.created_at_ts,
+    transactionHash: entity.transaction_hash,
+    blockNumber: entity.block_number,
+  };
   if (agreement.status !== 'pending') throw new Error('Agreement not pending');
   if (signerWallet !== agreement.employerWallet && signerWallet !== agreement.freelancerWallet) {
     throw new Error('Not a party to this agreement');
@@ -244,13 +213,14 @@ export async function signAgreement(
     status = 'signed';
   }
 
-  await pool.query(
-    `UPDATE blockchain_agreements 
-     SET status = $1, employer_signed_at = $2, freelancer_signed_at = $3, 
-         transaction_hash = $4, block_number = $5, updated_at = NOW() 
-     WHERE contract_id_hash = $6`,
-    [status, employerSignedAt, freelancerSignedAt, confirmed.hash!, confirmed.blockNumber!, contractIdHash]
-  );
+  const signUpdates: Record<string, unknown> = {
+    status,
+    transaction_hash: confirmed.hash!,
+    block_number: confirmed.blockNumber!,
+  };
+  if (employerSignedAt != null) signUpdates['employer_signed_at'] = employerSignedAt;
+  if (freelancerSignedAt != null) signUpdates['freelancer_signed_at'] = freelancerSignedAt;
+  await blockchainAgreementRepository.updateAgreement(entity.id, signUpdates as any);
 
   const updatedAgreement = {
     ...agreement,
@@ -282,13 +252,23 @@ export async function completeAgreement(
 ): Promise<{ agreement: BlockchainAgreement; receipt: TransactionReceipt }> {
   const contractIdHash = generateContractIdHash(contractId);
 
-  const result = await pool.query(
-    'SELECT * FROM blockchain_agreements WHERE contract_id_hash = $1',
-    [contractIdHash]
-  );
+  const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
-  if (result.rows.length === 0) throw new Error('Agreement not found');
-  const agreement = rowToAgreement(result.rows[0] as AgreementRow);
+  if (!entity) throw new Error('Agreement not found');
+  const agreement: BlockchainAgreement = {
+    contractIdHash: entity.contract_id_hash,
+    termsHash: entity.terms_hash,
+    employerWallet: entity.employer_wallet,
+    freelancerWallet: entity.freelancer_wallet,
+    totalAmount: entity.total_amount,
+    milestoneCount: entity.milestone_count,
+    status: entity.status as BlockchainAgreementStatus,
+    employerSignedAt: entity.employer_signed_at ?? null,
+    freelancerSignedAt: entity.freelancer_signed_at ?? null,
+    createdAt: entity.created_at_ts,
+    transactionHash: entity.transaction_hash,
+    blockNumber: entity.block_number,
+  };
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
 
   if (callerWallet !== agreement.employerWallet && callerWallet !== agreement.freelancerWallet) {
@@ -309,12 +289,11 @@ export async function completeAgreement(
   const now = Date.now();
 
   // Update in DB
-  await pool.query(
-    `UPDATE blockchain_agreements 
-     SET status = $1, transaction_hash = $2, block_number = $3, updated_at = NOW()
-     WHERE contract_id_hash = $4`,
-    ['completed', confirmed.hash!, confirmed.blockNumber!, contractIdHash]
-  );
+  await blockchainAgreementRepository.updateAgreement(entity.id, {
+    status: 'completed',
+    transaction_hash: confirmed.hash!,
+    block_number: confirmed.blockNumber!,
+  });
 
   const updatedAgreement = {
     ...agreement,
@@ -344,13 +323,23 @@ export async function disputeAgreement(
 ): Promise<{ agreement: BlockchainAgreement; receipt: TransactionReceipt }> {
   const contractIdHash = generateContractIdHash(contractId);
 
-  const result = await pool.query(
-    'SELECT * FROM blockchain_agreements WHERE contract_id_hash = $1',
-    [contractIdHash]
-  );
+  const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
-  if (result.rows.length === 0) throw new Error('Agreement not found');
-  const agreement = rowToAgreement(result.rows[0] as AgreementRow);
+  if (!entity) throw new Error('Agreement not found');
+  const agreement: BlockchainAgreement = {
+    contractIdHash: entity.contract_id_hash,
+    termsHash: entity.terms_hash,
+    employerWallet: entity.employer_wallet,
+    freelancerWallet: entity.freelancer_wallet,
+    totalAmount: entity.total_amount,
+    milestoneCount: entity.milestone_count,
+    status: entity.status as BlockchainAgreementStatus,
+    employerSignedAt: entity.employer_signed_at ?? null,
+    freelancerSignedAt: entity.freelancer_signed_at ?? null,
+    createdAt: entity.created_at_ts,
+    transactionHash: entity.transaction_hash,
+    blockNumber: entity.block_number,
+  };
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
 
   if (callerWallet !== agreement.employerWallet && callerWallet !== agreement.freelancerWallet) {
@@ -371,12 +360,11 @@ export async function disputeAgreement(
   const now = Date.now();
 
   // Update in DB
-  await pool.query(
-    `UPDATE blockchain_agreements 
-     SET status = $1, transaction_hash = $2, block_number = $3, updated_at = NOW()
-     WHERE contract_id_hash = $4`,
-    ['disputed', confirmed.hash!, confirmed.blockNumber!, contractIdHash]
-  );
+  await blockchainAgreementRepository.updateAgreement(entity.id, {
+    status: 'disputed',
+    transaction_hash: confirmed.hash!,
+    block_number: confirmed.blockNumber!,
+  });
 
   const updatedAgreement = {
     ...agreement,
@@ -402,13 +390,23 @@ export async function disputeAgreement(
  */
 export async function getAgreementFromBlockchain(contractId: string): Promise<BlockchainAgreement | null> {
   const contractIdHash = generateContractIdHash(contractId);
-  const result = await pool.query(
-    'SELECT * FROM blockchain_agreements WHERE contract_id_hash = $1',
-    [contractIdHash]
-  );
+  const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
-  if (result.rows.length === 0) return null;
-  return rowToAgreement(result.rows[0] as AgreementRow);
+  if (!entity) return null;
+  return {
+    contractIdHash: entity.contract_id_hash,
+    termsHash: entity.terms_hash,
+    employerWallet: entity.employer_wallet,
+    freelancerWallet: entity.freelancer_wallet,
+    totalAmount: entity.total_amount,
+    milestoneCount: entity.milestone_count,
+    status: entity.status as BlockchainAgreementStatus,
+    employerSignedAt: entity.employer_signed_at ?? null,
+    freelancerSignedAt: entity.freelancer_signed_at ?? null,
+    createdAt: entity.created_at_ts,
+    transactionHash: entity.transaction_hash,
+    blockNumber: entity.block_number,
+  };
 }
 
 /**
@@ -439,14 +437,21 @@ export async function isAgreementFullySigned(contractId: string): Promise<boolea
  */
 export async function getUserAgreements(walletAddress: string): Promise<BlockchainAgreement[]> {
   try {
-    const result = await pool.query(
-      `SELECT * FROM blockchain_agreements 
-       WHERE employer_wallet = $1 OR freelancer_wallet = $1
-       ORDER BY created_at_ts DESC`,
-      [walletAddress]
-    );
-
-    return result.rows.map(rowToAgreement);
+    const entities = await blockchainAgreementRepository.findByWallet(walletAddress);
+    return entities.map(entity => ({
+      contractIdHash: entity.contract_id_hash,
+      termsHash: entity.terms_hash,
+      employerWallet: entity.employer_wallet,
+      freelancerWallet: entity.freelancer_wallet,
+      totalAmount: entity.total_amount,
+      milestoneCount: entity.milestone_count,
+      status: entity.status as BlockchainAgreementStatus,
+      employerSignedAt: entity.employer_signed_at ?? null,
+      freelancerSignedAt: entity.freelancer_signed_at ?? null,
+      createdAt: entity.created_at_ts,
+      transactionHash: entity.transaction_hash,
+      blockNumber: entity.block_number,
+    }));
   } catch {
     return [];
   }
@@ -457,7 +462,10 @@ export async function getUserAgreements(walletAddress: string): Promise<Blockcha
  */
 export async function clearBlockchainAgreements(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  await pool.query('DELETE FROM blockchain_agreements');
+  const all = await blockchainAgreementRepository.queryAll('created_at_ts');
+  for (const agreement of all) {
+    await blockchainAgreementRepository.delete(agreement.id);
+  }
 }
 
 export function getAgreementContractAddress(): string {

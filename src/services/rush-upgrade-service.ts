@@ -6,7 +6,6 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { generateId } from '../utils/id.js';
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 
@@ -166,24 +165,25 @@ export async function respondToRushUpgrade(
       };
     }
 
-    // Apply rush upgrade atomically
+    // Apply rush upgrade: calculate new fees and update contract
     const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
-    const result = await pool.query(
-      'SELECT apply_rush_upgrade_atomic($1, $2) as result',
-      [requestEntity.contract_id, agreedPercentage]
-    );
+    const newRushFee = Math.round(contractEntity.base_amount * agreedPercentage / 100 * 100) / 100;
+    const newTotalAmount = contractEntity.base_amount + newRushFee;
 
-    if (!result.rows[0]?.result) {
-      logger.error('Failed to apply rush upgrade (RPC)');
+    const updatedContractEntity = await contractRepository.updateContract(requestEntity.contract_id, {
+      rush_fee: newRushFee,
+      total_amount: newTotalAmount,
+    });
+
+    if (!updatedContractEntity) {
+      logger.error('Failed to apply rush upgrade to contract');
       return {
         success: false,
         error: { code: 'UPDATE_FAILED', message: 'Failed to apply rush upgrade to contract' },
       };
     }
 
-    // Get updated contract
-    const updatedContractEntity = await contractRepository.getContractById(requestEntity.contract_id);
-    const updatedContract = mapContractFromEntity(updatedContractEntity!);
+    const updatedContract = mapContractFromEntity(updatedContractEntity);
     const updatedRequest = mapRushUpgradeRequestFromEntity(updatedEntity);
 
     // Notify employer
@@ -347,23 +347,24 @@ export async function acceptCounterOffer(
     };
   }
 
-  // Apply rush upgrade atomically with the counter percentage
-  const result = await pool.query(
-    'SELECT apply_rush_upgrade_atomic($1, $2) as result',
-    [requestEntity.contract_id, requestEntity.counter_percentage]
-  );
+  // Apply rush upgrade with the counter percentage
+  const newRushFee = Math.round(contractEntity.base_amount * requestEntity.counter_percentage / 100 * 100) / 100;
+  const newTotalAmount = contractEntity.base_amount + newRushFee;
 
-  if (!result.rows[0]?.result) {
-    logger.error('Failed to apply rush upgrade (RPC)');
+  const updatedContractEntity = await contractRepository.updateContract(requestEntity.contract_id, {
+    rush_fee: newRushFee,
+    total_amount: newTotalAmount,
+  });
+
+  if (!updatedContractEntity) {
+    logger.error('Failed to apply rush upgrade to contract');
     return {
       success: false,
       error: { code: 'UPDATE_FAILED', message: 'Failed to apply rush upgrade to contract' },
     };
   }
 
-  // Get updated contract
-  const updatedContractEntity = await contractRepository.getContractById(requestEntity.contract_id);
-  const updatedContract = mapContractFromEntity(updatedContractEntity!);
+  const updatedContract = mapContractFromEntity(updatedContractEntity);
   const updatedRequest = mapRushUpgradeRequestFromEntity(updatedEntity);
 
   // Notify freelancer

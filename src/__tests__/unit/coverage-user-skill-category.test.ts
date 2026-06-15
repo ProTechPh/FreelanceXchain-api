@@ -20,6 +20,13 @@ const mockUserCustomSkillRepository = {
 
 jest.unstable_mockModule(resolveModule('src/repositories/user-custom-skill-repository.ts'), () => ({
   userCustomSkillRepository: mockUserCustomSkillRepository,
+  skillSuggestionRepository: {
+    getSkillSuggestionByName: jest.fn<any>(),
+    createSkillSuggestion: jest.fn<any>(),
+    incrementSkillSuggestionCount: jest.fn<any>(),
+    getPendingSkillSuggestions: jest.fn<any>(),
+    updateSkillSuggestionStatus: jest.fn<any>(),
+  },
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({

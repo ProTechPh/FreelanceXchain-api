@@ -42,6 +42,16 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
   },
 }));
 
+jest.unstable_mockModule(resolveModule('src/repositories/refund-request-repository.ts'), () => ({
+  refundRequestRepository: {
+    findPendingByContract: jest.fn<any>(),
+    findByContract: jest.fn<any>(),
+    findWithContract: jest.fn<any>(),
+    create: jest.fn<any>(),
+    update: jest.fn<any>(),
+  },
+}));
+
 describe('Service catch blocks - non-Error thrown objects', () => {
   let mockDatabases: any;
 
@@ -52,8 +62,8 @@ describe('Service catch blocks - non-Error thrown objects', () => {
   });
 
   it('escrow-refund-service createRefundRequest - non-Error catch (line 114)', async () => {
-    mockDatabases.listDocuments.mockRejectedValue('string error');
-    mockPool.query.mockRejectedValue('string error');
+    const mockContractRepo = (await import('../../repositories/contract-repository.js')).contractRepository;
+    mockContractRepo.getContractById.mockRejectedValue('string error');
     const { createRefundRequest } = await import('../../services/escrow-refund-service.js');
     const result = await createRefundRequest({
       contractId: 'c-1', requestedBy: 'user-1', reason: 'test',
@@ -64,14 +74,14 @@ describe('Service catch blocks - non-Error thrown objects', () => {
   });
 
   it('escrow-refund-service rejectRefund - otherPartyId ternary (line 296)', async () => {
-    mockPool.query.mockResolvedValue({
-      rows: [{
-        id: 'ref-1', freelancer_id: 'f-1', employer_id: 'e-1',
-        requested_by: 'f-1', contract_id: 'c-1', status: 'pending', reason: 'test',
-      }],
+    const mockRefundRepo = (await import('../../repositories/refund-request-repository.js')).refundRequestRepository;
+    mockRefundRepo.findWithContract.mockResolvedValue({
+      id: 'ref-1', freelancer_id: 'f-1', employer_id: 'e-1',
+      requested_by: 'f-1', contract_id: 'c-1', status: 'pending', reason: 'test',
+      contract: { id: 'c-1', freelancer_id: 'f-1', employer_id: 'e-1' },
     });
     const { rejectRefund } = await import('../../services/escrow-refund-service.js');
-    const result = await rejectRefund('ref-1', { rejectedBy: 'f-1', rejectionReason: 'No' });
+    const result = await rejectRefund({ refundId: 'ref-1', rejectedBy: 'f-1', reason: 'No' });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
   });

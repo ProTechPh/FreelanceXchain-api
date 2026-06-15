@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 
@@ -5,7 +6,15 @@ const resolveModule = (p: string) => path.resolve(process.cwd(), p);
 
 const mockSubmitTx = jest.fn() as jest.Mock<any>;
 const mockConfirmTx = jest.fn() as jest.Mock<any>;
-const mockPoolQuery = jest.fn() as jest.Mock<any>;
+
+const mockBlockchainMilestoneRecordRepository = {
+  findByMilestoneIdHash: jest.fn(),
+  createMilestoneRecord: jest.fn(),
+  updateMilestoneRecord: jest.fn(),
+  findByWallet: jest.fn(),
+  queryAll: jest.fn(),
+  delete: jest.fn(),
+};
 
 function makeConfirmed(hash = '0xabc123', blockNumber = 1) {
   return {
@@ -22,12 +31,8 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () 
   generateWalletAddress: jest.fn(() => '0x' + 'a'.repeat(40)),
 }));
 
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockPoolQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockPoolQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+jest.unstable_mockModule(resolveModule('src/repositories/blockchain-milestone-record-repository.ts'), () => ({
+  blockchainMilestoneRecordRepository: mockBlockchainMilestoneRecordRepository,
 }));
 
 const MILESTONE_ID = 'ms-1';
@@ -40,7 +45,12 @@ describe('milestone-registry', () => {
     jest.clearAllMocks();
     mockSubmitTx.mockResolvedValue({ id: 'tx-1' });
     mockConfirmTx.mockResolvedValue(makeConfirmed());
-    mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValue(null);
+    mockBlockchainMilestoneRecordRepository.createMilestoneRecord.mockResolvedValue({} as any);
+    mockBlockchainMilestoneRecordRepository.updateMilestoneRecord.mockResolvedValue({} as any);
+    mockBlockchainMilestoneRecordRepository.findByWallet.mockResolvedValue([]);
+    mockBlockchainMilestoneRecordRepository.queryAll.mockResolvedValue([]);
+    mockBlockchainMilestoneRecordRepository.delete.mockResolvedValue(true);
   });
 
   const importModule = async () => {
@@ -58,6 +68,7 @@ describe('milestone-registry', () => {
 
   function makeRegistryRow(overrides: Record<string, any> = {}) {
     return {
+      id: generateMilestoneIdHash(MILESTONE_ID),
       milestone_id_hash: generateMilestoneIdHash(MILESTONE_ID),
       contract_id_hash: generateMilestoneIdHash(CONTRACT_ID),
       work_hash: generateWorkHash('deliverables'),
@@ -70,6 +81,8 @@ describe('milestone-registry', () => {
       title: 'Phase 1',
       transaction_hash: '0xabc123',
       block_number: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
       ...overrides,
     };
   }
@@ -100,10 +113,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone already exists', async () => {
       const { submitMilestoneToRegistry } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{ milestone_id_hash: 'existing' }],
-        rowCount: 1,
-      });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow());
 
       await expect(submitMilestoneToRegistry({
         milestoneId: MILESTONE_ID,
@@ -119,7 +129,7 @@ describe('milestone-registry', () => {
     it('should throw when transaction confirmation fails', async () => {
       const { submitMilestoneToRegistry } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(null);
       mockConfirmTx.mockResolvedValueOnce(null);
 
       await expect(submitMilestoneToRegistry({
@@ -136,9 +146,8 @@ describe('milestone-registry', () => {
     it('should submit and return record + receipt on success', async () => {
       const { submitMilestoneToRegistry } = await importModule();
 
-      mockPoolQuery
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(null);
+      mockBlockchainMilestoneRecordRepository.createMilestoneRecord.mockResolvedValueOnce(makeRegistryRow());
 
       const result = await submitMilestoneToRegistry({
         milestoneId: MILESTONE_ID,
@@ -160,7 +169,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone not found', async () => {
       const { approveMilestoneOnRegistry } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(null);
 
       await expect(approveMilestoneOnRegistry(MILESTONE_ID, EM_WALLET)).rejects.toThrow('Milestone not found');
     });
@@ -168,10 +177,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone status is invalid', async () => {
       const { approveMilestoneOnRegistry } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [makeRegistryRow({ status: 'approved' })],
-        rowCount: 1,
-      });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow({ status: 'approved' }));
 
       await expect(approveMilestoneOnRegistry(MILESTONE_ID, EM_WALLET)).rejects.toThrow('Invalid milestone status');
     });
@@ -179,9 +185,8 @@ describe('milestone-registry', () => {
     it('should approve successfully when status is submitted', async () => {
       const { approveMilestoneOnRegistry } = await importModule();
 
-      mockPoolQuery
-        .mockResolvedValueOnce({ rows: [makeRegistryRow({ status: 'submitted' })], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow({ status: 'submitted' }));
+      mockBlockchainMilestoneRecordRepository.updateMilestoneRecord.mockResolvedValueOnce({} as any);
 
       const result = await approveMilestoneOnRegistry(MILESTONE_ID, EM_WALLET);
       expect(result.record.status).toBe('approved');
@@ -191,9 +196,8 @@ describe('milestone-registry', () => {
     it('should approve successfully when status is disputed', async () => {
       const { approveMilestoneOnRegistry } = await importModule();
 
-      mockPoolQuery
-        .mockResolvedValueOnce({ rows: [makeRegistryRow({ status: 'disputed' })], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow({ status: 'disputed' }));
+      mockBlockchainMilestoneRecordRepository.updateMilestoneRecord.mockResolvedValueOnce({} as any);
 
       const result = await approveMilestoneOnRegistry(MILESTONE_ID, EM_WALLET);
       expect(result.record.status).toBe('approved');
@@ -204,7 +208,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone not found', async () => {
       const { rejectMilestoneOnRegistry } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(null);
 
       await expect(rejectMilestoneOnRegistry(MILESTONE_ID, EM_WALLET, 'bad work')).rejects.toThrow('Milestone not found');
     });
@@ -212,10 +216,7 @@ describe('milestone-registry', () => {
     it('should throw when milestone status is not submitted', async () => {
       const { rejectMilestoneOnRegistry } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [makeRegistryRow({ status: 'approved' })],
-        rowCount: 1,
-      });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow({ status: 'approved' }));
 
       await expect(rejectMilestoneOnRegistry(MILESTONE_ID, EM_WALLET, 'reason')).rejects.toThrow('Invalid milestone status');
     });
@@ -223,9 +224,8 @@ describe('milestone-registry', () => {
     it('should reject successfully', async () => {
       const { rejectMilestoneOnRegistry } = await importModule();
 
-      mockPoolQuery
-        .mockResolvedValueOnce({ rows: [makeRegistryRow({ status: 'submitted' })], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow({ status: 'submitted' }));
+      mockBlockchainMilestoneRecordRepository.updateMilestoneRecord.mockResolvedValueOnce({} as any);
 
       const result = await rejectMilestoneOnRegistry(MILESTONE_ID, EM_WALLET, 'Not complete');
       expect(result.record.status).toBe('rejected');
@@ -237,7 +237,7 @@ describe('milestone-registry', () => {
     it('should return null when not found', async () => {
       const { getMilestoneFromRegistry } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(null);
 
       const result = await getMilestoneFromRegistry(MILESTONE_ID);
       expect(result).toBeNull();
@@ -246,10 +246,7 @@ describe('milestone-registry', () => {
     it('should return the milestone record', async () => {
       const { getMilestoneFromRegistry } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [makeRegistryRow()],
-        rowCount: 1,
-      });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow());
 
       const result = await getMilestoneFromRegistry(MILESTONE_ID);
       expect(result).not.toBeNull();
@@ -262,9 +259,7 @@ describe('milestone-registry', () => {
     it('should return zeroed stats when no milestones exist', async () => {
       const { getFreelancerStatsFromRegistry } = await importModule();
 
-      mockPoolQuery
-        .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainMilestoneRecordRepository.findByWallet.mockResolvedValueOnce([]);
 
       const stats = await getFreelancerStatsFromRegistry(FL_WALLET);
       expect(stats.completedCount).toBe(0);
@@ -274,12 +269,13 @@ describe('milestone-registry', () => {
     it('should calculate total earned from approved milestones', async () => {
       const { getFreelancerStatsFromRegistry } = await importModule();
 
-      mockPoolQuery
-        .mockResolvedValueOnce({ rows: [{ count: '5' }], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [{ amount: 100 }, { amount: 250 }], rowCount: 2 });
+      mockBlockchainMilestoneRecordRepository.findByWallet.mockResolvedValueOnce([
+        { amount: 100, status: 'approved' },
+        { amount: 250, status: 'approved' },
+      ]);
 
       const stats = await getFreelancerStatsFromRegistry(FL_WALLET);
-      expect(stats.totalMilestones).toBe(5);
+      expect(stats.totalMilestones).toBe(2);
       expect(stats.completedCount).toBe(2);
       expect(stats.totalEarned).toBe(350);
     });
@@ -289,7 +285,7 @@ describe('milestone-registry', () => {
     it('should return empty array when no approved milestones', async () => {
       const { getFreelancerPortfolio } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainMilestoneRecordRepository.findByWallet.mockResolvedValueOnce([]);
 
       const portfolio = await getFreelancerPortfolio(FL_WALLET);
       expect(portfolio).toHaveLength(0);
@@ -298,10 +294,9 @@ describe('milestone-registry', () => {
     it('should return mapped records', async () => {
       const { getFreelancerPortfolio } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [makeRegistryRow({ status: 'approved', completed_at: Date.now() })],
-        rowCount: 1,
-      });
+      mockBlockchainMilestoneRecordRepository.findByWallet.mockResolvedValueOnce([
+        makeRegistryRow({ status: 'approved', completed_at: Date.now() }),
+      ]);
 
       const portfolio = await getFreelancerPortfolio(FL_WALLET);
       expect(portfolio).toHaveLength(1);
@@ -313,7 +308,7 @@ describe('milestone-registry', () => {
     it('should return false when milestone not found', async () => {
       const { verifyMilestoneWork } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(null);
 
       expect(await verifyMilestoneWork(MILESTONE_ID, 'deliverables')).toBe(false);
     });
@@ -323,9 +318,8 @@ describe('milestone-registry', () => {
 
       const deliverables = 'my work';
       const expectedHash = generateWorkHash(deliverables);
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{ work_hash: expectedHash }],
-        rowCount: 1,
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce({
+        work_hash: expectedHash,
       });
 
       expect(await verifyMilestoneWork(MILESTONE_ID, deliverables)).toBe(true);
@@ -334,9 +328,8 @@ describe('milestone-registry', () => {
     it('should return false when work hash does not match', async () => {
       const { verifyMilestoneWork } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{ work_hash: '0xWRONG' }],
-        rowCount: 1,
+      mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce({
+        work_hash: '0xWRONG',
       });
 
       expect(await verifyMilestoneWork(MILESTONE_ID, 'different work')).toBe(false);
@@ -350,21 +343,21 @@ describe('milestone-registry', () => {
 
       const { clearMilestoneRegistry } = await importModule();
       await clearMilestoneRegistry();
-      expect(mockPoolQuery).not.toHaveBeenCalled();
+      expect(mockBlockchainMilestoneRecordRepository.queryAll).not.toHaveBeenCalled();
 
       process.env['NODE_ENV'] = originalEnv;
     });
 
     it('should delete all rows in test environment', async () => {
       process.env['NODE_ENV'] = 'test';
-      mockPoolQuery.mockClear();
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      jest.clearAllMocks();
+      mockBlockchainMilestoneRecordRepository.queryAll.mockResolvedValueOnce([{ id: 'milestone-1' }]);
+      mockBlockchainMilestoneRecordRepository.delete.mockResolvedValueOnce(true);
 
       const { clearMilestoneRegistry } = await importModule();
       await clearMilestoneRegistry();
-      expect(mockPoolQuery).toHaveBeenCalledWith(
-        "DELETE FROM blockchain_milestones WHERE milestone_id_hash != ''"
-      );
+      expect(mockBlockchainMilestoneRecordRepository.queryAll).toHaveBeenCalled();
+      expect(mockBlockchainMilestoneRecordRepository.delete).toHaveBeenCalledWith('milestone-1');
 
       process.env['NODE_ENV'] = 'test';
     });

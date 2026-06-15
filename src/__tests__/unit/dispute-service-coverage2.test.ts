@@ -376,10 +376,9 @@ describe('Dispute Service - Coverage2', () => {
   describe('submitEvidence - additional paths', () => {
     it('should submit evidence successfully and update blockchain', async () => {
       mockDisputeRepository.getDisputeById
-        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1' })
+        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1', evidence: [] })
         .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1', evidence: [{ id: 'e-1' }] });
       mockContractRepository.getContractById.mockResolvedValue({ employer_id: 'user-1', freelancer_id: 'free-1' });
-      mockPool.query.mockResolvedValue({ rows: [{ result: true }] });
       mockUserRepository.getUserById.mockResolvedValue({ id: 'user-1', wallet_address: '0x123' });
 
       const result = await submitEvidence({
@@ -391,10 +390,9 @@ describe('Dispute Service - Coverage2', () => {
 
     it('should handle blockchain evidence update error gracefully', async () => {
       mockDisputeRepository.getDisputeById
-        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1' })
+        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1', evidence: [] })
         .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1', evidence: [{ id: 'e-1' }] });
       mockContractRepository.getContractById.mockResolvedValue({ employer_id: 'user-1', freelancer_id: 'free-1' });
-      mockPool.query.mockResolvedValue({ rows: [{ result: true }] });
       mockUserRepository.getUserById.mockResolvedValue({ id: 'user-1', wallet_address: '0x123' });
       mockUpdateDisputeEvidence.mockRejectedValue(new Error('Blockchain error'));
 
@@ -406,10 +404,9 @@ describe('Dispute Service - Coverage2', () => {
 
     it('should return UPDATE_FAILED when updated dispute cannot be retrieved', async () => {
       mockDisputeRepository.getDisputeById
-        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1' })
+        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1', evidence: [] })
         .mockResolvedValueOnce(null);
       mockContractRepository.getContractById.mockResolvedValue({ employer_id: 'user-1', freelancer_id: 'free-1' });
-      mockPool.query.mockResolvedValue({ rows: [{ result: true }] });
 
       const result = await submitEvidence({
         disputeId: 'd-1', submitterId: 'user-1', type: 'text', content: 'evidence',

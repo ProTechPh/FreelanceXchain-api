@@ -30,23 +30,55 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () 
   refundMilestone: mockRefundMilestone,
 }));
 
-const mockQuery = jest.fn();
-(globalThis as any).mockPool = { query: mockQuery };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+const mockContractRepository = {
+  getContractById: jest.fn(),
+  updateContract: jest.fn(),
+  getContractsByFreelancer: jest.fn(),
+  getContractsByEmployer: jest.fn(),
+  getContractsByProject: jest.fn(),
+  getUserContracts: jest.fn(),
+  create: jest.fn(),
+  delete: jest.fn(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepository,
+}));
+
+const mockRefundRequestRepository = {
+  findPendingByContract: jest.fn(),
+  findByContract: jest.fn(),
+  findWithContract: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  getById: jest.fn(),
+  delete: jest.fn(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/refund-request-repository.ts'), () => ({
+  refundRequestRepository: mockRefundRequestRepository,
+}));
+
+const mockMilestoneRepository = {
+  findByContract: jest.fn(),
+  getById: jest.fn(),
+  update: jest.fn(),
+  create: jest.fn(),
+  delete: jest.fn(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/milestone-repository.ts'), () => ({
+  milestoneRepository: mockMilestoneRepository,
 }));
 
 describe('Escrow Refund Service', () => {
-  let mockPool: any;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
+    mockContractRepository.getContractById.mockReset();
+    mockContractRepository.updateContract.mockReset();
+    mockRefundRequestRepository.findPendingByContract.mockReset();
+    mockRefundRequestRepository.findByContract.mockReset();
+    mockRefundRequestRepository.findWithContract.mockReset();
+    mockRefundRequestRepository.create.mockReset();
+    mockRefundRequestRepository.update.mockReset();
+    mockMilestoneRepository.findByContract.mockReset();
   });
 
   const importModule = async () => {
@@ -58,15 +90,12 @@ describe('Escrow Refund Service', () => {
       const { createRefundRequest } = await importModule();
 
       // Get contract
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 }],
-        rowCount: 1,
-      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
       // Check existing pending refunds
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
       // Insert refund request
       const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 1000, status: 'pending' };
-      mockPool.query.mockResolvedValueOnce({ rows: [refund], rowCount: 1 });
+      mockRefundRequestRepository.create.mockResolvedValueOnce(refund);
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -82,13 +111,10 @@ describe('Escrow Refund Service', () => {
     it('should create partial refund request', async () => {
       const { createRefundRequest } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 }],
-        rowCount: 1,
-      });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
+      mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
       const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'employer-1', amount: 500, is_partial: true, status: 'pending' };
-      mockPool.query.mockResolvedValueOnce({ rows: [refund], rowCount: 1 });
+      mockRefundRequestRepository.create.mockResolvedValueOnce(refund);
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -103,7 +129,7 @@ describe('Escrow Refund Service', () => {
     it('should fail when contract not found', async () => {
       const { createRefundRequest } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
 
       const result = await createRefundRequest({
         contractId: 'nonexistent',
@@ -118,10 +144,7 @@ describe('Escrow Refund Service', () => {
     it('should fail when contract is not active', async () => {
       const { createRefundRequest } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'completed', total_amount: 1000 }],
-        rowCount: 1,
-      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'completed', total_amount: 1000 });
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -136,10 +159,7 @@ describe('Escrow Refund Service', () => {
     it('should fail when user is not involved in contract', async () => {
       const { createRefundRequest } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 }],
-        rowCount: 1,
-      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -154,11 +174,8 @@ describe('Escrow Refund Service', () => {
     it('should fail when pending refund already exists', async () => {
       const { createRefundRequest } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 }],
-        rowCount: 1,
-      });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'existing-ref' }], rowCount: 1 });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
+      mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce({ id: 'existing-ref' });
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -173,12 +190,9 @@ describe('Escrow Refund Service', () => {
     it('should handle insert failure', async () => {
       const { createRefundRequest } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 }],
-        rowCount: 1,
-      });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
+      mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      mockRefundRequestRepository.create.mockRejectedValueOnce(new Error('Insert failed'));
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -193,7 +207,7 @@ describe('Escrow Refund Service', () => {
     it('should handle database errors', async () => {
       const { createRefundRequest } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockContractRepository.getContractById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -211,21 +225,22 @@ describe('Escrow Refund Service', () => {
       const { approveRefund } = await importModule();
 
       // Get refund with contract info
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
-          freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000, contract_status: 'active',
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000, status: 'active',
           escrow_address: null,
-        }],
-        rowCount: 1,
+        },
       });
       // Update refund
       const updated = { id: 'ref-1', status: 'approved', approved_by: 'employer-1' };
-      mockPool.query.mockResolvedValueOnce({ rows: [updated], rowCount: 1 });
+      mockRefundRequestRepository.update.mockResolvedValueOnce(updated);
+      // Get milestones for blockchain
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([]);
       // Update contract status
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockContractRepository.updateContract.mockResolvedValueOnce({});
       // Cancel other pending refunds
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
 
       const result = await approveRefund({
         refundId: 'ref-1',
@@ -239,7 +254,7 @@ describe('Escrow Refund Service', () => {
     it('should fail when refund not found', async () => {
       const { approveRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(null);
 
       const result = await approveRefund({
         refundId: 'nonexistent',
@@ -253,12 +268,11 @@ describe('Escrow Refund Service', () => {
     it('should fail when approver is not the other party', async () => {
       const { approveRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000,
-        }],
-        rowCount: 1,
+        },
       });
 
       const result = await approveRefund({
@@ -273,12 +287,11 @@ describe('Escrow Refund Service', () => {
     it('should fail when refund is not pending', async () => {
       const { approveRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'approved',
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'approved',
+        contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000,
-        }],
-        rowCount: 1,
+        },
       });
 
       const result = await approveRefund({
@@ -293,14 +306,13 @@ describe('Escrow Refund Service', () => {
     it('should handle update failure', async () => {
       const { approveRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000,
-        }],
-        rowCount: 1,
+        },
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockRefundRequestRepository.update.mockResolvedValueOnce(null);
 
       const result = await approveRefund({
         refundId: 'ref-1',
@@ -314,7 +326,7 @@ describe('Escrow Refund Service', () => {
     it('should handle database errors', async () => {
       const { approveRefund } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockRefundRequestRepository.findWithContract.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await approveRefund({
         refundId: 'ref-1',
@@ -330,15 +342,14 @@ describe('Escrow Refund Service', () => {
     it('should reject refund successfully', async () => {
       const { rejectRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1',
-        }],
-        rowCount: 1,
+        },
       });
       const updated = { id: 'ref-1', status: 'rejected', rejected_by: 'employer-1', rejection_reason: 'Work was delivered' };
-      mockPool.query.mockResolvedValueOnce({ rows: [updated], rowCount: 1 });
+      mockRefundRequestRepository.update.mockResolvedValueOnce(updated);
 
       const result = await rejectRefund({
         refundId: 'ref-1',
@@ -354,7 +365,7 @@ describe('Escrow Refund Service', () => {
     it('should fail when refund not found', async () => {
       const { rejectRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(null);
 
       const result = await rejectRefund({
         refundId: 'nonexistent',
@@ -369,12 +380,11 @@ describe('Escrow Refund Service', () => {
     it('should fail when rejector is not the other party', async () => {
       const { rejectRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1',
-        }],
-        rowCount: 1,
+        },
       });
 
       const result = await rejectRefund({
@@ -390,12 +400,11 @@ describe('Escrow Refund Service', () => {
     it('should fail when refund is not pending', async () => {
       const { rejectRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'rejected',
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'rejected',
+        contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1',
-        }],
-        rowCount: 1,
+        },
       });
 
       const result = await rejectRefund({
@@ -411,14 +420,13 @@ describe('Escrow Refund Service', () => {
     it('should handle update failure', async () => {
       const { rejectRefund } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1',
-        }],
-        rowCount: 1,
+        },
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockRefundRequestRepository.update.mockResolvedValueOnce(null);
 
       const result = await rejectRefund({
         refundId: 'ref-1',
@@ -433,7 +441,7 @@ describe('Escrow Refund Service', () => {
     it('should handle database errors', async () => {
       const { rejectRefund } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockRefundRequestRepository.findWithContract.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await rejectRefund({
         refundId: 'ref-1',
@@ -450,15 +458,12 @@ describe('Escrow Refund Service', () => {
     it('should return refunds for authorized user', async () => {
       const { getContractRefunds } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1' }],
-        rowCount: 1,
-      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1' });
       const refunds = [
         { id: 'ref-1', contract_id: 'c-1', status: 'pending' },
         { id: 'ref-2', contract_id: 'c-1', status: 'rejected' },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: refunds, rowCount: 2 });
+      mockRefundRequestRepository.findByContract.mockResolvedValueOnce(refunds);
 
       const result = await getContractRefunds('c-1', 'freelancer-1');
 
@@ -469,7 +474,7 @@ describe('Escrow Refund Service', () => {
     it('should fail when contract not found', async () => {
       const { getContractRefunds } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
 
       const result = await getContractRefunds('nonexistent', 'user-1');
 
@@ -480,10 +485,7 @@ describe('Escrow Refund Service', () => {
     it('should fail when user is not involved', async () => {
       const { getContractRefunds } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1' }],
-        rowCount: 1,
-      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1' });
 
       const result = await getContractRefunds('c-1', 'outsider');
 
@@ -494,7 +496,7 @@ describe('Escrow Refund Service', () => {
     it('should handle database errors', async () => {
       const { getContractRefunds } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockContractRepository.getContractById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getContractRefunds('c-1', 'user-1');
 

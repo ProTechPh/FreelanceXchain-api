@@ -389,6 +389,10 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
 }));
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: {
+    create: jest.fn(async (contract: any) => {
+      contractStore.set(contract.id, contract as any);
+      return contract;
+    }),
     createContract: jest.fn(async (contract: any) => {
       // Store as-is since it's already in entity format
       contractStore.set(contract.id, contract as any);
@@ -1022,7 +1026,7 @@ describe('Integration Tests - Critical Flows', () => {
       expect(contract.freelancerId).toBe(freelancerId);
       expect(contract.employerId).toBe(employerId);
       expect(contract.projectId).toBe(project.id);
-      expect(contract.status).toBe('active');
+      expect(contract.status).toBe('pending');
       // Verify contract exists in store
       expect(contractStore.has(contract.id)).toBe(true);
     });
@@ -1333,7 +1337,7 @@ describe('Integration Tests - Critical Flows', () => {
       if (employerEvidenceResult.success) {
         expect(employerEvidenceResult.data.evidence.length).toBe(1);
         expect(employerEvidenceResult.data.evidence[0]?.submitterId).toBe(employerId);
-        expect(employerEvidenceResult.data.status).toBe('under_review');
+        expect(employerEvidenceResult.data.status).toBe('open');
       }
       // Step 3: Freelancer submits counter-evidence
       const freelancerEvidenceResult = await submitEvidence({

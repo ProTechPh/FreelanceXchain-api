@@ -13,23 +13,35 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const mockQuery = jest.fn();
-(globalThis as any).mockPool = { query: mockQuery };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+const mockSavedSearchRepository = {
+  create: jest.fn<any>(),
+  findByUser: jest.fn<any>(),
+  findOwnerById: jest.fn<any>(),
+  getById: jest.fn<any>(),
+  update: jest.fn<any>(),
+  delete: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/saved-search-repository.ts'), () => ({
+  savedSearchRepository: mockSavedSearchRepository,
+}));
+
+const mockProjectRepository = {
+  getAllOpenProjects: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
+  projectRepository: mockProjectRepository,
+}));
+
+const mockFreelancerProfileRepository = {
+  getAllProfilesPaginated: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
+  freelancerProfileRepository: mockFreelancerProfileRepository,
 }));
 
 describe('Saved Search Service - Extended Coverage', () => {
-  let mockPool: any;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
   });
 
   const importModule = async () => {
@@ -40,8 +52,8 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should create saved search with notifyOnNew', async () => {
       const { createSavedSearch } = await importModule();
 
-      const savedSearch = { id: 'ss-1', user_id: 'user-1', name: 'My Search', search_type: 'project', filters: { skills: ['React'] }, notify_on_new: true };
-      mockPool.query.mockResolvedValueOnce({ rows: [savedSearch], rowCount: 1 });
+      const savedSearch = { id: 'ss-1', user_id: 'user-1', name: 'My Search', search_type: 'project', filters: '{"skills":["React"]}', notify_on_new: true, created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockSavedSearchRepository.create.mockResolvedValueOnce(savedSearch);
 
       const result = await createSavedSearch('user-1', {
         name: 'My Search',
@@ -51,7 +63,7 @@ describe('Saved Search Service - Extended Coverage', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data.notify_on_new).toBe(true);
+      expect(result.data.notifyOnNew).toBe(true);
     });
 
     it('should fail when filters are empty', async () => {
@@ -70,7 +82,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should handle database errors', async () => {
       const { createSavedSearch } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockSavedSearchRepository.create.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await createSavedSearch('user-1', {
         name: 'My Search',
@@ -88,10 +100,10 @@ describe('Saved Search Service - Extended Coverage', () => {
       const { getUserSavedSearches } = await importModule();
 
       const searches = [
-        { id: 'ss-1', user_id: 'user-1', name: 'Search 1', search_type: 'project' },
-        { id: 'ss-2', user_id: 'user-1', name: 'Search 2', search_type: 'freelancer' },
+        { id: 'ss-1', user_id: 'user-1', name: 'Search 1', search_type: 'project', filters: '{}', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01' },
+        { id: 'ss-2', user_id: 'user-1', name: 'Search 2', search_type: 'freelancer', filters: '{}', notify_on_new: false, created_at: '2025-01-02', updated_at: '2025-01-02' },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: searches, rowCount: 2 });
+      mockSavedSearchRepository.findByUser.mockResolvedValueOnce(searches);
 
       const result = await getUserSavedSearches('user-1');
 
@@ -102,7 +114,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should filter by search type', async () => {
       const { getUserSavedSearches } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'ss-1', search_type: 'project' }], rowCount: 1 });
+      mockSavedSearchRepository.findByUser.mockResolvedValueOnce([{ id: 'ss-1', search_type: 'project', filters: '{}', user_id: 'user-1', name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01' }]);
 
       const result = await getUserSavedSearches('user-1', 'project');
 
@@ -112,7 +124,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should handle database errors', async () => {
       const { getUserSavedSearches } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockSavedSearchRepository.findByUser.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getUserSavedSearches('user-1');
 
@@ -125,8 +137,8 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should update name successfully', async () => {
       const { updateSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'user-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'ss-1', name: 'Updated' }], rowCount: 1 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSavedSearchRepository.update.mockResolvedValueOnce({ id: 'ss-1', name: 'Updated', user_id: 'user-1', search_type: 'project', filters: '{}', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-02' });
 
       const result = await updateSavedSearch('ss-1', 'user-1', { name: 'Updated' });
 
@@ -137,8 +149,8 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should update filters', async () => {
       const { updateSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'user-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'ss-1', filters: { skills: ['Vue'] } }], rowCount: 1 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSavedSearchRepository.update.mockResolvedValueOnce({ id: 'ss-1', filters: '{"skills":["Vue"]}', user_id: 'user-1', name: 'S', search_type: 'project', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-02' });
 
       const result = await updateSavedSearch('ss-1', 'user-1', { filters: { skills: ['Vue'] } });
 
@@ -148,8 +160,8 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should update notifyOnNew', async () => {
       const { updateSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'user-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'ss-1', notify_on_new: true }], rowCount: 1 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSavedSearchRepository.update.mockResolvedValueOnce({ id: 'ss-1', notify_on_new: true, user_id: 'user-1', name: 'S', search_type: 'project', filters: '{}', created_at: '2025-01-01', updated_at: '2025-01-02' });
 
       const result = await updateSavedSearch('ss-1', 'user-1', { notifyOnNew: true });
 
@@ -159,8 +171,8 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should return existing when no updates provided', async () => {
       const { updateSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'user-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'ss-1', name: 'Existing' }], rowCount: 1 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSavedSearchRepository.getById.mockResolvedValueOnce({ id: 'ss-1', name: 'Existing', user_id: 'user-1', search_type: 'project', filters: '{}', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01' });
 
       const result = await updateSavedSearch('ss-1', 'user-1', {});
 
@@ -170,7 +182,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should fail when search not found', async () => {
       const { updateSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce(null);
 
       const result = await updateSavedSearch('nonexistent', 'user-1', { name: 'New' });
 
@@ -181,7 +193,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should fail when user is not the owner', async () => {
       const { updateSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'other-user' }], rowCount: 1 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce('other-user');
 
       const result = await updateSavedSearch('ss-1', 'user-1', { name: 'New' });
 
@@ -189,11 +201,11 @@ describe('Saved Search Service - Extended Coverage', () => {
       expect(result.error.code).toBe('UNAUTHORIZED');
     });
 
-    it('should handle update returning no rows', async () => {
+    it('should handle update returning null', async () => {
       const { updateSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'user-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSavedSearchRepository.update.mockResolvedValueOnce(null);
 
       const result = await updateSavedSearch('ss-1', 'user-1', { name: 'New' });
 
@@ -204,7 +216,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should handle database errors', async () => {
       const { updateSavedSearch } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockSavedSearchRepository.findOwnerById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await updateSavedSearch('ss-1', 'user-1', { name: 'New' });
 
@@ -217,8 +229,8 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should delete saved search successfully', async () => {
       const { deleteSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'user-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSavedSearchRepository.delete.mockResolvedValueOnce(true);
 
       const result = await deleteSavedSearch('ss-1', 'user-1');
 
@@ -228,7 +240,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should fail when search not found', async () => {
       const { deleteSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce(null);
 
       const result = await deleteSavedSearch('nonexistent', 'user-1');
 
@@ -239,7 +251,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should fail when user is not the owner', async () => {
       const { deleteSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'other-user' }], rowCount: 1 });
+      mockSavedSearchRepository.findOwnerById.mockResolvedValueOnce('other-user');
 
       const result = await deleteSavedSearch('ss-1', 'user-1');
 
@@ -250,7 +262,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should handle database errors', async () => {
       const { deleteSavedSearch } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockSavedSearchRepository.findOwnerById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await deleteSavedSearch('ss-1', 'user-1');
 
@@ -263,14 +275,15 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should execute project search with all filters', async () => {
       const { executeSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ss-1', user_id: 'user-1', search_type: 'project',
-          filters: { skills: ['React'], minBudget: 100, maxBudget: 5000, keyword: 'web' },
-        }],
-        rowCount: 1,
+      mockSavedSearchRepository.getById.mockResolvedValueOnce({
+        id: 'ss-1', user_id: 'user-1', search_type: 'project',
+        filters: JSON.stringify({ skills: ['React'], minBudget: 100, maxBudget: 5000, keyword: 'web' }),
+        name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'proj-1', title: 'Web App' }], rowCount: 1 });
+      mockProjectRepository.getAllOpenProjects.mockResolvedValueOnce({
+        items: [{ id: 'proj-1', title: 'Web App', description: 'A web app', budget: 300, required_skills: [{ skill_name: 'React' }], created_at: '2025-01-01' }],
+        total: 1, hasMore: false,
+      });
 
       const result = await executeSavedSearch('ss-1', 'user-1');
 
@@ -282,14 +295,15 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should execute freelancer search with all filters', async () => {
       const { executeSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
-          filters: { skills: ['React'], minHourlyRate: 50, maxHourlyRate: 150 },
-        }],
-        rowCount: 1,
+      mockSavedSearchRepository.getById.mockResolvedValueOnce({
+        id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
+        filters: JSON.stringify({ skills: ['React'], minHourlyRate: 50, maxHourlyRate: 150 }),
+        name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'fl-1', name: 'John' }], rowCount: 1 });
+      mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+        items: [{ user_id: 'fl-1', name: 'John', skills: [{ name: 'React' }], hourly_rate: 100, created_at: '2025-01-01' }],
+        total: 1, hasMore: false,
+      });
 
       const result = await executeSavedSearch('ss-1', 'user-1');
 
@@ -300,14 +314,14 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should execute project search without optional filters', async () => {
       const { executeSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ss-1', user_id: 'user-1', search_type: 'project',
-          filters: {},
-        }],
-        rowCount: 1,
+      mockSavedSearchRepository.getById.mockResolvedValueOnce({
+        id: 'ss-1', user_id: 'user-1', search_type: 'project',
+        filters: JSON.stringify({}),
+        name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockProjectRepository.getAllOpenProjects.mockResolvedValueOnce({
+        items: [], total: 0, hasMore: false,
+      });
 
       const result = await executeSavedSearch('ss-1', 'user-1');
 
@@ -318,14 +332,14 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should execute freelancer search without optional filters', async () => {
       const { executeSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
-          filters: {},
-        }],
-        rowCount: 1,
+      mockSavedSearchRepository.getById.mockResolvedValueOnce({
+        id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
+        filters: JSON.stringify({}),
+        name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+        items: [], total: 0, hasMore: false,
+      });
 
       const result = await executeSavedSearch('ss-1', 'user-1');
 
@@ -335,7 +349,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should fail when search not found', async () => {
       const { executeSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockSavedSearchRepository.getById.mockResolvedValueOnce(null);
 
       const result = await executeSavedSearch('nonexistent', 'user-1');
 
@@ -346,9 +360,10 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should fail when user is not the owner', async () => {
       const { executeSavedSearch } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'ss-1', user_id: 'other-user', search_type: 'project', filters: {} }],
-        rowCount: 1,
+      mockSavedSearchRepository.getById.mockResolvedValueOnce({
+        id: 'ss-1', user_id: 'other-user', search_type: 'project',
+        filters: JSON.stringify({}),
+        name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
       });
 
       const result = await executeSavedSearch('ss-1', 'user-1');
@@ -360,7 +375,7 @@ describe('Saved Search Service - Extended Coverage', () => {
     it('should handle database errors', async () => {
       const { executeSavedSearch } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockSavedSearchRepository.getById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await executeSavedSearch('ss-1', 'user-1');
 

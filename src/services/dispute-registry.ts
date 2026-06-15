@@ -12,7 +12,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
-import { pool } from '../config/database.js';
+import { blockchainDisputeRecordRepository } from '../repositories/blockchain-dispute-record-repository.js';
 
 export type BlockchainDisputeOutcome = 'pending' | 'freelancer_favor' | 'employer_favor' | 'split' | 'cancelled';
 
@@ -63,41 +63,39 @@ function generateHash(value: string): string {
   return '0x' + createHash('sha256').update(value).digest('hex');
 }
 
-type DisputeRow = {
+function entityToRecord(entity: {
   dispute_id_hash: string;
   contract_id_hash: string;
   milestone_id_hash: string;
-  evidence_hash: string | null;
+  evidence_hash?: string;
   initiator_wallet: string;
   freelancer_wallet: string;
   employer_wallet: string;
-  arbiter_wallet: string | null;
+  arbiter_wallet?: string;
   amount: number;
   outcome: string;
-  reasoning: string | null;
+  reasoning?: string;
   created_at_ts: number;
-  resolved_at: number | null;
+  resolved_at?: number;
   transaction_hash: string;
   block_number: number;
-};
-
-function rowToRecord(row: DisputeRow): BlockchainDisputeRecord {
+}): BlockchainDisputeRecord {
   return {
-    disputeIdHash: row.dispute_id_hash,
-    contractIdHash: row.contract_id_hash,
-    milestoneIdHash: row.milestone_id_hash,
-    evidenceHash: row.evidence_hash,
-    initiatorWallet: row.initiator_wallet,
-    freelancerWallet: row.freelancer_wallet,
-    employerWallet: row.employer_wallet,
-    arbiterWallet: row.arbiter_wallet,
-    amount: row.amount,
-    outcome: row.outcome as BlockchainDisputeOutcome,
-    reasoning: row.reasoning,
-    createdAt: row.created_at_ts,
-    resolvedAt: row.resolved_at,
-    transactionHash: row.transaction_hash,
-    blockNumber: row.block_number,
+    disputeIdHash: entity.dispute_id_hash,
+    contractIdHash: entity.contract_id_hash,
+    milestoneIdHash: entity.milestone_id_hash,
+    evidenceHash: entity.evidence_hash ?? null,
+    initiatorWallet: entity.initiator_wallet,
+    freelancerWallet: entity.freelancer_wallet,
+    employerWallet: entity.employer_wallet,
+    arbiterWallet: entity.arbiter_wallet ?? null,
+    amount: entity.amount,
+    outcome: entity.outcome as BlockchainDisputeOutcome,
+    reasoning: entity.reasoning ?? null,
+    createdAt: entity.created_at_ts,
+    resolvedAt: entity.resolved_at ?? null,
+    transactionHash: entity.transaction_hash,
+    blockNumber: entity.block_number,
   };
 }
 
@@ -112,12 +110,9 @@ export async function createDisputeOnBlockchain(
   const milestoneIdHash = generateHash(input.milestoneId);
 
   // Check if already exists
-  const existingResult = await pool.query(
-    'SELECT dispute_id_hash FROM blockchain_dispute_records WHERE dispute_id_hash = $1',
-    [disputeIdHash]
-  );
+  const existing = await blockchainDisputeRecordRepository.findByDisputeIdHash(disputeIdHash);
 
-  if (existingResult.rows.length > 0) {
+  if (existing) {
     throw new Error('Dispute already exists on blockchain');
   }
 
@@ -161,30 +156,20 @@ export async function createDisputeOnBlockchain(
   };
 
   // Persist to DB
-  await pool.query(
-    `INSERT INTO blockchain_dispute_records 
-     (dispute_id_hash, contract_id_hash, milestone_id_hash, evidence_hash, initiator_wallet, 
-      freelancer_wallet, employer_wallet, arbiter_wallet, amount, outcome, reasoning, 
-      created_at_ts, resolved_at, transaction_hash, block_number)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-    [
-      record.disputeIdHash,
-      record.contractIdHash,
-      record.milestoneIdHash,
-      record.evidenceHash,
-      record.initiatorWallet,
-      record.freelancerWallet,
-      record.employerWallet,
-      record.arbiterWallet,
-      record.amount,
-      record.outcome,
-      record.reasoning,
-      record.createdAt,
-      record.resolvedAt,
-      record.transactionHash,
-      record.blockNumber
-    ]
-  );
+  await blockchainDisputeRecordRepository.createDisputeRecord({
+    id: disputeIdHash,
+    dispute_id_hash: record.disputeIdHash,
+    contract_id_hash: record.contractIdHash,
+    milestone_id_hash: record.milestoneIdHash,
+    initiator_wallet: record.initiatorWallet,
+    freelancer_wallet: record.freelancerWallet,
+    employer_wallet: record.employerWallet,
+    amount: record.amount,
+    outcome: record.outcome,
+    created_at_ts: record.createdAt,
+    transaction_hash: record.transactionHash,
+    block_number: record.blockNumber,
+  } as any);
 
   return {
     record,
@@ -208,13 +193,10 @@ export async function updateDisputeEvidence(
 ): Promise<{ record: BlockchainDisputeRecord; receipt: TransactionReceipt }> {
   const disputeIdHash = generateHash(disputeId);
 
-  const result = await pool.query(
-    'SELECT * FROM blockchain_dispute_records WHERE dispute_id_hash = $1',
-    [disputeIdHash]
-  );
+  const entity = await blockchainDisputeRecordRepository.findByDisputeIdHash(disputeIdHash);
 
-  if (result.rows.length === 0) throw new Error('Dispute not found');
-  const record = rowToRecord(result.rows[0] as DisputeRow);
+  if (!entity) throw new Error('Dispute not found');
+  const record = entityToRecord(entity);
   if (record.outcome !== 'pending') throw new Error('Dispute already resolved');
 
   const evidenceHash = generateHash(evidenceData);
@@ -231,12 +213,11 @@ export async function updateDisputeEvidence(
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
   // Update in DB
-  await pool.query(
-    `UPDATE blockchain_dispute_records 
-     SET evidence_hash = $1, transaction_hash = $2, block_number = $3, updated_at = NOW()
-     WHERE dispute_id_hash = $4`,
-    [evidenceHash, confirmed.hash!, confirmed.blockNumber!, disputeIdHash]
-  );
+  await blockchainDisputeRecordRepository.updateDisputeRecord(entity.id, {
+    evidence_hash: evidenceHash,
+    transaction_hash: confirmed.hash!,
+    block_number: confirmed.blockNumber!,
+  });
 
   record.evidenceHash = evidenceHash;
   record.transactionHash = confirmed.hash!;
@@ -262,13 +243,10 @@ export async function resolveDisputeOnBlockchain(
 ): Promise<{ record: BlockchainDisputeRecord; receipt: TransactionReceipt }> {
   const disputeIdHash = generateHash(input.disputeId);
 
-  const result = await pool.query(
-    'SELECT * FROM blockchain_dispute_records WHERE dispute_id_hash = $1',
-    [disputeIdHash]
-  );
+  const entity = await blockchainDisputeRecordRepository.findByDisputeIdHash(disputeIdHash);
 
-  if (result.rows.length === 0) throw new Error('Dispute not found');
-  const record = rowToRecord(result.rows[0] as DisputeRow);
+  if (!entity) throw new Error('Dispute not found');
+  const record = entityToRecord(entity);
   if (record.outcome !== 'pending') throw new Error('Dispute already resolved');
 
   const tx = await submitTransaction({
@@ -290,13 +268,14 @@ export async function resolveDisputeOnBlockchain(
   const now = Date.now();
 
   // Update in DB
-  await pool.query(
-    `UPDATE blockchain_dispute_records 
-     SET outcome = $1, reasoning = $2, arbiter_wallet = $3, resolved_at = $4, 
-         transaction_hash = $5, block_number = $6, updated_at = NOW()
-     WHERE dispute_id_hash = $7`,
-    [input.outcome, input.reasoning, input.arbiterWallet, now, confirmed.hash!, confirmed.blockNumber!, disputeIdHash]
-  );
+  await blockchainDisputeRecordRepository.updateDisputeRecord(entity.id, {
+    outcome: input.outcome,
+    reasoning: input.reasoning,
+    arbiter_wallet: input.arbiterWallet,
+    resolved_at: now,
+    transaction_hash: confirmed.hash!,
+    block_number: confirmed.blockNumber!,
+  });
 
   record.outcome = input.outcome;
   record.reasoning = input.reasoning;
@@ -322,62 +301,44 @@ export async function resolveDisputeOnBlockchain(
  */
 export async function getDisputeFromBlockchain(disputeId: string): Promise<BlockchainDisputeRecord | null> {
   const disputeIdHash = generateHash(disputeId);
-  const result = await pool.query(
-    'SELECT * FROM blockchain_dispute_records WHERE dispute_id_hash = $1',
-    [disputeIdHash]
-  );
+  const entity = await blockchainDisputeRecordRepository.findByDisputeIdHash(disputeIdHash);
 
-  if (result.rows.length === 0) return null;
-  return rowToRecord(result.rows[0] as DisputeRow);
+  if (!entity) return null;
+  return entityToRecord(entity);
 }
 
 /**
  * Get user dispute stats (derived from DB queries)
  */
 export async function getUserDisputeStats(walletAddress: string): Promise<UserDisputeStats> {
-  // Count total disputes involving this wallet
-  const totalResult = await pool.query(
-    'SELECT COUNT(*) as count FROM blockchain_dispute_records WHERE freelancer_wallet = $1 OR employer_wallet = $1',
-    [walletAddress]
-  );
-
-  // Get all resolved disputes to count wins/losses
-  const resolvedResult = await pool.query(
-    `SELECT outcome, freelancer_wallet, employer_wallet FROM blockchain_dispute_records 
-     WHERE (freelancer_wallet = $1 OR employer_wallet = $1) AND outcome != 'pending'`,
-    [walletAddress]
-  );
+  const allDisputes = await blockchainDisputeRecordRepository.findByWallet(walletAddress);
 
   let won = 0;
   let lost = 0;
-  for (const d of resolvedResult.rows) {
+  for (const d of allDisputes) {
     if (d.outcome === 'freelancer_favor' && d.freelancer_wallet === walletAddress) won++;
     else if (d.outcome === 'employer_favor' && d.employer_wallet === walletAddress) won++;
     else if (d.outcome === 'freelancer_favor' && d.employer_wallet === walletAddress) lost++;
     else if (d.outcome === 'employer_favor' && d.freelancer_wallet === walletAddress) lost++;
   }
 
-  return { won, lost, total: parseInt(totalResult.rows[0].count) || 0 };
+  return { won, lost, total: allDisputes.length };
 }
 
 /**
  * Get user's disputes
  */
 export async function getUserDisputes(walletAddress: string): Promise<BlockchainDisputeRecord[]> {
-  const result = await pool.query(
-    `SELECT * FROM blockchain_dispute_records 
-     WHERE freelancer_wallet = $1 OR employer_wallet = $1
-     ORDER BY created_at_ts DESC`,
-    [walletAddress]
-  );
-
-  if (result.rows.length === 0) return [];
-  return result.rows.map(rowToRecord);
+  const entities = await blockchainDisputeRecordRepository.findByWallet(walletAddress);
+  return entities.map(entityToRecord);
 }
 
 export async function clearDisputeRegistry(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  await pool.query('DELETE FROM blockchain_dispute_records');
+  const all = await blockchainDisputeRecordRepository.queryAll('created_at_ts');
+  for (const record of all) {
+    await blockchainDisputeRecordRepository.delete(record.id);
+  }
 }
 
 export function getDisputeRegistryAddress(): string {

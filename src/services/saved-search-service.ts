@@ -1,7 +1,9 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { SavedSearch, SavedSearchInput } from '../models/saved-search.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { savedSearchRepository } from '../repositories/saved-search-repository.js';
+import { projectRepository } from '../repositories/project-repository.js';
+import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
 
 /**
  * Create a saved search
@@ -22,16 +24,26 @@ export async function createSavedSearch(
       };
     }
 
-    const result = await pool.query(
-      `INSERT INTO saved_searches (user_id, name, search_type, filters, notify_on_new, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
-       RETURNING *`,
-      [userId, input.name, input.searchType, JSON.stringify(input.filters), input.notifyOnNew || false]
-    );
+    const created = await savedSearchRepository.create({
+      user_id: userId,
+      name: input.name,
+      search_type: input.searchType,
+      filters: JSON.stringify(input.filters),
+      notify_on_new: input.notifyOnNew || false,
+    } as any);
 
     return {
       success: true,
-      data: result.rows[0] as SavedSearch,
+      data: {
+        id: created.id,
+        userId: created.user_id,
+        name: created.name,
+        searchType: created.search_type,
+        filters: typeof created.filters === 'string' ? JSON.parse(created.filters) : created.filters,
+        notifyOnNew: created.notify_on_new,
+        createdAt: new Date(created.created_at),
+        updatedAt: new Date(created.updated_at),
+      } as SavedSearch,
     };
   } catch (error) {
     logger.error('Unexpected error in createSavedSearch', { error, userId, input });
@@ -53,21 +65,20 @@ export async function getUserSavedSearches(
   searchType?: 'project' | 'freelancer'
 ): Promise<ServiceResult<SavedSearch[]>> {
   try {
-    let query = 'SELECT * FROM saved_searches WHERE user_id = $1';
-    const params: any[] = [userId];
-
-    if (searchType) {
-      query += ' AND search_type = $2';
-      params.push(searchType);
-    }
-
-    query += ' ORDER BY created_at DESC';
-
-    const result = await pool.query(query, params);
+    const results = await savedSearchRepository.findByUser(userId, searchType);
 
     return {
       success: true,
-      data: result.rows as SavedSearch[],
+      data: results.map(row => ({
+        id: row.id,
+        userId: row.user_id,
+        name: row.name,
+        searchType: row.search_type,
+        filters: typeof row.filters === 'string' ? JSON.parse(row.filters) : row.filters,
+        notifyOnNew: row.notify_on_new,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
+      } as SavedSearch)),
     };
   } catch (error) {
     logger.error('Unexpected error in getUserSavedSearches', { error, userId, searchType });
@@ -91,57 +102,48 @@ export async function updateSavedSearch(
 ): Promise<ServiceResult<SavedSearch>> {
   try {
     // Verify ownership
-    const existingResult = await pool.query(
-      'SELECT user_id FROM saved_searches WHERE id = $1',
-      [searchId]
-    );
+    const ownerId = await savedSearchRepository.findOwnerById(searchId);
 
-    if (existingResult.rows.length === 0) {
+    if (ownerId === null) {
       return {
         success: false,
         error: { code: 'NOT_FOUND', message: 'Saved search not found' },
       };
     }
 
-    if (existingResult.rows[0].user_id !== userId) {
+    if (ownerId !== userId) {
       return {
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'You can only update your own saved searches' },
       };
     }
 
-    // Build update query
-    const columns = [];
-    const values = [];
-    let paramIndex = 1;
+    // Build update data
+    const updateData: Record<string, any> = {};
+    if (updates.name) updateData.name = updates.name;
+    if (updates.filters) updateData.filters = JSON.stringify(updates.filters);
+    if (updates.notifyOnNew !== undefined) updateData.notify_on_new = updates.notifyOnNew;
 
-    if (updates.name) {
-      columns.push(`name = $${paramIndex++}`);
-      values.push(updates.name);
+    if (Object.keys(updateData).length === 0) {
+      const existing = await savedSearchRepository.getById(searchId);
+      return {
+        success: true,
+        data: {
+          id: existing!.id,
+          userId: (existing as any).user_id,
+          name: (existing as any).name,
+          searchType: (existing as any).search_type,
+          filters: typeof (existing as any).filters === 'string' ? JSON.parse((existing as any).filters) : (existing as any).filters,
+          notifyOnNew: (existing as any).notify_on_new,
+          createdAt: new Date((existing as any).created_at),
+          updatedAt: new Date((existing as any).updated_at),
+        } as SavedSearch,
+      };
     }
-    if (updates.filters) {
-      columns.push(`filters = $${paramIndex++}`);
-      values.push(JSON.stringify(updates.filters));
-    }
-    if (updates.notifyOnNew !== undefined) {
-      columns.push(`notify_on_new = $${paramIndex++}`);
-      values.push(updates.notifyOnNew);
-    }
 
-    if (columns.length === 0) {
-      const result = await pool.query('SELECT * FROM saved_searches WHERE id = $1', [searchId]);
-      return { success: true, data: result.rows[0] as SavedSearch };
-    }
+    const updated = await savedSearchRepository.update(searchId, updateData);
 
-    columns.push(`updated_at = NOW()`);
-    values.push(searchId);
-
-    const result = await pool.query(
-      `UPDATE saved_searches SET ${columns.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
-      values
-    );
-
-    if (result.rows.length === 0) {
+    if (!updated) {
       return {
         success: false,
         error: {
@@ -153,7 +155,16 @@ export async function updateSavedSearch(
 
     return {
       success: true,
-      data: result.rows[0] as SavedSearch,
+      data: {
+        id: updated.id,
+        userId: (updated as any).user_id,
+        name: (updated as any).name,
+        searchType: (updated as any).search_type,
+        filters: typeof (updated as any).filters === 'string' ? JSON.parse((updated as any).filters) : (updated as any).filters,
+        notifyOnNew: (updated as any).notify_on_new,
+        createdAt: new Date((updated as any).created_at),
+        updatedAt: new Date((updated as any).updated_at),
+      } as SavedSearch,
     };
   } catch (error) {
     logger.error('Unexpected error in updateSavedSearch', { error, searchId, userId, updates });
@@ -176,12 +187,9 @@ export async function deleteSavedSearch(
 ): Promise<ServiceResult<void>> {
   try {
     // Verify ownership
-    const existingResult = await pool.query(
-      'SELECT user_id FROM saved_searches WHERE id = $1',
-      [searchId]
-    );
+    const ownerId = await savedSearchRepository.findOwnerById(searchId);
 
-    if (existingResult.rows.length === 0) {
+    if (ownerId === null) {
       return {
         success: false,
         error: {
@@ -191,7 +199,7 @@ export async function deleteSavedSearch(
       };
     }
 
-    if (existingResult.rows[0].user_id !== userId) {
+    if (ownerId !== userId) {
       return {
         success: false,
         error: {
@@ -201,7 +209,7 @@ export async function deleteSavedSearch(
       };
     }
 
-    await pool.query('DELETE FROM saved_searches WHERE id = $1', [searchId]);
+    await savedSearchRepository.delete(searchId);
 
     return {
       success: true,
@@ -228,12 +236,9 @@ export async function executeSavedSearch(
 ): Promise<ServiceResult<{ results: any[]; count: number }>> {
   try {
     // Get saved search
-    const searchResult = await pool.query(
-      'SELECT * FROM saved_searches WHERE id = $1',
-      [searchId]
-    );
+    const savedSearchDoc = await savedSearchRepository.getById(searchId);
 
-    if (searchResult.rows.length === 0) {
+    if (!savedSearchDoc) {
       return {
         success: false,
         error: {
@@ -243,10 +248,8 @@ export async function executeSavedSearch(
       };
     }
 
-    const savedSearch = searchResult.rows[0];
-
     // Verify ownership
-    if (savedSearch.user_id !== userId) {
+    if ((savedSearchDoc as any).user_id !== userId) {
       return {
         success: false,
         error: {
@@ -256,78 +259,76 @@ export async function executeSavedSearch(
       };
     }
 
-    const filters = savedSearch.filters as Record<string, any>;
-    const searchType = savedSearch.search_type;
+    const filters = typeof (savedSearchDoc as any).filters === 'string'
+      ? JSON.parse((savedSearchDoc as any).filters)
+      : (savedSearchDoc as any).filters;
+    const searchType = (savedSearchDoc as any).search_type;
 
     // Execute search based on type
     if (searchType === 'project') {
-      let query = "SELECT * FROM projects WHERE status = 'open'";
-      const params: any[] = [];
-      let pIndex = 1;
+      const allProjects = await projectRepository.getAllOpenProjects({ limit: 1000, offset: 0 });
+      let filtered = allProjects.items;
 
-      // Apply filters
+      // Apply filters in-memory
       if (filters.skills && Array.isArray(filters.skills)) {
-        query += ` AND required_skills @> $${pIndex++}`;
-        params.push(filters.skills);
+        const filterSkills = filters.skills.map((s: string) => s.toLowerCase());
+        filtered = filtered.filter(p =>
+          p.required_skills?.some((s: any) =>
+            filterSkills.includes((s.skill_name || s.name || '').toLowerCase())
+          )
+        );
       }
       if (filters.minBudget) {
-        query += ` AND budget >= $${pIndex++}`;
-        params.push(filters.minBudget);
+        filtered = filtered.filter(p => p.budget >= filters.minBudget);
       }
       if (filters.maxBudget) {
-        query += ` AND budget <= $${pIndex++}`;
-        params.push(filters.maxBudget);
+        filtered = filtered.filter(p => p.budget <= filters.maxBudget);
       }
       if (filters.keyword) {
-        query += ` AND (title ILIKE $${pIndex} OR description ILIKE $${pIndex})`;
-        params.push(`%${filters.keyword}%`);
-        pIndex++;
+        const kw = filters.keyword.toLowerCase();
+        filtered = filtered.filter(p =>
+          p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw)
+        );
       }
 
-      query += ' ORDER BY created_at DESC LIMIT 50';
-
-      const results = await pool.query(query, params);
+      // Sort and limit
+      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const results = filtered.slice(0, 50);
 
       return {
         success: true,
         data: {
-          results: results.rows,
-          count: results.rows.length,
+          results,
+          count: results.length,
         },
       };
     } else {
-      let query = `
-        SELECT fp.*, u.email, u.name 
-        FROM freelancer_profiles fp
-        INNER JOIN users u ON fp.user_id = u.id
-        WHERE 1=1
-      `;
-      const params: any[] = [];
-      let pIndex = 1;
+      const allProfiles = await freelancerProfileRepository.getAllProfilesPaginated({ limit: 1000, offset: 0 });
+      let filtered = allProfiles.items;
 
-      // Apply filters
+      // Apply filters in-memory
       if (filters.skills && Array.isArray(filters.skills)) {
-        query += ` AND fp.skills @> $${pIndex++}`;
-        params.push(filters.skills);
+        const filterSkills = filters.skills.map((s: string) => s.toLowerCase());
+        filtered = filtered.filter(fp =>
+          fp.skills?.some((s: any) => filterSkills.includes((s.name || '').toLowerCase()))
+        );
       }
       if (filters.minHourlyRate) {
-        query += ` AND fp.hourly_rate >= $${pIndex++}`;
-        params.push(filters.minHourlyRate);
+        filtered = filtered.filter(fp => fp.hourly_rate >= filters.minHourlyRate);
       }
       if (filters.maxHourlyRate) {
-        query += ` AND fp.hourly_rate <= $${pIndex++}`;
-        params.push(filters.maxHourlyRate);
+        filtered = filtered.filter(fp => fp.hourly_rate <= filters.maxHourlyRate);
       }
 
-      query += ' ORDER BY fp.created_at DESC LIMIT 50';
-
-      const results = await pool.query(query, params);
+      // Sort and limit
+      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const results = filtered.slice(0, 50);
 
       return {
         success: true,
         data: {
-          results: results.rows,
-          count: results.rows.length,
+          results,
+          count: results.length,
         },
       };
     }

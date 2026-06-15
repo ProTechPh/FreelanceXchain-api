@@ -7,7 +7,6 @@ import { userRepository } from '../repositories/user-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 
 import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
@@ -328,13 +327,9 @@ export async function acceptProposal(
   const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
   const totalAmount = proposalRate + rushFee;
 
-  // Pre-check: Verify freelancer limit hasn't been reached before atomic RPC
+  // Pre-check: Verify freelancer limit hasn't been reached
   const freelancerLimit = projectEntity.freelancer_limit ?? 1;
-  const acceptedCountResult = await pool.query(
-    'SELECT COUNT(*) as count FROM proposals WHERE project_id = $1 AND status = $2',
-    [proposalEntity.project_id, 'accepted']
-  );
-  const preCheckAcceptedCount = parseInt(acceptedCountResult.rows[0]?.count ?? '0', 10);
+  const preCheckAcceptedCount = await proposalRepository.getAcceptedProposalCount(proposalEntity.project_id);
   if (preCheckAcceptedCount >= freelancerLimit) {
     return {
       success: false,
@@ -342,14 +337,13 @@ export async function acceptProposal(
     };
   }
 
-  // RACE CONDITION FIX: Use atomic function to prevent double-accepting proposals
-  const result = await pool.query(
-    'SELECT accept_proposal_atomic($1, $2) as result',
-    [proposalId, employerId]
-  );
+  // Accept proposal: update status to 'accepted'
+  const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
+    status: 'accepted',
+  });
 
-  if (!result.rows[0]?.result) {
-    logger.error('Failed to accept proposal (RPC)');
+  if (!updatedProposalEntity) {
+    logger.error('Failed to accept proposal');
     return {
       success: false,
       error: { 
@@ -359,16 +353,21 @@ export async function acceptProposal(
     };
   }
 
-  // The atomic RPC returns a boolean; look up the created contract from the contracts table
-  const updatedProposalEntity = await proposalRepository.findProposalById(proposalId);
-  
-  // Find the contract created for this proposal (contract references the proposal)
-  const contractResult = await pool.query(
-    'SELECT id FROM contracts WHERE proposal_id = $1 LIMIT 1',
-    [proposalId]
-  );
-  const createdContractId = contractResult.rows[0]?.id;
-  if (!createdContractId) {
+  // Create contract record
+  const contractEntity = await contractRepository.create({
+    id: generateId(),
+    project_id: project.id,
+    proposal_id: proposalId,
+    freelancer_id: proposalEntity.freelancer_id,
+    employer_id: employerId,
+    base_amount: proposalRate,
+    rush_fee: rushFee,
+    total_amount: totalAmount,
+    status: 'pending',
+    escrow_address: '',
+  });
+
+  if (!contractEntity) {
     return {
       success: false,
       error: { 
@@ -378,11 +377,22 @@ export async function acceptProposal(
     };
   }
 
+  // Reject other pending proposals for this project
+  try {
+    const otherProposals = await proposalRepository.getProposalsByProject(project.id, { limit: 1000, offset: 0 });
+    for (const otherProposal of otherProposals.items) {
+      if (otherProposal.id !== proposalId && otherProposal.status === 'pending') {
+        await proposalRepository.updateProposal(otherProposal.id, { status: 'rejected' });
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to reject other pending proposals', { error });
+    // Continue - this is non-critical
+  }
+
   // Get the updated entities
-  const updatedProposal = mapProposalFromEntity(updatedProposalEntity!);
-  
-  const createdContractEntity = await contractRepository.getContractById(createdContractId);
-  const createdContract = mapContractFromEntity(createdContractEntity!);
+  const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
+  const createdContract = mapContractFromEntity(contractEntity);
 
   // Create agreement on blockchain and initialize escrow
   try {

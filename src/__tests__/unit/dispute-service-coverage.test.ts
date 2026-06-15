@@ -8,6 +8,7 @@ const mockDisputeRepository = {
   getDisputeById: jest.fn<any>(),
   createDispute: jest.fn<any>(),
   updateDispute: jest.fn<any>(),
+  getDisputeByMilestone: jest.fn<any>(),
 };
 
 jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
@@ -145,11 +146,12 @@ describe('Dispute Service - Coverage', () => {
       if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
     });
 
-    // Lines 389-393: RPC failed
-    it('should return UPDATE_FAILED when RPC fails', async () => {
-      mockDisputeRepository.getDisputeById.mockResolvedValue({ id: 'd-1', status: 'open', contract_id: 'c-1' });
+    // Lines 389-393: evidence update failed
+    it('should return UPDATE_FAILED when evidence update fails', async () => {
+      mockDisputeRepository.getDisputeById
+        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1', evidence: [] })
+        .mockResolvedValueOnce(null);
       mockContractRepository.getContractById.mockResolvedValue({ employer_id: 'user-1', freelancer_id: 'free-1' });
-      mockPool.query.mockResolvedValue({ rows: [{ result: false }] });
 
       const result = await submitEvidence({
         disputeId: 'd-1', submitterId: 'user-1', type: 'text', content: 'evidence',
@@ -180,7 +182,7 @@ describe('Dispute Service - Coverage', () => {
     });
 
     it('should return ALREADY_RESOLVED when dispute is already resolved', async () => {
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'd-1', status: 'resolved', contract_id: 'c-1' }], rowCount: 1 });
+      mockDisputeRepository.getDisputeById.mockResolvedValue({ id: 'd-1', status: 'resolved', contract_id: 'c-1' });
 
       const result = await resolveDispute({
         disputeId: 'd-1', decision: 'freelancer_favor', reasoning: 'test', resolvedBy: 'admin-1', resolverRole: 'admin',

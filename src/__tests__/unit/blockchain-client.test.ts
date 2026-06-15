@@ -9,53 +9,51 @@ import type { Transaction, PaymentTransaction } from '../../services/blockchain-
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// In-memory transaction store for mocking DB
+// In-memory transaction store for mocking repository
 let transactionStore: Map<string, any> = new Map();
 
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: {
-    query: jest.fn(async (sql: string, params: any[]) => {
-      const s = sql.trim().toUpperCase();
-      if (s.startsWith('INSERT INTO BLOCKCHAIN_TRANSACTIONS')) {
-        const row = {
-          id: params[0], type: params[1], from_address: params[2], to_address: params[3],
-          amount: params[4], data: JSON.parse(params[5]), timestamp: params[6],
-          status: params[7], hash: params[8], block_number: params[9],
-          gas_used: params[10], confirm_at: params[11],
-        };
-        transactionStore.set(params[0], row);
-        return { rows: [row] };
-      }
-      if (s.startsWith('SELECT * FROM BLOCKCHAIN_TRANSACTIONS WHERE ID')) {
-        const row = transactionStore.get(params[0]) ?? null;
-        return { rows: row ? [row] : [] };
-      }
-      if (s.startsWith('SELECT CONFIRM_AT FROM BLOCKCHAIN_TRANSACTIONS WHERE ID')) {
-        const row = transactionStore.get(params[0]) ?? null;
-        return { rows: row ? [{ confirm_at: row.confirm_at }] : [] };
-      }
-      if (s.startsWith('UPDATE BLOCKCHAIN_TRANSACTIONS') && s.includes('STATUS') && s.includes('BLOCK_NUMBER')) {
-        const row = transactionStore.get(params[3]);
-        if (!row) return { rows: [] };
-        row.status = params[0]; row.block_number = params[1]; row.gas_used = params[2]; row.confirm_at = null;
-        transactionStore.set(params[3], row);
-        return { rows: [row] };
-      }
-      if (s.startsWith('UPDATE BLOCKCHAIN_TRANSACTIONS') && s.includes('STATUS')) {
-        const row = transactionStore.get(params[1]);
-        if (!row) return { rows: [] };
-        row.status = params[0]; row.confirm_at = null;
-        transactionStore.set(params[1], row);
-        return { rows: [row] };
-      }
-      if (s.startsWith('DELETE FROM BLOCKCHAIN_TRANSACTIONS')) {
-        transactionStore.clear();
-        return { rows: [] };
-      }
-      return { rows: [] };
-    }),
-  },
-  config: { blockchain: { rpcUrl: 'http://rpc.example.com', privateKey: '0xabc', mode: 'real' } },
+const mockBlockchainTransactionRepository = {
+  createTransaction: jest.fn(async (data: any) => {
+    transactionStore.set(data.id, data);
+    return data;
+  }),
+  getTransactionById: jest.fn(async (id: string) => {
+    return transactionStore.get(id) ?? null;
+  }),
+  updateTransaction: jest.fn(async (id: string, updates: any) => {
+    const entity = transactionStore.get(id);
+    if (!entity) return null;
+    const updated = { ...entity, ...updates };
+    if ('gas_used' in updates && updates.gas_used !== null && updates.gas_used !== undefined) {
+      updated.gas_used = updates.gas_used;
+    }
+    if ('confirm_at' in updates) {
+      updated.confirm_at = updates.confirm_at;
+    }
+    transactionStore.set(id, updated);
+    return updated;
+  }),
+  findConfirmable: jest.fn(async (id: string) => {
+    const entity = transactionStore.get(id);
+    return entity ? { confirm_at: entity.confirm_at } : null;
+  }),
+  queryAll: jest.fn(async (_sortBy: string) => {
+    return Array.from(transactionStore.values());
+  }),
+  delete: jest.fn(async (id: string) => {
+    transactionStore.delete(id);
+    return true;
+  }),
+  findByHash: jest.fn(async (hash: string) => {
+    for (const entity of transactionStore.values()) {
+      if (entity.hash === hash) return entity;
+    }
+    return null;
+  }),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/blockchain-transaction-repository.ts'), () => ({
+  blockchainTransactionRepository: mockBlockchainTransactionRepository,
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
@@ -126,6 +124,40 @@ const paymentTransactionArbitrary = () =>
 describe('Blockchain Client - Refactored', () => {
   beforeEach(() => {
     transactionStore.clear();
+    jest.clearAllMocks();
+
+    // Re-implement mock implementations after clearAllMocks
+    mockBlockchainTransactionRepository.createTransaction.mockImplementation(async (data: any) => {
+      transactionStore.set(data.id, data);
+      return data;
+    });
+    mockBlockchainTransactionRepository.getTransactionById.mockImplementation(async (id: string) => {
+      return transactionStore.get(id) ?? null;
+    });
+    mockBlockchainTransactionRepository.updateTransaction.mockImplementation(async (id: string, updates: any) => {
+      const entity = transactionStore.get(id);
+      if (!entity) return null;
+      const updated = { ...entity, ...updates };
+      transactionStore.set(id, updated);
+      return updated;
+    });
+    mockBlockchainTransactionRepository.findConfirmable.mockImplementation(async (id: string) => {
+      const entity = transactionStore.get(id);
+      return entity ? { confirm_at: entity.confirm_at } : null;
+    });
+    mockBlockchainTransactionRepository.queryAll.mockImplementation(async (_sortBy: string) => {
+      return Array.from(transactionStore.values());
+    });
+    mockBlockchainTransactionRepository.delete.mockImplementation(async (id: string) => {
+      transactionStore.delete(id);
+      return true;
+    });
+    mockBlockchainTransactionRepository.findByHash.mockImplementation(async (hash: string) => {
+      for (const entity of transactionStore.values()) {
+        if (entity.hash === hash) return entity;
+      }
+      return null;
+    });
   });
 
   describe('Transaction Serialization', () => {

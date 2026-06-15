@@ -110,13 +110,6 @@ function seedRushUpgradeRequest(overrides: Record<string, any> = {}) {
     projectStore.clear();
     userStore.clear();
     notificationStore.clear();
-
-    mockQuery.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('apply_rush_upgrade_atomic')) {
-        return { rows: [{ result: true }], rowCount: 1 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
 // ─── requestRushUpgrade ────────────────────────────────────────────────
@@ -244,18 +237,18 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, counter_percentage: 20, status: 'counter_offered',
     });
 
-    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 200, total_amount: 1200 });
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
 
     expect(result.success).toBe(true);
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('apply_rush_upgrade_atomic'),
-      expect.arrayContaining([contract.id, 20]),
+    expect(mockContractRepo.updateContract).toHaveBeenCalledWith(
+      contract.id,
+      expect.objectContaining({ rush_fee: 200, total_amount: 1200 }),
     );
   });
 
-  it('should reject if RPC fails', async () => {
+  it('should reject if contract update fails', async () => {
     const employer = seedUser({ role: 'employer' });
     const freelancer = seedUser({ role: 'freelancer' });
     const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
@@ -264,7 +257,7 @@ describe('respondToRushUpgrade - accept', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
     });
 
-    mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    mockContractRepo.updateContract.mockResolvedValueOnce(null);
 
     const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
     expect(result.success).toBe(false);
@@ -393,16 +386,16 @@ describe('acceptCounterOffer', () => {
       contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, counter_percentage: 20, status: 'counter_offered',
     });
 
-    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 200, total_amount: 1200 });
 
     const result = await acceptCounterOffer(employer.id, request.id);
 
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.request.status).toBe('accepted');
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('apply_rush_upgrade_atomic'),
-      expect.arrayContaining([contract.id, 20]),
+    expect(mockContractRepo.updateContract).toHaveBeenCalledWith(
+      contract.id,
+      expect.objectContaining({ rush_fee: 200, total_amount: 1200 }),
     );
   });
 
@@ -442,7 +435,7 @@ describe('acceptCounterOffer', () => {
       contract_id: contract.id, requested_by: employer.id, counter_percentage: 20, status: 'counter_offered',
     });
 
-    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 200, total_amount: 1200 });
     await acceptCounterOffer(employer.id, request.id);
 
     const notifications = Array.from(notificationStore.values()) as any[];
@@ -565,14 +558,14 @@ describe('Full rush upgrade negotiation flow', () => {
     expect((counterResult.data as any).counterPercentage).toBe(20);
 
     // 3. Employer accepts counter-offer
-    mockQuery.mockResolvedValueOnce({ rows: [{ result: true }], rowCount: 1 });
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 200, total_amount: 1200 });
     const acceptResult = await acceptCounterOffer(employer.id, requestId);
     expect(acceptResult.success).toBe(true);
     if (!acceptResult.success) return;
     expect(acceptResult.data.request.status).toBe('accepted');
-    expect(mockQuery).toHaveBeenCalledWith(
-      expect.stringContaining('apply_rush_upgrade_atomic'),
-      expect.arrayContaining([contract.id]),
+    expect(mockContractRepo.updateContract).toHaveBeenCalledWith(
+      contract.id,
+      expect.objectContaining({ rush_fee: 200, total_amount: 1200 }),
     );
   });
 

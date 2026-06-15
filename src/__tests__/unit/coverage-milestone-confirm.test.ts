@@ -6,14 +6,15 @@ const resolveModule = (p: string) => path.resolve(process.cwd(), p);
 
 const mockSubmitTx = jest.fn() as jest.Mock<any>;
 const mockConfirmTx = jest.fn() as jest.Mock<any>;
-const mockPoolQuery = jest.fn<any>();
 
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockPoolQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockPoolQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+const mockBlockchainMilestoneRecordRepository = {
+  findByMilestoneIdHash: jest.fn(),
+  createMilestoneRecord: jest.fn(),
+  updateMilestoneRecord: jest.fn(),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/blockchain-milestone-record-repository.ts'), () => ({
+  blockchainMilestoneRecordRepository: mockBlockchainMilestoneRecordRepository,
 }));
 
 function makeConfirmed(hash = '0xabc123', blockNumber = 1) {
@@ -37,6 +38,7 @@ const MOCK_HASH = '0x' + 'a'.repeat(64);
 
 function makeRegistryRow(status = 'submitted') {
   return {
+    id: MOCK_HASH,
     milestone_id_hash: MOCK_HASH,
     contract_id_hash: MOCK_HASH,
     work_hash: '0x' + 'b'.repeat(64),
@@ -49,6 +51,8 @@ function makeRegistryRow(status = 'submitted') {
     title: 'Phase 1',
     transaction_hash: null,
     block_number: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   };
 }
 
@@ -57,15 +61,13 @@ describe('Milestone Registry - confirm gap', () => {
     jest.clearAllMocks();
     mockSubmitTx.mockResolvedValue({ id: 'tx-1' });
     mockConfirmTx.mockResolvedValue(makeConfirmed());
-    mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValue(null);
+    mockBlockchainMilestoneRecordRepository.updateMilestoneRecord.mockResolvedValue({});
   });
 
   it('approveMilestoneOnRegistry should throw when confirm returns null (line 213)', async () => {
     const { approveMilestoneOnRegistry } = await import('../../services/milestone-registry.js');
-    mockPoolQuery.mockResolvedValueOnce({
-      rows: [makeRegistryRow('submitted')],
-      rowCount: 1,
-    });
+    mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow('submitted'));
     mockConfirmTx.mockResolvedValueOnce(null);
 
     await expect(approveMilestoneOnRegistry(MILESTONE_ID, EM_WALLET))
@@ -74,10 +76,7 @@ describe('Milestone Registry - confirm gap', () => {
 
   it('rejectMilestoneOnRegistry should throw when confirm returns null (line 271)', async () => {
     const { rejectMilestoneOnRegistry } = await import('../../services/milestone-registry.js');
-    mockPoolQuery.mockResolvedValueOnce({
-      rows: [makeRegistryRow('submitted')],
-      rowCount: 1,
-    });
+    mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRow('submitted'));
     mockConfirmTx.mockResolvedValueOnce(null);
 
     await expect(rejectMilestoneOnRegistry(MILESTONE_ID, EM_WALLET, 'bad work'))

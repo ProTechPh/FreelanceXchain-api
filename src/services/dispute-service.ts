@@ -5,12 +5,12 @@
 
 import { Dispute, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import { disputeRepository, DisputeEntity, EvidenceEntity, DisputeResolutionEntity } from '../repositories/dispute-repository.js';
+import { disputeEvidenceRepository } from '../repositories/dispute-evidence-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity, mapProjectFromEntity, mapMilestoneFromEntity } from '../utils/entity-mapper.js';
 import { generateId } from '../utils/id.js';
-import { pool } from '../config/database.js';
 import {
   notifyDisputeCreated,
   notifyDisputeResolved,
@@ -131,62 +131,30 @@ export async function createDispute(
     };
   }
 
-  // Use a transaction with row-level lock to prevent duplicate dispute creation
-  const client = await pool.connect();
-  let createdDispute: Dispute;
-  try {
-    await client.query('BEGIN');
-
-    // Lock the milestone row to prevent concurrent dispute creation
-    const milestoneLockResult = await client.query(
-      'SELECT id FROM project_milestones WHERE id = $1 FOR UPDATE',
-      [milestoneId]
-    );
-    if (milestoneLockResult.rows.length === 0) {
-      await client.query('ROLLBACK');
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-      };
-    }
-
-    // Check for existing dispute on this milestone (within the locked transaction)
-    const existingDisputeResult = await client.query(
-      `SELECT id FROM disputes WHERE milestone_id = $1 AND status != 'resolved' LIMIT 1`,
-      [milestoneId]
-    );
-    if (existingDisputeResult.rows.length > 0) {
-      await client.query('ROLLBACK');
-      return {
-        success: false,
-        error: { code: 'DUPLICATE_DISPUTE', message: 'An active dispute already exists for this milestone' },
-      };
-    }
-
-    // Create dispute entity
-    const disputeEntity: Omit<DisputeEntity, 'created_at' | 'updated_at'> = {
-      id: generateId(),
-      contract_id: contractId,
-      milestone_id: milestoneId,
-      initiator_id: initiatorId,
-      reason,
-      evidence: [],
-      status: 'open',
-      resolution: null,
+  // Check for existing active dispute on this milestone
+  const existingDispute = await disputeRepository.getDisputeByMilestone(milestoneId);
+  if (existingDispute) {
+    return {
+      success: false,
+      error: { code: 'DUPLICATE_DISPUTE', message: 'An active dispute already exists for this milestone' },
     };
-
-    // Save dispute to database
-    const createdDisputeEntity = await disputeRepository.createDispute(disputeEntity);
-    createdDispute = mapDisputeFromEntity(createdDisputeEntity);
-
-    await client.query('COMMIT');
-
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    throw error;
-  } finally {
-    client.release();
   }
+
+  // Create dispute entity
+  const disputeEntity: Omit<DisputeEntity, 'created_at' | 'updated_at'> = {
+    id: generateId(),
+    contract_id: contractId,
+    milestone_id: milestoneId,
+    initiator_id: initiatorId,
+    reason,
+    evidence: [],
+    status: 'open',
+    resolution: null,
+  };
+
+  // Save dispute to database
+  const createdDisputeEntity = await disputeRepository.createDispute(disputeEntity);
+  const createdDispute = mapDisputeFromEntity(createdDisputeEntity);
 
   // Record dispute on blockchain
   try {
@@ -312,27 +280,26 @@ export async function submitEvidence(
   }
 
   // Create evidence entity
-  const evidenceEntity: EvidenceEntity = {
-    id: generateId(),
+  const evidenceId = generateId();
+  const evidenceEntity: Omit<EvidenceEntity, 'submitted_at'> = {
+    id: evidenceId,
     submitter_id: submitterId,
     type,
     content,
-    submitted_at: new Date().toISOString(),
   };
 
-  // Add evidence to dispute atomically to prevent race condition (Requirement 8.3)
-  const result = await pool.query(
-    'SELECT append_dispute_evidence($1, $2) as result',
-    [disputeId, JSON.stringify([evidenceEntity])]
-  );
+  // Add evidence to dispute via repository
+  await disputeEvidenceRepository.createEvidence({
+    id: evidenceId,
+    dispute_id: disputeId,
+    submitted_by: submitterId,
+    evidence_type: type,
+    description: content,
+  } as any);
 
-  if (!result.rows[0]?.result) {
-    logger.error('Failed to append evidence via RPC', { disputeId });
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update dispute evidence' },
-    };
-  }
+  // Append evidence to dispute's evidence array
+  const updatedEvidence = [...disputeEntity.evidence, { ...evidenceEntity, submitted_at: new Date().toISOString() }];
+  await disputeRepository.updateDispute(disputeId, { evidence: updatedEvidence } as any);
 
   // Get the fully updated entity
   const updatedDisputeEntity = await disputeRepository.getDisputeById(disputeId);
@@ -343,19 +310,17 @@ export async function submitEvidence(
     };
   }
 
-  const updatedEvidence = updatedDisputeEntity.evidence;
-
   // Update evidence hash on blockchain
   try {
     const submitter = await userRepository.getUserById(submitterId);
     if (submitter?.wallet_address) {
-      const evidenceData = JSON.stringify(updatedEvidence);
+      const evidenceData = JSON.stringify(updatedDisputeEntity.evidence);
       await updateDisputeEvidence(disputeId, evidenceData, submitter.wallet_address);
     }
   } catch (error) {
     logger.error('Failed to update evidence on blockchain', error as Error, {
       disputeId,
-      evidenceId: updatedEvidence[updatedEvidence.length - 1]?.id,
+      evidenceId: updatedDisputeEntity.evidence[updatedDisputeEntity.evidence.length - 1]?.id,
     });
   }
 
@@ -379,12 +344,8 @@ export async function resolveDispute(
     };
   }
 
-  // Find dispute with row-level lock to prevent concurrent resolution
-  const lockResult = await pool.query(
-    'SELECT * FROM disputes WHERE id = $1 FOR UPDATE',
-    [disputeId]
-  );
-  const disputeEntity = lockResult.rows[0] as DisputeEntity | undefined;
+  // Find dispute
+  const disputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!disputeEntity) {
     return {
       success: false,

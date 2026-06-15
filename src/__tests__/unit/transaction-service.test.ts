@@ -13,23 +13,26 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const mockQuery = jest.fn();
-(globalThis as any).mockPool = { query: mockQuery };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+const mockTransactionRepository = {
+  findByUser: jest.fn<any>(),
+  getById: jest.fn<any>(),
+  findByContract: jest.fn<any>(),
+  create: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/transaction-repository.ts'), () => ({
+  transactionRepository: mockTransactionRepository,
+}));
+
+const mockContractRepository = {
+  getContractById: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepository,
 }));
 
 describe('Transaction Service', () => {
-  let mockPool: any;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
   });
 
   const importModule = async () => {
@@ -41,13 +44,15 @@ describe('Transaction Service', () => {
       const { getUserTransactions } = await importModule();
 
       const transactions = [
-        { id: 'tx-1', from_user_id: 'user-1', to_user_id: 'user-2', amount: 100, type: 'payment', status: 'completed', created_at: '2025-01-01' },
-        { id: 'tx-2', from_user_id: 'user-2', to_user_id: 'user-1', amount: 50, type: 'refund', status: 'completed', created_at: '2025-01-02' },
+        { id: 'tx-1', from_user_id: 'user-1', to_user_id: 'user-2', amount: 100, type: 'payment', status: 'completed', created_at: '2025-01-01', updated_at: '2025-01-01' },
+        { id: 'tx-2', from_user_id: 'user-2', to_user_id: 'user-1', amount: 50, type: 'refund', status: 'completed', created_at: '2025-01-02', updated_at: '2025-01-02' },
       ];
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: transactions, rowCount: 2 })
-        .mockResolvedValueOnce({ rows: [{ count: '2' }], rowCount: 1 });
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: transactions,
+        total: 2,
+        hasMore: false,
+      });
 
       const result = await getUserTransactions('user-1');
 
@@ -60,22 +65,26 @@ describe('Transaction Service', () => {
     it('should apply type filter', async () => {
       const { getUserTransactions } = await importModule();
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 });
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
 
       const result = await getUserTransactions('user-1', { type: 'payment' });
 
       expect(result.success).toBe(true);
-      expect(mockPool.query).toHaveBeenCalledTimes(2);
+      expect(mockTransactionRepository.findByUser).toHaveBeenCalledTimes(1);
     });
 
     it('should apply status filter', async () => {
       const { getUserTransactions } = await importModule();
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 });
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
 
       const result = await getUserTransactions('user-1', { status: 'completed' });
 
@@ -85,9 +94,11 @@ describe('Transaction Service', () => {
     it('should apply date range filters', async () => {
       const { getUserTransactions } = await importModule();
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 });
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
 
       const result = await getUserTransactions('user-1', {
         startDate: '2025-01-01',
@@ -100,9 +111,11 @@ describe('Transaction Service', () => {
     it('should apply all filters together', async () => {
       const { getUserTransactions } = await importModule();
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 });
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: [],
+        total: 0,
+        hasMore: false,
+      });
 
       const result = await getUserTransactions('user-1', {
         type: 'payment',
@@ -116,12 +129,139 @@ describe('Transaction Service', () => {
       expect(result.success).toBe(true);
     });
 
+    it('should filter transactions by type correctly', async () => {
+      const { getUserTransactions } = await importModule();
+
+      const transactions = [
+        { id: 'tx-1', type: 'payment', status: 'completed', amount: 100, created_at: '2025-01-01', updated_at: '2025-01-01' },
+        { id: 'tx-2', type: 'refund', status: 'completed', amount: 50, created_at: '2025-01-02', updated_at: '2025-01-02' },
+        { id: 'tx-3', type: 'payment', status: 'pending', amount: 200, created_at: '2025-01-03', updated_at: '2025-01-03' },
+      ];
+
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: transactions,
+        total: 3,
+        hasMore: false,
+      });
+
+      const result = await getUserTransactions('user-1', { type: 'payment' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(2);
+        expect(result.data.total).toBe(2);
+        expect(result.data.items.every(t => t.type === 'payment')).toBe(true);
+      }
+    });
+
+    it('should filter transactions by status correctly', async () => {
+      const { getUserTransactions } = await importModule();
+
+      const transactions = [
+        { id: 'tx-1', type: 'payment', status: 'completed', amount: 100, created_at: '2025-01-01', updated_at: '2025-01-01' },
+        { id: 'tx-2', type: 'payment', status: 'pending', amount: 50, created_at: '2025-01-02', updated_at: '2025-01-02' },
+      ];
+
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: transactions,
+        total: 2,
+        hasMore: false,
+      });
+
+      const result = await getUserTransactions('user-1', { status: 'pending' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(1);
+        expect(result.data.items[0].status).toBe('pending');
+      }
+    });
+
+    it('should filter transactions by date range correctly', async () => {
+      const { getUserTransactions } = await importModule();
+
+      const transactions = [
+        { id: 'tx-1', type: 'payment', status: 'completed', amount: 100, created_at: '2025-01-15', updated_at: '2025-01-15' },
+        { id: 'tx-2', type: 'payment', status: 'completed', amount: 50, created_at: '2025-02-15', updated_at: '2025-02-15' },
+        { id: 'tx-3', type: 'payment', status: 'completed', amount: 200, created_at: '2025-03-15', updated_at: '2025-03-15' },
+      ];
+
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: transactions,
+        total: 3,
+        hasMore: false,
+      });
+
+      const result = await getUserTransactions('user-1', {
+        startDate: '2025-01-20',
+        endDate: '2025-03-01',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(1);
+        expect(result.data.items[0].id).toBe('tx-2');
+      }
+    });
+
+    it('should return no results when all filters exclude everything', async () => {
+      const { getUserTransactions } = await importModule();
+
+      const transactions = [
+        { id: 'tx-1', type: 'refund', status: 'pending', amount: 100, created_at: '2025-06-01', updated_at: '2025-06-01' },
+      ];
+
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items: transactions,
+        total: 1,
+        hasMore: false,
+      });
+
+      const result = await getUserTransactions('user-1', { type: 'payment', status: 'completed' });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(0);
+        expect(result.data.total).toBe(0);
+      }
+    });
+
+    it('should handle hasMore correctly when on last page', async () => {
+      const { getUserTransactions } = await importModule();
+
+      const items = Array.from({ length: 5 }, (_, i) => ({
+        id: `tx-${i}`, amount: 100, type: 'payment', status: 'completed',
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      }));
+
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items,
+        total: 5,
+        hasMore: false,
+      });
+
+      const result = await getUserTransactions('user-1', { page: 1, limit: 20 });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.hasMore).toBe(false);
+      }
+    });
+
     it('should handle pagination correctly', async () => {
       const { getUserTransactions } = await importModule();
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ id: 'tx-1' }], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [{ count: '25' }], rowCount: 1 });
+      const items = Array.from({ length: 25 }, (_, i) => ({
+        id: `tx-${i}`, amount: 100, type: 'payment', status: 'completed',
+        created_at: `2025-01-${String(i + 1).padStart(2, '0')}`,
+        updated_at: `2025-01-${String(i + 1).padStart(2, '0')}`,
+      }));
+
+      mockTransactionRepository.findByUser.mockResolvedValueOnce({
+        items,
+        total: 25,
+        hasMore: false,
+      });
 
       const result = await getUserTransactions('user-1', { page: 1, limit: 10 });
 
@@ -133,7 +273,7 @@ describe('Transaction Service', () => {
     it('should handle database errors', async () => {
       const { getUserTransactions } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockTransactionRepository.findByUser.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getUserTransactions('user-1');
 
@@ -146,8 +286,8 @@ describe('Transaction Service', () => {
     it('should return transaction when found and user is authorized', async () => {
       const { getTransactionById } = await importModule();
 
-      const transaction = { id: 'tx-1', from_user_id: 'user-1', to_user_id: 'user-2', amount: 100 };
-      mockPool.query.mockResolvedValueOnce({ rows: [transaction], rowCount: 1 });
+      const transaction = { id: 'tx-1', from_user_id: 'user-1', to_user_id: 'user-2', amount: 100, created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockTransactionRepository.getById.mockResolvedValueOnce(transaction);
 
       const result = await getTransactionById('tx-1', 'user-1');
 
@@ -158,8 +298,8 @@ describe('Transaction Service', () => {
     it('should return transaction when user is the receiver', async () => {
       const { getTransactionById } = await importModule();
 
-      const transaction = { id: 'tx-1', from_user_id: 'user-1', to_user_id: 'user-2', amount: 100 };
-      mockPool.query.mockResolvedValueOnce({ rows: [transaction], rowCount: 1 });
+      const transaction = { id: 'tx-1', from_user_id: 'user-1', to_user_id: 'user-2', amount: 100, created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockTransactionRepository.getById.mockResolvedValueOnce(transaction);
 
       const result = await getTransactionById('tx-1', 'user-2');
 
@@ -170,7 +310,7 @@ describe('Transaction Service', () => {
     it('should return NOT_FOUND when transaction does not exist', async () => {
       const { getTransactionById } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockTransactionRepository.getById.mockResolvedValueOnce(null);
 
       const result = await getTransactionById('nonexistent', 'user-1');
 
@@ -181,8 +321,8 @@ describe('Transaction Service', () => {
     it('should return UNAUTHORIZED when user is not involved', async () => {
       const { getTransactionById } = await importModule();
 
-      const transaction = { id: 'tx-1', from_user_id: 'user-1', to_user_id: 'user-2', amount: 100 };
-      mockPool.query.mockResolvedValueOnce({ rows: [transaction], rowCount: 1 });
+      const transaction = { id: 'tx-1', from_user_id: 'user-1', to_user_id: 'user-2', amount: 100, created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockTransactionRepository.getById.mockResolvedValueOnce(transaction);
 
       const result = await getTransactionById('tx-1', 'user-3');
 
@@ -193,7 +333,7 @@ describe('Transaction Service', () => {
     it('should handle database errors', async () => {
       const { getTransactionById } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockTransactionRepository.getById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getTransactionById('tx-1', 'user-1');
 
@@ -206,9 +346,8 @@ describe('Transaction Service', () => {
     it('should return transactions for contract when user is freelancer', async () => {
       const { getContractTransactions } = await importModule();
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ freelancer_id: 'user-1', employer_id: 'user-2' }], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [{ id: 'tx-1', contract_id: 'contract-1' }], rowCount: 1 });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'contract-1', freelancer_id: 'user-1', employer_id: 'user-2' });
+      mockTransactionRepository.findByContract.mockResolvedValueOnce([{ id: 'tx-1', contract_id: 'contract-1', created_at: '2025-01-01', updated_at: '2025-01-01' }]);
 
       const result = await getContractTransactions('contract-1', 'user-1');
 
@@ -219,9 +358,8 @@ describe('Transaction Service', () => {
     it('should return transactions for contract when user is employer', async () => {
       const { getContractTransactions } = await importModule();
 
-      mockPool.query
-        .mockResolvedValueOnce({ rows: [{ freelancer_id: 'user-1', employer_id: 'user-2' }], rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [{ id: 'tx-1', contract_id: 'contract-1' }], rowCount: 1 });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'contract-1', freelancer_id: 'user-1', employer_id: 'user-2' });
+      mockTransactionRepository.findByContract.mockResolvedValueOnce([{ id: 'tx-1', contract_id: 'contract-1', created_at: '2025-01-01', updated_at: '2025-01-01' }]);
 
       const result = await getContractTransactions('contract-1', 'user-2');
 
@@ -231,7 +369,7 @@ describe('Transaction Service', () => {
     it('should return CONTRACT_NOT_FOUND when contract does not exist', async () => {
       const { getContractTransactions } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
 
       const result = await getContractTransactions('nonexistent', 'user-1');
 
@@ -242,7 +380,7 @@ describe('Transaction Service', () => {
     it('should return UNAUTHORIZED when user is not part of contract', async () => {
       const { getContractTransactions } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'user-1', employer_id: 'user-2' }], rowCount: 1 });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'contract-1', freelancer_id: 'user-1', employer_id: 'user-2' });
 
       const result = await getContractTransactions('contract-1', 'user-3');
 
@@ -253,7 +391,7 @@ describe('Transaction Service', () => {
     it('should handle database errors', async () => {
       const { getContractTransactions } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockContractRepository.getContractById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getContractTransactions('contract-1', 'user-1');
 
@@ -278,7 +416,7 @@ describe('Transaction Service', () => {
         created_at: '2025-01-01',
         updated_at: '2025-01-01',
       };
-      mockPool.query.mockResolvedValueOnce({ rows: [newTx], rowCount: 1 });
+      mockTransactionRepository.create.mockResolvedValueOnce(newTx);
 
       const result = await createTransaction({
         contract_id: 'contract-1',
@@ -297,8 +435,8 @@ describe('Transaction Service', () => {
     it('should create transaction with metadata', async () => {
       const { createTransaction } = await importModule();
 
-      const newTx = { id: 'tx-new', amount: 100, type: 'fee', status: 'completed', metadata: { fee_type: 'platform' } };
-      mockPool.query.mockResolvedValueOnce({ rows: [newTx], rowCount: 1 });
+      const newTx = { id: 'tx-new', amount: 100, type: 'fee', status: 'completed', metadata: '{"fee_type":"platform"}', created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockTransactionRepository.create.mockResolvedValueOnce(newTx);
 
       const result = await createTransaction({
         amount: 100,
@@ -313,8 +451,8 @@ describe('Transaction Service', () => {
     it('should create transaction without optional fields', async () => {
       const { createTransaction } = await importModule();
 
-      const newTx = { id: 'tx-new', amount: 100, type: 'fee', status: 'pending' };
-      mockPool.query.mockResolvedValueOnce({ rows: [newTx], rowCount: 1 });
+      const newTx = { id: 'tx-new', amount: 100, type: 'fee', status: 'pending', created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockTransactionRepository.create.mockResolvedValueOnce(newTx);
 
       const result = await createTransaction({
         amount: 100,
@@ -328,7 +466,7 @@ describe('Transaction Service', () => {
     it('should handle database errors', async () => {
       const { createTransaction } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockTransactionRepository.create.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await createTransaction({
         amount: 100,

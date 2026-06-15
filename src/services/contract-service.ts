@@ -1,4 +1,3 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { Contract, ContractStatus, mapContractFromEntity } from '../utils/entity-mapper.js';
 import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
@@ -177,14 +176,11 @@ export async function cancelPendingContract(contractId: string, userId: string):
     };
   }
 
-  // RACE CONDITION FIX: Use atomic function to prevent cancellation while being funded
-  const result = await pool.query(
-    'SELECT cancel_pending_contract($1, $2) as result',
-    [contractId, userId]
-  );
+  // Update contract status to cancelled
+  const updated = await contractRepository.updateContract(contractId, { status: 'cancelled' });
 
-  if (!result.rows[0]?.result) {
-    logger.error('Failed to cancel pending contract (RPC)');
+  if (!updated) {
+    logger.error('Failed to cancel pending contract');
     return {
       success: false,
       error: { 

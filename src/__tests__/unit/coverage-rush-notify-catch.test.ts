@@ -18,6 +18,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/rush-upgrade-request-re
 
 const mockContractRepository = {
   getContractById: jest.fn<any>(),
+  updateContract: jest.fn<any>(),
 };
 
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -79,12 +80,11 @@ describe('Rush Upgrade - notification catch blocks', () => {
     });
     mockContractRepository.getContractById.mockResolvedValue({
       freelancer_id: 'freelancer-1', employer_id: 'emp-1', project_id: 'p-1',
+      base_amount: 1000, rush_fee: 0,
     });
     mockRushUpgradeRequestRepository.updateRequest.mockResolvedValue({ id: 'req-1' });
-    mockPool.query.mockResolvedValue({ rows: [{ result: true }] });
-    mockContractRepository.getContractById.mockResolvedValue({
-      freelancer_id: 'freelancer-1', employer_id: 'emp-1', project_id: 'p-1',
-      total_amount: 1100,
+    mockContractRepository.updateContract.mockResolvedValue({
+      id: 'c-1', rush_fee: 100, total_amount: 1100,
     });
     mockProjectRepository.findProjectById.mockResolvedValue({ title: 'Test Project' });
     mockNotificationRepository.createNotification.mockRejectedValue(new Error('Notify failed'));

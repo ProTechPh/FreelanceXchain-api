@@ -42,6 +42,9 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     limit: jest.fn((...a: any[]) => ({ type: 'limit', args: a })),
     offset: jest.fn((...a: any[]) => ({ type: 'offset', args: a })),
   },
+  ID: {
+    unique: jest.fn(() => 'unique-id'),
+  },
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/collections.ts'), () => ({
@@ -240,6 +243,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts')
     getDisputesByInitiator: jest.fn<any>(),
     getAllDisputes: jest.fn<any>(),
     getDisputesByUserId: jest.fn<any>(),
+    getDisputeByMilestone: jest.fn<any>(),
   },
 }));
 
@@ -266,6 +270,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
     }),
     searchProjects: jest.fn<any>(),
     getProjectsBySkills: jest.fn<any>(),
+    getById: jest.fn<any>(),
+    queryAll: jest.fn<any>().mockResolvedValue([]),
   },
 }));
 
@@ -273,6 +279,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   userRepository: {
     getUserById: jest.fn<any>(),
     getUsersByRole: jest.fn<any>().mockResolvedValue([]),
+    queryAll: jest.fn<any>(),
   },
 }));
 
@@ -342,6 +349,54 @@ jest.unstable_mockModule(resolveModule('src/repositories/rush-upgrade-request-re
     getRequestById: jest.fn<any>(),
     updateRequest: jest.fn<any>(),
     getRequestsByContract: jest.fn<any>(),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/refund-request-repository.ts'), () => ({
+  refundRequestRepository: {
+    findPendingByContract: jest.fn<any>(),
+    findByContract: jest.fn<any>().mockResolvedValue([]),
+    findWithContract: jest.fn<any>(),
+    create: jest.fn<any>(),
+    update: jest.fn<any>(),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/milestone-repository.ts'), () => ({
+  milestoneRepository: {
+    getById: jest.fn<any>(),
+    findByContract: jest.fn<any>(),
+    update: jest.fn<any>(),
+    findByProjectAndMilestoneId: jest.fn<any>(),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/dispute-evidence-repository.ts'), () => ({
+  disputeEvidenceRepository: {
+    getEvidenceById: jest.fn<any>(),
+    createEvidence: jest.fn<any>(),
+    updateEvidence: jest.fn<any>(),
+    deleteEvidence: jest.fn<any>(),
+    findByDispute: jest.fn<any>(),
+    findOwnerById: jest.fn<any>(),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/favorites-repository.ts'), () => ({
+  favoriteRepository: {
+    findByUserAndTarget: jest.fn<any>(),
+    findByUser: jest.fn<any>(),
+    removeByUserAndTarget: jest.fn<any>(),
+    create: jest.fn<any>(),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/transaction-repository.ts'), () => ({
+  transactionRepository: {
+    queryAll: jest.fn<any>().mockResolvedValue([]),
+    findByUser: jest.fn<any>(),
+    findByContract: jest.fn<any>(),
+    findByUserCount: jest.fn<any>(),
   },
 }));
 
@@ -546,32 +601,36 @@ describe('ai-client.ts parseJsonResponse coverage', () => {
 
 // ─── 5. admin-service.ts ───
 describe('admin-service.ts status filter coverage', () => {
-  beforeEach(() => { mockPool.query.mockReset(); });
+  beforeEach(async () => {
+    const { userRepository } = await import('../../repositories/user-repository.js');
+    (userRepository.queryAll as any).mockReset();
+  });
 
   it('applies status filter when provided (lines 116-119)', async () => {
-    const { getUserManagement } = await import('../../services/admin-service.js');
-    mockPool.query
-      .mockResolvedValueOnce({ rows: [{ id: 'u1', role: 'freelancer', is_suspended: true }] })
-      .mockResolvedValueOnce({ rows: [{ count: '1' }] });
+    const { userRepository } = await import('../../repositories/user-repository.js');
+    (userRepository.queryAll as any).mockResolvedValue([
+      { id: 'u1', role: 'freelancer', is_suspended: true, email: 'test@test.com', name: 'Test', created_at: '2024-01-01' },
+    ]);
 
+    const { getUserManagement } = await import('../../services/admin-service.js');
     const result = await getUserManagement({ status: 'suspended' });
     expect(result.success).toBe(true);
     expect(result.data.users).toHaveLength(1);
   });
 
   it('applies kycStatus filter when provided', async () => {
+    const { userRepository } = await import('../../repositories/user-repository.js');
+    (userRepository.queryAll as any).mockResolvedValue([]);
+
     const { getUserManagement } = await import('../../services/admin-service.js');
-    mockPool.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ count: '0' }] });
     expect((await getUserManagement({ kycStatus: 'approved' })).success).toBe(true);
   });
 
   it('applies search filter when provided', async () => {
+    const { userRepository } = await import('../../repositories/user-repository.js');
+    (userRepository.queryAll as any).mockResolvedValue([]);
+
     const { getUserManagement } = await import('../../services/admin-service.js');
-    mockPool.query
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ count: '0' }] });
     expect((await getUserManagement({ search: 'test%' })).success).toBe(true);
   });
 });
@@ -603,14 +662,35 @@ describe('agreement-contract.ts unauthorized wallet coverage', () => {
 
 // ─── 7. dispute-evidence-service.ts ───
 describe('dispute-evidence-service.ts coverage', () => {
-  beforeEach(() => { mockPool.query.mockReset(); });
+  beforeEach(async () => {
+    const { disputeRepository } = await import('../../repositories/dispute-repository.js');
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    const { disputeEvidenceRepository } = await import('../../repositories/dispute-evidence-repository.js');
+    (disputeRepository.getDisputeById as any).mockReset();
+    (contractRepository.getContractById as any).mockReset();
+    (disputeEvidenceRepository.createEvidence as any).mockReset();
+    (disputeEvidenceRepository.getEvidenceById as any).mockReset();
+    (disputeEvidenceRepository.updateEvidence as any).mockReset();
+    (disputeEvidenceRepository.deleteEvidence as any).mockReset();
+    (disputeEvidenceRepository.findByDispute as any).mockReset();
+  });
 
   it('notifies the other party when freelancer submits evidence (line 80)', async () => {
-    const { submitEvidence } = await import('../../services/dispute-evidence-service.js');
-    mockPool.query
-      .mockResolvedValueOnce({ rows: [{ id: 'd1', freelancer_id: 'user-1', employer_id: 'user-2', arbiter_id: 'arbiter-1' }] })
-      .mockResolvedValueOnce({ rows: [{ id: 'e1', dispute_id: 'd1' }] });
+    const { disputeRepository } = await import('../../repositories/dispute-repository.js');
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    const { disputeEvidenceRepository } = await import('../../repositories/dispute-evidence-repository.js');
+    (disputeRepository.getDisputeById as any).mockResolvedValue({
+      id: 'd1', contract_id: 'c1', freelancer_id: 'user-1', employer_id: 'user-2', status: 'open',
+    });
+    (contractRepository.getContractById as any).mockResolvedValue({
+      id: 'c1', freelancer_id: 'user-1', employer_id: 'user-2',
+    });
+    (disputeEvidenceRepository.createEvidence as any).mockResolvedValue({
+      id: 'e1', dispute_id: 'd1', submitted_by: 'user-1', evidence_type: 'document',
+      description: 'Test evidence', created_at: '2024-01-01', updated_at: '2024-01-01',
+    });
 
+    const { submitEvidence } = await import('../../services/dispute-evidence-service.js');
     const result = await submitEvidence({
       disputeId: 'd1', submittedBy: 'user-1', evidenceType: 'document', description: 'Test evidence',
     });
@@ -618,8 +698,10 @@ describe('dispute-evidence-service.ts coverage', () => {
   });
 
   it('returns error message from caught Error (line 108)', async () => {
+    const { disputeRepository } = await import('../../repositories/dispute-repository.js');
+    (disputeRepository.getDisputeById as any).mockRejectedValue(new Error('DB connection lost'));
+
     const { submitEvidence } = await import('../../services/dispute-evidence-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('DB connection lost'));
     const result = await submitEvidence({
       disputeId: 'd1', submittedBy: 'user-1', evidenceType: 'document', description: 'Test',
     });
@@ -628,24 +710,30 @@ describe('dispute-evidence-service.ts coverage', () => {
   });
 
   it('getDisputeEvidence returns error message from caught Error (line 164)', async () => {
+    const { disputeRepository } = await import('../../repositories/dispute-repository.js');
+    (disputeRepository.getDisputeById as any).mockRejectedValue(new Error('Connection timeout'));
+
     const { getDisputeEvidence } = await import('../../services/dispute-evidence-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('Connection timeout'));
     const result = await getDisputeEvidence('d1', 'user-1');
     expect(result.success).toBe(false);
     expect(result.error.message).toBe('Connection timeout');
   });
 
   it('deleteEvidence returns error message from caught Error (line 224)', async () => {
+    const { disputeEvidenceRepository } = await import('../../repositories/dispute-evidence-repository.js');
+    (disputeEvidenceRepository.getEvidenceById as any).mockRejectedValue(new Error('Delete failed'));
+
     const { deleteEvidence } = await import('../../services/dispute-evidence-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('Delete failed'));
     const result = await deleteEvidence('e1', 'user-1');
     expect(result.success).toBe(false);
     expect(result.error.message).toBe('Delete failed');
   });
 
   it('verifyEvidence returns error message from caught Error (line 287)', async () => {
+    const { disputeEvidenceRepository } = await import('../../repositories/dispute-evidence-repository.js');
+    (disputeEvidenceRepository.getEvidenceById as any).mockRejectedValue(new Error('Verify failed'));
+
     const { verifyEvidence } = await import('../../services/dispute-evidence-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('Verify failed'));
     const result = await verifyEvidence({ evidenceId: 'e1', verifiedBy: 'arbiter-1' });
     expect(result.success).toBe(false);
     expect(result.error.message).toBe('Verify failed');
@@ -654,19 +742,25 @@ describe('dispute-evidence-service.ts coverage', () => {
 
 // ─── 8. dispute-service.ts ───
 describe('dispute-service.ts coverage', () => {
-  beforeEach(() => {
-    mockPool.query.mockReset();
-    mockPool.connect.mockReset();
+  beforeEach(async () => {
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    const { projectRepository } = await import('../../repositories/project-repository.js');
+    const { disputeRepository } = await import('../../repositories/dispute-repository.js');
+    (contractRepository.getContractById as any).mockReset();
+    (projectRepository.findProjectById as any).mockReset();
+    (disputeRepository.getDisputeById as any).mockReset();
+    (disputeRepository.getDisputeByMilestone as any).mockReset();
+    (disputeRepository.createDispute as any).mockReset();
+    (disputeRepository.updateDispute as any).mockReset();
   });
 
   it('resolveDispute returns NOT_FOUND when contract not found (line 406)', async () => {
     const { contractRepository } = await import('../../repositories/contract-repository.js');
     (contractRepository.getContractById as any).mockResolvedValue(null);
-    mockPool.query.mockResolvedValue({
-      rows: [{
-        id: 'disp1', contract_id: 'c1', milestone_id: 'm1',
-        initiator_id: 'user1', reason: 'test', status: 'open', evidence: [], resolution: null,
-      }],
+    const { disputeRepository } = await import('../../repositories/dispute-repository.js');
+    (disputeRepository.getDisputeById as any).mockResolvedValue({
+      id: 'disp1', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'user1', reason: 'test', status: 'open', evidence: [], resolution: null,
     });
 
     const { resolveDispute } = await import('../../services/dispute-service.js');
@@ -687,11 +781,10 @@ describe('dispute-service.ts coverage', () => {
       id: 'proj1', title: 'Test', employer_id: 'emp1',
       milestones: [{ id: 'other-milestone', title: 'Other', amount: 100, status: 'pending' }],
     });
-    mockPool.query.mockResolvedValue({
-      rows: [{
-        id: 'disp1', contract_id: 'c1', milestone_id: 'missing-milestone',
-        initiator_id: 'user1', reason: 'test', status: 'open', evidence: [], resolution: null,
-      }],
+    const { disputeRepository } = await import('../../repositories/dispute-repository.js');
+    (disputeRepository.getDisputeById as any).mockResolvedValue({
+      id: 'disp1', contract_id: 'c1', milestone_id: 'missing-milestone',
+      initiator_id: 'user1', reason: 'test', status: 'open', evidence: [], resolution: null,
     });
 
     const { resolveDispute } = await import('../../services/dispute-service.js');
@@ -702,7 +795,7 @@ describe('dispute-service.ts coverage', () => {
     expect(result.error.code).toBe('NOT_FOUND');
   });
 
-  it('createDispute returns NOT_FOUND when milestone LOCK returns 0 rows (lines 146-147)', async () => {
+  it('createDispute returns NOT_FOUND when milestone not in project (lines 146-147)', async () => {
     const { contractRepository } = await import('../../repositories/contract-repository.js');
     (contractRepository.getContractById as any).mockResolvedValue({
       id: 'c1', project_id: 'proj1', employer_id: 'emp1', freelancer_id: 'free1', status: 'active',
@@ -713,20 +806,15 @@ describe('dispute-service.ts coverage', () => {
       milestones: [{ id: 'm1', title: 'M1', amount: 100, status: 'submitted' }],
     });
 
-    const mockClient = { query: jest.fn<any>(), release: jest.fn() };
-    mockPool.connect.mockResolvedValue(mockClient);
-    mockClient.query.mockResolvedValueOnce(undefined); // BEGIN
-    mockClient.query.mockResolvedValueOnce({ rows: [] }); // LOCK returns 0
-
     const { createDispute } = await import('../../services/dispute-service.js');
     const result = await createDispute({
-      contractId: 'c1', milestoneId: 'm1', initiatorId: 'free1', reason: 'test',
+      contractId: 'c1', milestoneId: 'missing-milestone', initiatorId: 'free1', reason: 'test',
     });
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('NOT_FOUND');
   });
 
-  it('createDispute catches and rethrows error after ROLLBACK (lines 185-186)', async () => {
+  it('createDispute catches and rethrows error from repository (lines 185-186)', async () => {
     const { contractRepository } = await import('../../repositories/contract-repository.js');
     (contractRepository.getContractById as any).mockResolvedValue({
       id: 'c1', project_id: 'proj1', employer_id: 'emp1', freelancer_id: 'free1', status: 'active',
@@ -736,13 +824,8 @@ describe('dispute-service.ts coverage', () => {
       id: 'proj1', title: 'Test', employer_id: 'emp1',
       milestones: [{ id: 'm1', title: 'M1', amount: 100, status: 'submitted' }],
     });
-
-    const mockClient = { query: jest.fn<any>(), release: jest.fn() };
-    mockPool.connect.mockResolvedValue(mockClient);
-    mockClient.query.mockResolvedValueOnce(undefined);
-    mockClient.query.mockResolvedValueOnce({ rows: [{ id: 'm1' }] });
-    mockClient.query.mockRejectedValueOnce(new Error('DB crash'));
-    mockClient.query.mockResolvedValueOnce(undefined); // ROLLBACK
+    const { disputeRepository } = await import('../../repositories/dispute-repository.js');
+    (disputeRepository.getDisputeByMilestone as any).mockRejectedValue(new Error('DB crash'));
 
     const { createDispute } = await import('../../services/dispute-service.js');
     await expect(createDispute({
@@ -802,45 +885,59 @@ describe('matching-service.ts coverage', () => {
 
 // ─── 10. milestone-service.ts ───
 describe('milestone-service.ts coverage', () => {
-  beforeEach(() => { mockPool.query.mockReset(); });
+  beforeEach(async () => {
+    const { milestoneRepository } = await import('../../repositories/milestone-repository.js');
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    (milestoneRepository.getById as any).mockReset();
+    (milestoneRepository.findByContract as any).mockReset();
+    (milestoneRepository.update as any).mockReset();
+    (contractRepository.getContractById as any).mockReset();
+  });
 
   it('getMilestoneById returns error message from caught Error (line 37)', async () => {
+    const { milestoneRepository } = await import('../../repositories/milestone-repository.js');
+    (milestoneRepository.getById as any).mockRejectedValue(new Error('DB error'));
     const { getMilestoneById } = await import('../../services/milestone-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('DB error'));
     const result = await getMilestoneById('m1');
     expect(result.success).toBe(false);
     expect(result.error.message).toBe('DB error');
   });
 
   it('submitMilestone returns error message from caught Error (line 139)', async () => {
+    const { milestoneRepository } = await import('../../repositories/milestone-repository.js');
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    (milestoneRepository.getById as any).mockResolvedValue({ id: 'm1', contract_id: 'c1', status: 'pending', title: 'M1', revision_count: 0 });
+    (contractRepository.getContractById as any).mockRejectedValue(new Error('Contract lookup failed'));
     const { submitMilestone } = await import('../../services/milestone-service.js');
-    mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'm1', contract_id: 'c1', status: 'pending', title: 'M1', revision_count: 0 }] });
-    mockPool.query.mockRejectedValueOnce(new Error('Contract lookup failed'));
     const result = await submitMilestone({ milestoneId: 'm1', freelancerId: 'f1', deliverables: [] });
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('SUBMIT_FAILED');
   });
 
   it('rejectMilestone returns error message from caught Error (line 240)', async () => {
+    const { milestoneRepository } = await import('../../repositories/milestone-repository.js');
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    (milestoneRepository.getById as any).mockResolvedValue({ id: 'm1', contract_id: 'c1', status: 'submitted', title: 'M1', revision_count: 0 });
+    (contractRepository.getContractById as any).mockRejectedValue(new Error('Reject failed'));
     const { rejectMilestone } = await import('../../services/milestone-service.js');
-    mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'm1', contract_id: 'c1', status: 'submitted', title: 'M1', revision_count: 0 }] });
-    mockPool.query.mockRejectedValueOnce(new Error('Reject failed'));
     const result = await rejectMilestone({ milestoneId: 'm1', employerId: 'e1', reason: 'Bad', requestRevision: false });
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('REJECT_FAILED');
   });
 
   it('getContractMilestones success path (line 249)', async () => {
+    const { milestoneRepository } = await import('../../repositories/milestone-repository.js');
+    (milestoneRepository.findByContract as any).mockResolvedValue([{ id: 'm1', contract_id: 'c1', status: 'pending' }]);
     const { getContractMilestones } = await import('../../services/milestone-service.js');
-    mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'm1', contract_id: 'c1', status: 'pending' }] });
     const result = await getContractMilestones('c1');
     expect(result.success).toBe(true);
     expect(result.data).toHaveLength(1);
   });
 
   it('getContractMilestones error path (line 257)', async () => {
+    const { milestoneRepository } = await import('../../repositories/milestone-repository.js');
+    (milestoneRepository.findByContract as any).mockRejectedValue(new Error('Query failed'));
     const { getContractMilestones } = await import('../../services/milestone-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('Query failed'));
     const result = await getContractMilestones('c1');
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('DATABASE_ERROR');
@@ -940,35 +1037,53 @@ describe('employer-profile-service.ts KYC coverage', () => {
 
 // ─── 15. escrow-refund-service.ts ───
 describe('escrow-refund-service.ts coverage', () => {
-  beforeEach(() => { mockPool.query.mockReset(); });
+  beforeEach(async () => {
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    const { refundRequestRepository } = await import('../../repositories/refund-request-repository.js');
+    (contractRepository.getContractById as any).mockReset();
+    (refundRequestRepository.findPendingByContract as any).mockReset();
+    (refundRequestRepository.findWithContract as any).mockReset();
+    (refundRequestRepository.findByContract as any).mockReset();
+    (refundRequestRepository.create as any).mockReset();
+    (refundRequestRepository.update as any).mockReset();
+  });
 
   it('createRefundRequest error message from caught Error (line 264)', async () => {
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    const { refundRequestRepository } = await import('../../repositories/refund-request-repository.js');
+    (contractRepository.getContractById as any).mockResolvedValue({
+      id: 'c1', status: 'active', freelancer_id: 'f1', employer_id: 'u1', total_amount: 1000,
+    });
+    (refundRequestRepository.findPendingByContract as any).mockResolvedValue(null);
+    (refundRequestRepository.create as any).mockRejectedValue(new Error('Insert failed'));
     const { createRefundRequest } = await import('../../services/escrow-refund-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('Insert failed'));
     const result = await createRefundRequest({ contractId: 'c1', requestedBy: 'u1', reason: 'Test' });
     expect(result.success).toBe(false);
     expect(result.error.message).toBe('Insert failed');
   });
 
   it('approveRefund error message from caught Error (line 296)', async () => {
+    const { refundRequestRepository } = await import('../../repositories/refund-request-repository.js');
+    (refundRequestRepository.findWithContract as any).mockRejectedValue(new Error('Approve failed'));
     const { approveRefund } = await import('../../services/escrow-refund-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('Approve failed'));
     const result = await approveRefund({ refundId: 'r1', approvedBy: 'u1' });
     expect(result.success).toBe(false);
     expect(result.error.message).toBe('Approve failed');
   });
 
   it('rejectRefund error message from caught Error (line 355)', async () => {
+    const { refundRequestRepository } = await import('../../repositories/refund-request-repository.js');
+    (refundRequestRepository.findWithContract as any).mockRejectedValue(new Error('Reject failed'));
     const { rejectRefund } = await import('../../services/escrow-refund-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('Reject failed'));
     const result = await rejectRefund({ refundId: 'r1', rejectedBy: 'u1', reason: 'No' });
     expect(result.success).toBe(false);
     expect(result.error.message).toBe('Reject failed');
   });
 
   it('getContractRefunds error message from caught Error (line 408)', async () => {
+    const { contractRepository } = await import('../../repositories/contract-repository.js');
+    (contractRepository.getContractById as any).mockRejectedValue(new Error('Query failed'));
     const { getContractRefunds } = await import('../../services/escrow-refund-service.js');
-    mockPool.query.mockRejectedValueOnce(new Error('Query failed'));
     const result = await getContractRefunds('c1', 'u1');
     expect(result.success).toBe(false);
     expect(result.error.message).toBe('Query failed');
@@ -977,16 +1092,20 @@ describe('escrow-refund-service.ts coverage', () => {
 
 // ─── 16. favorite-service.ts ───
 describe('favorite-service.ts target map lookup (line 152)', () => {
-  beforeEach(() => { mockPool.query.mockReset(); });
+  beforeEach(async () => {
+    const { favoriteRepository } = await import('../../repositories/favorites-repository.js');
+    (favoriteRepository.findByUser as any).mockReset();
+  });
 
   it('getUserFavorites returns null target when map lookup misses', async () => {
-    const { getUserFavorites } = await import('../../services/favorite-service.js');
-    mockPool.query.mockResolvedValueOnce({
-      rows: [{ id: 'f1', user_id: 'u1', target_type: 'project', target_id: 'p1', created_at: '2024-01-01' }],
-    });
-    mockPool.query.mockResolvedValueOnce({ rows: [] }); // projects
-    mockPool.query.mockResolvedValueOnce({ rows: [] }); // users
+    const { favoriteRepository } = await import('../../repositories/favorites-repository.js');
+    (favoriteRepository.findByUser as any).mockResolvedValue([
+      { id: 'f1', user_id: 'u1', target_type: 'project', target_id: 'p1', created_at: '2024-01-01' },
+    ]);
+    const { projectRepository } = await import('../../repositories/project-repository.js');
+    (projectRepository.getById as any).mockResolvedValue(null);
 
+    const { getUserFavorites } = await import('../../services/favorite-service.js');
     const result = await getUserFavorites('u1');
     expect(result.success).toBe(true);
     expect(result.data[0].target).toBeNull();
@@ -1083,12 +1202,30 @@ describe('freelancer-profile-service.ts coverage', () => {
 
 // ─── 19. message-service.ts ───
 describe('message-service.ts coverage', () => {
-  beforeEach(() => { mockPool.query.mockReset(); });
+  beforeEach(async () => {
+    const { messageRepository } = await import('../../repositories/message-repository.js');
+    const { userRepository } = await import('../../repositories/user-repository.js');
+    (messageRepository.findConversation as any).mockReset();
+    (messageRepository.createConversation as any).mockReset();
+    (messageRepository.createMessage as any).mockReset();
+    (messageRepository.updateConversation as any).mockReset();
+    (userRepository.getUserById as any).mockReset();
+  });
 
   it('sendMessage with attachments spread (line 102)', async () => {
-    const { sendMessage } = await import('../../services/message-service.js');
-    mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'u2' }] }); // resolveReceiverUserId
+    const { userRepository } = await import('../../repositories/user-repository.js');
+    (userRepository.getUserById as any).mockResolvedValue({ id: 'u2' });
+    const { messageRepository } = await import('../../repositories/message-repository.js');
+    (messageRepository.findConversation as any).mockResolvedValue({
+      id: 'conv1', participant1_id: 'u1', participant2_id: 'u2',
+      unread_count_1: 0, unread_count_2: 0,
+    });
+    (messageRepository.createMessage as any).mockResolvedValue({
+      id: 'msg1', conversation_id: 'conv1', sender_id: 'u1',
+      receiver_id: 'u2', content: 'Hello', is_read: false,
+    });
 
+    const { sendMessage } = await import('../../services/message-service.js');
     const result = await sendMessage({
       senderId: 'u1', receiverId: 'u2', content: 'Hello',
       attachments: [{ url: 'https://test.com/file.pdf', filename: 'file.pdf', size: 100, mimeType: 'application/pdf' }],
@@ -1106,9 +1243,8 @@ describe('message-service.ts coverage', () => {
       }],
       total: 1,
     });
-    mockPool.query.mockResolvedValueOnce({
-      rows: [{ id: 'u2', name: 'User2', email: 'u2@test.com' }],
-    });
+    const { userRepository } = await import('../../repositories/user-repository.js');
+    (userRepository.getUserById as any).mockResolvedValue({ id: 'u2', name: 'User2', email: 'u2@test.com' });
 
     const result = await getConversations('u1');
     expect(result.success).toBe(true);
@@ -1185,9 +1321,11 @@ describe('rush-upgrade-service.ts notification with project title (lines 106, 19
       id: 'c1', employer_id: 'e1', freelancer_id: 'f1',
       project_id: 'p1', status: 'active', rush_fee: 0, total_amount: 1000,
     });
+    (contractRepository.updateContract as any).mockResolvedValue({
+      id: 'c1', rush_fee: 250, total_amount: 1250,
+    });
     const { projectRepository } = await import('../../repositories/project-repository.js');
     (projectRepository.findProjectById as any).mockResolvedValue({ id: 'p1', title: 'My Project' });
-    mockPool.query.mockResolvedValueOnce({ rows: [{ result: true }] });
 
     const { respondToRushUpgrade } = await import('../../services/rush-upgrade-service.js');
     const result = await respondToRushUpgrade('f1', { requestId: 'r1', action: 'accept' });

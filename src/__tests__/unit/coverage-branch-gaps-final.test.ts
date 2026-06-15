@@ -97,6 +97,12 @@ jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   pool: { query: mockPoolQuery },
 }));
 
+jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+  ReviewRepository: {
+    getAllReviews: jest.fn<any>().mockResolvedValue([]),
+  },
+}));
+
 // Import routers
 const adminRouter = (await import('../../routes/admin-routes.js')).default;
 const escrowRefundRouter = (await import('../../routes/escrow-refund-routes.js')).default;
@@ -203,24 +209,29 @@ describe('Admin Routes - platform-stats pool.query branches (lines 330-341)', ()
   });
 
   it('pool.query returns total > 0 (line 338: true branch)', async () => {
+    const { ReviewRepository } = await import('../../repositories/review-repository.js');
+    (ReviewRepository.getAllReviews as any).mockResolvedValue([
+      { rating: 5 }, { rating: 4 }, { rating: 4 }, { rating: 3 }, { rating: 2 },
+    ]);
     mockGetPlatformStats.mockResolvedValue({ success: true, data: { totalTransactionVolume: 1000 } });
-    mockPoolQuery.mockResolvedValue({ rows: [{ positive: '3', total: '5' }] });
     const res = await request(app).get('/api/admin/platform-stats');
     expect(res.status).toBe(200);
     expect(res.body.satisfactionRate).toBe(60);
   });
 
   it('pool.query returns total === 0 (line 338: false branch)', async () => {
+    const { ReviewRepository } = await import('../../repositories/review-repository.js');
+    (ReviewRepository.getAllReviews as any).mockResolvedValue([]);
     mockGetPlatformStats.mockResolvedValue({ success: true, data: { totalTransactionVolume: 500 } });
-    mockPoolQuery.mockResolvedValue({ rows: [{ positive: '0', total: '0' }] });
     const res = await request(app).get('/api/admin/platform-stats');
     expect(res.status).toBe(200);
     expect(res.body.satisfactionRate).toBe(0);
   });
 
   it('pool.query throws -> catch sets satisfactionRate to 0 (lines 339-341)', async () => {
+    const { ReviewRepository } = await import('../../repositories/review-repository.js');
+    (ReviewRepository.getAllReviews as any).mockRejectedValue(new Error('DB fail'));
     mockGetPlatformStats.mockResolvedValue({ success: true, data: { totalTransactionVolume: 200 } });
-    mockPoolQuery.mockRejectedValue(new Error('DB fail'));
     const res = await request(app).get('/api/admin/platform-stats');
     expect(res.status).toBe(200);
     expect(res.body.satisfactionRate).toBe(0);

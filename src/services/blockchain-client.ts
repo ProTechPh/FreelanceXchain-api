@@ -7,7 +7,7 @@
 
 import { config } from '../config/env.js';
 import { generateId } from '../utils/id.js';
-import { pool } from '../config/database.js';
+import { blockchainTransactionRepository } from '../repositories/blockchain-transaction-repository.js';
 import {
   Transaction,
   TransactionInput,
@@ -25,38 +25,6 @@ const defaultConfig: BlockchainConfig = {
   privateKey: config.blockchain.privateKey ?? '',
   chainId: 1,
 };
-
-// DB row type for blockchain_transactions table
-type TransactionRow = {
-  id: string;
-  type: string;
-  from_address: string;
-  to_address: string;
-  amount: string;
-  data: Record<string, unknown>;
-  timestamp: number;
-  status: string;
-  hash: string | null;
-  block_number: number | null;
-  gas_used: string | null;
-  confirm_at: number | null;
-};
-
-function rowToTransaction(row: TransactionRow): Transaction {
-  return {
-    id: row.id,
-    type: row.type as Transaction['type'],
-    from: row.from_address,
-    to: row.to_address,
-    amount: BigInt(row.amount),
-    data: row.data,
-    timestamp: row.timestamp,
-    status: row.status as Transaction['status'],
-    hash: row.hash ?? undefined,
-    blockNumber: row.block_number ?? undefined,
-    gasUsed: row.gas_used ? BigInt(row.gas_used) : undefined,
-  };
-}
 
 /**
  * Serialize a Transaction to JSON-compatible format
@@ -170,25 +138,18 @@ export async function submitTransaction(
   const confirmAt = Date.now() + 2000;
 
   // Persist to database
-  await pool.query(
-    `INSERT INTO blockchain_transactions 
-     (id, type, from_address, to_address, amount, data, timestamp, status, hash, block_number, gas_used, confirm_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-    [
-      tx.id,
-      tx.type,
-      tx.from,
-      tx.to,
-      tx.amount.toString(),
-      JSON.stringify(tx.data),
-      tx.timestamp,
-      tx.status,
-      tx.hash,
-      null,
-      null,
-      confirmAt,
-    ]
-  );
+  await blockchainTransactionRepository.createTransaction({
+    id: tx.id,
+    type: tx.type,
+    from_address: tx.from,
+    to_address: tx.to,
+    amount: tx.amount.toString(),
+    data: JSON.stringify(tx.data) as unknown as string,
+    timestamp: tx.timestamp,
+    status: tx.status,
+    hash: tx.hash,
+    confirm_at: confirmAt,
+  });
 
   return tx;
 }
@@ -198,26 +159,42 @@ export async function submitTransaction(
  * Get transaction by ID
  */
 export async function getTransaction(txId: string): Promise<Transaction | null> {
-  const result = await pool.query(
-    'SELECT * FROM blockchain_transactions WHERE id = $1',
-    [txId]
-  );
-
-  if (result.rows.length === 0) return null;
-  return rowToTransaction(result.rows[0] as TransactionRow);
+  const entity = await blockchainTransactionRepository.getTransactionById(txId);
+  if (!entity) return null;
+  return {
+    id: entity.id,
+    type: entity.type as Transaction['type'],
+    from: entity.from_address,
+    to: entity.to_address,
+    amount: BigInt(entity.amount),
+    data: typeof entity.data === 'string' ? JSON.parse(entity.data) : entity.data,
+    timestamp: entity.timestamp,
+    status: entity.status as Transaction['status'],
+    hash: entity.hash ?? undefined,
+    blockNumber: entity.block_number ?? undefined,
+    gasUsed: entity.gas_used ? BigInt(entity.gas_used) : undefined,
+  };
 }
 
 /**
  * Get transaction by hash
  */
 export async function getTransactionByHash(hash: string): Promise<Transaction | null> {
-  const result = await pool.query(
-    'SELECT * FROM blockchain_transactions WHERE hash = $1',
-    [hash]
-  );
-
-  if (result.rows.length === 0) return null;
-  return rowToTransaction(result.rows[0] as TransactionRow);
+  const entity = await blockchainTransactionRepository.findByHash(hash);
+  if (!entity) return null;
+  return {
+    id: entity.id,
+    type: entity.type as Transaction['type'],
+    from: entity.from_address,
+    to: entity.to_address,
+    amount: BigInt(entity.amount),
+    data: typeof entity.data === 'string' ? JSON.parse(entity.data) : entity.data,
+    timestamp: entity.timestamp,
+    status: entity.status as Transaction['status'],
+    hash: entity.hash ?? undefined,
+    blockNumber: entity.block_number ?? undefined,
+    gasUsed: entity.gas_used ? BigInt(entity.gas_used) : undefined,
+  };
 }
 
 /**
@@ -237,12 +214,9 @@ export async function pollTransactionStatus(
     }
 
     // Check if transaction should be confirmed (simulation)
-    const result = await pool.query(
-      'SELECT confirm_at FROM blockchain_transactions WHERE id = $1',
-      [txId]
-    );
+    const confirmable = await blockchainTransactionRepository.findConfirmable(txId);
 
-    const confirmAt = result.rows[0]?.confirm_at;
+    const confirmAt = confirmable?.confirm_at;
     if (confirmAt && Date.now() >= confirmAt) {
       // Confirm the transaction
       const confirmed = await confirmTransaction(txId);
@@ -288,32 +262,52 @@ export async function confirmTransaction(txId: string): Promise<Transaction | nu
   const blockNumber = Math.floor(Math.random() * 1000000) + 1;
   const gasUsed = BigInt(21000 + Math.floor(Math.random() * 50000));
 
-  const result = await pool.query(
-    `UPDATE blockchain_transactions 
-     SET status = $1, block_number = $2, gas_used = $3, confirm_at = NULL
-     WHERE id = $4
-     RETURNING *`,
-    ['confirmed', blockNumber, gasUsed.toString(), txId]
-  );
+  const updates: Record<string, unknown> = {
+    status: 'confirmed',
+    block_number: blockNumber,
+    gas_used: gasUsed.toString(),
+  };
+  const entity = await blockchainTransactionRepository.updateTransaction(txId, updates as any);
 
-  if (result.rows.length === 0) return null;
-  return rowToTransaction(result.rows[0] as TransactionRow);
+  if (!entity) return null;
+  return {
+    id: entity.id,
+    type: entity.type as Transaction['type'],
+    from: entity.from_address,
+    to: entity.to_address,
+    amount: BigInt(entity.amount),
+    data: typeof entity.data === 'string' ? JSON.parse(entity.data) : entity.data,
+    timestamp: entity.timestamp,
+    status: entity.status as Transaction['status'],
+    hash: entity.hash ?? undefined,
+    blockNumber: entity.block_number ?? undefined,
+    gasUsed: entity.gas_used ? BigInt(entity.gas_used) : undefined,
+  };
 }
 
 /**
  * Fail a transaction (for testing)
  */
 export async function failTransaction(txId: string): Promise<Transaction | null> {
-  const result = await pool.query(
-    `UPDATE blockchain_transactions 
-     SET status = $1, confirm_at = NULL
-     WHERE id = $2
-     RETURNING *`,
-    ['failed', txId]
-  );
+  const failUpdates: Record<string, unknown> = {
+    status: 'failed',
+  };
+  const entity = await blockchainTransactionRepository.updateTransaction(txId, failUpdates as any);
 
-  if (result.rows.length === 0) return null;
-  return rowToTransaction(result.rows[0] as TransactionRow);
+  if (!entity) return null;
+  return {
+    id: entity.id,
+    type: entity.type as Transaction['type'],
+    from: entity.from_address,
+    to: entity.to_address,
+    amount: BigInt(entity.amount),
+    data: typeof entity.data === 'string' ? JSON.parse(entity.data) : entity.data,
+    timestamp: entity.timestamp,
+    status: entity.status as Transaction['status'],
+    hash: entity.hash ?? undefined,
+    blockNumber: entity.block_number ?? undefined,
+    gasUsed: entity.gas_used ? BigInt(entity.gas_used) : undefined,
+  };
 }
 
 /**
@@ -321,7 +315,10 @@ export async function failTransaction(txId: string): Promise<Transaction | null>
  */
 export async function clearTransactions(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  await pool.query('DELETE FROM blockchain_transactions');
+  const all = await blockchainTransactionRepository.queryAll('timestamp');
+  for (const tx of all) {
+    await blockchainTransactionRepository.delete(tx.id);
+  }
 }
 
 /**

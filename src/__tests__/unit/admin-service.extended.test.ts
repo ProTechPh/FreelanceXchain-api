@@ -17,20 +17,60 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const mockQuery = jest.fn<any>();
+const mockUserRepo = {
+  queryAll: jest.fn<any>(),
+  getUserById: jest.fn<any>(),
+  updateUser: jest.fn<any>(),
+};
 
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+const mockProjectRepo = {
+  queryAll: jest.fn<any>(),
+};
+
+const mockContractRepo = {
+  queryAll: jest.fn<any>(),
+};
+
+const mockDisputeRepo = {
+  queryAll: jest.fn<any>(),
+  getAllDisputes: jest.fn<any>(),
+};
+
+const mockTransactionRepo = {
+  queryAll: jest.fn<any>(),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: mockUserRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
+  projectRepository: mockProjectRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
+  disputeRepository: mockDisputeRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/transaction-repository.ts'), () => ({
+  transactionRepository: mockTransactionRepo,
 }));
 
 describe('Admin Service - Extended Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQuery.mockReset();
+    mockUserRepo.queryAll.mockReset();
+    mockUserRepo.getUserById.mockReset();
+    mockUserRepo.updateUser.mockReset();
+    mockProjectRepo.queryAll.mockReset();
+    mockContractRepo.queryAll.mockReset();
+    mockDisputeRepo.queryAll.mockReset();
+    mockDisputeRepo.getAllDisputes.mockReset();
+    mockTransactionRepo.queryAll.mockReset();
   });
 
   const importModule = async () => {
@@ -41,7 +81,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should handle thrown errors in getPlatformStats', async () => {
       const { getPlatformStats } = await importModule();
 
-      mockQuery.mockRejectedValueOnce(new Error('Database connection lost'));
+      mockUserRepo.queryAll.mockRejectedValueOnce(new Error('Database connection lost'));
 
       const result = await getPlatformStats();
 
@@ -54,21 +94,25 @@ describe('Admin Service - Extended Tests', () => {
     it('should handle null transaction data', async () => {
       const { getPlatformStats } = await importModule();
 
-      mockQuery.mockResolvedValueOnce({
-        rows: [{
-          total_users: '5',
-          total_freelancers: '3',
-          total_employers: '2',
-          total_projects: '10',
-          active_projects: '3',
-          completed_projects: '5',
-          avg_budget: null,
-          total_contracts: '8',
-          total_disputes: '1',
-          total_volume: null,
-        }],
-        rowCount: 1,
-      });
+      mockUserRepo.queryAll.mockResolvedValueOnce([
+        { id: 'u-1', role: 'freelancer' },
+        { id: 'u-2', role: 'freelancer' },
+        { id: 'u-3', role: 'freelancer' },
+        { id: 'u-4', role: 'employer' },
+        { id: 'u-5', role: 'employer' },
+      ]);
+      mockProjectRepo.queryAll.mockResolvedValueOnce(
+        Array.from({ length: 10 }, (_, i) => ({
+          id: `p-${i}`,
+          status: i < 3 ? 'open' : i < 8 ? 'completed' : 'in_progress',
+          budget: null,
+        }))
+      );
+      mockContractRepo.queryAll.mockResolvedValueOnce(Array.from({ length: 8 }, (_, i) => ({ id: `c-${i}` })));
+      mockDisputeRepo.queryAll.mockResolvedValueOnce(Array.from({ length: 1 }, (_, i) => ({ id: `d-${i}` })));
+      mockTransactionRepo.queryAll.mockResolvedValueOnce([
+        { id: 't-1', status: 'completed', amount: null },
+      ]);
 
       const result = await getPlatformStats();
 
@@ -84,24 +128,24 @@ describe('Admin Service - Extended Tests', () => {
       const { getUserManagement } = await importModule();
 
       const mockUsers = [
-        { id: 'user-1', email: 'user1@test.com', name: 'User One', role: 'freelancer', kyc_status: 'verified' },
+        { id: 'user-1', email: 'user1@test.com', name: 'User One', role: 'freelancer', kyc_status: 'verified', created_at: '2025-01-01' },
+        { id: 'user-2', email: 'user2@test.com', name: 'User Two', role: 'freelancer', kyc_status: 'pending', created_at: '2025-01-02' },
       ];
 
-      mockQuery
-        .mockResolvedValueOnce({ rows: mockUsers, rowCount: 1 })
-        .mockResolvedValueOnce({ rows: [{ count: '1' }], rowCount: 1 });
+      mockUserRepo.queryAll.mockResolvedValueOnce(mockUsers);
 
       const result = await getUserManagement({ kycStatus: 'verified' });
 
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.users).toHaveLength(1);
+      }
     });
 
     it('should handle null data from database', async () => {
       const { getUserManagement } = await importModule();
 
-      mockQuery
-        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
-        .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 });
+      mockUserRepo.queryAll.mockResolvedValueOnce([]);
 
       const result = await getUserManagement();
 
@@ -117,7 +161,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should handle thrown errors in suspendUser', async () => {
       const { suspendUser } = await importModule();
 
-      mockQuery.mockRejectedValueOnce(new Error('DB error'));
+      mockUserRepo.getUserById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await suspendUser('user-1', 'Violation');
 
@@ -132,7 +176,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should handle thrown errors in unsuspendUser', async () => {
       const { unsuspendUser } = await importModule();
 
-      mockQuery.mockRejectedValueOnce(new Error('DB error'));
+      mockUserRepo.getUserById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await unsuspendUser('user-1');
 
@@ -147,7 +191,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should handle thrown errors in verifyUser', async () => {
       const { verifyUser } = await importModule();
 
-      mockQuery.mockRejectedValueOnce(new Error('DB error'));
+      mockUserRepo.getUserById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await verifyUser('user-1');
 
@@ -162,7 +206,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should handle thrown errors in updateUser', async () => {
       const { updateUser } = await importModule();
 
-      mockQuery.mockRejectedValueOnce(new Error('DB error'));
+      mockUserRepo.getUserById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await updateUser('user-1', { name: 'New Name' });
 
@@ -177,7 +221,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should handle thrown errors in getDisputeManagement', async () => {
       const { getDisputeManagement } = await importModule();
 
-      mockQuery.mockRejectedValueOnce(new Error('DB error'));
+      mockDisputeRepo.getAllDisputes.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getDisputeManagement();
 
@@ -190,7 +234,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should handle priority filter', async () => {
       const { getDisputeManagement } = await importModule();
 
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDisputeRepo.getAllDisputes.mockResolvedValueOnce({ items: [], total: 0 });
 
       const result = await getDisputeManagement({ priority: 'high' });
 
@@ -202,7 +246,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should detect unhealthy database', async () => {
       const { getSystemHealth } = await importModule();
 
-      mockQuery.mockRejectedValueOnce(new Error('DB error'));
+      mockUserRepo.queryAll.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getSystemHealth();
 
@@ -216,7 +260,7 @@ describe('Admin Service - Extended Tests', () => {
     it('should mark storage as healthy when database is healthy', async () => {
       const { getSystemHealth } = await importModule();
 
-      mockQuery.mockResolvedValueOnce({ rows: [{ result: 1 }], rowCount: 1 });
+      mockUserRepo.queryAll.mockResolvedValueOnce([{ id: 'u-1' }]);
 
       const result = await getSystemHealth();
 

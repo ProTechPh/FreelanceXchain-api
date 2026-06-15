@@ -1,9 +1,10 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { PortfolioItem, PortfolioItemInput } from '../models/portfolio.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { storage, BUCKETS } from '../config/appwrite.js';
 import { extractFileIdFromUrl } from '../utils/storage-uploader.js';
+import { portfolioRepository } from '../repositories/portfolio-repository.js';
+import { skillRepository } from '../repositories/skill-repository.js';
 
 /**
  * Create a new portfolio item
@@ -26,14 +27,11 @@ export async function createPortfolioItem(
 
     // Verify skills exist if provided
     if (input.skills && input.skills.length > 0) {
-      const skillsResult = await pool.query(
-        'SELECT name FROM skills WHERE name = ANY($1)',
-        [input.skills]
-      );
+      const allSkills = await skillRepository.getAllSkills();
+      const validSkillNames = new Set(allSkills.map(s => s.name));
+      const invalidSkills = input.skills.filter(s => !validSkillNames.has(s));
 
-      if (skillsResult.rows.length < input.skills.length) {
-        const validSkills = new Set(skillsResult.rows.map((s: { name: string }) => s.name));
-        const invalidSkills = input.skills.filter(s => !validSkills.has(s));
+      if (invalidSkills.length > 0) {
         return {
           success: false,
           error: {
@@ -44,16 +42,30 @@ export async function createPortfolioItem(
       }
     }
 
-    const result = await pool.query(
-      `INSERT INTO portfolio_items (freelancer_id, title, description, project_url, images, skills, completed_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING *`,
-      [freelancerId, input.title, input.description, input.projectUrl, JSON.stringify(input.images), JSON.stringify(input.skills || []), input.completedAt]
-    );
+    const created = await portfolioRepository.create({
+      freelancer_id: freelancerId,
+      title: input.title,
+      description: input.description,
+      project_url: input.projectUrl,
+      images: JSON.stringify(input.images),
+      skills: JSON.stringify(input.skills || []),
+      completed_at: input.completedAt,
+    } as any);
 
     return {
       success: true,
-      data: result.rows[0] as PortfolioItem,
+      data: {
+        id: created.id,
+        freelancerId: created.freelancer_id,
+        title: created.title,
+        description: created.description,
+        projectUrl: created.project_url,
+        images: typeof created.images === 'string' ? JSON.parse(created.images) : created.images,
+        skills: typeof created.skills === 'string' ? JSON.parse(created.skills) : created.skills,
+        completedAt: created.completed_at ? new Date(created.completed_at) : undefined,
+        createdAt: new Date(created.created_at),
+        updatedAt: new Date(created.updated_at),
+      } as PortfolioItem,
     };
   } catch (error) {
     logger.error('Unexpected error in createPortfolioItem', { error, freelancerId, input });
@@ -77,12 +89,9 @@ export async function updatePortfolioItem(
 ): Promise<ServiceResult<PortfolioItem>> {
   try {
     // Verify ownership
-    const existingResult = await pool.query(
-      'SELECT freelancer_id FROM portfolio_items WHERE id = $1',
-      [portfolioId]
-    );
+    const ownerId = await portfolioRepository.findOwnerById(portfolioId);
 
-    if (existingResult.rows.length === 0) {
+    if (ownerId === null) {
       return {
         success: false,
         error: {
@@ -92,7 +101,7 @@ export async function updatePortfolioItem(
       };
     }
 
-    if (existingResult.rows[0].freelancer_id !== userId) {
+    if (ownerId !== userId) {
       return {
         success: false,
         error: {
@@ -102,46 +111,50 @@ export async function updatePortfolioItem(
       };
     }
 
-    // Build update query dynamically
-    const updateFields: string[] = ['updated_at = NOW()'];
-    const values: any[] = [];
-    let paramIndex = 1;
+    // Build update data
+    const updateData: Record<string, any> = {};
+    if (updates.title) updateData.title = updates.title;
+    if (updates.description) updateData.description = updates.description;
+    if (updates.projectUrl !== undefined) updateData.project_url = updates.projectUrl;
+    if (updates.images) updateData.images = JSON.stringify(updates.images);
+    if (updates.skills) updateData.skills = JSON.stringify(updates.skills);
+    if (updates.completedAt !== undefined) updateData.completed_at = updates.completedAt;
 
-    if (updates.title) {
-      updateFields.push(`title = $${paramIndex++}`);
-      values.push(updates.title);
-    }
-    if (updates.description) {
-      updateFields.push(`description = $${paramIndex++}`);
-      values.push(updates.description);
-    }
-    if (updates.projectUrl !== undefined) {
-      updateFields.push(`project_url = $${paramIndex++}`);
-      values.push(updates.projectUrl);
-    }
-    if (updates.images) {
-      updateFields.push(`images = $${paramIndex++}`);
-      values.push(JSON.stringify(updates.images));
-    }
-    if (updates.skills) {
-      updateFields.push(`skills = $${paramIndex++}`);
-      values.push(JSON.stringify(updates.skills));
-    }
-    if (updates.completedAt !== undefined) {
-      updateFields.push(`completed_at = $${paramIndex++}`);
-      values.push(updates.completedAt);
+    if (Object.keys(updateData).length === 0) {
+      const existing = await portfolioRepository.getById(portfolioId);
+      return {
+        success: true,
+        data: {
+          id: existing!.id,
+          freelancerId: (existing as any).freelancer_id,
+          title: (existing as any).title,
+          description: (existing as any).description,
+          projectUrl: (existing as any).project_url,
+          images: typeof (existing as any).images === 'string' ? JSON.parse((existing as any).images) : (existing as any).images,
+          skills: typeof (existing as any).skills === 'string' ? JSON.parse((existing as any).skills) : (existing as any).skills,
+          completedAt: (existing as any).completed_at ? new Date((existing as any).completed_at) : undefined,
+          createdAt: new Date((existing as any).created_at),
+          updatedAt: new Date((existing as any).updated_at),
+        } as PortfolioItem,
+      };
     }
 
-    values.push(portfolioId);
-
-    const result = await pool.query(
-      `UPDATE portfolio_items SET ${updateFields.join(', ')} WHERE id = $${paramIndex} RETURNING *`,
-      values
-    );
+    const updated = await portfolioRepository.update(portfolioId, updateData);
 
     return {
       success: true,
-      data: result.rows[0] as PortfolioItem,
+      data: {
+        id: updated!.id,
+        freelancerId: (updated as any).freelancer_id,
+        title: (updated as any).title,
+        description: (updated as any).description,
+        projectUrl: (updated as any).project_url,
+        images: typeof (updated as any).images === 'string' ? JSON.parse((updated as any).images) : (updated as any).images,
+        skills: typeof (updated as any).skills === 'string' ? JSON.parse((updated as any).skills) : (updated as any).skills,
+        completedAt: (updated as any).completed_at ? new Date((updated as any).completed_at) : undefined,
+        createdAt: new Date((updated as any).created_at),
+        updatedAt: new Date((updated as any).updated_at),
+      } as PortfolioItem,
     };
   } catch (error) {
     logger.error('Unexpected error in updatePortfolioItem', { error, portfolioId, updates });
@@ -164,12 +177,9 @@ export async function deletePortfolioItem(
 ): Promise<ServiceResult<void>> {
   try {
     // Verify ownership
-    const existingResult = await pool.query(
-      'SELECT freelancer_id, images FROM portfolio_items WHERE id = $1',
-      [portfolioId]
-    );
+    const ownerId = await portfolioRepository.findOwnerById(portfolioId);
 
-    if (existingResult.rows.length === 0) {
+    if (ownerId === null) {
       return {
         success: false,
         error: {
@@ -179,9 +189,7 @@ export async function deletePortfolioItem(
       };
     }
 
-    const existing = existingResult.rows[0];
-
-    if (existing.freelancer_id !== userId) {
+    if (ownerId !== userId) {
       return {
         success: false,
         error: {
@@ -191,12 +199,23 @@ export async function deletePortfolioItem(
       };
     }
 
+    // Get existing item for image cleanup
+    const existing = await portfolioRepository.getById(portfolioId);
+
     // Delete from database
-    await pool.query('DELETE FROM portfolio_items WHERE id = $1', [portfolioId]);
+    await portfolioRepository.delete(portfolioId);
 
     // Clean up images from storage (best effort)
-    if (existing.images && Array.isArray(existing.images)) {
-      for (const imageUrl of existing.images) {
+    if (existing) {
+      let images: string[] = [];
+      const raw = (existing as any).images;
+      if (typeof raw === 'string') {
+        try { images = JSON.parse(raw); } catch { /* ignore */ }
+      } else if (Array.isArray(raw)) {
+        images = raw;
+      }
+
+      for (const imageUrl of images) {
         try {
           const fileId = extractFileIdFromUrl(imageUrl);
           if (fileId) {
@@ -231,14 +250,22 @@ export async function getFreelancerPortfolio(
   freelancerId: string
 ): Promise<ServiceResult<PortfolioItem[]>> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM portfolio_items WHERE freelancer_id = $1 ORDER BY created_at DESC',
-      [freelancerId]
-    );
+    const items = await portfolioRepository.findByFreelancer(freelancerId);
 
     return {
       success: true,
-      data: result.rows as PortfolioItem[],
+      data: items.map(item => ({
+        id: item.id,
+        freelancerId: item.freelancer_id,
+        title: item.title,
+        description: item.description,
+        projectUrl: item.project_url,
+        images: typeof item.images === 'string' ? JSON.parse(item.images) : item.images,
+        skills: typeof item.skills === 'string' ? JSON.parse(item.skills) : item.skills,
+        completedAt: item.completed_at ? new Date(item.completed_at) : undefined,
+        createdAt: new Date(item.created_at),
+        updatedAt: new Date(item.updated_at),
+      } as PortfolioItem)),
     };
   } catch (error) {
     logger.error('Unexpected error in getFreelancerPortfolio', { error, freelancerId });
@@ -257,12 +284,9 @@ export async function getFreelancerPortfolio(
  */
 export async function getPortfolioItem(portfolioId: string): Promise<ServiceResult<PortfolioItem>> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM portfolio_items WHERE id = $1',
-      [portfolioId]
-    );
+    const item = await portfolioRepository.getById(portfolioId);
 
-    if (result.rows.length === 0) {
+    if (!item) {
       return {
         success: false,
         error: {
@@ -274,7 +298,18 @@ export async function getPortfolioItem(portfolioId: string): Promise<ServiceResu
 
     return {
       success: true,
-      data: result.rows[0] as PortfolioItem,
+      data: {
+        id: item.id,
+        freelancerId: (item as any).freelancer_id,
+        title: (item as any).title,
+        description: (item as any).description,
+        projectUrl: (item as any).project_url,
+        images: typeof (item as any).images === 'string' ? JSON.parse((item as any).images) : (item as any).images,
+        skills: typeof (item as any).skills === 'string' ? JSON.parse((item as any).skills) : (item as any).skills,
+        completedAt: (item as any).completed_at ? new Date((item as any).completed_at) : undefined,
+        createdAt: new Date((item as any).created_at),
+        updatedAt: new Date((item as any).updated_at),
+      } as PortfolioItem,
     };
   } catch (error) {
     logger.error('Unexpected error in getPortfolioItem', { error, portfolioId });

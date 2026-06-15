@@ -13,18 +13,33 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: mockPoolObj,
+const mockFavoriteRepository = {
+  findByUserAndTarget: jest.fn<any>(),
+  findByUser: jest.fn<any>(),
+  create: jest.fn<any>(),
+  removeByUserAndTarget: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/favorites-repository.ts'), () => ({
+  favoriteRepository: mockFavoriteRepository,
+}));
+
+const mockProjectRepository = {
+  getById: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
+  projectRepository: mockProjectRepository,
+}));
+
+const mockUserRepository = {
+  getUserById: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: mockUserRepository,
 }));
 
 describe('Favorite Service', () => {
-  let mockPool: any;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = mockPoolObj;
-    mockPool.query.mockReset();
   });
 
   const importModule = async () => {
@@ -35,38 +50,47 @@ describe('Favorite Service', () => {
     it('should add a project favorite successfully', async () => {
       const { addFavorite } = await importModule();
 
-      // Check existing - none found
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      // Verify target exists
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'project-1' }], rowCount: 1 });
-      // Insert favorite
+      mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+      mockProjectRepository.getById.mockResolvedValueOnce({ id: 'project-1' });
       const favorite = { id: 'fav-1', user_id: 'user-1', target_type: 'project', target_id: 'project-1', created_at: '2025-01-01' };
-      mockPool.query.mockResolvedValueOnce({ rows: [favorite], rowCount: 1 });
+      mockFavoriteRepository.create.mockResolvedValueOnce(favorite);
 
       const result = await addFavorite('user-1', 'project', 'project-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(favorite);
+      expect(result.data).toEqual({
+        id: 'fav-1',
+        userId: 'user-1',
+        targetType: 'project',
+        targetId: 'project-1',
+        createdAt: new Date('2025-01-01'),
+      });
     });
 
     it('should add a freelancer favorite successfully', async () => {
       const { addFavorite } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'user-2' }], rowCount: 1 });
-      const favorite = { id: 'fav-2', user_id: 'user-1', target_type: 'freelancer', target_id: 'user-2' };
-      mockPool.query.mockResolvedValueOnce({ rows: [favorite], rowCount: 1 });
+      mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+      mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'user-2' });
+      const favorite = { id: 'fav-2', user_id: 'user-1', target_type: 'freelancer', target_id: 'user-2', created_at: '2025-01-01' };
+      mockFavoriteRepository.create.mockResolvedValueOnce(favorite);
 
       const result = await addFavorite('user-1', 'freelancer', 'user-2');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(favorite);
+      expect(result.data).toEqual({
+        id: 'fav-2',
+        userId: 'user-1',
+        targetType: 'freelancer',
+        targetId: 'user-2',
+        createdAt: new Date('2025-01-01'),
+      });
     });
 
     it('should return ALREADY_FAVORITED when duplicate', async () => {
       const { addFavorite } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'existing-fav' }], rowCount: 1 });
+      mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce({ id: 'existing-fav' });
 
       const result = await addFavorite('user-1', 'project', 'project-1');
 
@@ -77,8 +101,8 @@ describe('Favorite Service', () => {
     it('should return TARGET_NOT_FOUND when target does not exist', async () => {
       const { addFavorite } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+      mockProjectRepository.getById.mockResolvedValueOnce(null);
 
       const result = await addFavorite('user-1', 'project', 'nonexistent');
 
@@ -89,7 +113,7 @@ describe('Favorite Service', () => {
     it('should handle database errors', async () => {
       const { addFavorite } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockFavoriteRepository.findByUserAndTarget.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await addFavorite('user-1', 'project', 'project-1');
 
@@ -102,7 +126,7 @@ describe('Favorite Service', () => {
     it('should remove a favorite successfully', async () => {
       const { removeFavorite } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockFavoriteRepository.removeByUserAndTarget.mockResolvedValueOnce(true);
 
       const result = await removeFavorite('user-1', 'project', 'project-1');
 
@@ -112,7 +136,7 @@ describe('Favorite Service', () => {
     it('should handle database errors', async () => {
       const { removeFavorite } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockFavoriteRepository.removeByUserAndTarget.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await removeFavorite('user-1', 'project', 'project-1');
 
@@ -129,11 +153,9 @@ describe('Favorite Service', () => {
         { id: 'fav-1', user_id: 'user-1', target_type: 'project', target_id: 'project-1', created_at: '2025-01-01' },
         { id: 'fav-2', user_id: 'user-1', target_type: 'freelancer', target_id: 'user-2', created_at: '2025-01-02' },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: favorites, rowCount: 2 });
-      // Batch fetch projects
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'project-1', title: 'Test Project' }], rowCount: 1 });
-      // Batch fetch users
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'user-2', name: 'Freelancer' }], rowCount: 1 });
+      mockFavoriteRepository.findByUser.mockResolvedValueOnce(favorites);
+      mockProjectRepository.getById.mockResolvedValueOnce({ id: 'project-1', title: 'Test Project' });
+      mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'user-2', name: 'Freelancer' });
 
       const result = await getUserFavorites('user-1');
 
@@ -147,9 +169,8 @@ describe('Favorite Service', () => {
       const favorites = [
         { id: 'fav-1', user_id: 'user-1', target_type: 'project', target_id: 'project-1', created_at: '2025-01-01' },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: favorites, rowCount: 1 });
-      // Batch fetch projects
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'project-1', title: 'Test' }], rowCount: 1 });
+      mockFavoriteRepository.findByUser.mockResolvedValueOnce(favorites);
+      mockProjectRepository.getById.mockResolvedValueOnce({ id: 'project-1', title: 'Test' });
 
       const result = await getUserFavorites('user-1', 'project');
 
@@ -160,7 +181,7 @@ describe('Favorite Service', () => {
     it('should return empty array when no favorites', async () => {
       const { getUserFavorites } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockFavoriteRepository.findByUser.mockResolvedValueOnce([]);
 
       const result = await getUserFavorites('user-1');
 
@@ -171,7 +192,7 @@ describe('Favorite Service', () => {
     it('should handle database errors', async () => {
       const { getUserFavorites } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockFavoriteRepository.findByUser.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getUserFavorites('user-1');
 
@@ -184,7 +205,7 @@ describe('Favorite Service', () => {
     it('should return true when item is favorited', async () => {
       const { isFavorited } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'fav-1' }], rowCount: 1 });
+      mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce({ id: 'fav-1' });
 
       const result = await isFavorited('user-1', 'project', 'project-1');
 
@@ -195,7 +216,7 @@ describe('Favorite Service', () => {
     it('should return false when item is not favorited', async () => {
       const { isFavorited } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
 
       const result = await isFavorited('user-1', 'project', 'project-1');
 
@@ -206,7 +227,7 @@ describe('Favorite Service', () => {
     it('should handle database errors', async () => {
       const { isFavorited } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockFavoriteRepository.findByUserAndTarget.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await isFavorited('user-1', 'project', 'project-1');
 

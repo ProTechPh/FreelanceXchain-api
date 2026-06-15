@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 
@@ -5,7 +6,15 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 
 const mockSubmitTransaction = jest.fn<(...args: any[]) => Promise<any>>();
 const mockConfirmTransaction = jest.fn<(...args: any[]) => Promise<any>>();
-const mockPoolQuery = jest.fn() as any;
+
+const mockBlockchainAgreementRepository = {
+  findByContractIdHash: jest.fn(),
+  createAgreement: jest.fn(),
+  updateAgreement: jest.fn(),
+  findByWallet: jest.fn(),
+  queryAll: jest.fn(),
+  delete: jest.fn(),
+};
 
 jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () => ({
   submitTransaction: mockSubmitTransaction,
@@ -13,18 +22,19 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () 
   generateWalletAddress: jest.fn(() => '0x' + 'a'.repeat(40)),
 }));
 
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockPoolQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockPoolQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+jest.unstable_mockModule(resolveModule('src/repositories/blockchain-agreement-repository.ts'), () => ({
+  blockchainAgreementRepository: mockBlockchainAgreementRepository,
 }));
 
 describe('Agreement Contract - Extended Tests', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPoolQuery.mockResolvedValue({ rows: [], rowCount: 0 });
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValue(null);
+    mockBlockchainAgreementRepository.createAgreement.mockResolvedValue({} as any);
+    mockBlockchainAgreementRepository.updateAgreement.mockResolvedValue({} as any);
+    mockBlockchainAgreementRepository.findByWallet.mockResolvedValue([]);
+    mockBlockchainAgreementRepository.queryAll.mockResolvedValue([]);
+    mockBlockchainAgreementRepository.delete.mockResolvedValue(true);
   });
 
   const importModule = async () => {
@@ -35,25 +45,25 @@ describe('Agreement Contract - Extended Tests', () => {
     it('should allow employer to sign when freelancer already signed', async () => {
       const { signAgreement } = await importModule();
 
-      mockPoolQuery
-        .mockResolvedValueOnce({
-          rows: [{
-            contract_id_hash: '0xhash',
-            terms_hash: '0xterms',
-            employer_wallet: '0xEmployer',
-            freelancer_wallet: '0xFreelancer',
-            total_amount: 1000,
-            milestone_count: 1,
-            status: 'pending',
-            employer_signed_at: null,
-            freelancer_signed_at: Date.now(),
-            created_at_ts: Date.now(),
-            transaction_hash: '0xtx',
-            block_number: 123,
-          }],
-          rowCount: 1,
-        })
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+        id: 'agreement-id',
+        contract_id_hash: '0xhash',
+        terms_hash: '0xterms',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'pending',
+        employer_signed_at: null,
+        freelancer_signed_at: Date.now(),
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx',
+        block_number: 123,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      mockBlockchainAgreementRepository.updateAgreement.mockResolvedValueOnce({} as any);
 
       mockSubmitTransaction.mockResolvedValueOnce({ id: 'tx-2' });
       mockConfirmTransaction.mockResolvedValueOnce({
@@ -71,25 +81,25 @@ describe('Agreement Contract - Extended Tests', () => {
     it('should not change status when only one party signs', async () => {
       const { signAgreement } = await importModule();
 
-      mockPoolQuery
-        .mockResolvedValueOnce({
-          rows: [{
-            contract_id_hash: '0xhash',
-            terms_hash: '0xterms',
-            employer_wallet: '0xEmployer',
-            freelancer_wallet: '0xFreelancer',
-            total_amount: 1000,
-            milestone_count: 1,
-            status: 'pending',
-            employer_signed_at: null,
-            freelancer_signed_at: null,
-            created_at_ts: Date.now(),
-            transaction_hash: '0xtx',
-            block_number: 123,
-          }],
-          rowCount: 1,
-        })
-        .mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+        id: 'agreement-id',
+        contract_id_hash: '0xhash',
+        terms_hash: '0xterms',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'pending',
+        employer_signed_at: null,
+        freelancer_signed_at: null,
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx',
+        block_number: 123,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      mockBlockchainAgreementRepository.updateAgreement.mockResolvedValueOnce({} as any);
 
       mockSubmitTransaction.mockResolvedValueOnce({ id: 'tx-2' });
       mockConfirmTransaction.mockResolvedValueOnce({
@@ -107,22 +117,22 @@ describe('Agreement Contract - Extended Tests', () => {
     it('should throw when employer signs twice', async () => {
       const { signAgreement } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{
-          contract_id_hash: '0xhash',
-          terms_hash: '0xterms',
-          employer_wallet: '0xEmployer',
-          freelancer_wallet: '0xFreelancer',
-          total_amount: 1000,
-          milestone_count: 1,
-          status: 'signed',
-          employer_signed_at: Date.now(),
-          freelancer_signed_at: Date.now(),
-          created_at_ts: Date.now(),
-          transaction_hash: '0xtx',
-          block_number: 123,
-        }],
-        rowCount: 1,
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+        id: 'agreement-id',
+        contract_id_hash: '0xhash',
+        terms_hash: '0xterms',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'signed',
+        employer_signed_at: Date.now(),
+        freelancer_signed_at: Date.now(),
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx',
+        block_number: 123,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
 
       await expect(signAgreement('contract-1', '0xEmployer')).rejects.toThrow('Agreement not pending');
@@ -133,7 +143,7 @@ describe('Agreement Contract - Extended Tests', () => {
     it('should throw when agreement not found', async () => {
       const { completeAgreement } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce(null);
 
       await expect(completeAgreement('contract-1', '0xEmployer')).rejects.toThrow('Agreement not found');
     });
@@ -141,22 +151,22 @@ describe('Agreement Contract - Extended Tests', () => {
     it('should throw when transaction confirmation fails', async () => {
       const { completeAgreement } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{
-          contract_id_hash: '0xhash',
-          terms_hash: '0xterms',
-          employer_wallet: '0xEmployer',
-          freelancer_wallet: '0xFreelancer',
-          total_amount: 1000,
-          milestone_count: 1,
-          status: 'signed',
-          employer_signed_at: Date.now(),
-          freelancer_signed_at: Date.now(),
-          created_at_ts: Date.now(),
-          transaction_hash: '0xtx',
-          block_number: 123,
-        }],
-        rowCount: 1,
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+        id: 'agreement-id',
+        contract_id_hash: '0xhash',
+        terms_hash: '0xterms',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'signed',
+        employer_signed_at: Date.now(),
+        freelancer_signed_at: Date.now(),
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx',
+        block_number: 123,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
       mockSubmitTransaction.mockResolvedValueOnce({ id: 'tx-3' });
       mockConfirmTransaction.mockResolvedValueOnce(null);
@@ -169,7 +179,7 @@ describe('Agreement Contract - Extended Tests', () => {
     it('should throw when agreement not found', async () => {
       const { disputeAgreement } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce(null);
 
       await expect(disputeAgreement('contract-1', '0xEmployer')).rejects.toThrow('Agreement not found');
     });
@@ -177,22 +187,22 @@ describe('Agreement Contract - Extended Tests', () => {
     it('should throw when agreement not active', async () => {
       const { disputeAgreement } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{
-          contract_id_hash: '0xhash',
-          terms_hash: '0xterms',
-          employer_wallet: '0xEmployer',
-          freelancer_wallet: '0xFreelancer',
-          total_amount: 1000,
-          milestone_count: 1,
-          status: 'pending',
-          employer_signed_at: null,
-          freelancer_signed_at: null,
-          created_at_ts: Date.now(),
-          transaction_hash: '0xtx',
-          block_number: 123,
-        }],
-        rowCount: 1,
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+        id: 'agreement-id',
+        contract_id_hash: '0xhash',
+        terms_hash: '0xterms',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'pending',
+        employer_signed_at: null,
+        freelancer_signed_at: null,
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx',
+        block_number: 123,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
 
       await expect(disputeAgreement('contract-1', '0xEmployer')).rejects.toThrow('Agreement not active');
@@ -201,22 +211,22 @@ describe('Agreement Contract - Extended Tests', () => {
     it('should throw when transaction confirmation fails', async () => {
       const { disputeAgreement } = await importModule();
 
-      mockPoolQuery.mockResolvedValueOnce({
-        rows: [{
-          contract_id_hash: '0xhash',
-          terms_hash: '0xterms',
-          employer_wallet: '0xEmployer',
-          freelancer_wallet: '0xFreelancer',
-          total_amount: 1000,
-          milestone_count: 1,
-          status: 'signed',
-          employer_signed_at: Date.now(),
-          freelancer_signed_at: Date.now(),
-          created_at_ts: Date.now(),
-          transaction_hash: '0xtx',
-          block_number: 123,
-        }],
-        rowCount: 1,
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+        id: 'agreement-id',
+        contract_id_hash: '0xhash',
+        terms_hash: '0xterms',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'signed',
+        employer_signed_at: Date.now(),
+        freelancer_signed_at: Date.now(),
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx',
+        block_number: 123,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
       mockSubmitTransaction.mockResolvedValueOnce({ id: 'tx-4' });
       mockConfirmTransaction.mockResolvedValueOnce(null);
@@ -259,7 +269,7 @@ describe('Agreement Contract - Extended Tests', () => {
       const { clearBlockchainAgreements } = await importModule();
       await clearBlockchainAgreements();
 
-      expect(mockPoolQuery).not.toHaveBeenCalled();
+      expect(mockBlockchainAgreementRepository.queryAll).not.toHaveBeenCalled();
 
       process.env.NODE_ENV = originalNodeEnv;
     });

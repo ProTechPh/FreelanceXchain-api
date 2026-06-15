@@ -224,12 +224,13 @@ describe('Rush Upgrade Service - notification failure catch blocks', () => {
       counter_percentage: 15, requested_by: 'f-1',
     });
     mockContractRepository.getContractById
-      .mockResolvedValueOnce({ id: 'c-1', employer_id: 'emp-1', freelancer_id: 'f-1', total_amount: 1000 })
-      .mockResolvedValueOnce({ id: 'c-1', employer_id: 'emp-1', freelancer_id: 'f-1', total_amount: 1150, status: 'active' });
+      .mockResolvedValueOnce({ id: 'c-1', employer_id: 'emp-1', freelancer_id: 'f-1', total_amount: 1000, base_amount: 1000 });
     mockRushUpgradeRequestRepository.updateRequest.mockResolvedValue({
       id: 'req-1', contract_id: 'c-1', status: 'accepted', counter_percentage: 15,
     });
-    mockPool.query.mockResolvedValue({ rows: [{ result: true }] });
+    mockContractRepository.updateContract.mockResolvedValue({
+      id: 'c-1', employer_id: 'emp-1', freelancer_id: 'f-1', total_amount: 1150, rush_fee: 150,
+    });
 
     const result = await acceptCounterOffer('emp-1', 'req-1');
     // Should succeed even though notification throws

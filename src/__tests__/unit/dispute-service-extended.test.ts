@@ -186,16 +186,7 @@ describe('Dispute Service - Extended Coverage', () => {
       const { createDispute } = await importModule();
       mockContractRepo.getContractById.mockResolvedValueOnce({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'user-2', project_id: 'p-1', status: 'active' });
       mockProjectRepo.findProjectById.mockResolvedValueOnce({ id: 'p-1', milestones: [{ id: 'ms-1', status: 'submitted', title: 'Phase 1', amount: 500 }] });
-
-      const mockClient = {
-        query: jest.fn()
-          .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-          .mockResolvedValueOnce({ rows: [{ id: 'ms-1' }], rowCount: 1 }) // milestone lock
-          .mockResolvedValueOnce({ rows: [{ id: 'd-existing' }], rowCount: 1 }) // existing dispute check
-          .mockResolvedValueOnce({ rows: [], rowCount: 0 }), // ROLLBACK
-        release: jest.fn(),
-      };
-      mockPool.connect.mockResolvedValueOnce(mockClient);
+      mockDisputeRepo.getDisputeByMilestone.mockResolvedValueOnce({ id: 'd-existing', status: 'open' });
 
       const result = await createDispute({ contractId: 'c-1', milestoneId: 'ms-1', initiatorId: 'user-1', reason: 'Bad work' });
       expect(result.success).toBe(false);
@@ -206,16 +197,7 @@ describe('Dispute Service - Extended Coverage', () => {
       const { createDispute } = await importModule();
       mockContractRepo.getContractById.mockResolvedValueOnce({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'user-2', project_id: 'p-1', status: 'active' });
       mockProjectRepo.findProjectById.mockResolvedValueOnce({ id: 'p-1', title: 'Project', milestones: [{ id: 'ms-1', status: 'submitted', title: 'Phase 1', amount: 500 }] });
-
-      const mockClient = {
-        query: jest.fn()
-          .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // BEGIN
-          .mockResolvedValueOnce({ rows: [{ id: 'ms-1' }], rowCount: 1 }) // milestone lock
-          .mockResolvedValueOnce({ rows: [], rowCount: 0 }) // existing dispute check (none)
-          .mockResolvedValueOnce({ rows: [], rowCount: 0 }), // COMMIT
-        release: jest.fn(),
-      };
-      mockPool.connect.mockResolvedValueOnce(mockClient);
+      mockDisputeRepo.getDisputeByMilestone.mockResolvedValueOnce(null);
 
       mockDisputeRepo.createDispute.mockResolvedValueOnce({ id: 'generated-id', contract_id: 'c-1', milestone_id: 'ms-1', initiator_id: 'user-1', reason: 'Bad work', status: 'open', evidence: [], resolution: null, created_at: '2025-01-01', updated_at: '2025-01-01' });
       mockUserRepo.getUserById.mockResolvedValue({ id: 'user-1', wallet_address: null });
@@ -270,10 +252,9 @@ describe('Dispute Service - Extended Coverage', () => {
     it('should submit evidence successfully', async () => {
       const { submitEvidence } = await importModule();
       mockDisputeRepo.getDisputeById
-        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1' })
+        .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1', evidence: [] })
         .mockResolvedValueOnce({ id: 'd-1', status: 'open', contract_id: 'c-1', evidence: [{ id: 'ev-1' }] });
       mockContractRepo.getContractById.mockResolvedValueOnce({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'fl-1' });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ result: true }] });
       mockUserRepo.getUserById.mockResolvedValue({ id: 'user-1', wallet_address: null });
 
       const result = await submitEvidence({ disputeId: 'd-1', submitterId: 'user-1', type: 'text', content: 'Evidence' });
@@ -301,9 +282,8 @@ describe('Dispute Service - Extended Coverage', () => {
 
     it('should fail when dispute is already resolved', async () => {
       const { resolveDispute } = await importModule();
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'd-1', status: 'resolved', contract_id: 'c-1', milestone_id: 'ms-1', initiator_id: 'user-1' }],
-        rowCount: 1,
+      mockDisputeRepo.getDisputeById.mockResolvedValueOnce({
+        id: 'd-1', status: 'resolved', contract_id: 'c-1', milestone_id: 'ms-1', initiator_id: 'user-1',
       });
 
       const result = await resolveDispute({ disputeId: 'd-1', decision: 'freelancer_favor', reasoning: 'Good work', resolvedBy: 'admin-1', resolverRole: 'admin' });

@@ -6,11 +6,6 @@ import request from 'supertest';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-const mockPoolQuery = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockPoolQuery },
-}));
-
 const mockGetPlatformStats = jest.fn<any>();
 const mockGetUserManagement = jest.fn<any>();
 const mockSuspendUser = jest.fn<any>();
@@ -19,6 +14,11 @@ const mockVerifyUser = jest.fn<any>();
 const mockUpdateUser = jest.fn<any>();
 const mockGetDisputeManagement = jest.fn<any>();
 const mockGetSystemHealth = jest.fn<any>();
+
+const mockGetAllReviews = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+  ReviewRepository: { getAllReviews: mockGetAllReviews },
+}));
 
 jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => ({
   getPlatformStats: mockGetPlatformStats,
@@ -213,7 +213,10 @@ describe('Admin Routes', () => {
   describe('GET /platform-stats', () => {
     it('should return public platform stats', async () => {
       mockGetPlatformStats.mockResolvedValue({ success: true, data: { totalUsers: 100, totalTransactionVolume: 50000.5 } });
-      mockPoolQuery.mockResolvedValue({ rows: [{ positive: 5, total: 5 }] });
+      mockGetAllReviews.mockResolvedValue([
+        { id: 'r-1', rating: 5.0 },
+        { id: 'r-2', rating: 4.5 },
+      ]);
       const res = await request(app).get('/api/admin/platform-stats');
       expect(res.status).toBe(200);
       expect(res.body.totalPaidOut).toBe('50000.50');

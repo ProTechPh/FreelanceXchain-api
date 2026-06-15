@@ -4,12 +4,6 @@ import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-const mockPool = { query: jest.fn<any>() };
-
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: mockPool,
-}));
-
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { error: jest.fn(), info: jest.fn(), debug: jest.fn(), warn: jest.fn() },
 }));
@@ -26,17 +20,47 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
   notificationRepository: { createNotification: jest.fn<any>() },
 }));
 
+const mockContractRepository = {
+  getContractById: jest.fn(),
+  updateContract: jest.fn(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepository,
+}));
+
+const mockRefundRequestRepository = {
+  findWithContract: jest.fn(),
+  findPendingByContract: jest.fn(),
+  findByContract: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/refund-request-repository.ts'), () => ({
+  refundRequestRepository: mockRefundRequestRepository,
+}));
+
+const mockMilestoneRepository = {
+  findByContract: jest.fn(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/milestone-repository.ts'), () => ({
+  milestoneRepository: mockMilestoneRepository,
+}));
+
 const { approveRefund } = await import('../../services/escrow-refund-service.js');
 
 describe('Escrow Refund Service - Coverage', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRefundRequestRepository.findWithContract.mockReset();
+    mockRefundRequestRepository.update.mockReset();
+    mockMilestoneRepository.findByContract.mockReset();
+    mockContractRepository.updateContract.mockReset();
   });
 
   // Lines 183-211: approveRefund - various error paths
   describe('approveRefund', () => {
     it('should return REFUND_NOT_FOUND when refund does not exist', async () => {
-      mockPool.query.mockResolvedValue({ rows: [] });
+      mockRefundRequestRepository.findWithContract.mockResolvedValue(null);
 
       const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'user-1' });
       expect(result.success).toBe(false);
@@ -44,12 +68,13 @@ describe('Escrow Refund Service - Coverage', () => {
     });
 
     it('should return UNAUTHORIZED when approver is not the other party', async () => {
-      mockPool.query.mockResolvedValue({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', status: 'pending',
-          requested_by: 'freelancer-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+      mockRefundRequestRepository.findWithContract.mockResolvedValue({
+        id: 'ref-1', contract_id: 'c-1', status: 'pending',
+        requested_by: 'freelancer-1',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
           escrow_address: '0x123',
-        }],
+        },
       });
 
       const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'outsider' });
@@ -58,12 +83,13 @@ describe('Escrow Refund Service - Coverage', () => {
     });
 
     it('should return INVALID_STATUS when refund is not pending', async () => {
-      mockPool.query.mockResolvedValue({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', status: 'approved',
-          requested_by: 'freelancer-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+      mockRefundRequestRepository.findWithContract.mockResolvedValue({
+        id: 'ref-1', contract_id: 'c-1', status: 'approved',
+        requested_by: 'freelancer-1',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
           escrow_address: '0x123',
-        }],
+        },
       });
 
       const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
@@ -74,15 +100,16 @@ describe('Escrow Refund Service - Coverage', () => {
     // Lines 218-223: update fails (throws)
     it('should handle error when update fails', async () => {
       // First query returns the refund
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{
-          id: 'ref-1', contract_id: 'c-1', status: 'pending',
-          requested_by: 'freelancer-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+      mockRefundRequestRepository.findWithContract.mockResolvedValue({
+        id: 'ref-1', contract_id: 'c-1', status: 'pending',
+        requested_by: 'freelancer-1',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
           escrow_address: '0x123',
-        }],
+        },
       });
       // Second query (UPDATE) returns empty
-      mockPool.query.mockResolvedValueOnce({ rows: [] });
+      mockRefundRequestRepository.update.mockResolvedValueOnce(null);
 
       try {
         await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });

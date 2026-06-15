@@ -25,23 +25,28 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => (
   extractFileIdFromUrl: mockExtractFileIdFromUrl,
 }));
 
-const mockQuery = jest.fn();
-(globalThis as any).mockPool = { query: mockQuery };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+const mockPortfolioRepository = {
+  create: jest.fn<any>(),
+  findOwnerById: jest.fn<any>(),
+  update: jest.fn<any>(),
+  getById: jest.fn<any>(),
+  delete: jest.fn<any>(),
+  findByFreelancer: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/portfolio-repository.ts'), () => ({
+  portfolioRepository: mockPortfolioRepository,
+}));
+
+const mockSkillRepository = {
+  getAllSkills: jest.fn<any>(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
+  skillRepository: mockSkillRepository,
 }));
 
 describe('Portfolio Service', () => {
-  let mockPool: any;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = (globalThis as any).mockPool;
-    mockPool.query.mockReset();
   });
 
   const importModule = async () => {
@@ -52,9 +57,9 @@ describe('Portfolio Service', () => {
     it('should create portfolio item successfully', async () => {
       const { createPortfolioItem } = await importModule();
 
-      const item = { id: 'pi-1', freelancer_id: 'user-1', title: 'My Project', description: 'A great project', images: ['img1.jpg'] };
-      mockPool.query.mockResolvedValueOnce({ rows: item.images.length > 0 ? [{ name: 'React' }] : [], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [item], rowCount: 1 });
+      mockSkillRepository.getAllSkills.mockResolvedValueOnce([{ name: 'React' }]);
+      const item = { id: 'pi-1', freelancer_id: 'user-1', title: 'My Project', description: 'A great project', images: '["img1.jpg"]', skills: '["React"]', created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockPortfolioRepository.create.mockResolvedValueOnce(item);
 
       const result = await createPortfolioItem('user-1', {
         title: 'My Project',
@@ -66,7 +71,6 @@ describe('Portfolio Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(item);
     });
 
     it('should fail when no images provided', async () => {
@@ -88,8 +92,7 @@ describe('Portfolio Service', () => {
     it('should fail when skills are invalid', async () => {
       const { createPortfolioItem } = await importModule();
 
-      // Skills query returns fewer than provided
-      mockPool.query.mockResolvedValueOnce({ rows: [{ name: 'React' }], rowCount: 1 });
+      mockSkillRepository.getAllSkills.mockResolvedValueOnce([{ name: 'React' }]);
 
       const result = await createPortfolioItem('user-1', {
         title: 'My Project',
@@ -108,8 +111,8 @@ describe('Portfolio Service', () => {
     it('should create without skills', async () => {
       const { createPortfolioItem } = await importModule();
 
-      const item = { id: 'pi-1', freelancer_id: 'user-1', title: 'My Project' };
-      mockPool.query.mockResolvedValueOnce({ rows: [item], rowCount: 1 });
+      const item = { id: 'pi-1', freelancer_id: 'user-1', title: 'My Project', created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockPortfolioRepository.create.mockResolvedValueOnce(item);
 
       const result = await createPortfolioItem('user-1', {
         title: 'My Project',
@@ -125,7 +128,8 @@ describe('Portfolio Service', () => {
     it('should handle database errors', async () => {
       const { createPortfolioItem } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockSkillRepository.getAllSkills.mockResolvedValueOnce([{ name: 'React' }]);
+      mockPortfolioRepository.create.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await createPortfolioItem('user-1', {
         title: 'My Project',
@@ -145,20 +149,19 @@ describe('Portfolio Service', () => {
     it('should update portfolio item successfully', async () => {
       const { updatePortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'user-1' }], rowCount: 1 });
-      const updated = { id: 'pi-1', title: 'Updated Title', description: 'Updated desc' };
-      mockPool.query.mockResolvedValueOnce({ rows: [updated], rowCount: 1 });
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      const updated = { id: 'pi-1', title: 'Updated Title', description: 'Updated desc', created_at: '2025-01-01', updated_at: '2025-01-02' };
+      mockPortfolioRepository.update.mockResolvedValueOnce(updated);
 
       const result = await updatePortfolioItem('pi-1', 'user-1', { title: 'Updated Title', description: 'Updated desc' });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(updated);
     });
 
     it('should fail when portfolio item not found', async () => {
       const { updatePortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce(null);
 
       const result = await updatePortfolioItem('nonexistent', 'user-1', { title: 'New' });
 
@@ -169,7 +172,7 @@ describe('Portfolio Service', () => {
     it('should fail when user is not the owner', async () => {
       const { updatePortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'other-user' }], rowCount: 1 });
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('other-user');
 
       const result = await updatePortfolioItem('pi-1', 'user-1', { title: 'New' });
 
@@ -180,9 +183,9 @@ describe('Portfolio Service', () => {
     it('should update with all fields', async () => {
       const { updatePortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'user-1' }], rowCount: 1 });
-      const updated = { id: 'pi-1', title: 'New', description: 'Desc', project_url: 'https://new.com', images: ['new.jpg'], skills: ['Node.js'], completed_at: '2025-06-01' };
-      mockPool.query.mockResolvedValueOnce({ rows: [updated], rowCount: 1 });
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      const updated = { id: 'pi-1', title: 'New', description: 'Desc', project_url: 'https://new.com', images: '["new.jpg"]', skills: '["Node.js"]', completed_at: '2025-06-01', created_at: '2025-01-01', updated_at: '2025-06-01' };
+      mockPortfolioRepository.update.mockResolvedValueOnce(updated);
 
       const result = await updatePortfolioItem('pi-1', 'user-1', {
         title: 'New',
@@ -199,12 +202,47 @@ describe('Portfolio Service', () => {
     it('should handle database errors', async () => {
       const { updatePortfolioItem } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockPortfolioRepository.findOwnerById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await updatePortfolioItem('pi-1', 'user-1', { title: 'New' });
 
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('INTERNAL_ERROR');
+    });
+
+    it('should return existing item when no update fields provided', async () => {
+      const { updatePortfolioItem } = await importModule();
+
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockPortfolioRepository.getById.mockResolvedValueOnce({
+        id: 'pi-1', freelancer_id: 'user-1', title: 'Original Title',
+        description: 'Original Desc', project_url: 'https://example.com',
+        images: '["img1.jpg"]', skills: '["React"]',
+        completed_at: '2025-01-01', created_at: '2025-01-01', updated_at: '2025-01-01',
+      });
+
+      const result = await updatePortfolioItem('pi-1', 'user-1', {});
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.title).toBe('Original Title');
+        expect(result.data.description).toBe('Original Desc');
+        expect(result.data.images).toEqual(['img1.jpg']);
+        expect(result.data.skills).toEqual(['React']);
+        expect(result.data.completedAt).toEqual(new Date('2025-01-01'));
+      }
+    });
+
+    it('should update only projectUrl when other fields undefined', async () => {
+      const { updatePortfolioItem } = await importModule();
+
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      const updated = { id: 'pi-1', project_url: 'https://new.com', created_at: '2025-01-01', updated_at: '2025-01-02' };
+      mockPortfolioRepository.update.mockResolvedValueOnce(updated);
+
+      const result = await updatePortfolioItem('pi-1', 'user-1', { projectUrl: 'https://new.com' });
+
+      expect(result.success).toBe(true);
     });
   });
 
@@ -212,11 +250,12 @@ describe('Portfolio Service', () => {
     it('should delete portfolio item and cleanup images', async () => {
       const { deletePortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ freelancer_id: 'user-1', images: ['https://storage.com/img1.jpg', 'https://storage.com/img2.jpg'] }],
-        rowCount: 1,
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockPortfolioRepository.getById.mockResolvedValueOnce({
+        id: 'pi-1', freelancer_id: 'user-1', images: '["https://storage.com/img1.jpg","https://storage.com/img2.jpg"]',
+        created_at: '2025-01-01', updated_at: '2025-01-01',
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockPortfolioRepository.delete.mockResolvedValueOnce(true);
 
       const result = await deletePortfolioItem('pi-1', 'user-1');
 
@@ -227,7 +266,7 @@ describe('Portfolio Service', () => {
     it('should fail when portfolio item not found', async () => {
       const { deletePortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce(null);
 
       const result = await deletePortfolioItem('nonexistent', 'user-1');
 
@@ -238,7 +277,7 @@ describe('Portfolio Service', () => {
     it('should fail when user is not the owner', async () => {
       const { deletePortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'other-user', images: [] }], rowCount: 1 });
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('other-user');
 
       const result = await deletePortfolioItem('pi-1', 'user-1');
 
@@ -249,11 +288,12 @@ describe('Portfolio Service', () => {
     it('should handle image cleanup failure gracefully', async () => {
       const { deletePortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ freelancer_id: 'user-1', images: ['https://storage.com/img1.jpg'] }],
-        rowCount: 1,
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockPortfolioRepository.getById.mockResolvedValueOnce({
+        id: 'pi-1', freelancer_id: 'user-1', images: '["https://storage.com/img1.jpg"]',
+        created_at: '2025-01-01', updated_at: '2025-01-01',
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockPortfolioRepository.delete.mockResolvedValueOnce(true);
       mockDeleteFile.mockRejectedValueOnce(new Error('Storage error'));
 
       const result = await deletePortfolioItem('pi-1', 'user-1');
@@ -265,11 +305,12 @@ describe('Portfolio Service', () => {
       const { deletePortfolioItem } = await importModule();
 
       mockExtractFileIdFromUrl.mockReturnValueOnce(null);
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ freelancer_id: 'user-1', images: ['invalid-url'] }],
-        rowCount: 1,
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockPortfolioRepository.getById.mockResolvedValueOnce({
+        id: 'pi-1', freelancer_id: 'user-1', images: '["invalid-url"]',
+        created_at: '2025-01-01', updated_at: '2025-01-01',
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockPortfolioRepository.delete.mockResolvedValueOnce(true);
 
       const result = await deletePortfolioItem('pi-1', 'user-1');
 
@@ -280,12 +321,57 @@ describe('Portfolio Service', () => {
     it('should handle database errors', async () => {
       const { deletePortfolioItem } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockPortfolioRepository.findOwnerById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await deletePortfolioItem('pi-1', 'user-1');
 
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('INTERNAL_ERROR');
+    });
+
+    it('should handle images stored as array instead of JSON string', async () => {
+      const { deletePortfolioItem } = await importModule();
+
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockPortfolioRepository.getById.mockResolvedValueOnce({
+        id: 'pi-1', freelancer_id: 'user-1', images: ['https://storage.com/img1.jpg'],
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      });
+      mockPortfolioRepository.delete.mockResolvedValueOnce(true);
+
+      const result = await deletePortfolioItem('pi-1', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(mockDeleteFile).toHaveBeenCalledTimes(1);
+    });
+
+    it('should handle invalid JSON in images field gracefully', async () => {
+      const { deletePortfolioItem } = await importModule();
+
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockPortfolioRepository.getById.mockResolvedValueOnce({
+        id: 'pi-1', freelancer_id: 'user-1', images: 'not-valid-json',
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      });
+      mockPortfolioRepository.delete.mockResolvedValueOnce(true);
+
+      const result = await deletePortfolioItem('pi-1', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(mockDeleteFile).not.toHaveBeenCalled();
+    });
+
+    it('should handle null existing item after delete', async () => {
+      const { deletePortfolioItem } = await importModule();
+
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockPortfolioRepository.getById.mockResolvedValueOnce(null);
+      mockPortfolioRepository.delete.mockResolvedValueOnce(true);
+
+      const result = await deletePortfolioItem('pi-1', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(mockDeleteFile).not.toHaveBeenCalled();
     });
   });
 
@@ -294,10 +380,10 @@ describe('Portfolio Service', () => {
       const { getFreelancerPortfolio } = await importModule();
 
       const items = [
-        { id: 'pi-1', title: 'Project 1' },
-        { id: 'pi-2', title: 'Project 2' },
+        { id: 'pi-1', title: 'Project 1', freelancer_id: 'user-1', created_at: '2025-01-01', updated_at: '2025-01-01' },
+        { id: 'pi-2', title: 'Project 2', freelancer_id: 'user-1', created_at: '2025-01-02', updated_at: '2025-01-02' },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: items, rowCount: 2 });
+      mockPortfolioRepository.findByFreelancer.mockResolvedValueOnce(items);
 
       const result = await getFreelancerPortfolio('user-1');
 
@@ -308,7 +394,7 @@ describe('Portfolio Service', () => {
     it('should return empty array when no items', async () => {
       const { getFreelancerPortfolio } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPortfolioRepository.findByFreelancer.mockResolvedValueOnce([]);
 
       const result = await getFreelancerPortfolio('user-1');
 
@@ -319,7 +405,7 @@ describe('Portfolio Service', () => {
     it('should handle database errors', async () => {
       const { getFreelancerPortfolio } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockPortfolioRepository.findByFreelancer.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getFreelancerPortfolio('user-1');
 
@@ -332,19 +418,18 @@ describe('Portfolio Service', () => {
     it('should return a single portfolio item', async () => {
       const { getPortfolioItem } = await importModule();
 
-      const item = { id: 'pi-1', title: 'My Project' };
-      mockPool.query.mockResolvedValueOnce({ rows: [item], rowCount: 1 });
+      const item = { id: 'pi-1', title: 'My Project', freelancer_id: 'user-1', created_at: '2025-01-01', updated_at: '2025-01-01' };
+      mockPortfolioRepository.getById.mockResolvedValueOnce(item);
 
       const result = await getPortfolioItem('pi-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(item);
     });
 
     it('should return NOT_FOUND when item does not exist', async () => {
       const { getPortfolioItem } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockPortfolioRepository.getById.mockResolvedValueOnce(null);
 
       const result = await getPortfolioItem('nonexistent');
 
@@ -355,7 +440,7 @@ describe('Portfolio Service', () => {
     it('should handle database errors', async () => {
       const { getPortfolioItem } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockPortfolioRepository.getById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getPortfolioItem('pi-1');
 

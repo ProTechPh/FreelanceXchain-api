@@ -6,6 +6,7 @@ import {
 } from '../models/user-custom-skill.js';
 import { 
   userCustomSkillRepository, 
+  skillSuggestionRepository,
   UserCustomSkillEntity, 
   SkillSuggestionEntity 
 } from '../repositories/user-custom-skill-repository.js';
@@ -242,11 +243,11 @@ async function handleSkillSuggestion(
   skillInput: CreateUserCustomSkillInput
 ): Promise<void> {
   // Check if suggestion already exists
-  const existingSuggestion = await userCustomSkillRepository.getSkillSuggestionByName(skillInput.name);
+  const existingSuggestion = await skillSuggestionRepository.getSkillSuggestionByName(skillInput.name);
   
   if (existingSuggestion) {
     // Increment the request count
-    await userCustomSkillRepository.incrementSkillSuggestionCount(existingSuggestion.id);
+    await skillSuggestionRepository.incrementSkillSuggestionCount(existingSuggestion.id);
   } else {
     // Create new suggestion
     const suggestionEntity: Omit<SkillSuggestionEntity, 'created_at' | 'updated_at'> = {
@@ -264,12 +265,12 @@ async function handleSkillSuggestion(
       (suggestionEntity as any).category_name = skillInput.categoryName.trim();
     }
 
-    await userCustomSkillRepository.createSkillSuggestion(suggestionEntity);
+    await skillSuggestionRepository.createSkillSuggestion(suggestionEntity);
   }
 }
 
 export async function getPendingSkillSuggestions(): Promise<SkillSuggestion[]> {
-  const entities = await userCustomSkillRepository.getPendingSkillSuggestions();
+  const entities = await skillSuggestionRepository.getPendingSkillSuggestions();
   return entities.map(mapSkillSuggestionFromEntity);
 }
 
@@ -278,7 +279,7 @@ export async function updateSkillSuggestionStatus(
   status: 'approved' | 'rejected'
 ): Promise<ServiceResult<SkillSuggestion>> {
   try {
-    const updatedEntity = await userCustomSkillRepository.updateSkillSuggestionStatus(id, status);
+    const updatedEntity = await skillSuggestionRepository.updateSkillSuggestionStatus(id, status);
     if (!updatedEntity) {
       return {
         success: false,

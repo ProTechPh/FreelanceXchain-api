@@ -3,211 +3,282 @@ import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-const mockQuery = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
+const mockDatabases = {
+  createDocument: jest.fn<any>(),
+  getDocument: jest.fn<any>(),
+  updateDocument: jest.fn<any>(),
+  deleteDocument: jest.fn<any>(),
+  listDocuments: jest.fn<any>(),
+};
+
+jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+  databases: mockDatabases,
+  DATABASE_ID: 'test-db',
+  Query: {
+    equal: (field: string, value: any) => ({ field, value, method: 'equal' }),
+    orderDesc: (field: string) => ({ field, method: 'orderDesc' }),
+    orderAsc: (field: string) => ({ field, method: 'orderAsc' }),
+    limit: (value: number) => ({ value, method: 'limit' }),
+  },
+  ID: { unique: () => 'generated-id' },
 }));
 
-const { UserCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.js');
+const { userCustomSkillRepository, skillSuggestionRepository } = await import('../../repositories/user-custom-skill-repository.js');
 
 describe('UserCustomSkillRepository', () => {
-  let repo: any;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockQuery.mockReset();
-    repo = new UserCustomSkillRepository();
   });
 
   describe('createUserCustomSkill', () => {
     it('should create and return a user custom skill', async () => {
-      const mockSkill = { id: 'skill-1', user_id: 'user-1', name: 'React', description: 'Frontend', years_of_experience: 2, is_approved: false, suggested_for_global: false };
-      mockQuery.mockResolvedValueOnce({ rows: [mockSkill], rowCount: 1 });
-      const result = await repo.createUserCustomSkill(mockSkill as any);
-      expect(result).toEqual(mockSkill);
+      const input = { id: 'skill-1', user_id: 'user-1', name: 'React', description: 'Frontend', years_of_experience: 2, is_approved: false, suggested_for_global: false };
+      const doc = { $id: 'skill-1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'React', description: 'Frontend', years_of_experience: 2, is_approved: false, suggested_for_global: false };
+      mockDatabases.createDocument.mockResolvedValueOnce(doc);
+
+      const result = await userCustomSkillRepository.createUserCustomSkill(input as any);
+      expect(result.id).toBe('skill-1');
+      expect(result.name).toBe('React');
     });
 
     it('should throw on database error', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('insert failed'));
-      await expect(repo.createUserCustomSkill({ id: 'skill-1' } as any)).rejects.toThrow('Failed to create user custom skill');
+      mockDatabases.createDocument.mockRejectedValueOnce(new Error('insert failed'));
+      await expect(userCustomSkillRepository.createUserCustomSkill({ id: 'skill-1' } as any)).rejects.toThrow('Failed to create user custom skill');
     });
   });
 
   describe('getUserCustomSkills', () => {
     it('should return skills for a user', async () => {
-      const skills = [{ id: 's1' }, { id: 's2' }];
-      mockQuery.mockResolvedValueOnce({ rows: skills, rowCount: 2 });
-      const result = await repo.getUserCustomSkills('user-1');
-      expect(result).toEqual(skills);
+      const docs = [
+        { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Skill 1' },
+        { $id: 's2', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Skill 2' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 2 });
+      const result = await userCustomSkillRepository.getUserCustomSkills('user-1');
+      expect(result).toHaveLength(2);
+      expect(result[0]!.id).toBe('s1');
     });
 
     it('should return empty array when no skills found', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      const result = await repo.getUserCustomSkills('user-1');
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await userCustomSkillRepository.getUserCustomSkills('user-1');
       expect(result).toEqual([]);
     });
 
-    it('should throw on database error', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('select failed'));
-      await expect(repo.getUserCustomSkills('user-1')).rejects.toThrow('Failed to get user custom skills');
+    it('should return empty array on database error (base repo catches)', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await userCustomSkillRepository.getUserCustomSkills('user-1');
+      expect(result).toEqual([]);
     });
   });
 
   describe('getUserCustomSkillById', () => {
     it('should return a skill by id', async () => {
-      const skill = { id: 's1', user_id: 'user-1' };
-      mockQuery.mockResolvedValueOnce({ rows: [skill], rowCount: 1 });
-      const result = await repo.getUserCustomSkillById('s1', 'user-1');
-      expect(result).toEqual(skill);
+      const doc = { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Skill' };
+      mockDatabases.getDocument.mockResolvedValueOnce(doc);
+      const result = await userCustomSkillRepository.getUserCustomSkillById('s1', 'user-1');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('s1');
     });
 
     it('should return null when not found', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      const result = await repo.getUserCustomSkillById('s1', 'user-1');
+      mockDatabases.getDocument.mockRejectedValueOnce(new Error('not found'));
+      const result = await userCustomSkillRepository.getUserCustomSkillById('s1', 'user-1');
       expect(result).toBeNull();
     });
 
-    it('should throw on other database errors', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('db error'));
-      await expect(repo.getUserCustomSkillById('s1', 'user-1')).rejects.toThrow('Failed to get user custom skill');
+    it('should return null when user_id does not match', async () => {
+      const doc = { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'other-user', name: 'Skill' };
+      mockDatabases.getDocument.mockResolvedValueOnce(doc);
+      const result = await userCustomSkillRepository.getUserCustomSkillById('s1', 'user-1');
+      expect(result).toBeNull();
+    });
+
+    it('should return null on database error (base repo catches)', async () => {
+      mockDatabases.getDocument.mockRejectedValueOnce(new Error('db error'));
+      const result = await userCustomSkillRepository.getUserCustomSkillById('s1', 'user-1');
+      expect(result).toBeNull();
     });
   });
 
   describe('updateUserCustomSkill', () => {
     it('should update and return the skill', async () => {
-      const skill = { id: 's1', user_id: 'user-1', name: 'Updated' };
-      mockQuery.mockResolvedValueOnce({ rows: [skill], rowCount: 1 });
-      const result = await repo.updateUserCustomSkill('s1', 'user-1', { name: 'Updated' });
-      expect(result).toEqual(skill);
+      const existing = { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Old' };
+      const updated = { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-02', user_id: 'user-1', name: 'Updated' };
+      mockDatabases.getDocument.mockResolvedValueOnce(existing);
+      mockDatabases.updateDocument.mockResolvedValueOnce(updated);
+      const result = await userCustomSkillRepository.updateUserCustomSkill('s1', 'user-1', { name: 'Updated' });
+      expect(result).not.toBeNull();
+      expect(result!.name).toBe('Updated');
     });
 
     it('should return null when not found', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      const result = await repo.updateUserCustomSkill('s1', 'user-1', { name: 'Updated' });
+      mockDatabases.getDocument.mockRejectedValueOnce(new Error('not found'));
+      const result = await userCustomSkillRepository.updateUserCustomSkill('s1', 'user-1', { name: 'Updated' });
       expect(result).toBeNull();
     });
 
-    it('should throw on database error', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('update failed'));
-      await expect(repo.updateUserCustomSkill('s1', 'user-1', { name: 'Updated' })).rejects.toThrow('Failed to update user custom skill');
+    it('should return null on database error (base repo catches)', async () => {
+      const existing = { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Old' };
+      mockDatabases.getDocument.mockResolvedValueOnce(existing);
+      mockDatabases.updateDocument.mockRejectedValueOnce(new Error('update failed'));
+      const result = await userCustomSkillRepository.updateUserCustomSkill('s1', 'user-1', { name: 'Updated' });
+      expect(result).toBeNull();
     });
   });
 
   describe('deleteUserCustomSkill', () => {
     it('should delete and return true', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ id: 's1' }], rowCount: 1 });
-      const result = await repo.deleteUserCustomSkill('s1', 'user-1');
+      const existing = { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Skill' };
+      mockDatabases.getDocument.mockResolvedValueOnce(existing);
+      mockDatabases.deleteDocument.mockResolvedValueOnce({});
+      const result = await userCustomSkillRepository.deleteUserCustomSkill('s1', 'user-1');
       expect(result).toBe(true);
     });
 
-    it('should throw on database error', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('delete failed'));
-      await expect(repo.deleteUserCustomSkill('s1', 'user-1')).rejects.toThrow('Failed to delete user custom skill');
+    it('should return false when not found', async () => {
+      mockDatabases.getDocument.mockRejectedValueOnce(new Error('not found'));
+      const result = await userCustomSkillRepository.deleteUserCustomSkill('s1', 'user-1');
+      expect(result).toBe(false);
+    });
+
+    it('should return false on database error (base repo catches)', async () => {
+      const existing = { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Skill' };
+      mockDatabases.getDocument.mockResolvedValueOnce(existing);
+      mockDatabases.deleteDocument.mockRejectedValueOnce(new Error('delete failed'));
+      const result = await userCustomSkillRepository.deleteUserCustomSkill('s1', 'user-1');
+      expect(result).toBe(false);
     });
   });
 
   describe('searchUserCustomSkills', () => {
     it('should return matching skills', async () => {
-      const skills = [{ id: 's1', name: 'React' }];
-      mockQuery.mockResolvedValueOnce({ rows: skills, rowCount: 1 });
-      const result = await repo.searchUserCustomSkills('user-1', 'react');
-      expect(result).toEqual(skills);
+      const docs = [
+        { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'React', description: 'Frontend framework' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 1 });
+      const result = await userCustomSkillRepository.searchUserCustomSkills('user-1', 'react');
+      expect(result).toHaveLength(1);
+      expect(result[0]!.name).toBe('React');
     });
 
     it('should return empty array on no matches', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      const result = await repo.searchUserCustomSkills('user-1', 'xyz');
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await userCustomSkillRepository.searchUserCustomSkills('user-1', 'xyz');
       expect(result).toEqual([]);
     });
 
-    it('should throw on database error', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('search failed'));
-      await expect(repo.searchUserCustomSkills('user-1', 'react')).rejects.toThrow('Failed to search user custom skills');
+    it('should return empty array on database error (base repo catches)', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('search failed'));
+      const result = await userCustomSkillRepository.searchUserCustomSkills('user-1', 'react');
+      expect(result).toEqual([]);
     });
+  });
+});
+
+describe('SkillSuggestionRepository', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
   describe('createSkillSuggestion', () => {
     it('should create and return a suggestion', async () => {
-      const suggestion = { id: 'sg1', skill_name: 'Rust' };
-      mockQuery.mockResolvedValueOnce({ rows: [suggestion], rowCount: 1 });
-      const result = await repo.createSkillSuggestion(suggestion as any);
-      expect(result).toEqual(suggestion);
+      const input = { id: 'sg1', skill_name: 'Rust', user_id: 'user-1', skill_description: 'Systems lang', suggested_by: 'User', times_requested: 1, status: 'pending' };
+      const doc = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', skill_name: 'Rust', user_id: 'user-1', skill_description: 'Systems lang', suggested_by: 'User', times_requested: 1, status: 'pending' };
+      mockDatabases.createDocument.mockResolvedValueOnce(doc);
+      const result = await skillSuggestionRepository.createSkillSuggestion(input as any);
+      expect(result.skill_name).toBe('Rust');
     });
 
     it('should throw on database error', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('insert failed'));
-      await expect(repo.createSkillSuggestion({ id: 'sg1' } as any)).rejects.toThrow('Failed to create skill suggestion');
+      mockDatabases.createDocument.mockRejectedValueOnce(new Error('insert failed'));
+      await expect(skillSuggestionRepository.createSkillSuggestion({ id: 'sg1' } as any)).rejects.toThrow('Failed to create skill suggestion');
     });
   });
 
   describe('getSkillSuggestionByName', () => {
     it('should return a suggestion by name', async () => {
-      const suggestion = { id: 'sg1', skill_name: 'Rust' };
-      mockQuery.mockResolvedValueOnce({ rows: [suggestion], rowCount: 1 });
-      const result = await repo.getSkillSuggestionByName('Rust');
-      expect(result).toEqual(suggestion);
+      const doc = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', skill_name: 'Rust' };
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+      const result = await skillSuggestionRepository.getSkillSuggestionByName('Rust');
+      expect(result).not.toBeNull();
+      expect(result!.skill_name).toBe('Rust');
     });
 
     it('should return null when not found', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      const result = await repo.getSkillSuggestionByName('Rust');
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await skillSuggestionRepository.getSkillSuggestionByName('Rust');
       expect(result).toBeNull();
     });
 
-    it('should throw on other database errors', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('db error'));
-      await expect(repo.getSkillSuggestionByName('Rust')).rejects.toThrow('Failed to get skill suggestion');
+    it('should return null on database error (base repo catches)', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('db error'));
+      const result = await skillSuggestionRepository.getSkillSuggestionByName('Rust');
+      expect(result).toBeNull();
     });
   });
 
   describe('incrementSkillSuggestionCount', () => {
     it('should increment and return updated suggestion', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [{ id: 'sg1', times_requested: 6 }], rowCount: 1 });
-      const result = await repo.incrementSkillSuggestionCount('sg1');
-      expect(result).toEqual({ id: 'sg1', times_requested: 6 });
+      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 5 };
+      const updated = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-02', times_requested: 6 };
+      mockDatabases.getDocument.mockResolvedValueOnce(existing);
+      mockDatabases.updateDocument.mockResolvedValueOnce(updated);
+      const result = await skillSuggestionRepository.incrementSkillSuggestionCount('sg1');
+      expect(result).not.toBeNull();
+      expect(result!.times_requested).toBe(6);
     });
 
-    it('should throw when update fails', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('update failed'));
-      await expect(repo.incrementSkillSuggestionCount('sg1')).rejects.toThrow('Failed to increment skill suggestion count');
+    it('should return null when suggestion not found', async () => {
+      mockDatabases.getDocument.mockRejectedValueOnce(new Error('not found'));
+      const result = await skillSuggestionRepository.incrementSkillSuggestionCount('sg1');
+      expect(result).toBeNull();
+    });
+
+    it('should return null on update error (base repo catches)', async () => {
+      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 5 };
+      mockDatabases.getDocument.mockResolvedValueOnce(existing);
+      mockDatabases.updateDocument.mockRejectedValueOnce(new Error('update failed'));
+      const result = await skillSuggestionRepository.incrementSkillSuggestionCount('sg1');
+      expect(result).toBeNull();
     });
   });
 
   describe('getPendingSkillSuggestions', () => {
     it('should return pending suggestions', async () => {
-      const suggestions = [{ id: 'sg1', status: 'pending' }];
-      mockQuery.mockResolvedValueOnce({ rows: suggestions, rowCount: 1 });
-      const result = await repo.getPendingSkillSuggestions();
-      expect(result).toEqual(suggestions);
+      const docs = [{ $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', status: 'pending' }];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 1 });
+      const result = await skillSuggestionRepository.getPendingSkillSuggestions();
+      expect(result).toHaveLength(1);
+      expect(result[0]!.status).toBe('pending');
     });
 
     it('should return empty array when none pending', async () => {
-      mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      const result = await repo.getPendingSkillSuggestions();
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await skillSuggestionRepository.getPendingSkillSuggestions();
       expect(result).toEqual([]);
     });
 
-    it('should throw on database error', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('select failed'));
-      await expect(repo.getPendingSkillSuggestions()).rejects.toThrow('Failed to get pending skill suggestions');
+    it('should return empty array on database error (base repo catches)', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await skillSuggestionRepository.getPendingSkillSuggestions();
+      expect(result).toEqual([]);
     });
   });
 
   describe('updateSkillSuggestionStatus', () => {
     it('should update and return the suggestion', async () => {
-      const suggestion = { id: 'sg1', status: 'approved' };
-      mockQuery.mockResolvedValueOnce({ rows: [suggestion], rowCount: 1 });
-      const result = await repo.updateSkillSuggestionStatus('sg1', 'approved');
-      expect(result).toEqual(suggestion);
+      const updated = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-02', status: 'approved' };
+      mockDatabases.updateDocument.mockResolvedValueOnce(updated);
+      const result = await skillSuggestionRepository.updateSkillSuggestionStatus('sg1', 'approved');
+      expect(result).not.toBeNull();
+      expect(result!.status).toBe('approved');
     });
 
-    it('should throw on database error', async () => {
-      mockQuery.mockRejectedValueOnce(new Error('update failed'));
-      await expect(repo.updateSkillSuggestionStatus('sg1', 'approved')).rejects.toThrow('Failed to update skill suggestion status');
+    it('should return null on database error (base repo catches)', async () => {
+      mockDatabases.updateDocument.mockRejectedValueOnce(new Error('update failed'));
+      const result = await skillSuggestionRepository.updateSkillSuggestionStatus('sg1', 'approved');
+      expect(result).toBeNull();
     });
   });
 });

@@ -1,7 +1,9 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
-import { Favorite, FavoriteEntity } from '../models/favorite.js';
+import { Favorite } from '../models/favorite.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { favoriteRepository } from '../repositories/favorites-repository.js';
+import { projectRepository } from '../repositories/project-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 
 /**
  * Add a favorite (project or freelancer)
@@ -13,12 +15,9 @@ export async function addFavorite(
 ): Promise<ServiceResult<Favorite>> {
   try {
     // Check if already favorited
-    const existingResult = await pool.query(
-      'SELECT * FROM favorites WHERE user_id = $1 AND target_type = $2 AND target_id = $3',
-      [userId, targetType, targetId]
-    );
+    const existing = await favoriteRepository.findByUserAndTarget(userId, targetType, targetId);
 
-    if (existingResult.rows.length > 0) {
+    if (existing) {
       return {
         success: false,
         error: {
@@ -29,13 +28,12 @@ export async function addFavorite(
     }
 
     // Verify target exists
-    const targetTable = targetType === 'project' ? 'projects' : 'users';
-    const targetResult = await pool.query(
-      `SELECT id FROM ${targetTable} WHERE id = $1`,
-      [targetId]
-    );
+    const target =
+      targetType === 'project'
+        ? await projectRepository.getById(targetId)
+        : await userRepository.getUserById(targetId);
 
-    if (targetResult.rows.length === 0) {
+    if (!target) {
       return {
         success: false,
         error: {
@@ -46,16 +44,21 @@ export async function addFavorite(
     }
 
     // Create favorite
-    const insertResult = await pool.query(
-      `INSERT INTO favorites (user_id, target_type, target_id, created_at, updated_at) 
-       VALUES ($1, $2, $3, NOW(), NOW()) 
-       RETURNING *`,
-      [userId, targetType, targetId]
-    );
+    const created = await favoriteRepository.create({
+      user_id: userId,
+      target_type: targetType,
+      target_id: targetId,
+    } as any);
 
     return {
       success: true,
-      data: insertResult.rows[0] as Favorite,
+      data: {
+        id: created.id,
+        userId: created.user_id,
+        targetType: created.target_type,
+        targetId: created.target_id,
+        createdAt: new Date(created.created_at),
+      } as Favorite,
     };
   } catch (error) {
     logger.error('Unexpected error in addFavorite', { error, userId, targetType, targetId });
@@ -78,10 +81,7 @@ export async function removeFavorite(
   targetId: string
 ): Promise<ServiceResult<void>> {
   try {
-    await pool.query(
-      'DELETE FROM favorites WHERE user_id = $1 AND target_type = $2 AND target_id = $3',
-      [userId, targetType, targetId]
-    );
+    await favoriteRepository.removeByUserAndTarget(userId, targetType, targetId);
 
     return {
       success: true,
@@ -107,18 +107,7 @@ export async function getUserFavorites(
   targetType?: 'project' | 'freelancer'
 ): Promise<ServiceResult<Favorite[]>> {
   try {
-    let query = 'SELECT * FROM favorites WHERE user_id = $1';
-    const params: any[] = [userId];
-
-    if (targetType) {
-      query += ' AND target_type = $2';
-      params.push(targetType);
-    }
-
-    query += ' ORDER BY created_at DESC';
-
-    const result = await pool.query(query, params);
-    const favorites = result.rows as FavoriteEntity[];
+    const favorites = await favoriteRepository.findByUser(userId, targetType);
 
     // Batch-fetch target details instead of N+1 queries
     const projectIds = favorites.filter(f => f.target_type === 'project').map(f => f.target_id);
@@ -126,16 +115,16 @@ export async function getUserFavorites(
 
     const [projectMap, userMap] = await Promise.all([
       projectIds.length > 0
-        ? pool.query('SELECT * FROM projects WHERE id = ANY($1)', [projectIds]).then((res: any) => {
+        ? Promise.all(projectIds.map(id => projectRepository.getById(id))).then(results => {
             const m = new Map<string, any>();
-            for (const item of res.rows) m.set(item.id, item);
+            results.forEach(item => { if (item) m.set(item.id, item); });
             return m;
           })
         : Promise.resolve(new Map<string, any>()),
       userIds.length > 0
-        ? pool.query('SELECT * FROM users WHERE id = ANY($1)', [userIds]).then((res: any) => {
+        ? Promise.all(userIds.map(id => userRepository.getUserById(id))).then(results => {
             const m = new Map<string, any>();
-            for (const item of res.rows) m.set(item.id, item);
+            results.forEach(item => { if (item) m.set(item.id, item); });
             return m;
           })
         : Promise.resolve(new Map<string, any>()),
@@ -178,14 +167,11 @@ export async function isFavorited(
   targetId: string
 ): Promise<ServiceResult<boolean>> {
   try {
-    const result = await pool.query(
-      'SELECT id FROM favorites WHERE user_id = $1 AND target_type = $2 AND target_id = $3',
-      [userId, targetType, targetId]
-    );
+    const existing = await favoriteRepository.findByUserAndTarget(userId, targetType, targetId);
 
     return {
       success: true,
-      data: result.rows.length > 0,
+      data: existing !== null,
     };
   } catch (error) {
     logger.error('Unexpected error in isFavorited', { error, userId, targetType, targetId });

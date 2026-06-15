@@ -33,9 +33,8 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
 }));
 
-const mockPoolQuery = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockPoolQuery },
+  pool: { query: jest.fn() },
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
@@ -53,7 +52,7 @@ describe('Contract Service - Extended Coverage', () => {
   describe('cancelPendingContract', () => {
     it('should cancel a pending contract successfully', async () => {
       mockGetContractById.mockResolvedValue({ id: 'c-1', status: 'pending', employer_id: 'user-1', freelancer_id: 'user-2' });
-      mockPoolQuery.mockResolvedValue({ rows: [{ result: true }] });
+      mockUpdateContract.mockResolvedValue({ id: 'c-1', status: 'cancelled', employer_id: 'user-1', freelancer_id: 'user-2' });
       const result = await cancelPendingContract('c-1', 'user-1');
       expect(result.success).toBe(true);
     });
@@ -79,9 +78,9 @@ describe('Contract Service - Extended Coverage', () => {
       expect(result.error.code).toBe('INVALID_STATUS');
     });
 
-    it('should return UPDATE_FAILED if RPC returns false', async () => {
+    it('should return UPDATE_FAILED if update returns null', async () => {
       mockGetContractById.mockResolvedValue({ id: 'c-1', status: 'pending', employer_id: 'user-1', freelancer_id: 'user-2' });
-      mockPoolQuery.mockResolvedValue({ rows: [{ result: false }] });
+      mockUpdateContract.mockResolvedValue(null);
       const result = await cancelPendingContract('c-1', 'user-1');
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('UPDATE_FAILED');
@@ -89,7 +88,7 @@ describe('Contract Service - Extended Coverage', () => {
 
     it('should allow freelancer to cancel', async () => {
       mockGetContractById.mockResolvedValue({ id: 'c-1', status: 'pending', employer_id: 'user-1', freelancer_id: 'user-2' });
-      mockPoolQuery.mockResolvedValue({ rows: [{ result: true }] });
+      mockUpdateContract.mockResolvedValue({ id: 'c-1', status: 'cancelled', employer_id: 'user-1', freelancer_id: 'user-2' });
       const result = await cancelPendingContract('c-1', 'user-2');
       expect(result.success).toBe(true);
     });

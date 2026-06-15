@@ -60,11 +60,11 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
   projectRepository: mockProjectRepository,
 }));
 
-const mockContractRepository = {
+  const mockContractRepository = {
   getContractById: jest.fn<any>(),
   getContractsByEmployer: jest.fn<any>(),
   updateContract: jest.fn<any>(),
-  createContract: jest.fn<any>(),
+  create: jest.fn<any>(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepository,
@@ -162,21 +162,19 @@ describe('Proposal Service - notification failure catch blocks', () => {
       milestones: [{ title: 'MS1', amount: 1000, due_date: '2025-06-01' }],
       freelancer_limit: 1,
     });
+    mockProposalRepository.getAcceptedProposalCount.mockResolvedValue(0);
 
-    // Mock the multiple pool queries for accept:
-    // 1) COUNT check, 2) RPC call, 3) contract lookup
-    mockPool.query
-      .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 })  // COUNT pre-check
-      .mockResolvedValueOnce({  // accept_proposal_atomic RPC
-        rows: [{ result: JSON.stringify({
-          contract: { id: 'c-1', freelancer_id: 'f-1', employer_id: 'emp-1', project_id: 'p-1', status: 'pending', total_amount: 1000 },
-          proposal: { id: 'prop-1', status: 'accepted' },
-          project: { id: 'p-1', status: 'in_progress' },
-          milestones: [{ id: 'm-1', title: 'MS1', amount: 1000 }],
-          limitReached: true,
-        }) }],
-      })
-      .mockResolvedValueOnce({ rows: [{ id: 'c-1' }], rowCount: 1 });  // contract lookup
+    // Mock the repository calls for accept proposal:
+    // 1) updateProposal (accept), 2) contractRepository.create, 3) getProposalsByProject
+    mockProposalRepository.updateProposal.mockResolvedValue({
+      id: 'prop-1', status: 'accepted', project_id: 'p-1',
+      freelancer_id: 'f-1', proposed_rate: 1000,
+    });
+    mockContractRepository.create.mockResolvedValue({
+      id: 'c-1', freelancer_id: 'f-1', employer_id: 'emp-1', project_id: 'p-1', status: 'pending', total_amount: 1000,
+    });
+    mockProposalRepository.getProposalsByProject.mockResolvedValue({ items: [], hasMore: false, total: 0 });
+    mockUserRepository.getUserById.mockResolvedValue({ id: 'emp-1', wallet_address: null });
 
     const result = await acceptProposal('prop-1', 'emp-1');
     expect(result.success).toBe(true);
@@ -221,21 +219,17 @@ describe('Proposal Service - notification failure catch blocks', () => {
       milestones: [{ title: 'MS1', amount: 1000, due_date: '2025-06-01' }],
       freelancer_limit: 1,
     });
+    mockProposalRepository.getAcceptedProposalCount.mockResolvedValue(0);
 
-    // Mock the multiple pool queries for accept:
-    // 1) COUNT check, 2) RPC call, 3) contract lookup
-    mockPool.query
-      .mockResolvedValueOnce({ rows: [{ count: '0' }], rowCount: 1 })  // COUNT pre-check
-      .mockResolvedValueOnce({  // accept_proposal_atomic RPC
-        rows: [{ result: JSON.stringify({
-          contract: { id: 'c-1', freelancer_id: 'f-1', employer_id: 'emp-1', project_id: 'p-1', status: 'pending', total_amount: 1000 },
-          proposal: { id: 'prop-1', status: 'accepted' },
-          project: { id: 'p-1', status: 'in_progress' },
-          milestones: [{ id: 'm-1', title: 'MS1', amount: 1000 }],
-          limitReached: true,
-        }) }],
-      })
-      .mockResolvedValueOnce({ rows: [{ id: 'c-1' }], rowCount: 1 });  // contract lookup
+    // Mock the repository calls for accept proposal
+    mockProposalRepository.updateProposal.mockResolvedValue({
+      id: 'prop-1', status: 'accepted', project_id: 'p-1',
+      freelancer_id: 'f-1', proposed_rate: 1000,
+    });
+    mockContractRepository.create.mockResolvedValue({
+      id: 'c-1', freelancer_id: 'f-1', employer_id: 'emp-1', project_id: 'p-1', status: 'pending', total_amount: 1000,
+    });
+    mockProposalRepository.getProposalsByProject.mockResolvedValue({ items: [], hasMore: false, total: 0 });
 
     // Should succeed even when blockchain throws (line 404 catch block)
     const result = await acceptProposal('prop-1', 'emp-1');

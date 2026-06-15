@@ -1,6 +1,10 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { UserEntity } from '../repositories/user-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
+import { projectRepository } from '../repositories/project-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
+import { disputeRepository } from '../repositories/dispute-repository.js';
+import { transactionRepository } from '../repositories/transaction-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 
 export interface PlatformStats {
@@ -52,36 +56,47 @@ export interface SystemHealth {
  */
 export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> {
   try {
-    const query = `
-      SELECT
-        (SELECT COUNT(*) FROM users) as total_users,
-        (SELECT COUNT(*) FROM users WHERE role = 'freelancer') as total_freelancers,
-        (SELECT COUNT(*) FROM users WHERE role = 'employer') as total_employers,
-        (SELECT COUNT(*) FROM projects) as total_projects,
-        (SELECT COUNT(*) FROM projects WHERE status IN ('open', 'in_progress')) as active_projects,
-        (SELECT COUNT(*) FROM projects WHERE status = 'completed') as completed_projects,
-        (SELECT AVG(budget) FROM projects) as avg_budget,
-        (SELECT COUNT(*) FROM contracts) as total_contracts,
-        (SELECT COUNT(*) FROM disputes) as total_disputes,
-        (SELECT SUM(amount) FROM transactions WHERE status = 'completed') as total_volume
-    `;
+    const [allUsers, allProjects, allContracts, allDisputes, allTransactions] = await Promise.all([
+      userRepository.queryAll(),
+      projectRepository.queryAll(),
+      contractRepository.queryAll(),
+      disputeRepository.queryAll(),
+      transactionRepository.queryAll(),
+    ]);
 
-    const result = await pool.query(query);
-    const stats = result.rows[0];
+    const totalUsers = allUsers.length;
+    const totalFreelancers = allUsers.filter(u => u.role === 'freelancer').length;
+    const totalEmployers = allUsers.filter(u => u.role === 'employer').length;
+
+    const totalProjects = allProjects.length;
+    const activeProjects = allProjects.filter(p => p.status === 'open' || p.status === 'in_progress').length;
+    const completedProjects = allProjects.filter(p => p.status === 'completed').length;
+    const budgets = allProjects.map(p => p.budget).filter(b => typeof b === 'number');
+    const averageProjectBudget = budgets.length > 0
+      ? Math.round((budgets.reduce((sum, b) => sum + b, 0) / budgets.length) * 100) / 100
+      : 0;
+
+    const totalContracts = allContracts.length;
+    const totalDisputes = allDisputes.length;
+
+    const completedTransactions = allTransactions.filter(t => t.status === 'completed');
+    const totalTransactionVolume = Math.round(
+      completedTransactions.reduce((sum, t) => sum + (t.amount || 0), 0) * 100
+    ) / 100;
 
     return {
       success: true,
       data: {
-        totalUsers: parseInt(stats.total_users, 10),
-        totalFreelancers: parseInt(stats.total_freelancers, 10),
-        totalEmployers: parseInt(stats.total_employers, 10),
-        totalProjects: parseInt(stats.total_projects, 10),
-        totalContracts: parseInt(stats.total_contracts, 10),
-        totalDisputes: parseInt(stats.total_disputes, 10),
-        totalTransactionVolume: Math.round(parseFloat(stats.total_volume || '0') * 100) / 100,
-        activeProjects: parseInt(stats.active_projects, 10),
-        completedProjects: parseInt(stats.completed_projects, 10),
-        averageProjectBudget: Math.round(parseFloat(stats.avg_budget || '0') * 100) / 100,
+        totalUsers,
+        totalFreelancers,
+        totalEmployers,
+        totalProjects,
+        totalContracts,
+        totalDisputes,
+        totalTransactionVolume,
+        activeProjects,
+        completedProjects,
+        averageProjectBudget,
       },
     };
   } catch (error) {
@@ -101,49 +116,33 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
  */
 export async function getUserManagement(filters?: UserFilters): Promise<ServiceResult<UserManagementData>> {
   try {
-    let query = 'SELECT * FROM users WHERE 1=1';
-    let countQuery = 'SELECT COUNT(*) FROM users WHERE 1=1';
-    const params: any[] = [];
-    let pIndex = 1;
+    const allUsers = await userRepository.queryAll();
+
+    let filtered = allUsers;
 
     if (filters?.role) {
-      query += ` AND role = $${pIndex}`;
-      countQuery += ` AND role = $${pIndex}`;
-      params.push(filters.role);
-      pIndex++;
+      filtered = filtered.filter(u => u.role === filters.role);
     }
     if (filters?.status) {
-      query += ` AND is_suspended = $${pIndex}`;
-      countQuery += ` AND is_suspended = $${pIndex}`;
-      params.push(filters.status === 'suspended');
-      pIndex++;
+      filtered = filtered.filter(u => u.is_suspended === (filters.status === 'suspended'));
     }
     if (filters?.kycStatus) {
-      query += ` AND kyc_status = $${pIndex}`;
-      countQuery += ` AND kyc_status = $${pIndex}`;
-      params.push(filters.kycStatus);
-      pIndex++;
+      filtered = filtered.filter(u => (u as any).kyc_status === filters.kycStatus);
     }
     if (filters?.search) {
-      const safeSearch = `%${filters.search.replace(/[%_]/g, '\\$&')}%`;
-      query += ` AND (email ILIKE $${pIndex} OR name ILIKE $${pIndex})`;
-      countQuery += ` AND (email ILIKE $${pIndex} OR name ILIKE $${pIndex})`;
-      params.push(safeSearch);
-      pIndex++;
+      const term = filters.search.toLowerCase();
+      filtered = filtered.filter(u =>
+        (u.email?.toLowerCase().includes(term)) || (u.name?.toLowerCase().includes(term))
+      );
     }
 
-    query += ' ORDER BY created_at DESC';
-
-    const [results, countResult] = await Promise.all([
-      pool.query(query, params),
-      pool.query(countQuery, params)
-    ]);
+    filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     return {
       success: true,
       data: {
-        users: results.rows as UserEntity[],
-        total: parseInt(countResult.rows[0].count, 10),
+        users: filtered,
+        total: filtered.length,
       },
     };
   } catch (error) {
@@ -163,24 +162,23 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
  */
 export async function suspendUser(userId: string, reason: string): Promise<ServiceResult<UserEntity>> {
   try {
-    const result = await pool.query(
-      `UPDATE users 
-       SET is_suspended = true, suspension_reason = $1, updated_at = NOW() 
-       WHERE id = $2 
-       RETURNING *`,
-      [reason, userId]
-    );
+    const existing = await userRepository.getUserById(userId);
 
-    if (result.rows.length === 0) {
+    if (!existing) {
       return {
         success: false,
         error: { code: 'NOT_FOUND', message: 'User not found' }
       };
     }
 
+    const updated = await userRepository.updateUser(userId, {
+      is_suspended: true,
+      suspension_reason: reason,
+    } as Partial<UserEntity>);
+
     return {
       success: true,
-      data: result.rows[0] as UserEntity,
+      data: updated as UserEntity,
     };
   } catch (error) {
     logger.error('Unexpected error in suspendUser', { error, userId, reason });
@@ -199,24 +197,23 @@ export async function suspendUser(userId: string, reason: string): Promise<Servi
  */
 export async function unsuspendUser(userId: string): Promise<ServiceResult<UserEntity>> {
   try {
-    const result = await pool.query(
-      `UPDATE users 
-       SET is_suspended = false, suspension_reason = NULL, updated_at = NOW() 
-       WHERE id = $1 
-       RETURNING *`,
-      [userId]
-    );
+    const existing = await userRepository.getUserById(userId);
 
-    if (result.rows.length === 0) {
+    if (!existing) {
       return {
         success: false,
         error: { code: 'NOT_FOUND', message: 'User not found' }
       };
     }
 
+    const updated = await userRepository.updateUser(userId, {
+      is_suspended: false,
+      suspension_reason: null,
+    } as Partial<UserEntity>);
+
     return {
       success: true,
-      data: result.rows[0] as UserEntity,
+      data: updated as UserEntity,
     };
   } catch (error) {
     logger.error('Unexpected error in unsuspendUser', { error, userId });
@@ -235,21 +232,22 @@ export async function unsuspendUser(userId: string): Promise<ServiceResult<UserE
  */
 export async function verifyUser(userId: string): Promise<ServiceResult<UserEntity>> {
   try {
-    const result = await pool.query(
-      "UPDATE users SET is_verified = true, updated_at = NOW() WHERE id = $1 RETURNING *",
-      [userId]
-    );
+    const existing = await userRepository.getUserById(userId);
 
-    if (result.rows.length === 0) {
+    if (!existing) {
       return {
         success: false,
         error: { code: 'NOT_FOUND', message: 'User not found' }
       };
     }
 
+    const updated = await userRepository.updateUser(userId, {
+      is_verified: true,
+    } as Partial<UserEntity>);
+
     return {
       success: true,
-      data: result.rows[0] as UserEntity,
+      data: updated as UserEntity,
     };
   } catch (error) {
     logger.error('Unexpected error in verifyUser', { error, userId });
@@ -271,44 +269,37 @@ export async function updateUser(
   updates: { name?: string; role?: string; isActive?: boolean }
 ): Promise<ServiceResult<UserEntity>> {
   try {
-    const columns = [];
-    const values = [];
-    let pIndex = 1;
+    const updatesObj: Partial<UserEntity> = {};
 
     if (updates.name !== undefined) {
-      columns.push(`name = $${pIndex++}`);
-      values.push(updates.name);
+      updatesObj.name = updates.name;
     }
     if (updates.role !== undefined) {
-      columns.push(`role = $${pIndex++}`);
-      values.push(updates.role);
+      updatesObj.role = updates.role as any;
     }
     if (updates.isActive !== undefined) {
-      columns.push(`is_suspended = $${pIndex++}`);
-      values.push(!updates.isActive);
+      updatesObj.is_suspended = !updates.isActive;
     }
 
-    if (columns.length === 0) {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
-      return { success: true, data: result.rows[0] as UserEntity };
+    if (Object.keys(updatesObj).length === 0) {
+      const existing = await userRepository.getUserById(userId);
+      return { success: true, data: existing as UserEntity };
     }
 
-    values.push(userId);
-    const result = await pool.query(
-      `UPDATE users SET ${columns.join(', ')}, updated_at = NOW() WHERE id = $${pIndex} RETURNING *`,
-      values
-    );
+    const existing = await userRepository.getUserById(userId);
 
-    if (result.rows.length === 0) {
+    if (!existing) {
       return {
         success: false,
         error: { code: 'NOT_FOUND', message: 'User not found' }
       };
     }
 
+    const updated = await userRepository.updateUser(userId, updatesObj);
+
     return {
       success: true,
-      data: result.rows[0] as UserEntity,
+      data: updated as UserEntity,
     };
   } catch (error) {
     logger.error('Unexpected error in updateUser', { error, userId, updates });
@@ -327,19 +318,11 @@ export async function updateUser(
  */
 export async function getDisputeManagement(filters?: DisputeFilters): Promise<ServiceResult<DisputeManagementData>> {
   try {
-    let query = 'SELECT * FROM disputes WHERE 1=1';
-    const params: any[] = [];
-    let pIndex = 1;
-
+    const disputeOptions: { limit: number; status?: string } = { limit: 1000 };
     if (filters?.status) {
-      query += ` AND status = $${pIndex++}`;
-      params.push(filters.status);
+      disputeOptions.status = filters.status;
     }
-
-    query += ' ORDER BY created_at DESC';
-
-    const result = await pool.query(query, params);
-    const disputes = result.rows;
+    const { items: disputes } = await disputeRepository.getAllDisputes(disputeOptions);
 
     const pendingCount = disputes.filter((d: any) => d.status === 'pending').length;
     const resolvedCount = disputes.filter((d: any) => d.status === 'resolved').length;
@@ -370,10 +353,10 @@ export async function getDisputeManagement(filters?: DisputeFilters): Promise<Se
  */
 export async function getSystemHealth(): Promise<ServiceResult<SystemHealth>> {
   try {
-    // Check database connectivity
+    // Check Appwrite connectivity via a lightweight query
     let databaseHealth: 'healthy' | 'unhealthy' = 'healthy';
     try {
-      await pool.query('SELECT 1');
+      await userRepository.queryAll();
     } catch (error) {
       logger.error('Database health check failed', { error });
       databaseHealth = 'unhealthy';

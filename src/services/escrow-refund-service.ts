@@ -1,4 +1,3 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type {
@@ -9,6 +8,9 @@ import type {
 } from '../models/escrow-refund.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
+import { refundRequestRepository } from '../repositories/refund-request-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
+import { milestoneRepository } from '../repositories/milestone-repository.js';
 
 /**
  * Create refund request
@@ -18,19 +20,14 @@ export async function createRefundRequest(
 ): Promise<ServiceResult<RefundRequest>> {
   try {
     // Get contract details
-    const contractResult = await pool.query(
-      'SELECT * FROM contracts WHERE id = $1',
-      [input.contractId]
-    );
+    const contract = await contractRepository.getContractById(input.contractId);
 
-    if (contractResult.rows.length === 0) {
+    if (!contract) {
       return {
         success: false,
         error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
       };
     }
-
-    const contract = contractResult.rows[0];
 
     // Only allow refund on active contracts
     if (contract.status !== 'active') {
@@ -53,12 +50,9 @@ export async function createRefundRequest(
     }
 
     // Check for existing pending refund request
-    const existingRefundsResult = await pool.query(
-      'SELECT id FROM refund_requests WHERE contract_id = $1 AND status = $2',
-      [input.contractId, 'pending']
-    );
+    const existingRefund = await refundRequestRepository.findPendingByContract(input.contractId);
 
-    if (existingRefundsResult.rows.length > 0) {
+    if (existingRefund) {
       return {
         success: false,
         error: { code: 'DUPLICATE_REQUEST', message: 'There is already a pending refund request for this contract' },
@@ -68,19 +62,16 @@ export async function createRefundRequest(
     // Determine if partial refund
     const isPartial = input.amount !== undefined && input.amount < contract.total_amount;
 
-    // Insert refund request
-    const refundResult = await pool.query(
-      `INSERT INTO refund_requests (contract_id, requested_by, amount, is_partial, reason, status, created_at, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW())
-       RETURNING *`,
-      [input.contractId, input.requestedBy, input.amount || contract.total_amount, isPartial, input.reason, 'pending']
-    );
-
-    if (refundResult.rows.length === 0) {
-      throw new Error('Failed to create refund request');
-    }
-
-    const refund = refundResult.rows[0];
+    // Create refund request
+    const refund = await refundRequestRepository.create({
+      id: '',
+      contract_id: input.contractId,
+      requested_by: input.requestedBy,
+      amount: input.amount || contract.total_amount,
+      is_partial: isPartial,
+      reason: input.reason,
+      status: 'pending',
+    });
 
     // Notify other party
     const otherPartyId = contract.freelancer_id === input.requestedBy
@@ -104,7 +95,7 @@ export async function createRefundRequest(
 
     logger.info(`Refund request created for contract ${input.contractId}`);
 
-    return { success: true, data: refund as RefundRequest };
+    return { success: true, data: refund as unknown as RefundRequest };
   } catch (error) {
     logger.error('Failed to create refund request:', error);
     return {
@@ -124,28 +115,22 @@ export async function approveRefund(
   input: ApproveRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
   try {
-    // Get refund request
-    const refundResult = await pool.query(
-      `SELECT r.*, c.freelancer_id, c.employer_id, c.total_amount, c.status as contract_status
-       FROM refund_requests r
-       INNER JOIN contracts c ON r.contract_id = c.id
-       WHERE r.id = $1`,
-      [input.refundId]
-    );
+    // Get refund request with contract data
+    const refundData = await refundRequestRepository.findWithContract(input.refundId);
 
-    if (refundResult.rows.length === 0) {
+    if (!refundData || !refundData.contract) {
       return {
         success: false,
         error: { code: 'REFUND_NOT_FOUND', message: 'Refund request not found' },
       };
     }
 
-    const refund = refundResult.rows[0];
+    const { contract, ...refund } = refundData;
 
     // Verify approver is the other party
-    const otherPartyId = refund.freelancer_id === refund.requested_by
-      ? refund.employer_id
-      : refund.freelancer_id;
+    const otherPartyId = contract.freelancer_id === refund.requested_by
+      ? contract.employer_id
+      : contract.freelancer_id;
 
     if (otherPartyId !== input.approvedBy) {
       return {
@@ -163,43 +148,37 @@ export async function approveRefund(
     }
 
     // Update refund request
-    const updateResult = await pool.query(
-      `UPDATE refund_requests 
-       SET status = $1, approved_by = $2, approved_at = NOW(), updated_at = NOW()
-       WHERE id = $3
-       RETURNING *`,
-      ['approved', input.approvedBy, input.refundId]
-    );
+    const updated = await refundRequestRepository.update(input.refundId, {
+      status: 'approved',
+      approved_by: input.approvedBy,
+      approved_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
 
-    if (updateResult.rows.length === 0) {
+    if (!updated) {
       throw new Error('Failed to approve refund');
     }
 
-    const updated = updateResult.rows[0];
-
     // Execute blockchain refund for all non-approved milestones
     try {
-      if (refund.escrow_address) {
+      if (contract.escrow_address) {
         const { refundMilestone } = await import('./escrow-blockchain.js');
 
         // Get all milestones for this contract to determine correct indices
-        const milestonesResult = await pool.query(
-          'SELECT id, status FROM milestones WHERE contract_id = $1 ORDER BY due_date ASC',
-          [refund.contract_id]
-        );
+        const milestones = await milestoneRepository.findByContract(refund.contract_id);
 
-        const pendingMilestones = milestonesResult.rows
+        const pendingMilestones = milestones
           .map((m: any, index: number) => ({ ...m, index }))
           .filter((m: any) => m.status !== 'approved');
 
         for (const milestone of pendingMilestones) {
           try {
-            await refundMilestone(refund.escrow_address, milestone.index);
+            await refundMilestone(contract.escrow_address, milestone.index);
             logger.info('Blockchain refund executed for milestone', {
               refundId: input.refundId,
               milestoneIndex: milestone.index,
               milestoneId: milestone.id,
-              escrowAddress: refund.escrow_address,
+              escrowAddress: contract.escrow_address,
             });
           } catch (milestoneRefundError) {
             logger.error('Failed to refund individual milestone on-chain', {
@@ -225,16 +204,20 @@ export async function approveRefund(
     }
 
     // Update contract status to cancelled after refund approval
-    await pool.query(
-      "UPDATE contracts SET status = 'cancelled', updated_at = NOW() WHERE id = $1",
-      [refund.contract_id]
-    );
+    await contractRepository.updateContract(refund.contract_id, {
+      status: 'cancelled',
+    });
 
     // Cancel any other pending refund requests for this contract
-    await pool.query(
-      "UPDATE refund_requests SET status = 'cancelled', updated_at = NOW() WHERE contract_id = $1 AND status = 'pending' AND id != $2",
-      [refund.contract_id, input.refundId]
-    );
+    const otherRefunds = await refundRequestRepository.findByContract(refund.contract_id);
+    for (const r of otherRefunds) {
+      if (r.status === 'pending' && r.id !== input.refundId) {
+        await refundRequestRepository.update(r.id, {
+          status: 'cancelled',
+          updated_at: new Date().toISOString(),
+        });
+      }
+    }
 
     // Notify requester
     const notificationResult = await createNotification({
@@ -254,7 +237,7 @@ export async function approveRefund(
 
     logger.info(`Refund ${input.refundId} approved by ${input.approvedBy}`);
 
-    return { success: true, data: updated as RefundRequest };
+    return { success: true, data: updated as unknown as RefundRequest };
   } catch (error) {
     logger.error('Failed to approve refund:', error);
     return {
@@ -274,28 +257,22 @@ export async function rejectRefund(
   input: RejectRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
   try {
-    // Get refund request
-    const refundResult = await pool.query(
-      `SELECT r.*, c.freelancer_id, c.employer_id
-       FROM refund_requests r
-       INNER JOIN contracts c ON r.contract_id = c.id
-       WHERE r.id = $1`,
-      [input.refundId]
-    );
+    // Get refund request with contract data
+    const refundData = await refundRequestRepository.findWithContract(input.refundId);
 
-    if (refundResult.rows.length === 0) {
+    if (!refundData || !refundData.contract) {
       return {
         success: false,
         error: { code: 'REFUND_NOT_FOUND', message: 'Refund request not found' },
       };
     }
 
-    const refund = refundResult.rows[0];
+    const { contract, ...refund } = refundData;
 
     // Verify rejector is the other party
-    const otherPartyId = refund.freelancer_id === refund.requested_by
-      ? refund.employer_id
-      : refund.freelancer_id;
+    const otherPartyId = contract.freelancer_id === refund.requested_by
+      ? contract.employer_id
+      : contract.freelancer_id;
 
     if (otherPartyId !== input.rejectedBy) {
       return {
@@ -313,19 +290,17 @@ export async function rejectRefund(
     }
 
     // Update refund request
-    const updateResult = await pool.query(
-      `UPDATE refund_requests 
-       SET status = $1, rejected_by = $2, rejection_reason = $3, rejected_at = NOW(), updated_at = NOW()
-       WHERE id = $4
-       RETURNING *`,
-      ['rejected', input.rejectedBy, input.reason, input.refundId]
-    );
+    const updated = await refundRequestRepository.update(input.refundId, {
+      status: 'rejected',
+      rejected_by: input.rejectedBy,
+      rejection_reason: input.reason,
+      rejected_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
 
-    if (updateResult.rows.length === 0) {
+    if (!updated) {
       throw new Error('Failed to reject refund');
     }
-
-    const updated = updateResult.rows[0];
 
     // Notify requester
     const notificationResult = await createNotification({
@@ -345,7 +320,7 @@ export async function rejectRefund(
 
     logger.info(`Refund ${input.refundId} rejected by ${input.rejectedBy}`);
 
-    return { success: true, data: updated as RefundRequest };
+    return { success: true, data: updated as unknown as RefundRequest };
   } catch (error) {
     logger.error('Failed to reject refund:', error);
     return {
@@ -367,19 +342,14 @@ export async function getContractRefunds(
 ): Promise<ServiceResult<RefundRequest[]>> {
   try {
     // Verify user is involved
-    const contractResult = await pool.query(
-      'SELECT * FROM contracts WHERE id = $1',
-      [contractId]
-    );
+    const contract = await contractRepository.getContractById(contractId);
 
-    if (contractResult.rows.length === 0) {
+    if (!contract) {
       return {
         success: false,
         error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
       };
     }
-
-    const contract = contractResult.rows[0];
 
     const isInvolved =
       contract.freelancer_id === userId ||
@@ -393,12 +363,9 @@ export async function getContractRefunds(
     }
 
     // Get refund requests
-    const refundsResult = await pool.query(
-      'SELECT * FROM refund_requests WHERE contract_id = $1 ORDER BY created_at DESC',
-      [contractId]
-    );
+    const refunds = await refundRequestRepository.findByContract(contractId);
 
-    return { success: true, data: refundsResult.rows as RefundRequest[] };
+    return { success: true, data: refunds as unknown as RefundRequest[] };
   } catch (error) {
     logger.error('Failed to get contract refunds:', error);
     return {

@@ -13,9 +13,32 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: mockPoolObj,
+const mockDisputeRepository = {
+  getDisputeById: jest.fn(),
+};
+
+const mockContractRepository = {
+  getContractById: jest.fn(),
+};
+
+const mockDisputeEvidenceRepository = {
+  createEvidence: jest.fn(),
+  findByDispute: jest.fn(),
+  getEvidenceById: jest.fn(),
+  updateEvidence: jest.fn(),
+  deleteEvidence: jest.fn(),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
+  disputeRepository: mockDisputeRepository,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepository,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/dispute-evidence-repository.ts'), () => ({
+  disputeEvidenceRepository: mockDisputeEvidenceRepository,
 }));
 
 const mockCreateNotification = jest.fn<any>().mockResolvedValue({ success: true, data: { id: 'notif-1' } });
@@ -30,13 +53,64 @@ jest.unstable_mockModule(resolveModule('src/services/notification-delivery-servi
   notificationEmitter: { emitToUser: jest.fn() },
 }));
 
-describe('Dispute Evidence Service', () => {
-  let mockPool: any;
+function makeDisputeEntity(overrides: Record<string, any> = {}) {
+  return {
+    id: 'dispute-1',
+    contract_id: 'contract-1',
+    milestone_id: 'milestone-1',
+    initiator_id: 'freelancer-1',
+    reason: 'Dispute reason',
+    evidence: [],
+    status: 'open',
+    resolution: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
 
+function makeContractEntity(overrides: Record<string, any> = {}) {
+  return {
+    id: 'contract-1',
+    project_id: 'project-1',
+    proposal_id: 'proposal-1',
+    freelancer_id: 'freelancer-1',
+    employer_id: 'employer-1',
+    escrow_address: '0xabc',
+    base_amount: 1000,
+    rush_fee: 0,
+    total_amount: 1000,
+    status: 'active',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+function makeEvidenceEntity(overrides: Record<string, any> = {}) {
+  return {
+    id: 'ev-1',
+    dispute_id: 'dispute-1',
+    submitted_by: 'freelancer-1',
+    evidence_type: 'document',
+    file_url: 'https://file.com/doc.pdf',
+    description: 'Work proof',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+describe('Dispute Evidence Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = mockPoolObj;
-    mockPool.query.mockReset();
+    mockDisputeRepository.getDisputeById.mockReset();
+    mockContractRepository.getContractById.mockReset();
+    mockDisputeEvidenceRepository.createEvidence.mockReset();
+    mockDisputeEvidenceRepository.findByDispute.mockReset();
+    mockDisputeEvidenceRepository.getEvidenceById.mockReset();
+    mockDisputeEvidenceRepository.updateEvidence.mockReset();
+    mockDisputeEvidenceRepository.deleteEvidence.mockReset();
   });
 
   const importModule = async () => {
@@ -47,14 +121,14 @@ describe('Dispute Evidence Service', () => {
     it('should submit evidence successfully', async () => {
       const { submitEvidence } = await importModule();
 
-      // Verify dispute exists
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'dispute-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', arbiter_id: 'arbiter-1' }],
-        rowCount: 1,
-      });
-      // Insert evidence
-      const evidence = { id: 'ev-1', dispute_id: 'dispute-1', submitted_by: 'freelancer-1', evidence_type: 'document', file_url: 'https://file.com/doc.pdf', description: 'Work proof' };
-      mockPool.query.mockResolvedValueOnce({ rows: [evidence], rowCount: 1 });
+      // Mock dispute with arbiter resolution
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+        resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
+      }));
+      // Mock contract
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+      // Mock evidence creation
+      mockDisputeEvidenceRepository.createEvidence.mockResolvedValueOnce(makeEvidenceEntity());
 
       const result = await submitEvidence({
         disputeId: 'dispute-1',
@@ -65,7 +139,13 @@ describe('Dispute Evidence Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(evidence);
+      expect(result.data).toBeDefined();
+      expect(result.data.id).toBe('ev-1');
+      expect(result.data.disputeId).toBe('dispute-1');
+      expect(result.data.submittedBy).toBe('freelancer-1');
+      expect(result.data.evidenceType).toBe('document');
+      expect(result.data.fileUrl).toBe('https://file.com/doc.pdf');
+      expect(result.data.description).toBe('Work proof');
       // Should notify arbiter and other party
       expect(mockCreateNotification).toHaveBeenCalledTimes(2);
     });
@@ -73,12 +153,14 @@ describe('Dispute Evidence Service', () => {
     it('should submit evidence when no arbiter assigned', async () => {
       const { submitEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'dispute-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', arbiter_id: null }],
-        rowCount: 1,
-      });
-      const evidence = { id: 'ev-1', dispute_id: 'dispute-1', submitted_by: 'freelancer-1' };
-      mockPool.query.mockResolvedValueOnce({ rows: [evidence], rowCount: 1 });
+      // Mock dispute without resolution (no arbiter)
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+        resolution: null,
+      }));
+      // Mock contract
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+      // Mock evidence creation
+      mockDisputeEvidenceRepository.createEvidence.mockResolvedValueOnce(makeEvidenceEntity());
 
       const result = await submitEvidence({
         disputeId: 'dispute-1',
@@ -96,7 +178,7 @@ describe('Dispute Evidence Service', () => {
     it('should fail when dispute not found', async () => {
       const { submitEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(null);
 
       const result = await submitEvidence({
         disputeId: 'nonexistent',
@@ -113,10 +195,8 @@ describe('Dispute Evidence Service', () => {
     it('should fail when user is not involved in dispute', async () => {
       const { submitEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'dispute-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', arbiter_id: null }],
-        rowCount: 1,
-      });
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
 
       const result = await submitEvidence({
         disputeId: 'dispute-1',
@@ -133,11 +213,9 @@ describe('Dispute Evidence Service', () => {
     it('should handle insert failure', async () => {
       const { submitEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'dispute-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', arbiter_id: null }],
-        rowCount: 1,
-      });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+      mockDisputeEvidenceRepository.createEvidence.mockRejectedValueOnce(new Error('Insert failed'));
 
       const result = await submitEvidence({
         disputeId: 'dispute-1',
@@ -154,7 +232,7 @@ describe('Dispute Evidence Service', () => {
     it('should handle database errors', async () => {
       const { submitEvidence } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDisputeRepository.getDisputeById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await submitEvidence({
         disputeId: 'dispute-1',
@@ -173,15 +251,14 @@ describe('Dispute Evidence Service', () => {
     it('should return evidence for authorized user (freelancer)', async () => {
       const { getDisputeEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'dispute-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', arbiter_id: null }],
-        rowCount: 1,
-      });
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+
       const evidenceList = [
-        { id: 'ev-1', dispute_id: 'dispute-1', submitted_by: 'freelancer-1' },
-        { id: 'ev-2', dispute_id: 'dispute-1', submitted_by: 'employer-1' },
+        makeEvidenceEntity({ id: 'ev-1', submitted_by: 'freelancer-1' }),
+        makeEvidenceEntity({ id: 'ev-2', submitted_by: 'employer-1' }),
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: evidenceList, rowCount: 2 });
+      mockDisputeEvidenceRepository.findByDispute.mockResolvedValueOnce(evidenceList);
 
       const result = await getDisputeEvidence('dispute-1', 'freelancer-1');
 
@@ -192,11 +269,12 @@ describe('Dispute Evidence Service', () => {
     it('should allow arbiter to view evidence', async () => {
       const { getDisputeEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'dispute-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', arbiter_id: 'arbiter-1' }],
-        rowCount: 1,
-      });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'ev-1' }], rowCount: 1 });
+      // Mock dispute with resolution indicating arbiter
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+        resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
+      }));
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+      mockDisputeEvidenceRepository.findByDispute.mockResolvedValueOnce([makeEvidenceEntity()]);
 
       const result = await getDisputeEvidence('dispute-1', 'arbiter-1');
 
@@ -206,7 +284,7 @@ describe('Dispute Evidence Service', () => {
     it('should fail when dispute not found', async () => {
       const { getDisputeEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(null);
 
       const result = await getDisputeEvidence('nonexistent', 'user-1');
 
@@ -217,10 +295,8 @@ describe('Dispute Evidence Service', () => {
     it('should fail when user is not authorized', async () => {
       const { getDisputeEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'dispute-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', arbiter_id: null }],
-        rowCount: 1,
-      });
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+      mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
 
       const result = await getDisputeEvidence('dispute-1', 'outsider');
 
@@ -231,7 +307,7 @@ describe('Dispute Evidence Service', () => {
     it('should handle database errors', async () => {
       const { getDisputeEvidence } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDisputeRepository.getDisputeById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getDisputeEvidence('dispute-1', 'user-1');
 
@@ -244,11 +320,12 @@ describe('Dispute Evidence Service', () => {
     it('should delete evidence successfully', async () => {
       const { deleteEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'ev-1', submitted_by: 'user-1', verified_at: null }],
-        rowCount: 1,
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        submitted_by: 'user-1',
+        verified_at: undefined,
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockDisputeEvidenceRepository.deleteEvidence.mockResolvedValueOnce(true);
 
       const result = await deleteEvidence('ev-1', 'user-1');
 
@@ -258,7 +335,7 @@ describe('Dispute Evidence Service', () => {
     it('should fail when evidence not found', async () => {
       const { deleteEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce(null);
 
       const result = await deleteEvidence('nonexistent', 'user-1');
 
@@ -269,9 +346,10 @@ describe('Dispute Evidence Service', () => {
     it('should fail when user is not the submitter', async () => {
       const { deleteEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'ev-1', submitted_by: 'other-user', verified_at: null }],
-        rowCount: 1,
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        submitted_by: 'other-user',
+        verified_at: undefined,
       });
 
       const result = await deleteEvidence('ev-1', 'user-1');
@@ -283,9 +361,10 @@ describe('Dispute Evidence Service', () => {
     it('should fail when evidence is already verified', async () => {
       const { deleteEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'ev-1', submitted_by: 'user-1', verified_at: '2025-01-01' }],
-        rowCount: 1,
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        submitted_by: 'user-1',
+        verified_at: '2025-01-01',
       });
 
       const result = await deleteEvidence('ev-1', 'user-1');
@@ -297,7 +376,7 @@ describe('Dispute Evidence Service', () => {
     it('should handle database errors', async () => {
       const { deleteEvidence } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDisputeEvidenceRepository.getEvidenceById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await deleteEvidence('ev-1', 'user-1');
 
@@ -310,12 +389,35 @@ describe('Dispute Evidence Service', () => {
     it('should verify evidence successfully', async () => {
       const { verifyEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'ev-1', arbiter_id: 'arbiter-1', dispute_id: 'dispute-1' }],
-        rowCount: 1,
+      // Mock evidence with dispute_id
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        dispute_id: 'dispute-1',
+        submitted_by: 'freelancer-1',
+        evidence_type: 'document',
+        description: 'Proof',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
-      const updated = { id: 'ev-1', verified_by: 'arbiter-1', verified_at: '2025-01-01' };
-      mockPool.query.mockResolvedValueOnce({ rows: [updated], rowCount: 1 });
+
+      // Mock dispute with arbiter
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+        resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
+      }));
+
+      // Mock update
+      const updated = {
+        id: 'ev-1',
+        dispute_id: 'dispute-1',
+        submitted_by: 'freelancer-1',
+        evidence_type: 'document',
+        description: 'Proof',
+        verified_by: 'arbiter-1',
+        verified_at: '2025-01-01',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      mockDisputeEvidenceRepository.updateEvidence.mockResolvedValueOnce(updated);
 
       const result = await verifyEvidence({
         evidenceId: 'ev-1',
@@ -323,13 +425,13 @@ describe('Dispute Evidence Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(updated);
+      expect(result.data.verifiedBy).toBe('arbiter-1');
     });
 
     it('should fail when evidence not found', async () => {
       const { verifyEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce(null);
 
       const result = await verifyEvidence({
         evidenceId: 'nonexistent',
@@ -343,10 +445,20 @@ describe('Dispute Evidence Service', () => {
     it('should fail when user is not the arbiter', async () => {
       const { verifyEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'ev-1', arbiter_id: 'other-arbiter', dispute_id: 'dispute-1' }],
-        rowCount: 1,
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        dispute_id: 'dispute-1',
+        submitted_by: 'freelancer-1',
+        evidence_type: 'document',
+        description: 'Proof',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
+
+      // Mock dispute with different arbiter
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+        resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'other-arbiter', resolved_at: new Date().toISOString() },
+      }));
 
       const result = await verifyEvidence({
         evidenceId: 'ev-1',
@@ -360,11 +472,21 @@ describe('Dispute Evidence Service', () => {
     it('should handle update failure', async () => {
       const { verifyEvidence } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({
-        rows: [{ id: 'ev-1', arbiter_id: 'arbiter-1', dispute_id: 'dispute-1' }],
-        rowCount: 1,
+      mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+        id: 'ev-1',
+        dispute_id: 'dispute-1',
+        submitted_by: 'freelancer-1',
+        evidence_type: 'document',
+        description: 'Proof',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+        resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
+      }));
+
+      mockDisputeEvidenceRepository.updateEvidence.mockResolvedValueOnce(null);
 
       const result = await verifyEvidence({
         evidenceId: 'ev-1',
@@ -378,7 +500,7 @@ describe('Dispute Evidence Service', () => {
     it('should handle database errors', async () => {
       const { verifyEvidence } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockDisputeEvidenceRepository.getEvidenceById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await verifyEvidence({
         evidenceId: 'ev-1',

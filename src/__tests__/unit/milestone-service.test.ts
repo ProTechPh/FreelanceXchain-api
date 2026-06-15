@@ -13,11 +13,6 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: mockPoolObj,
-}));
-
 const mockCreateNotification = jest.fn<any>().mockResolvedValue({ success: true, data: { id: 'notif-1' } });
 const mockSendNotificationToUser = jest.fn<any>().mockReturnValue({ success: true });
 
@@ -30,13 +25,38 @@ jest.unstable_mockModule(resolveModule('src/services/notification-delivery-servi
   notificationEmitter: { emitToUser: jest.fn() },
 }));
 
-describe('Milestone Service', () => {
-  let mockPool: any;
+const mockMilestoneRepository = {
+  getById: jest.fn(),
+  update: jest.fn(),
+  findByContract: jest.fn(),
+  create: jest.fn(),
+  delete: jest.fn(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/milestone-repository.ts'), () => ({
+  milestoneRepository: mockMilestoneRepository,
+}));
 
+const mockContractRepository = {
+  getContractById: jest.fn(),
+  updateContract: jest.fn(),
+  getContractsByFreelancer: jest.fn(),
+  getContractsByEmployer: jest.fn(),
+  getContractsByProject: jest.fn(),
+  getUserContracts: jest.fn(),
+  create: jest.fn(),
+  delete: jest.fn(),
+};
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepository,
+}));
+
+describe('Milestone Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = mockPoolObj;
-    mockPool.query.mockReset();
+    mockMilestoneRepository.getById.mockReset();
+    mockMilestoneRepository.update.mockReset();
+    mockMilestoneRepository.findByContract.mockReset();
+    mockContractRepository.getContractById.mockReset();
   });
 
   const importModule = async () => {
@@ -48,7 +68,7 @@ describe('Milestone Service', () => {
       const { getMilestoneById } = await importModule();
 
       const milestone = { id: 'ms-1', title: 'Design Phase', status: 'pending', contractId: 'c-1' };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
 
       const result = await getMilestoneById('ms-1');
 
@@ -59,7 +79,7 @@ describe('Milestone Service', () => {
     it('should return NOT_FOUND when milestone does not exist', async () => {
       const { getMilestoneById } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockMilestoneRepository.getById.mockResolvedValueOnce(null);
 
       const result = await getMilestoneById('nonexistent');
 
@@ -70,7 +90,7 @@ describe('Milestone Service', () => {
     it('should handle database errors', async () => {
       const { getMilestoneById } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockMilestoneRepository.getById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getMilestoneById('ms-1');
 
@@ -84,13 +104,13 @@ describe('Milestone Service', () => {
       const { submitMilestone } = await importModule();
 
       // getMilestoneById
-      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
       // Get contract
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
       // Update milestone
       const updated = { ...milestone, status: 'submitted', submitted_at: '2025-01-01' };
-      mockPool.query.mockResolvedValueOnce({ rows: [updated], rowCount: 1 });
+      mockMilestoneRepository.update.mockResolvedValueOnce(updated);
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -105,10 +125,10 @@ describe('Milestone Service', () => {
     it('should increment revision count when resubmitting rejected milestone', async () => {
       const { submitMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'rejected', contractId: 'c-1', revisionCount: 1 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ ...milestone, status: 'submitted' }], rowCount: 1 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'rejected', contract_id: 'c-1', revision_count: 1 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockMilestoneRepository.update.mockResolvedValueOnce({ ...milestone, status: 'submitted' });
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -122,7 +142,7 @@ describe('Milestone Service', () => {
     it('should fail when milestone not found', async () => {
       const { submitMilestone } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockMilestoneRepository.getById.mockResolvedValueOnce(null);
 
       const result = await submitMilestone({
         milestoneId: 'nonexistent',
@@ -137,9 +157,9 @@ describe('Milestone Service', () => {
     it('should fail when contract not found', async () => {
       const { submitMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -154,9 +174,9 @@ describe('Milestone Service', () => {
     it('should fail when user is not the freelancer', async () => {
       const { submitMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'other-user', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'other-user', employer_id: 'employer-1', project_id: 'p-1' });
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -171,9 +191,9 @@ describe('Milestone Service', () => {
     it('should fail when milestone status is not pending or rejected', async () => {
       const { submitMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'approved', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'approved', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -188,10 +208,10 @@ describe('Milestone Service', () => {
     it('should handle update failure', async () => {
       const { submitMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockMilestoneRepository.update.mockResolvedValueOnce(null);
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -206,10 +226,10 @@ describe('Milestone Service', () => {
     it('should handle database errors', async () => {
       const { submitMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockMilestoneRepository.update.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -226,11 +246,11 @@ describe('Milestone Service', () => {
     it('should reject milestone with revision request', async () => {
       const { rejectMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
       const updated = { ...milestone, status: 'rejected' };
-      mockPool.query.mockResolvedValueOnce({ rows: [updated], rowCount: 1 });
+      mockMilestoneRepository.update.mockResolvedValueOnce(updated);
 
       const result = await rejectMilestone({
         milestoneId: 'ms-1',
@@ -246,11 +266,11 @@ describe('Milestone Service', () => {
     it('should reject milestone as disputed', async () => {
       const { rejectMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
       const updated = { ...milestone, status: 'disputed' };
-      mockPool.query.mockResolvedValueOnce({ rows: [updated], rowCount: 1 });
+      mockMilestoneRepository.update.mockResolvedValueOnce(updated);
 
       const result = await rejectMilestone({
         milestoneId: 'ms-1',
@@ -265,7 +285,7 @@ describe('Milestone Service', () => {
     it('should fail when milestone not found', async () => {
       const { rejectMilestone } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockMilestoneRepository.getById.mockResolvedValueOnce(null);
 
       const result = await rejectMilestone({
         milestoneId: 'nonexistent',
@@ -280,9 +300,9 @@ describe('Milestone Service', () => {
     it('should fail when contract not found', async () => {
       const { rejectMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
 
       const result = await rejectMilestone({
         milestoneId: 'ms-1',
@@ -298,9 +318,9 @@ describe('Milestone Service', () => {
     it('should fail when user is not the employer', async () => {
       const { rejectMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'other-employer', project_id: 'p-1' }], rowCount: 1 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'other-employer', project_id: 'p-1' });
 
       const result = await rejectMilestone({
         milestoneId: 'ms-1',
@@ -316,9 +336,9 @@ describe('Milestone Service', () => {
     it('should fail when milestone is not in submitted status', async () => {
       const { rejectMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
 
       const result = await rejectMilestone({
         milestoneId: 'ms-1',
@@ -334,10 +354,10 @@ describe('Milestone Service', () => {
     it('should handle update failure', async () => {
       const { rejectMilestone } = await importModule();
 
-      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contractId: 'c-1', revisionCount: 0 };
-      mockPool.query.mockResolvedValueOnce({ rows: [milestone], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      const milestone = { id: 'ms-1', title: 'Design', status: 'submitted', contract_id: 'c-1', revision_count: 0 };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockMilestoneRepository.update.mockResolvedValueOnce(null);
 
       const result = await rejectMilestone({
         milestoneId: 'ms-1',
@@ -359,7 +379,7 @@ describe('Milestone Service', () => {
         { id: 'ms-1', title: 'Phase 1', status: 'completed' },
         { id: 'ms-2', title: 'Phase 2', status: 'pending' },
       ];
-      mockPool.query.mockResolvedValueOnce({ rows: milestones, rowCount: 2 });
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce(milestones);
 
       const result = await getContractMilestones('contract-1');
 
@@ -370,7 +390,7 @@ describe('Milestone Service', () => {
     it('should return empty array when no milestones', async () => {
       const { getContractMilestones } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([]);
 
       const result = await getContractMilestones('contract-1');
 
@@ -381,7 +401,7 @@ describe('Milestone Service', () => {
     it('should handle database errors', async () => {
       const { getContractMilestones } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockMilestoneRepository.findByContract.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getContractMilestones('contract-1');
 

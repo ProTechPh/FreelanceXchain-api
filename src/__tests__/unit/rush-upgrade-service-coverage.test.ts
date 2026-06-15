@@ -17,6 +17,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/rush-upgrade-request-re
 
 const mockContractRepository = {
   getContractById: jest.fn<any>(),
+  updateContract: jest.fn<any>(),
 };
 
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -109,12 +110,12 @@ describe('Rush Upgrade Service - Coverage', () => {
       if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
     });
 
-    // Lines 245-246: accept - RPC failed
-    it('should return UPDATE_FAILED when RPC fails', async () => {
+    // Lines 245-246: accept - contract update failed
+    it('should return UPDATE_FAILED when contract update fails', async () => {
       mockRushUpgradeRequestRepository.getRequestById.mockResolvedValue({ id: 'req-1', contract_id: 'c-1', status: 'pending', proposed_percentage: 10 });
-      mockContractRepository.getContractById.mockResolvedValue({ freelancer_id: 'freelancer-1', employer_id: 'emp-1', project_id: 'p-1' });
+      mockContractRepository.getContractById.mockResolvedValue({ freelancer_id: 'freelancer-1', employer_id: 'emp-1', project_id: 'p-1', base_amount: 1000 });
       mockRushUpgradeRequestRepository.updateRequest.mockResolvedValue({ id: 'req-1' });
-      mockPool.query.mockResolvedValue({ rows: [{ result: false }] });
+      mockContractRepository.updateContract.mockResolvedValue(null);
 
       const result = await respondToRushUpgrade('freelancer-1', { requestId: 'req-1', action: 'accept' });
       expect(result.success).toBe(false);
@@ -215,12 +216,12 @@ describe('Rush Upgrade Service - Coverage', () => {
       if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
     });
 
-    // Lines 452-453: RPC failed
-    it('should return UPDATE_FAILED when RPC fails', async () => {
+    // Lines 452-453: contract update failed
+    it('should return UPDATE_FAILED when contract update fails', async () => {
       mockRushUpgradeRequestRepository.getRequestById.mockResolvedValue({ id: 'req-1', contract_id: 'c-1', status: 'counter_offered', counter_percentage: 15 });
-      mockContractRepository.getContractById.mockResolvedValue({ employer_id: 'emp-1', freelancer_id: 'f-1', project_id: 'p-1' });
+      mockContractRepository.getContractById.mockResolvedValue({ employer_id: 'emp-1', freelancer_id: 'f-1', project_id: 'p-1', base_amount: 1000 });
       mockRushUpgradeRequestRepository.updateRequest.mockResolvedValue({ id: 'req-1' });
-      mockPool.query.mockResolvedValue({ rows: [{ result: false }] });
+      mockContractRepository.updateContract.mockResolvedValue(null);
 
       const result = await acceptCounterOffer('emp-1', 'req-1');
       expect(result.success).toBe(false);

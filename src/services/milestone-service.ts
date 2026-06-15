@@ -1,4 +1,3 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type {
@@ -9,25 +8,24 @@ import type {
 } from '../models/milestone.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
+import { milestoneRepository } from '../repositories/milestone-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
 
 /**
  * Get milestone by ID
  */
 export async function getMilestoneById(milestoneId: string): Promise<ServiceResult<Milestone>> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM milestones WHERE id = $1',
-      [milestoneId]
-    );
+    const milestone = await milestoneRepository.getById(milestoneId);
 
-    if (result.rows.length === 0) {
+    if (!milestone) {
       return {
         success: false,
         error: { code: 'NOT_FOUND', message: 'Milestone not found' },
       };
     }
 
-    return { success: true, data: result.rows[0] as Milestone };
+    return { success: true, data: milestone as unknown as Milestone };
   } catch (error) {
     logger.error('Failed to get milestone:', error);
     return {
@@ -53,22 +51,17 @@ export async function submitMilestone(
       return milestoneResult;
     }
 
-    const milestone = milestoneResult.data;
+    const milestone: any = milestoneResult.data;
 
     // Get contract to verify freelancer
-    const contractResult = await pool.query(
-      'SELECT freelancer_id, employer_id, project_id FROM contracts WHERE id = $1',
-      [milestone.contractId]
-    );
+    const contract = await contractRepository.getContractById(milestone.contract_id);
 
-    if (contractResult.rows.length === 0) {
+    if (!contract) {
       return {
         success: false,
         error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
       };
     }
-
-    const contract = contractResult.rows[0];
 
     if (contract.freelancer_id !== input.freelancerId) {
       return {
@@ -89,27 +82,17 @@ export async function submitMilestone(
     }
 
     // Update milestone
-    const updateResult = await pool.query(
-      `UPDATE milestones 
-       SET status = 'submitted', 
-           submitted_at = NOW(), 
-           deliverable_files = $1, 
-           revision_count = $2, 
-           updated_at = NOW()
-       WHERE id = $3
-       RETURNING *`,
-      [
-        JSON.stringify(input.deliverables),
-        milestone.status === 'rejected' ? milestone.revisionCount + 1 : milestone.revisionCount,
-        input.milestoneId
-      ]
-    );
+    const updated = await milestoneRepository.update(input.milestoneId, {
+      status: 'submitted',
+      submitted_at: new Date().toISOString(),
+      deliverable_files: JSON.stringify(input.deliverables),
+      revision_count: milestone.status === 'rejected' ? milestone.revision_count + 1 : milestone.revision_count,
+      updated_at: new Date().toISOString(),
+    });
 
-    if (updateResult.rows.length === 0) {
+    if (!updated) {
       throw new Error('Failed to update milestone');
     }
-
-    const updated = updateResult.rows[0];
 
     // Create notification for employer
     const notificationResult = await createNotification({
@@ -129,7 +112,7 @@ export async function submitMilestone(
 
     logger.info(`Milestone ${input.milestoneId} submitted by freelancer ${input.freelancerId}`);
 
-    return { success: true, data: updated as Milestone };
+    return { success: true, data: updated as unknown as Milestone };
   } catch (error) {
     logger.error('Failed to submit milestone:', error);
     return {
@@ -155,22 +138,17 @@ export async function rejectMilestone(
       return milestoneResult;
     }
 
-    const milestone = milestoneResult.data;
+    const milestone: any = milestoneResult.data;
 
     // Get contract to verify employer
-    const contractResult = await pool.query(
-      'SELECT freelancer_id, employer_id, project_id FROM contracts WHERE id = $1',
-      [milestone.contractId]
-    );
+    const contract = await contractRepository.getContractById(milestone.contract_id);
 
-    if (contractResult.rows.length === 0) {
+    if (!contract) {
       return {
         success: false,
         error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
       };
     }
-
-    const contract = contractResult.rows[0];
 
     if (contract.employer_id !== input.employerId) {
       return {
@@ -192,23 +170,17 @@ export async function rejectMilestone(
 
     // Update milestone
     const newStatus: MilestoneStatus = input.requestRevision ? 'rejected' : 'disputed';
-    
-    const updateResult = await pool.query(
-      `UPDATE milestones 
-       SET status = $1, 
-           rejected_at = NOW(), 
-           rejection_reason = $2, 
-           updated_at = NOW()
-       WHERE id = $3
-       RETURNING *`,
-      [newStatus, input.reason, input.milestoneId]
-    );
 
-    if (updateResult.rows.length === 0) {
+    const updated = await milestoneRepository.update(input.milestoneId, {
+      status: newStatus,
+      rejected_at: new Date().toISOString(),
+      rejection_reason: input.reason,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (!updated) {
       throw new Error('Failed to update milestone');
     }
-
-    const updated = updateResult.rows[0];
 
     // Create notification for freelancer
     const notificationResult = await createNotification({
@@ -230,7 +202,7 @@ export async function rejectMilestone(
 
     logger.info(`Milestone ${input.milestoneId} rejected by employer ${input.employerId}`);
 
-    return { success: true, data: updated as Milestone };
+    return { success: true, data: updated as unknown as Milestone };
   } catch (error) {
     logger.error('Failed to reject milestone:', error);
     return {
@@ -248,12 +220,9 @@ export async function rejectMilestone(
  */
 export async function getContractMilestones(contractId: string): Promise<ServiceResult<Milestone[]>> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM milestones WHERE contract_id = $1 ORDER BY due_date ASC',
-      [contractId]
-    );
+    const milestones = await milestoneRepository.findByContract(contractId);
 
-    return { success: true, data: result.rows as Milestone[] };
+    return { success: true, data: milestones as unknown as Milestone[] };
   } catch (error) {
     logger.error('Failed to get contract milestones:', error);
     return {

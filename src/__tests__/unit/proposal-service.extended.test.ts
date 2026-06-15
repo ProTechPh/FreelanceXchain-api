@@ -248,24 +248,22 @@ describe('Proposal Service - Extended Coverage', () => {
       if (!result.success) expect(result.error.code).toBe('AMOUNT_MISMATCH');
     });
 
-    it('should return ALREADY_ACCEPTED when RPC returns already-accepted error', async () => {
+    it('should return UPDATE_FAILED when updateProposal returns null (ALREADY_ACCEPTED path)', async () => {
       const p = makeProject();
       const proposal = makeProposal(p.id, { proposed_rate: 1000, status: 'pending' });
 
-      const mockPoolObj = (globalThis as any).mockPool;
-      mockPoolObj.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      (mockProposalRepo.updateProposal as any).mockResolvedValueOnce(null);
 
       const result = await acceptProposal(proposal.id, EMP);
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
     });
 
-    it('should return UPDATE_FAILED when RPC returns generic error', async () => {
+    it('should return UPDATE_FAILED when updateProposal returns null (generic error)', async () => {
       const p = makeProject();
       const proposal = makeProposal(p.id, { proposed_rate: 1000, status: 'pending' });
 
-      const mockPoolObj = (globalThis as any).mockPool;
-      mockPoolObj.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      (mockProposalRepo.updateProposal as any).mockResolvedValueOnce(null);
 
       const result = await acceptProposal(proposal.id, EMP);
       expect(result.success).toBe(false);

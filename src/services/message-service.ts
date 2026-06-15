@@ -1,6 +1,8 @@
-import { pool } from '../config/database.js';
 import { logger } from '../config/logger.js';
 import { messageRepository } from '../repositories/message-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
+import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
+import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
 import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/message.js';
 import { notificationEmitter } from './notification-delivery-service.js';
 import { generateId } from '../utils/id.js';
@@ -28,25 +30,21 @@ export interface ConversationWithDetails extends ConversationEntity {
 async function resolveReceiverUserId(receiverId: string): Promise<string | null> {
   try {
     // Check if receiverId exists in users table
-    const userResult = await pool.query(
-      'SELECT id FROM users WHERE id = $1',
-      [receiverId]
-    );
+    const user = await userRepository.getUserById(receiverId);
 
-    if (userResult.rows.length > 0) {
-      return userResult.rows[0].id;
+    if (user) {
+      return user.id;
     }
 
     // Backward-compatibility path: support profile IDs by mapping to user_id
-    for (const profileTable of ['freelancer_profiles', 'employer_profiles'] as const) {
-      const profileResult = await pool.query(
-        `SELECT user_id FROM ${profileTable} WHERE id = $1`,
-        [receiverId]
-      );
+    const freelancerProfile = await freelancerProfileRepository.getById(receiverId);
+    if (freelancerProfile) {
+      return freelancerProfile.user_id;
+    }
 
-      if (profileResult.rows.length > 0) {
-        return profileResult.rows[0].user_id;
-      }
+    const employerProfile = await employerProfileRepository.getById(receiverId);
+    if (employerProfile) {
+      return employerProfile.user_id;
     }
 
     return null;
@@ -174,13 +172,10 @@ export async function getConversations(
       const otherUserId = conv.participant1_id === userId ? conv.participant2_id : conv.participant1_id;
       
       try {
-        const userResult = await pool.query(
-          'SELECT id, name, email FROM users WHERE id = $1',
-          [otherUserId]
-        );
+        const otherUser = await userRepository.getUserById(otherUserId);
 
         // If the other user doesn't exist, this conversation has inconsistent data
-        if (userResult.rows.length === 0) {
+        if (!otherUser) {
           logger.warn('Conversation has missing participant, skipping from results', { 
             conversationId: conv.id, 
             missingUserId: otherUserId
@@ -190,7 +185,11 @@ export async function getConversations(
 
         enrichedConversations.push({
           ...conv,
-          otherUser: userResult.rows[0],
+          otherUser: {
+            id: otherUser.id,
+            name: otherUser.name,
+            email: otherUser.email,
+          },
         } as ConversationWithDetails);
       } catch (error) {
         logger.error('Error fetching user details for conversation', { 
@@ -231,13 +230,19 @@ export async function getConversationMessages(
   options: PaginationOptions = {}
 ): Promise<ServiceResult<PaginatedResult<MessageEntity>>> {
   try {
-    // Verify user is participant
-    const convResult = await pool.query(
-      'SELECT participant1_id, participant2_id FROM conversations WHERE id = $1',
-      [conversationId]
+    // Verify user is participant via messageRepository
+    const conversation = await messageRepository.findConversation(
+      userId,
+      // We need the other participant; findConversation requires both IDs
+      // Instead, use getUserConversations to find this conversation
+      '' // placeholder
     );
 
-    if (convResult.rows.length === 0) {
+    // Alternative: fetch all conversations and find this one
+    const { items: userConversations } = await messageRepository.getUserConversations(userId, 1000, 0);
+    const conv = userConversations.find(c => c.id === conversationId);
+
+    if (!conv) {
       return {
         success: false,
         error: {
@@ -247,9 +252,7 @@ export async function getConversationMessages(
       };
     }
 
-    const conversation = convResult.rows[0];
-
-    if (conversation.participant1_id !== userId && conversation.participant2_id !== userId) {
+    if (conv.participant1_id !== userId && conv.participant2_id !== userId) {
       return {
         success: false,
         error: {
@@ -294,12 +297,10 @@ export async function markConversationAsRead(
 ): Promise<ServiceResult<void>> {
   try {
     // Verify user is participant
-    const convResult = await pool.query(
-      'SELECT participant1_id, participant2_id FROM conversations WHERE id = $1',
-      [conversationId]
-    );
+    const { items: userConversations } = await messageRepository.getUserConversations(userId, 1000, 0);
+    const conv = userConversations.find(c => c.id === conversationId);
 
-    if (convResult.rows.length === 0) {
+    if (!conv) {
       return {
         success: false,
         error: {
@@ -309,9 +310,7 @@ export async function markConversationAsRead(
       };
     }
 
-    const conversation = convResult.rows[0];
-
-    if (conversation.participant1_id !== userId && conversation.participant2_id !== userId) {
+    if (conv.participant1_id !== userId && conv.participant2_id !== userId) {
       return {
         success: false,
         error: {
@@ -325,7 +324,7 @@ export async function markConversationAsRead(
     await messageRepository.markMessagesAsRead(conversationId, userId);
 
     // Reset unread count
-    const isParticipant1 = conversation.participant1_id === userId;
+    const isParticipant1 = conv.participant1_id === userId;
     const updates = isParticipant1
       ? { unread_count_1: 0 }
       : { unread_count_2: 0 };
@@ -385,18 +384,11 @@ export async function validateConversationParticipants(userId: string): Promise<
     const orphanedConversations: ConversationEntity[] = [];
 
     for (const conv of conversations) {
-      const participant1Result = await pool.query(
-        'SELECT id FROM users WHERE id = $1',
-        [conv.participant1_id]
-      );
+      const participant1 = await userRepository.getUserById(conv.participant1_id);
+      const participant2 = await userRepository.getUserById(conv.participant2_id);
 
-      const participant2Result = await pool.query(
-        'SELECT id FROM users WHERE id = $1',
-        [conv.participant2_id]
-      );
-
-      const participant1Exists = participant1Result.rows.length > 0;
-      const participant2Exists = participant2Result.rows.length > 0;
+      const participant1Exists = !!participant1;
+      const participant2Exists = !!participant2;
 
       if (!participant1Exists || !participant2Exists) {
         orphanedConversations.push(conv);

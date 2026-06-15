@@ -13,15 +13,32 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
-const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: mockPoolObj,
+jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
+  generateId: jest.fn().mockReturnValue('generated-id'),
 }));
 
-const mockEmitToUser = jest.fn();
-jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
-  notificationEmitter: { emitToUser: mockEmitToUser },
-  sendNotificationToUser: jest.fn(),
+const mockUserRepo = {
+  getUserById: jest.fn<any>(),
+};
+
+const mockFreelancerProfileRepo = {
+  getById: jest.fn<any>(),
+};
+
+const mockEmployerProfileRepo = {
+  getById: jest.fn<any>(),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: mockUserRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
+  freelancerProfileRepository: mockFreelancerProfileRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: mockEmployerProfileRepo,
 }));
 
 const mockFindConversation = jest.fn<any>();
@@ -46,17 +63,18 @@ jest.unstable_mockModule(resolveModule('src/repositories/message-repository.ts')
   },
 }));
 
-jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
-  generateId: jest.fn().mockReturnValue('generated-id'),
+const mockEmitToUser = jest.fn();
+jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
+  notificationEmitter: { emitToUser: mockEmitToUser },
+  sendNotificationToUser: jest.fn(),
 }));
 
 describe('Message Service', () => {
-  let mockPool: any;
-
   beforeEach(() => {
     jest.clearAllMocks();
-    mockPool = mockPoolObj;
-    mockPool.query.mockReset();
+    mockUserRepo.getUserById.mockReset();
+    mockFreelancerProfileRepo.getById.mockReset();
+    mockEmployerProfileRepo.getById.mockReset();
   });
 
   const importModule = async () => {
@@ -68,7 +86,7 @@ describe('Message Service', () => {
       const { sendMessage } = await importModule();
 
       // resolveReceiverUserId - user exists
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'receiver-1' }], rowCount: 1 });
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
       // findConversation
       const conversation = { id: 'conv-1', participant1_id: 'sender-1', participant2_id: 'receiver-1', unread_count_2: 0 };
       mockFindConversation.mockResolvedValueOnce(conversation);
@@ -92,7 +110,7 @@ describe('Message Service', () => {
     it('should create new conversation if none exists', async () => {
       const { sendMessage } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'receiver-1' }], rowCount: 1 });
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
       mockFindConversation.mockResolvedValueOnce(null);
       const newConv = { id: 'conv-new', participant1_id: 'sender-1', participant2_id: 'receiver-1', unread_count_2: 0 };
       mockCreateConversation.mockResolvedValueOnce(newConv);
@@ -113,7 +131,7 @@ describe('Message Service', () => {
     it('should increment unread_count_1 when sender is participant2', async () => {
       const { sendMessage } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'receiver-1' }], rowCount: 1 });
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
       const conversation = { id: 'conv-1', participant1_id: 'receiver-1', participant2_id: 'sender-1', unread_count_1: 2 };
       mockFindConversation.mockResolvedValueOnce(conversation);
       mockCreateMessage.mockResolvedValueOnce({ id: 'msg-1' });
@@ -158,11 +176,12 @@ describe('Message Service', () => {
     it('should fail when receiver not found', async () => {
       const { sendMessage } = await importModule();
 
-      // User not found
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      // Profile tables not found
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      // User not found directly
+      mockUserRepo.getUserById.mockResolvedValueOnce(null);
+      // Freelancer profile not found
+      mockFreelancerProfileRepo.getById.mockResolvedValueOnce(null);
+      // Employer profile not found
+      mockEmployerProfileRepo.getById.mockResolvedValueOnce(null);
 
       const result = await sendMessage({
         senderId: 'sender-1',
@@ -178,9 +197,9 @@ describe('Message Service', () => {
       const { sendMessage } = await importModule();
 
       // User not found directly
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockUserRepo.getUserById.mockResolvedValueOnce(null);
       // Found in freelancer_profiles
-      mockPool.query.mockResolvedValueOnce({ rows: [{ user_id: 'actual-user-id' }], rowCount: 1 });
+      mockFreelancerProfileRepo.getById.mockResolvedValueOnce({ user_id: 'actual-user-id' });
       mockFindConversation.mockResolvedValueOnce(null);
       const newConv = { id: 'conv-new', participant1_id: 'sender-1', participant2_id: 'actual-user-id', unread_count_2: 0 };
       mockCreateConversation.mockResolvedValueOnce(newConv);
@@ -199,7 +218,7 @@ describe('Message Service', () => {
     it('should handle database errors', async () => {
       const { sendMessage } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockUserRepo.getUserById.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await sendMessage({
         senderId: 'sender-1',
@@ -221,7 +240,7 @@ describe('Message Service', () => {
       ];
       mockGetUserConversations.mockResolvedValueOnce({ items: conversations, total: 1 });
       // Enrich with user details
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'user-2', name: 'Bob', email: 'bob@test.com' }], rowCount: 1 });
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-2', name: 'Bob', email: 'bob@test.com' });
 
       const result = await getConversations('user-1');
 
@@ -239,9 +258,9 @@ describe('Message Service', () => {
       ];
       mockGetUserConversations.mockResolvedValueOnce({ items: conversations, total: 2 });
       // First user not found
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockUserRepo.getUserById.mockResolvedValueOnce(null);
       // Second user found
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'user-2', name: 'Bob', email: 'bob@test.com' }], rowCount: 1 });
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-2', name: 'Bob', email: 'bob@test.com' });
 
       const result = await getConversations('user-1');
 
@@ -275,7 +294,10 @@ describe('Message Service', () => {
     it('should return messages for authorized user', async () => {
       const { getConversationMessages } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ participant1_id: 'user-1', participant2_id: 'user-2' }], rowCount: 1 });
+      mockGetUserConversations.mockResolvedValueOnce({
+        items: [{ id: 'conv-1', participant1_id: 'user-1', participant2_id: 'user-2' }],
+        total: 1,
+      });
       const messages = [{ id: 'msg-1', content: 'Hello' }, { id: 'msg-2', content: 'Hi' }];
       mockGetConversationMessages.mockResolvedValueOnce({ items: messages, total: 2 });
 
@@ -288,7 +310,7 @@ describe('Message Service', () => {
     it('should fail when conversation not found', async () => {
       const { getConversationMessages } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockGetUserConversations.mockResolvedValueOnce({ items: [], total: 0 });
 
       const result = await getConversationMessages('nonexistent', 'user-1');
 
@@ -299,7 +321,10 @@ describe('Message Service', () => {
     it('should fail when user is not a participant', async () => {
       const { getConversationMessages } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ participant1_id: 'user-1', participant2_id: 'user-2' }], rowCount: 1 });
+      mockGetUserConversations.mockResolvedValueOnce({
+        items: [{ id: 'conv-1', participant1_id: 'user-1', participant2_id: 'user-2' }],
+        total: 1,
+      });
 
       const result = await getConversationMessages('conv-1', 'outsider');
 
@@ -310,7 +335,7 @@ describe('Message Service', () => {
     it('should handle database errors', async () => {
       const { getConversationMessages } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockGetUserConversations.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await getConversationMessages('conv-1', 'user-1');
 
@@ -323,7 +348,10 @@ describe('Message Service', () => {
     it('should mark conversation as read for participant1', async () => {
       const { markConversationAsRead } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ participant1_id: 'user-1', participant2_id: 'user-2' }], rowCount: 1 });
+      mockGetUserConversations.mockResolvedValueOnce({
+        items: [{ id: 'conv-1', participant1_id: 'user-1', participant2_id: 'user-2' }],
+        total: 1,
+      });
       mockMarkMessagesAsRead.mockResolvedValueOnce(undefined);
       mockUpdateConversation.mockResolvedValueOnce(undefined);
 
@@ -336,7 +364,10 @@ describe('Message Service', () => {
     it('should mark conversation as read for participant2', async () => {
       const { markConversationAsRead } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ participant1_id: 'user-1', participant2_id: 'user-2' }], rowCount: 1 });
+      mockGetUserConversations.mockResolvedValueOnce({
+        items: [{ id: 'conv-1', participant1_id: 'user-1', participant2_id: 'user-2' }],
+        total: 1,
+      });
       mockMarkMessagesAsRead.mockResolvedValueOnce(undefined);
       mockUpdateConversation.mockResolvedValueOnce(undefined);
 
@@ -349,7 +380,7 @@ describe('Message Service', () => {
     it('should fail when conversation not found', async () => {
       const { markConversationAsRead } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockGetUserConversations.mockResolvedValueOnce({ items: [], total: 0 });
 
       const result = await markConversationAsRead('nonexistent', 'user-1');
 
@@ -360,7 +391,10 @@ describe('Message Service', () => {
     it('should fail when user is not a participant', async () => {
       const { markConversationAsRead } = await importModule();
 
-      mockPool.query.mockResolvedValueOnce({ rows: [{ participant1_id: 'user-1', participant2_id: 'user-2' }], rowCount: 1 });
+      mockGetUserConversations.mockResolvedValueOnce({
+        items: [{ id: 'conv-1', participant1_id: 'user-1', participant2_id: 'user-2' }],
+        total: 1,
+      });
 
       const result = await markConversationAsRead('conv-1', 'outsider');
 
@@ -371,7 +405,7 @@ describe('Message Service', () => {
     it('should handle database errors', async () => {
       const { markConversationAsRead } = await importModule();
 
-      mockPool.query.mockRejectedValueOnce(new Error('DB error'));
+      mockGetUserConversations.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await markConversationAsRead('conv-1', 'user-1');
 
@@ -414,11 +448,11 @@ describe('Message Service', () => {
       ];
       mockGetUserConversations.mockResolvedValueOnce({ items: conversations, total: 2 });
       // conv-1: both exist
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'user-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'user-2' }], rowCount: 1 });
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1' });
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-2' });
       // conv-2: participant2 missing
-      mockPool.query.mockResolvedValueOnce({ rows: [{ id: 'user-1' }], rowCount: 1 });
-      mockPool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1' });
+      mockUserRepo.getUserById.mockResolvedValueOnce(null);
 
       const result = await validateConversationParticipants('user-1');
 

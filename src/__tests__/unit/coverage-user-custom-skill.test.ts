@@ -16,6 +16,9 @@ const mockUserCustomSkillRepository = {
   updateUserCustomSkill: jest.fn<any>(),
   deleteUserCustomSkill: jest.fn<any>(),
   searchUserCustomSkills: jest.fn<any>(),
+};
+
+const mockSkillSuggestionRepository = {
   getSkillSuggestionByName: jest.fn<any>(),
   createSkillSuggestion: jest.fn<any>(),
   incrementSkillSuggestionCount: jest.fn<any>(),
@@ -25,6 +28,7 @@ const mockUserCustomSkillRepository = {
 
 jest.unstable_mockModule(resolveModule('src/repositories/user-custom-skill-repository.ts'), () => ({
   userCustomSkillRepository: mockUserCustomSkillRepository,
+  skillSuggestionRepository: mockSkillSuggestionRepository,
 }));
 
 jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({
@@ -136,7 +140,7 @@ describe('User Custom Skill Service - Catch Block Coverage', () => {
 
   // Line 293: updateSkillSuggestionStatus catch block
   it('should return UPDATE_FAILED when updateSkillSuggestionStatus repository throws (line 293)', async () => {
-    mockUserCustomSkillRepository.updateSkillSuggestionStatus.mockRejectedValue(new Error('Status update failed'));
+    mockSkillSuggestionRepository.updateSkillSuggestionStatus.mockRejectedValue(new Error('Status update failed'));
 
     const result = await updateSkillSuggestionStatus('suggestion-1', 'approved');
 

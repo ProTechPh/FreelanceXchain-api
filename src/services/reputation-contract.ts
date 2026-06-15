@@ -12,7 +12,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { generateId } from '../utils/id.js';
-import { pool } from '../config/database.js';
+import { blockchainRatingRepository } from '../repositories/blockchain-rating-repository.js';
 
 // Simulated blockchain rating record type (Appwrite-backed)
 export type SimulatedBlockchainRating = {
@@ -42,28 +42,25 @@ export type RatingSubmissionParams = {
 // Reputation contract address (simulated)
 const REPUTATION_CONTRACT_ADDRESS = generateWalletAddress();
 
-// DB row type
-type RatingRow = {
+function entityToRating(entity: {
   id: string;
   contract_id: string;
   rater_id: string;
   ratee_id: string;
   rating: number;
-  comment: string | null;
+  comment?: string;
   timestamp: number;
   transaction_hash: string;
-};
-
-function rowToRating(row: RatingRow): SimulatedBlockchainRating {
+}): SimulatedBlockchainRating {
   return {
-    id: row.id,
-    contractId: row.contract_id,
-    raterId: row.rater_id,
-    rateeId: row.ratee_id,
-    rating: row.rating,
-    comment: row.comment ?? undefined,
-    timestamp: row.timestamp,
-    transactionHash: row.transaction_hash,
+    id: entity.id,
+    contractId: entity.contract_id,
+    raterId: entity.rater_id,
+    rateeId: entity.ratee_id,
+    rating: entity.rating,
+    comment: entity.comment ?? undefined,
+    timestamp: entity.timestamp,
+    transactionHash: entity.transaction_hash,
   };
 }
 
@@ -118,21 +115,16 @@ export async function submitRatingToBlockchain(
   };
 
   // Persist to DB
-  await pool.query(
-    `INSERT INTO blockchain_ratings 
-     (id, contract_id, rater_id, ratee_id, rating, comment, timestamp, transaction_hash)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-    [
-      blockchainRating.id,
-      blockchainRating.contractId,
-      blockchainRating.raterId,
-      blockchainRating.rateeId,
-      blockchainRating.rating,
-      blockchainRating.comment ?? null,
-      blockchainRating.timestamp,
-      blockchainRating.transactionHash
-    ]
-  );
+  await blockchainRatingRepository.createRating({
+    id: blockchainRating.id,
+    contract_id: blockchainRating.contractId,
+    rater_id: blockchainRating.raterId,
+    ratee_id: blockchainRating.rateeId,
+    rating: blockchainRating.rating,
+    comment: blockchainRating.comment ?? '',
+    timestamp: blockchainRating.timestamp,
+    transaction_hash: blockchainRating.transactionHash,
+  });
 
   const receipt: TransactionReceipt = {
     transactionHash: confirmed.hash!,
@@ -151,12 +143,8 @@ export async function submitRatingToBlockchain(
  */
 export async function getRatingsFromBlockchain(userId: string): Promise<BlockchainRating[]> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM blockchain_ratings WHERE ratee_id = $1 ORDER BY timestamp DESC',
-      [userId]
-    );
-
-    return result.rows.map(rowToRating);
+    const result = await blockchainRatingRepository.findByRatee(userId);
+    return result.items.map(entityToRating);
   } catch {
     return [];
   }
@@ -167,12 +155,8 @@ export async function getRatingsFromBlockchain(userId: string): Promise<Blockcha
  */
 export async function getRatingsGivenByUser(userId: string): Promise<BlockchainRating[]> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM blockchain_ratings WHERE rater_id = $1 ORDER BY timestamp DESC',
-      [userId]
-    );
-
-    return result.rows.map(rowToRating);
+    const result = await blockchainRatingRepository.findByRater(userId);
+    return result.items.map(entityToRating);
   } catch {
     return [];
   }
@@ -182,13 +166,9 @@ export async function getRatingsGivenByUser(userId: string): Promise<BlockchainR
  * Get a specific rating by ID from the blockchain
  */
 export async function getRatingById(ratingId: string): Promise<BlockchainRating | null> {
-  const result = await pool.query(
-    'SELECT * FROM blockchain_ratings WHERE id = $1',
-    [ratingId]
-  );
-
-  if (result.rows.length === 0) return null;
-  return rowToRating(result.rows[0] as RatingRow);
+  const entity = await blockchainRatingRepository.getRatingById(ratingId);
+  if (!entity) return null;
+  return entityToRating(entity);
 }
 
 /**
@@ -196,12 +176,11 @@ export async function getRatingById(ratingId: string): Promise<BlockchainRating 
  */
 export async function getRatingsByContract(contractId: string): Promise<BlockchainRating[]> {
   try {
-    const result = await pool.query(
-      'SELECT * FROM blockchain_ratings WHERE contract_id = $1 ORDER BY timestamp DESC',
-      [contractId]
-    );
-
-    return result.rows.map(rowToRating);
+    // queryAll and filter since there's no dedicated findByContract method
+    const all = await blockchainRatingRepository.queryAll('timestamp');
+    return all
+      .filter(r => r.contract_id === contractId)
+      .map(entityToRating);
   } catch {
     return [];
   }
@@ -266,12 +245,8 @@ export async function hasUserRatedForContract(
   rateeId: string,
   contractId: string
 ): Promise<boolean> {
-  const result = await pool.query(
-    'SELECT COUNT(*) as count FROM blockchain_ratings WHERE rater_id = $1 AND ratee_id = $2 AND contract_id = $3',
-    [raterId, rateeId, contractId]
-  );
-
-  return parseInt(result.rows[0].count) > 0;
+  const existing = await blockchainRatingRepository.findByContractAndRater(contractId, raterId);
+  return existing !== null && existing.ratee_id === rateeId;
 }
 
 /**
@@ -279,7 +254,10 @@ export async function hasUserRatedForContract(
  */
 export async function clearBlockchainRatings(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
-  await pool.query('DELETE FROM blockchain_ratings');
+  const all = await blockchainRatingRepository.queryAll('timestamp');
+  for (const rating of all) {
+    await blockchainRatingRepository.delete(rating.id);
+  }
 }
 
 /**

@@ -4,17 +4,36 @@ import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-const mockPool = { query: jest.fn<any>() };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: mockPool,
-}));
-
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { error: jest.fn(), info: jest.fn(), debug: jest.fn(), warn: jest.fn() },
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
   generateId: () => 'generated-id',
+}));
+
+const mockUserRepo = {
+  getUserById: jest.fn<any>(),
+};
+
+const mockFreelancerProfileRepo = {
+  getById: jest.fn<any>(),
+};
+
+const mockEmployerProfileRepo = {
+  getById: jest.fn<any>(),
+};
+
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: mockUserRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
+  freelancerProfileRepository: mockFreelancerProfileRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: mockEmployerProfileRepo,
 }));
 
 const mockMessageRepository = {
@@ -58,7 +77,9 @@ describe('Message Service - Coverage', () => {
     });
 
     it('should return RECEIVER_NOT_FOUND when receiver does not exist', async () => {
-      mockPool.query.mockResolvedValue({ rows: [] });
+      mockUserRepo.getUserById.mockResolvedValue(null);
+      mockFreelancerProfileRepo.getById.mockResolvedValue(null);
+      mockEmployerProfileRepo.getById.mockResolvedValue(null);
       const result = await sendMessage({ senderId: 'u-1', receiverId: 'u-2', content: 'Hello' });
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('RECEIVER_NOT_FOUND');
@@ -66,7 +87,7 @@ describe('Message Service - Coverage', () => {
 
     it('should send message successfully with new conversation', async () => {
       // resolveReceiverUserId - user found
-      mockPool.query.mockResolvedValue({ rows: [{ id: 'u-2' }] });
+      mockUserRepo.getUserById.mockResolvedValue({ id: 'u-2' });
       mockMessageRepository.findConversation.mockResolvedValue(null);
       mockMessageRepository.createConversation.mockResolvedValue({
         id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2',
@@ -81,7 +102,7 @@ describe('Message Service - Coverage', () => {
     });
 
     it('should send message with existing conversation (participant2 sends)', async () => {
-      mockPool.query.mockResolvedValue({ rows: [{ id: 'u-1' }] });
+      mockUserRepo.getUserById.mockResolvedValue({ id: 'u-1' });
       mockMessageRepository.findConversation.mockResolvedValue({
         id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2',
         unread_count_1: 0, unread_count_2: 0,
@@ -94,14 +115,14 @@ describe('Message Service - Coverage', () => {
     });
 
     it('should return RECEIVER_NOT_FOUND when receiver lookup throws', async () => {
-      mockPool.query.mockRejectedValue(new Error('DB error'));
+      mockUserRepo.getUserById.mockRejectedValue(new Error('DB error'));
       const result = await sendMessage({ senderId: 'u-1', receiverId: 'u-2', content: 'Hello' });
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('RECEIVER_NOT_FOUND');
     });
 
     it('should handle unexpected error during message creation', async () => {
-      mockPool.query.mockResolvedValue({ rows: [{ id: 'u-2' }] });
+      mockUserRepo.getUserById.mockResolvedValue({ id: 'u-2' });
       mockMessageRepository.findConversation.mockRejectedValue(new Error('DB error'));
       const result = await sendMessage({ senderId: 'u-1', receiverId: 'u-2', content: 'Hello' });
       expect(result.success).toBe(false);
@@ -115,7 +136,7 @@ describe('Message Service - Coverage', () => {
         items: [{ id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2' }],
         total: 1,
       });
-      mockPool.query.mockResolvedValue({ rows: [{ id: 'u-2', name: 'User 2', email: 'u2@test.com' }] });
+      mockUserRepo.getUserById.mockResolvedValue({ id: 'u-2', name: 'User 2', email: 'u2@test.com' });
 
       const result = await getConversations('u-1');
       expect(result.success).toBe(true);
@@ -126,7 +147,7 @@ describe('Message Service - Coverage', () => {
         items: [{ id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2' }],
         total: 1,
       });
-      mockPool.query.mockResolvedValue({ rows: [] });
+      mockUserRepo.getUserById.mockResolvedValue(null);
 
       const result = await getConversations('u-1');
       expect(result.success).toBe(true);
@@ -138,7 +159,7 @@ describe('Message Service - Coverage', () => {
         items: [{ id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2' }],
         total: 1,
       });
-      mockPool.query.mockRejectedValue(new Error('DB error'));
+      mockUserRepo.getUserById.mockRejectedValue(new Error('DB error'));
 
       const result = await getConversations('u-1');
       expect(result.success).toBe(true);
@@ -154,28 +175,37 @@ describe('Message Service - Coverage', () => {
 
   describe('getConversationMessages', () => {
     it('should return CONVERSATION_NOT_FOUND', async () => {
-      mockPool.query.mockResolvedValue({ rows: [] });
+      mockMessageRepository.findConversation.mockResolvedValue(null);
+      mockMessageRepository.getUserConversations.mockResolvedValue({ items: [], total: 0 });
       const result = await getConversationMessages('conv-1', 'u-1');
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('CONVERSATION_NOT_FOUND');
     });
 
     it('should return UNAUTHORIZED when user is not participant', async () => {
-      mockPool.query.mockResolvedValue({ rows: [{ participant1_id: 'u-1', participant2_id: 'u-2' }] });
+      mockMessageRepository.findConversation.mockResolvedValue(null);
+      mockMessageRepository.getUserConversations.mockResolvedValue({
+        items: [{ id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2' }],
+        total: 1,
+      });
       const result = await getConversationMessages('conv-1', 'outsider');
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
     });
 
     it('should return messages on success', async () => {
-      mockPool.query.mockResolvedValue({ rows: [{ participant1_id: 'u-1', participant2_id: 'u-2' }] });
+      mockMessageRepository.findConversation.mockResolvedValue(null);
+      mockMessageRepository.getUserConversations.mockResolvedValue({
+        items: [{ id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2' }],
+        total: 1,
+      });
       mockMessageRepository.getConversationMessages.mockResolvedValue({ items: [{ id: 'msg-1' }], total: 1 });
       const result = await getConversationMessages('conv-1', 'u-1');
       expect(result.success).toBe(true);
     });
 
     it('should handle unexpected error', async () => {
-      mockPool.query.mockRejectedValue(new Error('DB error'));
+      mockMessageRepository.getUserConversations.mockRejectedValue(new Error('DB error'));
       const result = await getConversationMessages('conv-1', 'u-1');
       expect(result.success).toBe(false);
     });
@@ -183,19 +213,25 @@ describe('Message Service - Coverage', () => {
 
   describe('markConversationAsRead', () => {
     it('should return CONVERSATION_NOT_FOUND', async () => {
-      mockPool.query.mockResolvedValue({ rows: [] });
+      mockMessageRepository.getUserConversations.mockResolvedValue({ items: [], total: 0 });
       const result = await markConversationAsRead('conv-1', 'u-1');
       expect(result.success).toBe(false);
     });
 
     it('should return UNAUTHORIZED when user is not participant', async () => {
-      mockPool.query.mockResolvedValue({ rows: [{ participant1_id: 'u-1', participant2_id: 'u-2' }] });
+      mockMessageRepository.getUserConversations.mockResolvedValue({
+        items: [{ id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2' }],
+        total: 1,
+      });
       const result = await markConversationAsRead('conv-1', 'outsider');
       expect(result.success).toBe(false);
     });
 
     it('should mark as read for participant1', async () => {
-      mockPool.query.mockResolvedValue({ rows: [{ participant1_id: 'u-1', participant2_id: 'u-2' }] });
+      mockMessageRepository.getUserConversations.mockResolvedValue({
+        items: [{ id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2' }],
+        total: 1,
+      });
       mockMessageRepository.markMessagesAsRead.mockResolvedValue(undefined);
       mockMessageRepository.updateConversation.mockResolvedValue(undefined);
       const result = await markConversationAsRead('conv-1', 'u-1');
@@ -203,7 +239,10 @@ describe('Message Service - Coverage', () => {
     });
 
     it('should mark as read for participant2', async () => {
-      mockPool.query.mockResolvedValue({ rows: [{ participant1_id: 'u-1', participant2_id: 'u-2' }] });
+      mockMessageRepository.getUserConversations.mockResolvedValue({
+        items: [{ id: 'conv-1', participant1_id: 'u-1', participant2_id: 'u-2' }],
+        total: 1,
+      });
       mockMessageRepository.markMessagesAsRead.mockResolvedValue(undefined);
       mockMessageRepository.updateConversation.mockResolvedValue(undefined);
       const result = await markConversationAsRead('conv-1', 'u-2');
@@ -211,7 +250,7 @@ describe('Message Service - Coverage', () => {
     });
 
     it('should handle unexpected error', async () => {
-      mockPool.query.mockRejectedValue(new Error('DB error'));
+      mockMessageRepository.getUserConversations.mockRejectedValue(new Error('DB error'));
       const result = await markConversationAsRead('conv-1', 'u-1');
       expect(result.success).toBe(false);
     });
