@@ -17,6 +17,7 @@ export const COLLECTIONS = {
   AUDIT_LOG_ENTRIES: 'audit_log_entries',
   EMAIL_PREFERENCES: 'email_preferences',
   SAVED_SEARCHES: 'saved_searches',
+  EMAILS: 'emails',
 } as const;
 
 export type CollectionId = typeof COLLECTIONS[keyof typeof COLLECTIONS];

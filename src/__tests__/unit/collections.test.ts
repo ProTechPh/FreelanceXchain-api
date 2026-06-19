@@ -28,6 +28,7 @@ describe('Collections Config', () => {
         'AUDIT_LOG_ENTRIES',
         'EMAIL_PREFERENCES',
         'SAVED_SEARCHES',
+        'EMAILS',
       ];
       expect(Object.keys(COLLECTIONS).sort()).toEqual(expectedKeys.sort());
     });
@@ -47,6 +48,7 @@ describe('Collections Config', () => {
       expect(COLLECTIONS.AUDIT_LOG_ENTRIES).toBe('audit_log_entries');
       expect(COLLECTIONS.EMAIL_PREFERENCES).toBe('email_preferences');
       expect(COLLECTIONS.SAVED_SEARCHES).toBe('saved_searches');
+      expect(COLLECTIONS.EMAILS).toBe('emails');
     });
 
     it('should have string values for all collections', async () => {

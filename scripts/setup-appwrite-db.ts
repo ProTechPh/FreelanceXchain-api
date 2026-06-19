@@ -449,6 +449,26 @@ const COLLECTIONS = [
       { name: 'metadata', type: 'string', size: 100000, required: false },
     ],
   },
+  {
+    id: 'emails',
+    name: 'Email Inbox',
+    attributes: [
+      { name: 'message_id', type: 'string', size: 255, required: true },
+      { name: 'user_id', type: 'string', size: 36, required: true },
+      { name: 'from_address', type: 'string', size: 320, required: true },
+      { name: 'to_address', type: 'string', size: 320, required: true },
+      { name: 'subject', type: 'string', size: 998, required: true },
+      { name: 'text_body', type: 'string', size: 100000, required: false },
+      { name: 'html_body', type: 'string', size: 500000, required: false },
+      { name: 'attachments', type: 'string', size: 10000, required: false, default: '[]' },
+      { name: 'is_read', type: 'boolean', required: false, default: false },
+      { name: 'is_starred', type: 'boolean', required: false, default: false },
+      { name: 'folder', type: 'string', size: 20, required: true },
+      { name: 'in_reply_to', type: 'string', size: 255, required: false },
+      { name: 'references', type: 'string', size: 2000, required: false },
+      { name: 'received_at', type: 'string', size: 30, required: true },
+    ],
+  },
 ];
 
 // ─── Setup Functions ────────────────────────────────────────────────────────
@@ -488,15 +508,6 @@ async function createCollection(colDef: typeof COLLECTIONS[0]): Promise<void> {
 async function createAttributes(colDef: typeof COLLECTIONS[0]): Promise<void> {
   for (const attr of colDef.attributes) {
     try {
-      // Check if attribute exists by trying to list
-      await db.listAttributes(DATABASE_ID, colDef.id);
-      // If we get here, attributes may already exist - skip silently
-      return;
-    } catch {
-      // Attribute doesn't exist, create it
-    }
-
-    try {
       if (attr.type === 'string') {
         await db.createStringAttribute(
           DATABASE_ID,
@@ -513,8 +524,8 @@ async function createAttributes(colDef: typeof COLLECTIONS[0]): Promise<void> {
           colDef.id,
           attr.name,
           attr.required ?? false,
-          undefined, // min
-          undefined, // max
+          undefined,
+          undefined,
           attr.default as number | undefined,
           attr.array ?? false
         );
@@ -524,8 +535,8 @@ async function createAttributes(colDef: typeof COLLECTIONS[0]): Promise<void> {
           colDef.id,
           attr.name,
           attr.required ?? false,
-          undefined, // min
-          undefined, // max
+          undefined,
+          undefined,
           attr.default as number | undefined,
           attr.array ?? false
         );
