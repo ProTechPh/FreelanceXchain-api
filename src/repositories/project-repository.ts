@@ -1,5 +1,5 @@
 import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
-import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { Query } from '../config/appwrite.js';
 import type { MilestoneStatus } from '../models/project.js';
 export type { MilestoneStatus } from '../models/project.js';
 

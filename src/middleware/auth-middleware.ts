@@ -4,7 +4,6 @@ import { AuthError } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
 import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
-import { config } from '../config/env.js';
 
 type ValidatedUser = {
   id: string; // Changed from userId to id for consistency

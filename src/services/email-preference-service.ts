@@ -207,7 +207,7 @@ export async function shouldSendEmail(userId: string, emailType: EmailType): Pro
 }
 
 function mapEmailPreference(doc: Record<string, any>): EmailPreference {
-  const { $id, $collectionId, $databaseId, $createdAt, $updatedAt, ...attrs } = doc;
+  const { $id, $collectionId: _cid, $databaseId: _did, $createdAt, $updatedAt, ...attrs } = doc;
   return {
     id: $id,
     userId: attrs.user_id,

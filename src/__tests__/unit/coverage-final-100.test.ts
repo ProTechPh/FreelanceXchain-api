@@ -533,7 +533,7 @@ async function invokeHandler(
       statusMock.mockImplementation((code: number) => { res._status = code; return res; });
       jsonMock.mockImplementation((body: any) => { res._body = body; return res; });
 
-      try { await finalHandler(req, res, () => {}); } catch {}
+      try { await finalHandler(req, res, () => {}); } catch { /* expected */ }
       return { req, res };
     }
   }

@@ -4,9 +4,8 @@
  * Migrated from Appwrite Auth
  */
 
-import { ID, Account, Models, OAuthProvider, AuthenticatorType } from 'node-appwrite';
+import { ID, Account, OAuthProvider, AuthenticatorType } from 'node-appwrite';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
-import { config } from '../config/env.js';
 import { createUserClient, users } from '../config/appwrite.js';
 import { UserRole } from '../models/user.js';
 import { logger } from '../config/logger.js';
@@ -700,10 +699,10 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
 export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient('');
-    const account = new Account(userClient);
+    const _account = new Account(userClient);
     
     const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+    const _redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
     
     // await account.createVerification(redirectUrl);
     

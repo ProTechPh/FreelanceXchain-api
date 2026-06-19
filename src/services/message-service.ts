@@ -231,7 +231,7 @@ export async function getConversationMessages(
 ): Promise<ServiceResult<PaginatedResult<MessageEntity>>> {
   try {
     // Verify user is participant via messageRepository
-    const conversation = await messageRepository.findConversation(
+    const _conversation = await messageRepository.findConversation(
       userId,
       // We need the other participant; findConversation requires both IDs
       // Instead, use getUserConversations to find this conversation

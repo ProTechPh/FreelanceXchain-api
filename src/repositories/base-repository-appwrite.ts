@@ -10,7 +10,7 @@ export type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
 
 // Map Appwrite document to entity (remove $ prefixed fields)
 function mapDocument<T extends BaseEntity>(doc: Record<string, any>): T {
-  const { $id, $collectionId, $databaseId, $createdAt, $updatedAt, ...attrs } = doc;
+  const { $id, $collectionId: _cid, $databaseId: _did, $createdAt, $updatedAt, ...attrs } = doc;
   const result: Record<string, any> = {
     id: $id,
     ...attrs,

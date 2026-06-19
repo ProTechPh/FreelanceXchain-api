@@ -182,7 +182,7 @@ jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => {
       if (cleanText.endsWith('```')) cleanText = cleanText.slice(0, -3);
       cleanText = cleanText.trim();
       if (cleanText.startsWith('"') && cleanText.endsWith('"')) {
-        try { cleanText = JSON.parse(cleanText); } catch {}
+        try { cleanText = JSON.parse(cleanText); } catch { /* ignore parse errors */ }
       }
       if (!cleanText.startsWith('[')) {
         const jsonStart = cleanText.search(/\{\s*"/);

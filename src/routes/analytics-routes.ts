@@ -6,7 +6,6 @@ import {
   getFreelancerAnalytics, 
   getEmployerAnalytics, 
   getPlatformMetrics,
-  getAdminAnalytics,
   getSkillTrends 
 } from '../services/analytics-service.js';
 

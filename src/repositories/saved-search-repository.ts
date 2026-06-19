@@ -1,5 +1,5 @@
-import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
-import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { Query } from '../config/appwrite.js';
 
 export type SavedSearchType = 'project' | 'freelancer';
 

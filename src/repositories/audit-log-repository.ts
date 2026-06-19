@@ -1,4 +1,4 @@
-import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type AuditLogStatus = 'success' | 'failure' | 'pending';
 

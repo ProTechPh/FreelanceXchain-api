@@ -134,7 +134,7 @@ async function invokeHandler(router: any, method: string, routePath: string, req
     const res: any = { status: statusMock, json: jsonMock, send: jest.fn().mockReturnThis(), type: jest.fn().mockReturnThis(), setHeader: jest.fn(), redirect: jest.fn(), _status: 200, _body: null };
     statusMock.mockImplementation((c: number) => { res._status = c; return res; });
     jsonMock.mockImplementation((b: any) => { res._body = b; return res; });
-    try { await handler(req, res, () => {}); } catch {}
+    try { await handler(req, res, () => {}); } catch { /* expected */ }
     return { req, res };
   }
   throw new Error(`Route ${method} ${routePath} not found`);

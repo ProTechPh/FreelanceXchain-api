@@ -1,7 +1,7 @@
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
-import { platformMetricsCache, skillTrendsCache, adminAnalyticsCache } from '../utils/cache.js';
+import { platformMetricsCache, skillTrendsCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 
 export interface DateRangeOptions {

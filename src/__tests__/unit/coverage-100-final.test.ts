@@ -1584,7 +1584,8 @@ describe('milestone-service.ts - Branch Coverage', () => {
 // ============================================================
 describe('portfolio-service.ts - Branch Coverage', () => {
   it('L65: null completed_at', () => {
-    expect(null ? new Date(null) : undefined).toBeUndefined();
+    const val = null as string | null;
+    expect(val ? new Date(val) : undefined).toBeUndefined();
   });
 
   it('L263/264/265: string fields parsed', () => {
@@ -1639,7 +1640,8 @@ describe('reputation-contract.ts - Branch Coverage', () => {
 // ============================================================
 describe('saved-search-service.ts - Branch Coverage', () => {
   it('L42: string filters parsed', () => {
-    expect(typeof '{"skills":["JS"]}' === 'string' ? JSON.parse('{"skills":["JS"]}') : null).toEqual({ skills: ['JS'] });
+    const filters: string | null = '{"skills":["JS"]}';
+    expect(typeof filters === 'string' ? JSON.parse(filters) : null).toEqual({ skills: ['JS'] });
   });
 
   it('L262: string filters from doc', () => {
@@ -1658,7 +1660,9 @@ describe('saved-search-service.ts - Branch Coverage', () => {
 // ============================================================
 describe('scheduler-service.ts - Branch Coverage', () => {
   it('L80: full_name || name || User', () => {
-    expect(null || null || 'User').toBe('User');
+    const full_name = null as string | null;
+    const name = null as string | null;
+    expect(full_name || name || 'User').toBe('User');
   });
 
   it('L187/189: string filters parsed, null fallback', () => {
