@@ -353,6 +353,18 @@ export async function rejectRefund(
       };
     }
 
+    // Re-read immediately before writing to narrow the concurrent-rejection race window,
+    // matching the same double-read guard used in approveRefund (lines 187-195).
+    // Appwrite lacks atomic compare-and-set; this second read catches most races and
+    // prevents duplicate rejection notifications being sent to the requester.
+    const freshRefund = await refundRequestRepository.findWithContract(input.refundId);
+    if (!freshRefund || freshRefund.status !== 'pending') {
+      return {
+        success: false,
+        error: { code: 'INVALID_STATUS', message: 'Refund request status changed concurrently' },
+      };
+    }
+
     // Update refund request
     const updated = await refundRequestRepository.update(input.refundId, {
       status: 'rejected',
