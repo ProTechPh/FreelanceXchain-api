@@ -125,13 +125,18 @@ contract ContractAgreement {
     }
 
     /**
-     * @dev Mark agreement as completed
+     * @dev Mark agreement as completed.
+     * Restricted to owner (the trusted backend relayer) only — completion must only
+     * happen after the off-chain payment service confirms all milestones are paid.
+     * Allowing the employer to call this directly would let them unilaterally mark
+     * the agreement complete before work is done, bypassing the freelancer's consent
+     * and enabling premature reputation ratings.
      */
     function completeAgreement(bytes32 contractIdHash) external {
         Agreement storage a = agreements[contractIdHash];
         if (a.createdAt == 0) revert AgreementNotFound();
         if (a.status != AgreementStatus.Signed) revert NotSigned();
-        if (msg.sender != a.employer && msg.sender != owner) revert Unauthorized();
+        if (msg.sender != owner) revert OnlyOwner();
 
         a.status = AgreementStatus.Completed;
         emit AgreementCompleted(contractIdHash, block.timestamp);
