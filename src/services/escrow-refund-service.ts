@@ -242,12 +242,29 @@ export async function approveRefund(
         });
       }
     } catch (blockchainError) {
-      // Log error but don't fail the approval - the refund is approved in DB
-      /* istanbul ignore next */
-      logger.error('Failed to execute blockchain refund', {
+      // Blockchain call failed — rollback the DB approval so the state stays consistent.
+      // Without this rollback the requester would see "approved" but receive no on-chain refund.
+      logger.error('Failed to execute blockchain refund, rolling back DB approval', {
         error: blockchainError,
-        refundId: input.refundId
+        refundId: input.refundId,
       });
+      try {
+        await refundRequestRepository.update(input.refundId, {
+          status: 'pending',
+          approved_by: null,
+          approved_at: null,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (rollbackError) {
+        logger.error('CRITICAL: Failed to rollback refund approval after blockchain failure', {
+          error: rollbackError,
+          refundId: input.refundId,
+        });
+      }
+      return {
+        success: false,
+        error: { code: 'BLOCKCHAIN_REFUND_FAILED', message: 'Blockchain refund failed; approval has been rolled back' },
+      };
     }
 
     // Update contract status to cancelled after refund approval
