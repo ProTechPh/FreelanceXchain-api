@@ -12,6 +12,7 @@ pragma solidity 0.8.26;
  * - Packed status + submittedAt + completedAt with freelancer (saves 3 storage slots)
  * - Custom errors replace require strings
  * - Cached storage reads (m.freelancer, m.amount)
+ * - Unchecked increment for completedCount (overflow impossible for uint256)
  */
 contract MilestoneRegistry {
     // Custom errors
@@ -45,10 +46,10 @@ contract MilestoneRegistry {
 
     // Mapping from milestone ID hash to record
     mapping(bytes32 => MilestoneRecord) public milestones;
-    
+
     // Track milestones by freelancer for portfolio
     mapping(address => bytes32[]) public freelancerMilestones;
-    
+
     // Track completed milestones count
     mapping(address => uint256) public completedCount;
     mapping(address => uint256) public totalEarned;
@@ -101,21 +102,25 @@ contract MilestoneRegistry {
     /**
      * @dev Approve milestone completion
      * Only the employer of the milestone or the contract owner can approve
+     * Milestone must be in Submitted state — Disputed milestones must be resolved
+     * through DisputeResolution before approval
      */
     function approveMilestone(bytes32 milestoneIdHash) external {
         MilestoneRecord storage m = milestones[milestoneIdHash];
         if (m.submittedAt == 0) revert MilestoneNotFound();
-        if (m.status != MilestoneStatus.Submitted && m.status != MilestoneStatus.Disputed) revert InvalidStatus();
+        if (m.status != MilestoneStatus.Submitted) revert InvalidStatus();
         if (msg.sender != m.employer && msg.sender != owner) revert OnlyEmployerOrOwner();
 
         m.status = MilestoneStatus.Approved;
         m.completedAt = uint40(block.timestamp);
-        
+
         // Cache storage reads
         address fl = m.freelancer;
         uint256 amt = m.amount;
-        
-        completedCount[fl]++;
+
+        unchecked {
+            completedCount[fl]++;
+        }
         totalEarned[fl] += amt;
 
         emit MilestoneApproved(milestoneIdHash, fl, amt, block.timestamp);

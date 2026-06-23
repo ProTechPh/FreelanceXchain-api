@@ -28,6 +28,7 @@ contract ContractAgreement {
     error CannotCancel();
     error Unauthorized();
     error IndexOutOfBounds();
+    error MilestoneCountTooLarge();
 
     address public immutable owner;
 
@@ -47,7 +48,7 @@ contract ContractAgreement {
 
     // Mapping from contract ID hash to agreement
     mapping(bytes32 => Agreement) public agreements;
-    
+
     // Track all agreements by address
     mapping(address => bytes32[]) public userAgreements;
 
@@ -78,6 +79,7 @@ contract ContractAgreement {
         if (agreements[contractIdHash].createdAt != 0) revert AgreementAlreadyExists();
         if (employer == address(0) || freelancer == address(0)) revert InvalidAddresses();
         if (employer == freelancer) revert SameParty();
+        if (milestoneCount > type(uint32).max) revert MilestoneCountTooLarge();
 
         agreements[contractIdHash] = Agreement({
             termsHash: termsHash,
@@ -149,13 +151,16 @@ contract ContractAgreement {
     }
 
     /**
-     * @dev Cancel agreement (only if not yet signed by both)
+     * @dev Cancel agreement
+     * Cannot cancel once either party has signed — prevents front-running a countersignature
      */
     function cancelAgreement(bytes32 contractIdHash) external {
         Agreement storage a = agreements[contractIdHash];
         if (a.createdAt == 0) revert AgreementNotFound();
         if (msg.sender != a.employer && msg.sender != a.freelancer) revert NotParty();
         if (a.status != AgreementStatus.Pending) revert CannotCancel();
+        // Disallow cancellation once any party has signed to prevent front-running the countersignature
+        if (a.employerSignedAt != 0 || a.freelancerSignedAt != 0) revert CannotCancel();
 
         a.status = AgreementStatus.Cancelled;
         emit AgreementCancelled(contractIdHash, block.timestamp);

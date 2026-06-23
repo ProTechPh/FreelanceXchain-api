@@ -27,6 +27,7 @@ contract DisputeResolution {
     error AlreadyResolved();
     error OnlyPartiesOrOwner();
     error InvalidOutcome();
+    error InvalidArbiter();
 
     address public immutable owner;
 
@@ -35,16 +36,16 @@ contract DisputeResolution {
     struct DisputeRecord {
         bytes32 contractId;         // slot 0
         bytes32 milestoneId;        // slot 1
-        bytes32 evidenceHash;       // slot 2
-        address initiator;          // slot 3 — 20 bytes
-        DisputeOutcome outcome;     // slot 3 — 1 byte (packed)
-        uint48 createdAt;           // slot 3 — 6 bytes (packed)
-        uint40 resolvedAt;          // slot 3 — 5 bytes (packed)
-        address freelancer;         // slot 4
-        address employer;           // slot 5
-        address arbiter;            // slot 6
-        uint256 amount;             // slot 7
-        string reasoning;           // slot 8
+        address initiator;          // slot 2 — 20 bytes
+        DisputeOutcome outcome;     // slot 2 — 1 byte (packed)
+        uint48 createdAt;           // slot 2 — 6 bytes (packed)
+        uint40 resolvedAt;          // slot 2 — 5 bytes (packed)
+        address freelancer;         // slot 3
+        address employer;           // slot 4
+        address arbiter;            // slot 5
+        uint256 amount;             // slot 6
+        string reasoning;           // slot 7
+        bytes32[] evidenceHashes;   // slot 8 — append-only evidence log
     }
 
     mapping(bytes32 => DisputeRecord) public disputes;
@@ -59,7 +60,7 @@ contract DisputeResolution {
     mapping(address => DisputeStats) public disputeStats;
 
     event DisputeCreated(bytes32 indexed disputeIdHash, bytes32 indexed contractId, address indexed initiator);
-    event EvidenceSubmitted(bytes32 indexed disputeIdHash, bytes32 evidenceHash);
+    event EvidenceSubmitted(bytes32 indexed disputeIdHash, bytes32 evidenceHash, address indexed submitter, uint256 timestamp);
     event DisputeResolved(bytes32 indexed disputeIdHash, DisputeOutcome outcome, address arbiter, uint256 timestamp);
 
     constructor() {
@@ -86,20 +87,19 @@ contract DisputeResolution {
         if (msg.sender != initiator && msg.sender != owner) revert OnlyInitiatorOrOwner();
         if (initiator != freelancer && initiator != employer) revert InitiatorMustBeParty();
 
-        disputes[disputeIdHash] = DisputeRecord({
-            contractId: contractId,
-            milestoneId: milestoneId,
-            evidenceHash: bytes32(0),
-            initiator: initiator,
-            outcome: DisputeOutcome.Pending,
-            createdAt: uint48(block.timestamp),
-            resolvedAt: 0,
-            freelancer: freelancer,
-            employer: employer,
-            arbiter: address(0),
-            amount: amount,
-            reasoning: ""
-        });
+        DisputeRecord storage d = disputes[disputeIdHash];
+        d.contractId = contractId;
+        d.milestoneId = milestoneId;
+        d.initiator = initiator;
+        d.outcome = DisputeOutcome.Pending;
+        d.createdAt = uint48(block.timestamp);
+        d.resolvedAt = 0;
+        d.freelancer = freelancer;
+        d.employer = employer;
+        d.arbiter = address(0);
+        d.amount = amount;
+        d.reasoning = "";
+        // evidenceHashes starts as an empty dynamic array
 
         userDisputes[freelancer].push(disputeIdHash);
         userDisputes[employer].push(disputeIdHash);
@@ -108,17 +108,17 @@ contract DisputeResolution {
     }
 
     /**
-     * @dev Update evidence hash (aggregated hash of all evidence)
-     * Only dispute parties or the contract owner can update evidence
+     * @dev Submit evidence hash (append-only — prior evidence cannot be overwritten)
+     * Only dispute parties or the contract owner can submit evidence
      */
-    function updateEvidence(bytes32 disputeIdHash, bytes32 evidenceHash) external {
+    function submitEvidence(bytes32 disputeIdHash, bytes32 evidenceHash) external {
         DisputeRecord storage d = disputes[disputeIdHash];
         if (d.createdAt == 0) revert DisputeNotFound();
         if (d.outcome != DisputeOutcome.Pending) revert AlreadyResolved();
         if (msg.sender != d.freelancer && msg.sender != d.employer && msg.sender != owner) revert OnlyPartiesOrOwner();
 
-        d.evidenceHash = evidenceHash;
-        emit EvidenceSubmitted(disputeIdHash, evidenceHash);
+        d.evidenceHashes.push(evidenceHash);
+        emit EvidenceSubmitted(disputeIdHash, evidenceHash, msg.sender, block.timestamp);
     }
 
     /**
@@ -132,6 +132,7 @@ contract DisputeResolution {
         address arbiter
     ) external {
         if (msg.sender != owner) revert OnlyOwner();
+        if (arbiter == address(0)) revert InvalidArbiter();
         DisputeRecord storage d = disputes[disputeIdHash];
         if (d.createdAt == 0) revert DisputeNotFound();
         if (d.outcome != DisputeOutcome.Pending) revert AlreadyResolved();
@@ -156,6 +157,8 @@ contract DisputeResolution {
         } else if (outcome == DisputeOutcome.Split) {
             disputeStats[_freelancer].split++;
             disputeStats[_employer].split++;
+        } else {
+            // DisputeOutcome.Cancelled — no win/loss recorded intentionally
         }
 
         emit DisputeResolved(disputeIdHash, outcome, arbiter, block.timestamp);
@@ -166,7 +169,6 @@ contract DisputeResolution {
     function getDispute(bytes32 disputeIdHash) external view returns (
         bytes32 contractId,
         bytes32 milestoneId,
-        bytes32 evidenceHash,
         address initiator,
         address freelancer,
         address employer,
@@ -176,7 +178,15 @@ contract DisputeResolution {
         uint256 resolvedAt
     ) {
         DisputeRecord storage d = disputes[disputeIdHash];
-        return (d.contractId, d.milestoneId, d.evidenceHash, d.initiator, d.freelancer, d.employer, d.amount, d.outcome, uint256(d.createdAt), uint256(d.resolvedAt));
+        return (d.contractId, d.milestoneId, d.initiator, d.freelancer, d.employer, d.amount, d.outcome, uint256(d.createdAt), uint256(d.resolvedAt));
+    }
+
+    function getEvidenceCount(bytes32 disputeIdHash) external view returns (uint256) {
+        return disputes[disputeIdHash].evidenceHashes.length;
+    }
+
+    function getEvidenceAt(bytes32 disputeIdHash, uint256 index) external view returns (bytes32) {
+        return disputes[disputeIdHash].evidenceHashes[index];
     }
 
     function getUserDisputeStats(address user) external view returns (uint256 won, uint256 lost, uint256 split, uint256 total) {
