@@ -28,6 +28,7 @@ contract DisputeResolution {
     error OnlyPartiesOrOwner();
     error InvalidOutcome();
     error InvalidArbiter();
+    error IndexOutOfBounds();
 
     address public immutable owner;
 
@@ -39,7 +40,7 @@ contract DisputeResolution {
         address initiator;          // slot 2 — 20 bytes
         DisputeOutcome outcome;     // slot 2 — 1 byte (packed)
         uint48 createdAt;           // slot 2 — 6 bytes (packed)
-        uint40 resolvedAt;          // slot 2 — 5 bytes (packed)
+        uint48 resolvedAt;          // slot 2 — 6 bytes (packed; matches createdAt width for consistency)
         address freelancer;         // slot 3
         address employer;           // slot 4
         address arbiter;            // slot 5
@@ -141,7 +142,7 @@ contract DisputeResolution {
         d.outcome = outcome;
         d.reasoning = reasoning;
         d.arbiter = arbiter;
-        d.resolvedAt = uint40(block.timestamp);
+        d.resolvedAt = uint48(block.timestamp);
 
         // Cache addresses to avoid repeated SLOADs
         address _freelancer = d.freelancer;
@@ -186,7 +187,9 @@ contract DisputeResolution {
     }
 
     function getEvidenceAt(bytes32 disputeIdHash, uint256 index) external view returns (bytes32) {
-        return disputes[disputeIdHash].evidenceHashes[index];
+        DisputeRecord storage d = disputes[disputeIdHash];
+        if (index >= d.evidenceHashes.length) revert IndexOutOfBounds();
+        return d.evidenceHashes[index];
     }
 
     function getUserDisputeStats(address user) external view returns (uint256 won, uint256 lost, uint256 split, uint256 total) {
