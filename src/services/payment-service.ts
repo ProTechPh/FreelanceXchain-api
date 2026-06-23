@@ -475,8 +475,11 @@ export async function approveMilestone(
   }
 
   // Update milestone status to approved only after successful payment release
-  // Update milestone status to approved (immutable pattern)
-  const updatedMilestones = projectEntity.milestones.map((m, i) =>
+  // Build updatedMilestones from releasingBase (the freshest read used for the SAGA intent
+  // write) rather than projectEntity (the original snapshot). Using the original snapshot
+  // would silently discard any concurrent milestone updates made between the first fetch
+  // and the releasing intent write.
+  const updatedMilestones = releasingBase.milestones.map((m, i) =>
     i === milestoneIndex ? { ...m, status: 'approved' as const } : m
   );
 
