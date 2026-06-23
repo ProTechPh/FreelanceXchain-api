@@ -95,7 +95,11 @@ contract FreelanceReputation {
      * @param score Rating score (1-5)
      * @param comment Review comment
      * @param contractIdHash On-chain contract reference (must be Completed)
-     * @param isEmployerRating True if employer is rating freelancer
+     *
+     * Note: isEmployerRating is derived on-chain from msg.sender vs the contract's employer
+     * address. It is NOT accepted as a caller-supplied parameter — accepting it as input
+     * would allow an employer to submit a rating with isEmployerRating=false, corrupting
+     * reputation data that consumers use to separate employer-given from freelancer-given ratings.
      *
      * Gas complexity: O(1) - only performs constant-time operations
      */
@@ -103,8 +107,7 @@ contract FreelanceReputation {
         address ratee,
         uint8 score,
         string calldata comment,
-        bytes32 contractIdHash,
-        bool isEmployerRating
+        bytes32 contractIdHash
     ) external returns (uint256) {
         if (ratee == address(0)) revert InvalidRateeAddress();
         if (ratee == msg.sender) revert CannotRateSelf();
@@ -126,6 +129,11 @@ contract FreelanceReputation {
         if (status != IContractAgreement.AgreementStatus.Completed) revert ContractNotCompleted();
         if (msg.sender != employer && msg.sender != freelancer) revert NotPartyToContract();
         if (ratee != employer && ratee != freelancer) revert InvalidRatee();
+
+        // Derive isEmployerRating from on-chain agreement data rather than trusting the
+        // caller-supplied boolean. An employer could otherwise pass isEmployerRating=false
+        // to make their rating appear to be from the freelancer, corrupting reputation data.
+        bool isEmployerRating = (msg.sender == employer);
 
         // Check for duplicate rating
         bytes32 ratingKey = keccak256(
