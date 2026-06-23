@@ -286,7 +286,21 @@ contract FreelanceEscrow {
     }
 
     /**
-     * @dev Employer can refund a pending milestone
+     * @dev Employer can refund a pending milestone.
+     *
+     * @notice This function only refunds milestones in Pending status.
+     * Milestones in Submitted or Disputed status cannot be refunded directly by the employer,
+     * and `cancelContract` also blocks cancellation when such milestones exist.
+     *
+     * Expected resolution paths for non-Pending milestones:
+     * - Submitted: the employer must either approve (approveMilestone) or dispute (disputeMilestone).
+     * - Disputed: the arbiter must resolve the dispute via resolveDispute, which uses pull-payment
+     *   so each party can withdraw their allocation independently via withdraw().
+     *
+     * There is currently no timeout-based or admin escape mechanism. If both parties refuse to
+     * progress a Submitted or Disputed milestone and the arbiter is unresponsive, funds will be
+     * locked indefinitely. A future upgrade should add an arbiter-replacement mechanism or
+     * a time-locked emergency escape callable by an immutable platform governance address.
      */
     function refundMilestone(uint256 milestoneIndex) external onlyEmployer contractActive nonReentrant {
         if (milestoneIndex >= milestones.length) revert InvalidMilestoneIndex();
