@@ -66,7 +66,7 @@ router.post('/:contractId/refund-request', authMiddleware, requireVerifiedKyc, v
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error creating refund request:', error);
+    logger.error('Error creating refund request:', { error: error instanceof Error ? error.message : String(error) });
     return res.status(500).json({ error: 'Failed to create refund request' });
   }
 });
