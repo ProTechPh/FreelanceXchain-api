@@ -51,6 +51,9 @@ contract FreelanceEscrow {
     uint256 public releasedAmount;
     uint256 public refundedAmount;
 
+    // Pull-payment: amounts owed to each address after dispute resolution
+    mapping(address => uint256) public pendingWithdrawals;
+
     // Reentrancy guard (packed with isActive in same slot)
     uint8 private constant NOT_ENTERED = 1;
     uint8 private constant ENTERED = 2;
@@ -222,7 +225,10 @@ contract FreelanceEscrow {
     }
 
     /**
-     * @dev Arbiter resolves dispute with a split expressed in basis points
+     * @dev Arbiter resolves dispute with a split expressed in basis points.
+     * Uses pull-payment pattern: amounts are credited to pendingWithdrawals
+     * instead of pushed directly, eliminating the sequential-external-call
+     * reentrancy window that existed when both parties were called in one tx.
      * @param freelancerBps Portion awarded to freelancer (0–10000). 10000 = full to freelancer,
      *                      0 = full to employer, 5000 = 50/50 split.
      */
@@ -239,24 +245,24 @@ contract FreelanceEscrow {
         uint256 freelancerAmt = (amt * freelancerBps) / 10000;
         uint256 employerAmt = amt - freelancerAmt;
 
+        // All state changes before any external interaction (CEI pattern)
         milestone.status = MilestoneStatus.Approved;
         releasedAmount += freelancerAmt;
         refundedAmount += employerAmt;
 
-        // Check completion and update state BEFORE external calls
+        // Check completion and update state BEFORE crediting withdrawals
         if (releasedAmount + refundedAmount >= totalAmount) {
             isActive = false;
         }
 
+        // Pull-payment: credit each party's withdrawal balance; no external calls here
         if (freelancerAmt > 0) {
-            (bool success, ) = freelancer.call{value: freelancerAmt}("");
-            if (!success) revert TransferFailed();
+            pendingWithdrawals[freelancer] += freelancerAmt;
             emit MilestoneApproved(milestoneIndex, freelancerAmt);
         }
 
         if (employerAmt > 0) {
-            (bool success, ) = employer.call{value: employerAmt}("");
-            if (!success) revert RefundFailed();
+            pendingWithdrawals[employer] += employerAmt;
             emit MilestoneRefunded(milestoneIndex, employerAmt);
         }
 
@@ -265,6 +271,18 @@ contract FreelanceEscrow {
         if (!isActive) {
             emit ContractCompleted();
         }
+    }
+
+    /**
+     * @dev Withdraw funds credited via dispute resolution (pull-payment).
+     * Each party calls this independently to receive their allocation.
+     */
+    function withdraw() external nonReentrant {
+        uint256 amount = pendingWithdrawals[msg.sender];
+        require(amount > 0, "Nothing to withdraw");
+        pendingWithdrawals[msg.sender] = 0;
+        (bool ok, ) = msg.sender.call{value: amount}("");
+        if (!ok) revert TransferFailed();
     }
 
     /**
