@@ -332,6 +332,35 @@ export async function approveMilestone(
     };
   }
 
+  // Validate all preconditions before recording SAGA intent (fixes BUG-2: prevents
+  // milestone getting stuck in 'releasing' when wallet is missing)
+  const employer = await userRepository.getUserById(employerId);
+  if (!employer?.wallet_address) {
+    return {
+      success: false,
+      error: {
+        code: 'MISSING_WALLET',
+        message: 'Employer wallet address is required to approve and release milestone payment.',
+      },
+    };
+  }
+
+  // Re-read project immediately before intent write to reduce concurrent-approval race window
+  // (BUG-1 mitigation: Appwrite lacks atomic compare-and-set; this re-verify catches most races)
+  const freshProjectForLock = await projectRepository.findProjectById(contract.projectId);
+  const freshMilestoneStatus = freshProjectForLock?.milestones[milestoneIndex]?.status;
+  if (freshMilestoneStatus !== 'submitted') {
+    return {
+      success: false,
+      error: {
+        code: 'INVALID_STATUS',
+        message: freshMilestoneStatus === 'releasing'
+          ? 'Milestone payment is already being processed'
+          : `Milestone status changed concurrently (current: ${freshMilestoneStatus ?? 'unknown'})`,
+      },
+    };
+  }
+
   // SAGA: Record intent before blockchain call
   // Set milestone status to 'releasing' to prevent concurrent operations
   const releasingMilestones = projectEntity.milestones.map((m, i) =>
@@ -342,19 +371,9 @@ export async function approveMilestone(
   });
 
   // Release payment from escrow - BLOCKCHAIN FIRST
-  // Look up the employer's wallet address (NOT the UUID)
   let transactionHash: string | undefined;
   try {
-    const employer = await userRepository.getUserById(employerId);
-    if (!employer?.wallet_address) {
-      return {
-        success: false,
-        error: {
-          code: 'MISSING_WALLET',
-          message: 'Employer wallet address is required to approve and release milestone payment.',
-        },
-      };
-    }
+    // employer was already fetched and validated above
 
     // Call real blockchain escrow if in real mode and Web3 is available
     if (getBlockchainMode() === 'real' && isWeb3Available()) {

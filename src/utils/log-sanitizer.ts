@@ -203,6 +203,7 @@ export function containsSensitiveData(input: string): boolean {
   SENSITIVE_PATTERNS.password.lastIndex = 0;
   SENSITIVE_PATTERNS.creditCard.lastIndex = 0;
   SENSITIVE_PATTERNS.email.lastIndex = 0;
+  SENSITIVE_PATTERNS.phone.lastIndex = 0;
   SENSITIVE_PATTERNS.ssn.lastIndex = 0;
   SENSITIVE_PATTERNS.authHeader.lastIndex = 0;
   SENSITIVE_PATTERNS.privateKey.lastIndex = 0;
