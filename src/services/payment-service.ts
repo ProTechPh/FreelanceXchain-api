@@ -808,22 +808,15 @@ export function clearDisputes(): void {
 
 /**
  * Convert a decimal number to wei (BigInt) safely without floating-point precision loss.
- * Uses string manipulation instead of `Math.floor(amount * 1e18)` which loses precision.
- * e.g., 0.3 * 1e18 = 299999999999999940 (wrong), but this function returns 300000000000000000 (correct)
+ * Uses ethers.parseUnits which handles the full numeric range correctly.
+ * e.g., 0.3 * 1e18 = 299999999999999940 (wrong), but parseUnits('0.3', 18) returns 300000000000000000 (correct)
  */
 function toWei(amount: number): bigint {
-  // Handle scientific notation by converting to fixed-point string first
-  let str: string;
-  if (Math.abs(amount) >= 1e21 || (Math.abs(amount) < 1e-6 && amount !== 0)) {
-    // Use toFixed with enough precision to avoid scientific notation
-    str = amount.toFixed(18);
-  } else {
-    str = amount.toString();
-  }
-  const parts = str.split('.');
-  const whole = parts[0] ?? '0';
-  const decimal = (parts[1] ?? '').padEnd(18, '0').slice(0, 18);
-  return BigInt(whole + decimal);
+  const { parseUnits } = require('ethers') as typeof import('ethers');
+  // Convert via string to avoid IEEE 754 float precision issues.
+  // Number.prototype.toString() produces the shortest string that round-trips,
+  // which avoids the scientific-notation / truncation problems of toFixed(18).
+  return parseUnits(amount.toString(), 18);
 }
 
 /**
