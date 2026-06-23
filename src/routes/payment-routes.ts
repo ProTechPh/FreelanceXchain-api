@@ -160,6 +160,14 @@ router.post(
         return;
       }
 
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(contractId)) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'contractId must be a valid UUID' },
+        });
+        return;
+      }
+
       const result = await requestMilestoneCompletion(
         contractId,
         milestoneId,
@@ -242,6 +250,14 @@ router.post(
       if (!contractId) {
         res.status(400).json({
           error: { code: 'VALIDATION_ERROR', message: 'contractId query parameter is required' },
+        });
+        return;
+      }
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(contractId)) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'contractId must be a valid UUID' },
         });
         return;
       }
@@ -335,6 +351,14 @@ router.post(
       if (!contractId) {
         res.status(400).json({
           error: { code: 'VALIDATION_ERROR', message: 'contractId query parameter is required' },
+        });
+        return;
+      }
+
+      const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!UUID_RE.test(contractId)) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'contractId must be a valid UUID' },
         });
         return;
       }
