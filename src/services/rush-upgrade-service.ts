@@ -343,6 +343,7 @@ export async function acceptCounterOffer(
   const now = new Date().toISOString();
   const updatedEntity = await rushUpgradeRequestRepository.updateRequest(requestId, {
     status: 'accepted',
+    responded_by: employerId,
     responded_at: now,
   });
 
