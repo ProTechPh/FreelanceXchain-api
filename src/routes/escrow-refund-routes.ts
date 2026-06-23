@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { logger } from '../config/logger.js';
@@ -43,7 +43,7 @@ const router = Router();
  *       200:
  *         description: Refund request created successfully
  */
-router.post('/:contractId/refund-request', authMiddleware, validateUUID(['contractId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:contractId/refund-request', authMiddleware, requireVerifiedKyc, validateUUID(['contractId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const contractId = req.params['contractId'] ?? '';
     const userId = req.user?.userId ?? '';

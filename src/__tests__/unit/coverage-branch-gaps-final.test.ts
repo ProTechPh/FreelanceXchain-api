@@ -25,6 +25,7 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'freelancer' }; next(); },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
+  requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({

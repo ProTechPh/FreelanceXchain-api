@@ -444,13 +444,16 @@ router.get(
               const releasedAmount = project.milestones
                 .filter(m => m.status === 'approved')
                 .reduce((sum, m) => sum + m.amount, 0);
+              const refundedAmount = project.milestones
+                .filter(m => m.status === 'refunded')
+                .reduce((sum, m) => sum + m.amount, 0);
 
               res.json({
                 contractId: contractRes.data.id,
                 escrowAddress: contractRes.data.escrowAddress,
                 totalAmount,
                 releasedAmount,
-                pendingAmount: totalAmount - releasedAmount,
+                pendingAmount: Math.max(totalAmount - releasedAmount - refundedAmount, 0),
                 milestones: project.milestones.map(m => ({
                   id: m.id,
                   title: m.title,

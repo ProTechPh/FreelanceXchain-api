@@ -3,6 +3,11 @@ import { config } from '../config/env.js';
 
 type RateLimitStore = Map<string, { count: number; resetTime: number }>;
 
+// WARNING: This store is in-process memory only.
+// In a multi-process or multi-instance deployment (PM2 cluster, Kubernetes, Docker replicas)
+// each instance maintains an independent counter, making the effective limit
+// maxRequests × numInstances. Replace with a shared Redis-backed store
+// (e.g. rate-limiter-flexible + ioredis) before horizontal scaling.
 const stores: Map<string, RateLimitStore> = new Map();
 
 type RateLimitConfig = {

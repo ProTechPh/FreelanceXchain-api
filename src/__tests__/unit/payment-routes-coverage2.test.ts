@@ -136,6 +136,39 @@ describe('Payment Routes - Coverage2', () => {
       expect(res.body.releasedAmount).toBe(500);
     });
 
+    it('should handle refunded milestones in admin bypass', async () => {
+      mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
+        req.user = { userId: 'admin-1', role: 'admin' };
+        next();
+      });
+
+      mockGetContractPaymentStatus.mockResolvedValue({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Not authorized' },
+      });
+
+      mockGetContractById.mockResolvedValue({
+        success: true,
+        data: { id: 'c-1', projectId: 'p-1', totalAmount: 1000, escrowAddress: '0x123', status: 'active' },
+      });
+
+      mockGetProjectById.mockResolvedValue({
+        success: true,
+        data: {
+          milestones: [
+            { id: 'm1', title: 'MS1', amount: 500, status: 'approved' },
+            { id: 'm2', title: 'MS2', amount: 200, status: 'refunded' },
+            { id: 'm3', title: 'MS3', amount: 300, status: 'pending' },
+          ],
+        },
+      });
+
+      const res = await request(app).get('/api/payments/contracts/c-1/status');
+      expect(res.status).toBe(200);
+      expect(res.body.releasedAmount).toBe(500);
+      expect(res.body.pendingAmount).toBe(300);
+    });
+
     it('should fall through to error when admin bypass fails (contract not found)', async () => {
       mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
         req.user = { userId: 'admin-1', role: 'admin' };

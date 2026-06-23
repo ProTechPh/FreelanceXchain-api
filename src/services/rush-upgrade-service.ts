@@ -70,7 +70,13 @@ export async function requestRushUpgrade(
     };
   }
 
-  // Check for existing pending/counter_offered request
+  // Check for existing pending/counter_offered request.
+  // NOTE: This check and the subsequent insert are not atomic. Two concurrent requests
+  // can both pass this guard before either inserts. A unique DB constraint on
+  // (contract_id, status IN ('pending','counter_offered')) is required to fully prevent
+  // duplicate rush upgrade requests. The application-level check below catches the
+  // common case; DB errors from a constraint violation should be caught and returned
+  // as PENDING_REQUEST_EXISTS.
   const existingRequest = await rushUpgradeRequestRepository.getPendingRequestByContract(input.contractId);
   if (existingRequest) {
     return {

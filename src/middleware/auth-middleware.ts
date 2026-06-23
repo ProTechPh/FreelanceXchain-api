@@ -104,10 +104,14 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 /**
  * Middleware that requires MFA for sensitive operations.
  * Must be used AFTER authMiddleware.
- * 
- * Note: MFA is handled at the Appwrite auth layer.
- * This middleware currently passes through - implement Appwrite MFA
- * verification when needed.
+ *
+ * IMPORTANT: This middleware only enforces authentication, NOT MFA.
+ * MFA is verified at Appwrite session-creation time (login flow), not per-request.
+ * Any JWT issued after a successful Appwrite MFA challenge is implicitly MFA-verified,
+ * but this middleware does NOT re-verify that claim.
+ *
+ * TODO: If per-endpoint MFA re-challenge is required, verify the Appwrite session
+ * MFA scope via the Appwrite SDK before calling next().
  */
 export async function requireMFA(req: Request, res: Response, next: NextFunction): Promise<void> {
   const requestId = req.headers['x-request-id'] ?? 'unknown';
@@ -124,8 +128,6 @@ export async function requireMFA(req: Request, res: Response, next: NextFunction
     return;
   }
 
-  // MFA is handled at the Appwrite auth layer
-  // Appwrite sessions already include MFA verification when enabled
   next();
 }
 

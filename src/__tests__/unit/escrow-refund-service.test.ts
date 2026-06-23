@@ -79,6 +79,8 @@ describe('Escrow Refund Service', () => {
     mockRefundRequestRepository.create.mockReset();
     mockRefundRequestRepository.update.mockReset();
     mockMilestoneRepository.findByContract.mockReset();
+    // Default: no approved milestones — remainingEscrow === total_amount for all tests
+    mockMilestoneRepository.findByContract.mockResolvedValue([]);
   });
 
   const importModule = async () => {
@@ -187,12 +189,73 @@ describe('Escrow Refund Service', () => {
       expect(result.error.code).toBe('DUPLICATE_REQUEST');
     });
 
-    it('should handle insert failure', async () => {
+    it('should fail when amount is negative', async () => {
       const { createRefundRequest } = await importModule();
 
       mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
-      mockRefundRequestRepository.create.mockRejectedValueOnce(new Error('Insert failed'));
+
+      const result = await createRefundRequest({
+        contractId: 'c-1',
+        requestedBy: 'freelancer-1',
+        amount: -100,
+        reason: 'Test',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should fail when amount exceeds remaining escrow', async () => {
+      const { createRefundRequest } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
+      mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      // One milestone already approved — remaining escrow is 600
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([
+        { status: 'approved', amount: 400 },
+        { status: 'pending', amount: 600 },
+      ]);
+
+      const result = await createRefundRequest({
+        contractId: 'c-1',
+        requestedBy: 'freelancer-1',
+        amount: 700,
+        reason: 'Test',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should reduce remaining escrow by approved milestone amounts', async () => {
+      const { createRefundRequest } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
+      mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([
+        { status: 'approved', amount: 400 },
+        { status: 'pending', amount: 600 },
+      ]);
+      const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 600, status: 'pending' };
+      mockRefundRequestRepository.create.mockResolvedValueOnce(refund);
+
+      const result = await createRefundRequest({
+        contractId: 'c-1',
+        requestedBy: 'freelancer-1',
+        amount: 600,
+        reason: 'Test',
+      });
+
+      expect(result.success).toBe(true);
+    });
+
+    it('should fail when create returns null', async () => {
+      const { createRefundRequest } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
+      mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+      mockRefundRequestRepository.create.mockResolvedValueOnce(null);
 
       const result = await createRefundRequest({
         contractId: 'c-1',
@@ -232,6 +295,10 @@ describe('Escrow Refund Service', () => {
           escrow_address: null,
         },
       });
+      // Re-read for concurrent-approval guard
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', status: 'pending',
+      });
       // Update refund
       const updated = { id: 'ref-1', status: 'approved', approved_by: 'employer-1' };
       mockRefundRequestRepository.update.mockResolvedValueOnce(updated);
@@ -249,6 +316,31 @@ describe('Escrow Refund Service', () => {
 
       expect(result.success).toBe(true);
       expect(mockCreateNotification).toHaveBeenCalled();
+    });
+
+    it('should fail when concurrent re-read shows status changed', async () => {
+      const { approveRefund } = await importModule();
+
+      // First read: pending
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000, status: 'active',
+          escrow_address: null,
+        },
+      });
+      // Re-read: already approved (concurrent change)
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', status: 'approved',
+      });
+
+      const result = await approveRefund({
+        refundId: 'ref-1',
+        approvedBy: 'employer-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('INVALID_STATUS');
     });
 
     it('should fail when refund not found', async () => {
@@ -311,6 +403,10 @@ describe('Escrow Refund Service', () => {
         contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000,
         },
+      });
+      // Re-read for concurrent-approval guard
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', status: 'pending',
       });
       mockRefundRequestRepository.update.mockResolvedValueOnce(null);
 

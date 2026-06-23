@@ -59,19 +59,56 @@ export async function createRefundRequest(
       };
     }
 
-    // Determine if partial refund
-    const isPartial = input.amount !== undefined && input.amount < contract.total_amount;
+    // Calculate remaining escrow: total minus milestones already approved and released.
+    // Wrapped in try/catch — milestone fetch is non-critical; on failure we conservatively
+    // use the full contract amount as the ceiling (safe: prevents under-refund, not over-refund).
+    let releasedAmount = 0;
+    try {
+      const contractMilestones = await milestoneRepository.findByContract(input.contractId);
+      releasedAmount = ((contractMilestones ?? []) as Array<{ status: string; amount?: number }>)
+        .filter(m => m.status === 'approved')
+        .reduce((sum, m) => sum + (m.amount ?? 0), 0);
+    } catch {
+      // Non-critical — proceed with full contract amount as ceiling
+    }
+    const remainingEscrow = contract.total_amount - releasedAmount;
+
+    // Validate requested amount: must be positive and cannot exceed remaining escrow
+    if (input.amount !== undefined) {
+      if (typeof input.amount !== 'number' || !isFinite(input.amount) || input.amount <= 0) {
+        return {
+          success: false,
+          error: { code: 'VALIDATION_ERROR', message: 'Refund amount must be a positive number' },
+        };
+      }
+      if (input.amount > remainingEscrow) {
+        return {
+          success: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: `Refund amount (${input.amount}) exceeds remaining escrow balance (${remainingEscrow})`,
+          },
+        };
+      }
+    }
+
+    const requestedAmount = input.amount ?? remainingEscrow;
+    const isPartial = requestedAmount < contract.total_amount;
 
     // Create refund request
     const refund = await refundRequestRepository.create({
       id: '',
       contract_id: input.contractId,
       requested_by: input.requestedBy,
-      amount: input.amount || contract.total_amount,
+      amount: requestedAmount,
       is_partial: isPartial,
       reason: input.reason,
       status: 'pending',
     });
+
+    if (!refund) {
+      throw new Error('Failed to create refund request');
+    }
 
     // Notify other party
     const otherPartyId = contract.freelancer_id === input.requestedBy
@@ -144,6 +181,16 @@ export async function approveRefund(
       return {
         success: false,
         error: { code: 'INVALID_STATUS', message: 'Refund request is not pending' },
+      };
+    }
+
+    // Re-read immediately before writing to narrow the concurrent-approval race window.
+    // Appwrite lacks atomic compare-and-set; this second read catches most races.
+    const freshRefund = await refundRequestRepository.findWithContract(input.refundId);
+    if (!freshRefund || freshRefund.status !== 'pending') {
+      return {
+        success: false,
+        error: { code: 'INVALID_STATUS', message: 'Refund request status changed concurrently' },
       };
     }
 

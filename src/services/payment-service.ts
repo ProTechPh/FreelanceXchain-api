@@ -362,8 +362,11 @@ export async function approveMilestone(
   }
 
   // SAGA: Record intent before blockchain call
-  // Set milestone status to 'releasing' to prevent concurrent operations
-  const releasingMilestones = projectEntity.milestones.map((m, i) =>
+  // Use freshProjectForLock (most recent read) to minimise stale-snapshot writes.
+  // freshProjectForLock is guaranteed non-null here: a null would have caused an
+  // earlier NOT_FOUND return (projectEntity was fetched and verified above).
+  const releasingBase = freshProjectForLock ?? projectEntity;
+  const releasingMilestones = releasingBase.milestones.map((m, i) =>
     i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
   );
   await projectRepository.updateProject(project.id, {
@@ -436,9 +439,12 @@ export async function approveMilestone(
       status: 'completed',
     });
   } catch (error) {
-    // SAGA: Rollback - revert milestone status from 'releasing' back to 'submitted'
+    // SAGA: Rollback - revert milestone status from 'releasing' back to 'submitted'.
+    // Re-fetch the project so concurrent changes to other milestones are not overwritten.
     try {
-      const rollbackMilestones = projectEntity.milestones.map((m, i) =>
+      const latestProject = await projectRepository.findProjectById(contract.projectId);
+      const baseForRollback = latestProject ?? projectEntity;
+      const rollbackMilestones = baseForRollback.milestones.map((m, i) =>
         i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
       );
       await projectRepository.updateProject(project.id, {
