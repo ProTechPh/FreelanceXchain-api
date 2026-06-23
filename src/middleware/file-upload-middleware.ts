@@ -112,11 +112,22 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
     // Special handling for text files (no magic number)
     if (filename.toLowerCase().endsWith('.txt')) {
       // Check if buffer contains mostly text characters
-      const isText = buffer.slice(0, 1024).every(byte => 
+      const isText = buffer.slice(0, 1024).every(byte =>
         (byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13
       );
       if (isText) {
         return { valid: true, detectedType: 'text/plain' };
+      }
+    }
+
+    // Special handling for SVG files — XML text with no binary magic number
+    if (filename.toLowerCase().endsWith('.svg')) {
+      const sample = buffer.slice(0, 512).toString('utf8');
+      const isSvg = sample.trimStart().startsWith('<svg') ||
+                    sample.trimStart().startsWith('<?xml') ||
+                    sample.includes('<svg');
+      if (isSvg) {
+        return { valid: true, detectedType: 'image/svg+xml' };
       }
     }
 
