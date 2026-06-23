@@ -102,10 +102,10 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 }
 
 /**
- * Middleware that requires MFA for sensitive operations.
+ * Middleware that enforces authentication for sensitive operations.
  * Must be used AFTER authMiddleware.
  *
- * IMPORTANT: This middleware only enforces authentication, NOT MFA.
+ * NOTE: This middleware enforces authentication only (valid JWT required).
  * MFA is verified at Appwrite session-creation time (login flow), not per-request.
  * Any JWT issued after a successful Appwrite MFA challenge is implicitly MFA-verified,
  * but this middleware does NOT re-verify that claim.
@@ -113,7 +113,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
  * TODO: If per-endpoint MFA re-challenge is required, verify the Appwrite session
  * MFA scope via the Appwrite SDK before calling next().
  */
-export async function requireMFA(req: Request, res: Response, next: NextFunction): Promise<void> {
+export async function requireAuthentication(req: Request, res: Response, next: NextFunction): Promise<void> {
   const requestId = req.headers['x-request-id'] ?? 'unknown';
 
   if (!req.user) {
@@ -130,6 +130,13 @@ export async function requireMFA(req: Request, res: Response, next: NextFunction
 
   next();
 }
+
+/**
+ * @deprecated Use `requireAuthentication` instead. This alias exists only for
+ * backward compatibility with existing tests and mocks. It does NOT enforce MFA —
+ * the name was misleading. Remove this export once all references are updated.
+ */
+export const requireMFA = requireAuthentication;
 
 export function requireRole(...roles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
