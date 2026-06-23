@@ -43,6 +43,7 @@ jobs:
         run: pnpm run compile
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
+
       - name: Type check
         run: pnpm exec tsc --noEmit
         env:
@@ -89,6 +90,7 @@ jobs:
         run: pnpm run compile
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
+
       - name: Run tests
         run: pnpm run test:ci
         env:
@@ -136,6 +138,7 @@ jobs:
         run: pnpm run compile
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
+
       - name: Build
         run: pnpm run build
         env:
