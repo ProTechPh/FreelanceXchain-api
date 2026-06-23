@@ -443,13 +443,22 @@ export async function approveMilestone(
     // Re-fetch the project so concurrent changes to other milestones are not overwritten.
     try {
       const latestProject = await projectRepository.findProjectById(contract.projectId);
-      const baseForRollback = latestProject ?? projectEntity;
-      const rollbackMilestones = baseForRollback.milestones.map((m, i) =>
-        i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
-      );
-      await projectRepository.updateProject(project.id, {
-        milestones: rollbackMilestones,
-      });
+      if (!latestProject) {
+        // Cannot safely rollback without a fresh snapshot — writing the stale projectEntity
+        // would silently overwrite any concurrent milestone updates made between the original
+        // fetch and now. Alert operations and leave the milestone in 'releasing' state.
+        logger.error('CRITICAL: Cannot rollback — project fetch returned null. Milestone may be stuck in releasing.', {
+          milestoneId,
+          contractId,
+        });
+      } else {
+        const rollbackMilestones = latestProject.milestones.map((m, i) =>
+          i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
+        );
+        await projectRepository.updateProject(project.id, {
+          milestones: rollbackMilestones,
+        });
+      }
     } catch (rollbackError) {
       logger.error('CRITICAL: Failed to rollback milestone status after payment failure', {
         milestoneId,
