@@ -4,7 +4,6 @@ import { rushUpgradeRequestRepository, RushUpgradeRequestEntity } from '../repos
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { notificationRepository } from '../repositories/notification-repository.js';
-import { userRepository } from '../repositories/user-repository.js';
 import { generateId } from '../utils/id.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
@@ -101,7 +100,6 @@ export async function requestRushUpgrade(
 
   // Notify freelancer
   try {
-    const _freelancer = await userRepository.getUserById(contractEntity.freelancer_id);
     const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
     await notificationRepository.createNotification({
       id: generateId(),
