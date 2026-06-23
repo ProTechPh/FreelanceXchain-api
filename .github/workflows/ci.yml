@@ -41,12 +41,17 @@ jobs:
 
       - name: Compile smart contracts
         run: pnpm run compile
-
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
       - name: Type check
         run: pnpm exec tsc --noEmit
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Lint
         run: pnpm run lint
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
   test:
     runs-on: ubuntu-latest
@@ -82,9 +87,12 @@ jobs:
 
       - name: Compile smart contracts
         run: pnpm run compile
-
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
       - name: Run tests
         run: pnpm run test:ci
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4
@@ -126,6 +134,9 @@ jobs:
 
       - name: Compile smart contracts
         run: pnpm run compile
-
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
       - name: Build
         run: pnpm run build
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
