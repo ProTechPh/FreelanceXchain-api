@@ -123,7 +123,7 @@ router.get('/:contractId/refunds', authMiddleware, validateUUID(['contractId']),
  *       200:
  *         description: Refund approved successfully
  */
-router.post('/refunds/:refundId/approve', authMiddleware, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/refunds/:refundId/approve', authMiddleware, requireVerifiedKyc, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const refundId = req.params['refundId'] ?? '';
     const userId = req.user?.userId ?? '';
@@ -172,7 +172,7 @@ router.post('/refunds/:refundId/approve', authMiddleware, requireRole('freelance
  *       200:
  *         description: Refund rejected successfully
  */
-router.post('/refunds/:refundId/reject', authMiddleware, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/refunds/:refundId/reject', authMiddleware, requireVerifiedKyc, requireRole('freelancer', 'employer'), validateUUID(['refundId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const refundId = req.params['refundId'] ?? '';
     const userId = req.user?.userId ?? '';
