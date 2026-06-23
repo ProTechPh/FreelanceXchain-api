@@ -702,7 +702,8 @@ export async function disputeMilestone(
  */
 export async function getContractPaymentStatus(
   contractId: string,
-  userId: string
+  userId: string,
+  role?: string
 ): Promise<ServiceResult<ContractPaymentStatus>> {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
@@ -714,12 +715,15 @@ export async function getContractPaymentStatus(
   }
   const contract = mapContractFromEntity(contractEntity);
 
-  // Verify user is part of this contract
+  // Verify user is a contract party — admins are allowed through for oversight
   if (contract.employerId !== userId && contract.freelancerId !== userId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can view payment status' },
-    };
+    if (role !== 'admin') {
+      return {
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'Only contract parties can view payment status' },
+      };
+    }
+    // admin is allowed through — no early return
   }
 
   // Get project to access milestones
