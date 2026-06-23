@@ -1,6 +1,7 @@
 # AI-Powered Matching System
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,9 +14,11 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document explains the AI-powered skill matching system in FreelanceXchain. The platform integrates Google Gemini-compatible LLM APIs to extract skills from project descriptions and freelancer profiles, compute compatibility scores, and generate intelligent recommendations. It also includes an AI assistant that enhances user interactions through natural language processing for proposals, project descriptions, and dispute analysis. The system emphasizes robust error handling, fallbacks, and performance characteristics such as retries, timeouts, and rate limiting.
 
 ## Project Structure
+
 The AI matching system spans configuration, client, service, routes, and supporting utilities:
 
 - Configuration: LLM API keys and URLs are loaded from environment variables.
@@ -53,6 +56,7 @@ AC --> LLM
 ```
 
 ## Core Components
+
 - AI Client: Sends prompts to the LLM API, parses JSON responses, and provides robust error handling with exponential backoff and timeouts.
 - Matching Service: Computes skill match scores, extracts skills from text, and performs skill gap analysis with AI-backed and keyword-based fallbacks.
 - AI Assistant: Generates tailored proposals, improves project descriptions, and analyzes disputes using AI.
@@ -60,6 +64,7 @@ AC --> LLM
 - Configuration: Loads LLM API key and base URL from environment variables.
 
 ## Architecture Overview
+
 The AI matching system integrates with external LLM APIs and internal services:
 
 ```mermaid
@@ -95,7 +100,9 @@ Routes-->>Client : 200 OK
 ## Detailed Component Analysis
 
 ### AI Client: External LLM Communication
+
 Responsibilities:
+
 - Build and send LLM requests with generation configuration.
 - Manage retries with exponential backoff for transient errors and rate limits.
 - Enforce request timeouts and handle aborts.
@@ -103,6 +110,7 @@ Responsibilities:
 - Provide fallbacks for skill extraction and matching when AI is unavailable.
 
 Key behaviors:
+
 - Availability check using configured LLM API key and base URL.
 - Retry logic for HTTP 5xx and 429, plus network/abort errors.
 - Timeout handling to prevent hanging requests.
@@ -125,7 +133,9 @@ HasText --> |Yes| Done(["Return text"])
 ```
 
 ### Matching Service: Compatibility and Recommendations
+
 Responsibilities:
+
 - Compute AI-driven skill match scores between freelancers and projects.
 - Extract skills from raw text using AI or keyword fallback.
 - Analyze skill gaps for freelancers using AI when available.
@@ -133,6 +143,7 @@ Responsibilities:
 - Provide keyword-based fallbacks when AI is unavailable.
 
 Recommendation algorithms:
+
 - Project recommendations: Rank projects by AI match score; fallback to keyword matching if AI fails.
 - Freelancer recommendations: Rank by combined score (match × weight + reputation × weight).
 - Skill extraction: Map extracted skills to taxonomy; validate skill IDs.
@@ -158,12 +169,15 @@ Slice --> Done(["Return recommendations"])
 ```
 
 ### AI Assistant: Natural Language Enhancements
+
 Responsibilities:
+
 - Generate compelling proposal cover letters with suggested rates and durations.
 - Improve project descriptions with suggested milestones and tips.
 - Analyze disputes and propose resolutions with confidence and fairness metrics.
 
 Implementation:
+
 - Uses prompt templates with dynamic variable substitution.
 - Parses AI JSON responses and validates ranges for numeric fields.
 - Falls back to structured errors when AI is unavailable.
@@ -189,18 +203,22 @@ Routes-->>Client : 200 or error
 ```
 
 ### Routes: API Surface for AI Matching
+
 Endpoints:
+
 - GET /api/matching/projects: Returns project recommendations for a freelancer.
 - GET /api/matching/freelancers/{projectId}: Returns freelancer recommendations for a project.
 - POST /api/matching/extract-skills: Extracts skills from text using AI or keyword fallback.
 - GET /api/matching/skill-gaps: Analyzes skill gaps for a freelancer.
 
 Validation and error handling:
+
 - Parameter validation and rate-limiting middleware.
 - Structured error responses with codes and messages.
 - Request ID propagation for observability.
 
 ## Dependency Analysis
+
 The AI matching system exhibits clear separation of concerns:
 
 - Routes depend on Matching Service for business logic.
@@ -219,6 +237,7 @@ AC --> LLM["LLM API"]
 ```
 
 ## Performance Considerations
+
 - API Rate Limits:
   - Global API rate limiter restricts general request volume.
   - Authentication attempts are rate-limited separately.
@@ -235,7 +254,9 @@ AC --> LLM["LLM API"]
   - Consider caching skill extraction results and frequently accessed taxonomy data to reduce LLM calls and latency.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - AI Unavailable:
   - Cause: Missing LLM API key or base URL.
   - Resolution: Configure LLM_API_KEY and LLM_API_URL in environment variables.
@@ -254,16 +275,19 @@ Common issues and resolutions:
   - Behavior: Without AI, returns basic analysis with guidance to configure LLM.
 
 Operational checks:
+
 - Confirm environment variables for LLM configuration.
 - Validate that the LLM API accepts the configured model and key.
 - Monitor rate-limit responses and adjust client-side throttling.
 
 ## Conclusion
+
 The AI-powered matching system in FreelanceXchain integrates Google Gemini-compatible LLM APIs to enhance skill matching, extraction, and gap analysis. It provides robust fallbacks, structured error handling, and clear separation of concerns across routes, services, and clients. With rate limiting and timeouts, the system balances reliability and responsiveness. Extending caching strategies for taxonomy and extraction results would further improve performance and reduce LLM usage costs.
 
 ## Appendices
 
 ### Prompt Templates Used
+
 - Skill Match Prompt Template: Guides the model to return a JSON object containing matchScore, matchedSkills, missingSkills, and reasoning.
 - Skill Extraction Prompt Template: Guides extraction of skills from text mapped to the platform's taxonomy with confidence scores.
 - Skill Gap Prompt Template: Requests recommendations and market demand signals for skill improvement.

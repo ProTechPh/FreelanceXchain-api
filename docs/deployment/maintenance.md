@@ -20,18 +20,21 @@ This document provides centralized maintenance procedures, schedules, and operat
 ## Maintenance Schedule
 
 ### Daily Tasks
+
 - ✅ **Automated**: Dependency vulnerability scanning (via Dependabot)
 - ✅ **Automated**: Log rotation and archival
 - 📋 **Manual**: Review error logs for critical issues
 - 📋 **Manual**: Monitor API response times and error rates
 
 ### Weekly Tasks
+
 - ✅ **Automated**: Dependency updates (Mondays 9:00 AM via Dependabot)
 - 📋 **Manual**: Review and merge Dependabot PRs
 - 📋 **Manual**: Check database performance metrics
 - 📋 **Manual**: Review blockchain transaction success rates
 
 ### Monthly Tasks
+
 - 📋 **Security audit**: Run `pnpm run security:audit` and review findings
 - 📋 **Database optimization**: Analyze slow queries and update indexes
 - 📋 **Log analysis**: Review patterns and identify optimization opportunities
@@ -39,6 +42,7 @@ This document provides centralized maintenance procedures, schedules, and operat
 - 📋 **Documentation review**: Update outdated documentation
 
 ### Quarterly Tasks
+
 - 📋 **Threat model review**: Update security documentation in `docs/security/`
 - 📋 **Security assessment**: Comprehensive OWASP Top 10 validation
 - 📋 **Performance audit**: Load testing and optimization
@@ -46,6 +50,7 @@ This document provides centralized maintenance procedures, schedules, and operat
 - 📋 **API documentation**: Update Swagger/OpenAPI specs
 
 ### Annual Tasks
+
 - 📋 **Security penetration testing**: Third-party security audit
 - 📋 **Disaster recovery drill**: Full system recovery test
 - 📋 **Architecture review**: Evaluate system design and scalability
@@ -58,6 +63,7 @@ This document provides centralized maintenance procedures, schedules, and operat
 ### Dependency Management
 
 #### Automated Updates (Dependabot)
+
 **Schedule**: Weekly (Mondays 9:00 AM)  
 **Configuration**: `.github/dependabot.yml`
 
@@ -73,6 +79,7 @@ updates:
 ```
 
 **Procedure**:
+
 1. Dependabot creates PRs for dependency updates
 2. Review PR for breaking changes
 3. Check CI/CD pipeline passes all tests
@@ -81,6 +88,7 @@ updates:
 6. Deploy to production after validation
 
 #### Manual Dependency Updates
+
 **When**: Critical security patches or major version upgrades
 
 ```bash
@@ -106,10 +114,12 @@ npm audit fix --force
 ### Log Management
 
 #### Log Rotation
+
 **Automated**: Daily at midnight  
 **Retention**: 30 days for application logs, 90 days for security logs
 
 **Manual Log Review**:
+
 ```bash
 # View recent errors
 grep "ERROR" logs/app.log | tail -n 100
@@ -122,8 +132,10 @@ grep "authentication failed" logs/security.log
 ```
 
 #### Log Analysis
+
 **Schedule**: Weekly  
 **Procedure**:
+
 1. Review error frequency and patterns
 2. Identify recurring issues
 3. Create tickets for persistent problems
@@ -136,6 +148,7 @@ grep "authentication failed" logs/security.log
 ### Security Audits
 
 #### Automated Vulnerability Scanning
+
 **Schedule**: Daily (via Dependabot)  
 **Command**: `pnpm run security:audit`
 
@@ -151,8 +164,10 @@ npm audit --audit-level=high
 ```
 
 #### Manual Security Review
+
 **Schedule**: Monthly  
 **Checklist**:
+
 - [ ] Review authentication logs for suspicious activity
 - [ ] Check rate limiting effectiveness
 - [ ] Verify CORS configuration
@@ -165,11 +180,13 @@ npm audit --audit-level=high
 
 **Schedule**: Quarterly (Next review: May 18, 2026)  
 **Documents to Update**:
+
 - `docs/IAS.md` - STRIDE analysis
 - `docs/security/overview.md` - Security controls
 - `docs/IAS-Checklist.md` - Compliance checklist
 
 **Procedure**:
+
 1. Review recent security incidents and vulnerabilities
 2. Assess new features for security implications
 3. Update STRIDE threat analysis
@@ -182,8 +199,10 @@ npm audit --audit-level=high
 ### Password & Key Rotation
 
 #### JWT Secret Rotation
+
 **Schedule**: Every 6 months or after security incident  
 **Procedure**:
+
 1. Generate new JWT secret: `openssl rand -base64 32`
 2. Update `JWT_SECRET` in environment variables
 3. Deploy to all environments
@@ -191,8 +210,10 @@ npm audit --audit-level=high
 5. Monitor for authentication issues
 
 #### Blockchain Private Key Management
+
 **Schedule**: Review annually, rotate if compromised  
 **Procedure**:
+
 1. Generate new wallet address
 2. Transfer funds from old wallet to new wallet
 3. Update `BLOCKCHAIN_PRIVATE_KEY` in environment
@@ -200,8 +221,10 @@ npm audit --audit-level=high
 5. Securely destroy old private key
 
 #### API Key Rotation
+
 **Schedule**: Every 6 months  
 **Procedure**:
+
 1. Generate new API keys for external services
 2. Update environment variables
 3. Test integration with new keys
@@ -215,6 +238,7 @@ npm audit --audit-level=high
 ### Database Optimization
 
 #### Index Maintenance
+
 **Schedule**: Monthly  
 **Procedure**:
 
@@ -236,6 +260,7 @@ ORDER BY abs(correlation) DESC;
 ```
 
 #### Vacuum Operations
+
 **Schedule**: Weekly (automated by PostgreSQL)  
 **Manual Vacuum** (if needed):
 
@@ -257,6 +282,7 @@ ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
 ### Migration Management
 
 #### Running Migrations
+
 ```bash
 # Check migration status
 pnpm run db:migrate:status
@@ -272,6 +298,7 @@ pnpm run db:migrate:create <migration-name>
 ```
 
 #### Migration Best Practices
+
 1. Always test migrations in staging first
 2. Create rollback plan before production deployment
 3. Backup database before running migrations
@@ -281,6 +308,7 @@ pnpm run db:migrate:create <migration-name>
 ### Data Cleanup
 
 #### Archived Data Cleanup
+
 **Schedule**: Quarterly  
 **Procedure**:
 
@@ -309,6 +337,7 @@ WHERE expires_at < NOW();
 ### Smart Contract Monitoring
 
 #### Contract Health Checks
+
 **Schedule**: Daily  
 **Procedure**:
 
@@ -324,8 +353,10 @@ pnpm run blockchain:balance
 ```
 
 #### Transaction Monitoring
+
 **Schedule**: Continuous (automated alerts)  
 **Metrics to Monitor**:
+
 - Transaction success rate (target: >99%)
 - Average gas costs
 - Transaction confirmation times
@@ -335,6 +366,7 @@ pnpm run blockchain:balance
 
 **Schedule**: Monthly review  
 **Procedure**:
+
 1. Analyze gas usage patterns
 2. Identify high-cost operations
 3. Optimize contract interactions
@@ -344,6 +376,7 @@ pnpm run blockchain:balance
 ### Contract Upgrades
 
 **Procedure**:
+
 1. Test new contract version on testnet
 2. Audit contract changes
 3. Create deployment plan with rollback strategy
@@ -360,18 +393,21 @@ pnpm run blockchain:balance
 ### Application Monitoring
 
 #### Key Metrics
+
 - **Response Time**: P50, P95, P99 latency
 - **Error Rate**: 4xx and 5xx responses
 - **Throughput**: Requests per second
 - **Availability**: Uptime percentage
 
 #### Alert Thresholds
+
 - 🔴 **Critical**: Error rate >5%, P99 latency >5s, Downtime >1min
 - 🟡 **Warning**: Error rate >2%, P99 latency >3s, CPU >80%
 
 ### Database Monitoring
 
 #### Key Metrics
+
 - **Connection Pool**: Active/idle connections
 - **Query Performance**: Slow query count (>1s)
 - **Disk Usage**: Database size and growth rate
@@ -380,6 +416,7 @@ pnpm run blockchain:balance
 ### Blockchain Monitoring
 
 #### Key Metrics
+
 - **Transaction Success Rate**: Target >99%
 - **Gas Prices**: Monitor for spikes
 - **Wallet Balance**: Alert if balance <threshold
@@ -392,16 +429,20 @@ pnpm run blockchain:balance
 ### Backup Strategy
 
 #### Database Backups
-**Schedule**: 
+
+**Schedule**:
+
 - Full backup: Daily at 2:00 AM UTC
 - Incremental backup: Every 6 hours
 - Retention: 30 days
 
 **Appwrite Automated Backups**:
+
 - Point-in-time recovery available
 - Backup retention based on plan tier
 
 **Manual Backup**:
+
 ```bash
 # Create database backup
 pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
@@ -411,8 +452,10 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 ```
 
 #### Configuration Backups
+
 **Schedule**: After each configuration change  
 **Items to Backup**:
+
 - Environment variables (encrypted)
 - Smart contract ABIs and addresses
 - API keys and secrets (in secure vault)
@@ -421,10 +464,12 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 ### Recovery Procedures
 
 #### Database Recovery
+
 **RTO (Recovery Time Objective)**: 1 hour  
 **RPO (Recovery Point Objective)**: 6 hours
 
 **Procedure**:
+
 1. Identify backup point for recovery
 2. Stop application to prevent data corruption
 3. Restore database from backup
@@ -435,7 +480,9 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 8. Monitor for issues
 
 #### Application Recovery
+
 **Procedure**:
+
 1. Identify root cause of failure
 2. Roll back to last known good version if needed
 3. Restore configuration from backup
@@ -450,6 +497,7 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 ### Incident Classification
 
 #### Severity Levels
+
 - **P0 (Critical)**: Complete service outage, data breach, security incident
 - **P1 (High)**: Major feature unavailable, significant performance degradation
 - **P2 (Medium)**: Minor feature issues, moderate performance impact
@@ -458,8 +506,10 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 ### Response Procedures
 
 #### P0 - Critical Incident
+
 **Response Time**: Immediate  
 **Procedure**:
+
 1. **Alert**: Page on-call engineer immediately
 2. **Assess**: Determine scope and impact
 3. **Communicate**: Notify stakeholders and users
@@ -468,8 +518,10 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 6. **Post-Mortem**: Conduct incident review within 48 hours
 
 #### P1 - High Priority
+
 **Response Time**: Within 1 hour  
 **Procedure**:
+
 1. Assign incident owner
 2. Investigate root cause
 3. Implement fix or workaround
@@ -481,6 +533,7 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 
 **Schedule**: Within 48 hours of P0/P1 incidents  
 **Template**:
+
 1. **Incident Summary**: What happened?
 2. **Timeline**: Detailed event timeline
 3. **Root Cause**: Why did it happen?
@@ -496,6 +549,7 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 ### Performance Monitoring
 
 #### Key Performance Indicators
+
 - API response time (target: P95 <500ms)
 - Database query time (target: <100ms)
 - Blockchain transaction time (target: <30s)
@@ -505,8 +559,10 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 ### Optimization Procedures
 
 #### API Performance
+
 **Schedule**: Monthly review  
 **Procedure**:
+
 1. Identify slow endpoints using request logs
 2. Analyze database queries for N+1 problems
 3. Implement caching for frequently accessed data
@@ -514,8 +570,10 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 5. Consider pagination for large result sets
 
 #### Database Performance
+
 **Schedule**: Monthly review  
 **Procedure**:
+
 1. Identify slow queries using `pg_stat_statements`
 2. Add missing indexes
 3. Optimize query structure
@@ -523,7 +581,9 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 5. Review connection pool settings
 
 #### Caching Strategy
+
 **Implementation**:
+
 - Cache frequently accessed data (user profiles, skills)
 - Use Redis for distributed caching
 - Set appropriate TTL values
@@ -537,6 +597,7 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 
 **Schedule**: Monthly review  
 **Procedure**:
+
 1. Review recent code changes
 2. Update API documentation (Swagger/OpenAPI)
 3. Update troubleshooting guides with new issues
@@ -545,6 +606,7 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 6. Review for accuracy and completeness
 
 ### Documentation Checklist
+
 - [ ] API endpoint documentation up to date
 - [ ] Environment variable documentation current
 - [ ] Deployment procedures accurate
@@ -558,24 +620,28 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 ## Maintenance Contacts
 
 ### On-Call Rotation
+
 - **Primary**: [Team Lead]
 - **Secondary**: [Senior Developer]
 - **Escalation**: [Engineering Manager]
 
 ### External Contacts
-- **Appwrite Support**: support@appwrite.io
+
+- **Appwrite Support**: <support@appwrite.io>
 - **Blockchain RPC Provider**: [Provider Support]
-- **Security Incidents**: security@freelancexchain.com
+- **Security Incidents**: <security@freelancexchain.com>
 
 ---
 
 ## Maintenance Windows
 
 ### Scheduled Maintenance
+
 **Schedule**: First Sunday of each month, 2:00 AM - 4:00 AM UTC  
 **Purpose**: Database maintenance, system updates, infrastructure changes
 
 **Procedure**:
+
 1. Announce maintenance window 7 days in advance
 2. Create maintenance plan with rollback strategy
 3. Enable maintenance mode
@@ -585,8 +651,10 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 7. Monitor for issues
 
 ### Emergency Maintenance
+
 **Trigger**: Critical security patch, major system failure  
 **Procedure**:
+
 1. Assess urgency and impact
 2. Notify stakeholders immediately
 3. Implement fix with minimal downtime
@@ -598,6 +666,7 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 ## Maintenance Logs
 
 ### Log Template
+
 ```
 Date: YYYY-MM-DD
 Type: [Routine/Emergency/Security]
@@ -613,6 +682,7 @@ Next Actions:
 ```
 
 ### Log Location
+
 - Maintenance logs: `logs/maintenance/`
 - Incident reports: `logs/incidents/`
 - Performance reports: `logs/performance/`

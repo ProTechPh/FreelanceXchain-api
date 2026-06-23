@@ -1,6 +1,7 @@
 # Database Schema Design
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Core Tables](#core-tables)
 3. [Entity-Relationship Diagram](#entity-relationship-diagram)
@@ -10,7 +11,9 @@
 7. [Database Performance Considerations](#database-performance-considerations)
 8. [Conclusion](#conclusion)
 9. [Table Documentation](#table-documentation)
+
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Core Tables](#core-tables)
 3. [Entity-Relationship Diagram](#entity-relationship-diagram)
@@ -29,11 +32,13 @@ The schema implements a relational model with UUID primary keys for all tables, 
 ## Core Tables
 
 ### Users Table
+
 The `users` table serves as the central identity management system for the platform, storing core user information and authentication data. Each user is assigned a role that determines their permissions and access to platform features.
 
 **Table: users**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the user |
 | email | VARCHAR(255) | UNIQUE, NOT NULL | User's email address used for authentication |
 | password_hash | VARCHAR(255) | NOT NULL | Hashed password for secure authentication |
@@ -44,11 +49,13 @@ The `users` table serves as the central identity management system for the platf
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### Skill Categories and Skills Tables
+
 The `skill_categories` and `skills` tables form a hierarchical taxonomy of professional skills, enabling AI-powered matching between freelancers and projects. This two-level hierarchy allows for organized skill classification while maintaining flexibility for future expansion.
 
 **Table: skill_categories**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the category |
 | name | VARCHAR(255) | NOT NULL | Name of the skill category |
 | description | TEXT | | Detailed description of the category |
@@ -57,8 +64,9 @@ The `skill_categories` and `skills` tables form a hierarchical taxonomy of profe
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: skills**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the skill |
 | category_id | UUID | REFERENCES skill_categories(id) ON DELETE CASCADE | Foreign key to parent category |
 | name | VARCHAR(255) | NOT NULL | Name of the skill |
@@ -68,11 +76,13 @@ The `skill_categories` and `skills` tables form a hierarchical taxonomy of profe
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### Freelancer and Employer Profiles Tables
+
 The `freelancer_profiles` and `employer_profiles` tables store detailed information about platform participants, extending the basic user data with role-specific attributes. These profiles are essential for the matching algorithm and user discovery features.
 
 **Table: freelancer_profiles**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the profile |
 | user_id | UUID | UNIQUE, REFERENCES users(id) ON DELETE CASCADE | Foreign key to associated user |
 | bio | TEXT | | Freelancer's biography and introduction |
@@ -84,8 +94,9 @@ The `freelancer_profiles` and `employer_profiles` tables store detailed informat
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: employer_profiles**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the profile |
 | user_id | UUID | UNIQUE, REFERENCES users(id) ON DELETE CASCADE | Foreign key to associated user |
 | company_name | VARCHAR(255) | | Name of the employer's company |
@@ -95,11 +106,13 @@ The `freelancer_profiles` and `employer_profiles` tables store detailed informat
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### Projects, Proposals, and Contracts Tables
+
 These interconnected tables manage the core workflow of the platform, from project creation through proposal submission to contract execution. They form the foundation of the freelance engagement lifecycle.
 
 **Table: projects**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the project |
 | employer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to creating employer |
 | title | VARCHAR(255) | NOT NULL | Project title |
@@ -113,8 +126,9 @@ These interconnected tables manage the core workflow of the platform, from proje
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: proposals**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the proposal |
 | project_id | UUID | REFERENCES projects(id) ON DELETE CASCADE | Foreign key to target project |
 | freelancer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to submitting freelancer |
@@ -127,8 +141,9 @@ These interconnected tables manage the core workflow of the platform, from proje
 | UNIQUE(project_id, freelancer_id) | | | Prevents duplicate proposals |
 
 **Table: contracts**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the contract |
 | project_id | UUID | REFERENCES projects(id) ON DELETE CASCADE | Foreign key to source project |
 | proposal_id | UUID | REFERENCES proposals(id) ON DELETE CASCADE | Foreign key to accepted proposal |
@@ -141,11 +156,13 @@ These interconnected tables manage the core workflow of the platform, from proje
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### Disputes, Payments, and Reviews Tables
+
 These tables handle post-contract activities including dispute resolution, payment processing, and reputation management. They ensure transparency and accountability in all transactions.
 
 **Table: disputes**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the dispute |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Foreign key to disputed contract |
 | milestone_id | VARCHAR(255) | | Identifier of disputed milestone |
@@ -158,8 +175,9 @@ These tables handle post-contract activities including dispute resolution, payme
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: payments**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the payment |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Foreign key to associated contract |
 | milestone_id | VARCHAR(255) | | Identifier of milestone being paid |
@@ -174,8 +192,9 @@ These tables handle post-contract activities including dispute resolution, payme
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: reviews**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the review |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Foreign key to reviewed contract |
 | reviewer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to user writing review |
@@ -188,11 +207,13 @@ These tables handle post-contract activities including dispute resolution, payme
 | UNIQUE(contract_id, reviewer_id) | | | Prevents duplicate reviews |
 
 ### Notifications and Messages Tables
+
 These tables support communication and engagement features, ensuring users are informed of important events and can communicate with each other.
 
 **Table: notifications**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the notification |
 | user_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to recipient user |
 | type | VARCHAR(50) | NOT NULL | Type of notification |
@@ -204,8 +225,9 @@ These tables support communication and engagement features, ensuring users are i
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: messages**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the message |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Foreign key to related contract |
 | sender_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to message sender |
@@ -215,11 +237,13 @@ These tables support communication and engagement features, ensuring users are i
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### KYC Verifications Table
+
 The `kyc_verifications` table manages the Know Your Customer (KYC) process, ensuring compliance with financial regulations and enhancing platform security.
 
 **Table: kyc_verifications**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the verification |
 | user_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to verified user |
 | status | VARCHAR(20) | DEFAULT 'pending', CHECK constraint | Current verification status |
@@ -485,6 +509,7 @@ The indexing strategy focuses on several key areas:
 4. **Composite Indexes**: Unique constraints are implemented as composite indexes to prevent duplicate entries in critical relationships.
 
 The most critical indexes for query optimization include:
+
 - `idx_users_email` for user authentication and lookup
 - `idx_projects_status` for filtering projects by status (especially 'open' projects)
 - `idx_skills_category_id` for retrieving all skills within a specific category
@@ -585,29 +610,38 @@ The predefined UUIDs ensure consistency across different environments (developme
 The database schema and configuration are optimized for performance in a high-traffic freelance marketplace environment. Several strategies are employed to ensure responsive queries and efficient data processing.
 
 ### Connection Pooling
+
 The application utilizes Appwrite's built-in connection pooling to manage database connections efficiently. This reduces the overhead of establishing new connections for each request and prevents connection exhaustion under high load.
 
 ### Query Optimization
+
 The indexing strategy (documented in the Indexing Strategy section) is designed to optimize the most common query patterns, particularly:
+
 - User authentication and profile retrieval
 - Project discovery and filtering
 - Contract and payment history lookup
 - Notification retrieval
 
 ### Data Modeling Choices
+
 Several data modeling decisions contribute to performance:
+
 - **UUID Primary Keys**: While slightly larger than integer keys, UUIDs provide global uniqueness and prevent enumeration attacks.
 - **JSONB Columns**: Used for flexible data storage where schema evolution is expected, such as skills, experience, and milestone data. These columns are indexed when necessary for querying.
 - **Appropriate Data Types**: Numeric values use DECIMAL types for precise financial calculations, while timestamps use TIMESTAMPTZ for timezone-aware storage.
 
 ### Future Optimization Opportunities
+
 Potential performance improvements include:
+
 - **Partial Indexes**: Creating indexes on subsets of data (e.g., only active skills) to reduce index size
 - **Materialized Views**: For complex queries that aggregate data across multiple tables
 - **Partitioning**: For tables that are expected to grow very large, such as notifications and payments
 
 ### Monitoring and Maintenance
+
 Regular database maintenance should include:
+
 - Monitoring query performance using Appwrite's analytics tools
 - Reviewing and optimizing slow queries
 - Updating table statistics to ensure optimal query planning
@@ -618,6 +652,7 @@ Regular database maintenance should include:
 The FreelanceXchain database schema provides a robust foundation for a blockchain-based freelance marketplace with AI-powered skill matching. The relational model effectively captures the complex relationships between users, projects, contracts, and payments, while incorporating modern database features like JSONB storage and Row Level Security.
 
 Key strengths of the schema design include:
+
 - Comprehensive data model covering all aspects of the freelance lifecycle
 - Strategic use of UUIDs for global uniqueness and security
 - Flexible JSONB columns for evolving data requirements
@@ -631,6 +666,7 @@ The schema is well-positioned to support the platform's growth and evolving requ
 # Row Level Security
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -642,9 +678,11 @@ The schema is well-positioned to support the platform's growth and evolving requ
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document explains the Row Level Security (RLS) implementation in the FreelanceXchain database. It describes how RLS policies are enabled on all tables via ALTER TABLE statements, outlines the public read policies for skill categories, skills, and open projects, and details the service role bypass policies that allow the backend application to perform administrative operations. It also explains how the Appwrite authentication layer integrates with the application’s role-based access control to enforce data access restrictions based on user roles and ownership.
 
 ## Project Structure
+
 RLS is defined in the database schema and enforced by Appwrite. The application’s authentication and authorization middleware validate tokens and roles, while repositories and services interact with Appwrite using the Appwrite client. The architecture diagram in the documentation shows how authentication and RLS fit into the overall security layers.
 
 ```mermaid
@@ -667,6 +705,7 @@ DB --> POL
 ```
 
 ## Core Components
+
 - RLS enablement: All tables have RLS enabled via ALTER TABLE commands in the schema.
 - Public read policies: skill_categories and skills allow SELECT for all users; projects allow SELECT only when status equals open.
 - Service role bypass: A policy allows full access to all tables for the Appwrite service role, enabling backend operations.
@@ -674,7 +713,9 @@ DB --> POL
 These policies are defined in the database schema and enforced by Appwrite.
 
 ## Architecture Overview
+
 The system enforces layered security:
+
 - Transport security (HTTPS/TLS)
 - Authentication (JWT bearer tokens)
 - Authorization (role-based access control)
@@ -701,6 +742,7 @@ RLS --> SC
 ## Detailed Component Analysis
 
 ### RLS Policy Definitions
+
 - Enable RLS on all tables: The schema enables RLS on users, profiles, projects, proposals, contracts, disputes, notifications, KYC verifications, skills, skill categories, reviews, messages, and payments.
 - Public read policies:
   - skill_categories: SELECT is permitted for everyone.
@@ -709,6 +751,7 @@ RLS --> SC
 - Service role bypass: ALL operations are permitted for the service role on all tables.
 
 These policies ensure:
+
 - Public discovery of categories and skills.
 - Controlled exposure of open projects.
 - Backend operations requiring elevated privileges.
@@ -727,6 +770,7 @@ OwnerOrRole --> |No| Deny["Deny access"]
 ```
 
 ### Integration with Authentication and Authorization
+
 - Application authentication validates JWT tokens and attaches user identity (userId, role) to requests.
 - The auth middleware ensures requests carry a valid Bearer token and forwards validated user info downstream.
 - The auth service retrieves user metadata from Appwrite and constructs application-level user objects.
@@ -749,6 +793,7 @@ API-->>Client : "Authenticated request proceeds"
 ```
 
 ### Appwrite Client and Service Role Key
+
 - The Appwrite client is initialized with the Appwrite URL and anonymous key.
 - The service role key is configured in environment variables and is intended for server-side use only.
 - Repositories use the Appwrite client to perform database operations.
@@ -779,6 +824,7 @@ BaseRepository --> AppwriteClient : "uses"
 ```
 
 ### Public Data Exposure and Seed Data
+
 - Public read policies allow clients to discover categories and skills without authentication.
 - Seed data populates categories and skills for demonstration and matching workflows.
 
@@ -790,6 +836,7 @@ Clients --> Matching["Skill Matching & Discovery"]
 ```
 
 ## Dependency Analysis
+
 - RLS depends on Appwrite’s policy engine and the Appwrite client.
 - Application middleware depends on the auth service to validate tokens and roles.
 - Repositories depend on the Appwrite client to perform CRUD operations; RLS policies apply to these operations server-side.
@@ -806,6 +853,7 @@ DB --> POLICIES["RLS Policies"]
 ```
 
 ## Performance Considerations
+
 - RLS evaluation occurs server-side during query execution; keep policies simple to minimize overhead.
 - Indexes on frequently filtered columns (e.g., projects.status) improve query performance under RLS.
 - Use pagination and selective column selection to reduce payload sizes.
@@ -813,7 +861,9 @@ DB --> POLICIES["RLS Policies"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Unauthorized access to protected tables:
   - Ensure the request is made with a valid JWT issued by Appwrite and that the user role aligns with the operation.
   - Confirm that RLS policies are enabled on the target table and that the service role bypass is not misapplied.
@@ -825,6 +875,7 @@ Common issues and resolutions:
   - Ensure the service role key is configured server-side and used only for trusted backend operations.
 
 ## Conclusion
+
 The FreelanceXchain database employs Appwrite RLS to enforce fine-grained access control across all tables. Public read policies enable discovery of categories and skills and controlled exposure of open projects. A service role bypass policy permits backend operations while maintaining strict access controls for authenticated users. Together with the application’s JWT-based authentication and role-based authorization, RLS forms a robust, layered security model that protects sensitive data and prevents unauthorized access.
 
 ---
@@ -832,6 +883,7 @@ The FreelanceXchain database employs Appwrite RLS to enforce fine-grained access
 # Data Seeding
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -843,10 +895,13 @@ The FreelanceXchain database employs Appwrite RLS to enforce fine-grained access
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document explains the data seeding process for initial database content in FreelanceXchain, focusing on the seed-skills.sql script that populates skill categories and skills for domains such as Web Development, Mobile Development, Data Science, DevOps, Design, and Blockchain. It details the use of UUIDs for stable identifiers, the ON CONFLICT DO NOTHING clause to prevent duplicates during repeated seeding, and the hierarchical relationship between categories and skills. It also describes how this seeded taxonomy supports the AI-powered matching system by providing a standardized vocabulary for freelancer skills and project requirements, and outlines when and how the seeding integrates with the database initialization workflow in development and production environments.
 
 ## Project Structure
+
 The seeding and taxonomy-related components are organized as follows:
+
 - Database schema and seed scripts live under appwrite/.
 - Application services and repositories that consume the taxonomy live under src/.
 
@@ -873,13 +928,16 @@ ROUTE --> SRV
 ```
 
 ## Core Components
+
 - Seed script: Defines stable UUID identifiers for categories and skills, inserts predefined values, and uses ON CONFLICT DO NOTHING to avoid duplicates on repeated runs.
 - Schema: Declares skill_categories and skills tables with UUID primary keys and foreign key relationships.
 - Application services and repositories: Provide CRUD and taxonomy operations, including retrieving active skills and building hierarchical taxonomy for API clients.
 - Matching service: Consumes the taxonomy to power AI skill matching, skill extraction, and skill gap analysis.
 
 ## Architecture Overview
+
 The seeding process integrates with the database initialization workflow as follows:
+
 - Developers run the schema.sql in the Appwrite SQL Editor to create tables and enable extensions.
 - After schema creation, developers run seed-skills.sql to populate categories and skills with stable UUIDs.
 - The application’s Appwrite client and repositories read the taxonomy to support skill management and AI matching.
@@ -906,6 +964,7 @@ Map-->>App : "Mapped Skill[]"
 ## Detailed Component Analysis
 
 ### Seed Script: seed-skills.sql
+
 - Purpose: Populate skill_categories and skills with predefined values for six domains.
 - Stable identifiers: Uses explicit UUIDs for categories and skills to ensure consistent IDs across environments.
 - Duplicate prevention: Uses ON CONFLICT (id) DO NOTHING to safely re-run the script without errors.
@@ -947,6 +1006,7 @@ Verify --> End(["Done"])
 ```
 
 ### Schema: appwrite/schema.sql
+
 - Enables UUID extension for generating stable identifiers.
 - Declares skill_categories and skills tables with UUID primary keys.
 - Defines foreign key relationship from skills.category_id to skill_categories.id with cascade delete.
@@ -975,6 +1035,7 @@ SKILL_CATEGORIES ||--o{ SKILLS : "has many"
 ```
 
 ### Application Services and Repositories
+
 - SkillRepository: Provides methods to retrieve skills by category, active skills, and search by keyword. It orders results by name and filters by is_active where applicable.
 - SkillService: Exposes higher-level operations such as getFullTaxonomy(), which aggregates active categories with their active skills. It also validates skill IDs and exposes search with category names.
 - EntityMapper: Converts database entities (snake_case) to API models (camelCase), including Skill and SkillCategory types.
@@ -1021,6 +1082,7 @@ SkillRepository --> EntityMapper : "maps"
 ```
 
 ### AI-Powered Matching Integration
+
 - Skill taxonomy consumption: The matching service retrieves active skills to build a reference set for skill extraction and matching.
 - Skill extraction and mapping: The matching service extracts skills from text and maps them to taxonomy IDs, using the active skill list as the controlled vocabulary.
 - Recommendations: The matching service computes match scores using either AI or keyword-based methods, relying on the standardized taxonomy to compare freelancer and project skill sets.
@@ -1051,6 +1113,7 @@ Match-->>Client : "ExtractedSkill[]"
 ```
 
 ## Dependency Analysis
+
 - Database dependencies:
   - schema.sql defines tables and indexes; seed-skills.sql depends on these definitions.
   - ON CONFLICT DO NOTHING relies on unique constraints enforced by primary keys.
@@ -1072,11 +1135,13 @@ MATCH --> SRV
 ```
 
 ## Performance Considerations
+
 - Indexes: The schema creates an index on skills(category_id), which supports efficient filtering by category and improves performance for taxonomy queries.
 - Active-only queries: Using is_active filters reduces result sizes and improves matching performance.
 - UUID stability: Stable UUIDs avoid costly re-mapping when data is re-seeded, minimizing churn in downstream systems.
 
 ## Troubleshooting Guide
+
 - Duplicate entries on re-seeding:
   - Symptom: Errors when re-running seed-skills.sql.
   - Resolution: The script uses ON CONFLICT DO NOTHING to skip duplicates. Ensure the script is executed after schema creation and that ids match the seeded values.
@@ -1088,6 +1153,7 @@ MATCH --> SRV
   - Resolution: Verify APPWRITE_URL and APPWRITE_ANON_KEY environment variables and ensure the Appwrite project is healthy.
 
 ## Conclusion
+
 The seed-skills.sql script establishes a stable, repeatable taxonomy for skills and categories, enabling consistent identification and matching across environments. Its use of UUIDs and ON CONFLICT DO NOTHING ensures safe re-execution without duplication. The schema enforces referential integrity and performance through indexes. Application services and repositories consume this taxonomy to power skill management and AI-driven matching, while the matching service leverages the standardized vocabulary for skill extraction and gap analysis. Integrating seeding into the database initialization workflow guarantees that the taxonomy is present for both development and production deployments.
 
 ---
@@ -1095,6 +1161,7 @@ The seed-skills.sql script establishes a stable, repeatable taxonomy for skills 
 # Contracts Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1106,10 +1173,13 @@ The seed-skills.sql script establishes a stable, repeatable taxonomy for skills 
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the contracts table in the FreelanceXchain Appwrite PostgreSQL database. The contracts table formalizes the agreement between freelancers and employers, linking off-chain project and proposal data to on-chain escrow smart contracts. It centralizes payment and milestone release workflows, enforces status transitions, and ensures only authorized parties can access sensitive data.
 
 ## Project Structure
+
 The contracts table definition and related components are distributed across:
+
 - Database schema: table creation, indexes, and RLS policies
 - Application configuration: table name constants
 - Data access layer: repository and service for CRUD and business logic
@@ -1141,6 +1211,7 @@ PAY --> ESCROW
 ```
 
 ## Core Components
+
 - contracts table: stores the formal agreement with foreign keys to users, projects, and proposals; maintains escrow address and status; includes audit timestamps.
 - Repository: provides typed CRUD and query methods for contracts.
 - Service: validates status transitions and updates contract records.
@@ -1149,7 +1220,9 @@ PAY --> ESCROW
 - Escrow contract: holds funds and releases them according to milestone approvals and dispute resolution.
 
 ## Architecture Overview
+
 The contracts table bridges off-chain data with on-chain escrow:
+
 - Off-chain: projects define milestones; proposals link to projects; contracts formalize the agreement and store the escrow address.
 - On-chain: FreelanceEscrow holds funds and releases them upon milestone approval; disputes route through the arbiter.
 
@@ -1187,10 +1260,12 @@ Pay-->>Client : "Approval result"
 ## Detailed Component Analysis
 
 ### Contracts Table Definition and Purpose
+
 - Purpose: Formal agreement between parties, linking off-chain project/proposal data to on-chain escrow.
 - Central role: Orchestrates payment and milestone release workflow; tracks contract lifecycle via status.
 
 Columns:
+
 - id: UUID primary key, auto-generated.
 - project_id: UUID foreign key to projects; links to the project containing milestones.
 - proposal_id: UUID foreign key to proposals; links to the accepted proposal forming the contract.
@@ -1202,17 +1277,21 @@ Columns:
 - created_at, updated_at: Audit timestamps.
 
 Indexes:
+
 - Indexes on freelancer_id and employer_id improve query performance for retrieving contracts by party.
 
 RLS Policies:
+
 - RLS enabled on contracts; service role policies grant full access; application-level authorization ensures only parties can access sensitive data.
 
 ### Data Model Mapping
+
 - Contract entity shape: snake_case fields aligned to database schema.
 - Contract model: camelCase fields for API consumption.
 - Mapping preserves all contract attributes, including status and audit timestamps.
 
 ### Repository Layer
+
 - Typed contract entity interface.
 - Methods:
   - Create, read by id, update.
@@ -1221,6 +1300,7 @@ RLS Policies:
 - Uses TABLES.CONTRACTS constant for table name.
 
 ### Service Layer: Status Transitions and Updates
+
 - Validates status transitions:
   - From active: allowed to completed, disputed, cancelled.
   - From disputed: allowed to active, completed, cancelled.
@@ -1228,6 +1308,7 @@ RLS Policies:
 - Updates escrow address and contract status atomically via repository.
 
 ### Payment Workflow and Escrow Integration
+
 - Escrow initialization:
   - Deploys FreelanceEscrow with employer, freelancer, total amount, and milestones.
   - Deposits funds into the escrow.
@@ -1258,6 +1339,7 @@ Notify --> Done
 ```
 
 ### Contract Status Impact on Payment and Disputes
+
 - Active:
   - Normal operation: milestones can be submitted and approved.
   - Escrow holds funds; releases occur upon approval.
@@ -1270,6 +1352,7 @@ Notify --> Done
   - Contract terminated; funds may be refunded depending on milestone status.
 
 ## Dependency Analysis
+
 - contracts table depends on:
   - users (freelancer_id, employer_id)
   - projects (project_id)
@@ -1296,6 +1379,7 @@ PAY --> ESCROW["FreelanceEscrow.sol"]
 ```
 
 ## Performance Considerations
+
 - Indexes:
   - freelancer_id and employer_id indexes enable efficient retrieval of contracts by party.
   - Additional indexes exist for related tables; ensure maintenance of statistics for optimal query plans.
@@ -1305,6 +1389,7 @@ PAY --> ESCROW["FreelanceEscrow.sol"]
   - Filtering by status is supported; combine with ordering by created_at for predictable results.
 
 ## Troubleshooting Guide
+
 - Not found errors:
   - Contract not found when querying by id or proposal id; verify identifiers and existence.
 - Unauthorized access:
@@ -1317,6 +1402,7 @@ PAY --> ESCROW["FreelanceEscrow.sol"]
   - Even with service role policies, application-level authorization restricts access to contract parties.
 
 ## Conclusion
+
 The contracts table is the backbone of FreelanceXchain’s payment and milestone release system. It formalizes agreements, connects off-chain project data to on-chain escrow, and enforces strict status transitions. With targeted indexes and robust repository/service layers, it supports scalable, secure workflows while ensuring only authorized parties can access sensitive data.
 
 ---
@@ -1324,6 +1410,7 @@ The contracts table is the backbone of FreelanceXchain’s payment and milestone
 # Disputes Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1335,10 +1422,13 @@ The contracts table is the backbone of FreelanceXchain’s payment and milestone
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the disputes table in the FreelanceXchain Appwrite PostgreSQL database. It explains the purpose of the disputes table as the conflict resolution tracking system, details each column, and describes how it integrates with the on-chain DisputeResolution.sol contract. It also covers evidence submission off-chain, the dispute lifecycle from creation to resolution, and how it affects payment flows. Finally, it references the TABLES.DISPUTES constant and the idx_disputes_contract_id index, and addresses RLS policies ensuring privacy during dispute resolution.
 
 ## Project Structure
+
 The disputes table is defined in the Appwrite schema and is used by the backend services and routes to manage disputes. The key files involved are:
+
 - Database schema definition
 - Appwrite client constants
 - Repository and service layers for disputes
@@ -1375,6 +1465,7 @@ DINDEX -. "Query performance" .-> REP
 ```
 
 ## Core Components
+
 - Disputes table: Stores dispute metadata, evidence, and resolution outcomes.
 - Repository: Provides CRUD and query helpers for disputes.
 - Service: Orchestrates dispute lifecycle, validates inputs, updates statuses, and triggers blockchain actions.
@@ -1382,7 +1473,9 @@ DINDEX -. "Query performance" .-> REP
 - API routes: Expose endpoints for creating, retrieving, submitting evidence, and resolving disputes.
 
 ## Architecture Overview
+
 The disputes lifecycle spans the database, backend services, and blockchain:
+
 - Creation: Validates contract and milestone, marks milestone as disputed, persists dispute, and records on-chain.
 - Evidence submission: Adds evidence to the dispute and updates the on-chain evidence hash.
 - Resolution: Admin resolves, updates statuses, triggers payment flows, and records on-chain outcome.
@@ -1427,10 +1520,12 @@ Route-->>Client : 200 Dispute
 ## Detailed Component Analysis
 
 ### Disputes Table Definition and Purpose
+
 - Purpose: Centralized conflict resolution tracking system for milestones within contracts. It stores who initiated the dispute, the reason, evidence, current status, and resolution details. It also tracks audit timestamps.
 - Integration: Off-chain evidence and resolution outcomes are hashed and recorded on-chain via DisputeResolution.sol for immutability and transparency.
 
 Columns:
+
 - id: UUID primary key, auto-generated.
 - contract_id: UUID foreign key to contracts, linking disputes to specific contracts.
 - milestone_id: String identifier for the blockchain milestone; used to correlate with on-chain records.
@@ -1442,14 +1537,17 @@ Columns:
 - created_at, updated_at: Audit timestamps managed by the database.
 
 Indexes:
+
 - idx_disputes_contract_id: Index on contract_id to optimize queries by contract.
 
 RLS Policies:
+
 - RLS enabled on the disputes table.
 - Service role policy grants full access for backend operations.
 - Additional policies can be configured to restrict visibility to parties involved in the contract.
 
 ### Data Model and Types
+
 - Repository types define DisputeEntity, EvidenceEntity, and DisputeResolutionEntity with snake_case fields aligned to the database.
 - Mapper types define Dispute, Evidence, and DisputeResolution with camelCase fields for the API.
 
@@ -1512,6 +1610,7 @@ Dispute --> DisputeResolution : "optional"
 ```
 
 ### Lifecycle: Creation to Resolution
+
 - Creation:
   - Validates contract existence and that the initiator is a party to the contract.
   - Validates milestone exists and is not already disputed/approved.
@@ -1569,6 +1668,7 @@ end
 ```
 
 ### API Endpoints and Access Control
+
 - POST /api/disputes: Create a dispute (authenticated).
 - GET /api/disputes/{disputeId}: Retrieve a dispute (authenticated).
 - POST /api/disputes/{disputeId}/evidence: Submit evidence (authenticated, contract party).
@@ -1576,11 +1676,13 @@ end
 - GET /api/contracts/{contractId}/disputes: List disputes for a contract (authenticated, contract party).
 
 Access control:
+
 - Authentication enforced by auth middleware.
 - Authorization checks ensure only parties to the contract can view or submit evidence.
 - Admin-only endpoint for resolution.
 
 ### On-Chain Integration
+
 - Off-chain service generates SHA-256 hashes for disputeId, contractId, milestoneId, and evidence payload.
 - Records are stored in a local in-memory registry keyed by disputeIdHash.
 - The DisputeResolution.sol contract maintains a mapping of disputeIdHash to DisputeRecord with fields for evidenceHash, outcome, reasoning, and timestamps.
@@ -1603,6 +1705,7 @@ Chain-->>Reg : event DisputeResolved
 ```
 
 ### Payment Flow Impact
+
 - Creation locks funds by marking milestone as disputed and contract as disputed.
 - Resolution triggers payment actions:
   - freelancer_favor: releases milestone to freelancer.
@@ -1611,10 +1714,12 @@ Chain-->>Reg : event DisputeResolved
 - After resolution, if no other milestones remain disputed, contract status reverts to active.
 
 ### Constants and Index References
+
 - TABLES.DISPUTES: The constant for the disputes table name is defined in the Appwrite configuration module and is used by the repository to target the correct table.
 - idx_disputes_contract_id: The index on contract_id is defined in the schema to optimize queries filtering by contract.
 
 ## Dependency Analysis
+
 - Repository depends on TABLES.DISPUTES constant and Appwrite client.
 - Service depends on repository, contract and project repositories, user repository, notification service, and blockchain registry.
 - Routes depend on service and enforce authentication and authorization.
@@ -1630,6 +1735,7 @@ REG --> SOL["DisputeResolution.sol"]
 ```
 
 ## Performance Considerations
+
 - Use idx_disputes_contract_id to efficiently query disputes by contract.
 - Limit pagination for listing disputes to prevent large result sets.
 - Store only necessary evidence content in the database; large attachments should be stored off-chain with references.
@@ -1638,7 +1744,9 @@ REG --> SOL["DisputeResolution.sol"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Not Found:
   - Contract or milestone missing: Ensure contractId and milestoneId are valid and match the project’s milestones.
   - Dispute not found: Verify disputeId format and existence.
@@ -1653,6 +1761,7 @@ Common issues and resolutions:
   - Ensure UUID formats are correct and required fields are present.
 
 ## Conclusion
+
 The disputes table serves as the central record for conflict resolution in FreelanceXchain. It integrates tightly with the contract and milestone lifecycle, enforces strict access controls, and bridges off-chain data with on-chain immutability. The documented lifecycle, API endpoints, and payment flow ensure predictable behavior for all stakeholders, while indexes and RLS policies support performance and privacy.
 
 ---
@@ -1660,6 +1769,7 @@ The disputes table serves as the central record for conflict resolution in Freel
 # Employer Profiles Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1671,10 +1781,13 @@ The disputes table serves as the central record for conflict resolution in Freel
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the employer_profiles table in the FreelanceXchain Appwrite PostgreSQL database. It explains the table’s structure, relationships, and lifecycle, and describes how it supports the platform’s organizational identity for employers posting projects. It also covers the one-to-one relationship with the users table, the purpose of verified company information in building trust, and how employer profiles integrate with project browsing and display. Finally, it references the TABLES.EMPLOYER_PROFILES constant and the idx_employer_profiles_user_id index, and outlines considerations for Row Level Security (RLS) policies.
 
 ## Project Structure
+
 The employer_profiles table is defined in the Appwrite schema and is accessed through the backend service layer. The relevant files include:
+
 - Database schema definition and indexes
 - Backend constants for table names
 - Repository and service layers for CRUD operations
@@ -1708,6 +1821,7 @@ U --- EP
 ```
 
 ## Core Components
+
 - Table definition: employer_profiles contains id (UUID primary key), user_id (unique foreign key to users), company_name, description, industry, and audit timestamps.
 - Index: idx_employer_profiles_user_id ensures efficient lookups by user_id.
 - RLS: employer_profiles has Row Level Security enabled.
@@ -1720,7 +1834,9 @@ U --- EP
   - Project repositories/services demonstrate employer identity usage in project browsing.
 
 ## Architecture Overview
+
 The employer_profiles table underpins employer identity and trust. It is linked to users via a unique foreign key and is used to present employer information when browsing projects. The backend follows a layered architecture:
+
 - Routes handle HTTP requests and enforce roles.
 - Services encapsulate business logic and validations.
 - Repositories abstract database operations.
@@ -1751,6 +1867,7 @@ Route-->>Client : 201 Created
 ## Detailed Component Analysis
 
 ### Data Model: employer_profiles
+
 - Purpose: Stores verified organizational identity for employers posting projects.
 - Columns:
   - id: UUID primary key
@@ -1788,6 +1905,7 @@ USERS ||--|| EMPLOYER_PROFILES : "one-to-one via user_id"
 ```
 
 ### Backend Types and Mapping
+
 - Repository entity type: EmployerProfileEntity mirrors the table schema.
 - Service types: CreateEmployerProfileInput and UpdateEmployerProfileInput define validated inputs.
 - API model: EmployerProfile maps database snake_case to camelCase for clients.
@@ -1816,6 +1934,7 @@ EmployerProfileEntity --> EmployerProfile : "mapEmployerProfileFromEntity()"
 ```
 
 ### Repository and Service Layer
+
 - Repository responsibilities:
   - Create, read by id, read by user_id, update, delete, list, and filter by industry.
 - Service responsibilities:
@@ -1835,6 +1954,7 @@ ReturnError --> Done
 ```
 
 ### Routing and Validation
+
 - Routes:
   - POST /api/employers/profile creates an employer profile for authenticated employers.
   - PATCH /api/employers/profile updates an employer profile for authenticated employers.
@@ -1857,6 +1977,7 @@ Route-->>Client : 200 OK or error
 ```
 
 ### Integration with Project Browsing
+
 - Project repositories and services demonstrate how employer identity is used:
   - Projects are associated with employers via employer_id (foreign key to users).
   - Project listings and filtering rely on employer identity for ownership checks and display.
@@ -1877,6 +1998,7 @@ PRJSVC-->>Client : projects with proposal counts
 ```
 
 ### RLS Policies and Data Exposure
+
 - RLS is enabled for employer_profiles.
 - Public read policies are defined for select tables (e.g., skill_categories, skills, open projects).
 - Service role policies grant full access for backend operations.
@@ -1886,6 +2008,7 @@ PRJSVC-->>Client : projects with proposal counts
   - For private data, rely on service role bypass and backend authorization to control access.
 
 ## Dependency Analysis
+
 - Centralized table naming via TABLES constant ensures consistency across repositories and routes.
 - Repository depends on Appwrite client and table name constant.
 - Service depends on repository and entity mapper.
@@ -1903,6 +2026,7 @@ PRJREP["project-repository.ts"] --> PRJSVC["project-service.ts"]
 ```
 
 ## Performance Considerations
+
 - Index usage:
   - idx_employer_profiles_user_id accelerates lookups by user_id.
 - Query patterns:
@@ -1912,6 +2036,7 @@ PRJREP["project-repository.ts"] --> PRJSVC["project-service.ts"]
   - RLS adds minimal overhead; ensure policies are selective and avoid expensive joins in policies.
 
 ## Troubleshooting Guide
+
 - Profile already exists:
   - Symptom: Creating a profile for a user who already has one fails.
   - Cause: Service enforces uniqueness by user_id.
@@ -1930,6 +2055,7 @@ PRJREP["project-repository.ts"] --> PRJSVC["project-service.ts"]
   - Resolution: Configure appropriate RLS policies or use service role for backend operations.
 
 ## Conclusion
+
 The employer_profiles table defines the organizational identity for employers in FreelanceXchain. Its one-to-one relationship with users, combined with the unique user_id constraint and idx_employer_profiles_user_id index, enables efficient and secure profile management. Through the service and repository layers, the backend enforces business rules and provides robust CRUD operations. While RLS is enabled, public read is not configured for employer_profiles in the provided schema; service role policies allow backend operations. Integrating employer profiles with project browsing enhances trust by surfacing verified company information alongside project listings.
 
 ---
@@ -1937,6 +2063,7 @@ The employer_profiles table defines the organizational identity for employers in
 # Freelancer Profiles Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1948,9 +2075,11 @@ The employer_profiles table defines the organizational identity for employers in
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the freelancer_profiles table in the FreelanceXchain Appwrite PostgreSQL database. It explains each column, the one-to-one relationship with the users table, and how the table enables personalized matching through the AI service. It also covers JSONB structures for skills and experience, the TABLES.FREELANCER_PROFILES constant, the idx_freelancer_profiles_user_id index, and RLS policies and privacy considerations.
 
 ## Project Structure
+
 The freelancer_profiles table is defined in the Appwrite schema and is consumed by the application through typed repositories and services. The TABLES constant centralizes table names for consistent access across the codebase. The matching service consumes profile data to compute AI-driven recommendations.
 
 ```mermaid
@@ -1975,6 +2104,7 @@ U --- FP
 ```
 
 ## Core Components
+
 - Table definition and constraints
   - Primary key: id (UUID)
   - Foreign key: user_id (unique, references users.id, cascade delete)
@@ -1988,6 +2118,7 @@ U --- FP
 These components form the foundation for storing detailed professional identity for freelancers and enabling efficient lookups and AI-driven matching.
 
 ## Architecture Overview
+
 The freelancer_profiles table integrates with the application through typed repositories and services. The TABLES constant ensures consistent table naming. The entity mapper converts database entities to API-friendly models. The matching service reads profile data to compute skill-based recommendations.
 
 ```mermaid
@@ -2010,6 +2141,7 @@ Service-->>Client : "Return results"
 ## Detailed Component Analysis
 
 ### Table Definition and Columns
+
 - id: UUID primary key with default generated value
 - user_id: UUID unique foreign key referencing users.id with ON DELETE CASCADE
 - bio: TEXT field for professional summary
@@ -2020,27 +2152,33 @@ Service-->>Client : "Return results"
 - created_at, updated_at: TIMESTAMPTZ defaults for audit timestamps
 
 Purpose:
+
 - Stores detailed professional identity for freelancers, enabling personalized matching and filtering.
 
 Relationship with users:
+
 - One-to-one via unique foreign key user_id referencing users.id.
 
 ### JSONB Structures: Skills and Experience
+
 - skills: Array of objects containing name and years_of_experience
 - experience: Array of objects containing id, title, company, description, start_date, end_date
 
 Usage in code:
+
 - Repository methods accept and return arrays of these structures
 - Services validate and update these arrays
 - Entity mapper maps these structures to API models
 
 Examples of structures:
+
 - skills: [{"name": "...", "years_of_experience": 3}, ...]
 - experience: [{"id": "...", "title": "...", "company": "...", "description": "...", "start_date": "...", "end_date": null}, ...]
 
 These structures enable flexible querying and aggregation, such as filtering by skill name or availability.
 
 ### Application Integration and Access Patterns
+
 - TABLES constant
   - TABLES.FREELANCER_PROFILES provides centralized table name access across the codebase
 - Repository methods
@@ -2105,7 +2243,9 @@ FreelancerProfileEntity --> WorkExperience : "contains"
 ```
 
 ### Personalized Matching Through the AI Service
+
 The matching service uses freelancer profiles to compute skill-based recommendations:
+
 - Retrieves a freelancer’s profile by user_id
 - Gathers open projects or available freelancers
 - Converts skills to SkillInfo structures
@@ -2130,6 +2270,7 @@ MatchSvc-->>Client : "Ranked recommendations"
 ```
 
 ### Index and Lookup Behavior
+
 - Index: idx_freelancer_profiles_user_id on user_id
 - Repository usage:
   - getProfileByUserId uses equality on user_id
@@ -2146,17 +2287,20 @@ Filter --> Return["Return paginated results"]
 ```
 
 ### RLS Policies and Privacy Considerations
+
 - RLS is enabled on freelancer_profiles
 - Service role policies grant full access for backend operations
 - Public read policies are defined for other tables (e.g., skill_categories, skills, open projects)
 - For freelancer_profiles, the service role policy allows backend services to manage data while keeping row-level controls enabled
 
 Privacy considerations:
+
 - RLS enables fine-grained access control
 - Backend services operate under the service role, minimizing exposure to client-side access
 - Consider adding user-specific policies if granular visibility controls are required
 
 ## Dependency Analysis
+
 - Centralized table naming via TABLES constant
 - Repository encapsulates database access and index-backed queries
 - Service layer validates inputs and orchestrates updates to JSONB arrays
@@ -2173,6 +2317,7 @@ MATCH["MatchingService"] --> REP
 ```
 
 ## Performance Considerations
+
 - Use the idx_freelancer_profiles_user_id index for lookups by user_id
 - For skill-based filtering, leverage getProfilesBySkillId with JSONB contains to utilize index-backed queries
 - For keyword searches, use searchByKeyword with ILIKE and pagination to avoid scanning entire tables
@@ -2181,7 +2326,9 @@ MATCH["MatchingService"] --> REP
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Profile not found by user_id
   - Ensure the user_id exists and the profile was created
   - Verify getProfileByUserId returns null and handle accordingly
@@ -2195,6 +2342,7 @@ Common issues and resolutions:
   - Confirm availability values are one of 'available', 'busy', 'unavailable'
 
 ## Conclusion
+
 The freelancer_profiles table defines the detailed professional identity for freelancers, with a one-to-one relationship to users and robust support for skill and experience JSONB structures. The TABLES constant, repository methods, and service layer provide a cohesive integration that powers AI-driven matching. Proper indexing and RLS policies ensure efficient and secure access, while JSONB flexibility enables powerful querying and aggregation.
 
 ---
@@ -2202,6 +2350,7 @@ The freelancer_profiles table defines the detailed professional identity for fre
 # KYC Verifications Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -2214,9 +2363,11 @@ The freelancer_profiles table defines the detailed professional identity for fre
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the kyc_verifications table in the FreelanceXchain Appwrite PostgreSQL database. It explains each column, constraints, indexes, and roles within the privacy-preserving identity verification system integrated with blockchain. The table serves as the central persistence layer for international KYC submissions, biometric checks, and administrative review, while the on-chain KYCVerification.sol smart contract ensures immutable, transparent verification records without exposing personal data.
 
 The documentation covers:
+
 - Column definitions and data types
 - Purpose and relationships to users and admin reviewers
 - Status lifecycle and tier levels
@@ -2227,6 +2378,7 @@ The documentation covers:
 - Index usage and performance considerations
 
 ## Project Structure
+
 The kyc_verifications table is defined in the Appwrite schema and accessed through typed models, repositories, services, and routes. The on-chain counterpart is implemented in Solidity and bridged via service functions.
 
 ```mermaid
@@ -2257,6 +2409,7 @@ MODEL --> SVC
 ```
 
 ## Core Components
+
 - Table definition and constraints: The kyc_verifications table defines UUID primary keys, foreign key to users, status with a constrained set of values, tier levels, personal information fields, address as JSONB, documents as JSONB array, biometric liveness_check JSONB, timestamps, reviewer linkage, rejection reason, and audit timestamps.
 - Index: An index on user_id accelerates lookups by user.
 - RLS: Row Level Security is enabled on the table to enforce access controls.
@@ -2264,7 +2417,9 @@ MODEL --> SVC
 - Repository and service: The repository encapsulates CRUD operations and status queries; the service orchestrates submission, liveness, face match, review, and blockchain synchronization.
 
 ## Architecture Overview
+
 The KYC system integrates off-chain persistence with on-chain immutability:
+
 - Off-chain: Appwrite stores KYC records, user references, and biometric metadata. Routes and services manage submission, liveness, face match, and admin review.
 - On-chain: The KYCVerification.sol contract stores verification status, tier, data hash, and expiration, enabling trustless verification checks and dispute resolution.
 
@@ -2293,7 +2448,9 @@ Route-->>Client : 201 Created
 ## Detailed Component Analysis
 
 ### Table Schema and Columns
+
 The kyc_verifications table schema defines:
+
 - id: UUID primary key with default generated value
 - user_id: UUID foreign key to users(id) with cascade delete
 - status: VARCHAR with CHECK constraint limiting values to pending, submitted, under_review, approved, rejected
@@ -2308,17 +2465,22 @@ The kyc_verifications table schema defines:
 - created_at, updated_at: TIMESTAMPTZ defaults
 
 Index:
+
 - idx_kyc_user_id on user_id
 
 RLS:
+
 - Enabled on kyc_verifications
 
 Purpose:
+
 - Central persistence for international KYC submissions, biometric verification, and administrative review.
 - Integrates with blockchain via stored hashes and status to enable trustless verification.
 
 ### Data Model Types
+
 Typed models define:
+
 - KycStatus union and KycTier enumeration
 - InternationalAddress interface for address JSONB
 - KycDocument and OCR/MRZ extraction types
@@ -2329,18 +2491,23 @@ Typed models define:
 These types ensure strong typing across the API, repository, and service layers.
 
 ### Repository and Entity Mapping
+
 The repository:
+
 - Extends BaseRepository with the kyc_verifications table name
 - Provides create, get by id, get by user id, update, and status-based queries
 - Uses Appwrite client to select, insert, update, and order by timestamps
 
 Entity-to-model mapping:
+
 - Converts snake_case database fields to camelCase model properties
 - Preserves JSONB structures for address, documents, and liveness_check
 - Maps optional fields and enums appropriately
 
 ### Service Orchestration
+
 Key flows:
+
 - Submission: Validates country and document type support, prevents duplicates, sets status to submitted, attaches documents, and optionally submits to blockchain
 - Liveness: Creates a session with randomized challenges, validates session, computes confidence, and marks pass/fail/expired
 - Face Match: Computes similarity score and updates face match status
@@ -2348,18 +2515,23 @@ Key flows:
 - Integrity: Compares off-chain status with on-chain verification and verifies data hash
 
 ### Blockchain Integration
+
 The backend simulates blockchain interactions:
+
 - Generates data hash and user ID hash
 - Submits KYC to blockchain (pending), approves (approved with tier and expiry), or rejects (rejected with reason)
 - Checks wallet verification status and compares with off-chain records
 
 The on-chain contract:
+
 - Stores verification status, tier, dataHash, verifiedAt, expiresAt, verifiedBy, and rejectionReason
 - Supports submit, approve, reject, expire, and query functions
 - Emits events for transparency
 
 ### API Exposure and Admin Workflows
+
 Routes expose:
+
 - Countries and requirements
 - Status retrieval
 - Submission endpoint
@@ -2371,6 +2543,7 @@ Routes expose:
 Validation and error handling are implemented in routes and services.
 
 ## Dependency Analysis
+
 - appwrite.ts defines TABLES.KYC_VERIFICATIONS and exposes it to repositories
 - kyc-repository.ts depends on appwrite.ts for table name and BaseRepository for DB operations
 - kyc-service.ts depends on kyc-repository.ts and kyc-contract.ts
@@ -2387,13 +2560,16 @@ BC --> SOL["KYCVerification.sol"]
 ```
 
 ## Performance Considerations
+
 - Index usage: The idx_kyc_user_id index optimizes lookups by user_id, crucial for retrieving the latest KYC record per user.
 - Query patterns: Repository methods use ordering by created_at and limits for paginated admin review lists.
 - JSONB storage: Efficient for flexible document and address structures; consider selective indexing if querying nested fields frequently.
 - RLS overhead: Enabling RLS adds minimal overhead; ensure policies remain minimal and targeted.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Duplicate KYC submission: The service prevents re-submission if already approved or pending; handle 409 Conflict responses.
 - Liveness session errors: Session invalid or expired; recreate session or verify session ID and expiry.
 - Validation failures: Ensure required fields (name, DOB, nationality, address, document) are present and formatted correctly.
@@ -2401,11 +2577,13 @@ Common issues and resolutions:
 - Blockchain sync: If blockchain operations fail, logs indicate failure; retry or inspect transaction receipts.
 
 ## Conclusion
+
 The kyc_verifications table is the backbone of FreelanceXchain’s privacy-preserving KYC system. It captures international identity data, biometric verification, and administrative review while maintaining strict compliance and transparency. Off-chain storage ensures flexibility and performance, while on-chain verification guarantees immutability and trust. Together with RLS and robust service-layer orchestration, the system establishes a secure foundation for compliance, withdrawal limits enforcement, and dispute resolution.
 
 ## Appendices
 
 ### Column Reference and Constraints
+
 - id: UUID primary key
 - user_id: UUID foreign key to users(id), cascade delete
 - status: CHECK (pending, submitted, under_review, approved, rejected)
@@ -2420,11 +2598,13 @@ The kyc_verifications table is the backbone of FreelanceXchain’s privacy-prese
 - created_at, updated_at: TIMESTAMPTZ defaults
 
 ### RLS Policies and Data Protection
+
 - RLS enabled on kyc_verifications
 - Service role policy allows backend operations
 - Access control should be enforced at route and service layers; ensure user isolation and admin-only endpoints for review
 
 ### Example: How KYC Status Affects Withdrawal Limits and Disputes
+
 - Approved KYC status enables higher withdrawal limits and grants dispute resolution privileges based on tier.
 - Pending or rejected status restricts actions until verification completes or is resolved.
 - The service layer enforces these rules during transactions and dispute handling.
@@ -2432,6 +2612,7 @@ The kyc_verifications table is the backbone of FreelanceXchain’s privacy-prese
 [No sources needed since this section provides conceptual guidance]
 
 ### Example: How KYC Status Affects Dispute Resolution Privileges
+
 - Higher tiers (standard/enhanced) may grant additional rights in dispute resolution workflows.
 - The service compares off-chain status with on-chain verification to ensure integrity and enforce policies consistently.
 
@@ -2442,6 +2623,7 @@ The kyc_verifications table is the backbone of FreelanceXchain’s privacy-prese
 # Messages Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -2453,9 +2635,11 @@ The kyc_verifications table is the backbone of FreelanceXchain’s privacy-prese
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the messages table in the FreelanceXchain Appwrite PostgreSQL database. It defines the table schema, explains the purpose of secure communication between contract parties, and documents how the application enforces access control and performance optimizations. It also covers message threading within contracts, read receipts, and the role of messages in dispute evidence collection.
 
 ## Project Structure
+
 The messages table is defined in the Appwrite schema and is accessed by the application through a typed repository and service layer. The TABLES.MESSAGES constant centralizes table naming across the codebase.
 
 ```mermaid
@@ -2480,6 +2664,7 @@ MSG --> USR
 ```
 
 ## Core Components
+
 - messages table: Stores secure, contract-scoped communications between parties.
 - MessageRepository: Typed repository providing CRUD and query helpers for messages.
 - MessageService: Orchestrates message creation, retrieval, and read receipts while enforcing participant checks.
@@ -2487,6 +2672,7 @@ MSG --> USR
 - TABLES.MESSAGES: Centralized table name constant used by repositories and services.
 
 ## Architecture Overview
+
 The messages table underpins secure, contract-bound communication. It ensures only authorized parties can access messages and provides efficient querying via indexes. Read receipts are tracked per message and can be batch-marked as read.
 
 ```mermaid
@@ -2512,6 +2698,7 @@ Service-->>Client : "MessageEntity"
 ## Detailed Component Analysis
 
 ### Messages Table Schema
+
 - id: UUID primary key with default generated value.
 - contract_id: UUID foreign key referencing contracts(id), cascade delete.
 - sender_id: UUID foreign key referencing users(id), cascade delete.
@@ -2521,20 +2708,24 @@ Service-->>Client : "MessageEntity"
 - updated_at: Timestamp with timezone, default current time.
 
 Purpose:
+
 - Provides a secure communication channel between parties in a contract.
 - Enables collaboration by persisting conversations scoped to a contract.
 - Supports read receipts and dispute evidence capture.
 
 Indexes:
+
 - idx_messages_contract_id: Improves query performance for contract-scoped message retrieval.
 - idx_messages_sender_id: Optimizes sender-based filtering and analytics.
 
 RLS Policies:
+
 - RLS enabled on messages table.
 - Service role policy grants full access for backend operations.
 - Additional participant-based policies are enforced at the application level during reads/writes.
 
 ### Message Threading Within a Contract
+
 - Messages are grouped by contract_id.
 - Retrieval sorts by created_at ascending to display chronological order.
 - Latest message per contract can be fetched for conversation summaries.
@@ -2551,6 +2742,7 @@ Return --> End
 ```
 
 ### Read Receipt Tracking
+
 - is_read flag defaults to false when a message is created.
 - Unread count is computed for the other party (neq sender_id).
 - Batch marking as read updates is_read and updated_at for all unread messages in a contract for the other party.
@@ -2563,6 +2755,7 @@ Update --> Done(["Done"])
 ```
 
 ### Role-Based Access Control and Participant Checks
+
 - Application-level enforcement ensures only parties in a contract can send or retrieve messages.
 - MessageService validates that the sender is either the freelancer or employer linked to the contract.
 
@@ -2583,11 +2776,13 @@ end
 ```
 
 ### Evidence Gathering for Disputes
+
 - Messages are persisted with timestamps and sender identity.
 - Disputes can reference relevant messages as evidence.
 - The is_read flag helps track whether a party has seen messages prior to escalation.
 
 ## Dependency Analysis
+
 - The messages table depends on contracts and users via foreign keys.
 - Repositories and services depend on the TABLES.MESSAGES constant for table identification.
 - MessageService depends on ContractRepository to validate participants.
@@ -2604,6 +2799,7 @@ CT["contracts"] --> DB
 ```
 
 ## Performance Considerations
+
 - Indexes on contract_id and sender_id improve query performance for:
   - Listing messages per contract.
   - Filtering unread messages by sender.
@@ -2611,12 +2807,14 @@ CT["contracts"] --> DB
 - Batch marking as read updates only the necessary records.
 
 ## Troubleshooting Guide
+
 - Contract not found: Ensure the contract exists before sending or retrieving messages.
 - User not a participant: Only the freelancer or employer associated with a contract can send or view messages.
 - Read receipt not updating: Confirm that the caller is the other party (neq sender_id) and that messages remain is_read=false.
 - No messages returned: Verify pagination parameters and that the contract_id is correct.
 
 ## Conclusion
+
 The messages table provides a secure, indexed, and participant-enforced communication mechanism for contract collaboration. Its design supports chronological threading, read receipts, and efficient querying. Together with RLS and application-level checks, it ensures privacy and integrity of communications while enabling evidence collection for disputes.
 
 ---
@@ -2624,6 +2822,7 @@ The messages table provides a secure, indexed, and participant-enforced communic
 # Notifications Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -2635,10 +2834,13 @@ The messages table provides a secure, indexed, and participant-enforced communic
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the notifications table in the FreelanceXchain Appwrite PostgreSQL database. It explains the table schema, the roles of each column, and how the table powers the event-driven communication system for user engagement. The notifications table stores events such as proposal status changes, contract updates, and messages, enabling targeted UI behaviors for users.
 
 ## Project Structure
+
 The notifications table is defined in the Appwrite schema and is accessed through the backend service layer and routes. The key files involved are:
+
 - Database schema definition
 - Backend constants for table names
 - Repository and service layers for CRUD operations and helper functions
@@ -2662,6 +2864,7 @@ RT --> SVC
 ```
 
 ## Core Components
+
 - notifications table: Stores event notifications for users with metadata and payload.
 - TABLES.NOTIFICATIONS: Centralized table name constant used across the codebase.
 - NotificationRepository: Encapsulates CRUD and query operations for notifications.
@@ -2669,7 +2872,9 @@ RT --> SVC
 - Notification Routes: Expose API endpoints to list, count, and mark notifications as read.
 
 ## Architecture Overview
+
 The notifications system follows a layered architecture:
+
 - Data layer: Appwrite PostgreSQL table with indexes and RLS enabled.
 - Service layer: Typed helpers and business logic for creating and updating notifications.
 - Repository layer: Generic base repository plus notification-specific queries.
@@ -2707,6 +2912,7 @@ Route-->>Client : 200 OK
 ## Detailed Component Analysis
 
 ### Database Schema: notifications table
+
 - Purpose: Event-driven communication hub for user engagement.
 - Columns:
   - id: UUID primary key, auto-generated.
@@ -2725,15 +2931,19 @@ Route-->>Client : 200 OK
   - Service role policy allows full access for backend operations.
 
 How it supports the event-driven system:
+
 - Tracks lifecycle events such as proposal submissions, acceptance/rejection, milestone approvals, payment releases, disputes, ratings, and messages.
 - The data JSONB field carries enough context for UI to render actionable links and details.
 
 ### TABLES.NOTIFICATIONS constant
+
 - Centralized table name constant ensures consistency across the codebase.
 - Used by the repository to target the notifications table.
 
 ### NotificationRepository
+
 Responsibilities:
+
 - Create notifications.
 - Retrieve notifications by user with pagination.
 - Retrieve all notifications by user (ordered by creation time).
@@ -2743,12 +2953,15 @@ Responsibilities:
 - Count unread notifications for a user.
 
 Key behaviors:
+
 - Uses eq('user_id', userId) to scope queries to the authenticated user.
 - Uses eq('is_read', false) to filter unread items.
 - Orders by created_at descending for newest-first views.
 
 ### NotificationService
+
 Responsibilities:
+
 - Typed input for creating notifications.
 - Helper functions for specific notification types:
   - Proposal lifecycle: received, accepted, rejected.
@@ -2759,20 +2972,25 @@ Responsibilities:
 - Read-state management: mark individual and all notifications as read, and get unread count.
 
 Authorization note:
+
 - When marking a notification as read, the service verifies that the notification belongs to the requesting user before updating.
 
 ### Notification Routes
+
 Endpoints:
+
 - GET /api/notifications: Lists paginated notifications for the authenticated user.
 - GET /api/notifications/unread-count: Returns the unread count for the authenticated user.
 - PATCH /api/notifications/{id}/read: Marks a specific notification as read.
 - PATCH /api/notifications/read-all: Marks all notifications as read for the authenticated user.
 
 Security:
+
 - All endpoints require authentication via bearer token.
 - Unauthorized access attempts receive appropriate HTTP status codes.
 
 ### Data Model and Types
+
 - Notification type: camelCase representation used in API responses.
 - NotificationEntity: snake_case representation used in the database.
 - NotificationType union defines allowed notification categories.
@@ -2836,6 +3054,7 @@ NotificationService --> NotificationRepository : "uses"
 ```
 
 ## Dependency Analysis
+
 - The repository depends on TABLES.NOTIFICATIONS for table targeting.
 - The service depends on the repository for persistence and on the entity mapper for type conversion.
 - The routes depend on the service for business logic and on authentication middleware for security.
@@ -2850,6 +3069,7 @@ MAP --> REP
 ```
 
 ## Performance Considerations
+
 - Indexes:
   - idx_notifications_user_id: Optimizes per-user queries.
   - idx_notifications_is_read: Optimizes unread queries and unread counts.
@@ -2861,7 +3081,9 @@ MAP --> REP
   - Enabling RLS on notifications ensures row-level filtering, which is essential for correctness and performance when combined with indexes.
 
 ## Troubleshooting Guide
+
 Common scenarios and resolutions:
+
 - Unauthorized access when marking a notification as read:
   - The service checks that the notification belongs to the requesting user. If not, it returns UNAUTHORIZED.
 - Notification not found:
@@ -2872,11 +3094,13 @@ Common scenarios and resolutions:
   - Routes require a valid bearer token; missing or invalid tokens result in 401 responses.
 
 Operational tips:
+
 - Use GET /api/notifications/unread-count to drive badge indicators.
 - Use PATCH /api/notifications/read-all to batch-clear notifications after user action.
 - Use PATCH /api/notifications/{id}/read to immediately reflect user interaction.
 
 ## Conclusion
+
 The notifications table is the backbone of FreelanceXchain’s event-driven user engagement. It captures lifecycle events across proposals, milestones, payments, disputes, ratings, and messages. With centralized table naming, robust repository and service layers, and secure API routes, it enables scalable, user-centric communication. Proper indexing and RLS ensure performance and data isolation, while helper functions simplify UI integration and badge-driven experiences.
 
 ---
@@ -2884,6 +3108,7 @@ The notifications table is the backbone of FreelanceXchain’s event-driven user
 # Payments Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -2895,9 +3120,11 @@ The notifications table is the backbone of FreelanceXchain’s event-driven user
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the payments table in the FreelanceXchain Appwrite PostgreSQL database. The payments table serves as the transaction history ledger that bridges off-chain application records with on-chain events from the FreelanceEscrow.sol contract. It tracks fund flows across escrow deposits, milestone releases, refunds, and dispute resolutions, enabling auditability and reconciliation between Ethereum transactions and application state.
 
 ## Project Structure
+
 The payments table is defined in the Appwrite schema and integrated into the application through configuration constants, repository classes, and service functions. Indexes and Row Level Security (RLS) policies are configured to support efficient querying and financial privacy.
 
 ```mermaid
@@ -2919,6 +3146,7 @@ REPO --> SVC
 ```
 
 ## Core Components
+
 - Purpose: The payments table is the canonical record of all monetary events associated with contracts, including escrow deposits, milestone releases, refunds, and dispute resolutions. It links off-chain application actions to on-chain transaction hashes for traceability.
 - Primary keys and foreign keys:
   - id: UUID primary key
@@ -2937,6 +3165,7 @@ REPO --> SVC
 - RLS: Enabled on payments for row-level security
 
 ## Architecture Overview
+
 The payments ledger integrates with the FreelanceEscrow.sol contract through application services that create payment records and update statuses based on blockchain confirmations. The TABLES constant ensures consistent table naming across the application.
 
 ```mermaid
@@ -2969,6 +3198,7 @@ Service-->>Client : "Status updated"
 ## Detailed Component Analysis
 
 ### Payments Table Schema and Constraints
+
 - Columns and types:
   - id: UUID primary key
   - contract_id: UUID foreign key to contracts
@@ -2990,9 +3220,11 @@ Service-->>Client : "Status updated"
   - Default values normalize currency and timestamps
 
 ### Application Integration: TABLES Constant
+
 - The TABLES constant defines the canonical table name for payments, ensuring consistent usage across repositories and services.
 
 ### Repository Layer: PaymentRepository
+
 - Responsibilities:
   - Query payments by contract_id, user_id (payer or payee), and tx_hash
   - Update payment status and optionally set tx_hash
@@ -3005,6 +3237,7 @@ Service-->>Client : "Status updated"
   - getTotalEarnings/getTotalSpent: sums completed amounts for a user
 
 ### Service Layer: TransactionService
+
 - Responsibilities:
   - Create payment records with appropriate payment_type and initial status
   - Update payment status and tx_hash after blockchain confirmations
@@ -3015,6 +3248,7 @@ Service-->>Client : "Status updated"
   - updatePaymentStatus updates status and optionally tx_hash
 
 ### Blockchain Integration: Escrow Contract
+
 - The FreelanceEscrow.sol contract emits events and performs transfers aligned with payment types:
   - FundsDeposited corresponds to escrow_deposit
   - MilestoneApproved corresponds to milestone_release
@@ -3023,6 +3257,7 @@ Service-->>Client : "Status updated"
 - The application uses blockchain-client abstractions to submit and confirm transactions, then updates payments with tx_hash and status.
 
 ### Status Lifecycle and tx_hash Mapping
+
 - Initial state:
   - Pending when created without tx_hash
   - Completed when created with tx_hash
@@ -3044,6 +3279,7 @@ UpdateStatus --> End(["Payment Updated"])
 ```
 
 ## Dependency Analysis
+
 The payments table depends on contracts and users for referential integrity and on application services for lifecycle management. Indexes and RLS policies influence query performance and access control.
 
 ```mermaid
@@ -3056,6 +3292,7 @@ TxSvc --> Escrow["Escrow Contract"]
 ```
 
 ## Performance Considerations
+
 - Indexes:
   - idx_payments_contract_id: accelerates contract-level payment queries
   - idx_payments_payer_id: accelerates payer-centric views
@@ -3066,6 +3303,7 @@ TxSvc --> Escrow["Escrow Contract"]
   - getTotalEarnings and getTotalSpent compute summaries for completed payments only
 
 ## Troubleshooting Guide
+
 - Payment not found by tx_hash:
   - Ensure tx_hash is stored during updatePaymentStatus and that the record was created with txHash when applicable
 - Incorrect status transitions:
@@ -3076,6 +3314,7 @@ TxSvc --> Escrow["Escrow Contract"]
   - Ensure the Appwrite session has appropriate permissions; RLS policies enable service role access for backend operations
 
 ## Conclusion
+
 The payments table is central to the FreelanceXchain architecture, providing a reliable bridge between off-chain application actions and on-chain Ethereum events. Through structured columns, constraints, indexes, and RLS policies, it ensures data integrity, performance, and privacy. Application services and repositories coordinate payment creation, status updates, and reconciliation with blockchain confirmations, enabling transparent and auditable fund flows across escrow deposits, milestone releases, refunds, and dispute resolutions.
 
 ---
@@ -3083,6 +3322,7 @@ The payments table is central to the FreelanceXchain architecture, providing a r
 # Projects Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -3094,9 +3334,11 @@ The payments table is central to the FreelanceXchain architecture, providing a r
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the projects table in the FreelanceXchain Appwrite PostgreSQL database. The projects table is the central entity representing freelance work opportunities. It captures essential metadata such as employer identity, title, description, required skills, budget, deadline, and lifecycle status. It also stores structured milestone definitions and audit timestamps. The table integrates with related entities (proposals, contracts, notifications) and supports AI-driven recommendations and milestone-based payment workflows.
 
 ## Project Structure
+
 The projects table is defined in the Appwrite schema and is referenced throughout the backend via a centralized table name constant. Repositories and services encapsulate data access and business logic, while entity mappers convert between database entities and API-facing models.
 
 ```mermaid
@@ -3124,6 +3366,7 @@ SVC --> MAP
 ```
 
 ## Core Components
+
 - Primary key: id (UUID, auto-generated)
 - Foreign key: employer_id references users.id (CASCADE delete)
 - Title: not null (VARCHAR)
@@ -3136,12 +3379,14 @@ SVC --> MAP
 - Audit timestamps: created_at, updated_at (timestamptz)
 
 Purpose and scope:
+
 - Central entity for freelance job postings
 - Stores project requirements, budget, and timeline
 - Enables discovery and matching via required_skills
 - Drives milestone-based payment workflows and contract creation
 
 ## Architecture Overview
+
 The projects table participates in a broader ecosystem of entities. The following diagram shows how projects relate to users, proposals, contracts, and notifications.
 
 ```mermaid
@@ -3209,6 +3454,7 @@ PROJECTS ||--o{ NOTIFICATIONS : "triggers"
 ## Detailed Component Analysis
 
 ### Projects Table Definition and Constraints
+
 - id: UUID primary key with default generator
 - employer_id: UUID foreign key to users.id with cascade delete
 - title: not null
@@ -3221,29 +3467,35 @@ PROJECTS ||--o{ NOTIFICATIONS : "triggers"
 - created_at, updated_at: timestamptz defaults
 
 Indexes:
+
 - idx_projects_employer_id on projects(employer_id)
 - idx_projects_status on projects(status)
 
 Row Level Security:
+
 - Policy enabling public read access only for projects with status = 'open'
 
 ### TABLES.PROJECTS Constant
+
 The backend references the projects table via a centralized constant to ensure consistency across repositories and services.
 
 - TABLES.PROJECTS resolves to the literal string "projects"
 - Used by ProjectRepository to target the projects table
 
 ### Data Model Types and Mapping
+
 - ProjectEntity mirrors the database schema for repository operations
 - Project (mapped type) exposes camelCase fields and typed required_skills and milestones
 - ProjectSkillReference and Milestone types define the structure of JSONB arrays
 
 ### Relationships with Proposals, Contracts, and Notifications
+
 - Proposals: linked via project_id; used to gate edits and deletions when accepted proposals exist
 - Contracts: linked via project_id; milestone-based payments originate from project milestones
 - Notifications: linked via project_id; used to inform stakeholders about lifecycle events
 
 ### AI-Powered Recommendations Using required_skills
+
 - required_skills drives AI matching by providing explicit skill requirements
 - The AI client compares project requirements against freelancer skills to compute match scores
 - Keyword-based extraction and skill gap analysis can supplement or fallback when explicit skills are absent
@@ -3264,6 +3516,7 @@ Route-->>Client : recommendation payload
 ```
 
 ### Milestones and Payment Releases
+
 - Milestones define deliverables, due dates, and amounts
 - Budget validation ensures milestone totals equal project budget
 - Milestone statuses drive contract and payment workflows
@@ -3280,6 +3533,7 @@ Error --> End
 ```
 
 ### Query Patterns and Indexes
+
 - getProjectsByEmployer: filters by employer_id and sorts by created_at desc
 - getAllOpenProjects: filters by status = 'open'
 - getProjectsByStatus: filters by status
@@ -3288,14 +3542,17 @@ Error --> End
 - searchProjects: filters by status = 'open' and full-text-like ILIKE on title/description
 
 Indexes:
+
 - idx_projects_employer_id improves employer-scoped queries
 - idx_projects_status improves filtering by status
 
 ### RLS Policy for Public Read Access
+
 - Policy allows SELECT for projects where status = 'open'
 - Service role policies grant full access for backend operations
 
 ## Dependency Analysis
+
 - ProjectRepository depends on TABLES.PROJECTS for table targeting
 - ProjectService orchestrates business rules around project lifecycle, milestone budget validation, and skill validation
 - EntityMapper converts between database entities and API-facing models
@@ -3311,6 +3568,7 @@ SCHEMA --> SVC
 ```
 
 ## Performance Considerations
+
 - Use idx_projects_employer_id for employer-scoped queries
 - Use idx_projects_status for status-filtered queries
 - For skill-based filtering, fetch open projects and filter in-memory to leverage required_skills structure
@@ -3320,7 +3578,9 @@ SCHEMA --> SVC
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Validation errors when adding milestones:
   - Ensure milestone amounts sum to the project budget
   - Verify milestone entries include required fields (title, description, amount, dueDate)
@@ -3332,6 +3592,7 @@ Common issues and resolutions:
   - Only projects with status = 'open' are publicly readable; adjust status accordingly
 
 ## Conclusion
+
 The projects table is the cornerstone of the FreelanceXchain marketplace. It defines the opportunity, requirements, and financial framework for freelance work. Its design enables efficient discovery, AI-driven matching, and secure milestone-based payments. Proper indexing, RLS policies, and service-layer validations ensure performance, security, and data integrity across the system.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -3341,6 +3602,7 @@ The projects table is the cornerstone of the FreelanceXchain marketplace. It def
 # Proposals Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -3352,9 +3614,11 @@ The projects table is the cornerstone of the FreelanceXchain marketplace. It def
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the proposals table in the FreelanceXchain Appwrite PostgreSQL database. It explains each column, the table’s role as the bidding mechanism for freelancers to express interest in projects, and how proposal status changes drive downstream workflows such as notifications and contract creation. It also references the TABLES.PROPOSALS constant, indexes for performance, and RLS policies that govern visibility.
 
 ## Project Structure
+
 The proposals table is defined in the Appwrite schema and is consumed by the application through typed repositories, services, and routes. The TABLES.PROPOSALS constant centralizes table naming across the codebase.
 
 ```mermaid
@@ -3377,6 +3641,7 @@ MAPPER --> SERVICE
 ```
 
 ## Core Components
+
 - Table definition and constraints
   - id: UUID primary key with default generated by the database
   - project_id: UUID foreign key referencing projects(id) with cascade delete
@@ -3400,6 +3665,7 @@ MAPPER --> SERVICE
   - TABLES.PROPOSALS constant used by repositories to target the proposals table
 
 ## Architecture Overview
+
 The proposals table underpins the bidding workflow. Freelancers submit proposals, employers review and decide, and accepted proposals initiate contract creation and blockchain agreement signing. Notifications are generated for both parties upon submission and status changes.
 
 ```mermaid
@@ -3433,6 +3699,7 @@ Routes-->>Client : 200 OK
 ## Detailed Component Analysis
 
 ### Data Model Definition
+
 - Purpose: The proposals table records bids from freelancers for specific projects. It captures the freelancer’s offer (rate and duration), a cover letter, and the current status of the bid.
 - Constraints:
   - Status is constrained to pending, accepted, rejected, withdrawn
@@ -3459,6 +3726,7 @@ USERS ||--o{ PROPOSALS : "freelancer makes"
 ```
 
 ### Application Model Mapping
+
 - The Proposal entity in the application mirrors the database schema with camelCase fields for API consumption.
 - The entity mapper converts between database snake_case and application camelCase.
 
@@ -3490,6 +3758,7 @@ ProposalEntity <--> Proposal : "mapped by entity-mapper.ts"
 ```
 
 ### Repository and Service Integration
+
 - Repository
   - Uses TABLES.PROPOSALS to target the proposals table
   - Provides CRUD and query helpers for proposals
@@ -3513,6 +3782,7 @@ NotifyEmployer --> Done(["Return created proposal"])
 ```
 
 ### Contract Creation Workflow Triggered by Status Change
+
 - Accepting a proposal triggers:
   - Update proposal status to accepted
   - Create a contract record linking the project, proposal, and parties
@@ -3537,6 +3807,7 @@ Service-->>Routes : {proposal, contract, notification}
 ```
 
 ### Notifications and RLS Policies
+
 - Notifications
   - On submit: proposal_received notification sent to the project employer
   - On accept: proposal_accepted notification sent to the freelancer
@@ -3557,6 +3828,7 @@ F --> |No| H["No action"]
 ```
 
 ## Dependency Analysis
+
 - Internal dependencies
   - proposal-repository depends on TABLES.PROPOSALS
   - proposal-service depends on proposal-repository, project-repository, contract-repository, notification-service, and entity-mapper
@@ -3576,6 +3848,7 @@ Notif --> NotifRepo["notification-repository.ts"]
 ```
 
 ## Performance Considerations
+
 - Indexes
   - idx_proposals_project_id accelerates fetching proposals by project
   - idx_proposals_freelancer_id accelerates fetching proposals by freelancer
@@ -3586,6 +3859,7 @@ Notif --> NotifRepo["notification-repository.ts"]
   - UNIQUE(project_id, freelancer_id) prevents duplicates and supports fast duplicate checks
 
 ## Troubleshooting Guide
+
 - Duplicate proposal error
   - Cause: UNIQUE(project_id, freelancer_id) violation
   - Symptom: submitProposal returns DUPLICATE_PROPOSAL
@@ -3608,6 +3882,7 @@ Notif --> NotifRepo["notification-repository.ts"]
   - Resolution: Confirm RLS policies and user_id filtering
 
 ## Conclusion
+
 The proposals table is central to the FreelanceXchain bidding and contract creation workflow. Its design enforces business rules (status constraints, uniqueness), supports efficient queries via indexes, and integrates tightly with services that handle notifications and contract generation. The TABLES.PROPOSALS constant and RLS policies ensure consistent access patterns and security across the application.
 
 ---
@@ -3615,6 +3890,7 @@ The proposals table is central to the FreelanceXchain bidding and contract creat
 # Reviews Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -3626,9 +3902,11 @@ The proposals table is central to the FreelanceXchain bidding and contract creat
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the reviews table in the FreelanceXchain Appwrite PostgreSQL database. It explains the structure, constraints, and relationships of the reviews table, and clarifies its role in the platform’s off-chain reputation data store. It also describes how the off-chain reviews integrate with the on-chain reputation system implemented in the FreelanceReputation.sol smart contract, including how submissions occur post-completion, how visibility is controlled via Row Level Security (RLS), and how indexes and unique constraints support performance and data integrity.
 
 ## Project Structure
+
 The reviews table is defined in the Appwrite schema and is referenced by the application through a centralized table constant. The off-chain repository and service layer provide CRUD operations and business logic around reviews, while the on-chain reputation system stores immutable records for scoring and transparency.
 
 ```mermaid
@@ -3657,6 +3935,7 @@ REV --- USR
 ```
 
 ## Core Components
+
 - Reviews table definition and constraints
 - Indexes for performance
 - RLS policies for visibility
@@ -3664,6 +3943,7 @@ REV --- USR
 - On-chain reputation system integration
 
 ## Architecture Overview
+
 The off-chain reviews table stores transient, mutable feedback entries linked to contracts and users. These entries are used to build user profiles and inform on-chain reputation submissions. The on-chain system ensures immutability and transparency of reputation records.
 
 ```mermaid
@@ -3688,6 +3968,7 @@ API-->>Client : "Review submitted"
 ## Detailed Component Analysis
 
 ### Reviews Table Data Model
+
 - Purpose: Off-chain data store for transient feedback entries associated with contracts and users.
 - Columns:
   - id: UUID primary key
@@ -3721,6 +4002,7 @@ USERS ||--o{ REVIEWS : "reviewee"
 ```
 
 ### Off-chain Repository and Service
+
 - Repository:
   - findByContractId: fetch reviews for a contract ordered by newest first.
   - findByRevieweeId: paginated fetch of reviews received by a user.
@@ -3749,6 +4031,7 @@ ReviewService --> ReviewRepository : "uses"
 ```
 
 ### On-chain Reputation Integration
+
 - Off-chain reviews are used to drive on-chain submissions via a simulated blockchain interface.
 - The on-chain contract (FreelanceReputation.sol) stores immutable ratings with:
   - Struct fields for rater, ratee, score (1–5), comment, contractId, timestamp, and isEmployerRating.
@@ -3771,6 +4054,7 @@ Chain-->>Svc : "rating + receipt"
 ```
 
 ### Unique Constraint and Duplicate Prevention
+
 - Off-chain: UNIQUE(contract_id, reviewer_id) prevents duplicate reviews per contract and reviewer.
 - On-chain: Mapping keyed by rater+ratee+contractId prevents duplicate submissions.
 
@@ -3790,6 +4074,7 @@ End --> Done
 ```
 
 ### RLS Policies and Visibility
+
 - All tables enable Row Level Security.
 - Reviews table has RLS enabled and a service-role policy granting full access for backend operations.
 - Visibility of reviews is governed by application-level logic and user permissions enforced by the API and repository/service layers.
@@ -3802,10 +4087,12 @@ Reviews --> Contracts["contracts"]
 ```
 
 ### Audit Timestamps and Data Flow
+
 - created_at and updated_at are managed by the database defaults and updated by triggers or application logic.
 - The repository/service layer returns these timestamps to clients for display and sorting.
 
 ## Dependency Analysis
+
 - Reviews table depends on contracts and users via foreign keys.
 - Application code references TABLES.REVIEWS for consistent table naming.
 - ReviewService depends on ContractRepository to validate contract state and participants.
@@ -3823,6 +4110,7 @@ RCT --> SCR["FreelanceReputation.sol"]
 ```
 
 ## Performance Considerations
+
 - Indexes:
   - idx_reviews_contract_id: speeds up fetching reviews by contract.
   - idx_reviews_reviewee_id: speeds up fetching received reviews for user profiles.
@@ -3832,6 +4120,7 @@ RCT --> SCR["FreelanceReputation.sol"]
   - Repository aggregates ratings client-side; consider caching or materialized views for high-volume scenarios.
 
 ## Troubleshooting Guide
+
 - Validation errors:
   - Rating out of range (1–5) or invalid contract state/status.
 - Authorization issues:
@@ -3842,6 +4131,7 @@ RCT --> SCR["FreelanceReputation.sol"]
   - Ensure Appwrite client initialization succeeds and TABLES constants are present.
 
 ## Conclusion
+
 The reviews table serves as the off-chain foundation for the platform’s reputation system. It captures transient feedback with strong constraints and indexes to ensure data integrity and performance. Together with the on-chain FreelanceReputation.sol contract, it enables transparent, immutable reputation records that reflect real-world interactions. Off-chain operations manage submission workflows, visibility, and user profile displays, while on-chain logic guarantees immutability and trust.
 
 ---
@@ -3849,6 +4139,7 @@ The reviews table serves as the off-chain foundation for the platform’s reputa
 # Skill Categories Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -3860,10 +4151,13 @@ The reviews table serves as the off-chain foundation for the platform’s reputa
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the skill_categories table in the FreelanceXchain Appwrite PostgreSQL database. It explains the table’s structure, purpose as a hierarchical classification system for skills, and its one-to-many relationship with the skills table. It also covers programmatic access via the TABLES.SKILL_CATEGORIES constant, indexing strategy, and Row Level Security (RLS) policy enabling public read access. Finally, it demonstrates how skill categories support organized browsing and filtering within the AI-powered matching system.
 
 ## Project Structure
+
 The skill_categories table is part of the core schema and is closely integrated with related repositories and services:
+
 - Database schema defines the table and its constraints.
 - Seed script initializes predefined categories and skills.
 - Application code accesses the table through a typed repository and the TABLES constant.
@@ -3890,6 +4184,7 @@ MS --> SR
 ```
 
 ## Core Components
+
 - skill_categories table
   - Purpose: Hierarchical classification system for skills.
   - Columns:
@@ -3906,7 +4201,9 @@ MS --> SR
   - SkillCategoryRepository offers CRUD operations and filtered queries.
 
 ## Architecture Overview
+
 The skill taxonomy is a foundational data model enabling:
+
 - Organized browsing and filtering of skills by category.
 - Efficient joins between categories and skills for reporting and matching.
 - Public read access via RLS for discovery and transparency.
@@ -3936,6 +4233,7 @@ SKILL_CATEGORIES ||--o{ SKILLS : "has many"
 ## Detailed Component Analysis
 
 ### skill_categories table definition and constraints
+
 - Primary key: id UUID with generated default.
 - Not-null constraint: name.
 - Flags: is_active defaults to true.
@@ -3945,6 +4243,7 @@ SKILL_CATEGORIES ||--o{ SKILLS : "has many"
 These constraints ensure consistent categorization, discoverability, and referential integrity.
 
 ### Programmatic access via TABLES.SKILL_CATEGORIES
+
 - The TABLES constant exposes SKILL_CATEGORIES as a string literal, enabling:
   - Centralized table naming across repositories and services.
   - Type-safe usage in Appwrite client calls.
@@ -3963,6 +4262,7 @@ Repo-->>Client : Category list or throws error
 ```
 
 ### One-to-many relationship with skills
+
 - skill_categories.id is the parent; skills.category_id is the child foreign key.
 - Cascade delete ensures removing a category also removes its skills.
 - Filtering by category_id enables:
@@ -3983,6 +4283,7 @@ Order --> Return["Return results"]
 ```
 
 ### Indexing strategy
+
 - The schema creates an index on skills(category_id) to optimize category-based queries.
 - No dedicated index is needed for skill_categories because:
   - The table is small and frequently accessed via public read policy.
@@ -3990,6 +4291,7 @@ Order --> Return["Return results"]
   - Adding an index would increase write overhead without significant read benefit.
 
 ### Row Level Security (RLS) policy
+
 - skill_categories has a public read policy that allows SELECT for everyone.
 - Service role policies grant full access for backend operations.
 - This enables:
@@ -3997,6 +4299,7 @@ Order --> Return["Return results"]
   - Controlled administrative updates via service role.
 
 ### Example use cases in AI-powered matching
+
 - Organized browsing and filtering:
   - Employers can browse categories to select relevant skills for project requirements.
   - Freelancers can filter by category to refine their profiles and discover opportunities.
@@ -4024,6 +4327,7 @@ MS-->>Emp : Ranked recommendations
 ```
 
 ## Dependency Analysis
+
 - skill_categories depends on:
   - Appwrite client configured via TABLES constant.
   - SkillCategoryRepository for CRUD operations.
@@ -4045,6 +4349,7 @@ MS --> SR
 ```
 
 ## Performance Considerations
+
 - Indexing:
   - skills(category_id) is indexed to accelerate category-based queries.
   - No separate index on skill_categories is required due to small size and low cardinality.
@@ -4057,6 +4362,7 @@ MS --> SR
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 - Public read access issues:
   - If clients cannot read categories, verify the public SELECT policy is enabled.
 - Repository errors:
@@ -4065,6 +4371,7 @@ MS --> SR
   - Confirm seed script inserted categories and skills; verify counts and names.
 
 ## Conclusion
+
 The skill_categories table serves as the backbone of the skill taxonomy, enabling structured browsing, filtering, and AI-driven matching. Its design emphasizes simplicity, strong constraints, and efficient access patterns. With public read RLS and targeted indexing, it balances transparency and performance. Programmatic access through TABLES.SKILL_CATEGORIES and SkillCategoryRepository ensures consistent, maintainable usage across the application.
 
 ---
@@ -4072,6 +4379,7 @@ The skill_categories table serves as the backbone of the skill taxonomy, enablin
 # Skills Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -4083,9 +4391,11 @@ The skill_categories table serves as the backbone of the skill taxonomy, enablin
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the skills table in the FreelanceXchain Appwrite PostgreSQL database. It explains the table’s schema, relationships, and behavior, and demonstrates how it underpins the platform’s AI-powered matching system. The skills table serves as the atomic unit of expertise tracking for freelancers, enabling precise skill-based recommendations and search. It is referenced by the TABLES.SKILLS constant, supported by the idx_skills_category_id index, and governed by Row Level Security (RLS) policies that permit public read access to support discovery and search.
 
 ## Project Structure
+
 The skills table is defined in the Appwrite schema and is used across the backend services and repositories. The following diagram shows how the skills table integrates with related tables and services.
 
 ```mermaid
@@ -4120,6 +4430,7 @@ MATCHING --> SKILL_SERVICE
 ```
 
 ## Core Components
+
 - skills table: Stores atomic skill definitions with foreign key to skill_categories, plus metadata and audit timestamps.
 - skill_categories table: Hierarchical grouping of skills.
 - freelancer_profiles.skills: JSONB array storing freelancers’ skills as simplified references (name and years of experience).
@@ -4129,7 +4440,9 @@ MATCHING --> SKILL_SERVICE
 - RLS policies: Allow public read access on skills and skill_categories to enable discovery and search.
 
 ## Architecture Overview
+
 The skills table participates in two complementary workflows:
+
 - Discovery and taxonomy maintenance: Administrators manage categories and skills; clients read them for selection and search.
 - AI-powered matching: The matching service consumes active skills to compute match scores between freelancers and projects.
 
@@ -4151,6 +4464,7 @@ Client-->>Client : Display skills and categories
 ## Detailed Component Analysis
 
 ### Skills Table Schema
+
 - id: UUID primary key, auto-generated.
 - category_id: UUID foreign key referencing skill_categories(id), cascading delete ensures referential integrity.
 - name: Non-null VARCHAR for the skill label.
@@ -4161,6 +4475,7 @@ Client-->>Client : Display skills and categories
 These fields collectively define the atomic unit of expertise, enabling precise categorization and filtering.
 
 ### Relationship to Skill Categories
+
 - skill_categories provides hierarchical grouping for skills.
 - The skills table references skill_categories via category_id, establishing a parent-child relationship.
 
@@ -4187,6 +4502,7 @@ SKILL_CATEGORIES ||--o{ SKILLS : "has many"
 ```
 
 ### Skill Model and Repository
+
 - Skill model: camelCase representation of the entity with isActive and categoryId.
 - SkillRepository: encapsulates CRUD and query operations against TABLES.SKILLS, ordering by name and filtering by is_active where applicable.
 
@@ -4218,6 +4534,7 @@ SkillRepository --> Skill : "maps to/from"
 ```
 
 ### Skill Management Service
+
 - SkillService orchestrates creation, updates, deprecation, and retrieval of skills while enforcing uniqueness within categories and validating category existence.
 
 ```mermaid
@@ -4235,6 +4552,7 @@ ErrDup --> Done
 ```
 
 ### Skill-Based Recommendations and Matching
+
 - Active skills are used to power AI-driven matching between freelancers and projects.
 - MatchingService converts freelancer profiles’ JSONB skills and project required skills into a unified SkillInfo structure for scoring.
 
@@ -4257,6 +4575,7 @@ Match-->>Client : recommendations[]
 ```
 
 ### Freelancer Profiles: JSONB Skills Arrays
+
 - freelancer_profiles.skills is a JSONB array of simplified skill references containing name and years_of_experience.
 - The service adds or updates skills by name (case-insensitive) and persists them back to the profile.
 
@@ -4275,19 +4594,24 @@ Save --> Done(["Return updated profile"])
 ```
 
 ### Projects: Required Skills JSONB
+
 - projects.required_skills is a JSONB array that can store either taxonomy-aware entries (with skill_id and category_id) or free-text entries (skill_name).
 - MatchingService converts these into SkillInfo for scoring.
 
 ### TABLES.SKILLS Constant and Index
+
 - TABLES.SKILLS centralizes the table name used by repositories.
 - idx_skills_category_id optimizes queries filtering by category_id.
 
 ### RLS Policy for Public Read Access
+
 - RLS policies enable public SELECT on skills and skill_categories, which is essential for search and discovery without requiring authentication.
 - Service role policies grant full access for backend operations.
 
 ## Dependency Analysis
+
 The skills table underpins several layers:
+
 - Data definition: schema.sql defines the table and indexes.
 - Access layer: skill-repository.ts uses TABLES.SKILLS to query and mutate skills.
 - Domain layer: skill-service.ts enforces business rules and uniqueness.
@@ -4306,6 +4630,7 @@ FP --> MATCH
 ```
 
 ## Performance Considerations
+
 - Use idx_skills_category_id for category-based queries to avoid full scans.
 - Prefer is_active filters to reduce result sets during discovery and matching.
 - Leverage TABLES.SKILLS for centralized table naming to prevent typos and improve maintainability.
@@ -4314,12 +4639,14 @@ FP --> MATCH
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 - Duplicate skill in category: Creation fails if a skill with the same name already exists in the given category. Use getSkillByNameInCategory to detect duplicates before insert.
 - Category not found: Creating a skill requires a valid category_id; ensure category exists prior to insertion.
 - Public read disabled: If search results are empty, verify RLS policies allow SELECT on skills and skill_categories.
 - JSONB skill mismatch: Ensure freelancer_profiles.skills and projects.required_skills conform to expected structures (name/year pairs vs. id/category pairs).
 
 ## Conclusion
+
 The skills table is the foundational element for expertise modeling in FreelanceXchain. Its schema, relationships, and RLS policies enable robust discovery and matching. The TABLES.SKILLS constant and idx_skills_category_id index streamline development and query performance. Together with JSONB arrays in freelancer_profiles and projects, the skills table powers precise, AI-enhanced recommendations that connect freelancers and employers efficiently.
 
 ---
@@ -4327,6 +4654,7 @@ The skills table is the foundational element for expertise modeling in Freelance
 # Users Table
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -4338,9 +4666,11 @@ The skills table is the foundational element for expertise modeling in Freelance
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive data model documentation for the users table in the FreelanceXchain Appwrite PostgreSQL database. It explains the schema, purpose, relationships with role-specific profiles, programmatic access patterns, and security considerations including password hashing and Row Level Security (RLS) policies. The users table serves as the central identity store for all platform users, with role-based access control enforced at both the database and application layers.
 
 ## Project Structure
+
 The users table is defined in the Appwrite schema and is accessed programmatically through the application’s configuration, repository, and service layers. Role-specific profile tables (freelancer_profiles and employer_profiles) reference users via foreign keys, enabling role-scoped data storage while maintaining a unified identity model.
 
 ```mermaid
@@ -4371,11 +4701,13 @@ EP --> U
 ```
 
 ## Core Components
+
 - users table: Central identity store with UUID primary key, unique email, password hash, role enumeration, optional wallet address and name, and audit timestamps.
 - Role-specific profiles: freelancer_profiles and employer_profiles link to users via unique foreign keys, enabling role-scoped attributes.
 - Programmatic access: TABLES.USERS constant defines the table name; UserRepository encapsulates CRUD operations; AuthService integrates with Appwrite Auth; AuthMiddleware enforces role-based access control.
 
 ## Architecture Overview
+
 The users table underpins identity and access control across the platform. Appwrite Auth manages authentication and user creation, while the application reads/writes user records through Appwrite SQL API. RLS is enabled on all tables, and a service-role policy grants full access for backend operations. Application-level middleware validates tokens and enforces role-based route protection.
 
 ```mermaid
@@ -4401,6 +4733,7 @@ Routes-->>Client : "AuthResult"
 ## Detailed Component Analysis
 
 ### Users Table Schema
+
 - id: UUID primary key with default generated by uuid_generate_v4().
 - email: Unique, not null.
 - password_hash: Not null; stores hashed credentials managed by Appwrite Auth.
@@ -4412,6 +4745,7 @@ Routes-->>Client : "AuthResult"
 These constraints and defaults define a robust identity model with clear separation of concerns between authentication (Appwrite Auth) and application-level user metadata (wallet_address, name).
 
 ### Relationship with Role-Specific Profiles
+
 - freelancer_profiles.user_id: Unique foreign key referencing users.id with cascade delete.
 - employer_profiles.user_id: Unique foreign key referencing users.id with cascade delete.
 - This design ensures each user has at most one role-specific profile and enables efficient joins for role-scoped views.
@@ -4453,6 +4787,7 @@ USERS ||--o{ EMPLOYER_PROFILES : "has profile"
 ```
 
 ### Programmatic Access via TABLES.USERS
+
 - TABLES.USERS is defined as a constant and used by repositories to target the users table.
 - UserRepository extends a base repository and constructs queries against TABLES.USERS.
 - The application initializes the Appwrite client and verifies connectivity to TABLES.USERS.
@@ -4489,10 +4824,12 @@ UserRepository --> UserEntity : "operates on"
 ```
 
 ### Entity Mapping and Transformation
+
 - The entity mapper converts between database entities (snake_case) and API models (camelCase), preserving passwordHash and walletAddress fields for application use.
 - This mapping ensures consistent serialization/deserialization across repositories and services.
 
 ### Authentication and Registration Flow
+
 - Appwrite Auth creates users and sends confirmation emails; the application waits briefly for triggers to populate public.users, then falls back to manual creation if needed.
 - Registration passes role, wallet_address, and name to Appwrite Auth options; the application retrieves the created user from public.users and returns an AuthResult.
 
@@ -4514,6 +4851,7 @@ AuthSvc-->>Client : "AuthResult"
 ```
 
 ### Role-Based Access Control
+
 - Application-level enforcement uses requireRole middleware to restrict routes to specific roles (e.g., freelancer or employer).
 - Routes for freelancers and employers demonstrate requireRole('freelancer') and requireRole('employer') respectively.
 
@@ -4532,11 +4870,13 @@ Next --> End
 ```
 
 ### Security Considerations
+
 - Password hashing: The users table stores password_hash; Appwrite Auth manages hashing and verification during sign-up and sign-in flows.
 - Row Level Security (RLS): RLS is enabled on all tables, including users. Service-role policies grant full access for backend operations, while public read policies exist for specific tables (e.g., skill categories, skills, open projects).
 - Token validation: The application validates access tokens via Appwrite Auth and enriches requests with user identity and role for downstream authorization checks.
 
 ## Dependency Analysis
+
 - users depends on Appwrite Auth for identity lifecycle and on the application’s Appwrite client for database operations.
 - freelancer_profiles and employer_profiles depend on users via foreign keys, enabling role-scoped profile management.
 - Application middleware depends on AuthService for token validation and on Appwrite Auth for user retrieval.
@@ -4554,17 +4894,20 @@ Routes["Routes"] --> AuthMiddleware
 ```
 
 ## Performance Considerations
+
 - Indexes: An index on users.email improves lookup performance for authentication and duplicate detection.
 - RLS overhead: Enabling RLS adds minimal overhead compared to the benefits of fine-grained row-level controls.
 - Token validation caching: Consider caching validated user roles in middleware for short-lived requests to reduce repeated token validation calls.
 
 ## Troubleshooting Guide
+
 - Duplicate email registration: The application checks for existing emails before registering new users and returns a specific error code if a duplicate is detected.
 - Invalid or expired tokens: Token validation returns explicit error codes for invalid/expired tokens; routes should handle these codes and respond with appropriate HTTP status.
 - Missing authorization header: Requests without a Bearer token receive a 401 response with a standardized error code.
 - Insufficient permissions: Requests with valid tokens but incorrect roles receive a 403 response with a standardized error code.
 
 ## Conclusion
+
 The users table is the foundation of identity and access control in FreelanceXchain. Its schema enforces strong constraints on identity fields, while role-specific profiles enable scalable, role-scoped data management. Programmatic access is centralized through TABLES.USERS and UserRepository, with Appwrite Auth handling credential management. Application-level middleware and route guards enforce role-based access control, and RLS policies provide database-level safeguards. Together, these components deliver a secure, extensible identity model aligned with platform roles.
 
 ---

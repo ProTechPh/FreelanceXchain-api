@@ -1,6 +1,7 @@
 # Reputation API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,7 +14,9 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the reputation system endpoints in the FreelanceXchain platform. It covers:
+
 - HTTP methods, URL patterns, request/response schemas
 - Authentication requirements (JWT Bearer)
 - Rating scale and constraints
@@ -22,7 +25,9 @@ This document provides comprehensive API documentation for the reputation system
 - Client implementation examples for submitting ratings and displaying reputation
 
 ## Project Structure
+
 The reputation system spans route handlers, service logic, blockchain integration, and smart contracts:
+
 - Routes define the HTTP endpoints and request/response schemas
 - Services encapsulate business logic, validation, and blockchain interactions
 - Blockchain client simulates transaction submission and confirmation
@@ -40,6 +45,7 @@ Contract --> SC["Smart Contract<br/>FreelanceReputation.sol"]
 ```
 
 ## Core Components
+
 - Reputation Routes: Define endpoints, authentication, and response schemas
 - Reputation Service: Validates inputs, enforces constraints, computes reputation, and orchestrates blockchain interactions
 - Reputation Contract Interface: Serializes/deserializes ratings and interacts with blockchain client
@@ -50,7 +56,9 @@ Contract --> SC["Smart Contract<br/>FreelanceReputation.sol"]
 - Notification Service: Notifies users upon receiving ratings
 
 ## Architecture Overview
+
 The reputation API follows a layered architecture:
+
 - HTTP Layer: Routes handle requests and responses
 - Service Layer: Business logic, validation, and orchestration
 - Blockchain Layer: Transaction submission and confirmation
@@ -77,6 +85,7 @@ R-->>C : 201 Created
 ## Detailed Component Analysis
 
 ### Endpoint: GET /api/reputation/:userId
+
 - Purpose: Retrieve a user’s reputation score and ratings from the blockchain
 - Authentication: None (public endpoint)
 - Path Parameters:
@@ -106,6 +115,7 @@ R-->>C : 200 OK
 ```
 
 ### Endpoint: POST /api/reputation/rate
+
 - Purpose: Submit a rating for another user after contract completion
 - Authentication: Required (JWT Bearer)
 - Request Body Schema (RatingInput):
@@ -152,6 +162,7 @@ Notify --> Done(["Return 201 with rating and transactionHash"])
 ```
 
 ### Endpoint: GET /api/reputation/:userId/history
+
 - Purpose: Retrieve work history for a user including completed contracts and ratings
 - Authentication: None (public endpoint)
 - Path Parameters:
@@ -185,6 +196,7 @@ R-->>C : 200 OK
 ```
 
 ### Endpoint: GET /api/reputation/can-rate
+
 - Purpose: Check if the authenticated user can rate another user for a specific contract
 - Authentication: Required (JWT Bearer)
 - Query Parameters:
@@ -210,6 +222,7 @@ R-->>C : 200 OK
 ```
 
 ### Rating Scale and Constraints
+
 - Rating Scale: Integer from 1 to 5
 - Who can rate whom:
   - Only contract participants can submit ratings
@@ -223,6 +236,7 @@ R-->>C : 200 OK
   - Duplicate rating per contract prevented
 
 ### Authentication Requirements (JWT)
+
 - All protected endpoints require a Bearer token in the Authorization header:
   - Authorization: Bearer <access_token>
 - Protected endpoints:
@@ -234,6 +248,7 @@ R-->>C : 200 OK
   - Token validity and expiration
 
 ### Integration with Blockchain Smart Contracts
+
 - Submission flow:
   - Route handler calls service
   - Service validates and calls blockchain client to submit transaction
@@ -288,6 +303,7 @@ BlockchainClient --> FreelanceReputation : "simulates"
 ### Client Implementation Examples
 
 #### Example 1: Submit a rating with comment after contract completion
+
 - Steps:
   - Authenticate and obtain a JWT
   - Call POST /api/reputation/rate with:
@@ -302,6 +318,7 @@ BlockchainClient --> FreelanceReputation : "simulates"
   - Ensure the rating is not a duplicate for the contract
 
 #### Example 2: Retrieve a user's reputation score with blockchain ratings
+
 - Steps:
   - Call GET /api/reputation/:userId
   - Use the returned score (weighted average with time decay) and ratings array
@@ -309,6 +326,7 @@ BlockchainClient --> FreelanceReputation : "simulates"
   - The ratings array contains blockchain-stored ratings with timestamps and comments
 
 #### Example 3: View work history with project details
+
 - Steps:
   - Call GET /api/reputation/:userId/history
   - Iterate entries to show:
@@ -321,6 +339,7 @@ BlockchainClient --> FreelanceReputation : "simulates"
   - Ratings are fetched per contract
 
 ## Dependency Analysis
+
 - Routes depend on:
   - Auth middleware for protected endpoints
   - Validation middleware for UUID parameters
@@ -349,6 +368,7 @@ Service --> Notify["notification-service.ts"]
 ```
 
 ## Performance Considerations
+
 - Time decay computation: Weighted average calculation scales linearly with the number of ratings per user
 - Blockchain simulation: In-memory store and simulated confirmation add minimal overhead
 - Recommendations:
@@ -359,7 +379,9 @@ Service --> Notify["notification-service.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Validation Error:
   - Missing required fields or invalid UUID format
   - Fix: Ensure contractId, rateeId, and rating are provided and valid UUIDs
@@ -377,6 +399,7 @@ Common issues and resolutions:
   - Fix: Do not submit duplicate ratings
 
 ## Conclusion
+
 The reputation system provides secure, immutable rating storage integrated with blockchain technology. The API ensures proper authentication, strict validation, and clear constraints on who can rate whom. Clients can submit ratings, retrieve reputation scores with time-decayed weighting, and view work histories with project details.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -385,11 +408,12 @@ The reputation system provides secure, immutable rating storage integrated with 
 
 ### API Definitions
 
-- Base URL: http://localhost:7860/api
-- Interactive Docs: http://localhost:7860/api-docs
+- Base URL: <http://localhost:7860/api>
+- Interactive Docs: <http://localhost:7860/api-docs>
 - Authentication: Bearer JWT
 
 Endpoints:
+
 - GET /api/reputation/:userId
   - Description: Get user reputation score and ratings
   - Response: ReputationScore
@@ -444,6 +468,7 @@ Endpoints:
 ## Get Reputation Score
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -456,10 +481,13 @@ Endpoints:
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides API documentation for retrieving a user’s reputation score in the FreelanceXchain system. It covers the GET /api/reputation/:userId endpoint, JWT authentication requirements, optional time-range parameters, and the service’s aggregation logic that computes a weighted average score with time decay. It also documents the response schema, caching strategies, edge cases, and client-side implementation tips for displaying dynamic reputation indicators.
 
 ## Project Structure
+
 The reputation feature spans routing, service, and blockchain abstraction layers:
+
 - Routes define the endpoint and apply validation and authentication.
 - Services orchestrate data retrieval and computation.
 - Blockchain abstraction simulates on-chain interactions for development/testing.
@@ -476,19 +504,23 @@ Contract --> Solidity["FreelanceReputation.sol<br/>On-chain Storage"]
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/reputation/:userId
 - Authentication: JWT Bearer token required
 - Optional parameters: None currently defined on the route; time-range filtering is not exposed as a query parameter in the current implementation
 - Response: Reputation score with weighted average, simple average, total ratings, and raw ratings
 
 Key implementation references:
+
 - Route handler and Swagger schema for GET /api/reputation/:userId
 - Service function that fetches ratings and computes weighted average
 - Contract abstraction that retrieves ratings and computes aggregate score
 - On-chain smart contract that stores ratings and exposes read operations
 
 ## Architecture Overview
+
 The GET /api/reputation/:userId flow:
+
 1. Client sends a request with a JWT Bearer token.
 2. Auth middleware validates the token and attaches user info to the request.
 3. Route validates path parameters and delegates to the service.
@@ -520,6 +552,7 @@ R-->>C : "200 OK with ReputationScore"
 ## Detailed Component Analysis
 
 ### Endpoint Definition: GET /api/reputation/:userId
+
 - Path parameter: userId (UUID)
 - Authentication: Requires a Bearer token in the Authorization header
 - Response: ReputationScore object containing:
@@ -532,11 +565,13 @@ R-->>C : "200 OK with ReputationScore"
 Swagger schema and endpoint definition are declared in the routes file.
 
 ### Authentication and Authorization
+
 - The route uses the auth middleware to validate JWT tokens.
 - The middleware checks for a Bearer token and validates it, attaching user info to the request.
 - If the token is missing, malformed, expired, or invalid, the middleware responds with 401.
 
 ### Service Layer: getReputation(userId, decayLambda?)
+
 - Fetches all ratings for the user from the blockchain abstraction.
 - Computes:
   - Weighted average score using time decay (default decayLambda = 0.01)
@@ -556,6 +591,7 @@ Build --> End(["Return result"])
 ```
 
 ### Blockchain Abstraction: Ratings Retrieval and Aggregation
+
 - getRatingsFromBlockchain(userId): Returns all ratings for a user sorted by timestamp descending.
 - computeAggregateScore(ratings, decayLambda): Implements time decay weighting:
   - Age in days computed from timestamp
@@ -577,6 +613,7 @@ G --> |No| I["Return round((weightedSum/totalWeight)*100)/100"]
 ```
 
 ### On-chain Smart Contract: FreelanceReputation.sol
+
 - Stores ratings with fields: rater, ratee, score (1–5), comment, contractId, timestamp, isEmployerRating.
 - Provides read-only functions:
   - getAverageRating(address): returns totalScore * 100 / ratingCount (or 0 if no ratings)
@@ -589,6 +626,7 @@ G --> |No| I["Return round((weightedSum/totalWeight)*100)/100"]
 - The current backend uses an in-memory store to simulate on-chain behavior during development.
 
 ### Response Schema
+
 - ReputationScore:
   - userId: string
   - score: number (weighted average with time decay)
@@ -609,11 +647,13 @@ G --> |No| I["Return round((weightedSum/totalWeight)*100)/100"]
 These schemas are defined in the routes file and referenced by the Swagger documentation.
 
 ### Optional Time-Range Parameters
+
 - Current implementation does not expose time-range query parameters for GET /api/reputation/:userId.
 - The service fetches all ratings for the user and applies time decay in-memory.
 - If future enhancements add time-range filtering, it should be implemented in the service layer and reflected in the route and Swagger schema.
 
 ### Practical Example: Fetching a Freelancer’s Reputation Score
+
 - Client calls GET /api/reputation/:userId with a valid JWT Bearer token.
 - Backend returns a JSON payload containing:
   - userId
@@ -623,11 +663,13 @@ These schemas are defined in the routes file and referenced by the Swagger docum
   - ratings array with individual rating details
 
 This response can be directly used to render a profile view with:
+
 - Star rating visualization
 - Total review count
 - Recent ratings preview
 
 ### Caching Strategies
+
 - Current implementation does not include explicit caching for reputation scores.
 - Recommendations:
   - Cache the computed score per userId with TTL (e.g., 5–15 minutes) to reduce blockchain reads.
@@ -638,6 +680,7 @@ This response can be directly used to render a profile view with:
 [No sources needed since this section provides general guidance]
 
 ### Edge Cases and Error Handling
+
 - No ratings:
   - Service returns score = 0, averageRating = 0, totalRatings = 0.
 - Invalid userId:
@@ -648,6 +691,7 @@ This response can be directly used to render a profile view with:
   - The service fetches ratings regardless of user existence; if no ratings are found, it still returns a valid zero-score response.
 
 ### Client-Side Implementation Tips
+
 - Display:
   - Render a star-based indicator using score (rounded to nearest half-star).
   - Show totalRatings and averageRating prominently.
@@ -662,6 +706,7 @@ This response can be directly used to render a profile view with:
 [No sources needed since this section provides general guidance]
 
 ## Dependency Analysis
+
 ```mermaid
 graph LR
 Routes["reputation-routes.ts"] --> Auth["auth-middleware.ts"]
@@ -674,6 +719,7 @@ Env["env.ts"] --> App
 ```
 
 ## Performance Considerations
+
 - Time decay computation is O(n) where n is the number of ratings; acceptable for typical user rating volumes.
 - To reduce blockchain reads:
   - Cache aggregated score and raw ratings per user.
@@ -683,6 +729,7 @@ Env["env.ts"] --> App
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 - 401 Unauthorized:
   - Ensure Authorization header is present and formatted as Bearer <token>.
   - Verify token is not expired or revoked.
@@ -694,11 +741,13 @@ Env["env.ts"] --> App
   - Confirm the user has received ratings; otherwise, zero is expected.
 
 ## Conclusion
+
 The GET /api/reputation/:userId endpoint provides a robust, time-decayed reputation score backed by on-chain data. The current implementation focuses on correctness and simplicity, returning weighted and simple averages along with raw ratings. Future enhancements can include optional time-range filtering, caching, and richer client-side visualizations to improve user experience.
 
 ## Appendices
 
 ### Endpoint Reference
+
 - Method: GET
 - Path: /api/reputation/:userId
 - Path Params:
@@ -713,6 +762,7 @@ The GET /api/reputation/:userId endpoint provides a robust, time-decayed reputat
 ## Submit Rating
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -725,9 +775,11 @@ The GET /api/reputation/:userId endpoint provides a robust, time-decayed reputat
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides API documentation for the rating submission endpoint in the FreelanceXchain reputation system. It covers the POST /api/reputation/rate endpoint, including JWT authentication, request body schema, validation rules, and the business logic flow. It also explains how the system integrates with the FreelanceReputation.sol smart contract via the reputation-service to store ratings immutably on-chain, and how blockchain transaction confirmation works. Guidance is included for client applications to handle transaction confirmation and user feedback.
 
 ## Project Structure
+
 The rating submission flow spans the route handler, service layer, blockchain integration, and smart contract. The following diagram shows the high-level structure and interactions.
 
 ```mermaid
@@ -745,13 +797,16 @@ Routes --> Client
 ```
 
 ## Core Components
+
 - Route handler: Validates JWT, parses request body, performs validation, and delegates to the service.
 - Service: Enforces business rules (contract existence, eligibility, duplicate prevention), submits to blockchain, and notifies the ratee.
 - Blockchain integration: Submits a transaction, confirms it, and stores a local representation of the rating.
 - Smart contract: Enforces on-chain constraints and emits events.
 
 ## Architecture Overview
+
 The rating submission follows a layered architecture:
+
 - Presentation: Express route validates JWT and request payload.
 - Application: Service enforces business rules and orchestrates blockchain submission.
 - Persistence: Local in-memory blockchain store simulates on-chain storage during development.
@@ -788,6 +843,7 @@ R-->>C : 201 Created {rating, transactionHash}
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: POST
 - Path: /api/reputation/rate
 - Security: Requires Bearer token JWT
@@ -805,17 +861,20 @@ R-->>C : 201 Created {rating, transactionHash}
   - 409 Conflict: Duplicate rating
 
 ### Authentication and Authorization
+
 - The route uses auth-middleware to extract and validate the Bearer token.
 - On success, the authenticated user’s userId is attached to the request and used as raterId.
 - On failure, the route responds with 401 Unauthorized.
 
 ### Request Validation
+
 - Required fields: contractId, rateeId, rating.
 - UUID validation: Both contractId and rateeId must be valid UUIDs.
 - Rating value: Must be an integer between 1 and 5.
 - On validation failure, the route returns 400 with details.
 
 ### Business Logic Flow
+
 - Contract existence: Fetch contract by contractId; return 404 if not found.
 - Eligibility checks:
   - raterId must be either freelancerId or employerId in the contract.
@@ -843,6 +902,7 @@ Submit --> Done(["Return 201 with rating and transactionHash"])
 ```
 
 ### Blockchain Integration and Smart Contract
+
 - The service calls submitRatingToBlockchain with the rating parameters.
 - The blockchain client simulates transaction submission and confirmation.
 - The smart contract enforces:
@@ -869,6 +929,7 @@ RC-->>S : {rating, receipt}
 ```
 
 ### Example: Freelancer Submits a 5-Star Rating with Comment After Contract Completion
+
 - The route requires a Bearer token JWT in the Authorization header.
 - The request body must include contractId, rateeId, rating (5), and an optional comment.
 - The service verifies the contract exists, ensures the rater is a contract participant, prevents self-rating, and checks for duplicates.
@@ -877,6 +938,7 @@ RC-->>S : {rating, receipt}
 Note: The repository simulates blockchain behavior. In production, replace the in-memory blockchain client with a real RPC connection.
 
 ## Dependency Analysis
+
 The following diagram shows the key dependencies among components involved in rating submission.
 
 ```mermaid
@@ -891,6 +953,7 @@ ContractSvc --> SC["FreelanceReputation.sol"]
 ```
 
 ## Performance Considerations
+
 - Transaction confirmation latency: The blockchain client simulates confirmation timing; in production, expect network latency and gas fees.
 - Time decay computation: The service computes aggregate scores using time decay; this is efficient for small-to-medium datasets but consider caching for high-volume scenarios.
 - Duplicate checks: The service performs a linear scan of stored ratings to detect duplicates; consider indexing or a dedicated duplicate-check function in production.
@@ -898,7 +961,9 @@ ContractSvc --> SC["FreelanceReputation.sol"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common error responses and their causes:
+
 - 400 Bad Request
   - Missing required fields: contractId, rateeId, rating.
   - Invalid UUID format for contractId or rateeId.
@@ -915,6 +980,7 @@ Common error responses and their causes:
   - Transaction confirmation fails or smart contract reverts (e.g., duplicate rating, invalid parameters).
 
 Client-side guidance:
+
 - Show a loading indicator while awaiting the 201 response.
 - On 400/409, display user-friendly messages indicating missing/invalid fields or duplicate rating.
 - On 401, prompt the user to log in again.
@@ -922,6 +988,7 @@ Client-side guidance:
 - For blockchain-related errors, retry after a delay or instruct the user to try again later.
 
 ## Conclusion
+
 The rating submission endpoint enforces strict validation and eligibility rules, integrates with a smart contract to ensure immutable records, and returns a transaction hash for confirmation. Clients should handle various error responses gracefully and provide clear feedback to users. The current implementation simulates blockchain behavior; production deployments should connect to a real RPC endpoint.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -929,6 +996,7 @@ The rating submission endpoint enforces strict validation and eligibility rules,
 ## Appendices
 
 ### API Definition
+
 - Method: POST
 - Path: /api/reputation/rate
 - Security: Bearer token JWT
@@ -946,6 +1014,7 @@ The rating submission endpoint enforces strict validation and eligibility rules,
   - 409 Conflict: Duplicate rating
 
 ### Smart Contract Constraints
+
 - Ratee address must be non-zero and not equal to rater.
 - Rating must be between 1 and 5.
 - ContractId must be non-empty.
@@ -956,6 +1025,7 @@ The rating submission endpoint enforces strict validation and eligibility rules,
 ## Work History
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -968,7 +1038,9 @@ The rating submission endpoint enforces strict validation and eligibility rules,
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document explains the work history retrieval endpoint for the FreelanceXchain platform. It covers:
+
 - Endpoint definition and authentication via JWT
 - How the service combines on-chain reputation data from the smart contract with off-chain project metadata from Appwrite
 - Response structure and enrichment fields
@@ -977,7 +1049,9 @@ This document explains the work history retrieval endpoint for the FreelanceXcha
 - Data consistency model and discrepancy handling
 
 ## Project Structure
+
 The work history feature spans routing, service orchestration, repositories, and blockchain integration:
+
 - Route handler for GET /api/reputation/:userId/history
 - Service layer that aggregates contracts, projects, and ratings
 - Repositories for contracts and projects
@@ -997,6 +1071,7 @@ Service --> Response["Work History Entries"]
 ```
 
 ## Core Components
+
 - Route: Defines the GET /api/reputation/:userId/history endpoint, validates userId, and delegates to the service.
 - Service: Loads user contracts, filters to completed, enriches with project metadata, and attaches ratings from the blockchain.
 - Repositories: ContractRepository.getUserContracts and ProjectRepository.getProjectById.
@@ -1004,6 +1079,7 @@ Service --> Response["Work History Entries"]
 - Auth: JWT Bearer token validated by auth middleware.
 
 Key responsibilities:
+
 - Enforce authentication and authorization
 - Retrieve and filter contracts by status
 - Fetch project titles and timestamps
@@ -1011,6 +1087,7 @@ Key responsibilities:
 - Sort by completion date descending
 
 ## Architecture Overview
+
 The work history pipeline integrates on-chain and off-chain data:
 
 ```mermaid
@@ -1045,6 +1122,7 @@ R-->>C : "200 OK with entries"
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Authentication
+
 - Endpoint: GET /api/reputation/:userId/history
 - Path parameter: userId (validated as UUID)
 - Authentication: Requires Authorization: Bearer <JWT>. The auth middleware validates the token and attaches user info to the request.
@@ -1053,6 +1131,7 @@ R-->>C : "200 OK with entries"
 Swagger/OpenAPI schema defines the WorkHistoryEntry shape and the endpoint’s security scheme.
 
 ### Service Logic: getWorkHistory(userId)
+
 - Load user contracts using ContractRepository.getUserContracts(userId).
 - Filter to completed contracts.
 - For each completed contract:
@@ -1079,6 +1158,7 @@ Sort --> Done(["Return entries"])
 ```
 
 ### On-chain Reputation Data Integration
+
 - Ratings are retrieved per contract using getRatingsByContract(contractId).
 - The service selects the rating where rateeId equals the queried userId.
 - The blockchain interface simulates storage and retrieval; in production, this would call the FreelanceReputation.sol contract.
@@ -1102,11 +1182,14 @@ ReputationContractInterface <|.. FreelanceReputation : "simulated interface"
 ```
 
 ### Off-chain Project Metadata
+
 - Project titles and statuses are fetched from Appwrite via ProjectRepository.getProjectById(projectId).
 - The entity mapper converts database entities to API models for consistent field names.
 
 ### Response Structure
+
 Each WorkHistoryEntry includes:
+
 - contractId: UUID of the contract
 - projectId: UUID of the project
 - projectTitle: String title of the project
@@ -1118,7 +1201,9 @@ Each WorkHistoryEntry includes:
 Swagger schema and route documentation define these fields.
 
 ### Real-world Example: Client Hiring Decision
+
 Scenario:
+
 - A client wants to hire a freelancer for a new project.
 - The client opens the freelancer’s profile and navigates to the Work History tab.
 - The client calls GET /api/reputation/:userId/history with a valid JWT.
@@ -1130,20 +1215,26 @@ Scenario:
 - The client evaluates the history to decide whether to hire.
 
 Outcome:
+
 - The client sees a chronological list of completed projects, ratings, and comments, enabling informed decision-making.
 
 ### Filtering Parameters
+
 Current endpoint:
+
 - No query parameters are defined for filtering by project status or date range.
 - The service filters contracts to completed only and sorts by completion date descending.
 
 If future enhancements are introduced:
+
 - Add query parameters for status and date range.
 - Apply filters at the repository level (e.g., ContractRepository.getContractsByStatus and date range filters).
 - Ensure pagination remains consistent.
 
 ## Dependency Analysis
+
 High-level dependencies:
+
 - Routes depend on auth middleware and reputation service.
 - Service depends on repositories and reputation contract interface.
 - Repositories depend on Appwrite client and shared query options.
@@ -1161,6 +1252,7 @@ ReputationContract --> BlockchainClient["blockchain-client.ts"]
 ```
 
 ## Performance Considerations
+
 - Pagination:
   - ContractRepository.getUserContracts returns paginated results with hasMore and total. The service currently iterates all items; consider applying pagination limits upstream to reduce memory usage and response latency.
 - Sorting:
@@ -1171,13 +1263,16 @@ ReputationContract --> BlockchainClient["blockchain-client.ts"]
   - The blockchain client simulates confirmation. In production, transaction confirmation adds latency; consider caching recent ratings or using a read replica for ratings.
 
 Recommendations:
+
 - Limit pageSize for getUserContracts and cap the number of returned entries.
 - Cache project titles keyed by projectId to avoid repeated lookups.
 - Cache per-contract ratings keyed by contractId to avoid repeated blockchain queries.
 - Add optional query parameters for date range and status to reduce payload size.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Authentication failures:
   - Missing or invalid Authorization header: 401 Unauthorized.
   - Token expired or invalid: 401 Unauthorized with specific error code.
@@ -1189,17 +1284,20 @@ Common issues and resolutions:
   - In simulation mode, transactions are confirmed immediately; in production, ensure RPC connectivity and handle confirmation timeouts.
 
 Operational tips:
+
 - Verify JWT token format: Bearer <token>.
 - Confirm userId is a valid UUID.
 - Check Appwrite connectivity for project metadata.
 - Monitor blockchain client availability and transaction confirmation status.
 
 ## Conclusion
+
 The work history endpoint provides clients with a comprehensive, time-ordered view of a freelancer’s completed projects, ratings, and comments. By combining on-chain reputation data with off-chain project metadata, the system delivers immutable, verifiable insights. Future enhancements should focus on pagination, caching, and optional filtering to improve performance and scalability.
 
 ## Appendices
 
 ### Endpoint Reference
+
 - Method: GET
 - Path: /api/reputation/:userId/history
 - Security: Bearer JWT

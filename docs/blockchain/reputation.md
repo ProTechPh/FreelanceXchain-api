@@ -1,6 +1,7 @@
 # Reputation System
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [On-Chain Reputation Contract](#on-chain-reputation-contract)
 3. [Reputation Score Calculation](#reputation-score-calculation)

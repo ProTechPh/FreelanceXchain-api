@@ -1,6 +1,7 @@
 # Payment API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,10 +14,13 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for payment processing endpoints in the FreelanceXchain system. It covers milestone completion, approval, dispute creation, and contract payment status retrieval. It explains authentication requirements (JWT Bearer), request/response schemas, query parameters, and the end-to-end payment flow from milestone completion to approval and potential dispute resolution. It also outlines how the API integrates with blockchain transactions for payment release and milestone registry updates.
 
 ## Project Structure
+
 The payment API is implemented as Express routes backed by a service layer that orchestrates database updates, notifications, and blockchain interactions. The key files are:
+
 - Route handlers define endpoints, authentication, and parameter validation.
 - Service layer enforces business rules, updates domain models, and triggers blockchain operations.
 - Blockchain service simulates transactions and maintains in-memory state for escrow and milestone registry.
@@ -36,6 +40,7 @@ Registry --> Chain
 ```
 
 ## Core Components
+
 - Payment Routes: Expose endpoints for completing milestones, approving milestones, disputing milestones, and retrieving contract payment status. All endpoints require JWT Bearer authentication.
 - Payment Service: Implements business logic for milestone lifecycle, contract completion checks, and blockchain integration points.
 - Escrow Contract Service: Simulates deployment, funding, milestone release, and refund operations with blockchain receipts.
@@ -44,7 +49,9 @@ Registry --> Chain
 - Validation and Auth Middleware: Enforce JWT Bearer format, UUID parameter validation, and user authorization.
 
 ## Architecture Overview
+
 The payment flow integrates REST endpoints with internal services and blockchain simulation:
+
 - Freelancer completes a milestone via a POST endpoint; the service updates the project’s milestone status, submits to the milestone registry, and notifies the employer.
 - Employer approves the milestone via another POST endpoint; the service releases funds via the escrow contract, updates statuses, and notifies the freelancer. If all milestones are approved, the contract and project are marked completed and the agreement is finalized on-chain.
 - Either party can dispute a milestone via a POST endpoint; the service creates a dispute record, updates statuses, and notifies both parties.
@@ -92,10 +99,12 @@ R-->>C : 200 OK
 ### Endpoint Definitions and Schemas
 
 #### Authentication
+
 - All protected endpoints require a Bearer token in the Authorization header.
 - Token validation is performed by the authentication middleware.
 
 #### POST /api/payments/milestones/{milestoneId}/complete
+
 - Purpose: Freelancer marks a milestone as complete.
 - Path parameters:
   - milestoneId: UUID (required)
@@ -110,16 +119,19 @@ R-->>C : 200 OK
   - 404: Contract or milestone not found
 
 Response schema (MilestoneCompletionResult):
+
 - milestoneId: string
 - status: "submitted"
 - notificationSent: boolean
 
 Notes:
+
 - Validates UUID in path and presence of contractId query parameter.
 - Only the freelancer associated with the contract can request completion.
 - Updates project milestone status to submitted and notifies the employer.
 
 #### POST /api/payments/milestones/{milestoneId}/approve
+
 - Purpose: Employer approves milestone completion and releases payment.
 - Path parameters:
   - milestoneId: UUID (required)
@@ -134,6 +146,7 @@ Notes:
   - 404: Contract or milestone not found
 
 Response schema (MilestoneApprovalResult):
+
 - milestoneId: string
 - status: "approved"
 - paymentReleased: boolean
@@ -141,11 +154,13 @@ Response schema (MilestoneApprovalResult):
 - contractCompleted: boolean
 
 Notes:
+
 - Only the employer associated with the contract can approve.
 - Releases funds via the escrow contract and updates milestone status.
 - If all milestones are approved, marks the contract and project as completed and finalizes the agreement on-chain.
 
 #### POST /api/payments/milestones/{milestoneId}/dispute
+
 - Purpose: Either party disputes a milestone, locking funds and creating a dispute record.
 - Path parameters:
   - milestoneId: UUID (required)
@@ -161,17 +176,20 @@ Notes:
   - 404: Contract or milestone not found
 
 Response schema (MilestoneDisputeResult):
+
 - milestoneId: string
 - status: "disputed"
 - disputeId: string
 - disputeCreated: boolean
 
 Notes:
+
 - Initiator must be a party to the contract.
 - Creates an in-memory dispute record and updates statuses.
 - Marks the contract as disputed and notifies both parties.
 
 #### GET /api/payments/contracts/{contractId}/status
+
 - Purpose: Retrieve detailed payment status for a contract including milestone statuses.
 - Path parameters:
   - contractId: UUID (required)
@@ -184,6 +202,7 @@ Notes:
   - 404: Contract not found
 
 Response schema (ContractPaymentStatus):
+
 - contractId: string
 - escrowAddress: string
 - totalAmount: number
@@ -197,12 +216,14 @@ Response schema (ContractPaymentStatus):
 - contractStatus: string
 
 Notes:
+
 - Only parties to the contract can view the status.
 - Computes totals from project milestone statuses.
 
 ### Payment Flow and Conditions
 
 #### From Completion to Approval
+
 - Freelancer completes a milestone; the system updates the milestone status to submitted and records the event on-chain via the milestone registry.
 - Employer approves the milestone; the system releases funds via the escrow contract, updates statuses, and notifies both parties. If all milestones are approved, the contract and project are marked completed and the agreement is finalized on-chain.
 
@@ -220,11 +241,13 @@ CompleteContract --> End
 ```
 
 #### Dispute Conditions
+
 - A milestone cannot be disputed if it is already approved or already under dispute.
 - Only parties to the contract (freelancer or employer) can initiate a dispute.
 - On dispute, the system creates a dispute record, updates milestone and contract statuses, and notifies both parties.
 
 ### Blockchain Integration Details
+
 - Escrow deployment and funding:
   - The service deploys an escrow contract and funds it with the project budget.
   - The escrow stores balances and milestone statuses.
@@ -238,12 +261,14 @@ CompleteContract --> End
 ### Client Implementation Examples
 
 #### Example: Complete a Milestone
+
 - Endpoint: POST /api/payments/milestones/{milestoneId}/complete?contractId={uuid}
 - Headers: Authorization: Bearer <access_token>
 - Body: empty
 - Expected response: 200 with MilestoneCompletionResult
 
 #### Example: Check Contract Payment Status
+
 - Endpoint: GET /api/payments/contracts/{contractId}/status
 - Headers: Authorization: Bearer <access_token>
 - Query: contractId (UUID)
@@ -290,6 +315,7 @@ PaymentService --> NotificationService : "uses"
 ```
 
 ## Performance Considerations
+
 - Transaction simulation: The blockchain interactions are simulated in-memory. In production, replace with real RPC calls and handle asynchronous confirmation.
 - Notification throughput: Batch notifications if many users are notified concurrently.
 - Escrow state caching: Cache frequently accessed escrow states to reduce repeated computation.
@@ -298,7 +324,9 @@ PaymentService --> NotificationService : "uses"
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Missing or invalid Authorization header: Ensure Bearer token is present and valid.
 - Invalid UUID format: Verify milestoneId and contractId are valid UUIDs.
 - Unauthorized actions: Only the freelancer (for completion) or employer (for approval/dispute) can perform respective actions.
@@ -306,6 +334,7 @@ Common issues and resolutions:
 - Dispute preconditions: Cannot dispute an already approved or already disputed milestone.
 
 ## Conclusion
+
 The FreelanceXchain payment API provides a clear, secure, and auditable flow for milestone completion, approval, and dispute resolution. It integrates with blockchain simulations for fund management and milestone registry, while maintaining robust authentication, validation, and notification mechanisms. Clients should follow the documented endpoints, parameter requirements, and response schemas to implement reliable payment workflows.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -313,11 +342,13 @@ The FreelanceXchain payment API provides a clear, secure, and auditable flow for
 ## Appendices
 
 ### API Reference Summary
-- Base URL: http://localhost:7860/api
-- Interactive docs: http://localhost:7860/api-docs
+
+- Base URL: <http://localhost:7860/api>
+- Interactive docs: <http://localhost:7860/api-docs>
 - Authentication: Bearer JWT in Authorization header
 
 Endpoints:
+
 - POST /api/payments/milestones/{milestoneId}/complete?contractId={uuid}
 - POST /api/payments/milestones/{milestoneId}/approve?contractId={uuid}
 - POST /api/payments/milestones/{milestoneId}/dispute?contractId={uuid}
@@ -328,6 +359,7 @@ Endpoints:
 ## Milestone Approval
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -339,9 +371,11 @@ Endpoints:
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the POST /api/payments/milestones/{milestoneId}/approve endpoint used by employers to approve a completed milestone. Upon approval, the system triggers a payment release from the blockchain escrow and updates internal state accordingly. It covers authentication, request validation, service invocation, blockchain integration, and response handling.
 
 ## Project Structure
+
 The milestone approval flow spans routing, middleware, service orchestration, blockchain client, and auxiliary repositories and services.
 
 ```mermaid
@@ -358,6 +392,7 @@ Escrow --> Chain["Blockchain Client<br/>blockchain-client.ts"]
 ```
 
 ## Core Components
+
 - Route handler enforces JWT authentication and UUID validation for milestoneId, requires contractId query parameter, and invokes approveMilestone.
 - Payment service validates ownership and milestone status, executes blockchain release via escrow contract, updates project and contract state, and notifies participants.
 - Escrow contract service simulates blockchain transactions and updates in-memory state.
@@ -367,6 +402,7 @@ Escrow --> Chain["Blockchain Client<br/>blockchain-client.ts"]
 - Notifications inform freelancers and employers of approval and payment release.
 
 ## Architecture Overview
+
 The approval flow integrates REST routing, middleware validation, service orchestration, blockchain execution, and state updates.
 
 ```mermaid
@@ -401,6 +437,7 @@ R-->>C : Response
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: POST
 - URL Pattern: /api/payments/milestones/{milestoneId}/approve
 - Path Parameter:
@@ -413,6 +450,7 @@ R-->>C : Response
   - Approve a completed milestone and trigger payment release from escrow
 
 ### Request Flow
+
 1. Authentication
    - Route uses auth middleware to extract and validate JWT.
    - On missing/invalid token, responds with 401.
@@ -449,7 +487,9 @@ Resp200 --> End
 ```
 
 ### Service Layer: approveMilestone
+
 Responsibilities:
+
 - Validate contract existence and employer ownership.
 - Validate project and milestone existence and status (must not be approved or disputed).
 - Execute blockchain release via escrow contract service.
@@ -459,12 +499,14 @@ Responsibilities:
 - Send notifications to freelancer and employer.
 
 Key behaviors:
+
 - Escrow release returns a transaction receipt containing transactionHash.
 - If blockchain release fails, the service logs and continues (best-effort simulation).
 - After updating local state, it attempts to approve the milestone on the blockchain registry.
 - If all milestones approved, updates contract and project to completed and completes the agreement on-chain.
 
 ### Blockchain Integration: Escrow Release
+
 - Uses getEscrowByContractId to locate escrow.
 - Calls releaseMilestone with escrow address, milestoneId, and approver address.
 - Submits transaction and confirms it; captures receipt with transactionHash.
@@ -486,16 +528,20 @@ EC-->>S : Receipt with transactionHash
 ```
 
 ### Blockchain Integration: Milestone Registry
+
 - After local approval, the service calls approveMilestoneOnRegistry to update the blockchain record.
 - The registry stores a record keyed by a hash of milestoneId and updates status to approved upon successful transaction confirmation.
 
 ### Notifications
+
 - On approval: notifyMilestoneApproved to freelancer.
 - On payment release: notifyPaymentReleased to freelancer.
 - Notifications are persisted and delivered to users.
 
 ### Response Schema: 200 Success
+
 MilestoneApprovalResult:
+
 - milestoneId: string (UUID)
 - status: "approved"
 - paymentReleased: boolean (always true after successful release)
@@ -503,6 +549,7 @@ MilestoneApprovalResult:
 - contractCompleted: boolean (true if all milestones approved and contract/project updated)
 
 ### Error Responses
+
 - 400 Bad Request
   - Missing or invalid contractId query parameter.
   - Invalid UUID format for milestoneId.
@@ -515,18 +562,21 @@ MilestoneApprovalResult:
   - Contract or milestone not found.
 
 Mapping logic:
+
 - Service returns error codes; route handler maps:
   - NOT_FOUND -> 404
   - UNAUTHORIZED -> 403
   - Otherwise -> 400
 
 ### Practical Example
+
 - Employer calls POST /api/payments/milestones/{milestoneId}/approve?contractId={contractId} with a valid Bearer token.
 - Backend validates JWT, UUID, and contractId.
 - Service locates the escrow, submits a release transaction, receives a receipt with transactionHash, updates project and contract state, and notifies both parties.
 - Response includes status=approved, paymentReleased=true, transactionHash, and contractCompleted if applicable.
 
 ## Dependency Analysis
+
 - Route depends on auth middleware and validation middleware.
 - Payment service depends on repositories, blockchain client, milestone registry, and notification service.
 - Escrow contract service depends on blockchain client.
@@ -548,12 +598,15 @@ EM["entity-mapper.ts"] --> PS
 ```
 
 ## Performance Considerations
+
 - Transaction confirmation is simulated and immediate in this environment; in production, confirmation waits could increase latency.
 - Best-effort blockchain release: failures are logged and do not block response; consider retry policies and idempotency for production.
 - Notification sends are synchronous; consider queuing for high throughput.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized
   - Ensure Authorization header is present and formatted as Bearer {token}.
   - Verify token is unexpired and valid.
@@ -568,6 +621,7 @@ Common issues and resolutions:
   - Escrow release may fail due to insufficient balance or invalid state; check escrow balance and milestone status.
 
 ## Conclusion
+
 The milestone approval endpoint securely approves completed milestones, releases funds from the blockchain escrow, updates internal state, and notifies stakeholders. It enforces strict authentication and validation, integrates with blockchain services for immutability, and provides a clear success response schema with optional transaction details.
 
 ---
@@ -575,6 +629,7 @@ The milestone approval endpoint securely approves completed milestones, releases
 ## Milestone Completion
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -586,9 +641,11 @@ The milestone approval endpoint securely approves completed milestones, releases
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the POST /api/payments/milestones/{milestoneId}/complete endpoint used by freelancers to mark a milestone as complete. Upon successful submission, the system updates the milestone status, notifies the employer, and records the action on the blockchain registry. The endpoint requires JWT authentication and UUID validation for both path and query parameters.
 
 ## Project Structure
+
 The endpoint is defined in the payment routes module and implemented by the payment service. It integrates with repositories for contracts and projects, user repository for identity, notification service for employer alerts, and blockchain services for registry updates.
 
 ```mermaid
@@ -617,6 +674,7 @@ Service --> Escrow
 ```
 
 ## Core Components
+
 - Route handler: Validates JWT, validates UUID path parameter, checks presence of contractId query parameter, and invokes the service.
 - Service: Validates ownership, finds the project and milestone, updates status to submitted, submits to blockchain registry, and sends a notification to the employer.
 - Repositories: Access contract and project entities to validate and update milestone status.
@@ -624,7 +682,9 @@ Service --> Escrow
 - Blockchain integration: Submits milestone metadata to the registry for transparency.
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - Presentation layer: Express route handler
 - Application layer: Payment service orchestrating business logic
 - Domain layer: Repositories for persistence
@@ -674,6 +734,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: POST
 - URL Pattern: /api/payments/milestones/{milestoneId}/complete
 - Path Parameters:
@@ -684,6 +745,7 @@ end
 - Response: 200 with MilestoneCompletionResult
 
 ### Request Flow
+
 1. Authentication
    - authMiddleware extracts Bearer token from Authorization header and validates it. Returns 401 if missing or invalid.
 2. UUID Validation
@@ -720,6 +782,7 @@ Resp401 --> End
 ```
 
 ### Service Implementation Details
+
 - Ownership Verification
   - Ensures the authenticated user is the freelancer associated with the contract.
 - Project and Milestone Lookup
@@ -762,12 +825,14 @@ PaymentService --> MilestoneRegistry : "submit to registry"
 ```
 
 ### Response Schema
+
 - 200 Success: MilestoneCompletionResult
   - milestoneId: string (UUID)
   - status: string (enum: submitted)
   - notificationSent: boolean
 
 ### Error Responses
+
 - 400 Bad Request
   - Missing contractId query parameter
   - Invalid UUID format for milestoneId
@@ -781,7 +846,9 @@ PaymentService --> MilestoneRegistry : "submit to registry"
   - Milestone not found
 
 ### Practical Example
+
 A freelancer completes a milestone and calls:
+
 - Method: POST
 - URL: /api/payments/milestones/{milestoneId}/complete?contractId={contractId}
 - Headers: Authorization: Bearer <JWT>
@@ -790,10 +857,12 @@ A freelancer completes a milestone and calls:
 The system verifies the JWT, validates UUIDs, ensures the user is the contract’s freelancer, updates the milestone status to submitted, and sends a notification to the employer.
 
 ### Integration with Payment Service and Repository
+
 - Payment Service updates the project’s milestone status and persists the change via ProjectRepository.
 - The endpoint does not directly call a payment-repository; payment releases occur in the approve endpoint.
 
 ## Dependency Analysis
+
 - Route depends on:
   - authMiddleware for JWT
   - validateUUID for UUID validation
@@ -817,10 +886,12 @@ Service --> Registry["milestone-registry.ts"]
 ```
 
 ## Performance Considerations
+
 - The endpoint performs a small number of synchronous repository reads and writes plus a best-effort blockchain submission. Typical latency is dominated by repository operations and network calls to the notification service and registry.
 - Consider caching frequently accessed contracts/projects if traffic increases.
 
 ## Troubleshooting Guide
+
 - 401 Unauthorized
   - Ensure Authorization header is present and formatted as Bearer <token>.
   - Verify the token is unexpired and valid.
@@ -833,6 +904,7 @@ Service --> Registry["milestone-registry.ts"]
   - Contract, project, or milestone may not exist, or the milestone id does not belong to the project.
 
 ## Conclusion
+
 The POST /api/payments/milestones/{milestoneId}/complete endpoint enables freelancers to submit milestone completion safely and transparently. It enforces authentication and UUID validation, updates the milestone status, notifies the employer, and records the event on the blockchain registry. The design cleanly separates concerns across route handlers, middleware, services, and repositories.
 
 ---
@@ -840,6 +912,7 @@ The POST /api/payments/milestones/{milestoneId}/complete endpoint enables freela
 ## Milestone Dispute
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -852,9 +925,11 @@ The POST /api/payments/milestones/{milestoneId}/complete endpoint enables freela
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document describes the POST /api/payments/milestones/{milestoneId}/dispute endpoint for the FreelanceXchain system. It covers the HTTP method, URL pattern, path parameter, required query parameter, and request body. It explains that either party (freelancer or employer) can dispute a milestone, which locks the funds and creates a dispute record for resolution. Authentication uses JWT with UUID validation. The request flow includes user authentication, contractId validation, reason validation, service invocation via disputeMilestone, and response handling. The 200 success response schema (MilestoneDisputeResult) is documented, along with error responses for 400, 401, 403, and 404. A practical example demonstrates a freelancer disputing a milestone due to unsatisfactory requirements. Finally, it explains how this endpoint integrates with the dispute resolution system and locks associated escrow funds.
 
 ## Project Structure
+
 The milestone dispute endpoint is implemented in the payment routes and payment service, with support from authentication and validation middleware. Disputes are persisted and integrated with blockchain registries and escrow contracts.
 
 ```mermaid
@@ -871,6 +946,7 @@ DisputeSvc --> DisputeReg["Dispute Registry<br/>dispute-registry.ts"]
 ```
 
 ## Core Components
+
 - Endpoint definition and Swagger schema for the dispute route.
 - Route handler that enforces JWT authentication, validates UUID parameters, checks for required contractId query parameter, validates reason in request body, and invokes disputeMilestone.
 - Payment service disputeMilestone function that validates contract and milestone ownership, checks milestone status, creates a dispute record, updates milestone and contract statuses, and sends notifications.
@@ -878,7 +954,9 @@ DisputeSvc --> DisputeReg["Dispute Registry<br/>dispute-registry.ts"]
 - Validation middleware that ensures UUID format for path parameters and provides standardized error responses.
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - HTTP layer: route handler validates inputs and delegates to service layer.
 - Service layer: orchestrates repository and external integrations (notifications, blockchain, escrow).
 - Persistence: dispute repository stores dispute records.
@@ -910,6 +988,7 @@ R-->>C : 200 OK with MilestoneDisputeResult
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Request Flow
+
 - Method: POST
 - URL pattern: /api/payments/milestones/{milestoneId}/dispute
 - Path parameter:
@@ -926,6 +1005,7 @@ R-->>C : 200 OK with MilestoneDisputeResult
   - Presence of contractId query parameter
 
 The route handler performs:
+
 - JWT authentication via authMiddleware
 - UUID validation for milestoneId via validateUUID
 - ContractId presence check
@@ -935,7 +1015,9 @@ The route handler performs:
 - Success response with MilestoneDisputeResult
 
 ### Payment Service: disputeMilestone
+
 Responsibilities:
+
 - Validate contract existence and that the initiator is a party to the contract.
 - Validate project and milestone existence and status (not approved, not already disputed).
 - Create a dispute record (in-memory store in simulation).
@@ -944,12 +1026,15 @@ Responsibilities:
 - Return MilestoneDisputeResult with milestoneId, status=disputed, disputeId, and disputeCreated=true.
 
 Integration points:
+
 - Repository access for contract and project data.
 - Notification service for dispute created notifications.
 - Blockchain integration via dispute-registry and escrow-contract services (see Dispute Service for blockchain actions).
 
 ### Dispute Service: createDispute and Blockchain Integration
+
 Responsibilities:
+
 - Validate contract and project existence.
 - Verify initiator is a party to the contract.
 - Validate milestone exists and is not already disputed or approved.
@@ -961,11 +1046,13 @@ Responsibilities:
 - Return created dispute.
 
 Blockchain and Escrow Integration:
+
 - Dispute registry records dispute metadata and tracks user stats.
 - Agreement contract is marked as disputed.
 - Escrow contract status reflects dispute lifecycle during resolution.
 
 ### Response Schema: MilestoneDisputeResult
+
 - milestoneId: string (UUID)
 - status: "disputed"
 - disputeId: string (UUID)
@@ -974,6 +1061,7 @@ Blockchain and Escrow Integration:
 This schema is defined in the route’s Swagger documentation and returned by the service upon successful dispute creation.
 
 ### Error Responses
+
 - 400 Bad Request:
   - Missing or invalid reason in request body.
   - Missing or invalid contractId query parameter.
@@ -989,7 +1077,9 @@ This schema is defined in the route’s Swagger documentation and returned by th
 The route handler maps service error codes to appropriate HTTP status codes.
 
 ### Practical Example: Freelancer Disputes a Milestone
+
 Scenario:
+
 - A freelancer initiates a dispute for milestoneId X due to unsatisfactory requirements.
 - The freelancer calls POST /api/payments/milestones/X/dispute with:
   - Authorization: Bearer <JWT>
@@ -1000,10 +1090,12 @@ Scenario:
 - The response returns MilestoneDisputeResult indicating status=disputed and disputeCreated=true.
 
 Outcome:
+
 - Funds remain locked in the escrow until the dispute is resolved.
 - The dispute enters the resolution workflow managed by the dispute service.
 
 ### Integration with Dispute Resolution and Escrow Lock
+
 - Dispute Creation:
   - Payment service creates a dispute record and updates statuses.
   - Dispute service persists the record and records the dispute on the blockchain registry.
@@ -1031,7 +1123,9 @@ SplitDecision --> End
 ```
 
 ## Dependency Analysis
+
 Key dependencies and relationships:
+
 - Route depends on auth-middleware and validation-middleware for security and input validation.
 - Route delegates to payment-service.disputeMilestone.
 - Payment service coordinates with repositories and notification services.
@@ -1051,6 +1145,7 @@ PS --> EM["entity-mapper.ts"]
 ```
 
 ## Performance Considerations
+
 - Input validation occurs before heavy operations, reducing unnecessary service calls.
 - Dispute creation is lightweight; blockchain recording is asynchronous and logged for failures.
 - Notifications are sent after status updates to ensure clients receive accurate state.
@@ -1059,7 +1154,9 @@ PS --> EM["entity-mapper.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized:
   - Ensure Authorization header is present and formatted as Bearer <token>.
   - Verify the token is valid and not expired.
@@ -1075,6 +1172,7 @@ Common issues and resolutions:
   - Cannot dispute an approved milestone or a milestone already under dispute.
 
 ## Conclusion
+
 The POST /api/payments/milestones/{milestoneId}/dispute endpoint enables either party to initiate a dispute, which locks funds and creates a dispute record. The implementation enforces JWT authentication, validates UUIDs and request parameters, and integrates with the dispute resolution system and escrow contracts. The response schema provides clear confirmation of the dispute creation and current status.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -1082,6 +1180,7 @@ The POST /api/payments/milestones/{milestoneId}/dispute endpoint enables either 
 ## Appendices
 
 ### API Definition Summary
+
 - Method: POST
 - URL: /api/payments/milestones/{milestoneId}/dispute
 - Path parameters:
@@ -1105,6 +1204,7 @@ The POST /api/payments/milestones/{milestoneId}/dispute endpoint enables either 
 ## Payment Status
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1117,10 +1217,13 @@ The POST /api/payments/milestones/{milestoneId}/dispute endpoint enables either 
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document describes the GET /api/payments/contracts/{contractId}/status endpoint in the FreelanceXchain system. It explains the endpoint’s purpose, authentication and validation requirements, request flow, response schema, and error handling. It also clarifies how the endpoint aggregates data from on-chain and off-chain sources to present a comprehensive payment overview for a given contract.
 
 ## Project Structure
+
 The endpoint is implemented as part of the Payments module:
+
 - Route handler: defines the HTTP method, URL pattern, path parameter, middleware, and response handling
 - Service: computes the payment status by combining off-chain data (project and contract entities) and on-chain data (escrow address)
 - Middleware: enforces JWT authentication and validates UUID parameters
@@ -1142,6 +1245,7 @@ Router --> Client
 ```
 
 ## Core Components
+
 - Endpoint definition and request flow:
   - HTTP method: GET
   - URL pattern: /api/payments/contracts/{contractId}/status
@@ -1156,7 +1260,9 @@ Router --> Client
   - ContractPaymentStatus includes contractId, escrowAddress, totalAmount, releasedAmount, pendingAmount, milestones array, and contractStatus
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - Presentation layer: Express route handler
 - Application layer: Payment service orchestrating repositories and blockchain data
 - Data layer: Appwrite repositories for contracts and projects
@@ -1188,12 +1294,14 @@ R-->>C : "200 OK with ContractPaymentStatus"
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Behavior
+
 - Purpose: Retrieve detailed payment status for a contract, including escrow details, total/pending/released amounts, and individual milestone statuses.
 - Authentication: Requires a Bearer token; unauthorized responses are returned if missing or invalid.
 - Validation: Validates that contractId is a UUID; invalid UUID returns a 400 error.
 - Access control: Only the contract employer or freelancer can access the status; otherwise returns 403.
 
 ### Request Flow
+
 - Route handler:
   - Extracts userId from validated JWT and contractId from path
   - Calls getContractPaymentStatus(contractId, userId)
@@ -1225,7 +1333,9 @@ BuildResp --> Return200["Return 200 OK"]
 ```
 
 ### Response Schema: ContractPaymentStatus
+
 The endpoint returns a structured JSON object containing:
+
 - contractId: string (UUID)
 - escrowAddress: string (on-chain escrow address)
 - totalAmount: number (project budget)
@@ -1241,6 +1351,7 @@ The endpoint returns a structured JSON object containing:
 Swagger/OpenAPI documentation for this schema is embedded in the route file.
 
 ### Authentication and UUID Validation
+
 - JWT authentication:
   - Route handler applies authMiddleware
   - authMiddleware validates Authorization header format and token validity
@@ -1250,6 +1361,7 @@ Swagger/OpenAPI documentation for this schema is embedded in the route file.
   - validateUUID checks path parameter format and returns 400 on mismatch
 
 ### Error Responses
+
 - 400 Bad Request:
   - Invalid UUID format for contractId
 - 401 Unauthorized:
@@ -1262,6 +1374,7 @@ Swagger/OpenAPI documentation for this schema is embedded in the route file.
 These mappings are handled in the route handler by inspecting the service result code and returning the appropriate HTTP status.
 
 ### Practical Example: Checking Contract Payment Progress
+
 - Scenario: A freelancer wants to check the payment progress of a contract they are working on.
 - Steps:
   1. Obtain a valid JWT access token from the authentication flow.
@@ -1271,6 +1384,7 @@ These mappings are handled in the route handler by inspecting the service result
   - The response shows totalAmount, releasedAmount, pendingAmount, and a list of milestones with their current status, enabling the user to track progress.
 
 ### Aggregation of On-chain and Off-chain Data
+
 - Off-chain data:
   - Contract entity (including escrowAddress and contract status)
   - Project entity (including budget and milestone list with amounts and statuses)
@@ -1279,7 +1393,9 @@ These mappings are handled in the route handler by inspecting the service result
 - The service computes releasedAmount by summing approved milestone amounts and pendingAmount as the difference between totalAmount and releasedAmount.
 
 ## Dependency Analysis
+
 The endpoint depends on:
+
 - Route handler for routing and middleware application
 - Auth middleware for JWT validation
 - UUID validation middleware for parameter validation
@@ -1298,6 +1414,7 @@ Routes --> Docs["API-DOCUMENTATION.md"]
 ```
 
 ## Performance Considerations
+
 - The endpoint performs two database reads (contract and project) and a constant-time aggregation over milestones. Complexity is O(n) in the number of milestones.
 - No blockchain queries are executed in the route handler; the escrow address is returned from the contract entity.
 - Recommendations:
@@ -1308,7 +1425,9 @@ Routes --> Docs["API-DOCUMENTATION.md"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized:
   - Cause: Missing or invalid Authorization header
   - Resolution: Include a valid Bearer token in the Authorization header
@@ -1323,6 +1442,7 @@ Common issues and resolutions:
   - Resolution: Verify contractId and ensure the contract links to a valid project
 
 ## Conclusion
+
 The GET /api/payments/contracts/{contractId}/status endpoint provides a comprehensive view of a contract’s payment status by combining off-chain data (project budget and milestone statuses) with on-chain metadata (escrow address). It enforces strict authentication and validation, returns a well-defined response schema, and maps service errors to appropriate HTTP statuses for predictable client handling.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -1330,6 +1450,7 @@ The GET /api/payments/contracts/{contractId}/status endpoint provides a comprehe
 ## Appendices
 
 ### Endpoint Reference
+
 - Method: GET
 - URL: /api/payments/contracts/{contractId}/status
 - Path parameters:
@@ -1341,6 +1462,7 @@ The GET /api/payments/contracts/{contractId}/status endpoint provides a comprehe
 - Error responses: 400 (invalid UUID), 401 (unauthenticated), 403 (unauthorized), 404 (not found)
 
 ### Response Schema Details
+
 - contractId: string (UUID)
 - escrowAddress: string
 - totalAmount: number

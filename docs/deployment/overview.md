@@ -1,6 +1,7 @@
 # Project Overview
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Core Value Proposition](#core-value-proposition)
 3. [High-Level Architecture](#high-level-architecture)

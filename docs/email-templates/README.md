@@ -25,7 +25,7 @@ Professional, branded email templates for Appwrite authentication flows.
 
 ### Method 1: Via Appwrite Dashboard (Recommended)
 
-1. Go to your Appwrite Dashboard: https://appwrite.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates
+1. Go to your Appwrite Dashboard: <https://appwrite.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates>
 
 2. For each template:
    - Click on the template name (e.g., "Confirm signup")
@@ -37,7 +37,7 @@ Professional, branded email templates for Appwrite authentication flows.
 ### Template Mapping
 
 | Dashboard Template | HTML File |
-|-------------------|-----------|
+| ------------------- | ----------- |
 | Confirm signup | confirmation.html |
 | Magic Link | magic-link.html |
 | Reset Password | recovery.html |
@@ -48,7 +48,8 @@ Professional, branded email templates for Appwrite authentication flows.
 ### Method 2: Via Management API
 
 You can also update templates programmatically using the Appwrite Management API. You'll need:
-- Your Appwrite access token from: https://appwrite.com/dashboard/account/tokens
+
+- Your Appwrite access token from: <https://appwrite.com/dashboard/account/tokens>
 - Your project ref: `nfcfgxfpidfvcpkyjgih`
 
 Example using curl:
@@ -85,11 +86,13 @@ All templates support these Appwrite variables:
 Each template uses gradient colors. To customize:
 
 1. Find the gradient in the header section:
+
    ```html
    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
    ```
 
 2. Replace with your brand colors:
+
    ```html
    background: linear-gradient(135deg, #YOUR_COLOR_1 0%, #YOUR_COLOR_2 100%);
    ```
@@ -135,6 +138,7 @@ Change the CTA button text:
 ## 🆘 Support
 
 If you encounter issues:
+
 - Check Appwrite Auth logs in the dashboard
 - Verify template variables are correctly formatted
 - Ensure HTML is valid and properly escaped

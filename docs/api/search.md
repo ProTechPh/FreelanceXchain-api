@@ -1,6 +1,7 @@
 # Search API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Search Endpoint](#project-search-endpoint)
 3. [Freelancer Search Endpoint](#freelancer-search-endpoint)
@@ -10,6 +11,7 @@
 7. [Error Handling](#error-handling)
 
 ## Introduction
+
 The FreelanceXchain system provides robust search and discovery endpoints that enable users to find projects and freelancers based on various criteria. These endpoints support keyword search, skill-based filtering, budget range filtering, pagination, and sorting. The search functionality is designed to be efficient and scalable, with optimized database queries and in-memory filtering for complex search scenarios. All search endpoints require JWT authentication to ensure secure access to the platform's data.
 
 ## Project Search Endpoint
@@ -17,19 +19,23 @@ The FreelanceXchain system provides robust search and discovery endpoints that e
 The project search endpoint allows users to search for projects using keyword, skill, and budget filters. This endpoint supports pagination through the `pageSize` and `continuationToken` parameters, enabling efficient retrieval of large datasets.
 
 ### HTTP Method and URL Pattern
+
 ```
 GET /api/search/projects
 ```
 
 ### Authentication Requirements
+
 This endpoint requires JWT authentication. The Authorization header must contain a valid Bearer token:
+
 ```
 Authorization: Bearer <JWT_TOKEN>
 ```
 
 ### Query Parameters
+
 | Parameter | Type | Required | Description | Example |
-|---------|------|---------|-------------|---------|
+| --------- | ------ | --------- | ------------- | --------- |
 | `keyword` | string | No | Search keyword for project title and description | "web development" |
 | `skills` | string | No | Comma-separated skill IDs to filter projects | "123e4567-e89b-12d3-a456-426614174000,123e4567-e89b-12d3-a456-426614174001" |
 | `minBudget` | number | No | Minimum budget filter (inclusive) | 1000 |
@@ -38,27 +44,33 @@ Authorization: Bearer <JWT_TOKEN>
 | `continuationToken` | string | No | Token for pagination (offset value) | "20" |
 
 ### Request Examples
+
 **Search projects by keyword:**
+
 ```
 GET /api/search/projects?keyword=web+development&pageSize=10
 ```
 
 **Search projects by skills:**
+
 ```
 GET /api/search/projects?skills=123e4567-e89b-12d3-a456-426614174000,123e4567-e89b-12d3-a456-426614174001&pageSize=15
 ```
 
 **Search projects by budget range:**
+
 ```
 GET /api/search/projects?minBudget=1000&maxBudget=5000&pageSize=20
 ```
 
 **Search projects with multiple filters:**
+
 ```
 GET /api/search/projects?keyword=mobile+app&skills=123e4567-e89b-12d3-a456-426614174002&minBudget=2000&maxBudget=8000&pageSize=25
 ```
 
 ### Response Schema
+
 The response follows a standardized format with items and metadata:
 
 ```json
@@ -103,6 +115,7 @@ The response follows a standardized format with items and metadata:
 ```
 
 ### Response Example
+
 ```json
 {
   "items": [
@@ -153,41 +166,50 @@ The response follows a standardized format with items and metadata:
 The freelancer search endpoint enables users to discover freelancers based on keyword and skill filters. This endpoint supports pagination and returns comprehensive freelancer profile information.
 
 ### HTTP Method and URL Pattern
+
 ```
 GET /api/search/freelancers
 ```
 
 ### Authentication Requirements
+
 This endpoint requires JWT authentication. The Authorization header must contain a valid Bearer token:
+
 ```
 Authorization: Bearer <JWT_TOKEN>
 ```
 
 ### Query Parameters
+
 | Parameter | Type | Required | Description | Example |
-|---------|------|---------|-------------|---------|
+| --------- | ------ | --------- | ------------- | --------- |
 | `keyword` | string | No | Search keyword for freelancer bio | "full stack developer" |
 | `skills` | string | No | Comma-separated skill IDs to filter freelancers | "123e4567-e89b-12d3-a456-426614174000,123e4567-e89b-12d3-a456-426614174001" |
 | `pageSize` | integer | No | Number of results per page (default: 20, max: 100) | 30 |
 | `continuationToken` | string | No | Token for pagination (offset value) | "30" |
 
 ### Request Examples
+
 **Search freelancers by keyword:**
+
 ```
 GET /api/search/freelancers?keyword=full+stack+developer&pageSize=15
 ```
 
 **Search freelancers by skills:**
+
 ```
 GET /api/search/freelancers?skills=123e4567-e89b-12d3-a456-426614174002,123e4567-e89b-12d3-a456-426614174004&pageSize=20
 ```
 
 **Search freelancers with multiple filters:**
+
 ```
 GET /api/search/freelancers?keyword=senior+developer&skills=123e4567-e89b-12d3-a456-426614174002&pageSize=25
 ```
 
 ### Response Schema
+
 The response follows a standardized format with items and metadata:
 
 ```json
@@ -228,6 +250,7 @@ The response follows a standardized format with items and metadata:
 ```
 
 ### Response Example
+
 ```json
 {
   "items": [
@@ -278,6 +301,7 @@ The response follows a standardized format with items and metadata:
 The FreelanceXchain search system implements different algorithms based on the type and combination of filters provided in the search request. The system optimizes performance by using database-level queries when possible and falling back to in-memory filtering for complex scenarios.
 
 ### Search Strategy Overview
+
 The search service employs a decision tree to determine the most efficient search strategy based on the provided filters:
 
 ```mermaid
@@ -302,6 +326,7 @@ AllOpen --> ReturnResults
 ```
 
 ### Text Matching Algorithm
+
 For keyword searches, the system uses case-insensitive partial matching on project titles and descriptions. The algorithm converts the search keyword to lowercase and checks if it appears anywhere within the title or description text:
 
 ```mermaid
@@ -314,6 +339,7 @@ Combine --> End([Return Results])
 ```
 
 ### Skill Matching Algorithm
+
 When searching by skills, the system uses exact matching on skill IDs for projects and skill names for freelancers. For projects, the search checks if any required skill matches the provided skill IDs. For freelancers, the search performs case-insensitive matching on skill names:
 
 ```mermaid
@@ -326,7 +352,9 @@ FilterProjects --> End([Return Results])
 ```
 
 ### Relevance Scoring
+
 Currently, the system does not implement complex relevance scoring. Results are returned in chronological order (newest first) based on the project's creation date. Future enhancements could include:
+
 - Boosting projects with exact keyword matches in the title
 - Prioritizing projects with skills that exactly match the search criteria
 - Incorporating freelancer ratings and reputation scores
@@ -335,6 +363,7 @@ Currently, the system does not implement complex relevance scoring. Results are 
 ## Client Implementation Examples
 
 ### JavaScript/TypeScript Implementation
+
 ```typescript
 class FreelanceXchainClient {
   private baseUrl: string;
@@ -416,6 +445,7 @@ client.searchProjects('web development', ['skill-123', 'skill-456'], 1000, 5000,
 ```
 
 ### React Search Interface
+
 ```jsx
 import React, { useState, useEffect } from 'react';
 
@@ -532,13 +562,16 @@ function ProjectSearch() {
 The search system is designed to handle large datasets efficiently through several optimization strategies:
 
 ### Database Indexing
+
 The system leverages Appwrite/PostgreSQL indexing to accelerate search queries:
+
 - **Text search**: GIN indexes on project title and description columns for ILIKE operations
 - **Skill filtering**: GIN indexes on the required_skills JSONB array column
 - **Budget filtering**: B-tree indexes on the budget column for range queries
 - **Status filtering**: Index on the status column to quickly filter open projects
 
 ### Pagination Strategy
+
 The system implements cursor-based pagination using the `continuationToken` parameter, which represents the offset in the result set. This approach avoids the performance degradation associated with LIMIT/OFFSET pagination on large datasets:
 
 ```mermaid
@@ -553,20 +586,26 @@ G --> H[Client: Display next 20 results]
 ```
 
 ### Query Optimization
+
 The search service optimizes queries by:
+
 1. Using database-level filtering when only a single filter is applied
 2. Minimizing the amount of data transferred from the database
 3. Applying filters in the most efficient order
 4. Caching frequently accessed data when possible
 
 ### Rate Limiting
+
 To prevent abuse and ensure system stability, the search endpoints are subject to rate limiting:
+
 - Maximum of 100 requests per minute per user
 - Burst limit of 10 requests per second
 - Higher limits for premium accounts
 
 ### Scalability Recommendations
+
 For optimal performance with large datasets:
+
 - Implement Redis caching for frequent search queries
 - Use database read replicas to distribute query load
 - Consider implementing Elasticsearch for more advanced text search capabilities
@@ -578,6 +617,7 @@ For optimal performance with large datasets:
 The search endpoints implement comprehensive error handling to provide meaningful feedback to clients.
 
 ### Error Response Format
+
 All error responses follow a standardized format:
 
 ```json
@@ -592,21 +632,25 @@ All error responses follow a standardized format:
 ```
 
 ### Common Error Codes
+
 | Error Code | HTTP Status | Description |
-|----------|------------|-------------|
+| ---------- | ------------ | ------------- |
 | `VALIDATION_ERROR` | 400 | Invalid request parameters |
 | `AUTH_MISSING_TOKEN` | 401 | Authorization header is missing |
 | `AUTH_INVALID_TOKEN` | 401 | Provided JWT token is invalid |
 | `AUTH_TOKEN_EXPIRED` | 401 | JWT token has expired |
 
 ### Validation Rules
+
 The system validates all input parameters:
+
 - `pageSize` must be a positive integer between 1 and 100
 - `minBudget` and `maxBudget` must be valid numbers
 - `continuationToken` must be a valid string or number
 - When both `minBudget` and `maxBudget` are provided, `minBudget` must be less than or equal to `maxBudget`
 
 ### Error Handling Flow
+
 ```mermaid
 flowchart TD
 Start([Request Received]) --> Validation["Validate Parameters"]
@@ -626,6 +670,7 @@ Success --> |Yes| ReturnResults["Return 200: Results"]
 ## Freelancer Search API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -637,10 +682,13 @@ Success --> |Yes| ReturnResults["Return 200: Results"]
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the GET /api/search/freelancers endpoint in the FreelanceXchain system. It covers the HTTP method, URL pattern, authentication requirements, query parameters, request and response schemas, server-side validation, pagination model, integration with the search-service and repositories, and the underlying database indexing strategy. Practical examples demonstrate searching by keyword, filtering by skills, and combining both filters. Guidance is included for client-side implementation patterns for filter combinations and infinite scrolling.
 
 ## Project Structure
+
 The freelancer search endpoint is implemented as follows:
+
 - Route handler: GET /api/search/freelancers
 - Validation and pagination logic: route layer
 - Business logic: search-service module
@@ -658,6 +706,7 @@ BaseRepo --> DB["Appwrite: freelancer_profiles table"]
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/search/freelancers
 - Authentication: Requires a Bearer token in the Authorization header
 - Query parameters:
@@ -674,7 +723,9 @@ BaseRepo --> DB["Appwrite: freelancer_profiles table"]
   - hasMore computed from count and range
 
 ## Architecture Overview
+
 The endpoint flow:
+
 1. Route parses query parameters and validates pageSize
 2. Builds filters and pagination objects
 3. Calls search-service.searchFreelancers
@@ -717,23 +768,27 @@ R-->>C : 200 OK JSON
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Authentication
+
 - Method: GET
 - URL: /api/search/freelancers
 - Authentication: Bearer token required in Authorization header
 - Notes: The route handler does not attach a middleware to enforce JWT; however, the API documentation states that protected endpoints require a Bearer token. Clients should include the token as per the documented pattern.
 
 ### Query Parameters
+
 - keyword (string): Filters profiles by bio text using case-insensitive partial matching
 - skills (string): Comma-separated skill identifiers; service converts to skill names for matching
 - pageSize (integer): Defaults to 20; constrained to 1–100
 - continuationToken (string): Converted to numeric offset; used for pagination
 
 Validation behavior:
+
 - pageSize must be a positive integer; otherwise returns 400 with VALIDATION_ERROR
 - skill IDs are parsed from comma-separated string and trimmed
 - Keyword is optional; skill IDs are optional
 
 ### Request and Response Schema
+
 - Request: Query parameters only (no body)
 - Response: FreelancerSearchResult
   - items: array of FreelancerProfile
@@ -743,10 +798,12 @@ Validation behavior:
     - offset: number (present when pagination offset is used)
 
 Swagger/OpenAPI definitions:
+
 - FreelancerProfile schema includes id, userId, bio, hourlyRate, skills, experience, availability, createdAt, updatedAt
 - SearchResultMetadata schema includes pageSize, hasMore, continuationToken
 
 ### Server-Side Validation Logic for pageSize
+
 - If pageSize is missing or less than 1, defaults to 20
 - If pageSize exceeds 100, caps at 100
 - If pageSize is present but not a positive integer, returns 400 with VALIDATION_ERROR
@@ -764,11 +821,13 @@ CapMax --> Done(["Normalized pageSize"])
 ```
 
 ### Pagination Model and Continuation Token
+
 - Pagination input: pageSize and offset
 - continuationToken is converted to numeric offset; if empty or invalid, offset defaults to 0
 - hasMore computed from count and range; offset included in metadata when provided
 
 ### Integration with search-service and Repositories
+
 - searchFreelancers:
   - skill-only: calls repository.searchBySkills
   - keyword-only: calls repository.searchByKeyword
@@ -780,12 +839,14 @@ CapMax --> Done(["Normalized pageSize"])
   - getAllProfilesPaginated: generic paginated query with ordering by created_at desc
 
 ### Underlying Database Indexing Strategy
+
 - Table: freelancer_profiles
 - Fields: bio (TEXT), skills (JSONB), experience (JSONB), availability (VARCHAR), user_id (UUID)
 - Indexes: primary key on id, unique index on user_id, and various auxiliary indexes on other tables
 - Text search on bio uses ilike; JSONB skills array matching uses overlap checks and in-memory filtering
 
 ### Practical Examples
+
 - Search by keyword “React expert”:
   - GET /api/search/freelancers?keyword=React+expert&pageSize=20
 - Filter by skill IDs “3,7”:
@@ -796,9 +857,11 @@ CapMax --> Done(["Normalized pageSize"])
   - Use continuationToken to fetch subsequent pages; token is treated as numeric offset
 
 Notes:
+
 - The service expects skill identifiers; however, repository filtering uses skill names. Ensure skill identifiers map to skill names consistently.
 
 ## Dependency Analysis
+
 ```mermaid
 graph LR
 Routes["search-routes.ts"] --> Service["search-service.ts"]
@@ -808,6 +871,7 @@ BaseRepo --> Appwrite["Appwrite Client"]
 ```
 
 ## Performance Considerations
+
 - Text search on bio:
   - Uses ilike; consider adding a GIN index on bio for improved performance if frequent text searches occur.
 - JSONB skills array:
@@ -820,7 +884,9 @@ BaseRepo --> Appwrite["Appwrite Client"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Validation Error for pageSize:
   - Ensure pageSize is a positive integer and within 1–100.
 - 401 Unauthorized:
@@ -831,6 +897,7 @@ Common issues and resolutions:
   - Use continuationToken as numeric offset; ensure consistent pageSize across requests.
 
 ## Conclusion
+
 The GET /api/search/freelancers endpoint provides flexible filtering over freelancer profiles with keyword and skills criteria, robust pagination, and clear error handling. For optimal performance, consider enhancing database indexes and normalizing skills to enable efficient joins and indexing. Clients should implement filter combinations and infinite scrolling by maintaining consistent pageSize and using continuationToken-derived offsets.
 
 ---
@@ -838,6 +905,7 @@ The GET /api/search/freelancers endpoint provides flexible filtering over freela
 ## Project Search API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -849,10 +917,13 @@ The GET /api/search/freelancers endpoint provides flexible filtering over freela
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the GET /api/search/projects endpoint in the FreelanceXchain system. It covers the HTTP method, URL pattern, authentication requirements, query parameters, request and response schemas, server-side validation, pagination model, and the underlying search-service and repository implementation. It also explains the database indexing strategy used for project title/description and required skills, and provides practical examples and performance recommendations for large datasets.
 
 ## Project Structure
+
 The project search endpoint is implemented as follows:
+
 - Route handler: GET /api/search/projects
 - Validation: Built-in parameter parsing and validation in the route handler
 - Service layer: searchProjects(filter, pagination) orchestrating repository calls
@@ -871,6 +942,7 @@ Routes --> Client
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/search/projects
 - Authentication: Requires a Bearer JWT token in the Authorization header
 - Query parameters:
@@ -885,6 +957,7 @@ Routes --> Client
   - metadata: object with pageSize, hasMore, offset
 
 ## Architecture Overview
+
 The request lifecycle for GET /api/search/projects:
 
 ```mermaid
@@ -925,12 +998,14 @@ R-->>C : 200 OK JSON
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Authentication
+
 - HTTP method: GET
 - URL pattern: /api/search/projects
 - Authentication: Bearer JWT token required in Authorization header
 - Swagger security scheme defines bearerAuth with JWT format
 
 ### Query Parameters and Validation
+
 - keyword: string; used for ILIKE search on title and description
 - skills: string; comma-separated skill IDs; parsed into an array
 - minBudget: number; validated to be numeric and non-negative
@@ -939,21 +1014,25 @@ R-->>C : 200 OK JSON
 - continuationToken: string; parsed as integer offset; used for pagination
 
 Server-side validation logic:
+
 - Numeric parameters minBudget and maxBudget are parsed and validated; non-numeric values return 400 with VALIDATION_ERROR
 - pageSize must be a positive integer; otherwise returns 400 with VALIDATION_ERROR
 - Filters are built conditionally based on presence of parameters
 
 ### Request and Response Schema
+
 - Request: Query parameters as described above
 - Response:
   - items: array of Project
   - metadata: object containing pageSize, hasMore, offset
 
 Swagger/OpenAPI schemas define:
+
 - ProjectSearchResult: items array of Project, metadata of type SearchResultMetadata
 - SearchResultMetadata: pageSize, hasMore, offset
 
 ### Service Layer Implementation
+
 - searchProjects(filters, pagination):
   - Normalizes pageSize to 1–100
   - Builds QueryOptions with limit and offset
@@ -962,6 +1041,7 @@ Swagger/OpenAPI schemas define:
   - Maps entities to models and constructs a SearchResult with metadata
 
 ### Repository Layer and Database Indexing Strategy
+
 - searchProjects(keyword, options):
   - Database-level ILIKE search on title and description for open projects
   - Uses Appwrite orients query with or(title.ilike, description.ilike)
@@ -973,15 +1053,18 @@ Swagger/OpenAPI schemas define:
   - Fetches open projects ordered by created_at with pagination
 
 Underlying database indexing strategy:
+
 - Project titles and descriptions are searched using ILIKE with or() conditions
 - Required skills are stored as an array of records in the projects table; repository filters by required_skills in memory
 - Budget range filtering uses database operators gte/lte
 
 ### Entity Mapping
+
 - mapProjectFromEntity(entity) converts repository entities to API models
 - Project model includes id, employerId, title, description, requiredSkills, budget, deadline, status, milestones, createdAt, updatedAt
 
 ### Practical Examples
+
 - Search by keyword:
   - GET /api/search/projects?keyword=web%20development
 - Filter by skill IDs:
@@ -992,10 +1075,12 @@ Underlying database indexing strategy:
   - GET /api/search/projects?keyword=react&skills=10,15&minBudget=1000&maxBudget=10000&pageSize=20&continuationToken=20
 
 Notes:
+
 - pageSize defaults to 20 and is capped at 100
 - continuationToken is parsed as an integer offset
 
 ## Dependency Analysis
+
 ```mermaid
 graph LR
 Routes["search-routes.ts"] --> Service["search-service.ts"]
@@ -1007,6 +1092,7 @@ App["app.ts"] --> Routes
 ```
 
 ## Performance Considerations
+
 - Single-filter optimization:
   - Keyword search uses database ILIKE with or() conditions
   - Skills filter uses database query and in-memory filtering
@@ -1022,7 +1108,9 @@ App["app.ts"] --> Routes
   - Cache frequently accessed keyword lists and skill IDs where appropriate
 
 ## Troubleshooting Guide
+
 Common validation errors:
+
 - Invalid numeric parameters:
   - minBudget or maxBudget must be valid numbers; otherwise returns 400 with VALIDATION_ERROR
 - Invalid pageSize:
@@ -1034,6 +1122,7 @@ Common validation errors:
   - Requests include X-Request-ID for tracing; CORS policies vary by environment
 
 ## Conclusion
+
 The GET /api/search/projects endpoint provides flexible project discovery with keyword, skills, and budget filters. It enforces JWT authentication, validates numeric parameters, and supports pagination via pageSize and continuationToken. The service optimizes single-filter queries at the database level while falling back to in-memory filtering for multi-criteria. For large-scale deployments, consider enhancing database indexing and caching strategies to improve performance under multi-filter workloads.
 
 ---

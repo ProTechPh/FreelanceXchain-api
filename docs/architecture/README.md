@@ -26,7 +26,7 @@ Routes → Services → Repositories → PostgreSQL / Appwrite
 ### Key Components
 
 | Layer | Responsibility |
-|-------|---------------|
+| ------- | --------------- |
 | **Routes** | HTTP endpoints, request validation, authentication |
 | **Services** | Business logic, orchestration, external integrations |
 | **Repositories** | Data access, query optimization, persistence |

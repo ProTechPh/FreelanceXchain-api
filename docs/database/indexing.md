@@ -1,6 +1,7 @@
 # Indexing Strategy
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Indexing Strategy Overview](#indexing-strategy-overview)
 3. [Core Indexes and Query Patterns](#core-indexes-and-query-patterns)
@@ -10,6 +11,7 @@
 7. [Conclusion](#conclusion)
 
 ## Introduction
+
 The FreelanceXchain platform implements a comprehensive indexing strategy to optimize database query performance across its core entities. This document details the indexing approach used in the Appwrite PostgreSQL database, focusing on how indexes support common query patterns in the freelance marketplace. The indexing strategy balances read performance optimization with write overhead considerations, ensuring efficient data retrieval for user-facing operations while maintaining data integrity and write performance.
 
 ## Indexing Strategy Overview
@@ -106,6 +108,7 @@ USER ||--o{ REVIEW : "gives_or_receives"
 The indexing strategy targets the most common query patterns in the FreelanceXchain application, with indexes created on foreign keys and frequently filtered columns. Each index supports specific business operations and API endpoints.
 
 ### User and Authentication Indexes
+
 The `idx_users_email` index on the users table enables efficient user lookup during authentication and account management operations. This unique index supports the critical path of user login and session creation.
 
 ```mermaid
@@ -118,6 +121,7 @@ E --> F["Create authentication token"]
 ```
 
 ### Project and Proposal Indexes
+
 The platform implements indexes on foreign keys for projects, proposals, and related entities to support the core marketplace functionality. The `idx_projects_employer_id` index enables efficient retrieval of all projects created by a specific employer, while `idx_proposals_project_id` supports fetching all proposals for a given project.
 
 ```mermaid
@@ -136,6 +140,7 @@ Backend-->>Frontend : Return project proposals
 ```
 
 ### Contract and Transaction Indexes
+
 The indexing strategy includes comprehensive coverage of contract-related entities to support the platform's transactional workflows. Indexes on foreign keys for contracts, disputes, notifications, payments, and messages ensure efficient retrieval of related records for a given contract or user.
 
 ```mermaid
@@ -224,17 +229,20 @@ To ensure the continued effectiveness of the indexing strategy, the following Po
 4. **Index Size Monitoring**: Regularly monitoring the size of indexes helps ensure they remain within acceptable limits and don't consume excessive storage.
 
 Additional indexes might be needed based on evolving query patterns, such as:
+
 - Composite indexes for common multi-column queries
 - Partial indexes for queries that filter on specific subsets of data
 - Indexes on frequently sorted columns when pagination is used
 
 When considering new indexes, the following factors should be evaluated:
+
 - Frequency and importance of the query pattern
 - Selectivity of the indexed column(s)
 - Impact on write performance
 - Storage requirements
 
 ## Conclusion
+
 The FreelanceXchain database indexing strategy effectively optimizes query performance for the platform's core functionality. By focusing on foreign key relationships and common access patterns, the indexes support efficient data retrieval for user-facing operations while maintaining reasonable write performance. The strategy balances read optimization with the inherent trade-offs of index maintenance overhead and storage requirements. Ongoing monitoring using PostgreSQL's built-in tools will ensure the indexing strategy continues to meet the platform's performance needs as usage patterns evolve.
 
 ---

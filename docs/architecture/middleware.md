@@ -1,6 +1,7 @@
 # Middleware & Interceptors
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Middleware Execution Order](#middleware-execution-order)
 3. [Authentication Middleware](#authentication-middleware)
@@ -14,9 +15,11 @@
 11. [Best Practices](#best-practices)
 
 ## Introduction
+
 The middleware layer in FreelanceXchain's Express.js application forms a critical component of the request processing pipeline, providing essential functionality for security, validation, error handling, and observability. This document details the role and implementation of each middleware component, their execution order, and how they contribute to the overall reliability and security of the platform. The middleware architecture follows a layered approach, with security and logging middleware applied globally, while authentication, validation, and rate limiting are applied at both global and route-specific levels.
 
 ## Middleware Execution Order
+
 The middleware execution order in FreelanceXchain follows a specific sequence to ensure proper request processing and error handling. The order is established in the `app.ts` file, where middleware is applied to the Express application in a deliberate sequence:
 
 1. **Security middleware** - Applied first to ensure all requests are subject to security headers, request ID generation, and HTTPS enforcement
@@ -45,6 +48,7 @@ J --> K[Error Response]
 ```
 
 ## Authentication Middleware
+
 The authentication middleware in FreelanceXchain provides JWT verification and role-based access control for protected routes. The middleware consists of two main components: `authMiddleware` for JWT token validation and `requireRole` for role-based access control.
 
 The `authMiddleware` function validates JWT tokens from the Authorization header, checking for proper format and verifying the token's validity through the authentication service. If the token is valid, the user's information is attached to the request object for use by subsequent middleware and route handlers. If the token is invalid or missing, appropriate error responses are returned with standardized error codes.
@@ -69,6 +73,7 @@ end
 ```
 
 ## Validation Middleware
+
 The validation middleware in FreelanceXchain provides comprehensive request schema checking using a custom JSON schema-based validation system. Unlike external libraries like Joi or Zod, the application implements its own validation framework that supports validation of request body, parameters, and query strings against predefined schemas.
 
 The middleware exports a `validate` function that takes a `RequestSchema` object defining the expected structure of the request data. The schema can specify validation rules for strings (min/max length, patterns, formats), numbers (min/max values), arrays (min/max items), and objects (required properties). The validation system also handles type coercion for query parameters, converting string values to appropriate types (numbers, booleans, arrays) based on the schema definition.
@@ -94,6 +99,7 @@ J --> |No| L[Return 400 Response]
 ```
 
 ## Error Handling Middleware
+
 The error handling middleware provides centralized exception processing for the entire application. It catches errors thrown by route handlers and other middleware, standardizing the error response format across the API.
 
 The middleware uses a custom `AppError` class that extends the built-in Error class, adding properties for error code, HTTP status code, and validation details. This allows for consistent error handling and response formatting. The middleware also includes a collection of factory functions for common error types, making it easy to create standardized errors throughout the application.
@@ -116,6 +122,7 @@ end
 ```
 
 ## Request Logger Middleware
+
 The request logger middleware generates audit trails for all incoming requests and outgoing responses. It creates structured JSON logs that include request and response details, enabling monitoring, debugging, and security auditing.
 
 The middleware attaches a unique request ID to each request, either using an existing ID from the `X-Request-ID` header or generating a new UUID. This ID is included in both request and response logs, allowing for easy correlation of related log entries. The request log includes the HTTP method, path, query parameters, and timestamp, while the response log includes the status code, duration, and timestamp.
@@ -123,6 +130,7 @@ The middleware attaches a unique request ID to each request, either using an exi
 The logging is implemented using Node.js console output with JSON.stringify, creating structured logs that can be easily parsed by log aggregation systems. The middleware uses the `res.on('finish')` event to ensure response logging occurs after the response has been sent to the client.
 
 ## Security Middleware
+
 The security middleware implements multiple layers of protection to enhance the application's security posture. It consists of several components that work together to protect against common web vulnerabilities.
 
 The middleware uses Helmet.js to set various HTTP security headers, including Content Security Policy (CSP), XSS filter, HSTS, and others. The CSP is configured to allow content only from trusted sources, preventing XSS attacks. The middleware also includes request ID generation, HTTPS enforcement in production, and CORS configuration with restricted origins.
@@ -148,9 +156,11 @@ end
 ```
 
 ## Rate Limiter Middleware
+
 The rate limiter middleware prevents abuse of the API by limiting the number of requests a client can make within a specified time window. It implements a memory-based rate limiting system using a Map to store request counts and reset times for each client.
 
 The middleware provides three preset rate limiters:
+
 - `authRateLimiter`: Limits authentication attempts to 10 per 15 minutes
 - `apiRateLimiter`: Limits API requests to 100 per minute
 - `sensitiveRateLimiter`: Limits sensitive operations to 5 per hour
@@ -170,9 +180,11 @@ F --> G[Return 429 Response]
 ```
 
 ## Custom Middleware Creation
+
 Creating custom middleware in FreelanceXchain follows the standard Express.js middleware pattern. Middleware functions take three parameters: request, response, and next, and can perform any processing before calling next() to continue the middleware chain.
 
 To create custom middleware, developers should:
+
 1. Define a function that accepts Request, Response, and NextFunction parameters
 2. Perform the desired processing (validation, logging, transformation, etc.)
 3. Call next() to continue the chain, or send a response to terminate it
@@ -181,6 +193,7 @@ To create custom middleware, developers should:
 Custom middleware can be route-specific or added to the global middleware chain in app.ts. The middleware system is designed to be extensible, allowing new middleware to be added without modifying existing code.
 
 ## Performance Implications
+
 The middleware chaining in FreelanceXchain has several performance implications that should be considered:
 
 1. **Execution Overhead**: Each middleware function adds processing time to the request-response cycle. The current implementation has minimal overhead as most middleware performs simple operations.
@@ -196,6 +209,7 @@ The middleware chaining in FreelanceXchain has several performance implications 
 The middleware order is optimized to minimize unnecessary processing - security and logging occur early, while more expensive operations like authentication and validation occur only when necessary.
 
 ## Best Practices
+
 The middleware implementation in FreelanceXchain follows several best practices for Express.js applications:
 
 1. **Standardized Error Handling**: Use the centralized error handling middleware for all errors to ensure consistent response formats.

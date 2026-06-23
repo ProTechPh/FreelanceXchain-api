@@ -1,6 +1,7 @@
 # Contract API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [API Endpoints](#api-endpoints)
 3. [Contract Schema](#contract-schema)
@@ -11,21 +12,25 @@
 8. [Error Handling](#error-handling)
 
 ## Introduction
+
 The Contract API provides read-only access to contract data within the FreelanceXchain system. Contracts are created when a proposal is accepted and represent formal agreements between freelancers and employers for project work. This API allows users to retrieve their contract history and view detailed contract information. All endpoints require JWT authentication and are designed to be read-only, with contract creation handled through the proposal acceptance workflow.
 
 ## API Endpoints
 
 ### List User Contracts
+
 Retrieves all contracts for the authenticated user (as either freelancer or employer).
 
 **HTTP Method**: GET  
 **URL Pattern**: `/api/contracts`  
 **Authentication**: JWT (Bearer token)  
 **Parameters**:
+
 - `limit` (integer, optional): Number of results per page (default: 20)
 - `continuationToken` (string, optional): Token for pagination
 
 **Response**:
+
 ```json
 {
   "items": [
@@ -48,19 +53,23 @@ Retrieves all contracts for the authenticated user (as either freelancer or empl
 ```
 
 **Status Codes**:
+
 - 200: Contracts retrieved successfully
 - 401: Unauthorized (missing or invalid JWT)
 
 ### Get Contract Details
+
 Retrieves details of a specific contract.
 
 **HTTP Method**: GET  
 **URL Pattern**: `/api/contracts/{id}`  
 **Authentication**: JWT (Bearer token)  
 **Path Parameters**:
+
 - `id` (string, required): Contract ID (UUID)
 
 **Response**:
+
 ```json
 {
   "id": "string",
@@ -77,12 +86,14 @@ Retrieves details of a specific contract.
 ```
 
 **Status Codes**:
+
 - 200: Contract retrieved successfully
 - 400: Invalid UUID format
 - 401: Unauthorized (missing or invalid JWT)
 - 404: Contract not found
 
 ## Contract Schema
+
 The contract object represents a formal agreement between a freelancer and employer for project work. Contracts are created when a proposal is accepted and contain references to the associated project, proposal, and parties involved.
 
 ```json
@@ -101,6 +112,7 @@ The contract object represents a formal agreement between a freelancer and emplo
 ```
 
 **Field Descriptions**:
+
 - `id`: Unique identifier for the contract (UUID)
 - `projectId`: Reference to the associated project
 - `proposalId`: Reference to the accepted proposal that created this contract
@@ -113,6 +125,7 @@ The contract object represents a formal agreement between a freelancer and emplo
 - `updatedAt`: Timestamp when the contract was last updated
 
 ## Contract Status Lifecycle
+
 Contracts progress through a defined status lifecycle that governs their state transitions. The valid statuses are: `active`, `completed`, `disputed`, and `cancelled`.
 
 ```mermaid
@@ -129,12 +142,14 @@ cancelled --> [*]
 ```
 
 **State Transition Rules**:
+
 - From `active`: Can transition to `completed`, `disputed`, or `cancelled`
 - From `disputed`: Can transition to `active`, `completed`, or `cancelled`
 - From `completed`: No further transitions allowed
 - From `cancelled`: No further transitions allowed
 
 ## Relationships Between Contracts, Proposals, and Projects
+
 Contracts are created through a workflow that begins with project creation, followed by proposal submission, and finalized by proposal acceptance. This creates a hierarchical relationship between these entities.
 
 ```mermaid
@@ -172,6 +187,7 @@ PROJECT ||--o{ CONTRACT : "has"
 ```
 
 **Workflow**:
+
 1. Employer creates a project
 2. Freelancer submits a proposal for the project
 3. Employer accepts the proposal
@@ -179,6 +195,7 @@ PROJECT ||--o{ CONTRACT : "has"
 5. Contract status is set to `active` and escrow is established
 
 ## Blockchain Escrow Integration
+
 Each contract is linked to a blockchain escrow address where funds are held securely. The escrow contract manages fund release according to milestone completion.
 
 ```mermaid
@@ -202,6 +219,7 @@ Blockchain-->>Freelancer : Funds Released
 ```
 
 **Key Points**:
+
 - Escrow address is stored in the contract's `escrowAddress` field
 - Funds are deposited by the employer to the escrow address
 - Payments are released to the freelancer upon milestone approval
@@ -210,6 +228,7 @@ Blockchain-->>Freelancer : Funds Released
 ## Client Implementation Examples
 
 ### Retrieve User's Contract History
+
 ```javascript
 // Example using fetch API
 async function getUserContracts(limit = 20, continuationToken = null) {
@@ -239,6 +258,7 @@ console.log('Has more:', contractsData.hasMore);
 ```
 
 ### Display Specific Contract Details
+
 ```javascript
 // Example using async/await
 async function getContractDetails(contractId) {
@@ -270,9 +290,11 @@ try {
 ```
 
 ## Error Handling
+
 The Contract API follows a consistent error response format for all endpoints.
 
 **Error Response Format**:
+
 ```json
 {
   "error": {
@@ -285,6 +307,7 @@ The Contract API follows a consistent error response format for all endpoints.
 ```
 
 **Common Error Codes**:
+
 - `AUTH_UNAUTHORIZED`: User not authenticated (401)
 - `NOT_FOUND`: Contract not found (404)
 - `INVALID_UUID_FORMAT`: Invalid UUID format (400)

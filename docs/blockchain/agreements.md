@@ -1,6 +1,7 @@
 # Contract Agreement
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,10 +14,13 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive documentation for the Contract Agreement system that formalizes freelance engagements on-chain. It covers the Solidity smart contract that stores agreement terms and signatures, the agreement-contract service that orchestrates blockchain interactions, and the integration with the backend contract-service for synchronized state between blockchain and database records. It also documents the agreement lifecycle, security measures, and operational guidance for creating and updating agreements, including error recovery and audit logging practices.
 
 ## Project Structure
+
 The Contract Agreement system spans a Solidity smart contract and a TypeScript backend service layer:
+
 - Solidity contract: stores immutable agreement metadata and status on-chain
 - Backend services: manage blockchain transactions, state synchronization, and API exposure
 - Database: persists contract entities and status transitions
@@ -48,6 +52,7 @@ ENV --> BC
 ```
 
 ## Core Components
+
 - ContractAgreement.sol: On-chain storage of agreement terms hash, party identifiers, amounts, milestone counts, and status. Provides functions to create, sign, complete, dispute, and cancel agreements, with events for lifecycle tracking.
 - agreement-contract.ts: Off-chain service that computes hashes, submits transactions, confirms receipts, and maintains an in-memory ledger of agreements for simulation. Exposes functions to create, sign, complete, dispute, and query agreements.
 - blockchain-client.ts: Transaction submission, polling, and confirmation utilities with simulated blockchain behavior; serializes/deserializes transactions for JSON transport.
@@ -56,7 +61,9 @@ ENV --> BC
 - env.ts: Blockchain configuration for RPC URL and private key.
 
 ## Architecture Overview
+
 The system separates on-chain immutability from off-chain orchestration:
+
 - On-chain: ContractAgreement.sol stores immutable terms hash and status, emits events for lifecycle changes.
 - Off-chain: agreement-contract.ts orchestrates transaction submission and confirmation, computes hashes, and updates an in-memory ledger.
 - Database: contract-service.ts manages contract entities and status transitions, synchronized with blockchain via the agreement-contract service.
@@ -81,6 +88,7 @@ Routes-->>Client : 200 OK
 ## Detailed Component Analysis
 
 ### ContractAgreement.sol
+
 - Purpose: Immutable on-chain storage of agreement metadata and status.
 - Key data:
   - contractIdHash: Hash of off-chain contract identifier
@@ -135,6 +143,7 @@ class ContractAgreement {
 ```
 
 ### Agreement-Contract Service (agreement-contract.ts)
+
 - Responsibilities:
   - Compute contractIdHash and termsHash using SHA-256
   - Submit transactions to the agreement contract address
@@ -168,6 +177,7 @@ Note over Service,Contract : On-chain createAgreement(...) invoked via submitTra
 ```
 
 ### Blockchain Client (blockchain-client.ts)
+
 - Transaction lifecycle:
   - submitTransaction: creates and stores a transaction, assigns a hash, simulates pending confirmation
   - pollTransactionStatus: polls until confirmed or failed
@@ -197,6 +207,7 @@ Error --> End
 ```
 
 ### Contract-Service and Repository Integration
+
 - contract-service.ts:
   - Provides CRUD-like operations for contracts
   - Enforces status transition rules
@@ -225,6 +236,7 @@ Routes-->>Client : 200 OK
 ```
 
 ### Agreement Lifecycle and Workflows
+
 - Creation:
   - Off-chain: agreement-contract.ts computes hashes and submits create_agreement transaction
   - On-chain: ContractAgreement.sol stores metadata and sets status to Pending
@@ -249,6 +261,7 @@ Disputed --> Cancelled : "resolution cancelled"
 ```
 
 ### Security Aspects
+
 - Signature Validation:
   - Terms integrity: verifyTerms compares computed termsHash with stored hash
   - Fully signed: isFullySigned ensures both parties signed
@@ -271,6 +284,7 @@ Invalid --> End
 ```
 
 ### Gas Management and Transaction Confirmation
+
 - Gas usage:
   - Receipts include gasUsed; off-chain service captures and returns gasUsed in TransactionReceipt
 - Confirmation handling:
@@ -280,6 +294,7 @@ Invalid --> End
   - env.ts provides blockchain.rpcUrl and blockchain.privateKey for client configuration
 
 ### Integration Between Agreement-Contract Service and Database
+
 - Off-chain to on-chain:
   - agreement-contract.ts submits transactions with action payloads; ContractAgreement.sol executes state changes
 - On-chain to database:
@@ -289,6 +304,7 @@ Invalid --> End
   - Off-chain receipts include transactionHash, blockNumber, gasUsed, and timestamps for traceability
 
 ## Dependency Analysis
+
 - Solidity contract depends on:
   - No external libraries; uses standard Solidity constructs
 - Off-chain services depend on:
@@ -310,6 +326,7 @@ ENV["env.ts"] --> BC
 ```
 
 ## Performance Considerations
+
 - Transaction throughput:
   - Off-chain simulation uses in-memory stores; production blockchain will introduce latency and gas costs
 - Hash computation:
@@ -320,6 +337,7 @@ ENV["env.ts"] --> BC
   - Batch operations are not implemented; keep transaction payloads minimal to reduce gas usage
 
 ## Troubleshooting Guide
+
 - Transaction not found:
   - pollTransactionStatus returns failed with error when transaction ID is missing
 - Transaction failed on chain:
@@ -334,6 +352,7 @@ ENV["env.ts"] --> BC
   - contract-service.ts validates allowed transitions and returns structured errors
 
 ## Conclusion
+
 The Contract Agreement system combines on-chain immutability with off-chain orchestration to manage freelance engagements securely and transparently. The Solidity contract stores immutable terms and status, while the agreement-contract service coordinates transactions and maintains an in-memory ledger for simulation. The contract-service and repository layers handle database persistence and status transitions, enabling a robust, auditable workflow. Security is enforced through signature validation, authorization modifiers, and replay-prevention via transaction lifecycle management.
 
 ## Appendices
@@ -341,6 +360,7 @@ The Contract Agreement system combines on-chain immutability with off-chain orch
 ### Example Workflows
 
 #### Agreement Creation Flow
+
 - Off-chain:
   - agreement-contract.ts computes contractIdHash and termsHash
   - submitTransaction sends create_agreement payload
@@ -350,6 +370,7 @@ The Contract Agreement system combines on-chain immutability with off-chain orch
   - ContractAgreement.sol stores metadata and emits AgreementCreated event
 
 #### Agreement Acceptance Workflow
+
 - Off-chain:
   - signAgreement invoked by freelancer
   - submitTransaction sends sign_agreement payload
@@ -359,6 +380,7 @@ The Contract Agreement system combines on-chain immutability with off-chain orch
   - ContractAgreement.sol updates timestamps and status, emits AgreementSigned event
 
 #### Agreement Completion Workflow
+
 - Off-chain:
   - completeAgreement invoked by employer or owner
   - submitTransaction sends complete_agreement payload
@@ -367,6 +389,7 @@ The Contract Agreement system combines on-chain immutability with off-chain orch
   - ContractAgreement.sol sets status to Completed and emits AgreementCompleted event
 
 #### Agreement Dispute Workflow
+
 - Off-chain:
   - disputeAgreement invoked by either party
   - submitTransaction sends dispute_agreement payload
@@ -375,6 +398,7 @@ The Contract Agreement system combines on-chain immutability with off-chain orch
   - ContractAgreement.sol sets status to Disputed and emits AgreementDisputed event
 
 ### Audit Logging Practices
+
 - Off-chain receipts capture:
   - transactionHash, blockNumber, gasUsed, timestamp
 - On-chain events:

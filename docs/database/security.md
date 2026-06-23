@@ -1,6 +1,7 @@
 # Security Documentation
 
 ## Table of Contents
+
 1. [Security Overview](#security-documentation)
 2. [API Security Measures](#api-security-measures)
 3. [Authentication Security](#authentication-security)
@@ -40,6 +41,7 @@ Comprehensive security implementation, best practices, and compliance documentat
 # API Security Measures
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [HTTP Header Hardening with Helmet.js](#http-header-hardening-with-helmetjs)
 3. [Rate Limiting and DDoS Protection](#rate-limiting-and-ddos-protection)
@@ -51,9 +53,11 @@ Comprehensive security implementation, best practices, and compliance documentat
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 The FreelanceXchain API implements a comprehensive security framework to protect against common web vulnerabilities and ensure data integrity. The security architecture is built around several key components: HTTP header hardening using Helmet.js, rate limiting to prevent abuse, robust input validation, standardized error handling, and strict CORS policies. These measures work together to create a secure environment for users to conduct freelance transactions on the blockchain-based platform. The implementation follows industry best practices and addresses multiple OWASP Top 10 vulnerabilities through proactive security controls.
 
 ## HTTP Header Hardening with Helmet.js
+
 The FreelanceXchain API employs Helmet.js middleware to enhance security through HTTP header configuration. This approach mitigates several common web vulnerabilities by setting appropriate security headers that browsers and clients will respect. The security headers are implemented as middleware in the application stack, ensuring they are applied to all responses.
 
 The Content Security Policy (CSP) is configured with a restrictive directive set that limits content sources to the same origin by default. The policy allows scripts from the same origin and includes 'unsafe-inline' to accommodate Swagger UI functionality and Appwrite integration. The connect-src directive specifically permits connections to the Appwrite database, ensuring secure data access while preventing unauthorized external connections.
@@ -84,6 +88,7 @@ P --> Q[Client]
 ```
 
 The implementation includes several key security headers:
+
 - **X-Frame-Options**: Set to 'DENY' to prevent clickjacking attacks by disallowing the page from being framed
 - **X-Content-Type-Options**: Set to 'nosniff' to prevent MIME type sniffing and potential content injection attacks
 - **X-XSS-Protection**: Enabled to leverage browser XSS filters for additional client-side protection
@@ -94,6 +99,7 @@ The implementation includes several key security headers:
 Additionally, the security middleware includes request ID generation using UUID v4, which provides unique identifiers for each request to facilitate logging and debugging while maintaining security. The request ID is generated if not provided in the headers, ensuring consistent tracking across the system.
 
 ## Rate Limiting and DDoS Protection
+
 FreelanceXchain implements a comprehensive rate limiting system to prevent abuse and protect against DDoS attacks. The rate limiting middleware is designed to control the number of requests a client can make within a specified time window, effectively mitigating brute force attacks, credential stuffing, and service exhaustion attacks.
 
 The rate limiting system is implemented through a custom middleware that tracks request counts per client IP address using in-memory stores. The implementation provides different rate limiting profiles for various types of endpoints based on their sensitivity and usage patterns:
@@ -122,6 +128,7 @@ N --> R[API Processing]
 ```
 
 The system implements three primary rate limiting configurations:
+
 - **Authentication Rate Limiter**: Limits authentication attempts to 10 per 15 minutes per IP address, preventing brute force attacks on login endpoints
 - **API Rate Limiter**: Allows 100 requests per minute per IP address for general API usage, balancing accessibility with protection against abuse
 - **Sensitive Operations Rate Limiter**: Restricts sensitive operations to 5 attempts per hour, providing additional protection for high-risk endpoints
@@ -129,6 +136,7 @@ The system implements three primary rate limiting configurations:
 The rate limiter uses the client's IP address as the identifier, extracting it from the X-Forwarded-For header when behind a proxy or using the direct IP otherwise. When a client exceeds the rate limit, the system returns a 429 Too Many Requests response with a Retry-After header indicating when the client can retry, providing clear feedback while enforcing the limits.
 
 ## Input Validation and Data Integrity
+
 The FreelanceXchain API implements robust input validation to prevent injection attacks and ensure data integrity. The validation system is built around JSON schema-based validation that provides field-specific error reporting and comprehensive data type checking.
 
 The validation middleware supports validation of request bodies, URL parameters, and query parameters through a flexible schema system. Each schema defines the expected structure, data types, and constraints for the input data. The system performs type validation, length checks, pattern matching, format validation, and custom business rule enforcement.
@@ -158,6 +166,7 @@ G --> |Yes| P[Process Request]
 ```
 
 The validation system includes specific schemas for critical data types:
+
 - **KYC Data Validation**: Ensures personal information such as names, dates of birth, and addresses meet format requirements and length constraints
 - **Contract Data Validation**: Validates financial amounts, dates, and milestone structures to prevent invalid contract creation
 - **Authentication Data**: Validates email formats, password strength requirements, and role specifications
@@ -167,6 +176,7 @@ The validation system includes specific schemas for critical data types:
 The system also includes specialized validation functions for UUID parameters, ensuring that all identifier-based requests use properly formatted UUIDs. This prevents injection attacks and ensures data integrity across the system. Validation errors are returned in a standardized format with field-specific details, allowing clients to correct input issues without exposing sensitive system information.
 
 ## Error Handling Standardization
+
 FreelanceXchain implements a standardized error handling system that provides consistent error responses across all API endpoints. The error handling framework ensures that clients receive meaningful error information while preventing the exposure of sensitive system details.
 
 The system uses a custom AppError class that standardizes error codes, messages, and HTTP status codes. This approach provides a consistent interface for error handling throughout the application and ensures that all errors are properly formatted and categorized.
@@ -198,6 +208,7 @@ J --> Q[Client Response]
 ```
 
 The standardized error response format includes:
+
 - **Error Code**: A machine-readable code such as VALIDATION_ERROR, UNAUTHORIZED, or FORBIDDEN
 - **Message**: A human-readable description of the error
 - **Details**: Field-specific validation errors when applicable
@@ -205,6 +216,7 @@ The standardized error response format includes:
 - **Request ID**: The unique identifier for the request, facilitating debugging
 
 The system defines specific error codes for common scenarios:
+
 - **VALIDATION_ERROR**: For input validation failures, with detailed field-level error information
 - **UNAUTHORIZED**: When authentication is required but missing or invalid
 - **FORBIDDEN**: When the authenticated user lacks permission for the requested action
@@ -215,6 +227,7 @@ The system defines specific error codes for common scenarios:
 This standardized approach ensures that clients can programmatically handle errors while maintaining security by not exposing implementation details.
 
 ## CORS Configuration and CSRF Protection
+
 The FreelanceXchain API implements strict CORS (Cross-Origin Resource Sharing) policies to control which domains can access the API. The configuration prevents unauthorized domains from making requests to the API, mitigating cross-site request forgery (CSRF) risks and protecting user data.
 
 The CORS middleware is configured with a whitelist of allowed origins, restricting access to trusted domains only. In production, the allowed origins are defined by the CORS_ORIGIN environment variable, while development environments allow localhost domains by default.
@@ -243,6 +256,7 @@ O --> P
 ```
 
 The CORS configuration includes:
+
 - **Allowed Origins**: Restricted to domains specified in the CORS_ORIGIN environment variable in production, with localhost allowed in development
 - **Allowed Methods**: GET, POST, PUT, PATCH, DELETE, and OPTIONS
 - **Allowed Headers**: Content-Type, Authorization, and X-Request-ID
@@ -250,15 +264,18 @@ The CORS configuration includes:
 - **Wildcard Subdomain Support**: Allows origins like *.example.com through pattern matching
 
 The system also includes protection against CSRF attacks through multiple mechanisms:
+
 - **SameSite Cookies**: Not explicitly shown but implied by secure authentication practices
 - **CSRF Tokens**: Implemented through the JWT-based authentication system
 - **Origin Validation**: Strict origin checking prevents unauthorized domains from making requests
 - **Authentication Requirements**: Sensitive operations require valid authentication tokens
 
 ## Secured Endpoint Examples
+
 The FreelanceXchain API demonstrates its security measures through various secured endpoints that implement the comprehensive security framework. These endpoints showcase the integration of multiple security layers to protect sensitive operations.
 
 ### Authentication Endpoint Security
+
 The authentication endpoints implement multiple security controls to protect user credentials and prevent abuse:
 
 ```mermaid
@@ -286,12 +303,14 @@ Response->>Client : 429 Too Many Requests
 ```
 
 The `/api/auth/login` endpoint combines rate limiting, input validation, and authentication security:
+
 - Applies the authRateLimiter (10 attempts per 15 minutes)
 - Validates email format and password presence
 - Returns standardized error responses
 - Uses HTTPS enforcement and security headers
 
 ### KYC Verification Endpoint Security
+
 The KYC (Know Your Customer) endpoints implement stringent security measures for identity verification:
 
 ```mermaid
@@ -320,12 +339,14 @@ Response->>Client : 401 Unauthorized
 ```
 
 The KYC submission endpoint demonstrates:
+
 - JWT authentication requirement
 - Comprehensive input validation for personal and document information
 - Prevention of duplicate submissions
 - Standardized error responses with appropriate status codes
 
 ### Contract Access Endpoint Security
+
 The contract endpoints implement role-based access control and parameter validation:
 
 ```mermaid
@@ -352,16 +373,20 @@ Response->>Client : 401 Unauthorized
 ```
 
 The contract retrieval endpoint shows:
+
 - Authentication requirement
 - UUID parameter validation
 - Business logic validation (user ownership)
 - Proper error handling for various scenarios
 
 ## OWASP Top 10 Mitigation
+
 The FreelanceXchain API security measures effectively mitigate multiple OWASP Top 10 vulnerabilities through its comprehensive security framework.
 
 ### Injection Prevention
+
 The system prevents injection attacks through rigorous input validation and parameterized operations:
+
 - **SQL Injection**: Prevented by using Appwrite with parameterized queries and input validation
 - **NoSQL Injection**: Mitigated through schema validation and type checking
 - **Command Injection**: Prevented by avoiding system command execution
@@ -370,7 +395,9 @@ The system prevents injection attacks through rigorous input validation and para
 The validation middleware ensures that all input data is properly typed and conforms to expected formats, eliminating opportunities for injection attacks. String inputs are validated against patterns, and all data types are explicitly checked before processing.
 
 ### Broken Authentication Protection
+
 The authentication system implements multiple controls to prevent broken authentication vulnerabilities:
+
 - **Rate Limiting**: authRateLimiter prevents brute force attacks with 10 attempts per 15 minutes
 - **Strong Password Policies**: Password strength validation enforces minimum length and complexity
 - **Secure Token Management**: JWT tokens with refresh tokens and proper expiration
@@ -378,7 +405,9 @@ The authentication system implements multiple controls to prevent broken authent
 - **Credential Recovery**: Secure password reset with token-based verification
 
 ### Sensitive Data Exposure Prevention
+
 The API protects sensitive data through multiple mechanisms:
+
 - **HTTPS Enforcement**: All production traffic is redirected to HTTPS with HSTS
 - **Data Minimization**: Only necessary data is exposed in API responses
 - **Secure Headers**: Information-hiding headers prevent technology disclosure
@@ -386,58 +415,74 @@ The API protects sensitive data through multiple mechanisms:
 - **CORS Restrictions**: Prevent unauthorized domains from accessing data
 
 ### XML External Entities (XXE) Prevention
+
 The system mitigates XXE risks by:
+
 - **Not accepting XML input**: The API primarily uses JSON, eliminating XML parsing risks
 - **Secure Body Parsing**: Express body parsers are configured securely
 - **Input Validation**: All input is validated against schemas before processing
 
 ### Broken Access Control Mitigation
+
 Access control vulnerabilities are addressed through:
+
 - **Role-Based Access Control**: requireRole middleware enforces role permissions
 - **Ownership Verification**: Business logic checks ensure users can only access their data
 - **Parameter Validation**: UUID validation prevents ID enumeration attacks
 - **Authentication Enforcement**: authMiddleware required for protected endpoints
 
 ### Security Misconfiguration Prevention
+
 The system avoids security misconfigurations by:
+
 - **Secure Defaults**: Development environments have appropriate security settings
 - **Header Hardening**: Helmet.js sets secure HTTP headers by default
 - **Error Handling**: Generic error messages in production
 - **Dependency Management**: Regular updates and security audits
 
 ### Cross-Site Scripting (XSS) Protection
+
 XSS vulnerabilities are mitigated through:
+
 - **Content Security Policy**: Restrictive CSP prevents unauthorized script execution
 - **XSS Filter**: Browser XSS filters are enabled
 - **Input Validation**: All input is validated and sanitized
 - **Output Encoding**: Not explicitly shown but implied by secure framework usage
 
 ### Insecure Deserialization Prevention
+
 The system prevents insecure deserialization by:
+
 - **Using JSON**: Standard JSON parsing with type validation
 - **Schema Validation**: Input is validated against schemas before use
 - **Avoiding Object Deserialization**: No direct object deserialization from user input
 
 ### Using Components with Known Vulnerabilities
+
 The project mitigates this risk by:
+
 - **Regular Updates**: Dependencies are kept up-to-date
 - **Security Audits**: Regular vulnerability scanning
 - **Minimal Dependencies**: Only necessary packages are included
 - **Version Pinning**: Specific versions are used to prevent unexpected updates
 
 ### Insufficient Logging & Monitoring
+
 The system addresses logging and monitoring through:
+
 - **Request IDs**: Unique identifiers for tracking requests
 - **Structured Logging**: Consistent error formats with timestamps
 - **Rate Limit Tracking**: Monitoring for potential abuse
 - **Error Logging**: Unexpected errors are logged for investigation
 
 ## Conclusion
+
 The FreelanceXchain API implements a robust security framework that effectively protects against common web vulnerabilities and ensures data integrity. The multi-layered approach combines HTTP header hardening, rate limiting, comprehensive input validation, standardized error handling, and strict CORS policies to create a secure environment for users.
 
 The security measures address multiple OWASP Top 10 vulnerabilities through proactive controls, including protection against injection attacks, broken authentication, sensitive data exposure, and broken access control. The implementation follows industry best practices and provides a solid foundation for a secure blockchain-based freelance platform.
 
 Key strengths of the security implementation include:
+
 - **Layered Defense**: Multiple security controls work together to provide comprehensive protection
 - **Standardization**: Consistent error handling and response formats improve security and usability
 - **Proactive Prevention**: Security measures are implemented at the framework level, ensuring consistent application
@@ -450,6 +495,7 @@ The documented security measures demonstrate a mature approach to API security t
 # Authentication Security
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Authentication Flow Overview](#authentication-flow-overview)
 3. [Token Management](#token-management)
@@ -462,9 +508,11 @@ The documented security measures demonstrate a mature approach to API security t
 10. [Security Best Practices](#security-best-practices)
 
 ## Introduction
+
 The FreelanceXchain authentication security system implements a robust JWT-based authentication mechanism with comprehensive security measures. This documentation details the authentication flow, token management, error handling, and integration with Appwrite authentication. The system provides secure access control for freelancers, employers, and administrators in the blockchain-based freelance marketplace.
 
 ## Authentication Flow Overview
+
 The authentication system in FreelanceXchain follows a standard JWT-based flow with access and refresh tokens. The process begins with user registration or login, followed by token issuance and validation for subsequent requests. The system supports both traditional email/password authentication and OAuth-based authentication through various providers including Google, GitHub, Azure, and LinkedIn.
 
 The authentication flow is protected by rate limiting to prevent brute force attacks, with different limits for various operations. The system enforces HTTPS in production environments and implements comprehensive security headers to protect against common web vulnerabilities.
@@ -487,16 +535,21 @@ Server-->>Client : Process request or return error
 ```
 
 ## Token Management
+
 FreelanceXchain implements a dual-token system with access tokens and refresh tokens, each with different expiration policies and security characteristics.
 
 ### Access Tokens
+
 Access tokens have a short lifespan of 1 hour (configurable via JWT_EXPIRES_IN environment variable) to minimize the window of opportunity for token theft. These tokens are used to authenticate API requests and contain essential user information in their payload.
 
 ### Refresh Tokens
+
 Refresh tokens have a longer lifespan of 7 days (configurable via JWT_REFRESH_EXPIRES_IN environment variable) and are used to obtain new access tokens when they expire. Refresh tokens are stored securely and can be revoked when necessary.
 
 ### Token Payload Structure
+
 The JWT token payload contains the following claims:
+
 - userId: User's unique identifier (UUID)
 - email: User's email address
 - role: User's role (freelancer, employer, or admin)
@@ -506,16 +559,20 @@ The JWT token payload contains the following claims:
 The token secrets are configured in the environment variables JWT_SECRET for access tokens and JWT_REFRESH_SECRET (defaults to JWT_SECRET if not specified) for refresh tokens.
 
 ## Authentication Middleware
+
 The authentication middleware in FreelanceXchain performs comprehensive validation of incoming requests to ensure secure access to protected routes.
 
 ### Bearer Token Validation
+
 The authMiddleware function validates the Authorization header according to the Bearer token format:
+
 1. Checks for the presence of the Authorization header
 2. Validates that the header follows the format "Bearer <token>"
 3. Extracts and validates the JWT token
 4. Extends the Express Request object with user information upon successful validation
 
 The middleware returns specific error codes for different validation failures:
+
 - AUTH_MISSING_TOKEN: When the Authorization header is absent
 - AUTH_INVALID_FORMAT: When the header format is incorrect
 - AUTH_TOKEN_EXPIRED: When the token has expired
@@ -548,10 +605,13 @@ NextMiddleware --> End
 ```
 
 ## Error Handling
+
 The authentication system implements comprehensive error handling with standardized error responses for different failure scenarios.
 
 ### Authentication Error Types
+
 The system defines several authentication-specific error codes:
+
 - AUTH_MISSING_TOKEN: Authorization header is required
 - AUTH_INVALID_FORMAT: Authorization header must be in format: Bearer <token>
 - AUTH_TOKEN_EXPIRED: JWT token has expired
@@ -561,7 +621,9 @@ The system defines several authentication-specific error codes:
 - AUTH_REQUIRE_REGISTRATION: User registration required for OAuth users
 
 ### Error Response Structure
+
 All authentication errors follow a consistent JSON response structure:
+
 ```json
 {
   "error": {
@@ -576,16 +638,21 @@ All authentication errors follow a consistent JSON response structure:
 The error handling is implemented in both the authMiddleware and the authService, with specific error codes mapped to appropriate HTTP status codes (401 for authentication errors, 403 for authorization errors).
 
 ## Security Implementation
+
 FreelanceXchain implements multiple layers of security to protect the authentication system and user data.
 
 ### Rate Limiting
+
 The authentication endpoints are protected by rate limiting to prevent brute force attacks:
+
 - authRateLimiter: 10 attempts per 15 minutes for authentication operations
 - sensitiveRateLimiter: 5 attempts per hour for sensitive operations
 - apiRateLimiter: 100 requests per minute for general API usage
 
 ### Security Headers
+
 The system implements comprehensive security headers using the Helmet middleware:
+
 - Content Security Policy (CSP) to prevent XSS attacks
 - HSTS (HTTP Strict Transport Security) to enforce HTTPS
 - X-Frame-Options to prevent clickjacking
@@ -593,6 +660,7 @@ The system implements comprehensive security headers using the Helmet middleware
 - X-Content-Type-Options to prevent MIME type sniffing
 
 ### HTTPS Enforcement
+
 In production environments, the system enforces HTTPS by redirecting HTTP requests to HTTPS. This ensures that all authentication data, including tokens, is transmitted securely.
 
 ```mermaid
@@ -613,22 +681,28 @@ Server-->>Client : AuthResult with tokens
 ```
 
 ## Integration with Appwrite
+
 FreelanceXchain leverages Appwrite authentication for user management while extending it with custom functionality for the freelance marketplace.
 
 ### Appwrite Authentication Flow
+
 The system uses Appwrite Auth for:
+
 - User registration and login
 - Email verification and password reset
 - OAuth integration with external providers
 - Session management
 
 When a user registers or logs in, the system:
+
 1. Authenticates with Appwrite Auth
 2. Creates or updates the user record in the public.users table
 3. Returns custom authentication tokens with additional user data
 
 ### Custom User Data
+
 The system extends Appwrite user metadata with additional fields:
+
 - role: User's role on the platform (freelancer, employer, admin)
 - walletAddress: Ethereum wallet address for blockchain interactions
 - name: User's full name
@@ -636,25 +710,30 @@ The system extends Appwrite user metadata with additional fields:
 This data is stored in both Appwrite Auth metadata and the public.users table for redundancy and performance.
 
 ## Secure Token Storage Recommendations
+
 To ensure the security of authentication tokens, the following storage recommendations should be followed:
 
 ### Client-Side Storage
+
 - **Access Tokens**: Should be stored in memory (JavaScript variables) and not persisted to avoid XSS attacks
 - **Refresh Tokens**: Should be stored in HTTP-only, secure cookies to prevent access via JavaScript
 - **Never store tokens in localStorage or sessionStorage** as they are vulnerable to XSS attacks
 
 ### Transmission Security
+
 - All authentication requests must use HTTPS
 - The Authorization header should only be sent over secure connections
 - Implement HSTS to ensure browsers only connect via HTTPS
 
 ### Token Revocation
+
 - Provide endpoints for token revocation and password changes
 - Invalidate refresh tokens on logout
 - Implement token blacklisting for compromised tokens
 - Rotate refresh tokens on each use to detect token theft
 
 ### Additional Security Measures
+
 - Implement short access token expiration (1 hour)
 - Use long refresh token expiration (7 days) with rotation
 - Validate token signatures using strong cryptographic algorithms
@@ -662,9 +741,11 @@ To ensure the security of authentication tokens, the following storage recommend
 - Monitor for suspicious authentication patterns
 
 ## Authentication Sequence Diagrams
+
 The following sequence diagrams illustrate the key authentication flows in FreelanceXchain.
 
 ### Successful Authentication Flow
+
 ```mermaid
 sequenceDiagram
 participant Client
@@ -686,6 +767,7 @@ Server-->>Client : Process request
 ```
 
 ### Failed Authentication Flow
+
 ```mermaid
 sequenceDiagram
 participant Client
@@ -714,9 +796,11 @@ Server-->>Client : 401 Unauthorized with AUTH_TOKEN_EXPIRED
 ```
 
 ## Security Best Practices
+
 The FreelanceXchain authentication system implements several security best practices to protect user data and prevent common vulnerabilities.
 
 ### Token Security
+
 - Use strong, randomly generated secrets for JWT signing
 - Implement short-lived access tokens (1 hour) to minimize exposure
 - Use longer-lived refresh tokens (7 days) with secure storage
@@ -724,6 +808,7 @@ The FreelanceXchain authentication system implements several security best pract
 - Implement token revocation mechanisms
 
 ### Transmission Security
+
 - Enforce HTTPS in production environments
 - Implement HSTS with long max-age (1 year)
 - Use secure and HTTP-only flags for authentication cookies
@@ -731,6 +816,7 @@ The FreelanceXchain authentication system implements several security best pract
 - Implement Content Security Policy to prevent XSS attacks
 
 ### Input Validation
+
 - Validate email format and password strength on registration
 - Sanitize and validate all input data
 - Implement rate limiting to prevent brute force attacks
@@ -738,6 +824,7 @@ The FreelanceXchain authentication system implements several security best pract
 - Validate OAuth provider names to prevent SSRF attacks
 
 ### Error Handling
+
 - Use generic error messages to avoid information disclosure
 - Include request IDs for debugging without exposing sensitive data
 - Log authentication failures for monitoring and analysis
@@ -745,6 +832,7 @@ The FreelanceXchain authentication system implements several security best pract
 - Distinguish between different error types for appropriate responses
 
 ### Monitoring and Logging
+
 - Log authentication events with request IDs
 - Monitor for suspicious patterns (rapid login attempts, unusual locations)
 - Implement audit trails for security-critical operations
@@ -772,6 +860,7 @@ While JWT tokens in the `Authorization` header are not vulnerable to traditional
 ## Architecture
 
 ### Technology Stack
+
 - **Library**: `csrf-csrf` (double-submit cookie pattern)
 - **Token Storage**: HTTP-only cookie + request header
 - **Session Binding**: IP address + User-Agent combination
@@ -822,12 +911,14 @@ const { csrfProtection, generateToken } = doubleCsrf({
 ### Protected Methods
 
 CSRF validation is enforced for:
+
 - `POST` - Create operations
 - `PUT` - Full update operations
 - `PATCH` - Partial update operations
 - `DELETE` - Delete operations
 
 Exempt methods:
+
 - `GET` - Read operations (idempotent)
 - `HEAD` - Metadata requests
 - `OPTIONS` - CORS preflight requests
@@ -841,6 +932,7 @@ Exempt methods:
 **Description**: Generates and returns a CSRF token for the client session
 
 **Response** (200 OK):
+
 ```json
 {
   "message": "CSRF token generated successfully"
@@ -848,11 +940,13 @@ Exempt methods:
 ```
 
 **Response Headers**:
+
 ```
 Set-Cookie: __Host-csrf-token=<token_value>; HttpOnly; Secure; SameSite=Strict; Path=/
 ```
 
 **Usage**:
+
 ```bash
 curl -X GET https://api.freelancexchain.com/api/auth/csrf-token \
   -c cookies.txt
@@ -987,6 +1081,7 @@ async function makeProtectedRequest(url: string, method: string, data: any) {
 Certain routes are exempt from CSRF validation:
 
 ### Health Checks
+
 ```typescript
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -994,6 +1089,7 @@ app.get('/health', (req, res) => {
 ```
 
 ### OAuth Callbacks
+
 ```typescript
 app.post('/api/auth/callback', (req, res) => {
   // OAuth callback handling
@@ -1001,6 +1097,7 @@ app.post('/api/auth/callback', (req, res) => {
 ```
 
 ### Webhook Endpoints
+
 ```typescript
 app.post('/api/webhooks/stripe', (req, res) => {
   // Webhook signature validation instead
@@ -1008,6 +1105,7 @@ app.post('/api/webhooks/stripe', (req, res) => {
 ```
 
 **Implementation**:
+
 ```typescript
 // In csrf-middleware.ts
 const exemptPaths = [
@@ -1034,6 +1132,7 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
 ### Invalid CSRF Token
 
 **Response** (403 Forbidden):
+
 ```json
 {
   "error": {
@@ -1046,6 +1145,7 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
 ```
 
 **Common Causes**:
+
 - Missing `X-CSRF-Token` header
 - Token mismatch between cookie and header
 - Expired or invalid token
@@ -1054,6 +1154,7 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
 ### Missing CSRF Token
 
 **Response** (403 Forbidden):
+
 ```json
 {
   "error": {
@@ -1070,22 +1171,26 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
 ## Security Considerations
 
 ### Token Entropy
+
 - **Size**: 64 bytes (512 bits)
 - **Generation**: Cryptographically secure random values
 - **Collision Resistance**: Astronomically low probability of duplicates
 
 ### Session Binding
+
 - **IP Address**: Binds token to client IP
 - **User-Agent**: Binds token to browser/client
 - **Purpose**: Prevents token theft and reuse from different clients
 
 ### Cookie Security
+
 - **HttpOnly**: Prevents XSS attacks from stealing token
 - **Secure**: Enforces HTTPS in production
 - **SameSite=Strict**: Blocks cross-site cookie transmission
 - **__Host- Prefix**: Enforces secure, path=/, no domain restrictions
 
 ### Token Rotation
+
 - Tokens are session-scoped
 - New token generated per session
 - Automatic refresh on session changes
@@ -1097,18 +1202,21 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
 ### Manual Testing
 
 1. **Get CSRF Token**:
+
 ```bash
 curl -X GET https://api.freelancexchain.com/api/auth/csrf-token \
   -c cookies.txt -v
 ```
 
-2. **Extract Token from Cookie**:
+1. **Extract Token from Cookie**:
+
 ```bash
 # View cookie file
 cat cookies.txt | grep csrf-token
 ```
 
-3. **Make Protected Request**:
+1. **Make Protected Request**:
+
 ```bash
 curl -X POST https://api.freelancexchain.com/api/contracts \
   -b cookies.txt \
@@ -1118,7 +1226,8 @@ curl -X POST https://api.freelancexchain.com/api/contracts \
   -d '{"title": "Test Contract"}'
 ```
 
-4. **Test Without CSRF Token** (should fail):
+1. **Test Without CSRF Token** (should fail):
+
 ```bash
 curl -X POST https://api.freelancexchain.com/api/contracts \
   -H "Authorization: Bearer <token>" \
@@ -1167,22 +1276,28 @@ describe('CSRF Protection', () => {
 ## Troubleshooting
 
 ### Issue: CSRF Token Always Invalid
+
 **Cause**: Session identifier mismatch (IP or User-Agent changed)  
-**Solution**: 
+**Solution**:
+
 - Check if client is behind proxy (use X-Forwarded-For)
 - Verify User-Agent is consistent across requests
 - Consider relaxing session binding for mobile apps
 
 ### Issue: Token Not Found in Cookie
+
 **Cause**: Cookie not being sent by client  
 **Solution**:
+
 - Ensure `credentials: 'include'` in fetch requests
 - Verify CORS configuration allows credentials
 - Check cookie domain and path settings
 
 ### Issue: CORS Errors with CSRF
+
 **Cause**: CORS not configured to allow CSRF header  
 **Solution**:
+
 ```typescript
 app.use(cors({
   origin: config.cors.origin,
@@ -1192,8 +1307,10 @@ app.use(cors({
 ```
 
 ### Issue: Mobile App Can't Store Cookies
+
 **Cause**: React Native doesn't support HTTP-only cookies  
 **Solution**:
+
 - Extract token from Set-Cookie header
 - Store in AsyncStorage
 - Manually include in X-CSRF-Token header
@@ -1203,11 +1320,13 @@ app.use(cors({
 ## Performance Considerations
 
 ### Token Generation Overhead
+
 - **Impact**: Minimal (~1ms per token generation)
 - **Caching**: Tokens are session-scoped, not per-request
 - **Optimization**: Token reused for entire session
 
 ### Cookie Size
+
 - **Size**: ~100 bytes per cookie
 - **Impact**: Negligible on request size
 - **Bandwidth**: <0.1% overhead on typical requests
@@ -1217,10 +1336,12 @@ app.use(cors({
 ## Compliance
 
 ### OWASP Top 10
+
 - **A01:2021 - Broken Access Control**: CSRF protection prevents unauthorized actions
 - **A05:2021 - Security Misconfiguration**: Secure cookie configuration
 
 ### IAS Checklist
+
 - ✅ CSRF tokens enabled (csrf-csrf middleware)
 - ✅ Double-submit cookie pattern implemented
 - ✅ Session binding for token validation
@@ -1254,6 +1375,7 @@ app.use(cors({
 # Database Security & Row Level Security
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Row Level Security Overview](#row-level-security-overview)
 3. [Appwrite Authentication Integration](#appwrite-authentication-integration)
@@ -1265,9 +1387,11 @@ app.use(cors({
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 The FreelanceXchain platform implements a robust database security model using Appwrite Row Level Security (RLS) to ensure data isolation and privacy. This documentation details the comprehensive security architecture that prevents unauthorized access to sensitive user data across all application tables. The system leverages PostgreSQL's RLS capabilities integrated with Appwrite's authentication framework to enforce strict access controls, ensuring users can only access their own data or data they are explicitly authorized to view. The security model covers all core entities including users, projects, contracts, and payments, with policies designed to prevent data leakage and unauthorized operations.
 
 ## Row Level Security Overview
+
 FreelanceXchain employs Row Level Security (RLS) as the primary mechanism for data access control at the database layer. RLS policies are enabled on all tables in the system, creating a security boundary that prevents unauthorized access even if application-level controls fail. The RLS implementation follows the principle of least privilege, where access is denied by default and only granted through explicitly defined policies. Each table in the database has RLS enabled through the `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` command, establishing the foundation for fine-grained access control.
 
 The security model is designed around user ownership and role-based access patterns. For most tables, users can only access records where they are the owner (identified by their user ID) or have a specific relationship to the data (such as being a contract party). The system uses Appwrite's built-in `auth.uid()` function to extract the authenticated user's ID from JWT tokens, which is then used in policy expressions to determine access eligibility. This approach ensures that data access decisions are made at the database level, providing an additional security layer beyond application logic.
@@ -1284,6 +1408,7 @@ F --> |No| H[Return 403 Forbidden]
 ```
 
 ## Appwrite Authentication Integration
+
 The security model is tightly integrated with Appwrite Authentication, which provides the foundation for user identity and session management. When a user authenticates, Appwrite generates a JWT token containing the user's ID and other claims, which is then used to enforce RLS policies at the database level. The authentication flow begins with the `authMiddleware` in the application, which validates the JWT token and extracts user information before allowing requests to proceed to business logic.
 
 The `auth-service.ts` file contains the core authentication logic, including registration, login, and token validation functions. During login, the system verifies credentials with Appwrite Auth and then retrieves the corresponding user record from the public.users table to ensure profile completeness. The JWT token generated by Appwrite contains the user's ID in the `sub` claim, which is accessible to RLS policies through the `auth.uid()` function. This integration creates a seamless security flow where authentication at the application level directly enables authorization at the database level.
@@ -1305,6 +1430,7 @@ AppServer-->>Client : Response
 ```
 
 ## RLS Policy Implementation
+
 The RLS policy implementation in FreelanceXchain is comprehensive, covering all data tables with specific policies for each operation type (SELECT, INSERT, UPDATE, DELETE). The `schema.sql` file contains the complete set of RLS policies that define access rules for the application. Policies are created using the `CREATE POLICY` statement with USING expressions that evaluate to true or false based on the current user's identity and the row data.
 
 For user-owned resources like projects, contracts, and payments, policies use the user ID to restrict access. For example, a freelancer can only access contracts where their user ID matches the freelancer_id column. The system also implements public read access for certain data, such as allowing SELECT operations on skill categories and skills for all users, while maintaining restrictions on other operations. Open projects (status = 'open') are also publicly readable to support discovery features while keeping draft and completed projects private.
@@ -1348,6 +1474,7 @@ ProjectsTable --> ContractsTable : "contains"
 ```
 
 ## Service Role Configuration
+
 The system implements a service role bypass mechanism to allow backend operations that require broader data access than individual users. This is achieved through service role policies that grant full access to all tables when the service role is used. The `schema.sql` file contains a series of policies named "Service role full access [table_name]" that use a USING expression of `true`, effectively bypassing RLS restrictions for the service role.
 
 These service role policies are essential for administrative functions, batch operations, and certain business logic that needs to access data across multiple users. The service role is configured with elevated privileges in Appwrite, allowing it to bypass RLS checks while still maintaining audit trails and other security controls. This approach enables the backend application to perform necessary operations without compromising the security model for end users.
@@ -1368,6 +1495,7 @@ H --> I
 ```
 
 ## Secure Query Examples
+
 The RLS implementation ensures that all database queries are automatically filtered based on the authenticated user's identity. When a user makes a request to access their data, the application uses the Appwrite client with the user's JWT token, and the database automatically applies the relevant RLS policies. For example, when a freelancer requests their contracts, the query in `contract-repository.ts` uses the Appwrite client to fetch records, but the actual results are filtered by the RLS policy on the contracts table.
 
 The repository pattern in the application code works in conjunction with RLS to provide an additional layer of security. While the RLS policies at the database level provide the primary security boundary, the repository methods include explicit filtering by user ID as a defense-in-depth measure. This dual-layer approach ensures security even if one layer fails. For instance, the `getUserContracts` method in `contract-repository.ts` explicitly filters by both freelancer_id and employer_id, reinforcing the RLS policy that performs the same check.
@@ -1375,6 +1503,7 @@ The repository pattern in the application code works in conjunction with RLS to 
 For cross-table queries, such as retrieving a user's projects and associated contracts, the security model ensures that only data owned by or related to the user is returned. The application code in services like `project-service.ts` and `contract-service.ts` constructs queries that respect ownership relationships, while the database RLS policies provide a final verification that no unauthorized data is exposed.
 
 ## Access Control Enforcement
+
 Access control in FreelanceXchain is enforced through a combination of database-level RLS policies and application-level authorization checks. The system uses role-based access control (RBAC) with three primary roles: freelancer, employer, and admin. The user's role is stored in the users table and can be used in RLS policies to restrict access based on user type. For example, certain administrative functions may only be available to users with the 'admin' role.
 
 The enforcement mechanism operates on multiple levels to provide defense in depth. At the database level, RLS policies prevent unauthorized access to rows. At the application level, middleware such as `requireRole` in `auth-middleware.ts` enforces role-based access to specific endpoints. This multi-layered approach ensures that even if an attacker bypasses one layer of security, subsequent layers will still prevent unauthorized access.
@@ -1382,6 +1511,7 @@ The enforcement mechanism operates on multiple levels to provide defense in dept
 For sensitive operations like modifying contracts or releasing payments, the system implements additional verification steps. The application code in services like `payment-service.ts` includes explicit checks to ensure that only contract parties can perform certain actions, reinforcing the RLS policies that provide the primary security boundary. This approach ensures that security is not dependent on any single control, creating a robust defense against unauthorized access.
 
 ## Debugging and Testing RLS Policies
+
 Debugging and testing RLS policies is critical to ensure the security model functions as intended. During development, policies can be tested by simulating different user contexts and verifying that data access is properly restricted. The Appwrite dashboard provides tools for testing RLS policies, allowing developers to execute queries as different users and observe the results.
 
 For local development and testing, the system can temporarily disable RLS on specific tables to facilitate debugging, though this should never be done in production. Unit tests in the application code verify that repository methods return the expected results for different user roles and data ownership scenarios. Integration tests validate that the complete flow from authentication to data access works correctly and that unauthorized access attempts are properly blocked.
@@ -1389,6 +1519,7 @@ For local development and testing, the system can temporarily disable RLS on spe
 Monitoring and logging are also important for detecting potential security issues. The application logs failed access attempts and other security-relevant events, which can be analyzed to identify potential attacks or policy weaknesses. Regular security audits should include verification of RLS policies to ensure they continue to provide adequate protection as the application evolves.
 
 ## Conclusion
+
 The database security model in FreelanceXchain provides a robust foundation for protecting user data through comprehensive Row Level Security implementation. By leveraging Appwrite's RLS capabilities in conjunction with proper authentication and application-level controls, the system ensures that users can only access their own data and data they are authorized to view. The multi-layered approach combining database policies, service role configuration, and application-level authorization creates a defense-in-depth security posture that protects against both accidental and malicious data access.
 
 The implementation demonstrates best practices in database security, including the use of consistent policy patterns, defense-in-depth through multiple security layers, and proper role-based access control. As the application evolves, it is important to maintain this security model by reviewing and updating RLS policies for new tables and features, conducting regular security audits, and ensuring that all data access paths are properly protected.
@@ -1398,6 +1529,7 @@ The implementation demonstrates best practices in database security, including t
 # Security Considerations
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Authentication Mechanisms](#authentication-mechanisms)
 3. [Authorization Strategies](#authorization-strategies)
@@ -1410,6 +1542,7 @@ The implementation demonstrates best practices in database security, including t
 10. [Conclusion](#conclusion)
 
 ## Introduction
+
 FreelanceXchain implements a comprehensive security framework across multiple layers of the application stack. The system combines traditional web security practices with blockchain-specific protections to ensure data integrity, user privacy, and system reliability. This document details the security architecture, covering authentication, authorization, input validation, database security, blockchain patterns, API protections, and data privacy compliance. The implementation leverages Appwrite for authentication and database security, while incorporating blockchain technology for transparent and immutable operations.
 
 ## Authentication Mechanisms
@@ -1591,6 +1724,7 @@ This comprehensive security framework ensures that FreelanceXchain protects user
 # Data Privacy & KYC Protection
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Didit KYC Integration](#didit-kyc-integration)
 3. [Data Minimization Principle](#data-minimization-principle)
@@ -1654,7 +1788,7 @@ sequenceDiagram
 ### Verification Features (Handled by Didit)
 
 | Feature | Description |
-|---------|-------------|
+| --------- | ------------- |
 | **ID Verification** | Document verification for passports, national IDs, driver's licenses (220+ countries) |
 | **Passive Liveness** | Anti-spoofing technology with no user interaction required |
 | **Face Match 1:1** | Compares selfie to document photo with similarity scoring |
@@ -1669,7 +1803,7 @@ FreelanceXchain follows strict data minimization:
 ### What We Store
 
 | Field | Purpose |
-|-------|---------|
+| ------- | --------- |
 | `didit_session_id` | Link to Didit session |
 | `didit_session_url` | Redirect URL for user |
 | `status` | Current verification status |
@@ -1688,6 +1822,7 @@ FreelanceXchain follows strict data minimization:
 - IP analysis data
 
 This approach ensures:
+
 1. **Minimal data exposure** - Sensitive data stays with Didit
 2. **Reduced compliance burden** - Didit handles PII storage
 3. **Simplified architecture** - Less data to secure locally
@@ -1697,7 +1832,7 @@ This approach ensures:
 ### User Rights Implementation
 
 | Right | Implementation |
-|-------|----------------|
+| ------- | ---------------- |
 | **Right to Access** | `GET /api/kyc/status` returns user's verification status |
 | **Right to Erasure** | Admin can delete verification records; Didit handles PII deletion |
 | **Right to Portability** | `GET /api/kyc/history` exports verification history |
@@ -1743,7 +1878,7 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
 ### User Endpoints
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+| -------- | ---------- | ------------- |
 | `POST` | `/api/kyc/initiate` | Start verification, get session URL |
 | `GET` | `/api/kyc/status` | Get current verification status |
 | `GET` | `/api/kyc/verified` | Check if user is verified |
@@ -1753,7 +1888,7 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
 ### Admin Endpoints
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+| -------- | ---------- | ------------- |
 | `GET` | `/api/kyc/admin/pending` | Get pending reviews |
 | `GET` | `/api/kyc/admin/status/:status` | Get verifications by status |
 | `POST` | `/api/kyc/admin/review/:id` | Approve/reject verification |
@@ -1761,8 +1896,8 @@ function verifyWebhookSignature(payload: string, signature: string): boolean {
 
 ### Webhook Endpoint
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
+| Method | Endpoint           | Description                  |
+|--------|--------------------|------------------------------|
 | `POST` | `/api/kyc/webhook` | Receive Didit status updates |
 
 ### Example: Initiate Verification
@@ -1779,6 +1914,7 @@ curl -X POST http://localhost:7860/api/kyc/initiate \
 ```
 
 Response:
+
 ```json
 {
   "id": "uuid",
@@ -1905,7 +2041,7 @@ appwrite/
 ### Status Values
 
 | Status | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `pending` | Session created, user hasn't started |
 | `in_progress` | User is completing verification |
 | `completed` | Verification done, awaiting admin review |
@@ -1916,22 +2052,23 @@ appwrite/
 ### Decision Values (from Didit)
 
 | Decision | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `approved` | All checks passed |
 | `declined` | Failed verification checks |
 | `review` | Needs manual review |
 
 ## Support Resources
 
-- **Didit Documentation**: https://docs.didit.me
-- **API Reference**: https://docs.didit.me/reference/
-- **Business Console**: https://business.didit.me
+- **Didit Documentation**: <https://docs.didit.me>
+- **API Reference**: <https://docs.didit.me/reference/>
+- **Business Console**: <https://business.didit.me>
 
 ---
 
 # Role-Based Access Control
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Three-Tier Role Model](#three-tier-role-model)
 3. [Role Assignment During Registration](#role-assignment-during-registration)
@@ -1944,9 +2081,11 @@ appwrite/
 10. [Conclusion](#conclusion)
 
 ## Introduction
+
 The FreelanceXchain platform implements a robust role-based access control (RBAC) system to ensure secure and appropriate access to its features. This system is built around a three-tier role model: Freelancer, Employer, and Admin. Each role has distinct permissions that govern what actions a user can perform within the application. The RBAC system is enforced through JWT token authentication, where user roles are extracted from tokens during the authentication process and validated against route-level authorization checks. This documentation provides a comprehensive overview of the RBAC implementation, detailing how roles are assigned, how permissions are enforced, and the specific operations allowed or restricted for each role.
 
 ## Three-Tier Role Model
+
 The FreelanceXchain platform employs a three-tier role model to manage user permissions and access levels. The roles are defined as 'freelancer', 'employer', and 'admin', each with specific capabilities and responsibilities within the system. Freelancers can access proposals, manage their contracts, and maintain their profiles. Employers have the ability to create projects, hire freelancers, and manage payments. Admins possess full system access, including the ability to resolve disputes and manage platform-wide settings. This hierarchical structure ensures that users can only perform actions appropriate to their role, maintaining the integrity and security of the platform.
 
 ```mermaid
@@ -1966,9 +2105,11 @@ D --> M[Skill Management]
 ```
 
 ## Role Assignment During Registration
+
 User roles are assigned during the registration process, where new users must select their role as either 'freelancer' or 'employer'. This selection is a required field in the registration input, ensuring that every user has a defined role upon account creation. The role is stored in the user's metadata within the Appwrite Auth system and in the public.users table in the database. Admin roles are not available for self-selection during registration and are typically assigned manually by existing admins or through administrative processes. This approach ensures that role assignment is intentional and controlled, preventing unauthorized access to privileged operations.
 
 ## JWT Token Authentication and Role Extraction
+
 The RBAC system in FreelanceXchain relies on JWT token authentication to verify user identities and extract their roles. During the authentication process, when a user logs in or registers, a JWT token is generated that includes the user's role as part of the payload. This token is validated by the `authMiddleware` function, which decodes the token and extracts the user's role. The extracted role is then attached to the request object, making it available for subsequent authorization checks. This mechanism ensures that every request to the API can be authenticated and that the user's role is readily accessible for enforcing access controls.
 
 ```mermaid
@@ -1988,6 +2129,7 @@ APIRoute->>APIRoute : Process Request Based on Role
 ```
 
 ## Route-Level Authorization Checks
+
 Route-level authorization checks are implemented to enforce role-based access to specific API endpoints. The `requireRole` middleware function is used to restrict access to routes based on the user's role. This function checks the role attached to the request object by the `authMiddleware` and compares it against the roles specified for the route. If the user's role does not match any of the required roles, a 403 Forbidden error is returned. This approach ensures that only users with the appropriate roles can access sensitive or privileged operations, providing a granular level of control over API access.
 
 ```mermaid
@@ -2002,9 +2144,11 @@ G --> H[Return Response]
 ```
 
 ## Middleware Integration
+
 The RBAC system is integrated into the application through middleware functions that handle authentication and authorization. The `authMiddleware` function is responsible for validating JWT tokens and extracting user information, including the role. This middleware is applied to all protected routes to ensure that only authenticated users can access them. The `requireRole` function is a higher-order middleware that adds role-based authorization to routes by checking the user's role against a list of permitted roles. These middleware functions are seamlessly integrated into the Express.js routing system, providing a clean and reusable way to enforce access controls across the application.
 
 ## Permitted and Restricted Operations
+
 Each role in the FreelanceXchain platform has specific permitted and restricted operations that define their capabilities. Freelancers are permitted to create and manage their profiles, submit proposals, and work on contracts, but they are restricted from creating projects or managing payments. Employers can create projects, hire freelancers, and manage payments, but they lack the ability to resolve disputes or access administrative functions. Admins have full access to all system features, including dispute resolution and skill management. This clear delineation of permissions ensures that users can only perform actions that are appropriate to their role, maintaining the security and integrity of the platform.
 
 ```mermaid
@@ -2030,12 +2174,15 @@ ROLE }|--|| PERMISSION : "has many"
 ```
 
 ## Admin Privileges and Escalation Paths
+
 Admins in the FreelanceXchain platform have elevated privileges that allow them to perform critical system operations. These include resolving disputes, managing the skill taxonomy, and accessing all system data. Admins can resolve disputes by reviewing evidence and making decisions that affect payment releases. They can also create and deprecate skills, ensuring that the platform's skill categories remain relevant and up-to-date. Escalation paths for users to gain admin privileges are not available through self-service and require manual intervention by existing admins, ensuring that administrative access is tightly controlled and secure.
 
 ## Common Issues and Security Considerations
+
 Common issues in the RBAC system include privilege misalignment and token tampering. Privilege misalignment can occur if a user's role is incorrectly assigned or updated, leading to unauthorized access or restricted functionality. This can be mitigated by rigorous validation during role assignment and regular audits of user roles. Token tampering is a security concern where an attacker attempts to modify a JWT token to gain elevated privileges. This is prevented by using strong cryptographic signatures for tokens and validating them on every request. Additionally, the use of Appwrite's service role policies ensures that backend operations can bypass row-level security when necessary, while still maintaining overall system security.
 
 ## Conclusion
+
 The role-based access control system in FreelanceXchain effectively manages user permissions through a well-defined three-tier role model. By leveraging JWT token authentication and middleware-based authorization checks, the system ensures that users can only access features appropriate to their role. The clear separation of permissions between freelancers, employers, and admins maintains the security and integrity of the platform, while the integration of middleware functions provides a scalable and maintainable approach to access control. Addressing common issues such as privilege misalignment and token tampering further strengthens the system's security, making it a robust foundation for the FreelanceXchain platform.
 
 ---
@@ -2043,6 +2190,7 @@ The role-based access control system in FreelanceXchain effectively manages user
 # Smart Contract Security
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Reentrancy Protection](#reentrancy-protection)
 3. [Access Control Mechanisms](#access-control-mechanisms)
@@ -2085,6 +2233,7 @@ Revert --> End
 The FreelanceXchain contracts implement a comprehensive access control system using custom modifiers to enforce role-based privileges. These modifiers ensure that only authorized parties can execute specific functions, preventing unauthorized access to sensitive operations.
 
 The primary access control modifiers include:
+
 - `onlyEmployer`: Restricts function access to the employer address
 - `onlyFreelancer`: Restricts function access to the freelancer address  
 - `onlyArbiter`: Restricts function access to the dispute arbiter
@@ -2131,6 +2280,7 @@ Input validation is performed using require statements that check for various co
 State checks ensure that operations are only performed when the contract is in an appropriate state. The `contractActive` modifier prevents operations on cancelled contracts, while milestone-specific functions check that milestones are in the correct status (e.g., only submitted milestones can be approved).
 
 Additional validation patterns include:
+
 - Array bounds checking for milestone indices
 - Sufficient balance verification before transfers
 - Duplicate prevention through status checks
@@ -2155,6 +2305,7 @@ EmitEvents --> End([Function Exit])
 The FreelanceXchain contracts follow established secure transaction patterns to ensure the reliability and safety of all operations. The primary pattern implemented is the checks-effects-interactions pattern, which structures functions to minimize the risk of vulnerabilities.
 
 In the checks-effects-interactions pattern, functions are organized into three distinct phases:
+
 1. **Checks**: Validate all preconditions and inputs
 2. **Effects**: Update contract state variables
 3. **Interactions**: Make external calls to other contracts or addresses
@@ -2186,6 +2337,7 @@ The FreelanceXchain platform implements the pull-over-push payment pattern in it
 In the FreelanceEscrow contract, when an employer approves a milestone, the funds are not immediately transferred. Instead, the milestone status is updated to "Approved" and the released amount is recorded. The actual fund transfer occurs when the contract makes an external call to send ETH to the freelancer's address.
 
 This approach provides several security benefits:
+
 - Reduces the attack surface by limiting external calls
 - Prevents forced transfer attacks where malicious contracts reject incoming ETH
 - Gives recipients control over when they receive funds
@@ -2273,6 +2425,7 @@ The FreelanceXchain platform employs a comprehensive testing strategy using Hard
 The Hardhat configuration supports multiple networks including local development (hardhat), Ganache, Sepolia testnet, and Polygon networks. This allows for thorough testing across different environments before mainnet deployment.
 
 Security tests specifically target known vulnerabilities:
+
 - Reentrancy attack simulations
 - Access control enforcement
 - Input validation edge cases
@@ -2308,7 +2461,8 @@ The platform follows security best practices including input validation, state c
 
 Comprehensive testing using Hardhat verifies both functionality and security, with specific tests for reentrancy attacks and other vulnerabilities. The combination of these security patterns creates a trustworthy environment for freelance marketplace operations, protecting user funds and ensuring the integrity of contract execution.
 
-Future enhancements could include formal verification of critical contracts and integration with third-party audit services, but the current implementation provides a solid foundation for secure decentralized freelance transactions.
+Future enhancements could include formal verification of critical contracts and integration with third-party audit services, but the current implementation provides a solid foundation for secure decentralized freelance transactions
+
 ---
 
 [← Back to Database](README.md)

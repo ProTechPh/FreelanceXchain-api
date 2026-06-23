@@ -1,6 +1,7 @@
 # Dispute Resolution
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Dispute Lifecycle and States](#dispute-lifecycle-and-states)
 3. [Core Components](#core-components)

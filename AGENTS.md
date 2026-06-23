@@ -7,7 +7,7 @@ Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized
 ## Essential commands
 
 | Purpose | Command |
-|---------|---------|
+| --------- | --------- |
 | Install | `pnpm install --frozen-lockfile` |
 | Dev server | `pnpm run dev` |
 | Build (tsc) | `pnpm run build` |
@@ -29,6 +29,7 @@ Test invocations must always use `node --experimental-vm-modules` (it's in the n
 ## CI pipeline (`.github/workflows/ci.yml`)
 
 Three **parallel** jobs, each independently installing and compiling:
+
 - **typecheck**: `compile` → `tsc --noEmit` → `lint`
 - **test**: `compile` → `test:ci` + coverage upload
 - **build**: `compile` → `build`

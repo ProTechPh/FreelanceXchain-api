@@ -1,6 +1,7 @@
 # Data Seeding
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -10,7 +11,9 @@
 7. [Performance Considerations](#performance-considerations)
 8. [Troubleshooting Guide](#troubleshooting-guide)
 9. [Conclusion](#conclusion)
+
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -22,10 +25,13 @@
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document explains the data seeding process for initial database content in FreelanceXchain, focusing on the seed-skills.sql script that populates skill categories and skills for domains such as Web Development, Mobile Development, Data Science, DevOps, Design, and Blockchain. It details the use of UUIDs for stable identifiers, the ON CONFLICT DO NOTHING clause to prevent duplicates during repeated seeding, and the hierarchical relationship between categories and skills. It also describes how this seeded taxonomy supports the AI-powered matching system by providing a standardized vocabulary for freelancer skills and project requirements, and outlines when and how the seeding integrates with the database initialization workflow in development and production environments.
 
 ## Project Structure
+
 The seeding and taxonomy-related components are organized as follows:
+
 - Database schema and seed scripts live under appwrite/.
 - Application services and repositories that consume the taxonomy live under src/.
 
@@ -52,13 +58,16 @@ ROUTE --> SRV
 ```
 
 ## Core Components
+
 - Seed script: Defines stable UUID identifiers for categories and skills, inserts predefined values, and uses ON CONFLICT DO NOTHING to avoid duplicates on repeated runs.
 - Schema: Declares skill_categories and skills tables with UUID primary keys and foreign key relationships.
 - Application services and repositories: Provide CRUD and taxonomy operations, including retrieving active skills and building hierarchical taxonomy for API clients.
 - Matching service: Consumes the taxonomy to power AI skill matching, skill extraction, and skill gap analysis.
 
 ## Architecture Overview
+
 The seeding process integrates with the database initialization workflow as follows:
+
 - Developers run the schema.sql in the Appwrite SQL Editor to create tables and enable extensions.
 - After schema creation, developers run seed-skills.sql to populate categories and skills with stable UUIDs.
 - The application’s Appwrite client and repositories read the taxonomy to support skill management and AI matching.
@@ -85,6 +94,7 @@ Map-->>App : "Mapped Skill[]"
 ## Detailed Component Analysis
 
 ### Seed Script: seed-skills.sql
+
 - Purpose: Populate skill_categories and skills with predefined values for six domains.
 - Stable identifiers: Uses explicit UUIDs for categories and skills to ensure consistent IDs across environments.
 - Duplicate prevention: Uses ON CONFLICT (id) DO NOTHING to safely re-run the script without errors.
@@ -126,6 +136,7 @@ Verify --> End(["Done"])
 ```
 
 ### Schema: appwrite/schema.sql
+
 - Enables UUID extension for generating stable identifiers.
 - Declares skill_categories and skills tables with UUID primary keys.
 - Defines foreign key relationship from skills.category_id to skill_categories.id with cascade delete.
@@ -154,6 +165,7 @@ SKILL_CATEGORIES ||--o{ SKILLS : "has many"
 ```
 
 ### Application Services and Repositories
+
 - SkillRepository: Provides methods to retrieve skills by category, active skills, and search by keyword. It orders results by name and filters by is_active where applicable.
 - SkillService: Exposes higher-level operations such as getFullTaxonomy(), which aggregates active categories with their active skills. It also validates skill IDs and exposes search with category names.
 - EntityMapper: Converts database entities (snake_case) to API models (camelCase), including Skill and SkillCategory types.
@@ -200,6 +212,7 @@ SkillRepository --> EntityMapper : "maps"
 ```
 
 ### AI-Powered Matching Integration
+
 - Skill taxonomy consumption: The matching service retrieves active skills to build a reference set for skill extraction and matching.
 - Skill extraction and mapping: The matching service extracts skills from text and maps them to taxonomy IDs, using the active skill list as the controlled vocabulary.
 - Recommendations: The matching service computes match scores using either AI or keyword-based methods, relying on the standardized taxonomy to compare freelancer and project skill sets.
@@ -230,6 +243,7 @@ Match-->>Client : "ExtractedSkill[]"
 ```
 
 ## Dependency Analysis
+
 - Database dependencies:
   - schema.sql defines tables and indexes; seed-skills.sql depends on these definitions.
   - ON CONFLICT DO NOTHING relies on unique constraints enforced by primary keys.
@@ -251,11 +265,13 @@ MATCH --> SRV
 ```
 
 ## Performance Considerations
+
 - Indexes: The schema creates an index on skills(category_id), which supports efficient filtering by category and improves performance for taxonomy queries.
 - Active-only queries: Using is_active filters reduces result sizes and improves matching performance.
 - UUID stability: Stable UUIDs avoid costly re-mapping when data is re-seeded, minimizing churn in downstream systems.
 
 ## Troubleshooting Guide
+
 - Duplicate entries on re-seeding:
   - Symptom: Errors when re-running seed-skills.sql.
   - Resolution: The script uses ON CONFLICT DO NOTHING to skip duplicates. Ensure the script is executed after schema creation and that ids match the seeded values.
@@ -267,6 +283,7 @@ MATCH --> SRV
   - Resolution: Verify APPWRITE_URL and APPWRITE_ANON_KEY environment variables and ensure the Appwrite project is healthy.
 
 ## Conclusion
+
 The seed-skills.sql script establishes a stable, repeatable taxonomy for skills and categories, enabling consistent identification and matching across environments. Its use of UUIDs and ON CONFLICT DO NOTHING ensures safe re-execution without duplication. The schema enforces referential integrity and performance through indexes. Application services and repositories consume this taxonomy to power skill management and AI-driven matching, while the matching service leverages the standardized vocabulary for skill extraction and gap analysis. Integrating seeding into the database initialization workflow guarantees that the taxonomy is present for both development and production deployments.
 
 ---

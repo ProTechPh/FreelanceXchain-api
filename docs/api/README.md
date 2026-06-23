@@ -5,7 +5,7 @@
 ## API Documentation
 
 | Document | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | [AI Matching API](matching.md) | AI-powered skill matching, project recommendations, freelancer recommendations, skill extraction, and skill gap analysis |
 | [Authentication API](auth.md) | User registration, login, token refresh, OAuth integration, and password recovery |
 | [Contract API](contracts.md) | Contract listing and retrieval |
@@ -22,19 +22,23 @@
 ## Quick Reference
 
 ### Base URL
+
 ```
 /api
 ```
 
 ### Authentication
+
 All endpoints require JWT Bearer token authentication unless noted otherwise:
+
 ```
 Authorization: Bearer <your_jwt_token>
 ```
 
 ### Common Response Codes
+
 | Code | Description |
-|------|-------------|
+| ------ | ------------- |
 | `200` | Success |
 | `201` | Created |
 | `400` | Bad Request / Validation Error |
@@ -46,6 +50,7 @@ Authorization: Bearer <your_jwt_token>
 | `500` | Internal Server Error |
 
 ### Error Response Format
+
 ```json
 {
   "error": "ERROR_CODE",

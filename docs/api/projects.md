@@ -1,6 +1,7 @@
 # Project API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,9 +14,11 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for project management endpoints in the FreelanceXchain system. It covers HTTP methods, URL patterns, request/response schemas, authentication requirements (JWT Bearer), and validation rules. It also explains the project status lifecycle, modification constraints after proposal acceptance, and includes practical examples for creating projects with milestones and retrieving project proposals.
 
 ## Project Structure
+
 The project management API is implemented as Express routes backed by service-layer logic and repository abstractions. Authentication is enforced via a JWT Bearer middleware, and request validation is performed using JSON schema-based middleware. Swagger/OpenAPI definitions are centrally configured and reused across route definitions.
 
 ```mermaid
@@ -38,6 +41,7 @@ Swagger -. "OpenAPI definitions" .-> Routes
 ```
 
 ## Core Components
+
 - Authentication: All protected endpoints require a Bearer token in the Authorization header. The middleware validates presence, format, and token validity, and attaches user metadata to the request.
 - Validation: JSON schema-based validation enforces field types, lengths, formats, enums, and required properties for request bodies and parameters.
 - Project Service: Orchestrates project creation, updates, milestone setting/addition, and search/filtering. Enforces business rules such as skill validation, milestone budget alignment, and project lock after proposal acceptance.
@@ -45,7 +49,9 @@ Swagger -. "OpenAPI definitions" .-> Routes
 - Proposal Service: Interacts with proposals to enforce lifecycle transitions and project status changes upon proposal acceptance.
 
 ## Architecture Overview
+
 The Project API follows a layered architecture:
+
 - Route handlers define endpoints and apply middleware.
 - Services encapsulate business logic and enforce constraints.
 - Repositories abstract persistence and expose typed operations.
@@ -75,6 +81,7 @@ R-->>C : "201 Created"
 ## Detailed Component Analysis
 
 ### Authentication and Authorization
+
 - JWT requirement: All protected endpoints require Authorization: Bearer <token>.
 - Role enforcement: Employer-only endpoints are guarded by a role-check middleware.
 - UUID validation: Path parameters are validated to be UUIDs.
@@ -82,6 +89,7 @@ R-->>C : "201 Created"
 ### Project Endpoints
 
 #### GET /api/projects
+
 - Purpose: List projects with optional filters.
 - Query parameters:
   - keyword: string; search in title/description.
@@ -98,11 +106,13 @@ R-->>C : "201 Created"
 - Response: Paginated list of projects with items, hasMore, continuationToken.
 
 #### GET /api/projects/{id}
+
 - Purpose: Retrieve a specific project by ID.
 - Path parameter: id (UUID).
 - Response: Project object.
 
 #### POST /api/projects
+
 - Purpose: Create a new project (employer only).
 - Request body schema (validation):
   - title: string, min length 5.
@@ -114,6 +124,7 @@ R-->>C : "201 Created"
 - Errors: 400 Validation error, 401 Unauthorized.
 
 #### PATCH /api/projects/{id}
+
 - Purpose: Update an existing project (employer only).
 - Constraints:
   - Cannot update if project has accepted proposals (locked).
@@ -130,6 +141,7 @@ R-->>C : "201 Created"
 - Errors: 400 Validation error, 401 Unauthorized, 404 Not found, 409 Locked.
 
 #### POST /api/projects/{id}/milestones
+
 - Purpose: Set milestones for a project (employer only).
 - Constraints:
   - Cannot modify milestones if project has accepted proposals (locked).
@@ -144,6 +156,7 @@ R-->>C : "201 Created"
 - Errors: 400 Validation error, 401 Unauthorized, 404 Not found, 409 Locked.
 
 #### GET /api/projects/{id}/proposals
+
 - Purpose: List proposals for a specific project (employer only).
 - Path parameter: id (UUID).
 - Query parameters:
@@ -153,6 +166,7 @@ R-->>C : "201 Created"
 - Errors: 400 Invalid UUID, 401 Unauthorized, 404 Not found.
 
 ### Request/Response Schemas
+
 - Project schema (OpenAPI):
   - id, employerId, title, description, requiredSkills, budget, deadline, status, milestones, createdAt, updatedAt.
   - Status enum: draft, open, in_progress, completed, cancelled.
@@ -162,6 +176,7 @@ R-->>C : "201 Created"
   - timestamp, requestId.
 
 ### Validation Rules Summary
+
 - Title: minimum length 5.
 - Description: minimum length 20.
 - requiredSkills: non-empty array; each skillId must be a valid UUID.
@@ -171,6 +186,7 @@ R-->>C : "201 Created"
 - Status: enum draft, open, in_progress, completed, cancelled.
 
 ### Project Status Lifecycle and Constraints
+
 - Status values: draft, open, in_progress, completed, cancelled.
 - Lifecycle:
   - Creation: status defaults to open.
@@ -185,6 +201,7 @@ R-->>C : "201 Created"
 ### Client Implementation Examples
 
 #### Example: Create a Project with Milestones
+
 - Steps:
   1) Authenticate with JWT Bearer token.
   2) POST /api/projects with:
@@ -196,6 +213,7 @@ R-->>C : "201 Created"
   - Employers can only create/update projects and manage milestones.
 
 #### Example: Retrieve Project Proposals
+
 - Steps:
   1) Authenticate with JWT Bearer token.
   2) GET /api/projects/{id}/proposals with:
@@ -204,12 +222,14 @@ R-->>C : "201 Created"
   - Employers can only view proposals for their own projects.
 
 ### Filtering and Search
+
 - Keyword search: GET /api/projects with keyword query parameter.
 - Skills filter: GET /api/projects with skills query parameter (comma-separated).
 - Budget range filter: GET /api/projects with minBudget and maxBudget query parameters.
 - Pagination: limit and continuationToken supported across endpoints.
 
 ## Dependency Analysis
+
 ```mermaid
 classDiagram
 class ProjectRoutes {
@@ -259,6 +279,7 @@ ProjectService --> ProposalService : "uses"
 ```
 
 ## Performance Considerations
+
 - Pagination: All list/search endpoints support limit and continuationToken to control payload size.
 - Filtering: Repository methods implement server-side filtering and ordering to reduce client-side processing.
 - Validation: Early exit on invalid request bodies reduces unnecessary downstream calls.
@@ -266,7 +287,9 @@ ProjectService --> ProposalService : "uses"
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common errors and resolutions:
+
 - 400 Validation error:
   - Ensure required fields are present and formatted correctly (UUIDs, date-time, enums).
   - Check min lengths and numeric bounds.
@@ -281,6 +304,7 @@ Common errors and resolutions:
   - Cannot update or modify milestones after a proposal is accepted; cancel or withdraw the proposal first if applicable.
 
 ## Conclusion
+
 The Project API provides robust endpoints for creating, updating, and retrieving projects with strong validation and clear lifecycle constraints. Employers can manage projects and milestones, while proposal acceptance triggers status transitions and locks modifications to protect ongoing work. Swagger definitions and middleware ensure consistent request/response handling and error reporting.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -313,6 +337,7 @@ The Project API provides robust endpoints for creating, updating, and retrieving
   - Response: Paginated proposals
 
 ### Additional Notes
+
 - Swagger/OpenAPI definitions centralize schemas for consistent documentation and client generation.
 - The interactive documentation is available at the base URL’s api-docs path.
 
@@ -321,6 +346,7 @@ The Project API provides robust endpoints for creating, updating, and retrieving
 ## Milestone Management
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -332,9 +358,11 @@ The Project API provides robust endpoints for creating, updating, and retrieving
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides API documentation for milestone management in the FreelanceXchain system with a focus on the POST /api/projects/{id}/milestones endpoint. It explains how employers define project milestones, the required fields for each milestone, the critical business rule that the sum of milestone amounts equals the project budget, and the 400 Bad Request response for validation errors or budget mismatch. It also demonstrates how milestones are embedded in the Project response object and outlines their role in the escrow payment release process.
 
 ## Project Structure
+
 The milestone management feature spans routing, service, repository, and model layers, plus blockchain integrations for milestone registry and escrow contracts.
 
 ```mermaid
@@ -352,6 +380,7 @@ EscrowSim --> EscrowContract["FreelanceEscrow.sol"]
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/projects/{id}/milestones
   - Purpose: Employers define milestones for a project. The request body requires an array named milestones, each containing title, description, amount, and dueDate.
   - Authentication: Requires a Bearer token and role employer.
@@ -379,6 +408,7 @@ EscrowSim --> EscrowContract["FreelanceEscrow.sol"]
   - FreelanceEscrow.sol: Smart contract that holds funds and releases them upon milestone approval.
 
 ## Architecture Overview
+
 The milestone lifecycle integrates REST endpoints, service-layer validation, persistence, and blockchain services.
 
 ```mermaid
@@ -411,6 +441,7 @@ PS-->>C : Payment released, contract status updated
 ## Detailed Component Analysis
 
 ### POST /api/projects/{id}/milestones
+
 - Purpose: Employers define milestones for a project.
 - Path: /api/projects/{id}/milestones
 - Method: POST
@@ -438,18 +469,21 @@ PS-->>C : Payment released, contract status updated
   - 409 Conflict: Project locked (has accepted proposals).
 
 Embedded in Project response:
+
 - Project.milestones: array of Milestone objects with id, title, description, amount, dueDate, status.
 
 ### Example: Three Milestones for a $3000 Project
+
 - Request body (JSON):
   - milestones:
-    - [{ title: "...", description: "...", amount: 1000, dueDate: "YYYY-MM-DDT00:00:00Z" }, 
-       { title: "...", description: "...", amount: 1200, dueDate: "YYYY-MM-DDT00:00:00Z" }, 
+    - [{ title: "...", description: "...", amount: 1000, dueDate: "YYYY-MM-DDT00:00:00Z" },
+       { title: "...", description: "...", amount: 1200, dueDate: "YYYY-MM-DDT00:00:00Z" },
        { title: "...", description: "...", amount: 800, dueDate: "YYYY-MM-DDT00:00:00Z" }]
 - Total: 1000 + 1200 + 800 = 3000 (equals project budget)
 - Response: 200 OK with Project including milestones array.
 
 ### Escrow Payment Release Process
+
 - Initialization:
   - Payment service initializes escrow with project budget and milestones.
   - Escrow contract deployed and funds deposited.
@@ -472,6 +506,7 @@ Notify --> End(["Done"])
 ```
 
 ## Dependency Analysis
+
 - Route depends on Project Service for business logic.
 - Project Service depends on Project Repository for persistence and on Entity Mapper for types.
 - Payment Service depends on Escrow Contract Simulation and Milestone Registry Service.
@@ -490,6 +525,7 @@ EscrowSim --> EscrowContract["FreelanceEscrow.sol"]
 ```
 
 ## Performance Considerations
+
 - Validation occurs before persistence; keep milestone arrays reasonably sized to minimize compute overhead.
 - Escrow operations simulate blockchain transactions; in production, network latency and gas fees impact performance.
 - Notifications are best-effort in simulation; ensure they do not block primary flows.
@@ -497,7 +533,9 @@ EscrowSim --> EscrowContract["FreelanceEscrow.sol"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Bad Request with VALIDATION_ERROR:
   - Ensure each milestone includes title, description, amount, and dueDate.
   - Verify amount is a positive number.
@@ -511,6 +549,7 @@ Common issues and resolutions:
   - Confirm the escrow address and milestone status; ensure sufficient balance and correct approver identity.
 
 ## Conclusion
+
 The POST /api/projects/{id}/milestones endpoint enables employers to define project milestones with strict validation and a critical budget alignment rule. Milestones are embedded in the Project response and drive the escrow payment release process, integrating with blockchain registries for verifiable milestone completion. Adhering to the validation rules and budget constraint ensures smooth execution of milestone approvals and fund releases.
 
 ---
@@ -518,6 +557,7 @@ The POST /api/projects/{id}/milestones endpoint enables employers to define proj
 ## Project Creation
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -530,10 +570,13 @@ The POST /api/projects/{id}/milestones endpoint enables employers to define proj
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the project creation endpoint in the FreelanceXchain system. It covers the POST /api/projects endpoint, including request payload requirements, authentication and role-based access control, validation rules enforced by middleware and service layer, successful and error responses, and a complete curl example.
 
 ## Project Structure
+
 The project creation flow spans routing, middleware, service, and model layers:
+
 - Route handler enforces authentication and role checks, performs request validation, and delegates to the service layer.
 - Validation middleware enforces schema-based constraints for request bodies and parameters.
 - Service layer validates skill IDs and persists the project entity.
@@ -554,6 +597,7 @@ Model --> Client
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/projects
 - Authentication: Bearer JWT token required
 - Role-based access control: Employers only
@@ -570,7 +614,9 @@ Model --> Client
   - 403 Forbidden for insufficient permissions
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - Router layer validates route parameters and invokes middleware.
 - Authentication middleware verifies the Bearer token and attaches user info.
 - Role middleware ensures the user has the employer role.
@@ -605,6 +651,7 @@ R-->>C : "201 Created {Project}"
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Behavior
+
 - Path: POST /api/projects
 - Security: Requires Bearer token; employs requireRole('employer')
 - Request body validation:
@@ -620,6 +667,7 @@ R-->>C : "201 Created {Project}"
   - 403: Forbidden (insufficient permissions)
 
 ### Authentication and Role-Based Access Control
+
 - Authentication:
   - Authorization header must be present and formatted as "Bearer <token>"
   - Token is validated; expired or invalid tokens return 401
@@ -628,6 +676,7 @@ R-->>C : "201 Created {Project}"
   - Non-employer users receive 403 Forbidden
 
 ### Validation Rules and Constraints
+
 - Request body schema enforces:
   - title: string, min length 5
   - description: string, min length 20
@@ -640,6 +689,7 @@ R-->>C : "201 Created {Project}"
   - UUID format validation for path parameters (when applicable)
 
 ### Service Layer Processing
+
 - Skill validation:
   - Ensures each skillId corresponds to an active skill
   - Returns INVALID_SKILL error with details on invalid IDs
@@ -665,6 +715,7 @@ Success --> End
 ```
 
 ### Data Model and Response Schema
+
 - Project object fields:
   - id, employerId, title, description, requiredSkills, budget, deadline, status, milestones, createdAt, updatedAt
 - SkillReference fields:
@@ -673,11 +724,13 @@ Success --> End
   - id, title, description, amount, dueDate, status
 
 ### Database Schema Context
+
 - projects table stores:
   - employer_id, title, description, required_skills (JSONB), budget, deadline, status, milestones (JSONB), timestamps
 - Skills and categories are stored in separate tables with is_active flags
 
 ### Complete curl Example
+
 The following curl command demonstrates creating a project with skills and milestones. Replace placeholders with valid values and ensure the Authorization header includes a valid Bearer token for an employer account.
 
 ```bash
@@ -696,11 +749,14 @@ curl -X POST http://localhost:7860/api/projects \
 ```
 
 Notes:
+
 - Employers can optionally add milestones later via the milestones endpoint.
 - Ensure the JWT token is valid and issued for an employer user.
 
 ## Dependency Analysis
+
 The endpoint depends on:
+
 - Router: Defines the route, applies auth and role middleware, and orchestrates validation and service calls
 - Validation middleware: Enforces schema-based constraints for request body and parameters
 - Auth middleware: Validates JWT and attaches user context
@@ -720,6 +776,7 @@ Routes --> Swagger["Swagger Config"]
 ```
 
 ## Performance Considerations
+
 - Validation occurs before hitting the database; schema-based validation reduces unnecessary database calls.
 - Skill validation iterates through requiredSkills; keep the array minimal to reduce overhead.
 - Consider caching frequently used skill metadata to speed up validation.
@@ -727,7 +784,9 @@ Routes --> Swagger["Swagger Config"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized:
   - Missing Authorization header or incorrect format ("Bearer <token>")
   - Expired or invalid token
@@ -743,6 +802,7 @@ Common issues and resolutions:
   - INVALID_SKILL error indicating one or more invalid skill IDs
 
 ## Conclusion
+
 The POST /api/projects endpoint provides a robust, secure mechanism for employers to create projects with strict validation and role enforcement. The combination of schema-based validation, JWT authentication, and service-layer skill verification ensures data integrity and access control. Clients should adhere to the documented constraints and use the provided curl example as a baseline for integration.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -750,6 +810,7 @@ The POST /api/projects endpoint provides a robust, secure mechanism for employer
 ## Appendices
 
 ### API Definition Reference
+
 - Endpoint: POST /api/projects
 - Security: bearerAuth
 - Request body fields:
@@ -769,6 +830,7 @@ The POST /api/projects endpoint provides a robust, secure mechanism for employer
 ## Project Retrieval
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -780,7 +842,9 @@ The POST /api/projects endpoint provides a robust, secure mechanism for employer
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides API documentation for project retrieval endpoints in the FreelanceXchain system. It covers:
+
 - Listing open projects with filtering and pagination
 - Retrieving a specific project by UUID
 - Query parameters for filtering (keyword, skills, minBudget, maxBudget)
@@ -789,6 +853,7 @@ This document provides API documentation for project retrieval endpoints in the 
 - Single-project retrieval response and error handling
 
 ## Project Structure
+
 The project retrieval functionality spans routing, service, repository, and model layers, with Swagger schemas and validation middleware.
 
 ```mermaid
@@ -804,6 +869,7 @@ Repo --> BaseRepo["Base Repository<br/>base-repository.ts"]
 ```
 
 ## Core Components
+
 - Route handlers for GET /api/projects and GET /api/projects/{id}
 - Service functions orchestrating filtering and pagination
 - Repository methods querying Appwrite with filters and pagination
@@ -812,10 +878,12 @@ Repo --> BaseRepo["Base Repository<br/>base-repository.ts"]
 - Entity mapper for consistent API model shape
 
 Key responsibilities:
+
 - GET /api/projects: applies keyword, skills, or budget filters; returns paginated items with hasMore and continuationToken
 - GET /api/projects/{id}: retrieves a single project by UUID; returns 404 if not found
 
 ## Architecture Overview
+
 The retrieval flow follows a layered architecture: routes -> services -> repositories -> database, with validation and schema enforcement.
 
 ```mermaid
@@ -848,6 +916,7 @@ R-->>C : 200 OK with items array and pagination metadata
 ## Detailed Component Analysis
 
 ### Endpoint: GET /api/projects
+
 - Purpose: List open projects with optional filters and pagination
 - Query parameters:
   - keyword: string; full-text search across title and description
@@ -892,6 +961,7 @@ Result --> Send["Send 200 OK with items, hasMore, total"]
 ```
 
 ### Endpoint: GET /api/projects/{id}
+
 - Purpose: Retrieve a specific project by UUID
 - Path parameter:
   - id: string; UUID of the project
@@ -934,6 +1004,7 @@ end
   - totalCount, pageSize, hasMore, continuationToken
 
 Examples:
+
 - Search for projects by JavaScript skill:
   - GET /api/projects?skills=skill-a,skill-b,skill-c&limit=20
   - Use comma-separated skill IDs
@@ -941,10 +1012,12 @@ Examples:
   - GET /api/projects?minBudget=500&maxBudget=1000&limit=20
 
 Notes:
+
 - The repository applies filters and pagination; hasMore indicates whether more items are available
 - continuationToken is used for pagination; the exact token format is handled by the repository layer
 
 ## Dependency Analysis
+
 ```mermaid
 classDiagram
 class Routes {
@@ -987,6 +1060,7 @@ Service --> Mapper : "maps"
 ```
 
 ## Performance Considerations
+
 - Filtering and pagination:
   - Repository methods use LIMIT and OFFSET with explicit ordering and count for hasMore computation
   - Budget range filtering is applied server-side; ensure indexes on status and budget for optimal performance
@@ -998,7 +1072,9 @@ Service --> Mapper : "maps"
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Bad Request for invalid UUID:
   - Occurs when path parameter id is not a valid UUID; ensure UUID format
 - 404 Not Found:
@@ -1009,9 +1085,11 @@ Common issues and resolutions:
   - Use continuationToken for subsequent pages; ensure limit is within supported bounds
 
 Standardized error envelope:
+
 - All errors include error.code, error.message, optional details, timestamp, and requestId
 
 ## Conclusion
+
 The project retrieval endpoints provide flexible filtering (keyword, skills, budget range) and robust pagination. The route handlers delegate to services, which orchestrate repository queries to Appwrite. Swagger schemas define the Project model and pagination metadata, while validation middleware ensures parameter correctness. Use the documented query parameters and response structure to integrate project listing and single-project retrieval seamlessly.
 
 ---
@@ -1019,6 +1097,7 @@ The project retrieval endpoints provide flexible filtering (keyword, skills, bud
 ## Project Update
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1030,10 +1109,13 @@ The project retrieval endpoints provide flexible filtering (keyword, skills, bud
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the PATCH /api/projects/{id} endpoint for updating a project in the FreelanceXchain system. It explains who can update a project, which fields are updatable, validation rules mirroring creation constraints, and the 409 Conflict response when a project has accepted proposals. It also details the response format returning the updated Project object.
 
 ## Project Structure
+
 The project update flow spans route handlers, service logic, and repositories:
+
 - Route handler validates authentication and role, applies lightweight input validation, and delegates to the service.
 - Service enforces ownership, checks for accepted proposals (locking), validates skills and budget constraints, and persists updates.
 - Repository performs the database update operation.
@@ -1049,6 +1131,7 @@ RepoProposal --> DB
 ```
 
 ## Core Components
+
 - Endpoint: PATCH /api/projects/{id}
 - Authentication: Bearer token required
 - Authorization: Only the project owner (employer) can update
@@ -1058,6 +1141,7 @@ RepoProposal --> DB
 - Response: Updated Project object
 
 ## Architecture Overview
+
 The update request follows this sequence:
 
 ```mermaid
@@ -1087,6 +1171,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Behavior
+
 - Path: /api/projects/{id}
 - Method: PATCH
 - Security: bearerAuth
@@ -1107,12 +1192,15 @@ end
   - 409: Project locked (has accepted proposals)
 
 Notes:
+
 - Only the project owner (employer) can update.
 - If the project has any accepted proposals, updates are rejected with 409 Conflict.
 - Validation mirrors creation constraints for title, description, budget, and skill IDs.
 
 ### Route Handler Logic
+
 Key behaviors:
+
 - Authentication and role enforcement occur before any business logic.
 - UUID validation is performed on the path parameter.
 - Lightweight validation is applied to fields present in the request body.
@@ -1120,7 +1208,9 @@ Key behaviors:
 - Maps service error codes to appropriate HTTP status codes (including 409 for PROJECT_LOCKED).
 
 ### Service Layer Validation and Business Rules
+
 Key behaviors:
+
 - Ownership check: project must belong to the authenticated employer.
 - Locking check: if any proposal has status accepted, reject with PROJECT_LOCKED.
 - Skill validation: requiredSkills skillId values must correspond to active skills.
@@ -1129,10 +1219,12 @@ Key behaviors:
 - Persistence: repository update returns the updated project entity.
 
 ### Repository Operations
+
 - ProjectRepository.updateProject(id, updates) persists changes to the project record.
 - ProposalRepository.hasAcceptedProposal(projectId) determines whether any proposal is accepted, enforcing the lock.
 
 ### Validation Rules (Mirroring Creation Constraints)
+
 - title: if provided, must be at least 5 characters
 - description: if provided, must be at least 20 characters
 - budget: if provided, must be at least 100
@@ -1143,6 +1235,7 @@ Key behaviors:
 These rules are enforced during update and ensure consistency with creation constraints.
 
 ### Example Request: Update Budget and Add a New Required Skill
+
 - Purpose: Demonstrate updating budget and adding a new required skill to a project.
 - Steps:
   - Send a PATCH request to /api/projects/{id}
@@ -1155,10 +1248,12 @@ These rules are enforced during update and ensure consistency with creation cons
 [No sources needed since this section provides a usage example without quoting specific code]
 
 ### Response Format
+
 - On success (200 OK): Returns the updated Project object with all fields.
 - Error responses (400/401/404/409): Return a standardized error envelope with code, message, and optional details.
 
 Swagger schema for Project:
+
 - id: string (uuid)
 - employerId: string (uuid)
 - title: string
@@ -1172,7 +1267,9 @@ Swagger schema for Project:
 - updatedAt: string (date-time)
 
 ## Dependency Analysis
+
 The update flow depends on:
+
 - Route handler depends on auth middleware, role middleware, and UUID validator.
 - Service depends on project repository and proposal repository.
 - Repositories depend on shared base repository and Appwrite client.
@@ -1187,6 +1284,7 @@ PropRepo --> BaseRepo
 ```
 
 ## Performance Considerations
+
 - The update is a single write operation to the project table.
 - Skill validation iterates over provided skillIds; keep requiredSkills minimal to reduce overhead.
 - Budget validation checks milestone sums when milestones exist; avoid frequent partial updates to minimize repeated checks.
@@ -1194,12 +1292,14 @@ PropRepo --> BaseRepo
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized: Ensure a valid Bearer token is included in the Authorization header.
 - 403 Forbidden: Only the project owner (employer) can update; verify the authenticated user owns the project.
 - 404 Not Found: The project ID may be invalid or the project does not exist.
 - 409 Conflict (PROJECT_LOCKED): The project has at least one accepted proposal. Withdraw or cancel the proposal before updating, or accept the business risk if applicable.
-- 400 Validation Error: 
+- 400 Validation Error:
   - title must be at least 5 characters
   - description must be at least 20 characters
   - budget must be at least 100
@@ -1208,6 +1308,7 @@ Common issues and resolutions:
   - status must be one of draft, open, in_progress, completed, cancelled
 
 ## Conclusion
+
 The PATCH /api/projects/{id} endpoint enables employers to update project details while maintaining strong safeguards. Ownership verification and the accepted-proposal lock prevent modifications when a project is actively engaged. Validation rules mirror creation constraints to preserve data quality. The response returns the updated Project object, ensuring clients have the latest state.
 
 ---
