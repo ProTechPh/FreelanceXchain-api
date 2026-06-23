@@ -638,18 +638,6 @@ export async function disputeMilestone(
 
   // Create dispute record
   const disputeId = generateId();
-  const _dispute: Dispute = {
-    id: disputeId,
-    contractId,
-    milestoneId,
-    initiatorId,
-    reason,
-    evidence: [],
-    status: 'open',
-    resolution: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
 
   await disputeRepository.createDispute({
     id: disputeId,
