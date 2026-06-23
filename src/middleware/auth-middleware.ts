@@ -6,8 +6,9 @@ import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
 
 type ValidatedUser = {
-  id: string; // Changed from userId to id for consistency
-  userId: string; // Keep both for backward compatibility
+  /** @deprecated Use `userId` instead. Kept for backward compatibility only — both fields hold the same value. */
+  id: string;
+  userId: string;
   email: string;
   role: UserRole;
 };
