@@ -1,6 +1,7 @@
 # Blockchain Integration
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Smart Contract Architecture](#smart-contract-architecture)
 3. [Core Smart Contracts](#core-smart-contracts)
@@ -430,6 +431,7 @@ API-->>User : Return success/failure
 ### 1. Install Dependencies
 
 Dependencies are already included in `package.json`:
+
 - `ethers` - Ethereum library for blockchain interaction
 - `hardhat` - Smart contract development environment
 
@@ -472,12 +474,14 @@ pnpm deploy:contracts
 ```
 
 For local Ganache testing, set in your `.env`:
+
 ```bash
 BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545
 BLOCKCHAIN_PRIVATE_KEY=<your-ganache-private-key>
 ```
 
 The deployment script will:
+
 1. Deploy all smart contracts
 2. Display contract addresses
 3. Save addresses to the configuration
@@ -603,9 +607,9 @@ Contract addresses are managed per network in `src/config/contracts.ts`.
 The network configuration is managed through environment variables and the Hardhat configuration file, allowing for flexible deployment across different networks.
 
 | Network | RPC URL | Chain ID | Configuration Source |
-|--------|--------|--------|---------------------|
-| Hardhat | http://127.0.0.1:8545 | 31337 | hardhat.config.cjs |
-| Ganache | http://127.0.0.1:7545 | 1337 | hardhat.config.cjs |
+| -------- | -------- | -------- | --------------------- |
+| Hardhat | <http://127.0.0.1:8545> | 31337 | hardhat.config.cjs |
+| Ganache | <http://127.0.0.1:7545> | 1337 | hardhat.config.cjs |
 | Sepolia | Infura/Alchemy URL | 11155111 | hardhat.config.cjs |
 | Polygon | Infura/Alchemy URL | 137 | hardhat.config.cjs |
 | Mumbai | Infura/Alchemy URL | 80001 | hardhat.config.cjs |
@@ -667,18 +671,22 @@ style H fill:#f96,stroke:#333
 ## Troubleshooting
 
 ### "Web3 is not configured"
+
 - Ensure `BLOCKCHAIN_RPC_URL` and `BLOCKCHAIN_PRIVATE_KEY` are set in `.env`
 - Verify the RPC URL is accessible
 
 ### "Contract not deployed"
+
 - Run the deployment script: `pnpm deploy:contracts`
 - Add contract addresses to `.env`
 
 ### "Insufficient funds"
+
 - Ensure your wallet has enough ETH for gas fees
 - For testnets, use faucets to get test ETH
 
 ### Transaction fails
+
 - Check gas price and limits
 - Verify contract state (e.g., milestone already approved)
 - Check wallet permissions

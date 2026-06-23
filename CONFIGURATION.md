@@ -5,7 +5,7 @@ Complete guide to all configuration files in the FreelanceXchain API project.
 ## 📋 Configuration Files Overview
 
 | File | Purpose | Documentation |
-|------|---------|---------------|
+| ------ | --------- | --------------- |
 | `package.json` | NPM dependencies and scripts | [Package Configuration](#packagejson) |
 | `tsconfig.json` | TypeScript compiler configuration | [TypeScript Config](#tsconfigjson) |
 | `tsconfig.test.json` | TypeScript test configuration | [Test TypeScript Config](#tsconfigtestjson) |
@@ -27,6 +27,7 @@ Complete guide to all configuration files in the FreelanceXchain API project.
 ### Key Sections
 
 #### Scripts
+
 ```json
 {
   "scripts": {
@@ -49,10 +50,12 @@ Complete guide to all configuration files in the FreelanceXchain API project.
 ```
 
 #### Dependencies
+
 - **Production:** Express, Appwrite, PostgreSQL, Ethers.js, bcrypt, JWT, etc.
 - **Development:** TypeScript, Jest, Hardhat, ESLint, tsx, etc.
 
 ### Common Commands
+
 ```bash
 # Development
 pnpm install --frozen-lockfile  # Install dependencies
@@ -111,6 +114,7 @@ pnpm run security:audit         # Security audit
 ```
 
 ### What It Does
+
 - Compiles TypeScript to JavaScript
 - Enforces strict type checking
 - Outputs to `dist/` folder
@@ -123,6 +127,7 @@ pnpm run security:audit         # Security audit
 **Purpose:** TypeScript configuration for test files.
 
 ### Key Differences from Production Config
+
 ```json
 {
   "extends": "./tsconfig.json",
@@ -137,6 +142,7 @@ pnpm run security:audit         # Security audit
 ```
 
 ### What It Does
+
 - Extends base TypeScript config
 - Includes Jest type definitions
 - Covers test files
@@ -149,6 +155,7 @@ pnpm run security:audit         # Security audit
 **Purpose:** Jest testing framework configuration.
 
 ### Configuration
+
 ```javascript
 export default {
   preset: 'ts-jest/presets/default-esm',
@@ -184,6 +191,7 @@ export default {
 ```
 
 ### Key Features
+
 - **TypeScript Support:** Uses ts-jest with ESM preset
 - **ESM Support:** Full ES modules support with proper extensions
 - **Path Mapping:** `@/` alias for `src/`
@@ -197,6 +205,7 @@ export default {
 **Purpose:** Global test setup and configuration.
 
 ### Common Setup
+
 ```javascript
 // Set test timeout
 jest.setTimeout(30000);
@@ -221,6 +230,7 @@ afterAll(async () => {
 ```
 
 ### What It Does
+
 - Sets global test timeout
 - Configures test environment variables
 - Provides global test utilities
@@ -233,6 +243,7 @@ afterAll(async () => {
 **Purpose:** ESLint code linting and style enforcement.
 
 ### Configuration
+
 ```javascript
 import eslint from '@eslint/js';
 import tseslint from '@typescript-eslint/eslint-plugin';
@@ -274,6 +285,7 @@ export default [
 ```
 
 ### Key Rules
+
 - `any` types warned (not blocked)
 - Unused variables warned (with `_` prefix exception)
 - Console.log allowed
@@ -281,6 +293,7 @@ export default [
 - Separate relaxed rules for test files
 
 ### Running ESLint
+
 ```bash
 # Check for issues
 pnpm run lint
@@ -296,6 +309,7 @@ pnpm run lint -- --fix
 **Purpose:** Hardhat blockchain development environment configuration.
 
 ### Configuration
+
 ```javascript
 require('dotenv').config();
 
@@ -349,6 +363,7 @@ module.exports = {
 ```
 
 ### Networks
+
 - **hardhat:** Built-in Hardhat network (chainId: 31337)
 - **ganache:** Local development blockchain (chainId: 1337)
 - **sepolia:** Ethereum testnet (chainId: 11155111)
@@ -356,11 +371,13 @@ module.exports = {
 - **amoy:** Polygon testnet (chainId: 80002)
 
 ### Solidity Settings
+
 - Version: 0.8.26
 - Optimizer enabled with 1000 runs
 - IR-based code generation enabled (viaIR)
 
 ### Commands
+
 ```bash
 # Compile contracts
 pnpm run compile
@@ -381,6 +398,7 @@ pnpm run deploy:contracts:prod   # Production network
 **Purpose:** Stores deployed contract addresses and deployment metadata.
 
 ### Structure
+
 ```json
 {
   "ganache": {
@@ -398,6 +416,7 @@ pnpm run deploy:contracts:prod   # Production network
 ```
 
 ### Usage
+
 - Automatically updated by deployment scripts
 - Used by backend to connect to contracts
 - Version controlled for deployment history
@@ -409,18 +428,21 @@ pnpm run deploy:contracts:prod   # Production network
 **Purpose:** OpenAPI 3.0 specification for API documentation.
 
 ### Generation
+
 ```bash
 # Generate from code
 pnpm run openapi:generate
 ```
 
 ### Usage
+
 - Powers Swagger UI at `/api-docs`
 - API client generation
 - API testing tools
 - Documentation
 
 ### Viewing
+
 ```
 http://localhost:7860/api-docs
 ```
@@ -432,6 +454,7 @@ http://localhost:7860/api-docs
 **Purpose:** Docker container configuration for deployment.
 
 ### Multi-stage Build
+
 ```dockerfile
 # Build stage
 FROM node:20-alpine AS builder
@@ -475,6 +498,7 @@ CMD ["node", "dist/index.js"]
 ```
 
 ### Building
+
 ```bash
 # Build image
 docker build -t freelancexchain-api:latest .
@@ -492,17 +516,20 @@ docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ### Required Variables
 
 #### Application
+
 ```env
 NODE_ENV=development
 PORT=7860
 ```
 
 #### Database
+
 ```env
 DATABASE_URL=postgresql://user:password@localhost:5432/freelancexchain
 ```
 
 #### Appwrite
+
 ```env
 APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
 APPWRITE_PROJECT_ID=your-project-id
@@ -515,6 +542,7 @@ APPWRITE_MILESTONE_DELIVERABLES_BUCKET=milestone-deliverables
 ```
 
 #### Authentication
+
 ```env
 JWT_SECRET=your-secret-min-32-chars
 JWT_EXPIRES_IN=1h
@@ -522,6 +550,7 @@ JWT_REFRESH_EXPIRES_IN=7d
 ```
 
 #### Blockchain
+
 ```env
 BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545
 BLOCKCHAIN_PRIVATE_KEY=your-private-key
@@ -530,12 +559,14 @@ ETHERSCAN_API_KEY=your-etherscan-key
 ```
 
 #### AI Services
+
 ```env
 LLM_API_KEY=your-llm-api-key
 LLM_API_URL=https://api.llm-provider.com
 ```
 
 #### KYC Integration
+
 ```env
 DIDIT_API_KEY=your-didit-key
 DIDIT_API_URL=https://verification.didit.me
@@ -544,6 +575,7 @@ DIDIT_WORKFLOW_ID=your-workflow-id
 ```
 
 ### Setup
+
 ```bash
 # Copy example
 cp .env.example .env
@@ -557,21 +589,25 @@ nano .env
 ## 🛠️ Configuration Best Practices
 
 ### 1. Environment-Specific Config
+
 - Use `.env` for local development
 - Use environment variables in production
 - Never commit `.env` to version control
 
 ### 2. Type Safety
+
 - Define environment variable types in `src/config/env.ts`
 - Validate on startup
 - Provide clear error messages
 
 ### 3. Secrets Management
+
 - Use secret management tools in production
 - Rotate secrets regularly
 - Use different secrets per environment
 
 ### 4. Documentation
+
 - Document all configuration options
 - Provide example values
 - Explain required vs optional
@@ -590,18 +626,22 @@ nano .env
 ## 🆘 Troubleshooting
 
 ### "Module not found"
+
 - Run `pnpm install`
 - Check `tsconfig.json` paths
 
 ### "Environment variable not set"
+
 - Check `.env` file exists
 - Verify variable names match
 
 ### "TypeScript compilation errors"
+
 - Run `pnpm exec tsc --noEmit`
 - Check `tsconfig.json` settings
 
 ### "Tests failing"
+
 - Check `jest.config.js` setup
 - Verify test database configuration
 

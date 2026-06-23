@@ -25,14 +25,16 @@ This document serves as a centralized index to all troubleshooting resources acr
 ### General Setup & Configuration
 
 #### Developer Environment Setup
+
 - **Guide**: [Developer Setup Guide - Troubleshooting](setup.md#troubleshooting)
-- **Common Issues**: 
+- **Common Issues**:
   - Environment variable configuration
   - Database connection problems
   - Dependency installation failures
   - Port conflicts
 
 #### Deployment Issues
+
 - **Guide**: [Deployment Configuration](configuration.md)
 - **Common Issues**:
   - Docker container failures
@@ -42,6 +44,7 @@ This document serves as a centralized index to all troubleshooting resources acr
 ### Blockchain Integration
 
 #### Blockchain Client
+
 - **Guide**: [Blockchain Client](../blockchain/client.md)
 - **Common Issues**:
   - Misconfigured environment variables
@@ -50,6 +53,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Transaction failures
 
 #### Contract Agreement
+
 - **Guide**: [Contract Agreement](../blockchain/contracts.md)
 - **Common Issues**:
   - Contract creation failures
@@ -57,6 +61,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Blockchain synchronization issues
 
 #### Escrow System
+
 - **Guide**: [Escrow System](../blockchain/escrow.md)
 - **Common Issues**:
   - Fund deposit failures
@@ -64,6 +69,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Balance synchronization problems
 
 #### KYC Verification
+
 - **Guide**: [KYC Verification](../blockchain/kyc.md)
 - **Common Issues**:
   - Verification submission failures
@@ -71,6 +77,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Document validation errors
 
 #### Milestone Registry
+
 - **Guide**: [Milestone Registry](../blockchain/milestones.md)
 - **Common Issues**:
   - Milestone creation failures
@@ -78,12 +85,14 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Payment release errors
 
 #### General Blockchain Troubleshooting
+
 - **Guide**: [Blockchain Integration - Troubleshooting](../blockchain/integration.md#troubleshooting)
 - **Testing Guide**: [Blockchain Testing](../blockchain/testing.md)
 
 ### Authentication & Security
 
 #### Authentication Service
+
 - **Guide**: [Authentication Service](../architecture/service-auth.md)
 - **Common Issues**:
   - Login failures
@@ -92,6 +101,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Session expiry issues
 
 #### Row Level Security (RLS)
+
 - **Guide**: [Database RLS](../architecture/database-rls.md)
 - **Common Issues**:
   - Permission denied errors
@@ -101,6 +111,7 @@ This document serves as a centralized index to all troubleshooting resources acr
 ### Business Logic Services
 
 #### Matching Service
+
 - **Guide**: [Matching Service](../architecture/service-matching.md)
 - **Common Issues**:
   - AI matching failures
@@ -108,6 +119,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Performance degradation
 
 #### Notification Service
+
 - **Guide**: [Notification Service](../architecture/service-notification.md)
 - **Common Issues**:
   - Notification delivery failures
@@ -115,6 +127,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Batch notification problems
 
 #### Payment Service
+
 - **Guide**: [Payment Service](../architecture/service-payment.md)
 - **Common Issues**:
   - Payment processing failures
@@ -122,6 +135,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Transaction status mismatches
 
 #### Project Service
+
 - **Guide**: [Project Service](../architecture/service-project.md)
 - **Common Issues**:
   - Project creation failures
@@ -129,6 +143,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Search/filter problems
 
 #### Proposal Service
+
 - **Guide**: [Proposal Service](../architecture/service-proposal.md)
 - **Common Issues**:
   - Proposal submission failures
@@ -136,6 +151,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Status synchronization issues
 
 #### Reputation Service
+
 - **Guide**: [Reputation Service](../architecture/service-reputation.md)
 - **Common Issues**:
   - Score calculation errors
@@ -145,14 +161,17 @@ This document serves as a centralized index to all troubleshooting resources acr
 ### API Endpoints
 
 #### Reputation API
+
 - **Main Guide**: [Reputation Service](../architecture/service-reputation.md)
 
 #### Search API
+
 - **Guide**: [API Overview](../architecture/api-overview.md)
 
 ### Data Models & Database
 
 #### Contract Model
+
 - **Guide**: [Contract Model](../architecture/model-contract.md)
 - **Common Issues**:
   - Model validation errors
@@ -160,6 +179,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Status transition problems
 
 #### Dispute Model
+
 - **Guide**: [Dispute Model](../architecture/model-dispute.md)
 - **Common Issues**:
   - Dispute creation failures
@@ -167,6 +187,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Resolution workflow problems
 
 #### KYC Verification Model
+
 - **Guide**: [KYC Model](../architecture/model-kyc.md)
 - **Common Issues**:
   - Model synchronization errors
@@ -174,6 +195,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Document URL validation
 
 #### Notification Model
+
 - **Guide**: [Notification Model](../architecture/model-notification.md)
 - **Common Issues**:
   - Notification persistence errors
@@ -181,6 +203,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Batch operation failures
 
 #### Project Model
+
 - **Guide**: [Project Model](../architecture/model-project.md)
 - **Common Issues**:
   - Project creation validation errors
@@ -188,6 +211,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Status workflow violations
 
 #### Proposal Model
+
 - **Guide**: [Proposal Model](../architecture/model-proposal.md)
 - **Common Issues**:
   - Proposal validation failures
@@ -195,6 +219,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Status transition problems
 
 #### Skill Model
+
 - **Guide**: [Skill Model](../architecture/model-skill.md)
 - **Common Issues**:
   - Skill seeding failures
@@ -204,6 +229,7 @@ This document serves as a centralized index to all troubleshooting resources acr
 ### AI-Powered Matching System
 
 #### AI Client
+
 - **Guide**: [AI Client](../architecture/ai-client.md)
 - **Common Issues**:
   - API connection failures
@@ -211,6 +237,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Response parsing problems
 
 #### Matching Service
+
 - **Guide**: [Matching Service](../architecture/service-matching.md)
 - **Common Issues**:
   - Match calculation failures
@@ -218,6 +245,7 @@ This document serves as a centralized index to all troubleshooting resources acr
   - Score normalization errors
 
 #### AI-Powered Matching System Overview
+
 - **Guide**: [AI Overview](../architecture/ai-overview.md)
 - **Common Issues**:
   - System integration problems
@@ -227,30 +255,38 @@ This document serves as a centralized index to all troubleshooting resources acr
 ### Common Issues
 
 #### Environment Configuration
+
 **Problem**: Missing or incorrect environment variables  
-**Solution**: 
+**Solution**:
+
 1. Verify `.env` file exists and contains all required variables
 2. Check `src/config/env.ts` for required variable names
 3. Ensure Appwrite credentials are correct
 4. Validate blockchain RPC URLs and private keys
 
 **Related Guides**:
+
 - [Developer Setup Guide](setup.md#troubleshooting)
 
 #### Database Connection Errors
+
 **Problem**: Cannot connect to PostgreSQL/Appwrite  
 **Solution**:
+
 1. Verify `DATABASE_URL` or Appwrite credentials
 2. Check network connectivity
 3. Ensure database migrations are applied
 4. Verify RLS policies are not blocking access
 
 **Related Guides**:
+
 - [Database RLS](../architecture/database-rls.md)
 
 #### Blockchain Transaction Failures
+
 **Problem**: Transactions fail or timeout  
 **Solution**:
+
 1. Check wallet has sufficient funds for gas
 2. Verify RPC endpoint is responsive
 3. Ensure contract addresses are correct
@@ -258,12 +294,15 @@ This document serves as a centralized index to all troubleshooting resources acr
 5. Review blockchain network status
 
 **Related Guides**:
+
 - [Blockchain Integration](../blockchain/integration.md#troubleshooting)
 - [Blockchain Client](../blockchain/client.md)
 
 #### Authentication Token Issues
+
 **Problem**: JWT tokens invalid or expired  
 **Solution**:
+
 1. Verify `JWT_SECRET` is configured correctly
 2. Check token expiration settings
 3. Ensure Appwrite Auth is properly initialized
@@ -271,19 +310,24 @@ This document serves as a centralized index to all troubleshooting resources acr
 5. Check for clock skew between client and server
 
 **Related Guides**:
+
 - [Authentication Service](../architecture/service-auth.md)
 
 #### API Rate Limiting
+
 **Problem**: Requests being rate limited  
 **Solution**:
+
 1. Check rate limit configuration in middleware
 2. Implement exponential backoff in client
 3. Review IP-based vs user-based limits
 4. Consider upgrading rate limit tiers for production
 
 #### Performance Issues
+
 **Problem**: Slow API responses or timeouts  
 **Solution**:
+
 1. Enable query logging to identify slow queries
 2. Check database indexes are properly created
 3. Review N+1 query patterns in ORM usage
@@ -292,19 +336,24 @@ This document serves as a centralized index to all troubleshooting resources acr
 6. Use pagination for large result sets
 
 **Related Guides**:
+
 - [Request Logging Middleware](../architecture/middleware-logging.md)
 
 #### CORS Errors
+
 **Problem**: Cross-origin requests blocked  
 **Solution**:
+
 1. Verify `CORS_ORIGIN` environment variable
 2. Check security middleware configuration
 3. Ensure frontend URL is whitelisted
 4. Validate request headers and methods
 
 #### File Upload/URL Validation Errors
+
 **Problem**: File URLs rejected or validation fails  
 **Solution**:
+
 1. Ensure URLs are properly formatted
 2. Check SSRF protection rules
 3. Verify allowed domains/protocols
@@ -313,24 +362,29 @@ This document serves as a centralized index to all troubleshooting resources acr
 ### Debugging Tools & Techniques
 
 #### Logging
+
 - **Correlation IDs**: Every request has a unique correlation ID for tracing
 - **Log Levels**: Use appropriate log levels (error, warn, info, debug)
 - **Structured Logging**: Logs are JSON-formatted for easy parsing
 
 **Related Guides**:
+
 - [Request Logging Middleware](../architecture/middleware-logging.md)
 - [Error Handling Middleware](../architecture/middleware-errors.md)
 
 #### Testing
+
 - **Unit Tests**: Run `pnpm test` for comprehensive test suite
 - **Integration Tests**: Test full API workflows
 - **Blockchain Tests**: Dedicated blockchain integration tests
 
 **Related Guides**:
+
 - [Testing Strategy](testing.md)
 - [Blockchain Testing](../blockchain/testing.md)
 
 #### Monitoring
+
 - **Health Checks**: Use `/health` endpoint for system status
 - **Error Tracking**: Centralized error logging with stack traces
 - **Performance Metrics**: Request duration and response time tracking
@@ -364,10 +418,13 @@ Found a solution to a new issue? Help improve this documentation:
 ## Contract Activation Fix
 
 ### Issue
+
 When an employer accepted a freelancer's proposal, the contract was created with `'pending'` status and remained in that state indefinitely. The contract was never automatically activated, causing confusion for users.
 
 ### Root Cause
+
 The `acceptProposal` function in [proposal-service.ts](../../src/services/proposal-service.ts) was:
+
 1. Creating a contract with `'pending'` status (via the `accept_proposal_atomic` RPC)
 2. Creating a blockchain agreement
 3. **NOT** initializing the escrow or activating the contract
@@ -375,7 +432,9 @@ The `acceptProposal` function in [proposal-service.ts](../../src/services/propos
 The escrow initialization and contract activation were separate manual steps that required calling the `/api/contracts/:id/fund` endpoint.
 
 ### Solution
+
 Modified the `acceptProposal` function to automatically:
+
 1. Create the blockchain agreement (existing behavior)
 2. **Initialize the escrow** by calling `initializeContractEscrow`
 3. **Activate the contract** by updating its status from `'pending'` to `'active'`
@@ -383,6 +442,7 @@ Modified the `acceptProposal` function to automatically:
 #### Changes Made
 
 ##### 1. Updated proposal-service.ts
+
 Added automatic escrow initialization and contract activation after creating the blockchain agreement:
 
 ```typescript
@@ -408,6 +468,7 @@ if (escrowResult.success) {
 ```
 
 ##### 2. Updated Tests
+
 - Added mocks for `payment-service` and `agreement-contract` services
 - Updated mock RPC to create contracts with `'pending'` status (matching real implementation)
 - Enhanced test assertions to verify contract status is `'active'` and escrow address is set
@@ -415,17 +476,21 @@ if (escrowResult.success) {
 ### Contract Status Flow
 
 #### Before Fix
+
 ```
 Proposal Accepted → Contract Created (pending) → [Manual Step Required] → Contract Funded (active)
 ```
 
 #### After Fix
+
 ```
 Proposal Accepted → Contract Created (pending) → Escrow Initialized → Contract Activated (active)
 ```
 
 ### Status Transitions
+
 The contract status follows this state machine:
+
 - `pending` → `active` (when escrow is funded)
 - `pending` → `cancelled` (if cancelled before funding)
 - `active` → `completed` (when all milestones are completed)
@@ -433,7 +498,9 @@ The contract status follows this state machine:
 - `active` → `cancelled` (if cancelled after funding)
 
 ### Error Handling
+
 If escrow initialization fails:
+
 - The contract remains in `'pending'` status
 - Error is logged but doesn't fail the proposal acceptance
 - Employer can manually fund the contract later via `/api/contracts/:id/fund`
@@ -441,26 +508,31 @@ If escrow initialization fails:
 This graceful degradation ensures that blockchain failures don't prevent the core business logic from completing.
 
 ### Testing
+
 All existing tests pass, including:
+
 - Property-based tests for proposal acceptance
 - Unit tests for escrow deployment
 - Contract status verification
 
 ### Related Files
+
 - [src/services/proposal-service.ts](../../src/services/proposal-service.ts)
 - [src/services/payment-service.ts](../../src/services/payment-service.ts)
 - [src/services/contract-service.ts](../../src/services/contract-service.ts)
 - [appwrite/migrations/20240321000000_concurrency_rpcs.sql](../../appwrite/migrations/20240321000000_concurrency_rpcs.sql)
-- [src/__tests__/unit/proposal-service.test.ts](../../src/__tests__/unit/proposal-service.test.ts)
+- [src/**tests**/unit/proposal-service.test.ts](../../src/__tests__/unit/proposal-service.test.ts)
 
 ---
 
 ## Custom Skills API Usage Guide
 
 ### Overview
+
 The Custom Skills feature allows users to add skills that aren't available in the global skill taxonomy. This is perfect for emerging technologies, specialized tools, or niche expertise areas.
 
 ### Key Features
+
 - ✅ Create custom skills when global taxonomy doesn't have what you need
 - ✅ Suggest custom skills for inclusion in global taxonomy
 - ✅ Full CRUD operations on your custom skills
@@ -470,6 +542,7 @@ The Custom Skills feature allows users to add skills that aren't available in th
 ### API Endpoints
 
 #### 1. Create Custom Skill
+
 ```http
 POST /api/skills/custom
 Authorization: Bearer <token>
@@ -485,6 +558,7 @@ Content-Type: application/json
 ```
 
 **Response (201):**
+
 ```json
 {
   "id": "uuid-here",
@@ -501,12 +575,14 @@ Content-Type: application/json
 ```
 
 #### 2. Get Your Custom Skills
+
 ```http
 GET /api/skills/custom
 Authorization: Bearer <token>
 ```
 
 **Response (200):**
+
 ```json
 [
   {
@@ -524,12 +600,14 @@ Authorization: Bearer <token>
 ```
 
 #### 3. Search Your Custom Skills
+
 ```http
 GET /api/skills/custom/search?keyword=react
 Authorization: Bearer <token>
 ```
 
 #### 4. Update Custom Skill
+
 ```http
 PUT /api/skills/custom/{id}
 Authorization: Bearer <token>
@@ -542,12 +620,14 @@ Content-Type: application/json
 ```
 
 #### 5. Delete Custom Skill
+
 ```http
 DELETE /api/skills/custom/{id}
 Authorization: Bearer <token>
 ```
 
 #### 6. Add Skills to Profile (Mixed Global + Custom)
+
 ```http
 POST /api/freelancers/profile/skills
 Authorization: Bearer <token>
@@ -570,12 +650,14 @@ Content-Type: application/json
 ### Admin Endpoints
 
 #### 7. Get Skill Suggestions (Admin Only)
+
 ```http
 GET /api/skills/suggestions
 Authorization: Bearer <admin-token>
 ```
 
 **Response:**
+
 ```json
 [
   {
@@ -592,6 +674,7 @@ Authorization: Bearer <admin-token>
 ```
 
 #### 8. Approve/Reject Skill Suggestion (Admin Only)
+
 ```http
 PUT /api/skills/suggestions/{id}/status
 Authorization: Bearer <admin-token>
@@ -605,6 +688,7 @@ Content-Type: application/json
 ### Error Responses
 
 #### Skill Already Exists Globally (409)
+
 ```json
 {
   "error": {
@@ -621,6 +705,7 @@ Content-Type: application/json
 ```
 
 #### Duplicate Custom Skill (409)
+
 ```json
 {
   "error": {
@@ -633,6 +718,7 @@ Content-Type: application/json
 ```
 
 #### Validation Error (400)
+
 ```json
 {
   "error": {
@@ -657,6 +743,7 @@ Content-Type: application/json
 ### Validation Rules
 
 #### Custom Skill Creation
+
 - **name**: 2-100 characters, required
 - **description**: 10-500 characters, required  
 - **yearsOfExperience**: 0-50, required
@@ -664,6 +751,7 @@ Content-Type: application/json
 - **suggestForGlobal**: boolean, optional (default: false)
 
 ### Security
+
 - Users can only access their own custom skills
 - Row-level security enforced at database level
 - Admin role required for skill suggestion management
@@ -696,18 +784,22 @@ This feature allows freelancers to upload and submit deliverable files when comp
 ### New Endpoints
 
 #### 1. Upload Deliverable Files
+
 **POST** `/api/milestones/:id/upload-deliverables`
 
 Upload files for a milestone without submitting it yet. This allows freelancers to upload files incrementally.
 
 **Headers:**
+
 - `Authorization: Bearer <token>` (freelancer role required)
 - `Content-Type: multipart/form-data`
 
 **Body:**
+
 - `files`: Array of files (up to 10 files, 25MB each)
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -724,20 +816,24 @@ Upload files for a milestone without submitting it yet. This allows freelancers 
 ```
 
 #### 2. Submit Milestone with File Upload
+
 **POST** `/api/milestones/:id/submit-with-files`
 
 Upload files and submit the milestone in one request.
 
 **Headers:**
+
 - `Authorization: Bearer <token>` (freelancer role required)
 - `Content-Type: multipart/form-data`
 
 **Body:**
+
 - `files`: Array of new files to upload
 - `notes`: Optional submission notes
 - `existingDeliverables`: JSON string of previously uploaded files
 
 **Response:**
+
 ```json
 {
   "id": "milestone-456",
@@ -757,15 +853,18 @@ Upload files and submit the milestone in one request.
 ```
 
 #### 3. Submit Milestone (Enhanced)
+
 **POST** `/api/milestones/:id/submit`
 
 Submit milestone with pre-uploaded files or file references.
 
 **Headers:**
+
 - `Authorization: Bearer <token>` (freelancer role required)
 - `Content-Type: application/json`
 
 **Body:**
+
 ```json
 {
   "deliverables": [
@@ -785,6 +884,7 @@ Submit milestone with pre-uploaded files or file references.
 The system supports a wide range of file types for deliverables:
 
 **Documents:**
+
 - PDF (.pdf)
 - Word Documents (.doc, .docx)
 - Excel Spreadsheets (.xlsx)
@@ -793,6 +893,7 @@ The system supports a wide range of file types for deliverables:
 - CSV Files (.csv)
 
 **Images:**
+
 - PNG (.png)
 - JPEG (.jpg, .jpeg)
 - GIF (.gif)
@@ -800,11 +901,13 @@ The system supports a wide range of file types for deliverables:
 - SVG (.svg)
 
 **Archives:**
+
 - ZIP (.zip)
 - RAR (.rar)
 - 7-Zip (.7z)
 
 **Code Files:**
+
 - HTML (.html)
 - CSS (.css)
 - JavaScript (.js)
@@ -812,6 +915,7 @@ The system supports a wide range of file types for deliverables:
 - XML (.xml)
 
 **Video (for demos):**
+
 - MP4 (.mp4)
 - WebM (.webm)
 - QuickTime (.mov)
@@ -825,15 +929,17 @@ The system supports a wide range of file types for deliverables:
 
 ### Usage Workflow
 
-#### For Freelancers:
+#### For Freelancers
 
 1. **Upload files incrementally** (optional):
+
    ```bash
    POST /api/milestones/123/upload-deliverables
    # Upload work-in-progress files
    ```
 
 2. **Submit milestone with all deliverables**:
+
    ```bash
    POST /api/milestones/123/submit-with-files
    # Upload final files and submit milestone
@@ -846,7 +952,7 @@ The system supports a wide range of file types for deliverables:
    # Submit with previously uploaded file references
    ```
 
-#### For Employers:
+#### For Employers
 
 - View submitted milestone with deliverable files
 - Download and review files before approving
@@ -912,11 +1018,11 @@ The following features have been implemented to enhance the platform's functiona
 5. ✅ Health Check Endpoints
 6. ✅ File Management
 7. ✅ Analytics & Reporting
-9. ✅ Favorites/Bookmarks
-10. ✅ Enhanced Portfolio Management
-13. ✅ Email Preferences
-15. ✅ Saved Searches
-18. ✅ Escrow Refund Flow (Enhanced)
+8. ✅ Favorites/Bookmarks
+9. ✅ Enhanced Portfolio Management
+10. ✅ Email Preferences
+11. ✅ Saved Searches
+12. ✅ Escrow Refund Flow (Enhanced)
 
 ---
 
@@ -1232,6 +1338,7 @@ Enhanced existing dispute and payment services to support refund scenarios.
 The following tables need to be created in Appwrite:
 
 #### 1. conversations
+
 ```sql
 CREATE TABLE conversations (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1248,6 +1355,7 @@ CREATE TABLE conversations (
 ```
 
 #### 2. messages
+
 ```sql
 CREATE TABLE messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1263,6 +1371,7 @@ CREATE TABLE messages (
 ```
 
 #### 3. reviews
+
 ```sql
 CREATE TABLE reviews (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1283,6 +1392,7 @@ CREATE TABLE reviews (
 ```
 
 #### 4. favorites
+
 ```sql
 CREATE TABLE favorites (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1295,6 +1405,7 @@ CREATE TABLE favorites (
 ```
 
 #### 5. portfolio_items
+
 ```sql
 CREATE TABLE portfolio_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1311,6 +1422,7 @@ CREATE TABLE portfolio_items (
 ```
 
 #### 6. email_preferences
+
 ```sql
 CREATE TABLE email_preferences (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1328,6 +1440,7 @@ CREATE TABLE email_preferences (
 ```
 
 #### 7. saved_searches
+
 ```sql
 CREATE TABLE saved_searches (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1342,6 +1455,7 @@ CREATE TABLE saved_searches (
 ```
 
 #### 8. transactions (if not exists)
+
 ```sql
 CREATE TABLE transactions (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -1373,10 +1487,13 @@ Create the following Appwrite Storage buckets:
 ### Next Steps
 
 #### 1. Database Migration
+
 Run the SQL scripts above to create required tables.
 
 #### 2. Service Implementation
+
 Complete the service layer implementations for:
+
 - `message-service.ts`
 - `review-service.ts`
 - `admin-service.ts`
@@ -1389,12 +1506,15 @@ Complete the service layer implementations for:
 - `file-service.ts`
 
 #### 3. Testing
+
 Create comprehensive tests for all new endpoints and services.
 
 #### 4. Documentation
+
 Update API documentation with new endpoints.
 
 #### 5. Frontend Integration
+
 Implement UI components for all new features.
 
 ---
@@ -1402,6 +1522,7 @@ Implement UI components for all new features.
 ### Security Considerations
 
 All new endpoints include:
+
 - ✅ Authentication middleware
 - ✅ Authorization checks
 - ✅ Rate limiting
@@ -1446,6 +1567,7 @@ All new endpoints include:
 ### Future Enhancements
 
 Features intentionally excluded (as per requirements):
+
 - ❌ Withdrawal/Payout System (8)
 - ❌ Subscription/Premium Features (11)
 - ❌ Referral System (12)
@@ -1473,11 +1595,13 @@ All features align with the platform's core mission of providing fair, transpare
 ## Project Attachments Feature
 
 ### Overview
+
 Employers can now attach reference files (images, documents) when creating projects to help freelancers better understand the project requirements.
 
 ### API Endpoints
 
 #### Create Project with Attachments
+
 ```
 POST /api/projects/with-attachments
 Content-Type: multipart/form-data
@@ -1485,6 +1609,7 @@ Authorization: Bearer <token>
 ```
 
 **Form Fields:**
+
 - `title` (string, required): Project title (min 5 characters)
 - `description` (string, required): Project description (min 20 characters)  
 - `requiredSkills` (JSON string, required): Array of skill objects with skillId
@@ -1494,6 +1619,7 @@ Authorization: Bearer <token>
 - `files` (files, optional): Reference files/images (max 10 files, 10MB each)
 
 **Example:**
+
 ```javascript
 const formData = new FormData();
 formData.append('title', 'E-commerce Website Development');
@@ -1507,17 +1633,20 @@ formData.append('files', documentFile2);
 ```
 
 ### File Restrictions
+
 - **File Types**: PDF, DOC, DOCX, TXT, PNG, JPG, JPEG, GIF
 - **File Size**: Max 10MB per file
 - **File Count**: Max 10 files per project
 - **Storage**: Files stored in Appwrite Storage with RLS policies
 
 ### Database Changes
+
 - Added `attachments` JSONB column to `projects` table
 - Created `project-attachments` storage bucket
 - Added RLS policies for secure file access
 
 ### Benefits for Freelancers
+
 - Visual references help understand project scope
 - Design mockups and wireframes provide clear direction
 - Sample documents show expected quality and style
@@ -1590,16 +1719,19 @@ curl -X POST https://api.freelancexchain.com/api/projects \
 ### Database Queries
 
 #### Search projects by single tag
+
 ```sql
 SELECT * FROM projects WHERE 'react' = ANY(tags);
 ```
 
 #### Search projects with multiple tags (OR)
+
 ```sql
 SELECT * FROM projects WHERE tags && ARRAY['react', 'nodejs'];
 ```
 
 #### Search projects with all tags (AND)
+
 ```sql
 SELECT * FROM projects WHERE tags @> ARRAY['react', 'nodejs'];
 ```
@@ -1621,6 +1753,7 @@ SELECT * FROM projects WHERE tags @> ARRAY['react', 'nodejs'];
 ### Migration
 
 The feature includes a database migration that:
+
 1. Removes tags column from proposals table (moved from proposals to projects)
 2. Adds tags column to projects table
 3. Sets default value as empty array
@@ -1628,6 +1761,7 @@ The feature includes a database migration that:
 5. Adds documentation comment
 
 Run the migration:
+
 ```bash
 # Using Appwrite CLI
 appwrite db push
@@ -1665,6 +1799,7 @@ GET /api/proposals/{id}/with-employer-history
 **Authentication Required:** Yes (Freelancer role only)
 
 **Parameters:**
+
 - `id` (path parameter) - Proposal ID (UUID)
 
 **Response Example:**
@@ -2284,34 +2419,40 @@ CREATE TABLE audit_log_entries (
 ### Auditable Actions
 
 #### Authentication
+
 - `user_login` - User login attempt
 - `user_logout` - User logout
 - `user_signup` - New user registration
 - `user_password_change` - Password change
 
 #### User Management
+
 - `user_created` - User account created
 - `user_updated` - User profile updated
 - `user_deleted` - User account deleted
 
 #### Contracts
+
 - `contract_created` - New contract created
 - `contract_signed` - Contract signed by party
 - `contract_updated` - Contract terms updated
 - `contract_cancelled` - Contract cancelled
 
 #### Payments
+
 - `payment_initiated` - Payment started
 - `payment_completed` - Payment successful
 - `payment_failed` - Payment failed
 - `payment_refunded` - Payment refunded
 
 #### Disputes
+
 - `dispute_created` - New dispute opened
 - `dispute_resolved` - Dispute resolved
 - `dispute_escalated` - Dispute escalated
 
 #### KYC
+
 - `kyc_submitted` - KYC verification submitted
 - `kyc_approved` - KYC verification approved
 - `kyc_rejected` - KYC verification rejected
@@ -2365,6 +2506,7 @@ CREATE TRIGGER audit_contracts
 ### API Endpoints
 
 #### Get Current User's Audit Logs (USER ACCESSIBLE)
+
 ```
 GET /api/audit-logs/me?limit=100
 Authorization: Bearer <token>
@@ -2373,6 +2515,7 @@ Authorization: Bearer <token>
 **This endpoint is accessible to ALL authenticated users** - users can view their own activity logs for security monitoring and compliance purposes.
 
 **Response:**
+
 ```json
 {
   "logs": [
@@ -2391,42 +2534,49 @@ Authorization: Bearer <token>
 ```
 
 #### Get User Audit Logs (Admin Only)
+
 ```
 GET /api/audit-logs/user/:userId?limit=100
 Authorization: Bearer <admin-token>
 ```
 
 #### Get Resource Audit Logs (Admin Only)
+
 ```
 GET /api/audit-logs/resource/:resourceType/:resourceId
 Authorization: Bearer <admin-token>
 ```
 
 #### Get Audit Logs by Action (Admin Only)
+
 ```
 GET /api/audit-logs/action/:action?limit=100
 Authorization: Bearer <admin-token>
 ```
 
 #### Get Failed Actions (Admin Only)
+
 ```
 GET /api/audit-logs/failed?limit=100
 Authorization: Bearer <admin-token>
 ```
 
 #### Get Audit Logs by Date Range (Admin Only)
+
 ```
 GET /api/audit-logs/range?startDate=2024-01-01&endDate=2024-12-31
 Authorization: Bearer <admin-token>
 ```
 
 #### Generate User Audit Report (Admin Only)
+
 ```
 GET /api/audit-logs/report/user/:userId?startDate=2024-01-01&endDate=2024-12-31
 Authorization: Bearer <admin-token>
 ```
 
 Response:
+
 ```json
 {
   "totalActions": 150,
@@ -2442,12 +2592,14 @@ Response:
 ```
 
 #### Generate System Audit Report (Admin Only)
+
 ```
 GET /api/audit-logs/report/system?startDate=2024-01-01&endDate=2024-12-31
 Authorization: Bearer <admin-token>
 ```
 
 Response:
+
 ```json
 {
   "totalActions": 5000,
@@ -2500,16 +2652,19 @@ This audit logging system helps meet compliance requirements for:
 ### Troubleshooting
 
 #### Logs not appearing
+
 - Check that the service role is being used for logging
 - Verify RLS policies are correctly configured
 - Check application logs for audit logging errors
 
 #### Performance issues
+
 - Add indexes for frequently queried columns
 - Reduce the date range in queries
 - Consider pagination for large result sets
 
 #### Missing context data
+
 - Ensure middleware is properly extracting user info from requests
 - Verify IP address and user agent are being captured correctly
 
@@ -2526,10 +2681,13 @@ This audit logging system helps meet compliance requirements for:
 ## Proposal File Upload Implementation Summary
 
 ### Overview
+
 Successfully implemented file upload feature for proposals, replacing text-based cover letters with file attachments (1-5 files per proposal).
 
 ### Implementation Approach
+
 Used **URL reference pattern** where clients upload files to Appwrite Storage first, then submit file metadata to the API. This approach:
+
 - Aligns with existing codebase patterns (dispute evidence, KYC documents)
 - Reduces server load (no file processing on API)
 - Leverages Appwrite Storage's built-in features
@@ -2538,6 +2696,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
 ### Files Created
 
 #### 1. Core Implementation
+
 - **`src/utils/file-validator.ts`** - File validation utility
   - Validates file count (1-5)
   - Validates file types (PDF, DOCX, DOC, TXT, PNG, JPG, JPEG, GIF)
@@ -2546,12 +2705,14 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
   - Exports `FileAttachment` type and validation functions
 
 #### 2. Database
+
 - **`appwrite/migrations/20260218000000_add_proposal_attachments.sql`** - Migration file
   - Adds `attachments` JSONB column to proposals table
   - Makes `cover_letter` nullable for backward compatibility
   - Adds column comments for documentation
 
 #### 3. Documentation
+
 - **[Overview](overview.md)** - Comprehensive guide
   - Architecture overview
   - File requirements and limits
@@ -2566,6 +2727,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
 ### Files Modified
 
 #### 1. Type Definitions
+
 - **`src/repositories/proposal-repository.ts`**
   - Added `FileAttachment` import
   - Updated `ProposalEntity` type: `cover_letter: string | null`, added `attachments: FileAttachment[]`
@@ -2576,6 +2738,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
   - Updated `mapProposalFromEntity()` to handle attachments field
 
 #### 2. Service Layer
+
 - **`src/services/proposal-service.ts`**
   - Added `FileAttachment` and `validateAttachments` imports
   - Updated `CreateProposalInput` type: replaced `coverLetter: string` with `attachments: FileAttachment[]`
@@ -2585,6 +2748,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
     - Set `cover_letter: null` for new proposals
 
 #### 3. Routes & Validation
+
 - **`src/routes/proposal-routes.ts`**
   - Updated POST /api/proposals route handler:
     - Changed request body destructuring to use `attachments` instead of `coverLetter`
@@ -2602,6 +2766,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
     - Added object schema for attachment items with required fields
 
 #### 4. Configuration
+
 - **`src/config/env.ts`**
   - Added `storage` section to `appwrite` config
   - Added `proposalAttachmentsBucket` configuration with default value
@@ -2615,6 +2780,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
   - Added column comments for documentation
 
 #### 5. Tests
+
 - **`src/__tests__/integration.test.ts`**
   - Updated proposal repository mock:
     - Added `attachments` field handling in `createProposal`
@@ -2630,6 +2796,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
   - Updated test data to include sample attachment objects
 
 #### 6. Documentation
+
 - **`CHANGELOG.md`**
   - Added comprehensive entry for proposal file attachments feature
   - Documented all changes, additions, and migration notes
@@ -2637,18 +2804,21 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
 ### Key Features
 
 #### File Validation
+
 - **Count**: 1-5 files required per proposal
 - **Types**: PDF, DOCX, DOC, TXT, PNG, JPG, JPEG, GIF
 - **Size**: 10MB per file, 25MB total
 - **URL**: Must be HTTPS from Appwrite Storage domain
 
 ### Security
+
 - URL domain validation prevents external URL injection
 - MIME type whitelist prevents malicious uploads
 - File extension validation provides additional security
 - Size limits prevent storage abuse
 
 ### Backward Compatibility
+
 - `cover_letter` field remains in database (nullable)
 - Existing proposals with text cover letters continue to work
 - No data loss during migration
@@ -2656,6 +2826,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
 ### API Changes
 
 #### Request Format (Before)
+
 ```json
 {
   "projectId": "uuid",
@@ -2666,6 +2837,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
 ```
 
 #### Request Format (After)
+
 ```json
 {
   "projectId": "uuid",
@@ -2685,6 +2857,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
 ### Next Steps for Deployment
 
 1. **Run Database Migration**
+
    ```bash
    # Apply migration to add attachments column
    psql -d your_database -f appwrite/migrations/20260218000000_add_proposal_attachments.sql
@@ -2697,6 +2870,7 @@ Used **URL reference pattern** where clients upload files to Appwrite Storage fi
    - Configure RLS policies for access control
 
 3. **Update Environment Variables**
+
    ```env
    APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments
    ```
@@ -2745,6 +2919,7 @@ Proposals now support file attachments instead of text-based cover letters. Free
 The implementation supports **two upload patterns**:
 
 #### 1. Server-Side Upload (Recommended - New)
+
 1. Client sends files via `multipart/form-data` to API
 2. API validates files using multer middleware (extension, magic numbers, size)
 3. API uploads validated files to Appwrite Storage
@@ -2752,6 +2927,7 @@ The implementation supports **two upload patterns**:
 5. API returns proposal with file URLs
 
 **Benefits:**
+
 - Defense-in-depth security with multiple validation layers
 - Magic number validation prevents MIME type spoofing
 - Filename sanitization prevents path traversal attacks
@@ -2759,12 +2935,14 @@ The implementation supports **two upload patterns**:
 - Centralized file validation logic
 
 #### 2. URL Reference Pattern (Legacy - Backward Compatible)
+
 1. Client uploads files directly to Appwrite Storage
 2. Client receives file URLs from Appwrite
 3. Client submits proposal with file metadata (URLs, filenames, sizes, MIME types)
 4. API validates file metadata and stores references in the database
 
 **Benefits:**
+
 - Reduces server load (no file processing on API server)
 - Leverages Appwrite Storage's built-in features (CDN, access control)
 - Simpler client implementation for existing integrations
@@ -2774,11 +2952,13 @@ The implementation supports **two upload patterns**:
 #### Allowed File Types
 
 **Documents:**
+
 - PDF (`.pdf`)
 - Microsoft Word (`.doc`, `.docx`)
 - Plain Text (`.txt`)
 
 **Images:**
+
 - PNG (`.png`)
 - JPEG (`.jpg`, `.jpeg`)
 - GIF (`.gif`)
@@ -2792,6 +2972,7 @@ The implementation supports **two upload patterns**:
 #### Security Validations
 
 **Server-Side Upload (Multer):**
+
 1. Extension validation (first line of defense)
 2. Magic number validation (file signature detection)
 3. Size validation (per file and total)
@@ -2800,6 +2981,7 @@ The implementation supports **two upload patterns**:
 6. Rate limiting (20 uploads per hour per user)
 
 **URL Reference Pattern:**
+
 1. URL domain validation (must be from Appwrite Storage)
 2. MIME type whitelist validation
 3. Extension validation
@@ -2845,6 +3027,7 @@ The `attachments` column stores a JSON array of file metadata:
 #### 1. Create Storage Bucket
 
 In Appwrite Dashboard:
+
 1. Navigate to **Storage** section
 2. Click **New bucket**
 3. Bucket name: `proposal-attachments`
@@ -2889,6 +3072,7 @@ APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments
 **Content-Type:** `multipart/form-data`
 
 **Form Fields:**
+
 - `projectId` (string, required): Project UUID
 - `proposedRate` (number, required): Proposed rate
 - `estimatedDuration` (number, required): Duration in days
@@ -3275,11 +3459,13 @@ Potential improvements:
 ### For Backend Developers
 
 #### What Changed
+
 - Proposals now use **file attachments** instead of text cover letters
 - Clients must upload files to Appwrite Storage first, then submit file metadata
 - API validates file metadata (URLs, types, sizes, count)
 
 #### API Request Format
+
 ```typescript
 POST /api/proposals
 {
@@ -3298,12 +3484,14 @@ POST /api/proposals
 ```
 
 #### File Requirements
+
 - **Count**: 1-5 files required
 - **Types**: PDF, DOCX, DOC, TXT, PNG, JPG, JPEG, GIF
 - **Size**: 10MB per file, 25MB total
 - **URL**: Must be from Appwrite Storage
 
 #### Deployment Steps
+
 1. Run migration: `appwrite/migrations/20260218000000_add_proposal_attachments.sql`
 2. Create Appwrite Storage bucket: `proposal-attachments` (private)
 3. Set environment variable: `APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments`
@@ -3314,20 +3502,26 @@ POST /api/proposals
 ### For Frontend Developers
 
 #### Upload Flow
+
 1. **User selects files** (1-5 files, allowed types only)
 2. **Upload to Appwrite Storage**
+
    ```typescript
    const { data, error } = await appwrite.storage
      .from('proposal-attachments')
      .upload(`${userId}/${Date.now()}.${ext}`, file);
    ```
+
 3. **Get file URL**
+
    ```typescript
    const { data: { publicUrl } } = appwrite.storage
      .from('proposal-attachments')
      .getPublicUrl(fileName);
    ```
+
 4. **Submit proposal with file metadata**
+
    ```typescript
    const attachments = files.map(file => ({
      url: publicUrl,
@@ -3343,6 +3537,7 @@ POST /api/proposals
    ```
 
 #### Client-Side Validation
+
 ```typescript
 // Validate before upload
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -3383,6 +3578,7 @@ function validateFiles(files: File[]): string[] {
 ```
 
 #### Error Handling
+
 ```typescript
 try {
   const response = await fetch('/api/proposals', { ... });
@@ -3401,6 +3597,7 @@ try {
 ```
 
 #### UI Components Needed
+
 - File upload dropzone (drag & drop support)
 - File list with preview (thumbnails for images, icons for documents)
 - Progress indicators for uploads
@@ -3415,12 +3612,14 @@ try {
 #### Test Cases
 
 **Valid Submissions**
+
 - [ ] Submit with 1 PDF file
 - [ ] Submit with 5 mixed files (PDF + images)
 - [ ] Submit with maximum allowed sizes (10MB per file)
 - [ ] Submit with all allowed file types
 
 **Validation Errors**
+
 - [ ] Submit with 0 files → "At least 1 file is required"
 - [ ] Submit with 6 files → "Maximum 5 files allowed"
 - [ ] Submit with file > 10MB → "File size exceeds 10MB limit"
@@ -3430,6 +3629,7 @@ try {
 - [ ] Submit with non-HTTPS URL → "File URL must use HTTPS protocol"
 
 **Edge Cases**
+
 - [ ] Submit with special characters in filename
 - [ ] Submit with very long filename
 - [ ] Submit with duplicate filenames
@@ -3437,10 +3637,12 @@ try {
 - [ ] Submit with deleted file URL (404)
 
 **Backward Compatibility**
+
 - [ ] View existing proposals with text cover letters
 - [ ] Ensure old proposals still display correctly
 
 #### API Testing with cURL
+
 ```bash
 # Valid request
 curl -X POST http://localhost:7860/api/proposals \
@@ -3475,21 +3677,25 @@ curl -X POST http://localhost:7860/api/proposals \
 ### Troubleshooting
 
 #### "File URL must be from Appwrite Storage domain"
+
 - Ensure files are uploaded to Appwrite Storage first
 - Check that the URL includes your project reference
 - Verify URL format: `https://<project-ref>.appwrite.co/storage/...`
 
 #### "Storage bucket not found"
+
 - Create the bucket in Appwrite Dashboard
 - Verify bucket name matches configuration
 - Check bucket is accessible to authenticated users
 
 #### "Permission denied" when uploading
+
 - Check Appwrite Storage RLS policies
 - Ensure user is authenticated
 - Verify bucket permissions allow uploads
 
 #### Files upload but proposal submission fails
+
 - Check file metadata is correct (URL, filename, size, mimeType)
 - Verify all required fields are present
 - Check file URLs are accessible

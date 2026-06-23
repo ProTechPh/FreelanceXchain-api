@@ -5,6 +5,7 @@ Documentation for blockchain integration, smart contracts, and testing.
 ## Smart Contracts Overview
 
 The platform uses the following smart contracts:
+
 - **FreelanceEscrow** - Escrow management for payments
 - **ContractAgreement** - Contract terms and agreements
 - **DisputeResolution** - Dispute handling mechanism
@@ -14,7 +15,7 @@ The platform uses the following smart contracts:
 ## Documentation
 
 | Topic | Description |
-|-------|-------------|
+| ------- | ------------- |
 | [Blockchain Client](client.md) | Dual-layer blockchain client architecture with simulation and production layers for Ethereum network interactions |
 | [Contract Agreements](agreements.md) | On-chain agreement system for formalizing freelance engagements with terms hashing and multi-party signatures |
 | [Dispute Resolution](disputes.md) | Decentralized dispute resolution mechanism with evidence submission and arbitration workflows |

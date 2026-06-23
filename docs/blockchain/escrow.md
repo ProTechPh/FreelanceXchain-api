@@ -1,6 +1,7 @@
 # Escrow System
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,10 +14,13 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document explains the architecture and integration of the FreelanceEscrow smart contract and its backend service layer. It covers how the contract securely holds funds during freelance engagements, the milestone-based payment flow, fund locking conditions, and withdrawal validation logic. It also documents the TypeScript escrow-contract service that interfaces with the contract using a simulated blockchain client, transaction construction, confirmation polling, and event-like notifications. Finally, it outlines security considerations, backend integration patterns, and testing strategies for escrow workflows.
 
 ## Project Structure
+
 The escrow system spans Solidity smart contracts, a backend service layer, and API routes:
+
 - Smart contracts define the escrow logic and lifecycle.
 - A backend service layer simulates blockchain interactions and orchestrates escrow operations.
 - API routes expose milestone completion, approval, dispute, and status endpoints.
@@ -49,6 +53,7 @@ DEP --> ESC
 ```
 
 ## Core Components
+
 - FreelanceEscrow (Solidity): Holds funds, tracks milestones, enforces access controls, and emits lifecycle events.
 - payment-service: Orchestrates milestone lifecycle, interacts with escrow and registry services, and updates domain state.
 - escrow-contract (TypeScript): Simulates blockchain operations for escrow deployment, deposits, milestone releases, and refunds.
@@ -57,7 +62,9 @@ DEP --> ESC
 - payment-routes (Express): Exposes REST endpoints for milestone completion, approval, dispute, and status.
 
 ## Architecture Overview
+
 The system integrates off-chain orchestration with on-chain security:
+
 - Off-chain: Express routes trigger payment-service, which coordinates escrow and registry operations.
 - On-chain: FreelanceEscrow manages funds and milestone states; milestone-registry records verifiable milestones.
 - Simulation: blockchain-client simulates transaction submission and confirmation for development/testing.
@@ -92,6 +99,7 @@ Service-->>Routes : result
 ## Detailed Component Analysis
 
 ### FreelanceEscrow Smart Contract
+
 - Roles and access control:
   - employer, freelancer, arbiter roles with dedicated modifiers.
   - contractActive modifier prevents operations on inactive contracts.
@@ -126,6 +134,7 @@ Continue --> End2
 ```
 
 ### Escrow Contract Service (TypeScript)
+
 - Responsibilities:
   - Deploy escrow: generates a mock address, submits deployment transaction, confirms, and stores state.
   - Deposit funds: validates caller, submits deposit transaction, confirms, and updates balance.
@@ -150,6 +159,7 @@ Service-->>Caller : {escrowAddress, transactionHash, blockNumber}
 ```
 
 ### Payment Service Orchestration
+
 - Initializes escrow on contract creation: deploys escrow, deposits funds, and persists escrow address.
 - Milestone completion: updates project state to "submitted" and submits milestone to registry.
 - Milestone approval: releases payment via escrow-contract service, updates project state, approves on registry, and completes contract/agreement if all approved.
@@ -174,6 +184,7 @@ end
 ```
 
 ### Blockchain Client Utilities
+
 - Transaction submission: generates IDs, hashes, signs (simulated), and stores pending transactions.
 - Confirmation polling: simulates confirmation timing and returns receipts.
 - Serialization/deserialization: converts bigints to strings for JSON transport.
@@ -195,6 +206,7 @@ class BlockchainClient {
 ```
 
 ### Milestone Registry Service
+
 - Submits milestone with hashes for deliverables and metadata.
 - Approves milestones and updates status and timestamps.
 - Tracks freelancer stats and portfolio.
@@ -216,6 +228,7 @@ Reg-->>Service : {record, receipt}
 ```
 
 ### API Integration
+
 - Routes:
   - POST /api/payments/milestones/:milestoneId/complete
   - POST /api/payments/milestones/:milestoneId/approve
@@ -241,6 +254,7 @@ end
 ```
 
 ## Dependency Analysis
+
 - payment-service depends on:
   - escrow-contract for blockchain operations.
   - milestone-registry for verifiable milestone records.
@@ -263,13 +277,16 @@ Escrow["FreelanceEscrow.sol"] -.-> EscrowSvc
 ```
 
 ## Performance Considerations
+
 - Transaction confirmation latency: simulation uses short delays; production uses real RPC with typical Ethereum confirmation times.
 - Gas optimization: keep transactions small; batch operations where feasible.
 - State updates: minimize repeated reads/writes; cache frequently accessed data.
 - Event-driven notifications: defer heavy operations to background jobs if scaling.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Transaction not found or failed:
   - Use pollTransactionStatus to verify status and inspect error messages.
   - confirmTransaction forces confirmation in simulations; use failTransaction to simulate failures.
@@ -282,6 +299,7 @@ Common issues and resolutions:
   - Milestone registry prevents duplicate submissions; ensure unique hashes.
 
 ## Conclusion
+
 The escrow system combines a secure Solidity contract with a robust backend orchestration layer. The FreelanceEscrow contract enforces access control and reentrancy protections, while the TypeScript services simulate blockchain interactions and coordinate milestone lifecycle events. The API exposes clear endpoints for clients, and the deployment script demonstrates end-to-end testing. Together, these components provide a secure, verifiable, and scalable foundation for milestone-based payments.
 
 ## Appendices
@@ -302,6 +320,7 @@ The escrow system combines a secure Solidity contract with a robust backend orch
   - Arbiter resolves via resolveDispute; either Approve (freelancer) or Refund (employer).
 
 ### Security Considerations
+
 - Reentrancy protection: nonReentrant modifier on payment functions.
 - Authorization: onlyEmployer, onlyFreelancer, onlyArbiter, onlyParties modifiers.
 - Input validation: index bounds, status checks, and amount sufficiency.
@@ -309,12 +328,14 @@ The escrow system combines a secure Solidity contract with a robust backend orch
 - Event listening: monitor emitted events to drive off-chain state updates.
 
 ### Backend Interaction Patterns
+
 - Use payment-routes to trigger milestone operations.
 - payment-service coordinates escrow and registry operations.
 - escrow-contract encapsulates transaction submission and confirmation.
 - blockchain-client abstracts transaction lifecycle and serialization.
 
 ### Testing Strategies
+
 - Unit tests: service-layer logic with mocked repositories and blockchain-client.
 - Integration tests: route-level tests verifying end-to-end flows.
 - Smart contract tests: Hardhat-based tests for FreelanceEscrow and FreelanceReputation.

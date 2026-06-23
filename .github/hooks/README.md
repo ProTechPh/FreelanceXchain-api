@@ -13,12 +13,14 @@ Comprehensive monitoring for GitHub Copilot coding agent sessions with real-time
 This combined hook system provides:
 
 **Governance Controls:**
+
 - **Threat detection**: Scans prompts for data exfiltration, privilege escalation, system destruction, prompt injection, and credential exposure
 - **Governance levels**: Open, standard, strict, locked — from audit-only to full blocking
 - **Audit trail**: Append-only JSON log of all governance events
 - **Session summary**: Reports threat counts at session end
 
 **Session Logging:**
+
 - **Session tracking**: Log session start and end events with working directory context
 - **Prompt logging**: Record when user prompts are submitted
 - **Structured logging**: JSON format for easy parsing and analysis
@@ -27,7 +29,7 @@ This combined hook system provides:
 ## Threat Categories
 
 | Category | Examples | Severity |
-|----------|----------|----------|
+| ---------- | ---------- | ---------- |
 | `data_exfiltration` | "send all records to external API" | 0.7 - 0.95 |
 | `privilege_escalation` | "sudo", "chmod 777", "add to sudoers" | 0.8 - 0.95 |
 | `system_destruction` | "rm -rf /", "drop database" | 0.9 - 0.95 |
@@ -37,7 +39,7 @@ This combined hook system provides:
 ## Governance Levels
 
 | Level | Behavior |
-|-------|----------|
+| ------- | ---------- |
 | `open` | Log threats only, never block |
 | `standard` | Log threats, block only if `BLOCK_ON_THREAT=true` |
 | `strict` | Log and block all detected threats |
@@ -46,11 +48,13 @@ This combined hook system provides:
 ## Installation
 
 1. Ensure all scripts are executable:
+
    ```bash
    chmod +x .github/hooks/*.sh
    ```
 
 2. Create the logs directory and add to `.gitignore`:
+
    ```bash
    mkdir -p logs/copilot/governance
    echo "logs/" >> .gitignore
@@ -77,17 +81,17 @@ Set environment variables in `hooks.json`:
 ### Governance Settings
 
 | Variable | Values | Default | Description |
-|----------|--------|---------|-------------|
+| ---------- | -------- | --------- | ------------- |
 | `GOVERNANCE_LEVEL` | `open`, `standard`, `strict`, `locked` | `standard` | Controls blocking behavior |
 | `BLOCK_ON_THREAT` | `true`, `false` | `false` | Block prompts with threats (standard level) |
 | `SKIP_GOVERNANCE_AUDIT` | `true` | unset | Disable governance audit entirely |
 
 ### Logging Settings
 
-| Variable | Values | Default | Description |
-|----------|--------|---------|-------------|
-| `LOG_LEVEL` | `INFO`, `ERROR` | `INFO` | Logging verbosity level |
-| `SKIP_LOGGING` | `true` | unset | Disable session logging entirely |
+| Variable        | Values          | Default | Description                      |
+|-----------------|-----------------|---------|----------------------------------|
+| `LOG_LEVEL`     | `INFO`, `ERROR` | `INFO`  | Logging verbosity level          |
+| `SKIP_LOGGING`  | `true`          | unset   | Disable session logging entirely |
 
 ## Log Format
 

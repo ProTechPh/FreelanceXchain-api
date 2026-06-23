@@ -62,6 +62,7 @@ Please include the following information in your report:
 This project implements multiple security layers:
 
 ### Application Security
+
 - ✅ Authentication via Appwrite with JWT tokens
 - ✅ CSRF protection on all state-changing endpoints
 - ✅ Rate limiting to prevent abuse
@@ -71,6 +72,7 @@ This project implements multiple security layers:
 - ✅ Secure headers (HSTS, CSP, X-Frame-Options)
 
 ### Infrastructure Security
+
 - ✅ Container security scanning with Trivy
 - ✅ Dependency vulnerability scanning with Dependabot
 - ✅ Secret scanning with TruffleHog
@@ -78,6 +80,7 @@ This project implements multiple security layers:
 - ✅ Hardened GitHub Actions workflows
 
 ### Smart Contract Security
+
 - ✅ Static analysis with Slither
 - ✅ Comprehensive test coverage
 - ✅ Access control mechanisms
@@ -85,6 +88,7 @@ This project implements multiple security layers:
 - ✅ Integer overflow protection
 
 ### Development Security
+
 - ✅ Code review requirements
 - ✅ Branch protection rules
 - ✅ Signed commits (recommended)
@@ -105,18 +109,21 @@ If you're contributing to this project:
 ## Known Security Considerations
 
 ### Smart Contracts
+
 - Smart contracts are immutable once deployed
 - Thoroughly test all contract changes before deployment
 - Use multi-signature wallets for contract ownership
 - Consider formal verification for critical contracts
 
 ### API Security
+
 - Rate limits are enforced per IP address
 - Authentication tokens expire after 1 hour
 - Failed login attempts are logged and monitored
 - CORS is configured for specific origins only
 
 ### Data Privacy
+
 - Personal data is encrypted at rest
 - Sensitive data is never logged
 - GDPR compliance measures are implemented
@@ -151,6 +158,7 @@ This project aims to comply with:
 ## Contact
 
 For security-related questions or concerns:
+
 - Security Team: [Add security team contact]
 - Project Maintainer: @ProTechPh
 

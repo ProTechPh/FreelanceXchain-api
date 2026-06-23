@@ -1,6 +1,7 @@
 # Authentication API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,11 +14,13 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the authentication module of the FreelanceXchain system. It covers all authentication endpoints, including user registration, login, token refresh, OAuth integration, and password recovery. It also documents request/response schemas, JWT-based authentication requirements, rate limiting policies, and client implementation guidance for JavaScript/TypeScript.
 
 The authentication endpoints are implemented under the base path /api/auth and integrate with Appwrite Auth for secure user management, email verification, and OAuth providers.
 
 ## Project Structure
+
 The authentication module is organized into routes, services, middleware, and shared types. The OpenAPI/Swagger specification is configured to document the authentication endpoints.
 
 ```mermaid
@@ -50,6 +53,7 @@ CSwag --> RAuth
 ```
 
 ## Core Components
+
 - Authentication routes: Define endpoints for registration, login, token refresh, OAuth, and password recovery.
 - Authentication service: Implements business logic for Appwrite Auth integration, token validation, and user synchronization.
 - Rate limiter middleware: Applies rate limits to authentication endpoints.
@@ -57,6 +61,7 @@ CSwag --> RAuth
 - Shared types: Define request/response schemas and error codes.
 
 ## Architecture Overview
+
 The authentication flow integrates with Appwrite Auth for secure user management. The routes validate inputs, apply rate limiting, and delegate to the service layer. The service layer interacts with Appwrite Auth and the database to manage users and tokens. The auth middleware validates JWT Bearer tokens for protected routes.
 
 ```mermaid
@@ -90,6 +95,7 @@ Routes-->>Client : 200 AuthResult
 ### Authentication Endpoints
 
 #### POST /api/auth/register
+
 - Purpose: Register a new user with email/password.
 - Request body schema: RegisterInput
   - email: string, required
@@ -105,10 +111,12 @@ Routes-->>Client : 200 AuthResult
 Rate limiting: Yes (authRateLimiter)
 
 Security considerations:
+
 - Password strength enforced by service-level validation.
 - Duplicate email detection via Appwrite Auth and database checks.
 
 #### POST /api/auth/login
+
 - Purpose: Authenticate a user with email/password.
 - Request body schema: LoginInput
   - email: string, required
@@ -119,9 +127,11 @@ Security considerations:
   - 401: AuthError with AUTH_INVALID_CREDENTIALS
 
 Notes:
+
 - Requires email verification; unverified emails will fail login.
 
 #### POST /api/auth/refresh
+
 - Purpose: Refresh access and refresh tokens using a refresh token.
 - Request body schema: RefreshInput
   - refreshToken: string, required
@@ -131,12 +141,14 @@ Notes:
   - 401: AuthError with AUTH_TOKEN_EXPIRED or AUTH_INVALID_TOKEN
 
 #### GET /api/auth/oauth/:provider
+
 - Purpose: Initiate OAuth login with a provider (google, github, azure, linkedin).
 - Responses:
   - 302: Redirect to provider authorization URL
   - 400: AuthError with VALIDATION_ERROR
 
 #### GET /api/auth/callback
+
 - Purpose: Handle OAuth callback. Supports PKCE flow (code in query) and implicit flow (tokens in URL fragment).
 - Responses:
   - 200: AuthResult with tokens and user
@@ -144,6 +156,7 @@ Notes:
   - 400: AuthError with OAUTH_ERROR
 
 #### POST /api/auth/oauth/callback
+
 - Purpose: Receive access_token from frontend after OAuth redirect (implicit flow).
 - Request body:
   - access_token: string, required
@@ -153,6 +166,7 @@ Notes:
   - 401: AuthError with AUTH_INVALID_TOKEN
 
 #### POST /api/auth/oauth/register
+
 - Purpose: Complete OAuth registration by selecting role and optionally providing name and walletAddress.
 - Request body:
   - accessToken: string, required
@@ -167,6 +181,7 @@ Notes:
 Rate limiting: Yes (authRateLimiter)
 
 #### POST /api/auth/resend-confirmation
+
 - Purpose: Resend email confirmation link.
 - Request body:
   - email: string, required
@@ -177,6 +192,7 @@ Rate limiting: Yes (authRateLimiter)
 Rate limiting: Yes (authRateLimiter)
 
 #### POST /api/auth/forgot-password
+
 - Purpose: Send password reset email.
 - Request body:
   - email: string, required
@@ -187,6 +203,7 @@ Rate limiting: Yes (authRateLimiter)
 Rate limiting: Yes (authRateLimiter)
 
 #### POST /api/auth/reset-password
+
 - Purpose: Update password using reset token.
 - Request body:
   - accessToken: string, required
@@ -201,6 +218,7 @@ Rate limiting: Yes (authRateLimiter)
 ### Request and Response Schemas
 
 #### RegisterInput
+
 - email: string, required
 - password: string, required
 - role: string, enum [freelancer, employer], required
@@ -208,13 +226,16 @@ Rate limiting: Yes (authRateLimiter)
 - walletAddress: string, optional
 
 #### LoginInput
+
 - email: string, required
 - password: string, required
 
 #### RefreshInput
+
 - refreshToken: string, required
 
 #### AuthResult
+
 - user: object
   - id: string
   - email: string
@@ -225,6 +246,7 @@ Rate limiting: Yes (authRateLimiter)
 - refreshToken: string
 
 #### AuthError
+
 - error: object
   - code: string, enum including DUPLICATE_EMAIL, INVALID_CREDENTIALS, TOKEN_EXPIRED, INVALID_TOKEN, AUTH_EXCHANGE_FAILED, AUTH_INVALID_TOKEN, AUTH_INVALID_CREDENTIALS, AUTH_REQUIRE_REGISTRATION, VALIDATION_ERROR, INTERNAL_ERROR
   - message: string
@@ -233,11 +255,13 @@ Rate limiting: Yes (authRateLimiter)
 - requestId: string
 
 ### Authentication Requirements (JWT)
+
 - All protected routes require a Bearer token in the Authorization header.
 - The auth middleware validates the token and attaches user info to the request.
 - Supported roles: freelancer, employer, admin.
 
 ### Rate Limiting Policies
+
 - authRateLimiter: 10 requests per 15 minutes per client IP.
 - apiRateLimiter: 100 requests per minute per client IP.
 - sensitiveRateLimiter: 5 requests per hour per client IP.
@@ -245,15 +269,18 @@ Rate limiting: Yes (authRateLimiter)
 The auth endpoints use authRateLimiter. Exceeding the limit returns 429 with Retry-After header and RATE_LIMIT_EXCEEDED error.
 
 ### OAuth Integration
+
 - Providers supported: google, github, azure, linkedin.
 - PKCE flow: Redirect to provider, receive code in query, exchange code for tokens, then login.
 - Implicit flow: Tokens in URL fragment; backend serves minimal HTML to extract tokens and POST to /api/auth/oauth/callback.
 
 ### Password Recovery
+
 - forgot-password: Sends reset email via Appwrite Auth.
 - reset-password: Updates password using reset token.
 
 ### Client Implementation Examples (JavaScript/TypeScript)
+
 Below are conceptual examples of how clients should interact with the authentication endpoints. Replace placeholders with actual values and handle responses accordingly.
 
 - Registration with wallet address
@@ -291,6 +318,7 @@ Below are conceptual examples of how clients should interact with the authentica
 [No sources needed since this section provides conceptual client usage guidance]
 
 ## Dependency Analysis
+
 The authentication routes depend on the service layer for business logic and on the rate limiter middleware for throttling. The service layer depends on Appwrite Auth and the user repository. The auth middleware depends on the service layer for token validation.
 
 ```mermaid
@@ -307,6 +335,7 @@ Env["env.ts"] --> Service
 ```
 
 ## Performance Considerations
+
 - Rate limiting reduces load on authentication endpoints and protects against brute force attacks.
 - Token refresh and OAuth flows rely on external Appwrite Auth; network latency affects response times.
 - Avoid excessive polling of resend-confirmation and forgot-password endpoints.
@@ -314,7 +343,9 @@ Env["env.ts"] --> Service
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Validation Error: Ensure request body matches schemas and required fields are present.
 - 401 Invalid Credentials: Verify email/password or token validity; ensure email is confirmed.
 - 409 Duplicate Email: Use a different email address.
@@ -322,12 +353,14 @@ Common issues and resolutions:
 - OAuth errors: Confirm provider configuration and redirect URLs; ensure correct provider name.
 
 ## Security Considerations
+
 - Password storage: Appwrite Auth manages password hashing; do not store raw passwords.
 - Token expiration: Configure JWT secrets and expirations via environment variables.
 - Brute force protection: Rate limiting and Appwrite Auth constraints mitigate repeated login attempts.
 - Token handling: Store refresh tokens securely; prefer short-lived access tokens and rotate refresh tokens.
 
 ## Conclusion
+
 The authentication module provides a robust, standards-compliant API for user registration, login, token refresh, OAuth integration, and password recovery. It leverages Appwrite Auth for secure identity management and includes built-in rate limiting and JWT-based authorization. Clients should implement proper error handling, token rotation, and secure storage of credentials and tokens.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -335,6 +368,7 @@ The authentication module provides a robust, standards-compliant API for user re
 ## Appendices
 
 ### OpenAPI/Swagger Integration
+
 - Swagger/OpenAPI is configured to document the authentication endpoints and shared schemas.
 - Interactive documentation is available at /api-docs.
 
@@ -343,6 +377,7 @@ The authentication module provides a robust, standards-compliant API for user re
 ## Password Recovery
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Password Recovery Endpoints](#password-recovery-endpoints)
 3. [Email Verification Process](#email-verification-process)
@@ -351,12 +386,15 @@ The authentication module provides a robust, standards-compliant API for user re
 6. [Implementation Details](#implementation-details)
 
 ## Introduction
+
 The FreelanceXchain system provides a secure password recovery mechanism that allows users to reset their passwords through an email-based verification process. This documentation details the implementation of the password recovery functionality, including the requestPasswordReset and updatePassword flows, security measures, and integration with Appwrite's authentication system.
 
 ## Password Recovery Endpoints
+
 The password recovery functionality is exposed through two primary endpoints that handle the initiation and completion of the password reset process.
 
 ### Request Password Reset
+
 The `/api/auth/forgot-password` endpoint initiates the password recovery process by sending a reset email to the user's registered email address.
 
 ```mermaid
@@ -373,6 +411,7 @@ Server-->>Client : 200 OK
 ```
 
 ### Reset Password
+
 The `/api/auth/reset-password` endpoint completes the password recovery process by updating the user's password using the access token provided in the reset email.
 
 ```mermaid
@@ -390,9 +429,11 @@ Server-->>Client : 200 OK
 ```
 
 ## Email Verification Process
+
 The password recovery process uses an email-based verification system to ensure that only the legitimate account owner can reset their password.
 
 ### Token Generation and Expiration
+
 When a user requests a password reset, Appwrite generates a time-limited access token that is included in the reset email. The token has the following characteristics:
 
 - **Expiration**: The reset token expires after a configurable period (default: 1 hour)
@@ -400,6 +441,7 @@ When a user requests a password reset, Appwrite generates a time-limited access 
 - **Secure Transmission**: The token is transmitted via HTTPS and included in the redirect URL
 
 The redirect URL is configured based on the environment:
+
 - Production: Uses the PUBLIC_URL environment variable
 - Development: Defaults to localhost with the configured port
 
@@ -414,9 +456,11 @@ SendEmail --> Complete([Reset Email Sent])
 ```
 
 ## Security Measures
+
 The password recovery implementation includes multiple security measures to prevent abuse and protect user accounts.
 
 ### Rate Limiting
+
 The system implements rate limiting to prevent brute force attacks and denial-of-service attempts:
 
 - **Authentication Rate Limiter**: Limits password reset requests to 10 attempts per 15 minutes per IP address
@@ -432,6 +476,7 @@ RejectRequest --> Response429["Return 429 Too Many Requests"]
 ```
 
 ### Password Strength Requirements
+
 The system enforces strong password policies to enhance account security:
 
 - Minimum 8 characters
@@ -441,9 +486,11 @@ The system enforces strong password policies to enhance account security:
 - At least one special character (@$!%*?&)
 
 ## Integration with Appwrite
+
 The password recovery functionality integrates with Appwrite's authentication system while maintaining application-specific user data and session management.
 
 ### Appwrite Authentication Flow
+
 The implementation leverages Appwrite's built-in password reset functionality while extending it with custom business logic:
 
 1. **Token Handling**: The access token from Appwrite is used to authenticate the password update request
@@ -471,6 +518,7 @@ AuthService <.. UserRepository : uses
 ```
 
 ### Application-Specific User Management
+
 While Appwrite handles the core authentication, the application maintains its own user data in the public.users table:
 
 - **User Profile Data**: Role, wallet address, name, and other application-specific attributes
@@ -478,9 +526,11 @@ While Appwrite handles the core authentication, the application maintains its ow
 - **Session Integration**: The system combines Appwrite tokens with application user data in the authentication response
 
 ## Implementation Details
+
 The password recovery functionality is implemented across multiple service and route files, with clear separation of concerns.
 
 ### Service Layer Implementation
+
 The core password recovery logic is implemented in the `auth-service.ts` file with two primary functions:
 
 - **requestPasswordReset(email)**: Initiates the password recovery process by requesting Appwrite to send a reset email
@@ -489,6 +539,7 @@ The core password recovery logic is implemented in the `auth-service.ts` file wi
 Both functions include comprehensive error handling and return standardized response objects.
 
 ### Route Layer Implementation
+
 The authentication routes are defined in `auth-routes.ts` with proper request validation and error handling:
 
 - **Input Validation**: Email format and password strength are validated before processing
@@ -501,6 +552,7 @@ The authentication routes are defined in `auth-routes.ts` with proper request va
 ## Token Refresh
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -513,10 +565,13 @@ The authentication routes are defined in `auth-routes.ts` with proper request va
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document describes the token refresh mechanism for the FreelanceXchain authentication system. It focuses on the POST /api/auth/refresh endpoint that accepts a refreshToken in the request body to obtain new accessToken and refreshToken pairs. It documents the RefreshInput schema, explains the token rotation strategy, and details the 200 success response with updated AuthResult, as well as error responses for 400 (missing token) and 401 (expired/invalid token). It also explains how the system validates token signatures and expiration using JWT standards, documents the implementation in auth-routes.ts and refreshTokens in auth-service.ts, and provides secure storage recommendations for refresh tokens on client applications.
 
 ## Project Structure
+
 The token refresh flow spans routing, service logic, and configuration:
+
 - Route handler: POST /api/auth/refresh
 - Service function: refreshTokens(refreshToken)
 - Types: RefreshInput, AuthResult, AuthError
@@ -542,6 +597,7 @@ Routes --> Swagger
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/auth/refresh
 - Request body: RefreshInput with refreshToken
 - Success response: 200 OK with AuthResult containing user, accessToken, and refreshToken
@@ -550,12 +606,14 @@ Routes --> Swagger
   - 401 Unauthorized for expired or invalid refresh token
 
 Key implementation references:
+
 - Route handler and OpenAPI schema for RefreshInput and AuthResult
 - Service function refreshTokens that calls Appwrite auth refreshSession
 - Type definitions for RefreshInput, AuthResult, AuthError
 - JWT configuration for secrets and expirations
 
 ## Architecture Overview
+
 The refresh flow integrates with Appwrite Auth to rotate tokens while ensuring the user still exists in the application’s database.
 
 ```mermaid
@@ -588,6 +646,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint Definition: POST /api/auth/refresh
+
 - Method: POST
 - Path: /api/auth/refresh
 - Request body: RefreshInput
@@ -598,36 +657,44 @@ end
   - 401 Unauthorized: AuthError with AUTH_INVALID_TOKEN or AUTH_TOKEN_EXPIRED
 
 OpenAPI schema definitions:
+
 - RefreshInput: object with required refreshToken
 - AuthResult: object with user, accessToken, refreshToken
 
 Validation logic:
+
 - Route checks for presence and type of refreshToken
 - Returns 400 with details if missing or not a string
 
 ### Service Implementation: refreshTokens(refreshToken)
+
 Behavior:
+
 - Calls Appwrite auth refreshSession with the provided refresh token
 - On success, retrieves the associated user from the application’s user repository
 - Returns AuthResult with updated access and refresh tokens
 - On failure, returns AuthError with INVALID_TOKEN and explanatory message
 
 JWT validation:
+
 - Access tokens are validated by auth-middleware.ts using validateToken
 - validateToken calls Appwrite getUser with the access token to verify signature and expiration
 - The service itself relies on Appwrite for refresh token validation
 
 ### Token Rotation Strategy
+
 - Access tokens are short-lived (configured via JWT_EXPIRES_IN)
 - Refresh tokens are long-lived (configured via JWT_REFRESH_EXPIRES_IN)
 - On successful refresh, both access and refresh tokens are rotated
 - The system delegates signature verification and expiration checks to Appwrite Auth
 
 JWT configuration:
+
 - JWT_SECRET and JWT_REFRESH_SECRET are loaded from environment
 - Expirations are configured via JWT_EXPIRES_IN and JWT_REFRESH_EXPIRES_IN
 
 ### Data Models and Types
+
 - RefreshInput: { refreshToken: string }
 - AuthResult: { user, accessToken: string, refreshToken: string }
 - AuthError: { code, message }
@@ -635,6 +702,7 @@ JWT configuration:
 These types are used consistently across route and service layers.
 
 ### Example Requests and Responses
+
 - Request body (JSON):
   - refreshToken: string
 - Successful response body (JSON):
@@ -647,10 +715,12 @@ These types are used consistently across route and service layers.
   - requestId: string
 
 Notes:
+
 - The endpoint returns 400 for missing/invalid refreshToken
 - Returns 401 for expired or invalid refresh token
 
 ### JWT Signature and Expiration Validation
+
 - Access token validation:
   - auth-middleware.ts splits Authorization header and calls validateToken
   - validateToken uses Appwrite getUser to verify token signature and expiration
@@ -662,7 +732,9 @@ Notes:
 This design leverages Appwrite’s JWT verification, ensuring robust signature and expiration checks without manual decoding.
 
 ## Dependency Analysis
+
 The refresh flow depends on:
+
 - Route handler for input validation and response formatting
 - Service layer for token rotation and user lookup
 - Appwrite Auth for JWT validation and rotation
@@ -682,6 +754,7 @@ Middleware["auth-middleware.ts"] --> Service
 ```
 
 ## Performance Considerations
+
 - Refresh calls involve network latency to Appwrite; consider caching user data locally for short periods to reduce repeated lookups.
 - Rate limiting is applied at the route level to mitigate abuse.
 - Keep access token lifetime small and refresh token lifetime larger to balance security and UX.
@@ -689,7 +762,9 @@ Middleware["auth-middleware.ts"] --> Service
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 VALIDATION_ERROR:
   - Cause: Missing or invalid refreshToken in request body
   - Resolution: Ensure refreshToken is present and is a string
@@ -701,11 +776,13 @@ Common issues and resolutions:
   - Resolution: Check Appwrite connectivity and logs; retry after verifying environment configuration
 
 Operational checks:
+
 - Verify JWT_SECRET/JWT_REFRESH_SECRET and expirations are set correctly
 - Confirm Appwrite URL and keys are configured
 - Ensure the user still exists in the application database
 
 ## Conclusion
+
 The token refresh mechanism in FreelanceXchain is implemented via a dedicated endpoint that rotates both access and refresh tokens using Appwrite Auth. The route enforces input validation, while the service performs token rotation and user verification. JWT signature and expiration are validated by Appwrite, ensuring secure sessions. Proper configuration of JWT secrets and expirations is essential for balancing security and usability.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -713,6 +790,7 @@ The token refresh mechanism in FreelanceXchain is implemented via a dedicated en
 ## Appendices
 
 ### API Reference: POST /api/auth/refresh
+
 - Request body: RefreshInput
   - refreshToken: string (required)
 - Responses:
@@ -721,6 +799,7 @@ The token refresh mechanism in FreelanceXchain is implemented via a dedicated en
   - 401 Unauthorized: AuthError with AUTH_INVALID_TOKEN or AUTH_TOKEN_EXPIRED
 
 ### Secure Storage Recommendations for Refresh Tokens
+
 - Store refresh tokens securely on clients:
   - Use secure, httpOnly cookies when possible
   - Prefer encrypted storage mechanisms (e.g., browser crypto APIs)
@@ -736,6 +815,7 @@ The token refresh mechanism in FreelanceXchain is implemented via a dedicated en
 ## User Login
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -747,10 +827,13 @@ The token refresh mechanism in FreelanceXchain is implemented via a dedicated en
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the POST /api/auth/login endpoint in the FreelanceXchain system. It covers the LoginInput schema, authentication flow, credential validation, JWT token generation, response format, error handling, and security measures including the authRateLimiter middleware. It also explains how the auth-routes.ts integration works with the login function in auth-service.ts and how the system validates credentials against Appwrite authentication while maintaining application-specific user data and roles.
 
 ## Project Structure
+
 The login endpoint is implemented as part of the authentication module:
+
 - Route handler: src/routes/auth-routes.ts
 - Business logic: src/services/auth-service.ts
 - Rate limiting: src/middleware/rate-limiter.ts
@@ -773,6 +856,7 @@ Routes --> Swagger["swagger.ts<br/>OpenAPI schemas"]
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/auth/login
 - Request body: LoginInput schema with required fields email and password
 - Response: AuthResult with user data, accessToken, and refreshToken
@@ -781,6 +865,7 @@ Routes --> Swagger["swagger.ts<br/>OpenAPI schemas"]
 - Integration: Route handler delegates to auth-service.login; service validates against Appwrite Auth and enriches with application user data
 
 ## Architecture Overview
+
 The login flow integrates route validation, rate limiting, Appwrite authentication, and application user data retrieval.
 
 ```mermaid
@@ -815,6 +900,7 @@ end
 ## Detailed Component Analysis
 
 ### API Definition: POST /api/auth/login
+
 - Method: POST
 - Path: /api/auth/login
 - Tags: Authentication
@@ -828,11 +914,13 @@ end
   - 429 Too Many Requests: Rate limit exceeded
 
 OpenAPI/Swagger schema definitions:
+
 - LoginInput: required fields email and password
 - AuthResult: user object with id, email, role, walletAddress, createdAt; accessToken, refreshToken
 - AuthError: standardized error envelope with code and message
 
 ### Route Handler Behavior
+
 - Input validation: checks email format and presence of password
 - Error handling: returns 400 with VALIDATION_ERROR when validation fails
 - Rate limiting: applies authRateLimiter before invoking login
@@ -840,6 +928,7 @@ OpenAPI/Swagger schema definitions:
 - Failure path: returns 401 with AUTH_INVALID_CREDENTIALS
 
 ### Service Layer: login()
+
 - Normalizes email to lowercase
 - Calls Appwrite Auth signInWithPassword
 - Handles Appwrite errors:
@@ -865,6 +954,7 @@ BuildResult --> Done(["Return AuthResult"])
 ```
 
 ### Data Model: AuthResult and AuthError
+
 - AuthResult:
   - user: id, email, role, walletAddress, createdAt
   - accessToken: string
@@ -876,6 +966,7 @@ BuildResult --> Done(["Return AuthResult"])
 These types define the response contract for successful logins and error scenarios.
 
 ### Middleware: authRateLimiter
+
 - Enforces a sliding window policy:
   - Window: 15 minutes
   - Max requests: 10 attempts
@@ -900,6 +991,7 @@ Next --> End
 ```
 
 ### Appwrite Integration and Application User Data
+
 - Appwrite Auth manages email/password credentials and sessions
 - Application user data (role, walletAddress, timestamps) is stored in Appwrite Postgres users table
 - After successful Appwrite login, the service retrieves the application user record and returns it alongside tokens
@@ -908,6 +1000,7 @@ Next --> End
   - Application-specific roles and metadata remain synchronized
 
 ### Error Handling and Codes
+
 - Validation errors (400):
   - VALIDATION_ERROR with details array
 - Authentication errors (401):
@@ -917,6 +1010,7 @@ Next --> End
   - RATE_LIMIT_EXCEEDED with Retry-After
 
 ### Example Requests and Responses
+
 - Successful login request:
   - POST /api/auth/login
   - Body: { "email": "<user@example.com>", "password": "<securePassword>" }
@@ -931,7 +1025,9 @@ Next --> End
 Note: These examples illustrate the structure and codes. See the referenced files for exact field names and shapes.
 
 ## Dependency Analysis
+
 The login endpoint depends on:
+
 - Route handler for request parsing and response formatting
 - Rate limiter for security
 - Service layer for business logic and external integrations
@@ -949,6 +1045,7 @@ Routes --> Swagger["swagger.ts"]
 ```
 
 ## Performance Considerations
+
 - Appwrite calls incur network latency; keep payloads minimal
 - Rate limiting reduces load during brute force attempts
 - Consider caching user roles and metadata for subsequent requests if appropriate
@@ -957,7 +1054,9 @@ Routes --> Swagger["swagger.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Validation Error:
   - Ensure email is present and valid; ensure password is present
   - Check for typos in field names
@@ -973,6 +1072,7 @@ Common issues and resolutions:
   - Verify JWT secret and expiration settings
 
 ## Conclusion
+
 The POST /api/auth/login endpoint provides a secure, validated authentication flow that leverages Appwrite for credential management while preserving application-specific user data and roles. The route handler performs input validation and applies rate limiting, while the service layer coordinates with Appwrite Auth and the application user repository to produce a standardized AuthResult. Clear error responses and rate limiting protect the system from abuse and provide predictable client experiences.
 
 ---
@@ -980,6 +1080,7 @@ The POST /api/auth/login endpoint provides a secure, validated authentication fl
 ## User Registration
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -991,10 +1092,13 @@ The POST /api/auth/login endpoint provides a secure, validated authentication fl
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the user registration endpoint in the FreelanceXchain system. It covers the POST /api/auth/register endpoint, including request body schema, validation rules, success and error responses, and the interaction between the route handler and the authentication service. It also explains how the authRateLimiter middleware protects against abuse and how Appwrite handles initial OAuth user creation before role assignment.
 
 ## Project Structure
+
 The registration flow spans several layers:
+
 - Route handler: validates inputs, applies rate limiting, and delegates to the service layer
 - Service layer: orchestrates Appwrite Auth and database operations
 - Repository layer: interacts with the Appwrite Postgres users table
@@ -1012,6 +1116,7 @@ Routes --> Swagger["swagger.ts<br/>OpenAPI schemas"]
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/auth/register
 - Purpose: Create a new user account with email/password, assign role, and optionally set name and wallet address
 - Success response: 201 with AuthResult schema
@@ -1019,6 +1124,7 @@ Routes --> Swagger["swagger.ts<br/>OpenAPI schemas"]
 - Rate limiting: authRateLimiter configured for 10 requests per 15 minutes
 
 ## Architecture Overview
+
 The registration flow integrates Appwrite Auth for identity and the application’s database for user profiles. The route handler performs input validation and rate limiting, then calls the service layer to register the user. The service layer registers with Appwrite Auth, waits for the database trigger to populate public.users, and returns an AuthResult with tokens.
 
 ```mermaid
@@ -1045,6 +1151,7 @@ R-->>C : 201 AuthResult
 ## Detailed Component Analysis
 
 ### Endpoint Definition and OpenAPI Schema
+
 - Endpoint: POST /api/auth/register
 - Tags: Authentication
 - Request body schema: RegisterInput
@@ -1059,6 +1166,7 @@ R-->>C : 201 AuthResult
   - 409: AuthError (duplicate email)
 
 ### Request Validation Rules
+
 - Email validation:
   - Format: email
   - Length: minimum 5 characters
@@ -1079,15 +1187,17 @@ R-->>C : 201 AuthResult
 These rules are enforced both in the route handler and in the service layer.
 
 ### Success Response: AuthResult
+
 On successful registration, the endpoint returns:
+
 - HTTP 201 Created
 - Body: AuthResult
   - user: {
-      - id: string
-      - email: string
-      - role: string (freelancer, employer, admin)
-      - walletAddress: string
-      - createdAt: string (ISO 8601)
+    - id: string
+    - email: string
+    - role: string (freelancer, employer, admin)
+    - walletAddress: string
+    - createdAt: string (ISO 8601)
     }
   - accessToken: string
   - refreshToken: string
@@ -1095,6 +1205,7 @@ On successful registration, the endpoint returns:
 The service constructs AuthResult from the Appwrite user and session, and from the public.users row.
 
 ### Error Responses
+
 - 400 Bad Request:
   - Validation errors: includes details array with field and message
   - Example codes: VALIDATION_ERROR
@@ -1105,6 +1216,7 @@ The service constructs AuthResult from the Appwrite user and session, and from t
 The route handler translates service errors into appropriate HTTP status codes.
 
 ### Rate Limiting: authRateLimiter
+
 - Window: 15 minutes
 - Max requests: 10 per client IP
 - Behavior: Returns 429 Too Many Requests with Retry-After header and RATE_LIMIT_EXCEEDED error
@@ -1112,6 +1224,7 @@ The route handler translates service errors into appropriate HTTP status codes.
 The middleware uses X-Forwarded-For when present, otherwise falls back to req.ip.
 
 ### Interaction Between auth-routes.ts and registerWithAppwrite
+
 - The route handler calls register(RegisterInput) in auth-service.ts
 - registerWithAppwrite is used for OAuth registration (separate endpoint)
 - For email/password registration, the route handler calls register, which internally:
@@ -1122,6 +1235,7 @@ The middleware uses X-Forwarded-For when present, otherwise falls back to req.ip
   - Returns AuthResult with tokens
 
 ### Appwrite OAuth User Creation and Role Assignment
+
 - Initial OAuth flow:
   - getOAuthUrl redirects to provider
   - exchangeCodeForSession exchanges authorization code for tokens
@@ -1135,12 +1249,15 @@ The middleware uses X-Forwarded-For when present, otherwise falls back to req.ip
 This separation ensures that Appwrite creates the user record first, then the application assigns role and profile attributes.
 
 ### Wallet Address Pattern
+
 - Pattern: 0x[a-fA-F0-9]{40}
 - Matches Ethereum-style addresses with leading 0x and exactly 40 hex digits
 - Enforced both in route-level validation and Swagger schema
 
 ## Dependency Analysis
+
 The registration flow depends on:
+
 - Appwrite client for Auth operations and database access
 - User repository for database interactions
 - Rate limiter middleware for abuse protection
@@ -1156,6 +1273,7 @@ Swagger["swagger.ts"] --> Routes
 ```
 
 ## Performance Considerations
+
 - Input validation occurs in-memory before hitting Appwrite, reducing unnecessary network calls
 - The service waits briefly for a database trigger to populate public.users; this introduces a small latency but ensures consistency
 - Rate limiting prevents brute-force attempts and protects downstream systems
@@ -1163,7 +1281,9 @@ Swagger["swagger.ts"] --> Routes
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Validation failures (400):
   - Ensure email matches format and length requirements
   - Ensure password meets minimum length and complexity requirements
@@ -1179,6 +1299,7 @@ Common issues and resolutions:
   - Occur when Appwrite operations fail; check logs and environment variables for Appwrite configuration
 
 ## Conclusion
+
 The POST /api/auth/register endpoint provides a robust, validated, and rate-limited pathway to create new user accounts. It integrates tightly with Appwrite Auth for identity while persisting user profiles in the application database. The endpoint returns a standardized AuthResult on success and clearly defined error responses for validation and conflict scenarios. The authRateLimiter helps protect the system from abuse, and the separation of concerns across route, service, and repository layers keeps the code maintainable and testable.
 
 ---
@@ -1186,6 +1307,7 @@ The POST /api/auth/register endpoint provides a robust, validated, and rate-limi
 ## OAuth Integration
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1198,10 +1320,13 @@ The POST /api/auth/register endpoint provides a robust, validated, and rate-limi
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the OAuth integration system in FreelanceXchain. It covers the complete OAuth flow including initiating provider login, handling callbacks for both PKCE and implicit flows, and the “registration required” flow for new OAuth users. It also documents the exchangeCodeForSession and loginWithAppwrite functions, explains security considerations around state management and token validation, and outlines how external identities are securely linked to internal user accounts with optional blockchain wallet integration.
 
 ## Project Structure
+
 The OAuth integration spans routing, service logic, configuration, and data access layers:
+
 - Routes define the OAuth endpoints and handle request/response flows.
 - Services encapsulate Appwrite OAuth interactions and internal user synchronization.
 - Configuration supplies Appwrite client initialization and environment variables.
@@ -1217,6 +1342,7 @@ Repo --> DB["Appwrite Database"]
 ```
 
 ## Core Components
+
 - OAuth initiation endpoint: GET /api/auth/oauth/:provider
 - Callback handler: GET /api/auth/callback (PKCE) and POST /api/auth/oauth/callback (implicit)
 - Registration continuation: POST /api/auth/oauth/register
@@ -1229,6 +1355,7 @@ Repo --> DB["Appwrite Database"]
 These components collectively implement a robust OAuth integration with Appwrite, including handling new user registration and linking external identities to internal user profiles.
 
 ## Architecture Overview
+
 The OAuth flow integrates with Appwrite for provider redirection and token exchange. The backend validates tokens, checks for existing user records, and either returns app tokens or signals that registration is required.
 
 ```mermaid
@@ -1267,6 +1394,7 @@ end
 ## Detailed Component Analysis
 
 ### OAuth Initiation Endpoint: GET /api/auth/oauth/:provider
+
 - Purpose: Redirect clients to the selected provider’s OAuth page.
 - Providers supported: google, github, azure, linkedin.
 - Behavior:
@@ -1275,10 +1403,12 @@ end
   - Responds with a 302 redirect to the provider.
 
 Security considerations:
+
 - The redirect URL is built from environment configuration and points to the backend’s callback endpoint.
 - The provider mapping adjusts LinkedIn to the OIDC provider alias recognized by Appwrite.
 
 ### Callback Handler: GET /api/auth/callback (PKCE)
+
 - Purpose: Handle provider redirects containing an authorization code.
 - Flow:
   - If an error is present, returns a 400 with error details.
@@ -1288,9 +1418,11 @@ Security considerations:
   - If the user does not exist, returns 202 with registration_required and the provider access token.
 
 Implicit flow note:
+
 - The route also serves a minimal HTML page that extracts tokens from the URL fragment and posts them to POST /api/auth/oauth/callback.
 
 ### Implicit Flow Handler: POST /api/auth/oauth/callback
+
 - Purpose: Legacy support for implicit flow where tokens arrive in the URL fragment.
 - Behavior:
   - Validates presence of access_token.
@@ -1299,6 +1431,7 @@ Implicit flow note:
   - Returns 401 on invalid token.
 
 ### Registration Continuation: POST /api/auth/oauth/register
+
 - Purpose: Finalize OAuth registration by assigning a role and optional profile details.
 - Request body:
   - accessToken (required)
@@ -1312,6 +1445,7 @@ Implicit flow note:
   - On failure, returns 401 with error details.
 
 ### Service Functions: exchangeCodeForSession and loginWithAppwrite
+
 - exchangeCodeForSession(code):
   - Exchanges the authorization code received from the provider for Appwrite session tokens.
   - Returns either an AuthError or a tuple of access and refresh tokens.
@@ -1340,11 +1474,13 @@ end
 ```
 
 ### Data Model and Types
+
 - AuthResult: includes user profile, accessToken, and refreshToken.
 - AuthError: standardized error codes for authentication failures.
 - UserRole: union of freelancer, employer, admin.
 
 ### Security Considerations
+
 - Provider selection validation prevents unsupported providers.
 - Redirect URL is constructed from environment variables to ensure callbacks reach the intended backend.
 - Token validation occurs via Appwrite getUser and local user lookup.
@@ -1352,6 +1488,7 @@ end
 - Registration requires explicit role selection, preventing ambiguous identity states.
 
 ### Frontend Integration Examples
+
 - PKCE flow:
   - Client navigates to GET /api/auth/oauth/:provider.
   - After provider login, Appwrite redirects to GET /api/auth/callback with an authorization code.
@@ -1368,6 +1505,7 @@ end
   - API overview and examples are documented in the project’s API documentation.
 
 ### Identity Linking and Blockchain Wallet Integration
+
 - External identity linkage:
   - loginWithAppwrite validates the provider token and checks for a corresponding user in the application database.
   - If the user does not exist, the system signals registration_required, prompting the client to call POST /api/auth/oauth/register.
@@ -1378,6 +1516,7 @@ end
   - The user model includes a wallet_address field, enabling downstream blockchain features.
 
 ## Dependency Analysis
+
 The OAuth integration depends on Appwrite for provider authentication and token management, while the application maintains user records in the database.
 
 ```mermaid
@@ -1392,6 +1531,7 @@ Routes --> Env["env.ts"]
 ```
 
 ## Performance Considerations
+
 - Token exchange and user lookup are lightweight operations; ensure Appwrite connectivity is reliable and consider caching refresh tokens on the client to minimize repeated exchanges.
 - Rate limiting is applied to authentication endpoints to mitigate abuse.
 - Avoid long-running synchronous operations in the callback handlers; keep them asynchronous to reduce latency.
@@ -1399,7 +1539,9 @@ Routes --> Env["env.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Invalid provider: Ensure provider is one of google, github, azure, linkedin.
 - Missing or invalid access_token: Verify the implicit flow handler receives a valid token and that the token is posted to the correct endpoint.
 - AUTH_REQUIRE_REGISTRATION: Client must call POST /api/auth/oauth/register with accessToken and role.
@@ -1407,6 +1549,7 @@ Common issues and resolutions:
 - Redirect URL mismatch: Verify PUBLIC_URL or BASE_URL environment variables are correctly set.
 
 ## Conclusion
+
 The OAuth integration in FreelanceXchain provides a secure, extensible foundation for external identity management. It supports multiple providers, handles both PKCE and implicit flows, and seamlessly links external identities to internal user accounts. The design emphasizes clear separation of concerns, robust error handling, and straightforward client integration patterns.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -1414,6 +1557,7 @@ The OAuth integration in FreelanceXchain provides a secure, extensible foundatio
 ## Appendices
 
 ### API Endpoints Summary
+
 - GET /api/auth/oauth/:provider
   - Redirects to provider login page.
 - GET /api/auth/callback
@@ -1428,6 +1572,7 @@ The OAuth integration in FreelanceXchain provides a secure, extensible foundatio
 ## OAuth Callback Handling
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1440,7 +1585,9 @@ The OAuth integration in FreelanceXchain provides a secure, extensible foundatio
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document explains the OAuth callback handling system used by FreelanceXchain. It covers:
+
 - The GET /api/auth/callback endpoint for PKCE flows (authorization code in query parameters)
 - The POST /api/auth/oauth/callback endpoint for implicit flows (access tokens in URL fragments)
 - How authorization codes are exchanged for sessions using exchangeCodeForSession
@@ -1451,7 +1598,9 @@ This document explains the OAuth callback handling system used by FreelanceXchai
 - Implementation details from auth-service.ts and examples of frontend integration for both flow types
 
 ## Project Structure
+
 The OAuth callback handling spans routing, service-layer logic, and configuration:
+
 - Routes define the endpoints and orchestrate the flow
 - Services encapsulate Appwrite interactions and token validation
 - Configuration provides the Appwrite client used by services
@@ -1481,6 +1630,7 @@ S3 --> C1
 ```
 
 ## Core Components
+
 - Route handlers for OAuth callbacks:
   - GET /api/auth/callback: PKCE flow handler; validates errors, exchanges code, logs in, and responds with either tokens or 202 registration required
   - POST /api/auth/oauth/callback: Implicit flow handler; validates access_token, logs in, and responds with success or 202/401
@@ -1492,6 +1642,7 @@ S3 --> C1
   - AuthResult and AuthError types define response shapes and error codes used across routes and services
 
 ## Architecture Overview
+
 The system integrates with Appwrite Auth to handle OAuth providers and exchange authorization codes for session tokens. The backend verifies tokens and synchronizes user records, returning either app JWT tokens or guiding the client to complete registration.
 
 ```mermaid
@@ -1526,7 +1677,9 @@ end
 ## Detailed Component Analysis
 
 ### GET /api/auth/callback (PKCE Flow)
+
 Behavior:
+
 - Validates OAuth error query parameters and returns 400 on failure
 - If code is present, exchanges it for session tokens using exchangeCodeForSession
 - Calls loginWithAppwrite with the returned access token
@@ -1553,7 +1706,9 @@ LoginOK --> |Yes| Return200["Return 200 {access_token, refresh_token, user}"]
 ```
 
 ### POST /api/auth/oauth/callback (Implicit Flow)
+
 Behavior:
+
 - Validates presence of access_token in request body
 - Calls loginWithAppwrite with the access_token
 - Responds with 200 on success
@@ -1582,49 +1737,62 @@ end
 ```
 
 ### exchangeCodeForSession(code)
+
 Purpose:
+
 - Exchanges an authorization code received from the OAuth provider into a Appwrite session containing access and refresh tokens
 
 Implementation highlights:
+
 - Uses the Appwrite client to call exchangeCodeForSession
 - Returns AuthError on failure with code AUTH_EXCHANGE_FAILED
 - Returns token pair on success
 
 Security considerations:
+
 - The code is short-lived and bound to the original authorization request
 - The exchange occurs server-side, preventing exposure of tokens to the client except via the intended flow
 
 ### loginWithAppwrite(accessToken)
+
 Purpose:
+
 - Validates a Appwrite access token and returns app tokens
 - If the user does not exist in the app’s database, returns AUTH_REQUIRE_REGISTRATION (202)
 
 Implementation highlights:
+
 - Validates token via Appwrite getUser
 - Checks for user existence in the app’s user table
 - Retrieves current session refresh token for completeness
 - Returns AuthError with code AUTH_REQUIRE_REGISTRATION when user not found in app
 
 Security considerations:
+
 - Validates token with Appwrite before proceeding
 - Ensures the user’s email is available for app-level checks
 
 ### registerWithAppwrite(accessToken, role, walletAddress, name)
+
 Purpose:
+
 - Completes OAuth registration by updating user metadata and creating a local user record
 
 Implementation highlights:
+
 - Validates access token and extracts user email
 - Updates Appwrite user metadata (role, wallet address, name)
 - Creates a local user record in the app’s database
 - Returns AuthResult with app tokens
 
 Security considerations:
+
 - Requires a valid Appwrite access token
 - Role must be one of the supported values
 - Wallet address follows a strict format when provided
 
 ### Frontend Integration Examples
+
 - PKCE flow (recommended):
   - Initiate OAuth by navigating to GET /api/auth/oauth/:provider
   - After provider consent, the browser is redirected to GET /api/auth/callback?code=...
@@ -1634,10 +1802,13 @@ Security considerations:
   - The backend responds with 200, 202, or 401
 
 Documentation references:
+
 - API endpoints and expected responses are documented in the API documentation
 
 ## Dependency Analysis
+
 The OAuth callback system depends on:
+
 - Appwrite client for OAuth initiation, token exchange, and user validation
 - Auth routes to coordinate flows and respond with standardized statuses
 - Auth service functions to encapsulate business logic and error handling
@@ -1651,6 +1822,7 @@ Service --> Types
 ```
 
 ## Performance Considerations
+
 - Minimal latency: exchangeCodeForSession and loginWithAppwrite perform a single Appwrite call each
 - Reduced round trips: implicit flow HTML page posts tokens directly to the backend
 - Caching: consider caching frequent user lookups if traffic increases
@@ -1659,19 +1831,24 @@ Service --> Types
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - OAuth error returned (400): Indicates provider-level error; inspect error and error_description query parameters
 - Exchange failure (401): The authorization code may be invalid or expired; retry the OAuth flow
 - Registration required (202): The user authenticated with Appwrite but does not exist in the app; call POST /api/auth/oauth/register to complete onboarding
 - Invalid token (401): The access token is invalid or expired; re-authenticate or refresh tokens
 
 Error codes and handling:
+
 - AUTH_EXCHANGE_FAILED: exchangeCodeForSession returned an error
 - AUTH_REQUIRE_REGISTRATION: user exists in Appwrite but not in the app
 - AUTH_INVALID_TOKEN: loginWithAppwrite failed due to invalid token
 
 ## Conclusion
+
 FreelanceXchain’s OAuth callback handling provides robust support for both PKCE and implicit flows:
+
 - PKCE flow securely exchanges authorization codes for session tokens and returns either app tokens or registration-required status
 - Implicit flow extracts tokens from URL fragments and forwards them to the backend for validation
 - The system centralizes token validation and user synchronization via Appwrite, returning standardized responses and error codes
@@ -1682,12 +1859,14 @@ FreelanceXchain’s OAuth callback handling provides robust support for both PKC
 ## Appendices
 
 ### API Endpoint Reference
+
 - GET /api/auth/oauth/:provider — Initiates OAuth with a provider and redirects to the provider login page
 - GET /api/auth/callback — Handles PKCE flow; returns tokens or 202 registration required
 - POST /api/auth/oauth/callback — Handles implicit flow; returns success, 202 registration required, or 401
 - POST /api/auth/oauth/register — Completes OAuth registration by selecting role and creating a local user record
 
 ### Security Notes
+
 - State validation: The current implementation does not validate state parameters in the callback. If you require state validation, add state parameter handling in getOAuthUrl and validate it in the callback route.
 - Token verification: loginWithAppwrite validates the Appwrite access token before proceeding; ensure clients store tokens securely and rotate refresh tokens appropriately.
 - Redirect URLs: getOAuthUrl constructs redirect URLs using PUBLIC_URL or localhost; ensure PUBLIC_URL is configured correctly for production.
@@ -1697,6 +1876,7 @@ FreelanceXchain’s OAuth callback handling provides robust support for both PKC
 ## OAuth Provider Initiation
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1708,9 +1888,11 @@ FreelanceXchain’s OAuth callback handling provides robust support for both PKC
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the OAuth provider initiation endpoint GET /api/auth/oauth/:provider in FreelanceXchain. It explains how the route validates the provider parameter, generates the OAuth URL via getOAuthUrl in auth-service.ts, and performs the redirection to the selected provider. It also covers redirect URL configuration, PKCE flow setup, state management for security, and how invalid provider requests are handled. Finally, it documents error responses for unsupported providers and server-side failures during URL generation.
 
 ## Project Structure
+
 The OAuth initiation flow spans routing, service-layer logic, and configuration:
 
 - Route handler: GET /api/auth/oauth/:provider
@@ -1729,18 +1911,21 @@ Provider --> Callback["/api/auth/callback<br/>PKCE or implicit flow"]
 ```
 
 ## Core Components
+
 - Route handler: Validates provider parameter and delegates to getOAuthUrl, then redirects to the generated URL. It returns 400 for invalid provider and 500 for internal errors.
 - Service function: Builds the provider-specific Appwrite OAuth URL, sets redirect URL and PKCE-related query parameters, and returns the URL.
 - Appwrite client: Provides the Appwrite Auth client used to generate the OAuth URL.
 - Environment configuration: Determines the redirect URL and base URL used in the OAuth flow.
 
 Key behaviors:
+
 - Supported providers: google, github, azure, linkedin
-- Redirect URL: Uses PUBLIC_URL or falls back to http://localhost:<port>/api/auth/callback
+- Redirect URL: Uses PUBLIC_URL or falls back to <http://localhost>:<port>/api/auth/callback
 - PKCE parameters: access_type=offline and prompt=consent are included
 - No state parameter is explicitly set in getOAuthUrl; state management is handled by Appwrite
 
 ## Architecture Overview
+
 The OAuth initiation flow is a thin controller that delegates to a service function which uses the Appwrite client to generate the provider URL. The browser is redirected to the provider’s OAuth page. After authentication, the provider redirects back to the configured callback endpoint.
 
 ```mermaid
@@ -1766,7 +1951,9 @@ CB-->>C : "App tokens or registration required"
 ## Detailed Component Analysis
 
 ### Route Handler: GET /api/auth/oauth/:provider
+
 Responsibilities:
+
 - Extracts provider from path parameters
 - Validates provider against supported list
 - Calls getOAuthUrl(provider)
@@ -1774,24 +1961,30 @@ Responsibilities:
 - Returns 400 for invalid provider and 500 for internal errors
 
 Security and validation:
+
 - Provider validation prevents unsupported values
 - No additional state parameter is set here; state is managed by Appwrite
 
 Error handling:
+
 - 400: VALIDATION_ERROR with message “Invalid provider”
 - 500: INTERNAL_ERROR with message “Failed to initiate OAuth flow”
 
 Client-side initiation examples (conceptual):
+
 - Google: GET /api/auth/oauth/google
 - GitHub: GET /api/auth/oauth/github
 - Azure: GET /api/auth/oauth/azure
 - LinkedIn: GET /api/auth/oauth/linkedin
 
 Notes:
+
 - The route intentionally does not accept a role parameter at this stage; role selection occurs after callback.
 
 ### Service Function: getOAuthUrl(provider)
+
 Responsibilities:
+
 - Selects the correct provider identifier for Appwrite (linkedin_oidc for LinkedIn)
 - Determines redirect URL using PUBLIC_URL or falls back to configured base URL and port
 - Calls Appwrite signInWithOAuth with:
@@ -1801,23 +1994,28 @@ Responsibilities:
 - Returns the OAuth URL or throws on error
 
 Security and PKCE:
+
 - access_type=offline and prompt=consent enable offline access and re-consent prompts
 - skipBrowserRedirect=true ensures the server returns the URL instead of performing automatic browser redirect
 - No explicit state parameter is passed; Appwrite manages state internally
 
 Redirect URL resolution:
+
 - Uses PUBLIC_URL environment variable if present
-- Otherwise constructs http://localhost:<port>/api/auth/callback using config
+- Otherwise constructs <http://localhost>:<port>/api/auth/callback using config
 
 ### Appwrite Client Initialization
+
 - Ensures APPWRITE_URL and APPWRITE_ANON_KEY are configured
 - Provides a singleton Appwrite client instance used by getOAuthUrl
 
 ### OpenAPI/Swagger Documentation
+
 - The route is documented with path parameter provider constrained to [google, github, azure, linkedin]
 - Response is 302 redirect to provider
 
 ### PKCE Flow Setup and State Management
+
 - PKCE parameters:
   - access_type=offline
   - prompt=consent
@@ -1828,12 +2026,15 @@ Redirect URL resolution:
 Note: The callback endpoint supports both PKCE (code in query) and implicit (tokens in URL fragment). The initiation endpoint focuses on generating the URL with PKCE parameters.
 
 ### Error Handling During URL Generation
+
 - Validation failure: 400 with VALIDATION_ERROR
 - Internal failure: 500 with INTERNAL_ERROR
 - getOAuthUrl throws on Appwrite error; the route catches and returns 500
 
 ## Dependency Analysis
+
 The OAuth initiation endpoint depends on:
+
 - Route handler for parameter validation and redirection
 - Service function for URL generation and PKCE parameters
 - Appwrite client for OAuth integration
@@ -1848,12 +2049,15 @@ Routes --> Docs["API-DOCUMENTATION.md"]
 ```
 
 ## Performance Considerations
+
 - The route is lightweight and delegates to a single service call; latency is dominated by network round-trips to Appwrite and the OAuth provider.
 - Using skipBrowserRedirect=true avoids unnecessary client-side redirects and lets the server return the URL promptly.
 - Ensure PUBLIC_URL is configured correctly to minimize redirect hops and avoid mixed-content issues.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Unsupported provider:
   - Symptom: 400 VALIDATION_ERROR with message “Invalid provider”
   - Resolution: Use one of google, github, azure, linkedin
@@ -1868,6 +2072,7 @@ Common issues and resolutions:
   - Resolution: Verify provider OAuth app settings and allowed redirect URIs match PUBLIC_URL/api/auth/callback
 
 ## Conclusion
+
 The GET /api/auth/oauth/:provider endpoint provides a secure and standardized way to initiate OAuth with supported providers. It validates inputs, generates a provider-specific URL with PKCE parameters, and redirects the client to the provider’s login page. Redirect URL configuration and environment variables are central to correctness. The service layer encapsulates Appwrite integration, while the route enforces validation and error handling. For unsupported providers or server-side failures, the endpoint returns appropriate error responses.
 
 ---
@@ -1875,6 +2080,7 @@ The GET /api/auth/oauth/:provider endpoint provides a secure and standardized wa
 ## OAuth Registration Completion
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1886,9 +2092,11 @@ The GET /api/auth/oauth/:provider endpoint provides a secure and standardized wa
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the OAuth registration completion endpoint POST /api/auth/oauth/register in FreelanceXchain. The endpoint finalizes account creation for new OAuth users by assigning a role (freelancer or employer), optionally setting a full name, and validating an Ethereum wallet address format. It integrates with registerWithAppwrite in auth-service.ts to validate the Appwrite access token, synchronize user metadata in Appwrite Auth, and create a corresponding user record in the public.users table. The document explains validation rules, response formats, error handling, and security considerations for token validation and role assignment.
 
 ## Project Structure
+
 The OAuth registration flow spans route handlers, service logic, repository access, and Appwrite integration. The following diagram shows the primary components involved in the POST /api/auth/oauth/register endpoint.
 
 ```mermaid
@@ -1902,12 +2110,14 @@ Appwrite --> Auth["Appwrite Auth"]
 ```
 
 ## Core Components
+
 - Route handler for POST /api/auth/oauth/register validates request fields and invokes registerWithAppwrite.
 - Service function registerWithAppwrite validates the Appwrite access token, checks for existing user records, updates Appwrite user metadata, and creates a public.users record.
 - Repository layer persists user data to the public.users table.
 - Appwrite client manages authentication and user metadata synchronization.
 
 Key responsibilities:
+
 - Validate accessToken presence and role selection.
 - Validate optional name length and wallet address format.
 - Authenticate and authorize via Appwrite access token.
@@ -1915,7 +2125,9 @@ Key responsibilities:
 - Create user record in public.users and return AuthResult.
 
 ## Architecture Overview
+
 The OAuth registration completion follows a layered architecture:
+
 - Presentation: Express route validates input and delegates to service.
 - Application: Service validates token, updates metadata, and creates user.
 - Persistence: Repository writes to public.users.
@@ -1949,41 +2161,49 @@ R-->>C : 201 AuthResult or 400/401/500
 ## Detailed Component Analysis
 
 ### Endpoint Definition: POST /api/auth/oauth/register
+
 - Method: POST
 - Path: /api/auth/oauth/register
 - Purpose: Finalize OAuth user registration by assigning role and optional profile metadata.
 
 Request body fields:
+
 - accessToken: string, required. Appwrite access token obtained from OAuth flow.
 - role: string, required. Must be freelancer or employer.
 - name: string, optional. Minimum 2 characters if provided.
 - walletAddress: string, optional. Must match Ethereum address pattern 0x followed by 40 hexadecimal characters.
 
 Response:
+
 - 201 Created: AuthResult containing user id, email, role, walletAddress, createdAt, accessToken, refreshToken.
 - 400 Bad Request: Validation error with details array indicating invalid fields.
 - 401 Unauthorized: Invalid token or registration failure mapped to AUTH_INVALID_TOKEN.
 - 500 Internal Server Error: Unexpected error during registration.
 
 Security considerations:
+
 - Access token must be validated via Appwrite getUser before proceeding.
 - Role must be one of the allowed values.
 - Wallet address must conform to Ethereum address format.
 - Name must meet minimum length requirement when present.
 
 Validation logic highlights:
+
 - accessToken presence and type checked.
 - role restricted to freelancer or employer.
 - name length enforced when provided.
 - walletAddress format enforced using regex pattern.
 
 Integration points:
+
 - registerWithAppwrite performs token validation and metadata update.
 - User creation occurs in public.users via repository.
 - Session refresh token is included in AuthResult.
 
 ### Service Layer: registerWithAppwrite
+
 Behavior:
+
 - Validates access token by calling Appwrite getUser.
 - Checks if user already exists in public.users by email.
 - Updates Appwrite user metadata with role, wallet_address, and name.
@@ -1991,26 +2211,32 @@ Behavior:
 - Retrieves session refresh token and constructs AuthResult.
 
 Error handling:
+
 - Returns INVALID_TOKEN when token is invalid or user not found.
 - Returns EXISTING_USER when user already exists (AuthResult).
 - Propagates internal errors as AUTH_INVALID_TOKEN.
 
 Data model mapping:
+
 - UserEntity fields include id, email, role, wallet_address, name, created_at, updated_at.
 - AuthResult includes user (id, email, role, walletAddress, createdAt) and tokens.
 
 ### Repository Layer: User Repository
+
 Responsibilities:
+
 - createUser inserts a new user into public.users with timestamps.
 - getUserByEmail retrieves user by normalized email.
 - getUserById retrieves user by id.
 - emailExists checks for duplicate emails.
 
 Database integration:
+
 - Uses Appwrite client to perform CRUD operations on the users table.
 - Handles row-not-found errors gracefully.
 
 ### Appwrite Integration
+
 - getAppwriteClient initializes the Appwrite client with configured URL and anon key.
 - TABLES defines the users table constant used by the repository.
 - registerWithAppwrite uses Appwrite auth.getUser to validate token and auth.updateUser to set metadata.
@@ -2040,7 +2266,9 @@ Database integration:
 Note: Replace placeholders with actual values. The AuthResult payload includes user and token fields as defined in the service types.
 
 ## Dependency Analysis
+
 The endpoint depends on:
+
 - Route handler for input validation and orchestration.
 - Service function for token validation, metadata update, and user creation.
 - Repository for persistence to public.users.
@@ -2058,6 +2286,7 @@ Service --> Mapper["entity-mapper.ts"]
 ```
 
 ## Performance Considerations
+
 - Token validation is performed synchronously via Appwrite getUser; ensure low-latency network connectivity to Appwrite.
 - Public users table creation uses a short delay before querying; consider adjusting timing if triggers are slow.
 - Repository operations are single-row queries; keep indexes on id and email for optimal performance.
@@ -2066,7 +2295,9 @@ Service --> Mapper["entity-mapper.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Invalid access token:
   - Symptom: 401 AUTH_INVALID_TOKEN.
   - Cause: Token expired or malformed.
@@ -2091,6 +2322,7 @@ Common issues and resolutions:
   - Resolution: Inspect server logs and retry; confirm Appwrite connectivity and database health.
 
 ## Conclusion
+
 The POST /api/auth/oauth/register endpoint securely finalizes OAuth user registration by validating the access token, enforcing role and profile constraints, updating Appwrite user metadata, and creating a public.users record. The service layer encapsulates Appwrite integration and repository persistence, while the route layer enforces input validation and returns standardized responses. Following the documented validation rules and error handling ensures robust integration with the FreelanceXchain platform.
 
 ---

@@ -1,6 +1,7 @@
 # Data Models & ORM Mapping
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Core Data Models](#core-data-models)
 3. [Entity-Relationship Diagram](#entity-relationship-diagram)
@@ -11,14 +12,17 @@
 8. [Conclusion](#conclusion)
 
 ## Introduction
+
 The FreelanceXchain platform implements a comprehensive data model to support its decentralized freelance marketplace. This documentation details the core entities, their relationships, and the ORM mapping between TypeScript models and PostgreSQL schema. The system is built on Appwrite, leveraging PostgreSQL for data persistence with Row Level Security (RLS) for access control. The architecture follows a repository pattern, separating data access logic from business logic and providing a clean interface for database operations.
 
 ## Core Data Models
+
 The FreelanceXchain platform consists of several interconnected data models that represent the core entities of the freelance marketplace. These models include User, Project, Proposal, Contract, Dispute, KYC, Notification, and supporting entities for skills management. The models are implemented in TypeScript with corresponding PostgreSQL tables, and the system uses a repository pattern to abstract database operations.
 
 The User model serves as the foundation, with role-based access control distinguishing between freelancers, employers, and administrators. Users can have either a FreelancerProfile or EmployerProfile, which contain role-specific information. Projects are created by employers and can receive proposals from freelancers. When a proposal is accepted, a Contract is created, which governs the work relationship and payment terms. The system supports milestone-based payments with escrow functionality, and includes mechanisms for dispute resolution, KYC verification, and notifications.
 
 ## Entity-Relationship Diagram
+
 ```mermaid
 erDiagram
 users {
@@ -204,12 +208,15 @@ skill_categories ||--o{ skills : "1:N"
 ```
 
 ## Model Field Definitions
+
 This section details the field definitions for each core model in the FreelanceXchain platform, including data types, relationships, and constraints as implemented in both TypeScript models and PostgreSQL schema.
 
 ### User Model
+
 The User model represents platform participants with role-based access control. Users can be freelancers, employers, or administrators.
 
 **Application Model (TypeScript)**
+
 ```typescript
 type User = {
   id: string;
@@ -223,6 +230,7 @@ type User = {
 ```
 
 **Database Schema (PostgreSQL)**
+
 ```sql
 CREATE TABLE users (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -237,6 +245,7 @@ CREATE TABLE users (
 ```
 
 **Relationships**
+
 - One-to-one with FreelancerProfile (user_id reference)
 - One-to-one with EmployerProfile (user_id reference)
 - One-to-many with Projects (employer_id reference)
@@ -246,9 +255,11 @@ CREATE TABLE users (
 - One-to-many with Notifications (user_id reference)
 
 ### Project Model
+
 The Project model represents freelance jobs posted by employers, containing details about the work, required skills, budget, and milestones.
 
 **Application Model (TypeScript)**
+
 ```typescript
 type Project = {
   id: string;
@@ -266,6 +277,7 @@ type Project = {
 ```
 
 **Database Schema (PostgreSQL)**
+
 ```sql
 CREATE TABLE projects (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -283,6 +295,7 @@ CREATE TABLE projects (
 ```
 
 **Relationships**
+
 - Many-to-one with User (employer_id reference)
 - One-to-many with Proposals (project_id reference)
 - One-to-one with Contract (project_id reference)
@@ -292,9 +305,11 @@ CREATE TABLE projects (
 - One-to-many with Reviews (via contract)
 
 ### Proposal Model
+
 The Proposal model represents a freelancer's bid on a project, including their cover letter, proposed rate, and estimated duration.
 
 **Application Model (TypeScript)**
+
 ```typescript
 type Proposal = {
   id: string;
@@ -310,6 +325,7 @@ type Proposal = {
 ```
 
 **Database Schema (PostgreSQL)**
+
 ```sql
 CREATE TABLE proposals (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -326,14 +342,17 @@ CREATE TABLE proposals (
 ```
 
 **Relationships**
+
 - Many-to-one with Project (project_id reference)
 - Many-to-one with User (freelancer_id reference)
 - One-to-one with Contract (proposal_id reference)
 
 ### Contract Model
+
 The Contract model represents an agreement between a freelancer and employer for a specific project, including escrow details and payment terms.
 
 **Application Model (TypeScript)**
+
 ```typescript
 type Contract = {
   id: string;
@@ -350,6 +369,7 @@ type Contract = {
 ```
 
 **Database Schema (PostgreSQL)**
+
 ```sql
 CREATE TABLE contracts (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -366,6 +386,7 @@ CREATE TABLE contracts (
 ```
 
 **Relationships**
+
 - Many-to-one with Project (project_id reference)
 - Many-to-one with Proposal (proposal_id reference)
 - Many-to-one with User (freelancer_id and employer_id references)
@@ -375,9 +396,11 @@ CREATE TABLE contracts (
 - One-to-one with Reviews (contract_id reference)
 
 ### Dispute Model
+
 The Dispute model handles conflict resolution between parties, with evidence submission and resolution tracking.
 
 **Application Model (TypeScript)**
+
 ```typescript
 type Dispute = {
   id: string;
@@ -394,6 +417,7 @@ type Dispute = {
 ```
 
 **Database Schema (PostgreSQL)**
+
 ```sql
 CREATE TABLE disputes (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -410,13 +434,16 @@ CREATE TABLE disputes (
 ```
 
 **Relationships**
+
 - Many-to-one with Contract (contract_id reference)
 - Many-to-one with User (initiator_id reference)
 
 ### KYC Model
+
 The KYC model manages identity verification for users, supporting tiered verification levels with document submission and liveness checks.
 
 **Application Model (TypeScript)**
+
 ```typescript
 type KycVerification = {
   id: string;
@@ -440,6 +467,7 @@ type KycVerification = {
 ```
 
 **Database Schema (PostgreSQL)**
+
 ```sql
 CREATE TABLE kyc_verifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -463,12 +491,15 @@ CREATE TABLE kyc_verifications (
 ```
 
 **Relationships**
+
 - One-to-one with User (user_id reference)
 
 ### Notification Model
+
 The Notification model handles system messages and alerts for users, supporting various notification types.
 
 **Application Model (TypeScript)**
+
 ```typescript
 type Notification = {
   id: string;
@@ -483,6 +514,7 @@ type Notification = {
 ```
 
 **Database Schema (PostgreSQL)**
+
 ```sql
 CREATE TABLE notifications (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -498,16 +530,21 @@ CREATE TABLE notifications (
 ```
 
 **Relationships**
+
 - Many-to-one with User (user_id reference)
 
 ## Data Validation and Constraints
+
 The FreelanceXchain platform implements comprehensive data validation and constraints at both the application and database levels to ensure data integrity and consistency.
 
 ### Primary and Foreign Keys
+
 The system uses UUIDs as primary keys for all entities, generated using PostgreSQL's uuid_generate_v4() function. Foreign key constraints are implemented with ON DELETE CASCADE to maintain referential integrity. For example, when a user is deleted, their associated profiles, projects, proposals, and other related records are automatically removed.
 
 ### Check Constraints
+
 Several tables implement check constraints to enforce valid data values:
+
 - Users table: role must be 'freelancer', 'employer', or 'admin'
 - Projects table: status must be 'draft', 'open', 'in_progress', 'completed', or 'cancelled'
 - Proposals table: status must be 'pending', 'accepted', 'rejected', or 'withdrawn'
@@ -516,23 +553,29 @@ Several tables implement check constraints to enforce valid data values:
 - KYC verifications table: status must be 'pending', 'submitted', 'under_review', 'approved', or 'rejected'
 
 ### Unique Constraints
+
 Unique constraints are implemented to prevent duplicate records:
+
 - Users table: email must be unique
 - FreelancerProfiles table: user_id must be unique (one profile per freelancer)
 - EmployerProfiles table: user_id must be unique (one profile per employer)
 - Proposals table: combination of project_id and freelancer_id must be unique (one proposal per freelancer per project)
 
 ### Indexes for Query Performance
+
 The system includes numerous indexes to optimize query performance:
+
 - Indexes on foreign key columns (user_id, project_id, contract_id, etc.)
 - Indexes on frequently queried fields (email, status, is_read)
 - Composite indexes for common query patterns
 - These indexes ensure efficient retrieval of data for user profiles, project listings, contract histories, and notification feeds.
 
 ## Repository Pattern Implementation
+
 The FreelanceXchain platform implements a repository pattern to abstract database operations and provide a clean interface between the application logic and data persistence layer.
 
 ### Base Repository
+
 The BaseRepository class provides common CRUD operations and pagination functionality that are inherited by specific repository implementations. It handles connection management, error handling, and common query patterns.
 
 ```typescript
@@ -553,6 +596,7 @@ export class BaseRepository<T extends BaseEntity> {
 ```
 
 ### Specific Repository Implementations
+
 Each entity has a dedicated repository class that extends the BaseRepository and provides entity-specific methods:
 
 - UserRepository: getUserByEmail, emailExists
@@ -562,6 +606,7 @@ Each entity has a dedicated repository class that extends the BaseRepository and
 - NotificationRepository: getUnreadNotificationsByUser, markAllAsRead, getUnreadCount
 
 ### Entity Mapping
+
 The system uses an entity mapper to convert between database entities (snake_case) and application models (camelCase). This separation allows the application to use idiomatic TypeScript naming conventions while maintaining compatibility with the PostgreSQL schema.
 
 ```typescript
@@ -579,6 +624,7 @@ export function mapUserFromEntity(entity: UserEntity): User {
 ```
 
 The repository pattern provides several benefits:
+
 - Separation of concerns between data access and business logic
 - Testability through dependency injection
 - Consistent error handling and logging
@@ -586,9 +632,11 @@ The repository pattern provides several benefits:
 - Type safety through TypeScript generics
 
 ## Sample Data Records
+
 This section provides sample data records for each core model to demonstrate practical usage and illustrate the structure of the data.
 
 ### Sample User Record
+
 ```json
 {
   "id": "a1b2c3d4-e5f6-7890-g1h2-i3j4k5l6m7n8",
@@ -602,6 +650,7 @@ This section provides sample data records for each core model to demonstrate pra
 ```
 
 ### Sample Project Record
+
 ```json
 {
   "id": "b2c3d4e5-f6g7-8901-h2i3-j4k5l6m7n8o9",
@@ -655,6 +704,7 @@ This section provides sample data records for each core model to demonstrate pra
 ```
 
 ### Sample Proposal Record
+
 ```json
 {
   "id": "c3d4e5f6-g7h8-9012-i3j4-k5l6m7n8o9p0",
@@ -670,6 +720,7 @@ This section provides sample data records for each core model to demonstrate pra
 ```
 
 ### Sample Contract Record
+
 ```json
 {
   "id": "d4e5f6g7-h8i9-0123-j4k5-l6m7n8o9p0q1",
@@ -686,6 +737,7 @@ This section provides sample data records for each core model to demonstrate pra
 ```
 
 ### Sample Dispute Record
+
 ```json
 {
   "id": "e5f6g7h8-i9j0-1234-k5l6-m7n8o9p0q1r2",
@@ -717,6 +769,7 @@ This section provides sample data records for each core model to demonstrate pra
 ```
 
 ### Sample KYC Verification Record
+
 ```json
 {
   "id": "f6g7h8i9-j0k1-2345-l6m7-n8o9p0q1r2s3",
@@ -782,6 +835,7 @@ This section provides sample data records for each core model to demonstrate pra
 ```
 
 ### Sample Notification Record
+
 ```json
 {
   "id": "g7h8i9j0-k1l2-3456-m7n8-o9p0q1r2s3t4",
@@ -801,9 +855,11 @@ This section provides sample data records for each core model to demonstrate pra
 ```
 
 ## Conclusion
+
 The FreelanceXchain platform features a robust and well-structured data model that supports a comprehensive freelance marketplace with role-based access, project management, contract execution, dispute resolution, and identity verification. The system effectively combines TypeScript models with PostgreSQL schema to ensure data integrity and performance, while the repository pattern provides a clean abstraction layer for database operations.
 
 Key strengths of the data model include:
+
 - Comprehensive entity relationships that accurately represent the freelance marketplace ecosystem
 - Strong data validation and constraints at both application and database levels
 - Efficient indexing strategy for optimal query performance

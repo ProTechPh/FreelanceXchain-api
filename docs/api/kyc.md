@@ -1,6 +1,7 @@
 # KYC Verification API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,9 +14,11 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the KYC verification system in the FreelanceXchain platform. It covers all KYC endpoints for submitting international identity and address information, managing verification documents, creating and completing liveness sessions, verifying face match, retrieving KYC status, and administrative review workflows. It also explains the KYC status lifecycle, required fields for international KYC, privacy considerations, and integration with the on-chain KYC verification smart contract.
 
 ## Project Structure
+
 The KYC API is implemented as Express routes backed by service-layer logic, repository persistence, and blockchain integration. Swagger schemas define request/response structures. Authentication is enforced via a JWT Bearer token middleware.
 
 ```mermaid
@@ -29,6 +32,7 @@ ContractSvc --> Contract["KYCVerification.sol"]
 ```
 
 ## Core Components
+
 - Routes: Define endpoints, request/response schemas, and security requirements.
 - Service: Orchestrates validation, business rules, repository updates, and blockchain submissions.
 - Repository: Persists KYC records to Appwrite and maps entities to models.
@@ -37,7 +41,9 @@ ContractSvc --> Contract["KYCVerification.sol"]
 - Smart Contract: Stores on-chain verification status and metadata.
 
 ## Architecture Overview
+
 The KYC API follows a layered architecture:
+
 - Presentation Layer: Express routes expose REST endpoints.
 - Application Layer: Services encapsulate business logic and integrate with repositories and blockchain.
 - Persistence Layer: Repository maps models to Appwrite entities and performs CRUD.
@@ -65,11 +71,13 @@ R-->>C : 201 Created
 ## Detailed Component Analysis
 
 ### Authentication and Security
+
 - All protected KYC endpoints require a Bearer token in the Authorization header.
 - The auth middleware validates the token and attaches user info to the request.
 - Administrative endpoints additionally require the admin role.
 
 ### KYC Status Lifecycle
+
 - pending: Initial state when a user registers or initiates KYC.
 - submitted: After successful submission of personal and document information.
 - under_review: Admin review phase (managed by admin endpoints).
@@ -87,6 +95,7 @@ approved --> pending : "re-submission"
 ```
 
 ### International KYC Requirements
+
 - Address: addressLine1, city, country, countryCode are required.
 - Document: type, documentNumber, issuingCountry, frontImageUrl are required; backImageUrl is optional.
 - Selfie: selfieImageUrl is optional but recommended for face match.
@@ -95,19 +104,23 @@ approved --> pending : "re-submission"
 ### Endpoint Reference
 
 #### GET /api/kyc/countries
+
 - Purpose: Retrieve supported countries and their KYC requirements.
 - Response: Array of SupportedCountry entries.
 
 #### GET /api/kyc/countries/{countryCode}
+
 - Purpose: Retrieve KYC requirements for a specific country.
 - Path Parameters: countryCode (ISO 3166-1 alpha-2).
 - Response: SupportedCountry.
 
 #### GET /api/kyc/status
+
 - Purpose: Retrieve current user’s KYC status.
 - Response: KycVerification.
 
 #### POST /api/kyc/submit
+
 - Purpose: Submit international KYC with personal info and identity documents.
 - Request Body: KycSubmissionInput.
 - Responses:
@@ -116,39 +129,47 @@ approved --> pending : "re-submission"
   - 409: KYC already pending or approved.
 
 #### POST /api/kyc/liveness/session
+
 - Purpose: Create a liveness verification session with randomized challenges.
 - Request Body: LivenessSessionInput (optional challenges).
 - Response: LivenessCheck.
 
 #### GET /api/kyc/liveness/session
+
 - Purpose: Retrieve current liveness session.
 - Response: LivenessCheck or 404 if none.
 
 #### POST /api/kyc/liveness/verify
+
 - Purpose: Submit captured frames and challenge results to finalize liveness.
 - Request Body: LivenessVerificationInput (sessionId, capturedFrames, challengeResults).
 - Response: LivenessCheck.
 
 #### POST /api/kyc/face-match
+
 - Purpose: Verify face match between selfie and document.
 - Request Body: FaceMatchInput (selfieImageUrl, documentImageUrl).
 - Response: { matched: boolean, score: number }.
 
 #### POST /api/kyc/documents
+
 - Purpose: Add an additional document to an existing KYC.
 - Request Body: KycDocument.
 - Response: Updated KycVerification.
 
 #### GET /api/kyc/admin/pending
+
 - Purpose: Get pending KYC reviews (Admin only).
 - Response: Array of KycVerification.
 
 #### GET /api/kyc/admin/status/{status}
+
 - Purpose: Get KYC verifications by status (Admin only).
 - Path Parameters: status (pending, submitted, under_review, approved, rejected).
 - Response: Array of KycVerification.
 
 #### POST /api/kyc/admin/review/{kycId}
+
 - Purpose: Approve or reject a KYC verification with AML screening results.
 - Path Parameters: kycId (UUID).
 - Request Body: KycReviewInput (status, rejectionReason, rejectionCode, riskLevel, riskScore, amlScreeningStatus, amlScreeningNotes).
@@ -157,38 +178,47 @@ approved --> pending : "re-submission"
 ### Request/Response Schemas
 
 #### InternationalAddress
+
 - Required fields: addressLine1, city, country, countryCode.
 
 #### KycDocument
+
 - Required fields: type, documentNumber, issuingCountry, frontImageUrl.
 - Optional fields: backImageUrl, issuingAuthority, issueDate, expiryDate.
 
 #### LivenessChallenge
+
 - Enumerations: blink, smile, turn_left, turn_right, nod, open_mouth.
 - Fields: type, completed, timestamp.
 
 #### LivenessCheck
+
 - Fields: id, sessionId, status (pending, passed, failed, expired), confidenceScore, challenges, capturedFrames, completedAt, expiresAt, createdAt.
 
 #### KycSubmissionInput
+
 - Required fields: firstName, lastName, dateOfBirth, nationality, address, document.
 - Optional fields: middleName, placeOfBirth, secondaryNationality, taxResidenceCountry, taxIdentificationNumber, selfieImageUrl, tier.
 
 #### KycVerification
+
 - Fields: id, userId, status, tier, personal info, address, documents, livenessCheck, faceMatchScore, faceMatchStatus, selfieImageUrl, amlScreeningStatus, riskLevel, riskScore, timestamps.
 
 #### SupportedCountry
+
 - Fields: code, name, supportedDocuments, requiresLiveness, requiresAddressProof, tier.
 
 ### Client Implementation Examples
 
 #### Example: Submitting Personal Information and Identity Documents
+
 - Steps:
   - Authenticate and obtain a JWT.
   - Call POST /api/kyc/submit with a payload containing personal info, address, and document details.
   - Handle 201 on success, 400 for validation errors, 409 if KYC already pending/approved.
 
 #### Example: Creating a Liveness Session and Completing Challenges
+
 - Steps:
   - Call POST /api/kyc/liveness/session to create a session with optional challenges.
   - Poll or retrieve the session via GET /api/kyc/liveness/session.
@@ -196,16 +226,19 @@ approved --> pending : "re-submission"
   - Handle 200 with updated LivenessCheck.
 
 #### Example: Verifying Face Match
+
 - Steps:
   - Call POST /api/kyc/face-match with selfieImageUrl and documentImageUrl.
   - Receive matched boolean and score; update local KYC accordingly.
 
 #### Example: Retrieving KYC Status
+
 - Steps:
   - Call GET /api/kyc/status with Authorization: Bearer <token>.
   - Receive KycVerification or 404 if not found.
 
 ### Administrative Workflows
+
 - Retrieve pending reviews: GET /api/kyc/admin/pending.
 - Filter by status: GET /api/kyc/admin/status/{status}.
 - Review and approve/reject: POST /api/kyc/admin/review/{kycId} with KycReviewInput.
@@ -271,6 +304,7 @@ KycContractService --> KYCVerificationContract : "interacts"
 ```
 
 ## Performance Considerations
+
 - Liveness verification simulates confidence scoring; in production, use a dedicated ML model to compute scores efficiently.
 - Face match uses simulated scoring; integrate a robust face recognition API for accuracy and latency.
 - Batch administrative queries (pending and status filters) are paginated; tune limits for optimal response times.
@@ -279,7 +313,9 @@ KycContractService --> KYCVerificationContract : "interacts"
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Unauthorized: Ensure Authorization header includes a valid Bearer token.
 - Invalid token: Token missing, malformed, or expired; re-authenticate.
 - KYC not found: User has no KYC record; submit KYC first.
@@ -288,6 +324,7 @@ Common issues and resolutions:
 - KYC already pending/approved: Cannot resubmit until resolution; wait for admin review or re-submission window.
 
 ## Conclusion
+
 The KYC API provides a comprehensive, secure, and extensible framework for international identity verification. It enforces strict validation, supports liveness checks, integrates with on-chain verification, and offers administrative controls. Clients should implement robust error handling, respect privacy constraints, and leverage the provided endpoints to deliver a seamless user experience.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -295,11 +332,13 @@ The KYC API provides a comprehensive, secure, and extensible framework for inter
 ## Appendices
 
 ### Privacy Considerations
+
 - Off-chain: Store only hashed identifiers and minimal data; keep personal details behind access-controlled APIs.
 - On-chain: The smart contract stores status, tier, and dataHash, not personal data, aligning with privacy regulations.
 - Face match and document images: Handle securely; avoid storing raw images on server; use signed URLs and short-lived access tokens.
 
 ### Integration with Third-Party Identity Verification Services
+
 - The current implementation simulates liveness and face matching; integrate with external services by replacing the simulation logic in the service layer.
 - Ensure compliance with GDPR and local privacy laws; use hashing and encryption for sensitive data.
 
@@ -308,6 +347,7 @@ The KYC API provides a comprehensive, secure, and extensible framework for inter
 ## Face Match Verification API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -320,10 +360,13 @@ The KYC API provides a comprehensive, secure, and extensible framework for inter
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document describes the POST /api/kyc/face-match endpoint used to compare a user’s selfie with their identity document photo. It specifies the HTTP method, URL pattern, request body schema, authentication requirements, response schema, and the underlying confidence scoring and matching logic. It also provides guidance on image quality requirements and outlines privacy considerations for processing biometric data.
 
 ## Project Structure
+
 The face match verification endpoint is implemented as part of the KYC module:
+
 - Route handler: defines the endpoint, authentication, and request validation
 - Service: performs the matching logic and updates KYC state
 - Model: defines the request/response shapes and thresholds
@@ -343,6 +386,7 @@ Swagger["Swagger Config"] --> Docs["OpenAPI Docs"]
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/kyc/face-match
 - Authentication: Bearer JWT via Authorization header
 - Request body: selfieImageUrl and documentImageUrl
@@ -350,12 +394,15 @@ Swagger["Swagger Config"] --> Docs["OpenAPI Docs"]
 - Threshold: matched is true when score >= 0.80
 
 Implementation highlights:
+
 - Route enforces JWT and validates presence of selfieImageUrl and documentImageUrl
 - Service simulates face matching and sets faceMatchStatus and faceMatchScore
 - Repository persists updates to the KYC record
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - Presentation layer: Express route
 - Application layer: Service orchestrating business logic
 - Persistence layer: Repository mapping to database
@@ -380,6 +427,7 @@ R-->>C : 200 OK {matched, score}
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: POST
 - URL: /api/kyc/face-match
 - Authentication: Bearer JWT (Authorization: Bearer <token>)
@@ -391,11 +439,13 @@ R-->>C : 200 OK {matched, score}
   - score: number
 
 Behavior:
+
 - On success: returns 200 OK with matched and score
 - On validation failure: returns 400 with error details
 - On unauthorized: returns 401
 
 ### Matching Logic and Confidence Scoring
+
 - Threshold: matched = true if score >= 0.80
 - Current implementation simulates matching with a random score in [0.75, 1.00]
 - In production, replace the simulation with a real face recognition API
@@ -414,21 +464,25 @@ ReturnOk --> End
 ```
 
 ### Request Validation and Error Handling
+
 - Route-level validation ensures selfieImageUrl and documentImageUrl are present
 - Unauthorized requests return 401
 - Validation failures return 400 with structured error payload
 
 Validation patterns used across the codebase:
+
 - URI format validation for URLs
 - Presence checks for required fields
 
 ### Response Schema
+
 - matched: boolean
 - score: number
 
 These fields are persisted to the KYC record and returned to the client.
 
 ### Example Requests and Responses
+
 - Successful match (example):
   - Request: POST /api/kyc/face-match with selfieImageUrl and documentImageUrl
   - Response: { matched: true, score: 0.85 }
@@ -439,6 +493,7 @@ These fields are persisted to the KYC record and returned to the client.
 Note: The score is simulated in the current implementation.
 
 ## Dependency Analysis
+
 - Route depends on auth middleware and service
 - Service depends on repository and models
 - Repository depends on Appwrite client and entity mapping
@@ -454,6 +509,7 @@ Security["security-middleware.ts"] --> Routes
 ```
 
 ## Performance Considerations
+
 - Image resolution and compression: Higher resolution images generally improve matching accuracy but increase processing time and bandwidth usage
 - Network latency: Fetching images from remote URLs adds latency; consider caching or pre-uploading images to reduce round trips
 - Batch processing: If integrating with other KYC steps, coordinate timing to minimize redundant image fetches
@@ -461,13 +517,16 @@ Security["security-middleware.ts"] --> Routes
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized: Ensure Authorization header includes a valid Bearer token
 - 400 Validation Error: Confirm selfieImageUrl and documentImageUrl are present and valid URIs
 - 404 Not Found: The KYC record may not exist for the authenticated user; submit KYC first
 - Unexpected non-match: Lower scores can occur due to lighting, pose, or image quality; retry with improved images
 
 ## Conclusion
+
 The POST /api/kyc/face-match endpoint enables biometric verification by comparing a selfie with an identity document photo. It uses a configurable threshold to determine a match and returns a numeric confidence score. While the current implementation simulates matching, integrating a robust face recognition API will enable production-grade accuracy. Proper image quality and secure handling of biometric data are essential for reliable verification.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -475,6 +534,7 @@ The POST /api/kyc/face-match endpoint enables biometric verification by comparin
 ## Appendices
 
 ### Implementation Guidance: Image Quality Requirements
+
 - Lighting: Even, well-lit conditions; avoid backlighting or shadows
 - Pose: Front-facing, centered face with eyes open and mouth closed
 - Resolution: Minimum recommended resolution to ensure facial feature clarity
@@ -485,6 +545,7 @@ The POST /api/kyc/face-match endpoint enables biometric verification by comparin
 [No sources needed since this section provides general guidance]
 
 ### Privacy Considerations
+
 - Data minimization: Only transmit images necessary for verification
 - Secure transport: Use HTTPS to prevent interception
 - Storage: Store images securely and apply encryption at rest
@@ -499,6 +560,7 @@ The POST /api/kyc/face-match endpoint enables biometric verification by comparin
 ## KYC Administration API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -510,13 +572,16 @@ The POST /api/kyc/face-match endpoint enables biometric verification by comparin
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the KYC administration endpoints that are accessible only to admin users. It covers:
+
 - GET /api/kyc/admin/pending: Retrieve all KYC verifications awaiting review.
 - GET /api/kyc/admin/status/{status}: Filter KYC records by status (pending, submitted, under_review, approved, rejected).
 
 It specifies HTTP methods, URL patterns, authentication requirements (JWT with admin role), response schemas, and error responses. It also explains the authorization flow using the requireRole('admin') middleware and how role-based access control prevents unauthorized access. Example responses and usage examples for admin dashboards are included.
 
 ## Project Structure
+
 The KYC administration endpoints are implemented in the routing layer and backed by service and repository layers. The Swagger configuration defines the OpenAPI schema for the endpoints.
 
 ```mermaid
@@ -530,6 +595,7 @@ Routes --> Swagger["Swagger Config<br/>src/config/swagger.ts"]
 ```
 
 ## Core Components
+
 - Route handlers for admin endpoints:
   - GET /api/kyc/admin/pending
   - GET /api/kyc/admin/status/{status}
@@ -546,6 +612,7 @@ Routes --> Swagger["Swagger Config<br/>src/config/swagger.ts"]
   - KycVerification and KycStatus
 
 Key implementation references:
+
 - Admin endpoints and validation: [kyc-routes.ts](file://src/routes/kyc-routes.ts#L767-L820)
 - Role enforcement: [auth-middleware.ts](file://src/middleware/auth-middleware.ts#L72-L100)
 - Service functions: [kyc-service.ts](file://src/services/kyc-service.ts#L409-L415)
@@ -553,7 +620,9 @@ Key implementation references:
 - Data model: [kyc-model.ts](file://src/models/kyc.ts#L1-L120), [user-model.ts](file://src/models/user.ts#L1-L4)
 
 ## Architecture Overview
+
 The admin endpoints follow a layered architecture:
+
 - Router layer validates path parameters and applies auth and role middleware.
 - Service layer orchestrates repository calls and returns typed results.
 - Repository layer maps models to database entities and executes queries.
@@ -585,37 +654,45 @@ R-->>C : "200 OK with list"
 ## Detailed Component Analysis
 
 ### Endpoint: GET /api/kyc/admin/pending
+
 - Purpose: Retrieve all KYC verifications awaiting review (status submitted).
 - Authentication: JWT Bearer token required.
 - Authorization: Admin role required.
 - Response: Array of KycVerification objects.
 
 Implementation highlights:
+
 - Route handler: [kyc-routes.ts](file://src/routes/kyc-routes.ts#L767-L783)
 - Service function: [kyc-service.ts](file://src/services/kyc-service.ts#L409-L411)
 - Repository function: [kyc-repository.ts](file://src/repositories/kyc-repository.ts#L172-L175)
 - Data model: [kyc-model.ts](file://src/models/kyc.ts#L84-L119)
 
 Response schema (OpenAPI):
+
 - Type: array of KycVerification
 - KycVerification fields include identifiers, personal info, address, documents, livenessCheck, faceMatch fields, AML screening fields, risk fields, timestamps, and status.
 
 Swagger references:
+
 - Schema definitions: [swagger.ts](file://src/config/swagger.ts#L1-L233)
 - Endpoint documentation: [kyc-routes.ts](file://src/routes/kyc-routes.ts#L767-L783)
 
 Example response (conceptual):
+
 - An array of KycVerification entries with fields such as id, userId, status, tier, name, nationality, address, documents, livenessCheck, faceMatchScore/status, amlScreeningStatus, riskLevel, timestamps, and optional blockchain fields.
 
 Authorization flow:
+
 - authMiddleware validates token and attaches user to request.
 - requireRole('admin') checks user role and rejects non-admins with 403.
 
 Error responses:
+
 - 401 Unauthorized: missing or invalid token.
 - 403 Forbidden: insufficient permissions (non-admin).
 
 ### Endpoint: GET /api/kyc/admin/status/{status}
+
 - Purpose: Filter KYC verifications by status.
 - Path parameter: status must be one of pending, submitted, under_review, approved, rejected.
 - Authentication: JWT Bearer token required.
@@ -623,28 +700,35 @@ Error responses:
 - Response: Array of KycVerification objects.
 
 Implementation highlights:
+
 - Route handler validates status and calls service/repository: [kyc-routes.ts](file://src/routes/kyc-routes.ts#L785-L820)
 - Service function: [kyc-service.ts](file://src/services/kyc-service.ts#L413-L415)
 - Repository function: [kyc-repository.ts](file://src/repositories/kyc-repository.ts#L159-L170)
 - Data model: [kyc-model.ts](file://src/models/kyc.ts#L1-L120)
 
 Response schema (OpenAPI):
+
 - Same as pending endpoint: array of KycVerification.
 
 Validation and error handling:
+
 - Invalid status returns 400 with INVALID_STATUS.
 - Successful requests return 200 with filtered list.
 
 Authorization flow:
+
 - Same as pending endpoint.
 
 Error responses:
+
 - 400 Bad Request: invalid status value.
 - 401 Unauthorized: missing or invalid token.
 - 403 Forbidden: insufficient permissions (non-admin).
 
 ### Authorization Flow and Role-Based Access Control
+
 The admin endpoints apply two middleware layers:
+
 - authMiddleware: verifies Authorization header format and validates JWT. On success, attaches user with role to request.
 - requireRole('admin'): ensures the user role includes 'admin'. Non-admin users receive 403.
 
@@ -664,7 +748,9 @@ Next --> End
 ```
 
 ### Data Model: KycVerification
+
 The response schema for both endpoints is an array of KycVerification. Key fields include:
+
 - Identity: id, userId, firstName, middleName, lastName, dateOfBirth, placeOfBirth, nationality, secondaryNationality, taxResidenceCountry, taxIdentificationNumber
 - Address: InternationalAddress with addressLine1, addressLine2, city, stateProvince, postalCode, country, countryCode
 - Documents: array of KycDocument with type, documentNumber, issuingCountry, issuingAuthority, issueDate, expiryDate, front/back image URLs, verification metadata
@@ -672,10 +758,12 @@ The response schema for both endpoints is an array of KycVerification. Key field
 - Lifecycle: status, tier, submittedAt, reviewedAt, reviewedBy, rejectionReason, rejectionCode, expiresAt, createdAt, updatedAt
 
 Swagger schema references:
+
 - KycVerification and related schemas: [swagger.ts](file://src/config/swagger.ts#L1-L233)
 - Model definitions: [kyc-model.ts](file://src/models/kyc.ts#L1-L120)
 
 ### Usage Examples for Admin Dashboard
+
 - Fetch pending KYCs to display in a review queue:
   - Call GET /api/kyc/admin/pending with Authorization: Bearer <admin_token>
   - Render the returned array of KycVerification entries in a table/grid
@@ -689,7 +777,9 @@ Swagger schema references:
 [No sources needed since this section provides general guidance]
 
 ## Dependency Analysis
+
 The admin endpoints depend on the following chain:
+
 - Router -> Auth Middleware -> Role Middleware -> Service -> Repository -> Database
 
 ```mermaid
@@ -702,6 +792,7 @@ Routes --> Swagger["swagger.ts"]
 ```
 
 ## Performance Considerations
+
 - Pagination: The repository limits results to a default small number (e.g., 50) to prevent large payloads. Admin dashboards should implement pagination or filtering to manage load.
 - Sorting: Requests are sorted by submittedAt to prioritize recent submissions.
 - Token validation: authMiddleware performs a single token validation per request; keep JWT short-lived and rotate tokens regularly.
@@ -709,7 +800,9 @@ Routes --> Swagger["swagger.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized
   - Cause: Missing Authorization header or invalid/missing Bearer token.
   - Resolution: Ensure Authorization: Bearer <valid_jwt> is sent.
@@ -724,9 +817,11 @@ Common issues and resolutions:
   - Resolution: Verify resource IDs and statuses.
 
 Error response format:
+
 - All errors include error.code, error.message, optional details, timestamp, and requestId.
 
 ## Conclusion
+
 The KYC administration endpoints provide secure, role-gated access to KYC review data. Admin users can fetch pending verifications and filter by status using JWT authentication and admin role enforcement. The response schema is defined by the KycVerification model, and the implementation follows a clean separation of concerns across routing, service, and repository layers.
 
 ---
@@ -734,6 +829,7 @@ The KYC administration endpoints provide secure, role-gated access to KYC review
 ## KYC Data Retrieval API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -746,7 +842,9 @@ The KYC administration endpoints provide secure, role-gated access to KYC review
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document specifies the KYC data retrieval API for the FreelanceXchain system. It covers:
+
 - GET /api/kyc/status: Returns the current user’s complete KYC verification record, including personal information, document details, liveness check results, and verification status.
 - GET /api/kyc/countries: Retrieves all supported countries for KYC.
 - GET /api/kyc/countries/{countryCode}: Retrieves KYC requirements for a specific country.
@@ -754,6 +852,7 @@ This document specifies the KYC data retrieval API for the FreelanceXchain syste
 It defines HTTP methods, authentication requirements (JWT for status endpoint), response schemas, and error handling. It also explains the KycVerification response schema lifecycle (pending, submitted, under_review, approved, rejected) and tier levels (basic, standard, enhanced). Guidance is included for building dynamic KYC forms based on country requirements.
 
 ## Project Structure
+
 The KYC endpoints are implemented in the routing layer, backed by service logic, typed models, and a repository that persists to Appwrite. Swagger definitions are centralized for OpenAPI documentation.
 
 ```mermaid
@@ -768,6 +867,7 @@ Swagger["Swagger Config"] --> Routes
 ```
 
 ## Core Components
+
 - Routes define endpoints, request validation, and response formatting.
 - Service encapsulates business logic, country requirement checks, and integration with the repository and blockchain contract.
 - Models define the KycVerification schema and related types.
@@ -775,6 +875,7 @@ Swagger["Swagger Config"] --> Routes
 - Swagger centralizes OpenAPI definitions for interactive docs and schema references.
 
 ## Architecture Overview
+
 The KYC retrieval flow is a straightforward request-response pipeline with JWT authentication for the status endpoint.
 
 ```mermaid
@@ -800,6 +901,7 @@ R-->>C : 200 {KycVerification} or 404
 ## Detailed Component Analysis
 
 ### Endpoint: GET /api/kyc/status
+
 - Method: GET
 - Path: /api/kyc/status
 - Authentication: JWT Bearer token required
@@ -838,6 +940,7 @@ end
 ```
 
 ### Endpoint: GET /api/kyc/countries
+
 - Method: GET
 - Path: /api/kyc/countries
 - Authentication: Not required
@@ -857,6 +960,7 @@ R-->>C : 200 [SupportedCountry]
 ```
 
 ### Endpoint: GET /api/kyc/countries/{countryCode}
+
 - Method: GET
 - Path: /api/kyc/countries/{countryCode}
 - Authentication: Not required
@@ -884,7 +988,9 @@ end
 ```
 
 ### KycVerification Response Schema
+
 The KycVerification object includes:
+
 - Identity and demographic fields
 - Address object with ISO country code
 - Documents array with verification metadata
@@ -895,6 +1001,7 @@ The KycVerification object includes:
 - Timestamps for creation/update/submission/review/expiry
 
 Status lifecycle:
+
 - pending
 - submitted
 - under_review
@@ -902,6 +1009,7 @@ Status lifecycle:
 - rejected
 
 Tier levels:
+
 - basic
 - standard
 - enhanced
@@ -992,6 +1100,7 @@ LivenessCheck --> LivenessChallenge : "has many"
 ```
 
 ### SupportedCountry Schema
+
 - code: ISO 3166-1 alpha-2 country code
 - name: Full country name
 - supportedDocuments: Array of document types allowed for that country
@@ -1000,13 +1109,16 @@ LivenessCheck --> LivenessChallenge : "has many"
 - tier: KYC tier recommendation for the country
 
 ### Country Requirements Data Usage
+
 Clients should:
+
 - Fetch supported countries to populate a dropdown or region selector.
 - On selecting a country, call GET /api/kyc/countries/{countryCode} to retrieve requirements.
 - Dynamically render form fields based on supportedDocuments, requiresLiveness, requiresAddressProof, and tier.
 - Enforce validation rules (e.g., required document types) before submission.
 
 ## Dependency Analysis
+
 - Route dependencies:
   - kyc-routes.ts depends on auth-middleware.ts for JWT validation.
   - kyc-routes.ts depends on kyc-service.ts for business logic.
@@ -1028,6 +1140,7 @@ Swagger["swagger.ts"] --> Routes
 ```
 
 ## Performance Considerations
+
 - The status endpoint performs a single DB query by user ID with ordering and limit to fetch the latest record.
 - Country endpoints return static lists from memory; caching at the application layer can reduce repeated computation.
 - Liveness and face match endpoints involve additional processing; consider rate limiting and session expiration handling.
@@ -1035,7 +1148,9 @@ Swagger["swagger.ts"] --> Routes
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common error scenarios and responses:
+
 - 401 Unauthorized:
   - Missing Authorization header or invalid Bearer token format.
   - Auth middleware returns standardized error payload.
@@ -1048,11 +1163,13 @@ Common error scenarios and responses:
   - Submitting KYC when already approved or pending (not covered in this document but relevant for completeness).
 
 Standardized error shape:
+
 - error: { code, message, details (optional) }
 - timestamp: ISO date-time
 - requestId: UUID or unknown
 
 ## Conclusion
+
 The KYC data retrieval API provides a clear, secure, and extensible way to fetch user KYC records and country requirements. The status endpoint enforces JWT authentication, while country endpoints are publicly accessible for form-building. The response schemas and lifecycle/tier semantics enable robust client-side rendering and validation.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -1101,6 +1218,7 @@ The KYC data retrieval API provides a clear, secure, and extensible way to fetch
   - Example: { error: { code: "INVALID_COUNTRY_CODE", message: "Country code is required" }, timestamp: "...", requestId: "..." }
 
 ### Blockchain Integration Notes
+
 - The system maintains a separate on-chain KYC contract for immutable verification status and tier. Off-chain KYC records can be augmented with on-chain verification details via service helpers.
 
 ---
@@ -1108,6 +1226,7 @@ The KYC data retrieval API provides a clear, secure, and extensible way to fetch
 ## KYC Liveness Verification API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1119,7 +1238,9 @@ The KYC data retrieval API provides a clear, secure, and extensible way to fetch
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the face liveness verification endpoints used in the KYC module of the FreelanceXchain system. It covers:
+
 - Creating a new liveness session
 - Retrieving the current session
 - Submitting verification results
@@ -1127,6 +1248,7 @@ This document describes the face liveness verification endpoints used in the KYC
 It specifies HTTP methods, URL patterns, request/response schemas, authentication requirements (JWT), liveness challenge types, how challenges are randomized, required request parameters for verification, example flows, response schema and status values, and error handling guidance.
 
 ## Project Structure
+
 The liveness verification endpoints are implemented in the KYC routes, backed by service logic and typed models. Authentication is enforced via a JWT bearer token.
 
 ```mermaid
@@ -1139,17 +1261,20 @@ Service --> Repo["KYC Repository<br/>getKycByUserId(), updateKyc()"]
 ```
 
 ## Core Components
+
 - LivenessCheck: The session and result object containing status, confidence score, challenges, timestamps, and expiration.
 - LivenessChallenge: Individual challenge entries with type, completion flag, and optional timestamp.
 - LivenessSessionInput: Optional input to customize challenges during session creation.
 - LivenessVerificationInput: Request payload for submitting verification results.
 
 Key behaviors:
+
 - Session creation sets a default set of challenges and an expiration time.
 - Verification updates challenge completion and computes a confidence score; determines pass/fail/expired states.
 - Sessions expire after a fixed duration.
 
 ## Architecture Overview
+
 The liveness verification flow spans route handlers, authentication middleware, service logic, and persistence.
 
 ```mermaid
@@ -1189,6 +1314,7 @@ R-->>C : 200 LivenessCheck
 ## Detailed Component Analysis
 
 ### Endpoint: POST /api/kyc/liveness/session
+
 - Method: POST
 - URL: /api/kyc/liveness/session
 - Authentication: JWT Bearer
@@ -1202,6 +1328,7 @@ R-->>C : 200 LivenessCheck
   - Challenges are randomized by order in the input; defaults are used when not provided.
 
 ### Endpoint: GET /api/kyc/liveness/session
+
 - Method: GET
 - URL: /api/kyc/liveness/session
 - Authentication: JWT Bearer
@@ -1212,6 +1339,7 @@ R-->>C : 200 LivenessCheck
   - If no session exists, clients should create one first.
 
 ### Endpoint: POST /api/kyc/liveness/verify
+
 - Method: POST
 - URL: /api/kyc/liveness/verify
 - Authentication: JWT Bearer
@@ -1231,6 +1359,7 @@ R-->>C : 200 LivenessCheck
   - Status determination considers whether all challenges were completed and a confidence threshold.
 
 ### Liveness Challenge Types and Randomization
+
 - Supported challenge types: blink, smile, turn_left, turn_right, nod, open_mouth.
 - Default challenge set used when none are provided: blink, turn_left, turn_right, smile.
 - Randomization:
@@ -1238,6 +1367,7 @@ R-->>C : 200 LivenessCheck
   - The order of challenges in the input defines the sequence presented to the user.
 
 ### LivenessCheck Response Schema and Status Values
+
 - Schema fields:
   - id: string
   - sessionId: string
@@ -1255,6 +1385,7 @@ R-->>C : 200 LivenessCheck
   - expired: session timed out
 
 ### Example Client Flow
+
 Below is a typical end-to-end flow a client should orchestrate:
 
 ```mermaid
@@ -1276,7 +1407,9 @@ API-->>Client : 200 LivenessCheck
 ```
 
 ## Dependency Analysis
+
 The liveness endpoints depend on:
+
 - Route handlers for routing and request validation
 - Auth middleware for JWT enforcement
 - Service layer for business logic and session management
@@ -1292,6 +1425,7 @@ Service --> Repo["kyc-repository.ts"]
 ```
 
 ## Performance Considerations
+
 - Session expiration: Sessions expire after a fixed duration; clients should complete verification promptly.
 - Confidence scoring: The service simulates confidence scoring; production deployments should integrate a robust ML model.
 - Payload sizes: Base64-encoded frames can be large; consider compression or streaming where feasible.
@@ -1300,7 +1434,9 @@ Service --> Repo["kyc-repository.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Missing or invalid JWT:
   - Symptom: 401 Unauthorized
   - Resolution: Ensure Authorization header is present and formatted as Bearer <token>.
@@ -1318,6 +1454,7 @@ Common issues and resolutions:
   - Resolution: Ensure all required fields are present in the verification request.
 
 ## Conclusion
+
 The KYC liveness verification endpoints provide a structured flow for creating sessions, retrieving current sessions, and submitting verification results. They enforce JWT authentication, manage session lifecycle, and compute outcomes based on challenge completion and confidence thresholds. Clients should follow the documented request/response schemas and handle error conditions appropriately to ensure a smooth user experience.
 
 ---
@@ -1325,6 +1462,7 @@ The KYC liveness verification endpoints provide a structured flow for creating s
 ## KYC Submission API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1337,9 +1475,11 @@ The KYC liveness verification endpoints provide a structured flow for creating s
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the KYC submission endpoint in the FreelanceXchain system. It focuses on the POST /api/kyc/submit endpoint, detailing the HTTP method, URL pattern, request body schema (KycSubmissionInput), authentication requirements (JWT Bearer), validation rules, response codes, and practical examples. It also covers privacy considerations and data handling practices for transmitting sensitive personal information.
 
 ## Project Structure
+
 The KYC submission flow spans routing, middleware, service, repository, and data model layers, with Swagger OpenAPI definitions embedded in the routes for interactive documentation.
 
 ```mermaid
@@ -1353,6 +1493,7 @@ Routes --> Swagger["Swagger Config: swagger.ts"]
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/kyc/submit
 - Authentication: JWT Bearer token via Authorization header
 - Request Body: KycSubmissionInput (international KYC schema)
@@ -1364,7 +1505,9 @@ Routes --> Swagger["Swagger Config: swagger.ts"]
 - Validation: Built-in validator checks required fields and formats; service-level country/document support checks
 
 ## Architecture Overview
+
 The KYC submission request follows this flow:
+
 1. Client sends a POST request with a valid JWT Bearer token.
 2. Auth middleware validates the token and attaches user context.
 3. Route handler validates the request payload using a dedicated validator.
@@ -1404,6 +1547,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint Definition: POST /api/kyc/submit
+
 - Method: POST
 - URL Pattern: /api/kyc/submit
 - Authentication: Requires Authorization: Bearer <JWT>
@@ -1415,7 +1559,9 @@ end
   - 401 Unauthorized: Missing/invalid Authorization header
 
 ### Request Body Schema: KycSubmissionInput
+
 The request body must conform to the KycSubmissionInput schema. Required fields include:
+
 - Personal Information
   - firstName (string)
   - lastName (string)
@@ -1438,6 +1584,7 @@ The request body must conform to the KycSubmissionInput schema. Required fields 
   - tier (enum: basic, standard, enhanced)
 
 Validation Rules:
+
 - All required fields must be present and non-empty.
 - dateOfBirth must be a valid date string (YYYY-MM-DD).
 - countryCode must match supported countries.
@@ -1446,6 +1593,7 @@ Validation Rules:
 - Authorization header must be present and formatted as Bearer <token>.
 
 ### Validation Logic
+
 - Route-level validation:
   - Ensures required fields exist and meet basic type/format requirements.
   - Validates address and document sub-schemas.
@@ -1472,6 +1620,7 @@ Persist --> Return201["Return 201 Created"]
 ```
 
 ### Response Codes and Conditions
+
 - 201 Created: KYC verification created or updated successfully.
 - 400 Bad Request:
   - Validation error: missing or invalid fields.
@@ -1488,6 +1637,7 @@ Persist --> Return201["Return 201 Created"]
 ### Practical Examples
 
 #### Example Request Payload (International KYC)
+
 - Headers:
   - Authorization: Bearer <your-jwt-token>
   - Content-Type: application/json
@@ -1508,16 +1658,18 @@ Persist --> Return201["Return 201 Created"]
     - type: "passport"
     - documentNumber: "P12345678"
     - issuingCountry: "US"
-    - frontImageUrl: "https://example.com/passport-front.jpg"
-    - backImageUrl: "https://example.com/passport-back.jpg"
-  - selfieImageUrl: "https://example.com/selfie.jpg"
+    - frontImageUrl: "<https://example.com/passport-front.jpg>"
+    - backImageUrl: "<https://example.com/passport-back.jpg>"
+  - selfieImageUrl: "<https://example.com/selfie.jpg>"
   - tier: "enhanced"
 
 #### Example Successful Response (201 Created)
+
 - Status: 201 Created
 - Body: KycVerification object reflecting the submitted KYC (with status set to submitted).
 
 #### Example Validation Error Response (400)
+
 - Status: 400 Bad Request
 - Body:
   - error:
@@ -1526,6 +1678,7 @@ Persist --> Return201["Return 201 Created"]
     - details: ["firstName is required", "address.addressLine1 is required"]
 
 #### Example Conflict Response (409)
+
 - Status: 409 Conflict
 - Body:
   - error:
@@ -1533,6 +1686,7 @@ Persist --> Return201["Return 201 Created"]
     - message: "KYC verification already pending review"
 
 ### Privacy Considerations and Data Handling
+
 - Sensitive Data Transmission:
   - The endpoint accepts images (front/back of documents, selfie) via URLs. Ensure HTTPS endpoints are used to protect data in transit.
 - Data Storage:
@@ -1545,7 +1699,9 @@ Persist --> Return201["Return 201 Created"]
   - Consider tokenizing or hashing identifiers where feasible.
 
 ## Dependency Analysis
+
 The KYC submission endpoint depends on:
+
 - Routing and Swagger definitions for endpoint exposure and schema documentation.
 - Authentication middleware for JWT validation.
 - Service layer for business logic and external integrations (e.g., blockchain).
@@ -1562,6 +1718,7 @@ Routes --> Swagger["swagger.ts"]
 ```
 
 ## Performance Considerations
+
 - Validation Early Exit: The route-level validator short-circuits on missing required fields to reduce unnecessary processing.
 - Minimal Database Writes: Updates only occur when KYC already exists; otherwise, a single insert is performed.
 - Asynchronous Blockchain Submission: Blockchain submission is attempted asynchronously and does not block the primary response path.
@@ -1569,7 +1726,9 @@ Routes --> Swagger["swagger.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common Issues and Resolutions:
+
 - 401 Unauthorized
   - Cause: Missing or malformed Authorization header.
   - Resolution: Ensure Authorization: Bearer <valid-jwt> is present.
@@ -1587,11 +1746,13 @@ Common Issues and Resolutions:
   - Resolution: Wait until the current KYC completes or check status endpoint.
 
 ## Conclusion
+
 The POST /api/kyc/submit endpoint provides a robust, standards-aligned international KYC submission flow with strong validation, clear error handling, and secure data handling practices. By adhering to the documented schema and authentication requirements, clients can reliably submit KYC applications while maintaining compliance with privacy and data protection principles.
 
 ## Appendices
 
 ### Appendix A: InternationalAddress Schema
+
 - addressLine1 (string, required)
 - addressLine2 (string, optional)
 - city (string, required)
@@ -1601,6 +1762,7 @@ The POST /api/kyc/submit endpoint provides a robust, standards-aligned internati
 - countryCode (string, required)
 
 ### Appendix B: KycDocument Schema
+
 - type (enum, required)
 - documentNumber (string, required)
 - issuingCountry (string, required)
@@ -1611,6 +1773,7 @@ The POST /api/kyc/submit endpoint provides a robust, standards-aligned internati
 - backImageUrl (string, optional)
 
 ### Appendix C: Supported Countries and Document Types
+
 - Supported countries include US, GB, CA, AU, DE, FR, JP, SG, AE, IN, PH, BR, MX, NG, KE, ZA with varying requirements and tiers.
 - Document types include passport, national_id, drivers_license, residence_permit, voter_id, tax_id, social_security, birth_certificate, utility_bill, bank_statement.
 

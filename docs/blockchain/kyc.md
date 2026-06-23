@@ -1,6 +1,7 @@
 # KYC Verification
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,9 +14,11 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document describes the privacy-preserving KYC verification system. It covers the on-chain smart contract that stores only verification status and cryptographic hashes, the off-chain services that orchestrate document collection and validation, and the integration points that synchronize blockchain state with the application's database. The system minimizes on-chain data exposure by storing only hashes and status, while enabling transparent, immutable verification records that can be queried by wallet address or off-chain user ID.
 
 ## Project Structure
+
 The KYC system spans Solidity smart contracts, backend services, routing, models, repositories, and blockchain client utilities. The following diagram shows the primary modules and their relationships.
 
 ```mermaid
@@ -45,6 +48,7 @@ Scripts --> Routes
 ```
 
 ## Core Components
+
 - KYCVerification.sol: On-chain contract storing verification status, tier, expiration, and data hash. Emits events for lifecycle transitions.
 - kyc-contract.ts: Off-chain service that simulates blockchain interactions, computes hashes, and manages gas-efficient state updates by storing a local in-memory copy of verification records.
 - kyc-service.ts: Orchestrates KYC workflows, validates documents and liveness checks, and triggers on-chain approvals/rejections.
@@ -55,7 +59,9 @@ Scripts --> Routes
 - test-kyc-flow.cjs: Integration test script that exercises the full KYC flow.
 
 ## Architecture Overview
+
 The system follows a hybrid privacy model:
+
 - On-chain: Stores only status, tier, expiration, and a data hash.
 - Off-chain: Stores personal documents, biometric checks, and full KYC metadata.
 - Synchronization: Admin actions trigger on-chain state updates, and off-chain services can verify integrity by recomputing hashes.
@@ -99,6 +105,7 @@ Routes-->>Client : "200 OK"
 ## Detailed Component Analysis
 
 ### Smart Contract: KYCVerification.sol
+
 - Purpose: Immutable, transparent verification registry storing status, tier, expiration, and a data hash.
 - Key features:
   - Roles: owner and verifier with modifiers.
@@ -140,6 +147,7 @@ class KYCVerification {
 ```
 
 ### Off-chain Contract Service: kyc-contract.ts
+
 - Purpose: Encapsulates on-chain interactions and maintains a local in-memory copy of verification records for gas-efficient reads and status checks.
 - Key functions:
   - Hashing: generates SHA-256 hashes for KYC data and user IDs.
@@ -160,6 +168,7 @@ Store --> Done(["Return {verification, receipt}"])
 ```
 
 ### Business Service: kyc-service.ts
+
 - Purpose: Coordinates the end-to-end KYC workflow, including document validation, liveness checks, face matching, and admin review.
 - Key responsibilities:
   - Country and document validation.
@@ -197,20 +206,24 @@ Routes-->>Admin : "200 OK"
 ```
 
 ### Data Models: kyc.ts
+
 - Defines KYC-related types: statuses, tiers, documents, liveness checks, and submission/review inputs.
 - Supports structured validation and consistent representation across services and routes.
 
 ### Repository: kyc-repository.ts
+
 - Persists KYC records to Appwrite.
 - Provides CRUD operations and status-based queries.
 - Maps between domain models and database entities.
 
 ### Blockchain Client: blockchain-client.ts and blockchain-types.ts
+
 - Provides transaction submission, polling, and confirmation utilities.
 - Serializes/deserializes big integers for JSON transport.
 - Simulates blockchain behavior in memory; production would integrate with an RPC provider.
 
 ### Routes: kyc-routes.ts
+
 - Exposes endpoints for:
   - Country requirements and KYC status retrieval.
   - KYC submission and document addition.
@@ -220,10 +233,12 @@ Routes-->>Admin : "200 OK"
   - Admin review endpoint to approve or reject KYC with risk and AML fields.
 
 ### Integration Test: test-kyc-flow.cjs
+
 - Demonstrates a complete user flow: register, submit KYC, create and verify liveness, add documents, and finalize status.
 - Useful for validating end-to-end behavior and debugging.
 
 ## Dependency Analysis
+
 The following diagram shows module-level dependencies among core components.
 
 ```mermaid
@@ -239,13 +254,16 @@ Repo --> Model
 ```
 
 ## Performance Considerations
+
 - Gas efficiency: Off-chain service maintains an in-memory cache of verification records to reduce repeated on-chain reads. On-chain reads are minimized to essential getters and status checks.
 - Batch operations: Admin review endpoints update off-chain records first, then optionally trigger on-chain approvals/rejections to keep latency low.
 - Hash computation: SHA-256 hashing is lightweight and deterministic, enabling fast integrity checks.
 - Transaction polling: The blockchain client simulates confirmation timing; in production, adjust polling intervals and backoff strategies to balance responsiveness and cost.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Transaction confirmation failures:
   - Symptom: Errors indicating failed or unconfirmed transactions during on-chain operations.
   - Resolution: Inspect transaction status via polling and ensure the blockchain client is configured with a valid RPC URL and private key. In simulations, confirmTransaction can be used for testing.
@@ -263,11 +281,13 @@ Common issues and resolutions:
   - Resolution: Recompute the hash using the exact same normalization rules and ensure the same data is used for comparison.
 
 ## Conclusion
+
 The KYC verification system achieves privacy-preserving identity verification by storing only hashes and status on-chain while maintaining comprehensive off-chain data and workflows. The design balances transparency, immutability, and user privacy, with robust admin controls and integrity checks. Integration with the kyc-service and blockchain client enables efficient, gas-conscious state updates and seamless synchronization between on-chain and off-chain systems.
 
 ## Appendices
 
 ### Verification Workflow Summary
+
 - User submits KYC with documents and personal information.
 - Off-chain service validates country/document support and creates a pending KYC record.
 - Optionally, the service submits a pending verification to the contract and stores a local record.

@@ -1,6 +1,7 @@
 # Dispute API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,9 +14,11 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the dispute resolution system in the FreelanceXchain platform. It covers all dispute-related endpoints: creating disputes, submitting evidence, resolving disputes, and retrieving dispute information. It also documents authentication requirements (JWT), validation rules, role-based access controls, the dispute status lifecycle, and blockchain recording of outcomes. Client implementation examples are included to help developers integrate dispute workflows.
 
 ## Project Structure
+
 The dispute functionality spans routing, service orchestration, persistence, and blockchain integration layers. The routes define the HTTP endpoints and apply middleware for authentication and validation. The service layer enforces business rules, interacts with repositories, and triggers blockchain operations. The repository layer abstracts database access. The entity mapper converts between database entities and API models. The validation middleware ensures request payloads conform to schemas.
 
 ```mermaid
@@ -32,6 +35,7 @@ Registry --> Chain["Mock Blockchain Layer"]
 ```
 
 ## Core Components
+
 - Dispute Routes: Define endpoints for creating disputes, retrieving dispute details, submitting evidence, resolving disputes, and listing disputes by contract.
 - Dispute Service: Implements business logic for dispute creation, evidence submission, and resolution, including validations, status transitions, and blockchain interactions.
 - Dispute Repository: Persists and retrieves dispute records, manages pagination, and enforces uniqueness constraints.
@@ -41,7 +45,9 @@ Registry --> Chain["Mock Blockchain Layer"]
 - Dispute Registry (Blockchain): Simulates on-chain recording of disputes, evidence updates, and resolutions.
 
 ## Architecture Overview
+
 The dispute API follows a layered architecture:
+
 - HTTP Layer: Routes define endpoints and apply middleware.
 - Service Layer: Orchestrates business logic, repository interactions, and blockchain operations.
 - Persistence Layer: Appwrite-backed repository with typed entities.
@@ -76,6 +82,7 @@ R-->>C : "201 Created"
 ### Endpoint Definitions and Schemas
 
 #### Authentication
+
 - All protected endpoints require a Bearer token in the Authorization header.
 - Token format: Bearer <JWT>.
 - Role checks:
@@ -84,6 +91,7 @@ R-->>C : "201 Created"
   - Resolving disputes: Admin only.
 
 #### Create Dispute
+
 - Method: POST
 - URL: /api/disputes
 - Authentication: JWT required
@@ -107,6 +115,7 @@ R-->>C : "201 Created"
   - Records on blockchain and notifies both parties.
 
 #### Retrieve Dispute Details
+
 - Method: GET
 - URL: /api/disputes/{disputeId}
 - Path parameter: disputeId (UUID)
@@ -118,6 +127,7 @@ R-->>C : "201 Created"
   - 404 Not Found
 
 #### Submit Evidence
+
 - Method: POST
 - URL: /api/disputes/{disputeId}/evidence
 - Path parameter: disputeId (UUID)
@@ -138,6 +148,7 @@ R-->>C : "201 Created"
   - Updates blockchain evidence hash.
 
 #### Resolve Dispute (Admin)
+
 - Method: POST
 - URL: /api/disputes/{disputeId}/resolve
 - Path parameter: disputeId (UUID)
@@ -162,6 +173,7 @@ R-->>C : "201 Created"
   - Records resolution on blockchain and notifies both parties.
 
 #### List Disputes by Contract
+
 - Method: GET
 - URL: /api/contracts/{contractId}/disputes
 - Path parameter: contractId (UUID)
@@ -174,6 +186,7 @@ R-->>C : "201 Created"
   - 404 Not Found
 
 ### Data Models and Schemas
+
 - Dispute:
   - id: string (UUID)
   - contractId: string (UUID)
@@ -200,6 +213,7 @@ R-->>C : "201 Created"
 These models are mapped from repository entities and exposed via the API.
 
 ### Validation Rules
+
 - UUID validation:
   - All UUID path parameters are validated using a dedicated middleware.
 - Request body validation:
@@ -212,6 +226,7 @@ These models are mapped from repository entities and exposed via the API.
   - Resolve Dispute: dispute must not be resolved; resolver must be admin.
 
 ### Dispute Status Lifecycle
+
 - open: Initial state when a dispute is created.
 - under_review: Automatically set when evidence is submitted to a previously open dispute; remains under_review if evidence is added later.
 - resolved: Set when an admin resolves the dispute; cannot accept further evidence.
@@ -227,6 +242,7 @@ resolved --> [*]
 ```
 
 ### Role-Based Access Controls
+
 - Any contract party (freelancer or employer) can:
   - Create disputes.
   - Submit evidence.
@@ -236,6 +252,7 @@ resolved --> [*]
 ### Client Implementation Examples
 
 #### Example: Create a Dispute
+
 - Endpoint: POST /api/disputes
 - Headers: Authorization: Bearer <JWT>
 - Request body:
@@ -245,6 +262,7 @@ resolved --> [*]
 - Expected response: 201 with Dispute model
 
 #### Example: Submit Evidence
+
 - Endpoint: POST /api/disputes/{disputeId}/evidence
 - Path parameters: disputeId (UUID)
 - Headers: Authorization: Bearer <JWT>
@@ -254,6 +272,7 @@ resolved --> [*]
 - Expected response: 200 with updated Dispute model
 
 #### Example: Admin Resolve Dispute
+
 - Endpoint: POST /api/disputes/{disputeId}/resolve
 - Path parameters: disputeId (UUID)
 - Headers: Authorization: Bearer <JWT>, role=admin
@@ -263,6 +282,7 @@ resolved --> [*]
 - Expected response: 200 with updated Dispute model
 
 ### Dispute Resolution Outcomes and Escrow Effects
+
 - freelancer_favor:
   - Outcome recorded on blockchain.
   - Milestone status updated to approved.
@@ -277,7 +297,9 @@ resolved --> [*]
   - Partial release handled separately.
 
 ## Dependency Analysis
+
 The dispute module exhibits clear separation of concerns:
+
 - Routes depend on auth and validation middleware and delegate to the service layer.
 - Service depends on repository, mapper, and blockchain registry.
 - Repository encapsulates database operations.
@@ -297,6 +319,7 @@ Registry --> Chain["Blockchain Layer"]
 ```
 
 ## Performance Considerations
+
 - Request validation occurs before service logic to fail fast and reduce unnecessary database calls.
 - Pagination is supported for listing disputes by contract via repository methods.
 - Blockchain operations are asynchronous and logged; failures do not block dispute resolution but are surfaced in logs.
@@ -305,7 +328,9 @@ Registry --> Chain["Blockchain Layer"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common error scenarios and resolutions:
+
 - 400 Validation Error:
   - Ensure UUIDs are valid and request bodies match schemas.
   - Check enum values for type and decision.
@@ -320,6 +345,7 @@ Common error scenarios and resolutions:
   - Cannot submit evidence or resolve a dispute already marked as resolved.
 
 ## Conclusion
+
 The dispute API provides a secure, auditable, and extensible mechanism for managing disputes in the FreelanceXchain ecosystem. It enforces strict validation, role-based access, and a clear status lifecycle while integrating with blockchain for immutable records. Clients should implement robust error handling and adhere to the documented schemas and access controls.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -370,6 +396,7 @@ The dispute API provides a secure, auditable, and extensible mechanism for manag
 ## Dispute Creation
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -382,9 +409,11 @@ The dispute API provides a secure, auditable, and extensible mechanism for manag
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document describes the API for creating a dispute via POST /api/disputes. It covers the request schema, authentication and authorization, validation rules, response format, backend flow from route to service and blockchain integration, and common error scenarios. It also provides practical examples and client implementation guidance.
 
 ## Project Structure
+
 The dispute creation endpoint is implemented in the routes layer and delegated to a service layer that orchestrates repository access, business validation, notifications, and blockchain recording.
 
 ```mermaid
@@ -403,6 +432,7 @@ Service --> Users["User Repository"]
 ```
 
 ## Core Components
+
 - Route handler enforces JWT authentication and validates request body fields.
 - Service performs business validation (contract-party access, milestone existence, duplicate dispute checks) and updates domain state.
 - Repository persists dispute records and related lookups.
@@ -410,6 +440,7 @@ Service --> Users["User Repository"]
 - Entity mapper converts between internal entities and API models.
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture: route -> service -> repository/blockchain. The service ensures only a contract party can initiate a dispute, validates milestone eligibility, and records the dispute on-chain.
 
 ```mermaid
@@ -457,6 +488,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: POST
 - Path: /api/disputes
 - Authentication: Required (Bearer JWT)
@@ -474,16 +506,19 @@ end
   - 409: Already disputed or duplicate active dispute for milestone
 
 ### Request Validation Rules
+
 - contractId must be present and a valid UUID.
 - milestoneId must be present and a valid UUID.
 - reason must be present and a non-empty string.
 - The route also applies a reusable UUID validator for path parameters in other endpoints.
 
 ### Authentication and Authorization
+
 - Authentication: Route requires a valid Bearer JWT. The auth middleware extracts the token from the Authorization header and validates it.
 - Authorization: The service verifies that the initiator is either the employer or freelancer on the contract. Other endpoints enforce role checks differently (e.g., admin-only resolution).
 
 ### Business Logic and Domain State
+
 - Validates contract exists and loads project with milestones.
 - Ensures milestone exists and is not already disputed or approved.
 - Prevents duplicate active disputes for the same milestone.
@@ -492,7 +527,9 @@ end
 - Sends notifications to both parties.
 
 ### Response Schema
+
 The response is a Dispute object with:
+
 - id: string
 - contractId: string
 - milestoneId: string
@@ -505,6 +542,7 @@ The response is a Dispute object with:
 - updatedAt: string (ISO date-time)
 
 Evidence items include:
+
 - id: string
 - submitterId: string
 - type: "text" | "file" | "link"
@@ -512,12 +550,14 @@ Evidence items include:
 - submittedAt: string (ISO date-time)
 
 DisputeResolution includes:
+
 - decision: "freelancer_favor" | "employer_favor" | "split"
 - reasoning: string
 - resolvedBy: string
 - resolvedAt: string (ISO date-time)
 
 ### Backend Flow: Route to Service to Blockchain
+
 - Route validates JWT and request body.
 - Service:
   - Loads contract and project, validates milestone eligibility.
@@ -541,6 +581,7 @@ Notify --> Return201["Return 201 Dispute"]
 ```
 
 ### Blockchain Integration with DisputeResolution Smart Contract
+
 - On successful dispute creation, the service records a dispute on-chain using the Dispute Registry service, which simulates transactions and stores records in-memory.
 - The Solidity contract DisputeResolution stores immutable records keyed by hashed identifiers and emits events for dispute creation, evidence updates, and resolution.
 - The service also marks the agreement as disputed on-chain.
@@ -565,6 +606,7 @@ DisputeRegistry --> DisputeResolution : "records on-chain"
 ```
 
 ### Practical Example: Milestone Delivery Issue
+
 - Scenario: Employer initiates a dispute because the milestone deliverable was not received.
 - Request payload:
   - contractId: "a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6"
@@ -573,6 +615,7 @@ DisputeRegistry --> DisputeResolution : "records on-chain"
 - Expected response: 201 with a Dispute object having status "open" and empty evidence array.
 
 ### Common Errors
+
 - 400 Validation errors:
   - Missing or invalid contractId (must be UUID).
   - Missing or invalid milestoneId (must be UUID).
@@ -588,6 +631,7 @@ DisputeRegistry --> DisputeResolution : "records on-chain"
   - An active dispute already exists for the milestone.
 
 ## Dependency Analysis
+
 The route depends on auth and validation middleware and delegates to the dispute service. The service depends on repositories, user and contract/project loaders, notification service, and blockchain registry.
 
 ```mermaid
@@ -605,6 +649,7 @@ Service --> Notify["notification-service.ts"]
 ```
 
 ## Performance Considerations
+
 - Validation is lightweight and occurs before any repository calls.
 - Repository queries are simple and scoped to IDs.
 - Blockchain operations are asynchronous and logged; failures do not block the primary flow.
@@ -613,6 +658,7 @@ Service --> Notify["notification-service.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 - If receiving 401 Unauthorized, ensure the Authorization header is present and formatted as "Bearer <token>".
 - If receiving 403 Unauthorized, verify the user is either the employer or freelancer on the contract.
 - If receiving 404 Not Found, confirm the contractId and milestoneId are valid and correspond to an existing contract and milestone.
@@ -620,11 +666,13 @@ Service --> Notify["notification-service.ts"]
 - If blockchain recording fails, the service logs the error and still returns the created dispute; retry later or contact support.
 
 ## Conclusion
+
 The dispute creation endpoint provides a secure, auditable way for any contract party to initiate a dispute. It enforces strict validation, prevents duplicates, updates domain state, and records immutable on-chain data. Clients should handle 400/401/403/404/409 responses appropriately and implement retry/backoff for transient blockchain errors.
 
 ## Appendices
 
 ### API Reference: POST /api/disputes
+
 - Authentication: Bearer JWT
 - Request body:
   - contractId: string (UUID)
@@ -639,6 +687,7 @@ The dispute creation endpoint provides a secure, auditable way for any contract 
   - 409: Already disputed or duplicate active dispute
 
 ### Client Implementation Guidance
+
 - Always attach a valid Bearer token in the Authorization header.
 - Validate inputs server-side using the same rules (UUIDs, non-empty reason).
 - Handle 409 Conflict by informing the user that a dispute already exists for the milestone.
@@ -652,6 +701,7 @@ The dispute creation endpoint provides a secure, auditable way for any contract 
 ## Dispute Resolution
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -664,10 +714,13 @@ The dispute creation endpoint provides a secure, auditable way for any contract 
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides API documentation for the dispute resolution endpoint POST /api/disputes/{disputeId}/resolve. It explains who can use the endpoint, the request payload, state transitions, financial implications of each decision, integration with on-chain contracts, and error responses. It also includes guidance for audit trails and compliance logging.
 
 ## Project Structure
+
 The dispute resolution feature spans the Express route layer, service layer, middleware, blockchain integration, and Solidity contracts:
+
 - Route: enforces authentication and admin role checks, validates inputs, and delegates to the service.
 - Service: orchestrates state updates, interacts with the escrow service, and records outcomes on-chain.
 - Blockchain services: simulate transactions and persist records for auditability.
@@ -695,6 +748,7 @@ EscrowSvc --> EscrowSC
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/disputes/{disputeId}/resolve
 - Authentication: Requires a valid Bearer token.
 - Authorization: Only users with role admin can resolve disputes.
@@ -704,12 +758,14 @@ EscrowSvc --> EscrowSC
 - Response: Returns the updated Dispute object with status resolved and resolution details.
 
 Key behaviors:
+
 - Admin role verification occurs in both route and service layers.
 - Validates decision and reasoning presence and correctness.
 - Updates dispute status to resolved and persists resolution metadata.
 - Triggers on-chain recording of outcome and, where applicable, fund release/refund.
 
 ## Architecture Overview
+
 The resolution flow integrates off-chain state updates with on-chain immutability and fund movement.
 
 ```mermaid
@@ -750,6 +806,7 @@ R-->>C : 200 OK
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Behavior
+
 - Path: POST /api/disputes/{disputeId}/resolve
 - Security: Bearer token required.
 - Role requirement: admin only.
@@ -759,11 +816,13 @@ R-->>C : 200 OK
 - Response: Dispute with status resolved and resolution populated.
 
 Behavior highlights:
+
 - Admin role enforced in route and service.
 - Decision validated and reasoning required.
 - On-chain outcome recorded regardless of financial action.
 
 ### State Transition: Under Review to Resolved
+
 - Evidence submission moves dispute from open to under_review.
 - Resolution sets status to resolved and attaches resolution metadata.
 
@@ -776,6 +835,7 @@ Resolved --> [*]
 ```
 
 ### Financial Implications by Decision
+
 - freelancer_favor:
   - Releases milestone payment to freelancer via FreelanceEscrow.
   - Milestone status set to approved.
@@ -801,6 +861,7 @@ Update3 --> End
 ```
 
 ### On-Chain Recording and Fund Release
+
 - Dispute outcome recorded immutably on DisputeResolution.sol.
 - Arbitration decision stored with reasoning and arbiter wallet.
 - Fund release/refund executed via FreelanceEscrow.sol methods invoked by the service.
@@ -826,6 +887,7 @@ end
 ```
 
 ### Example: Split Decision with Reasoning
+
 - Scenario: Dispute resolved with split decision.
 - Action: Mark milestone approved; partial release handled elsewhere.
 - Reasoning: Include a detailed explanation in the reasoning field.
@@ -833,7 +895,9 @@ end
 Note: The endpoint does not automatically split funds; it records the outcome and marks the milestone approved. Partial release logic is separate.
 
 ### Error Responses
+
 Common HTTP statuses:
+
 - 401 Unauthorized: Missing or invalid Bearer token.
 - 403 Forbidden: Non-admin user attempts to resolve a dispute.
 - 400 Bad Request: Invalid decision, missing reasoning, invalid UUID, or dispute already resolved.
@@ -842,6 +906,7 @@ Common HTTP statuses:
 The route enforces admin role and validates inputs, while the service enforces uniqueness of roles and checks for already-resolved disputes.
 
 ### Audit Trails and Compliance Logging
+
 - Off-chain:
   - DisputeService logs resolution actions and updates Dispute resolution metadata.
   - Notifications are sent to both parties upon resolution.
@@ -854,6 +919,7 @@ The route enforces admin role and validates inputs, while the service enforces u
   - Ensure all sensitive fields are redacted or hashed in logs.
 
 ## Dependency Analysis
+
 - Route depends on:
   - Auth middleware for JWT validation and role extraction.
   - Validation middleware for UUID and request body validation.
@@ -878,6 +944,7 @@ EscrowSvc --> EscrowSC["FreelanceEscrow.sol"]
 ```
 
 ## Performance Considerations
+
 - Transaction latency: On-chain operations introduce network delays; batch or schedule notifications accordingly.
 - Reentrancy protection: FreelanceEscrow.sol uses modifiers to prevent reentrancy during fund transfers.
 - Validation overhead: Input validation is performed in middleware and service layers; keep schemas minimal and efficient.
@@ -885,6 +952,7 @@ EscrowSvc --> EscrowSC["FreelanceEscrow.sol"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 - 401 Unauthorized:
   - Ensure Authorization header is present and formatted as Bearer <token>.
   - Verify token is not expired.
@@ -899,6 +967,7 @@ EscrowSvc --> EscrowSC["FreelanceEscrow.sol"]
   - Verify disputeId exists and belongs to a valid contract/milestone.
 
 ## Conclusion
+
 The POST /api/disputes/{disputeId}/resolve endpoint enables admin-controlled dispute resolution with clear state transitions and financial implications. It integrates off-chain state updates with on-chain immutability and fund movements, ensuring transparent and auditable outcomes. Proper error handling and logging are essential for compliance and operational reliability.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -906,6 +975,7 @@ The POST /api/disputes/{disputeId}/resolve endpoint enables admin-controlled dis
 ## Appendices
 
 ### API Definition Summary
+
 - Method: POST
 - Path: /api/disputes/{disputeId}/resolve
 - Path parameters:
@@ -927,6 +997,7 @@ The POST /api/disputes/{disputeId}/resolve endpoint enables admin-controlled dis
 ## Dispute Retrieval
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -939,13 +1010,16 @@ The POST /api/disputes/{disputeId}/resolve endpoint enables admin-controlled dis
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides API documentation for dispute retrieval endpoints:
+
 - GET /api/disputes/{disputeId}
 - GET /api/contracts/{contractId}/disputes
 
 It covers authentication requirements (JWT Bearer), access control (only involved parties and admins), request/response schemas, error handling, and the end-to-end data flow from route to service layer and database.
 
 ## Project Structure
+
 The dispute retrieval functionality spans routing, middleware, service, repository, and data model layers.
 
 ```mermaid
@@ -966,17 +1040,20 @@ Repo --> DB
 ```
 
 ## Core Components
+
 - Route handlers enforce JWT authentication and UUID parameter validation, then delegate to the service layer.
 - Service layer enforces access control by verifying the user’s association with the contract and performs database queries.
 - Repository layer encapsulates Appwrite queries for dispute records.
 - Swagger defines the JWT security scheme and response schemas for Dispute, Evidence, and DisputeResolution.
 
 Key responsibilities:
+
 - Authentication: Bearer JWT via Authorization header.
 - Access control: Only parties involved in the contract (employer or freelancer) may view disputes.
 - Data mapping: Entities are mapped to API models for consistent JSON responses.
 
 ## Architecture Overview
+
 The retrieval flow follows a layered architecture: route -> middleware -> service -> repository -> database.
 
 ```mermaid
@@ -1005,6 +1082,7 @@ R-->>C : "200 JSON or 404/400/401"
 ## Detailed Component Analysis
 
 ### Endpoint: GET /api/disputes/{disputeId}
+
 - Authentication: Required. Bearer JWT in Authorization header.
 - Path parameter:
   - disputeId: UUID string. Validated by UUID middleware.
@@ -1023,11 +1101,13 @@ R-->>C : "200 JSON or 404/400/401"
   - 404 Not Found: Dispute not found.
 
 Response schema (Swagger-defined):
+
 - Dispute: id, contractId, milestoneId, initiatorId, reason, evidence[], status, resolution?, createdAt, updatedAt
 - Evidence: id, submitterId, type, content, submittedAt
 - DisputeResolution: decision, reasoning, resolvedBy, resolvedAt
 
 ### Endpoint: GET /api/contracts/{contractId}/disputes
+
 - Authentication: Required. Bearer JWT.
 - Path parameter:
   - contractId: UUID string. Validated by UUID middleware.
@@ -1042,10 +1122,12 @@ Response schema (Swagger-defined):
   - 404 Not Found: Contract not found.
 
 Pagination and filtering:
+
 - Repository supports paginated queries with limit and offset, and ordering by created_at descending.
 - Current route handler does not expose query parameters for pagination/filtering; consumers should implement client-side pagination or request server-side pagination parameters if needed.
 
 ### Data Flow and Database Queries
+
 - Single dispute retrieval:
   - Route validates JWT and UUID.
   - Service calls repository to find dispute by ID.
@@ -1073,6 +1155,7 @@ Map --> Ok["200 OK JSON"]
 ```
 
 ## Dependency Analysis
+
 - Routes depend on:
   - Auth middleware for JWT validation.
   - Validation middleware for UUID parameter checks.
@@ -1095,6 +1178,7 @@ Repo --> DB["schema.sql (disputes)"]
 ```
 
 ## Performance Considerations
+
 - Indexing: The disputes table has an index on contract_id, which optimizes contract-level queries.
 - Ordering: Results are ordered by created_at descending to show newest disputes first.
 - Pagination: Repository supports limit/offset; current route handlers do not expose query parameters. Consider adding limit and offset query parameters to the contract-level endpoint for scalable retrieval.
@@ -1102,7 +1186,9 @@ Repo --> DB["schema.sql (disputes)"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized:
   - Missing Authorization header or invalid Bearer token format.
   - Token expired or invalid.
@@ -1115,11 +1201,13 @@ Common issues and resolutions:
   - Contract not found by ID.
 
 Operational tips:
+
 - Ensure Authorization header is present and formatted as "Bearer <token>".
 - Confirm UUIDs are valid v4 UUIDs.
 - Verify the user belongs to the contract for contract-level retrieval.
 
 ## Conclusion
+
 The dispute retrieval endpoints are secured with JWT and enforce strict access control. The service layer ensures only parties involved in a contract can view its disputes. Responses conform to Swagger-defined schemas, and the repository layer efficiently queries the Appwrite database with proper indexing and ordering.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -1185,6 +1273,7 @@ The dispute retrieval endpoints are secured with JWT and enforce strict access c
 ## Evidence Submission
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1196,9 +1285,11 @@ The dispute retrieval endpoints are secured with JWT and enforce strict access c
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the API for submitting evidence to an active dispute. It covers the endpoint path, authentication, request schema, validation rules, error responses, and the integration with the blockchain-based evidence logging contract. It also provides examples for each evidence type and client-side implementation tips.
 
 ## Project Structure
+
 The evidence submission endpoint is implemented as a REST POST route that is secured with JWT authentication, validated by request and parameter schemas, and processed by a service layer that persists the evidence and updates the blockchain log.
 
 ```mermaid
@@ -1215,6 +1306,7 @@ Contract --> Chain["Ethereum-like Chain"]
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/disputes/{disputeId}/evidence
 - Path parameter: disputeId (UUID)
 - Authentication: Bearer JWT via auth middleware
@@ -1233,6 +1325,7 @@ Contract --> Chain["Ethereum-like Chain"]
   - Evidence hash is recorded on-chain via DisputeResolution contract
 
 ## Architecture Overview
+
 The request flow for evidence submission:
 
 ```mermaid
@@ -1266,6 +1359,7 @@ R-->>C : 200 OK with Dispute
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: POST
 - Path: /api/disputes/{disputeId}/evidence
 - Security: bearerAuth (JWT required)
@@ -1282,10 +1376,12 @@ R-->>C : 200 OK with Dispute
   - 404 Not Found: Dispute not found
 
 ### Authentication and Authorization
+
 - Authentication: Route uses auth middleware to validate JWT and attach user info to the request.
 - Authorization: Service verifies that the submitter is either the employer or freelancer in the contract associated with the dispute.
 
 ### Request Validation
+
 - Body schema enforces:
   - type must be one of [text, file, link]
   - content must be a non-empty string
@@ -1293,6 +1389,7 @@ R-->>C : 200 OK with Dispute
   - disputeId must be a valid UUID
 
 ### Evidence Submission Logic
+
 - Load dispute by ID
 - Reject if dispute status is resolved
 - Verify submitter is a party to the contract
@@ -1323,6 +1420,7 @@ Block --> Done(["Return updated Dispute"])
 ```
 
 ### Blockchain Integration
+
 - Backend computes a JSON string of the updated evidence array and hashes it.
 - Calls updateDisputeEvidence with the disputeId, evidenceData hash, and submitter’s wallet address.
 - The DisputeResolution.sol contract stores the evidenceHash for the given disputeIdHash.
@@ -1341,6 +1439,7 @@ R-->>S : Receipt
 ```
 
 ### Data Model and Response
+
 - Evidence entity fields:
   - id: string
   - submitterId: string
@@ -1353,6 +1452,7 @@ R-->>S : Receipt
 - Response returns the updated Dispute with the newly appended evidence.
 
 ## Dependency Analysis
+
 - Route depends on:
   - auth-middleware for JWT validation
   - validation-middleware for request and path parameter validation
@@ -1377,6 +1477,7 @@ Registry --> Contract["DisputeResolution.sol"]
 ```
 
 ## Performance Considerations
+
 - Evidence submission is lightweight: JSON serialization of evidence array and hashing are fast.
 - Blockchain operations are asynchronous and simulated in this codebase; in production, latency depends on network confirmation times.
 - Consider batching evidence submissions if clients need to upload multiple pieces of evidence.
@@ -1384,7 +1485,9 @@ Registry --> Contract["DisputeResolution.sol"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common error scenarios and their causes:
+
 - 400 Bad Request
   - Invalid type or missing content
   - Invalid UUID format for disputeId
@@ -1397,6 +1500,7 @@ Common error scenarios and their causes:
   - Dispute not found
 
 ## Conclusion
+
 The evidence submission endpoint securely accepts text, file, or link-based evidence from authorized parties during open or under_review disputes. It persists the evidence locally and records an immutable evidence hash on-chain for transparency. Clients should ensure proper JWT usage, validate inputs, and handle asynchronous blockchain confirmations.
 
 ---

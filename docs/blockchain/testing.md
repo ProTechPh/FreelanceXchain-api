@@ -1,6 +1,7 @@
 # Blockchain Testing
 
 ## Table of Contents
+
 1. [Test Execution Results](#test-execution-results)
 2. [Test Coverage by Module](#test-coverage-by-module)
 3. [Test Files](#test-files)
@@ -20,11 +21,13 @@
 **All 39 tests passing!**
 
 ### Test Suite: blockchain-services.test.ts
+
 **Status:** PASS (39/39 tests passing)
 
 ## Test Coverage by Module
 
 ### 1. Reputation Blockchain Service (6 tests)
+
 - `submitRatingToBlockchain()` - Submit ratings to blockchain
 - `getRatingsFromBlockchain()` - Retrieve user ratings
 - `getAverageRating()` - Calculate average rating
@@ -33,6 +36,7 @@
 - `getReputationContractAddress()` - Get contract address
 
 ### 2. Escrow Blockchain Service (8 tests)
+
 - `deployEscrowContract()` - Deploy new escrow contract
 - `submitMilestone()` - Submit milestone for approval
 - `approveMilestone()` - Approve completed milestone
@@ -43,6 +47,7 @@
 - `getAllMilestones()` - Retrieve all milestones
 
 ### 3. Agreement Blockchain Service (10 tests)
+
 - `createAgreementOnBlockchain()` - Create new agreement
 - `signAgreement()` - Sign agreement by party
 - `getAgreementFromBlockchain()` - Retrieve agreement details
@@ -55,6 +60,7 @@
 - `getAgreementStatusString()` - Convert status code to string
 
 ### 4. Web3 Client Utilities (7 tests)
+
 - `isWeb3Available()` - Check Web3 availability
 - `isValidAddress()` - Validate Ethereum addresses
 - `formatEther()` / `parseEther()` - ETH/Wei conversion
@@ -64,6 +70,7 @@
 - `getContractWithSigner()` - Get contract for writing
 
 ### 5. Contract ABIs (7 tests)
+
 - `FreelanceEscrowABI` export verification
 - `FreelanceReputationABI` export verification
 - `ContractAgreementABI` export verification
@@ -73,14 +80,17 @@
 - Contract bytecode exports verification
 
 ### 6. Blockchain Integration (1 test)
+
 - All blockchain service functions properly exported
 
 ## Test Files
 
 ### Main Test File
+
 - **[`blockchain-services.test.ts`](../src/services/__tests__/blockchain-services.test.ts)** - Comprehensive integration tests for all blockchain services
 
 ### Additional Test Files (Created but not yet fully functional)
+
 - [`web3-client.test.ts`](../src/services/__tests__/web3-client.test.ts) - Web3 client unit tests (requires mock improvements)
 - [`reputation-blockchain.test.ts`](../src/services/__tests__/reputation-blockchain.test.ts) - Reputation service tests
 - [`escrow-blockchain.test.ts`](../src/services/__tests__/escrow-blockchain.test.ts) - Escrow service tests
@@ -89,21 +99,25 @@
 ## Running the Tests
 
 ### Run All Blockchain Tests
+
 ```bash
 pnpm test -- src/services/__tests__/blockchain-services.test.ts
 ```
 
 ### Run with Verbose Output
+
 ```bash
 pnpm test -- src/services/__tests__/blockchain-services.test.ts --verbose
 ```
 
 ### Run All Tests
+
 ```bash
 pnpm test
 ```
 
 ### Run with Coverage
+
 ```bash
 pnpm run test:coverage
 ```
@@ -132,24 +146,28 @@ Time:        1.336 s
 ## Verified Functionality
 
 ### Reputation System
+
 - Rating submission to blockchain
 - Rating retrieval and aggregation
 - Average rating calculation
 - Rating count tracking
 
 ### Escrow System
+
 - Escrow contract deployment
 - Milestone management (submit, approve, dispute)
 - Dispute resolution
 - Balance tracking
 
 ### Agreement System
+
 - Agreement creation on blockchain
 - Multi-party signing
 - Agreement lifecycle management (complete, cancel, dispute)
 - Terms hashing and verification
 
 ### Web3 Infrastructure
+
 - Provider and wallet management
 - Contract instance creation
 - Address validation
@@ -391,6 +409,7 @@ const mockReceipt = {
 ### 3. Comprehensive Coverage
 
 Test all code paths:
+
 - Success cases
 - Error cases
 - Edge cases
@@ -425,6 +444,7 @@ pnpm test
 ### CI Pipeline
 
 Tests run automatically on:
+
 - Pull requests
 - Merges to main branch
 - Release builds

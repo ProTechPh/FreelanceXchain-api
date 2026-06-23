@@ -280,6 +280,7 @@ describe('Authorization', () => {
 ## 🔍 Helper Categories
 
 ### Data Generation
+
 - User factories
 - Project factories
 - Proposal factories
@@ -287,24 +288,28 @@ describe('Authorization', () => {
 - Random data generators
 
 ### Database Operations
+
 - Cleanup utilities
 - Seeding utilities
 - Transaction helpers
 - Query builders
 
 ### Authentication
+
 - Token generation
 - Request builders
 - Session management
 - Permission helpers
 
 ### Assertions
+
 - Entity validators
 - Response validators
 - Error validators
 - State validators
 
 ### Async Utilities
+
 - Wait functions
 - Retry logic
 - Timeout handlers

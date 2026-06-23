@@ -1,6 +1,7 @@
 # Database Schema Design
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Core Tables](#core-tables)
 3. [Entity-Relationship Diagram](#entity-relationship-diagram)
@@ -19,11 +20,13 @@ The schema implements a relational model with UUID primary keys for all tables, 
 ## Core Tables
 
 ### Users Table
+
 The `users` table serves as the central identity management system for the platform, storing core user information and authentication data. Each user is assigned a role that determines their permissions and access to platform features.
 
 **Table: users**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the user |
 | email | VARCHAR(255) | UNIQUE, NOT NULL | User's email address used for authentication |
 | password_hash | VARCHAR(255) | NOT NULL | Hashed password for secure authentication |
@@ -34,11 +37,13 @@ The `users` table serves as the central identity management system for the platf
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### Skill Categories and Skills Tables
+
 The `skill_categories` and `skills` tables form a hierarchical taxonomy of professional skills, enabling AI-powered matching between freelancers and projects. This two-level hierarchy allows for organized skill classification while maintaining flexibility for future expansion.
 
 **Table: skill_categories**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the category |
 | name | VARCHAR(255) | NOT NULL | Name of the skill category |
 | description | TEXT | | Detailed description of the category |
@@ -47,8 +52,9 @@ The `skill_categories` and `skills` tables form a hierarchical taxonomy of profe
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: skills**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the skill |
 | category_id | UUID | REFERENCES skill_categories(id) ON DELETE CASCADE | Foreign key to parent category |
 | name | VARCHAR(255) | NOT NULL | Name of the skill |
@@ -58,11 +64,13 @@ The `skill_categories` and `skills` tables form a hierarchical taxonomy of profe
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### Freelancer and Employer Profiles Tables
+
 The `freelancer_profiles` and `employer_profiles` tables store detailed information about platform participants, extending the basic user data with role-specific attributes. These profiles are essential for the matching algorithm and user discovery features.
 
 **Table: freelancer_profiles**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the profile |
 | user_id | UUID | UNIQUE, REFERENCES users(id) ON DELETE CASCADE | Foreign key to associated user |
 | bio | TEXT | | Freelancer's biography and introduction |
@@ -74,8 +82,9 @@ The `freelancer_profiles` and `employer_profiles` tables store detailed informat
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: employer_profiles**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the profile |
 | user_id | UUID | UNIQUE, REFERENCES users(id) ON DELETE CASCADE | Foreign key to associated user |
 | company_name | VARCHAR(255) | | Name of the employer's company |
@@ -85,11 +94,13 @@ The `freelancer_profiles` and `employer_profiles` tables store detailed informat
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### Projects, Proposals, and Contracts Tables
+
 These interconnected tables manage the core workflow of the platform, from project creation through proposal submission to contract execution. They form the foundation of the freelance engagement lifecycle.
 
 **Table: projects**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the project |
 | employer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to creating employer |
 | title | VARCHAR(255) | NOT NULL | Project title |
@@ -103,8 +114,9 @@ These interconnected tables manage the core workflow of the platform, from proje
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: proposals**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the proposal |
 | project_id | UUID | REFERENCES projects(id) ON DELETE CASCADE | Foreign key to target project |
 | freelancer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to submitting freelancer |
@@ -117,8 +129,9 @@ These interconnected tables manage the core workflow of the platform, from proje
 | UNIQUE(project_id, freelancer_id) | | | Prevents duplicate proposals |
 
 **Table: contracts**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the contract |
 | project_id | UUID | REFERENCES projects(id) ON DELETE CASCADE | Foreign key to source project |
 | proposal_id | UUID | REFERENCES proposals(id) ON DELETE CASCADE | Foreign key to accepted proposal |
@@ -131,11 +144,13 @@ These interconnected tables manage the core workflow of the platform, from proje
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### Disputes, Payments, and Reviews Tables
+
 These tables handle post-contract activities including dispute resolution, payment processing, and reputation management. They ensure transparency and accountability in all transactions.
 
 **Table: disputes**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the dispute |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Foreign key to disputed contract |
 | milestone_id | VARCHAR(255) | | Identifier of disputed milestone |
@@ -148,8 +163,9 @@ These tables handle post-contract activities including dispute resolution, payme
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: payments**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the payment |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Foreign key to associated contract |
 | milestone_id | VARCHAR(255) | | Identifier of milestone being paid |
@@ -164,8 +180,9 @@ These tables handle post-contract activities including dispute resolution, payme
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: reviews**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the review |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Foreign key to reviewed contract |
 | reviewer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to user writing review |
@@ -178,11 +195,13 @@ These tables handle post-contract activities including dispute resolution, payme
 | UNIQUE(contract_id, reviewer_id) | | | Prevents duplicate reviews |
 
 ### Notifications and Messages Tables
+
 These tables support communication and engagement features, ensuring users are informed of important events and can communicate with each other.
 
 **Table: notifications**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the notification |
 | user_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to recipient user |
 | type | VARCHAR(50) | NOT NULL | Type of notification |
@@ -194,8 +213,9 @@ These tables support communication and engagement features, ensuring users are i
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 **Table: messages**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the message |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Foreign key to related contract |
 | sender_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to message sender |
@@ -205,11 +225,13 @@ These tables support communication and engagement features, ensuring users are i
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Timestamp of last record update |
 
 ### KYC Verifications Table
+
 The `kyc_verifications` table manages the Know Your Customer (KYC) process, ensuring compliance with financial regulations and enhancing platform security.
 
 **Table: kyc_verifications**
+
 | Column | Type | Constraints | Description |
-|-------|------|-------------|-------------|
+| ------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier for the verification |
 | user_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Foreign key to verified user |
 | status | VARCHAR(20) | DEFAULT 'pending', CHECK constraint | Current verification status |
@@ -475,6 +497,7 @@ The indexing strategy focuses on several key areas:
 4. **Composite Indexes**: Unique constraints are implemented as composite indexes to prevent duplicate entries in critical relationships.
 
 The most critical indexes for query optimization include:
+
 - `idx_users_email` for user authentication and lookup
 - `idx_projects_status` for filtering projects by status (especially 'open' projects)
 - `idx_skills_category_id` for retrieving all skills within a specific category
@@ -575,29 +598,38 @@ The predefined UUIDs ensure consistency across different environments (developme
 The database schema and configuration are optimized for performance in a high-traffic freelance marketplace environment. Several strategies are employed to ensure responsive queries and efficient data processing.
 
 ### Connection Pooling
+
 The application utilizes Appwrite's built-in connection pooling to manage database connections efficiently. This reduces the overhead of establishing new connections for each request and prevents connection exhaustion under high load.
 
 ### Query Optimization
+
 The indexing strategy (documented in the Indexing Strategy section) is designed to optimize the most common query patterns, particularly:
+
 - User authentication and profile retrieval
 - Project discovery and filtering
 - Contract and payment history lookup
 - Notification retrieval
 
 ### Data Modeling Choices
+
 Several data modeling decisions contribute to performance:
+
 - **UUID Primary Keys**: While slightly larger than integer keys, UUIDs provide global uniqueness and prevent enumeration attacks.
 - **JSONB Columns**: Used for flexible data storage where schema evolution is expected, such as skills, experience, and milestone data. These columns are indexed when necessary for querying.
 - **Appropriate Data Types**: Numeric values use DECIMAL types for precise financial calculations, while timestamps use TIMESTAMPTZ for timezone-aware storage.
 
 ### Future Optimization Opportunities
+
 Potential performance improvements include:
+
 - **Partial Indexes**: Creating indexes on subsets of data (e.g., only active skills) to reduce index size
 - **Materialized Views**: For complex queries that aggregate data across multiple tables
 - **Partitioning**: For tables that are expected to grow very large, such as notifications and payments
 
 ### Monitoring and Maintenance
+
 Regular database maintenance should include:
+
 - Monitoring query performance using Appwrite's analytics tools
 - Reviewing and optimizing slow queries
 - Updating table statistics to ensure optimal query planning
@@ -608,6 +640,7 @@ Regular database maintenance should include:
 The FreelanceXchain database schema provides a robust foundation for a blockchain-based freelance marketplace with AI-powered skill matching. The relational model effectively captures the complex relationships between users, projects, contracts, and payments, while incorporating modern database features like JSONB storage and Row Level Security.
 
 Key strengths of the schema design include:
+
 - Comprehensive data model covering all aspects of the freelance lifecycle
 - Strategic use of UUIDs for global uniqueness and security
 - Flexible JSONB columns for evolving data requirements

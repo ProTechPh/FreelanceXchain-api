@@ -333,6 +333,7 @@ curl https://your-api-domain.com/api/health
 ```
 
 Expected response:
+
 ```json
 {
   "status": "ok",
@@ -422,6 +423,7 @@ Add to your monitoring system (e.g., Uptime Robot, Pingdom):
 ### 6.2 Set Up Log Aggregation
 
 Ensure logs are being collected for:
+
 - Message sending/receiving
 - Review submissions
 - Admin actions
@@ -474,6 +476,7 @@ DROP TABLE IF EXISTS transactions CASCADE;
 ### 3. Remove Storage Buckets
 
 In Appwrite Dashboard → Storage, delete:
+
 - `portfolio-images`
 
 ---
@@ -490,7 +493,8 @@ In Appwrite Dashboard → Storage, delete:
 
 ### Issue: "File upload fails"
 
-**Solution**: 
+**Solution**:
+
 1. Verify storage buckets exist
 2. Check storage policies
 3. Verify file size limits
@@ -499,6 +503,7 @@ In Appwrite Dashboard → Storage, delete:
 ### Issue: "Health check fails"
 
 **Solution**:
+
 1. Check database connectivity
 2. Verify Appwrite credentials
 3. Check network/firewall rules
@@ -524,6 +529,7 @@ In Appwrite Dashboard → Storage, delete:
 ## Support
 
 For issues or questions:
+
 1. Check application logs
 2. Review Appwrite logs
 3. Consult [new-features-implementation.md](../features/new-features-implementation.md)

@@ -32,6 +32,7 @@ FreelanceXchain is a decentralized freelance marketplace that combines AI-powere
 ### SDG Alignment
 
 The platform supports UN Sustainable Development Goals:
+
 - **SDG 8**: Decent Work and Economic Growth
 - **SDG 9**: Industry, Innovation, and Infrastructure  
 - **SDG 16**: Peace, Justice, and Strong Institutions
@@ -39,7 +40,7 @@ The platform supports UN Sustainable Development Goals:
 ## Tech Stack
 
 | Layer | Technology |
-|-------|------------|
+| ------- | ------------ |
 | Backend | Node.js, Express, TypeScript |
 | Database | PostgreSQL |
 | Storage | Appwrite |
@@ -50,23 +51,27 @@ The platform supports UN Sustainable Development Goals:
 ## Core Features
 
 ### User Management
+
 - JWT-based authentication with role-based access (freelancer/employer/admin)
 - Comprehensive profile management with skills, experience, and portfolios
 - KYC verification through Didit integration (220+ countries supported)
 
 ### Project & Contract Management
+
 - Project creation with milestones, budgets, and deadlines
 - Proposal submission and acceptance system
 - Automated contract creation upon proposal acceptance
 - Milestone-based payment tracking
 
 ### Blockchain Integration
+
 - Escrow smart contracts for secure fund holding
 - Automated payment release upon milestone approval
 - Immutable reputation system on-chain
 - Dispute resolution mechanism with arbiter support
 
 ### AI-Powered Features
+
 - Skill matching between freelancers and projects
 - Automatic skill extraction from text descriptions
 - Gap analysis to identify skill mismatches
@@ -75,6 +80,7 @@ The platform supports UN Sustainable Development Goals:
 ## Additional Features
 
 ### KYC Verification (Didit Integration)
+
 - **ID Verification** - Document verification for 220+ countries
 - **Passive Liveness Detection** - Anti-spoofing and fraud prevention
 - **Face Match 1:1** - Selfie to document photo matching
@@ -102,10 +108,12 @@ The platform supports UN Sustainable Development Goals:
 ## 📚 Documentation Hub
 
 ### Quick Access Guides
+
 - **[Configuration Guide](CONFIGURATION.md)** - All configuration files explained
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 
 ### Complete Documentation
+
 - **[Full Documentation Index](docs/README.md)** - Browse all documentation by category
 
 ---
@@ -113,10 +121,11 @@ The platform supports UN Sustainable Development Goals:
 ## Installation
 
 ### Prerequisites
+
 - Node.js 20+
 - pnpm 8+ (fast, disk space efficient package manager)
 - PostgreSQL database
-- Appwrite account (https://appwrite.io)
+- Appwrite account (<https://appwrite.io>)
 - Ethereum wallet (for blockchain features)
 - LLM API key (for AI features)
 - Docker (optional, for containerized deployment)
@@ -128,39 +137,46 @@ The platform supports UN Sustainable Development Goals:
 ### Local Development Setup
 
 1. **Clone and install dependencies**
+
 ```bash
 git clone <repository-url>
 cd FreelanceXchain-api
 pnpm install --frozen-lockfile
 ```
 
-2. **Configure environment variables**
+1. **Configure environment variables**
+
 ```bash
 cp .env.example .env
 # Edit .env with your credentials
 ```
 
-3. **Set up PostgreSQL database**
+1. **Set up PostgreSQL database**
+
 - Create a PostgreSQL database
 - Run migrations if available
 - Update DATABASE_URL in `.env`
 
-4. **Set up Appwrite**
-- Create a project at https://appwrite.io
+1. **Set up Appwrite**
+
+- Create a project at <https://appwrite.io>
 - Create storage buckets for file uploads
 - Copy your credentials to `.env`
 
-5. **Compile smart contracts**
+1. **Compile smart contracts**
+
 ```bash
 pnpm run compile
 ```
 
-5. **Build TypeScript**
+1. **Build TypeScript**
+
 ```bash
 pnpm run build
 ```
 
-6. **Start the server**
+1. **Start the server**
+
 ```bash
 pnpm start
 # Or for development with hot reload:
@@ -172,11 +188,13 @@ pnpm run prod
 ### Docker Deployment
 
 1. **Build Docker image**
+
 ```bash
 docker build -t freelancexchain-api:latest .
 ```
 
-2. **Run locally with Docker**
+1. **Run locally with Docker**
+
 ```bash
 docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```
@@ -184,7 +202,7 @@ docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ## Environment Variables
 
 | Variable | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `PORT` | Server port (default: 7860) |
 | `NODE_ENV` | Environment (development/production/test) |
 | `DATABASE_URL` | PostgreSQL connection string |
@@ -199,13 +217,14 @@ docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 | `BLOCKCHAIN_RPC_URL` | Ethereum RPC endpoint |
 | `BLOCKCHAIN_PRIVATE_KEY` | Deployer wallet private key |
 | `DIDIT_API_KEY` | Didit KYC API key |
-| `DIDIT_API_URL` | Didit API base URL (default: https://verification.didit.me) |
+| `DIDIT_API_URL` | Didit API base URL (default: <https://verification.didit.me>) |
 | `DIDIT_WEBHOOK_SECRET` | Didit webhook signature secret |
 | `DIDIT_WORKFLOW_ID` | Didit workflow ID for KYC verification |
 
 ## API Documentation
 
 Interactive API documentation available at:
+
 ```
 http://localhost:7860/api-docs
 ```
@@ -213,7 +232,7 @@ http://localhost:7860/api-docs
 ### API Endpoints Overview
 
 | Module | Base Path | Description |
-|--------|-----------|-------------|
+| -------- | ----------- | ------------- |
 | Health | `/api/health` | Health check |
 | Auth | `/api/auth` | Registration, login, token refresh |
 | Skills | `/api/skills` | Skill taxonomy management |
@@ -232,7 +251,9 @@ http://localhost:7860/api-docs
 ## Smart Contracts
 
 ### FreelanceEscrow.sol
+
 Handles milestone-based payments with:
+
 - Fund deposit by employer
 - Milestone submission by freelancer
 - Approval and automatic payment release
@@ -240,7 +261,9 @@ Handles milestone-based payments with:
 - Reentrancy protection
 
 ### FreelanceReputation.sol
+
 Immutable reputation system:
+
 - Submit ratings (1-5 stars) with comments
 - Prevent duplicate ratings per contract
 - Aggregate score calculation
@@ -249,11 +272,13 @@ Immutable reputation system:
 ### Deployment
 
 **Local (Hardhat):**
+
 ```bash
 pnpm run deploy:local
 ```
 
 **Testnet (Sepolia):**
+
 ```bash
 pnpm run deploy:reputation
 pnpm run deploy:escrow
@@ -272,7 +297,7 @@ pnpm run test:watch
 ## Scripts
 
 | Command | Description |
-|---------|-------------|
+| --------- | ------------- |
 | `pnpm run dev` | Start dev server with hot reload |
 | `pnpm run build` | Compile TypeScript |
 | `pnpm start` | Start production server |
@@ -285,42 +310,50 @@ pnpm run test:watch
 ## Documentation
 
 ### 📚 Complete Documentation Index
+
 **[View Full Documentation →](docs/README.md)**
 
 ### Quick Links by Category
 
 #### 🚀 Getting Started
+
 - [Project Overview](docs/getting-started/overview.md) - Platform overview and goals
 - [Developer Setup Guide](docs/getting-started/setup.md) - Complete setup instructions
 - [Technology Stack](docs/getting-started/tech-stack.md) - Technologies used
 
 #### 🏗️ Architecture & API
+
 - [API Endpoints Reference](docs/architecture/api-overview.md) - Complete API documentation
 - [Business Logic Layer](docs/architecture/services-overview.md) - Service layer architecture
 - [Database Schema Design](docs/architecture/database-overview.md) - Database structure
 - [Data Models & ORM](docs/architecture/models-overview.md) - Entity models
 
 #### 🔐 Security
+
 - [Security Implementation](docs/security/overview.md) - Security architecture
 - [MFA Implementation](docs/security/MFA_IMPLEMENTATION.md) - Multi-factor authentication
 - [OWASP Validation Report](docs/security/OWASP_TOP_10_VALIDATION_REPORT.md) - Security compliance
 
 #### ⛓️ Blockchain
+
 - [Blockchain Integration](docs/blockchain/integration.md) - Smart contract setup
 - [Blockchain Testing](docs/blockchain/testing.md) - Testing guide
 - [Smart Contracts Documentation](contracts/README.md) - Contract details
 
 #### ✨ Features
+
 - [Audit Logs](docs/features/audit-logs/) - Audit logging system
 - [Proposal File Uploads](docs/features/proposal-uploads/) - File upload feature
 
 #### 📖 Guides & Operations
+
 - [Deployment Configuration](docs/guides/deployment.md) - Deployment guide
 - [Testing Strategy](docs/guides/testing.md) - Testing approach
 - [Troubleshooting](docs/guides/TROUBLESHOOTING.md) - Common issues and solutions
 - [Maintenance](docs/guides/MAINTENANCE.md) - System maintenance
 
 #### 🔧 Additional Resources
+
 - [Scripts Documentation](scripts/README.md) - Utility scripts guide
 - [Database Documentation](appwrite/README.md) - Database schema and migrations
 - [Changelog](CHANGELOG.md) - Version history
@@ -328,6 +361,7 @@ pnpm run test:watch
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+
 - Code of conduct
 - Development workflow
 - Coding standards

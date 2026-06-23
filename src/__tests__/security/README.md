@@ -11,6 +11,7 @@ OWASP Top 10 security validation and penetration testing.
 ### OWASP Top 10 2021
 
 #### A01:2021 - Broken Access Control
+
 - ✅ Role-based access control (RBAC)
 - ✅ Horizontal privilege escalation prevention
 - ✅ Vertical privilege escalation prevention
@@ -18,6 +19,7 @@ OWASP Top 10 security validation and penetration testing.
 - ✅ Direct object reference protection
 
 #### A02:2021 - Cryptographic Failures
+
 - ✅ Sensitive data encryption
 - ✅ Password hashing (bcrypt)
 - ✅ Secure token generation
@@ -25,6 +27,7 @@ OWASP Top 10 security validation and penetration testing.
 - ✅ Log sanitization (no sensitive data in logs)
 
 #### A03:2021 - Injection
+
 - ✅ SQL injection prevention (parameterized queries)
 - ✅ NoSQL injection prevention
 - ✅ Command injection prevention
@@ -32,6 +35,7 @@ OWASP Top 10 security validation and penetration testing.
 - ✅ LDAP injection prevention
 
 #### A04:2021 - Insecure Design
+
 - ✅ Security architecture validation
 - ✅ Threat modeling implementation
 - ✅ Secure defaults
@@ -39,6 +43,7 @@ OWASP Top 10 security validation and penetration testing.
 - ✅ Fail securely
 
 #### A05:2021 - Security Misconfiguration
+
 - ✅ Secure headers (Helmet.js)
 - ✅ CORS configuration
 - ✅ Error handling (no stack traces in production)
@@ -46,12 +51,14 @@ OWASP Top 10 security validation and penetration testing.
 - ✅ Unnecessary features disabled
 
 #### A06:2021 - Vulnerable and Outdated Components
+
 - ✅ Dependency scanning
 - ✅ Regular updates
 - ✅ Known vulnerability checks
 - ✅ License compliance
 
 #### A07:2021 - Identification and Authentication Failures
+
 - ✅ Strong password requirements
 - ✅ Multi-factor authentication (MFA)
 - ✅ Session management
@@ -59,6 +66,7 @@ OWASP Top 10 security validation and penetration testing.
 - ✅ Credential stuffing prevention
 
 #### A08:2021 - Software and Data Integrity Failures
+
 - ✅ Input validation
 - ✅ Data integrity checks
 - ✅ Secure deserialization
@@ -66,6 +74,7 @@ OWASP Top 10 security validation and penetration testing.
 - ✅ Code signing
 
 #### A09:2021 - Security Logging and Monitoring Failures
+
 - ✅ Comprehensive audit logging
 - ✅ Security event monitoring
 - ✅ Anomaly detection
@@ -73,6 +82,7 @@ OWASP Top 10 security validation and penetration testing.
 - ✅ Log integrity
 
 #### A10:2021 - Server-Side Request Forgery (SSRF)
+
 - ✅ URL validation
 - ✅ Whitelist approach
 - ✅ Network segmentation
@@ -83,6 +93,7 @@ OWASP Top 10 security validation and penetration testing.
 ## 🧪 Running Security Tests
 
 ### All Security Tests
+
 ```bash
 # Run all security tests
 pnpm test security/
@@ -95,6 +106,7 @@ pnpm test security/ -- --coverage
 ```
 
 ### Specific OWASP Categories
+
 ```bash
 # Test specific OWASP category
 pnpm test security/ -- --testNamePattern="A01:2021"
@@ -109,6 +121,7 @@ pnpm test security/ -- --testNamePattern="Authentication"
 ## 📝 Writing Security Tests
 
 ### Test Structure
+
 ```typescript
 describe('OWASP A01:2021 - Broken Access Control', () => {
   it('should prevent unauthorized access', async () => {
@@ -151,6 +164,7 @@ describe('OWASP A01:2021 - Broken Access Control', () => {
 ## 🎯 Security Testing Checklist
 
 ### Authentication & Authorization
+
 - [ ] Password strength requirements
 - [ ] MFA implementation
 - [ ] Session management
@@ -159,6 +173,7 @@ describe('OWASP A01:2021 - Broken Access Control', () => {
 - [ ] Resource ownership validation
 
 ### Data Protection
+
 - [ ] Encryption at rest
 - [ ] Encryption in transit
 - [ ] Sensitive data masking
@@ -166,6 +181,7 @@ describe('OWASP A01:2021 - Broken Access Control', () => {
 - [ ] PII protection
 
 ### Input Validation
+
 - [ ] SQL injection prevention
 - [ ] XSS prevention
 - [ ] Command injection prevention
@@ -173,6 +189,7 @@ describe('OWASP A01:2021 - Broken Access Control', () => {
 - [ ] File upload validation
 
 ### API Security
+
 - [ ] Rate limiting
 - [ ] CORS configuration
 - [ ] Security headers
@@ -180,6 +197,7 @@ describe('OWASP A01:2021 - Broken Access Control', () => {
 - [ ] Request validation
 
 ### Logging & Monitoring
+
 - [ ] Audit logging
 - [ ] Security event logging
 - [ ] Log sanitization
@@ -191,9 +209,11 @@ describe('OWASP A01:2021 - Broken Access Control', () => {
 ## 🔍 Security Test Categories
 
 ### Penetration Testing
+
 Simulate real-world attacks to identify vulnerabilities.
 
 **Focus:**
+
 - Authentication bypass attempts
 - Authorization escalation
 - Injection attacks
@@ -201,9 +221,11 @@ Simulate real-world attacks to identify vulnerabilities.
 - Session hijacking
 
 ### Compliance Testing
+
 Verify compliance with security standards.
 
 **Focus:**
+
 - OWASP Top 10 coverage
 - PCI DSS requirements
 - GDPR compliance
@@ -211,9 +233,11 @@ Verify compliance with security standards.
 - Industry standards
 
 ### Vulnerability Scanning
+
 Automated scanning for known vulnerabilities.
 
 **Focus:**
+
 - Dependency vulnerabilities
 - Configuration issues
 - Known CVEs
@@ -224,17 +248,20 @@ Automated scanning for known vulnerabilities.
 ## 🐛 Debugging Security Tests
 
 ### Verbose Security Logging
+
 ```bash
 # Enable security logging
 LOG_LEVEL=debug pnpm test security/
 ```
 
 ### Test Specific Vulnerability
+
 ```bash
 pnpm test security/ -- --testNamePattern="SQL injection"
 ```
 
 ### Review Security Findings
+
 ```bash
 # Generate security report
 pnpm test security/ -- --coverage --coverageReporters=html
@@ -245,7 +272,7 @@ pnpm test security/ -- --coverage --coverageReporters=html
 ## 📊 Security Metrics
 
 | Metric | Target | Current |
-|--------|--------|---------|
+| -------- | -------- | --------- |
 | OWASP Top 10 Coverage | 100% | Check tests |
 | Critical Vulnerabilities | 0 | Run tests |
 | High Vulnerabilities | 0 | Run tests |

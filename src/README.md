@@ -21,9 +21,11 @@ src/
 ## 🏗️ Architecture Layers
 
 ### Layer 1: Configuration (`/config`)
+
 Application configuration and initialization.
 
 **Files:**
+
 - **env.ts** - Environment variable validation and typing
 - **appwrite.ts** - Appwrite client configuration
 - **swagger.ts** - OpenAPI/Swagger documentation setup
@@ -36,9 +38,11 @@ Application configuration and initialization.
 ---
 
 ### Layer 2: Middleware (`/middleware`)
+
 Express middleware for request/response processing.
 
 **Common Middleware:**
+
 - **Authentication** - JWT token validation
 - **Authorization** - Role-based access control (RBAC)
 - **Validation** - Request body/query validation
@@ -53,9 +57,11 @@ Express middleware for request/response processing.
 ---
 
 ### Layer 3: Routes (`/routes`)
+
 API endpoint definitions and request routing.
 
 **Route Files:**
+
 - **auth-routes.ts** - Authentication endpoints (login, register, refresh)
 - **freelancer-routes.ts** - Freelancer profile management
 - **employer-routes.ts** - Employer profile management
@@ -80,6 +86,7 @@ API endpoint definitions and request routing.
 **Purpose:** Define API endpoints, apply middleware, delegate to services.
 
 **Pattern:**
+
 ```typescript
 router.post('/projects',
   authenticate,
@@ -99,11 +106,13 @@ router.post('/projects',
 ---
 
 ### Layer 4: Services (`/services`)
+
 Business logic and orchestration layer.
 
 **Service Categories:**
 
 #### Core Services
+
 - **auth-service.ts** - Authentication logic
 - **freelancer-profile-service.ts** - Freelancer operations
 - **employer-profile-service.ts** - Employer operations
@@ -121,12 +130,14 @@ Business logic and orchestration layer.
 - **audit-log-service.ts** - Audit logging
 
 #### AI Services
+
 - **ai-client.ts** - LLM API client
 - **ai-assistant.ts** - AI assistant functionality
 - **matching-service.ts** - AI-powered matching
 - **ai-types.ts** - AI-related types
 
 #### Blockchain Services
+
 - **blockchain-client.ts** - Ethereum client
 - **blockchain-integration.ts** - Blockchain orchestration
 - **web3-client.ts** - Web3 utilities
@@ -144,16 +155,19 @@ Business logic and orchestration layer.
 - **blockchain-types.ts** - Blockchain types
 
 #### External Integrations
+
 - **didit-client.ts** - Didit KYC API client
 - **didit-kyc-service.ts** - KYC verification service
 
 #### Supporting Services
+
 - **transaction-service.ts** - Transaction management
 - **index.ts** - Service exports
 
 **Purpose:** Implement business rules, coordinate between layers, handle complex operations.
 
 **Pattern:**
+
 ```typescript
 class ProjectService {
   async create(data: CreateProjectDto): Promise<Project> {
@@ -169,11 +183,13 @@ class ProjectService {
 ---
 
 ### Layer 5: Repositories (`/repositories`)
+
 Data access layer for database operations.
 
 **Purpose:** Abstract database queries, provide clean data access interface, handle ORM operations.
 
 **Pattern:**
+
 ```typescript
 class ProjectRepository {
   async findById(id: string): Promise<Project | null> {
@@ -192,11 +208,13 @@ class ProjectRepository {
 ---
 
 ### Layer 6: Models (`/models`)
+
 Data models, types, and interfaces.
 
 **Purpose:** Define data structures, TypeScript types, validation schemas, DTOs.
 
 **Types:**
+
 - **Entity Models** - Database table representations
 - **DTOs** - Data Transfer Objects for API requests/responses
 - **Enums** - Enumerated types
@@ -206,9 +224,11 @@ Data models, types, and interfaces.
 ---
 
 ### Layer 7: Utils (`/utils`)
+
 Utility functions and helpers.
 
 **Common Utils:**
+
 - **Validation** - Input validation helpers
 - **Formatting** - Data formatting utilities
 - **Encryption** - Hashing and encryption
@@ -242,13 +262,16 @@ Utility functions and helpers.
 ## 🎯 Design Principles
 
 ### Separation of Concerns
+
 - **Routes** - Handle HTTP, delegate to services
 - **Services** - Implement business logic, coordinate operations
 - **Repositories** - Handle data access only
 - **Models** - Define data structures
 
 ### Dependency Injection
+
 Services receive dependencies through constructor:
+
 ```typescript
 class ProjectService {
   constructor(
@@ -259,19 +282,23 @@ class ProjectService {
 ```
 
 ### Single Responsibility
+
 Each class/module has one clear purpose.
 
 ### DRY (Don't Repeat Yourself)
+
 Common logic extracted to utilities and shared services.
 
 ## 🧪 Testing (`/__tests__`)
 
 Test files organized by layer:
+
 - **Unit Tests** - Test individual functions/classes
 - **Integration Tests** - Test layer interactions
 - **E2E Tests** - Test complete workflows
 
 **Naming Convention:**
+
 ```
 service-name.test.ts
 repository-name.test.ts

@@ -1,6 +1,7 @@
 # Blockchain Client
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -12,9 +13,11 @@
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 The Blockchain Client documentation provides a comprehensive overview of the blockchain infrastructure for the FreelanceXchain platform. This system enables secure communication between the backend and the Ethereum network, supporting mainnet, testnet (Sepolia), and local Hardhat deployments. The implementation leverages ethers.js for blockchain interactions, with a dual-layer architecture consisting of a simulation layer (`blockchain-client.ts`) for development and testing, and a production layer (`web3-client.ts`) for real Ethereum network interactions. The system handles provider configuration, wallet integration, contract instantiation, transaction management, and security practices for private key management.
 
 ## Project Structure
+
 The blockchain client infrastructure is organized within the `src/services` directory, with key components including blockchain client implementations, contract interfaces, and configuration management. The system integrates with smart contracts in the `contracts/` directory and uses environment variables for network configuration.
 
 ```mermaid
@@ -35,9 +38,11 @@ Q[hardhat.config.cjs] --> R[Network Configuration]
 ```
 
 ## Core Components
+
 The blockchain client infrastructure consists of two main components: `blockchain-client.ts` for simulation and `web3-client.ts` for production Ethereum network interactions. These components handle transaction management, wallet integration, contract instantiation, and network configuration. The system uses environment variables for configuration, supports multiple network deployments, and implements security practices for private key management. The architecture enables seamless transition between development, testing, and production environments while maintaining consistent interfaces for blockchain interactions.
 
 ## Architecture Overview
+
 The blockchain client architecture implements a dual-layer approach with a simulation layer for development and testing, and a production layer for real Ethereum network interactions. The system uses ethers.js for blockchain connectivity, with configuration managed through environment variables. The architecture supports multiple networks including mainnet, Sepolia testnet, and local Hardhat deployments, with connection pooling and retry strategies for reliability.
 
 ```mermaid
@@ -63,9 +68,11 @@ P --> S[Rate Limiting]
 ## Detailed Component Analysis
 
 ### Blockchain Client Implementation
+
 The blockchain client implementation provides a comprehensive interface for Ethereum network interactions, with separate modules for simulation and production environments. The system handles transaction lifecycle management, from creation and signing to confirmation and receipt processing.
 
 #### Transaction Management
+
 ```mermaid
 classDiagram
 class Transaction {
@@ -106,6 +113,7 @@ Transaction <-- BlockchainConfig
 ```
 
 #### Web3 Client Integration
+
 ```mermaid
 sequenceDiagram
 participant App as Application
@@ -138,6 +146,7 @@ Web3Client-->>App : Web3TransactionResult
 ```
 
 ### Network Configuration and Environment Handling
+
 The blockchain client infrastructure supports multiple network configurations through environment variables, enabling seamless deployment across mainnet, testnet (Sepolia), and local Hardhat environments. Network configuration is managed through the `env.ts` file, which reads environment variables and provides a structured configuration object.
 
 ```mermaid
@@ -162,9 +171,11 @@ Q --> R[Blockchain Connection]
 ```
 
 ### Contract Integration and Transaction Management
+
 The blockchain client provides interfaces for various smart contracts including escrow, reputation, and KYC verification. These contract services abstract the complexity of blockchain interactions, providing high-level methods for common operations.
 
 #### Escrow Contract Integration
+
 ```mermaid
 classDiagram
 class EscrowParams {
@@ -202,6 +213,7 @@ EscrowParams <-- EscrowState
 ```
 
 #### Reputation Contract Integration
+
 ```mermaid
 classDiagram
 class BlockchainRating {
@@ -236,6 +248,7 @@ BlockchainRating <-- SerializedBlockchainRating
 ```
 
 #### KYC Contract Integration
+
 ```mermaid
 classDiagram
 class BlockchainKycStatus {
@@ -287,6 +300,7 @@ KycBlockchainSubmitInput <-- BlockchainKycVerification
 ```
 
 ## Dependency Analysis
+
 The blockchain client infrastructure has well-defined dependencies that enable its functionality across different environments. The system relies on ethers.js for Ethereum network interactions, dotenv for environment variable management, and TypeScript for type safety.
 
 ```mermaid
@@ -311,12 +325,15 @@ M --> P[Mainnet Deployment]
 ```
 
 ## Performance Considerations
+
 The blockchain client infrastructure implements several performance optimization techniques to ensure efficient operation in production environments. These include connection pooling through singleton provider and wallet instances, efficient transaction polling with configurable intervals, and gas price estimation to optimize transaction costs. The system also implements rate limiting through middleware to prevent abuse and ensure fair usage of blockchain resources. For production deployments, monitoring approaches include transaction status tracking, error logging, and performance metrics collection to identify and address bottlenecks.
 
 ## Troubleshooting Guide
+
 The blockchain client infrastructure includes comprehensive error handling for common blockchain interaction failures. The system uses AppError classes to standardize error responses, with specific error codes for different failure scenarios. Common issues include misconfigured environment variables, invalid private keys, network connectivity problems, and transaction failures. The troubleshooting process involves verifying environment configuration, checking network connectivity, validating transaction parameters, and examining error logs. For development and testing, the system provides methods to clear transaction stores and reset client state.
 
 ## Conclusion
+
 The blockchain client infrastructure for FreelanceXchain provides a robust and secure foundation for Ethereum network interactions. The dual-layer architecture with simulation and production components enables efficient development and testing while ensuring reliable production operation. The system's modular design, comprehensive error handling, and support for multiple network configurations make it well-suited for a decentralized freelance marketplace. Future enhancements could include support for additional Layer 2 solutions, improved gas optimization strategies, and enhanced monitoring capabilities for production deployments.
 
 ---

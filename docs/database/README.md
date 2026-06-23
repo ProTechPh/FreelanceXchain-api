@@ -13,7 +13,7 @@ Comprehensive documentation for the FreelanceXchain PostgreSQL database schema, 
 ## Quick Reference
 
 | Table | File |
-|-------|------|
+| ------- | ------ |
 | Contracts | [schema.md](schema.md#contracts-table) |
 | Disputes | [schema.md](schema.md#disputes-table) |
 | Employer Profiles | [schema.md](schema.md#employer-profiles-table) |

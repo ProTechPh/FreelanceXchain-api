@@ -1,6 +1,7 @@
 # Technology Stack & Dependencies
 
 ## Table of Contents
+
 1. [Core Technology Stack](#core-technology-stack)
 2. [Dependency Categorization](#dependency-categorization)
 3. [Technology Rationale](#technology-rationale)
@@ -27,34 +28,44 @@ ethers.js is the library used for blockchain interaction, providing a comprehens
 The dependencies in the FreelanceXchain project are organized into distinct categories based on their functionality and purpose within the application architecture.
 
 ### Core Frameworks
+
 The core frameworks form the foundation of the application:
+
 - **express**: Web application framework for handling HTTP requests and responses
 - **@appwrite/appwrite-js**: Client library for interacting with Appwrite services
 - **typescript**: Programming language that adds static typing to JavaScript
 
 ### Blockchain Tools
+
 These dependencies enable blockchain functionality and smart contract interaction:
+
 - **ethers**: Comprehensive library for Ethereum blockchain interaction
 - **hardhat**: Development environment for Ethereum smart contracts
 - **@nomicfoundation/hardhat-ethers**: Hardhat plugin for ethers.js integration
 - **@nomicfoundation/hardhat-toolbox**: Collection of essential Hardhat plugins
 
 ### Security Packages
+
 Security-related dependencies protect the application and its users:
+
 - **bcrypt**: Password hashing library for secure credential storage
 - **helmet**: Middleware for setting various HTTP headers to enhance security
 - **jsonwebtoken**: Implementation of JSON Web Tokens for authentication
 - **cors**: Middleware for enabling Cross-Origin Resource Sharing with restrictions
 
 ### Testing Libraries
+
 These dependencies support comprehensive testing of the application:
+
 - **jest**: JavaScript testing framework for unit and integration tests
 - **@types/jest**: Type definitions for Jest
 - **ts-jest**: Jest transformer for TypeScript
 - **fast-check**: Property-based testing library for generating test cases
 
 ### Development Utilities
+
 Various utilities enhance the development experience:
+
 - **dotenv**: Loads environment variables from .env files
 - **eslint**: Linting tool for identifying and fixing code issues
 - **@typescript-eslint/eslint-plugin**: ESLint plugin for TypeScript
@@ -82,6 +93,7 @@ The first stage, labeled "builder," uses the Node.js 20 Alpine image as its base
 The second stage, labeled "production," creates a minimal runtime environment by again using the Node.js 20 Alpine image with pnpm 10.28.1. This stage installs only production dependencies by using `pnpm install --frozen-lockfile --prod`, significantly reducing the container size and attack surface. It then copies the compiled JavaScript files from the builder stage, sets environment variables (NODE_ENV=production, PORT=7860), and configures the application to run on port 7860.
 
 This multi-stage approach provides several benefits:
+
 - **Smaller image size**: Production containers exclude development dependencies and source files
 - **Improved security**: Reduced attack surface by minimizing installed packages
 - **Faster deployment**: Smaller images transfer more quickly between environments
@@ -113,6 +125,7 @@ For blockchain-related dependencies, version compatibility is critical. The conf
 The multi-stage Docker build process supports effective dependency management by separating development and production dependencies. This not only reduces the production container size but also minimizes the risk of accidentally including development-only packages in production.
 
 Upgrade strategies should follow a systematic approach:
+
 1. Review changelogs for breaking changes
 2. Update dependencies in development environment
 3. Run comprehensive tests to verify functionality

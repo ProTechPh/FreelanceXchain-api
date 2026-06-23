@@ -7,6 +7,7 @@ Follow these steps to apply your new email templates to Appwrite:
 ### Step 1: Access Appwrite Dashboard
 
 Open this link in your browser:
+
 ```
 https://appwrite.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates
 ```
@@ -90,6 +91,7 @@ https://appwrite.com/dashboard/project/nfcfgxfpidfvcpkyjgih/auth/templates
 ## 🎨 Template Preview
 
 Each template features:
+
 - ✨ Beautiful gradient headers
 - 📱 Mobile-responsive design
 - 🔘 Clear call-to-action buttons
@@ -114,16 +116,19 @@ Each template features:
 ## 🆘 Troubleshooting
 
 **Email not received?**
+
 - Check spam folder
 - Verify email provider settings in Appwrite
 - Check Appwrite Auth logs
 
 **Template not saving?**
+
 - Ensure HTML is valid
 - Check for special characters that need escaping
 - Try saving in smaller chunks
 
 **Links not working?**
+
 - Verify Site URL in Appwrite Auth settings
 - Check redirect URLs are whitelisted
 - Ensure token hasn't expired

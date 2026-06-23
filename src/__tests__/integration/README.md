@@ -11,11 +11,13 @@ End-to-end integration tests that verify complete workflows across multiple serv
 Integration tests verify that multiple components work together correctly:
 
 ### User Workflows
+
 - User registration and authentication
 - Profile creation and management
 - Complete user journey flows
 
 ### Project Workflows
+
 - Project creation by employer
 - Proposal submission by freelancer
 - Proposal acceptance and contract creation
@@ -23,17 +25,20 @@ Integration tests verify that multiple components work together correctly:
 - Project completion and review
 
 ### Payment Workflows
+
 - Escrow deposit
 - Milestone-based payments
 - Fund release on approval
 - Dispute handling
 
 ### Communication Workflows
+
 - Notification delivery
 - Message sending and receiving
 - Real-time updates
 
 ### Reputation Workflows
+
 - Rating submission
 - Reputation score calculation
 - Review management
@@ -43,6 +48,7 @@ Integration tests verify that multiple components work together correctly:
 ## 🧪 Running Integration Tests
 
 ### All Integration Tests
+
 ```bash
 # Run all integration tests
 pnpm test integration/
@@ -55,6 +61,7 @@ pnpm test integration/ -- --coverage
 ```
 
 ### Specific Workflows
+
 ```bash
 # Run specific workflow tests
 pnpm test integration/ -- --testNamePattern="Project Workflow"
@@ -66,6 +73,7 @@ pnpm test integration/ -- --testNamePattern="Payment Workflow"
 ## 📝 Writing Integration Tests
 
 ### Test Structure
+
 ```typescript
 describe('Complete Workflow', () => {
   it('should complete end-to-end flow', async () => {
@@ -130,7 +138,7 @@ beforeEach(() => {
 ## 🎯 Coverage Goals
 
 | Workflow | Target Coverage |
-|----------|----------------|
+| ---------- | ---------------- |
 | User Registration | 100% |
 | Project Creation | 100% |
 | Proposal Flow | 100% |
@@ -143,6 +151,7 @@ beforeEach(() => {
 ## 🔍 Test Scenarios
 
 ### Critical Paths
+
 - ✅ User registration → Profile creation → Project creation
 - ✅ Project creation → Proposal submission → Contract creation
 - ✅ Contract creation → Milestone completion → Payment release
@@ -150,6 +159,7 @@ beforeEach(() => {
 - ✅ Project completion → Review submission → Reputation update
 
 ### Error Scenarios
+
 - ❌ Invalid user data
 - ❌ Unauthorized access attempts
 - ❌ Duplicate proposals
@@ -161,18 +171,21 @@ beforeEach(() => {
 ## 🐛 Debugging Integration Tests
 
 ### Verbose Logging
+
 ```typescript
 // Enable detailed logging
 process.env.LOG_LEVEL = 'debug';
 ```
 
 ### Step-by-Step Debugging
+
 ```bash
 # Run with node inspector
 node --inspect-brk node_modules/.bin/jest integration/
 ```
 
 ### Check Test Data
+
 ```typescript
 // Log intermediate states
 console.log('User created:', user);
@@ -185,6 +198,7 @@ console.log('Contract state:', contract);
 ## ⚡ Performance Considerations
 
 Integration tests should:
+
 - Complete in < 5 seconds per test
 - Use in-memory data stores
 - Mock external services (blockchain, AI)

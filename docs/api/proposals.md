@@ -1,6 +1,7 @@
 # Proposal API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -12,9 +13,11 @@
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the GET /api/projects/{id}/proposals endpoint used to retrieve all proposals submitted for a given project. It explains the authentication and authorization requirements, pagination behavior, and the response structure. It also documents the 403 Forbidden response when a user attempts to access proposals for a project they do not own.
 
 ## Project Structure
+
 The endpoint is implemented in the projects route module and orchestrated by the proposal service and repository layers. The Swagger/OpenAPI specification defines the endpoint’s parameters and response schema.
 
 ```mermaid
@@ -29,6 +32,7 @@ Routes --> Client
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/projects/{id}/proposals
 - Authentication: Requires a valid Bearer token
 - Authorization: Employer role required; caller must own the project
@@ -36,6 +40,7 @@ Routes --> Client
 - Response: items array of proposals, hasMore flag, and continuationToken
 
 Key implementation references:
+
 - Route handler and validation: [project-routes.ts](file://src/routes/project-routes.ts#L575-L683)
 - Service method: [proposal-service.ts](file://src/services/proposal-service.ts#L141-L163)
 - Repository method: [proposal-repository.ts](file://src/repositories/proposal-repository.ts#L39-L58)
@@ -43,6 +48,7 @@ Key implementation references:
 - Proposal model: [entity-mapper.ts](file://src/utils/entity-mapper.ts#L252-L279)
 
 ## Architecture Overview
+
 The request flow for retrieving proposals for a project:
 
 ```mermaid
@@ -69,6 +75,7 @@ R-->>C : "200 OK { items, hasMore, continuationToken }"
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Behavior
+
 - Path: /api/projects/{id}/proposals
 - Method: GET
 - Authentication: Bearer token required
@@ -82,20 +89,24 @@ R-->>C : "200 OK { items, hasMore, continuationToken }"
   - continuationToken: string for subsequent pages (Swagger schema defines PaginationMeta with totalCount, pageSize, hasMore, continuationToken)
 
 Implementation references:
+
 - Route and validation: [project-routes.ts](file://src/routes/project-routes.ts#L575-L683)
 - Swagger schema for Proposal: [swagger.ts](file://src/config/swagger.ts#L139-L152)
 - Swagger PaginationMeta: [swagger.ts](file://src/config/swagger.ts#L215-L223)
 
 ### Authentication and Authorization
+
 - Bearer token validation occurs via authMiddleware
 - Role enforcement ensures only employers can access this endpoint
 - Ownership verification checks that the logged-in employer is the project owner
 
 References:
+
 - Auth middleware: [auth-middleware.ts](file://src/middleware/auth-middleware.ts#L1-L101)
 - Employer role enforcement: [project-routes.ts](file://src/routes/project-routes.ts#L628-L683)
 
 ### Pagination
+
 - Query parameters:
   - limit: number of items per page (defaults to 20 in route)
   - continuationToken: token for fetching the next page
@@ -103,24 +114,30 @@ References:
 - Response includes hasMore and continuationToken for client-side pagination
 
 References:
+
 - Route pagination handling: [project-routes.ts](file://src/routes/project-routes.ts#L628-L683)
 - Base repository pagination model: [base-repository.ts](file://src/repositories/base-repository.ts#L1-L17)
 - Repository query with limit/offset: [proposal-repository.ts](file://src/repositories/proposal-repository.ts#L39-L58)
 
 ### Response Structure
+
 - items: array of Proposal objects
 - hasMore: boolean
 - continuationToken: string
 
 Proposal model fields:
+
 - id, projectId, freelancerId, coverLetter, proposedRate, estimatedDuration, status, createdAt, updatedAt
 
 References:
+
 - Proposal schema: [swagger.ts](file://src/config/swagger.ts#L139-L152)
 - Proposal entity mapping: [entity-mapper.ts](file://src/utils/entity-mapper.ts#L252-L279)
 
 ### Example Response
+
 The endpoint returns an object with:
+
 - items: array of Proposal entries
 - hasMore: boolean
 - continuationToken: string
@@ -128,23 +145,27 @@ The endpoint returns an object with:
 Note: The repository returns total count; the route returns items, hasMore, and continuationToken. The Swagger PaginationMeta schema documents totalCount, pageSize, hasMore, continuationToken.
 
 References:
+
 - Route returns paginated result: [project-routes.ts](file://src/routes/project-routes.ts#L668-L681)
 - Service maps to Proposal: [proposal-service.ts](file://src/services/proposal-service.ts#L141-L163)
 - Proposal schema: [swagger.ts](file://src/config/swagger.ts#L139-L152)
 
 ### Error Handling
+
 - 401 Unauthorized: Missing or invalid Bearer token
 - 403 Forbidden: Attempting to access proposals for a project owned by another employer
 - 404 Not Found: Project not found or proposals not found
 - 400 Bad Request: Invalid UUID format (validated by middleware)
 
 References:
+
 - Auth middleware errors: [auth-middleware.ts](file://src/middleware/auth-middleware.ts#L1-L101)
 - Ownership check and 403: [project-routes.ts](file://src/routes/project-routes.ts#L644-L662)
 - Project not found: [project-routes.ts](file://src/routes/project-routes.ts#L645-L653)
 - Service-level not found: [proposal-service.ts](file://src/services/proposal-service.ts#L141-L163)
 
 ## Dependency Analysis
+
 ```mermaid
 graph LR
 PR["project-routes.ts"] --> AM["auth-middleware.ts"]
@@ -155,6 +176,7 @@ PS --> EM["entity-mapper.ts"]
 ```
 
 ## Performance Considerations
+
 - Pagination defaults to 20 items per page; adjust limit as needed to balance responsiveness and payload size.
 - The repository uses OFFSET/LIMIT for pagination; consider indexing on project_id and created_at for optimal query performance.
 - The endpoint sorts by created_at descending; ensure appropriate indexes exist for efficient ordering.
@@ -162,18 +184,22 @@ PS --> EM["entity-mapper.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized: Ensure Authorization header includes a valid Bearer token.
 - 403 Forbidden: Only the employer who owns the project can list its proposals.
 - 404 Not Found: Project ID may be invalid or the project does not exist.
 - Invalid UUID: Confirm the id path parameter is a valid UUID.
 
 References:
+
 - Auth middleware behavior: [auth-middleware.ts](file://src/middleware/auth-middleware.ts#L1-L101)
 - Ownership verification: [project-routes.ts](file://src/routes/project-routes.ts#L644-L662)
 - Project not found: [project-routes.ts](file://src/routes/project-routes.ts#L645-L653)
 
 ## Conclusion
+
 The GET /api/projects/{id}/proposals endpoint securely lists all proposals for a project with robust authentication, role-based authorization, and pagination. Employers can retrieve proposals for their own projects, and clients can paginate using limit and continuationToken. The response structure aligns with the Swagger schema for proposals and pagination metadata.
 
 ---
@@ -181,6 +207,7 @@ The GET /api/projects/{id}/proposals endpoint securely lists all proposals for a
 ## Proposal API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -193,9 +220,11 @@ The GET /api/projects/{id}/proposals endpoint securely lists all proposals for a
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the proposal system in the FreelanceXchain platform. It covers all endpoints for submitting, retrieving, and managing proposals, including acceptance and withdrawal workflows. It also documents authentication requirements (JWT), role-based access controls, validation rules, and the proposal status lifecycle (pending, accepted, rejected, withdrawn). Client implementation examples are included to show how to submit a proposal and handle the contract creation response when a proposal is accepted.
 
 ## Project Structure
+
 The proposal system spans routing, service, repository, and mapping layers, plus Swagger definitions and authentication middleware.
 
 ```mermaid
@@ -216,6 +245,7 @@ Routes --> Swagger
 ```
 
 ## Core Components
+
 - Routes define HTTP endpoints, request/response schemas, and apply authentication and role checks.
 - Services encapsulate business logic, enforce status rules, and orchestrate repository operations and blockchain interactions.
 - Repositories abstract persistence and expose typed CRUD operations.
@@ -224,7 +254,9 @@ Routes --> Swagger
 - Auth middleware validates JWT and enforces role-based access.
 
 ## Architecture Overview
+
 The proposal API follows a layered architecture:
+
 - HTTP layer: Express routes
 - Application layer: Service functions
 - Persistence layer: Appwrite repository
@@ -255,23 +287,28 @@ R-->>C : "201 Proposal"
 ## Detailed Component Analysis
 
 ### Authentication and Authorization
+
 - All protected endpoints require a Bearer token in the Authorization header.
 - The auth middleware validates the token format and decodes user identity and role.
 - Role checks restrict endpoints to freelancers or employers as indicated below.
 
 Key behaviors:
+
 - Missing or malformed Authorization header yields 401.
 - Invalid/expired token yields 401 with specific error code.
 - Missing role yields 403.
 
 ### Proposal Model and Schemas
+
 Proposal schema includes:
+
 - id, projectId, freelancerId
 - coverLetter, proposedRate, estimatedDuration
 - status: pending, accepted, rejected, withdrawn
 - createdAt, updatedAt
 
 Contract schema includes:
+
 - id, projectId, proposalId, freelancerId, employerId
 - escrowAddress, totalAmount
 - status: active, completed, disputed, cancelled
@@ -282,6 +319,7 @@ These schemas are defined in Swagger and used across responses.
 ### Endpoints
 
 #### Submit Proposal
+
 - Method: POST
 - URL: /api/proposals
 - Authentication: JWT required; role: freelancer
@@ -298,6 +336,7 @@ These schemas are defined in Swagger and used across responses.
   - 409: Duplicate proposal
 
 Validation rules enforced:
+
 - projectId must be a valid UUID
 - coverLetter must be at least 10 characters
 - proposedRate must be at least 1
@@ -308,6 +347,7 @@ Validation rules enforced:
 Success response includes the created Proposal.
 
 #### Get Proposal by ID
+
 - Method: GET
 - URL: /api/proposals/{id}
 - Authentication: JWT required
@@ -319,6 +359,7 @@ Success response includes the created Proposal.
   - 404: Proposal not found
 
 #### Get My Proposals (Freelancer)
+
 - Method: GET
 - URL: /api/proposals/freelancer/me
 - Authentication: JWT required; role: freelancer
@@ -327,6 +368,7 @@ Success response includes the created Proposal.
   - 401: Unauthorized
 
 #### Accept Proposal
+
 - Method: POST
 - URL: /api/proposals/{id}/accept
 - Authentication: JWT required; role: employer
@@ -339,6 +381,7 @@ Success response includes the created Proposal.
   - 404: Proposal not found
 
 Behavior:
+
 - Validates proposal is pending
 - Verifies employer owns the associated project
 - Updates proposal status to accepted
@@ -348,6 +391,7 @@ Behavior:
 - Sends notification to freelancer
 
 #### Reject Proposal
+
 - Method: POST
 - URL: /api/proposals/{id}/reject
 - Authentication: JWT required; role: employer
@@ -360,12 +404,14 @@ Behavior:
   - 404: Proposal not found
 
 Behavior:
+
 - Validates proposal is pending
 - Verifies employer owns the associated project
 - Updates proposal status to rejected
 - Sends notification to freelancer
 
 #### Withdraw Proposal
+
 - Method: POST
 - URL: /api/proposals/{id}/withdraw
 - Authentication: JWT required; role: freelancer
@@ -378,11 +424,13 @@ Behavior:
   - 404: Proposal not found
 
 Behavior:
+
 - Validates proposal is pending
 - Ensures freelancer owns the proposal
 - Updates proposal status to withdrawn
 
 ### Proposal Status Lifecycle
+
 - pending: Initial state after submission
 - accepted: Employer accepted the proposal; contract created
 - rejected: Employer rejected the proposal
@@ -400,6 +448,7 @@ withdrawn --> [*]
 ```
 
 ### Role-Based Access Controls
+
 - Submit Proposal: freelancer only
 - Accept/Reject Proposal: employer only
 - Withdraw Proposal: freelancer only
@@ -407,6 +456,7 @@ withdrawn --> [*]
 - Get My Proposals: freelancer only
 
 ### Validation Rules
+
 - projectId: required, valid UUID
 - coverLetter: required, min length 10
 - proposedRate: required, numeric, >= 1
@@ -417,6 +467,7 @@ withdrawn --> [*]
 ### Client Implementation Examples
 
 #### Example: Submit a Proposal
+
 - Endpoint: POST /api/proposals
 - Headers: Authorization: Bearer <JWT>, Content-Type: application/json
 - Request body:
@@ -432,6 +483,7 @@ withdrawn --> [*]
   - 409: Duplicate proposal
 
 #### Example: Handle Contract Creation on Accept
+
 - Endpoint: POST /api/proposals/{id}/accept
 - Expected response:
   - proposal: Proposal (status: accepted)
@@ -480,6 +532,7 @@ ProposalRepository --> EntityMapper : "returns mapped models"
 ```
 
 ## Performance Considerations
+
 - Pagination is supported for listing proposals by project via repository methods; consider using limit/offset for large datasets.
 - Accept/Reject/Withdraw operations perform a small number of database writes and a blockchain operation (best-effort); network latency may impact response time.
 - Ensure clients cache frequently accessed Proposal and Contract details to reduce repeated requests.
@@ -487,7 +540,9 @@ ProposalRepository --> EntityMapper : "returns mapped models"
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Validation Error: Review request body fields (UUID format, lengths, numeric bounds).
 - 401 Unauthorized: Ensure Authorization header is present and contains a valid Bearer token.
 - 403 Forbidden: Confirm the user’s role matches the endpoint requirement.
@@ -495,6 +550,7 @@ Common issues and resolutions:
 - 409 Conflict (Duplicate Proposal): A proposal already exists for the same freelancer and project.
 
 ## Conclusion
+
 The proposal system provides a robust, role-aware API for freelancers to submit proposals and for employers to manage them. It enforces strong validation, maintains clear status transitions, and integrates with contract and blockchain workflows upon acceptance. Clients should implement proper JWT handling, adhere to validation rules, and expect contract creation on successful acceptance.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -503,14 +559,16 @@ The proposal system provides a robust, role-aware API for freelancers to submit 
 
 ### API Definitions
 
-- Base URL: http://localhost:7860/api
-- Interactive docs: http://localhost:7860/api-docs
+- Base URL: <http://localhost:7860/api>
+- Interactive docs: <http://localhost:7860/api-docs>
 - Authentication: Bearer token in Authorization header
 
 ### Proposal Schema
+
 - Fields: id, projectId, freelancerId, coverLetter, proposedRate, estimatedDuration, status, createdAt, updatedAt
 
 ### Contract Schema
+
 - Fields: id, projectId, proposalId, freelancerId, employerId, escrowAddress, totalAmount, status, createdAt, updatedAt
 
 ---
@@ -518,6 +576,7 @@ The proposal system provides a robust, role-aware API for freelancers to submit 
 ## Proposal Acceptance
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -529,9 +588,11 @@ The proposal system provides a robust, role-aware API for freelancers to submit 
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides API documentation for the proposal acceptance endpoint in the FreelanceXchain system. It covers the POST /api/proposals/{id}/accept endpoint that enables employers to accept a freelancer’s proposal. Upon acceptance, the system updates the proposal status to accepted and automatically creates a new contract via the contract service, initiating the escrow process. The response includes both the updated Proposal object and the newly created Contract object. The document outlines authentication via JWT, role-based restrictions, validation rules, and error handling behavior.
 
 ## Project Structure
+
 The proposal acceptance flow spans routing, middleware, service, repository, and model layers, plus blockchain integration for escrow creation.
 
 ```mermaid
@@ -562,6 +623,7 @@ ContrRepo --> ContrModel
 ```
 
 ## Core Components
+
 - Route handler enforces JWT authentication, employer role, and UUID path parameter validation.
 - Service orchestrates proposal acceptance, status update, contract creation, blockchain agreement, and project status update.
 - Repositories persist proposal and contract entities.
@@ -569,12 +631,15 @@ ContrRepo --> ContrModel
 - Blockchain integration creates and signs an agreement on-chain.
 
 Key behaviors:
+
 - Acceptance requires proposal status to be pending.
 - Only the project owner (employer) can accept a proposal.
 - On success, returns both the updated proposal and the newly created contract.
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - HTTP layer: Express route with middleware.
 - Application layer: Proposal service encapsulates business logic.
 - Persistence layer: Repositories for proposal and contract.
@@ -624,6 +689,7 @@ R-->>C : 200 OK with {proposal, contract}
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: POST
 - URL: /api/proposals/{id}/accept
 - Path parameter: id (UUID)
@@ -632,10 +698,12 @@ R-->>C : 200 OK with {proposal, contract}
 - Validation: UUID format enforced
 
 Response schema:
+
 - proposal: Proposal model
 - contract: Contract model
 
 Status codes:
+
 - 200: Success
 - 400: Invalid UUID format or invalid status
 - 401: Unauthorized
@@ -643,26 +711,31 @@ Status codes:
 - 404: Proposal not found
 
 Practical example:
+
 - An employer calls the endpoint with a valid JWT and a proposal UUID.
 - On success, the response includes the updated Proposal (status accepted) and the newly created Contract (with initial status active and empty escrow address pending blockchain initialization).
 
 Validation checks:
+
 - Proposal must exist and be pending.
 - Only the project owner (employer) can accept.
 - Path parameter must be a valid UUID.
 
 ### Route Handler Behavior
+
 - Uses authMiddleware to validate JWT.
 - Uses requireRole('employer') to restrict access.
 - Uses validateUUID() to enforce UUID path parameter format.
 - Calls acceptProposal(service) and returns combined result.
 
 Error mapping:
+
 - NOT_FOUND -> 404
 - UNAUTHORIZED -> 403
 - Otherwise -> 400
 
 ### Service Logic: acceptProposal
+
 - Loads proposal by ID; returns NOT_FOUND if absent.
 - Ensures proposal status is pending; otherwise INVALID_STATUS.
 - Loads project and verifies employer ownership; returns UNAUTHORIZED if mismatch.
@@ -699,21 +772,26 @@ MapModels --> ReturnOK["Return {proposal, contract}"]
 ```
 
 ### Data Models and Mapping
+
 - Proposal model fields include id, projectId, freelancerId, coverLetter, proposedRate, estimatedDuration, status, createdAt, updatedAt.
 - Contract model fields include id, projectId, proposalId, freelancerId, employerId, escrowAddress, totalAmount, status, createdAt, updatedAt.
 - Entity mapper converts repository entities to API models.
 
 ### Blockchain Integration
+
 - On successful acceptance, the service attempts to create an agreement on the blockchain using the employer and freelancer wallet addresses and project terms.
 - The freelancer auto-signs the agreement after acceptance.
 - The contract’s escrow_address remains empty until the escrow is initialized externally.
 
 ### Contract Service Context
+
 - The contract service provides additional operations (e.g., updating status transitions, setting escrow address, retrieving contracts by proposalId).
 - These operations complement the acceptance flow by enabling subsequent contract lifecycle management.
 
 ## Dependency Analysis
+
 The endpoint depends on:
+
 - Route handler for authentication, role enforcement, and UUID validation.
 - Proposal service for business logic.
 - Repositories for persistence.
@@ -733,6 +811,7 @@ Service --> Block["blockchain agreement (service)"]
 ```
 
 ## Performance Considerations
+
 - Minimizing database round-trips: The service performs a small fixed number of reads/writes per acceptance.
 - Asynchronous blockchain operations: Agreement creation is attempted asynchronously; failures are logged and do not block the HTTP response.
 - Caching: No caching is implemented in the acceptance flow; keep in mind that repeated acceptance attempts for the same proposal should be prevented by the pending status check.
@@ -740,7 +819,9 @@ Service --> Block["blockchain agreement (service)"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized: Ensure a valid Bearer token is included in the Authorization header.
 - 403 Forbidden: Confirm the user has the employer role and owns the project associated with the proposal.
 - 400 Bad Request: Verify the proposal ID is a valid UUID and the proposal status is pending.
@@ -748,6 +829,7 @@ Common issues and resolutions:
 - Blockchain failure: Agreement creation errors are logged and do not prevent contract creation; initialize escrow separately if needed.
 
 ## Conclusion
+
 The POST /api/proposals/{id}/accept endpoint provides a robust, role-restricted mechanism for employers to accept proposals. It enforces strict validation, updates statuses atomically, creates contracts, and initiates blockchain agreements. The response returns both the updated proposal and the new contract, enabling downstream escrow initialization and milestone management.
 
 ---
@@ -755,6 +837,7 @@ The POST /api/proposals/{id}/accept endpoint provides a robust, role-restricted 
 ## Proposal Rejection
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -766,10 +849,13 @@ The POST /api/proposals/{id}/accept endpoint provides a robust, role-restricted 
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the POST /api/proposals/{id}/reject endpoint used by employers to reject a proposal. It covers the HTTP method, URL structure with UUID path parameter, authentication and role-based access control, workflow behavior, response schema, and status codes. It also explains backend validations that ensure only the project owner can reject proposals and only pending proposals can be rejected, along with the notification trigger that informs the freelancer.
 
 ## Project Structure
+
 The proposal rejection endpoint is implemented as part of the proposals feature module:
+
 - Route handler: defines the endpoint, applies middleware, and delegates to the service layer
 - Service layer: enforces business rules, updates the proposal, and triggers notifications
 - Middleware: authentication and role checks, plus UUID validation for path parameters
@@ -792,6 +878,7 @@ Notify --> DB
 ```
 
 ## Core Components
+
 - Endpoint definition: POST /api/proposals/{id}/reject
 - Authentication: Bearer JWT token required
 - Authorization: Only users with role “employer”
@@ -800,6 +887,7 @@ Notify --> DB
 - Response: Updated Proposal object
 
 ## Architecture Overview
+
 The rejection workflow spans route handling, middleware enforcement, service logic, and persistence/notification layers.
 
 ```mermaid
@@ -839,6 +927,7 @@ R-->>C : 200 OK with Proposal
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: POST
 - URL: /api/proposals/{id}/reject
 - Path parameter: id (UUID)
@@ -848,13 +937,16 @@ R-->>C : 200 OK with Proposal
 - Response: 200 OK with the updated Proposal object
 
 ### Authentication and Authorization
+
 - Authentication middleware validates the Authorization header format and verifies the JWT token. On failure, returns 401 with an error payload.
 - Role middleware ensures the authenticated user has role “employer”. On failure, returns 403 with an error payload.
 
 ### UUID Validation
+
 - The route applies UUID validation for the path parameter {id}. If invalid, returns 400 with a validation error payload.
 
 ### Business Logic and Workflow
+
 - Load proposal by ID; return 404 if not found.
 - Ensure proposal status is “pending”; otherwise return 400 with an error indicating invalid state.
 - Load project by proposal’s project_id; return 404 if not found.
@@ -887,6 +979,7 @@ Notify --> Done["200 OK with Proposal"]
 ```
 
 ### Response Schema
+
 - Success response: 200 OK with the updated Proposal object
 - Error responses:
   - 400 Bad Request: invalid UUID format or invalid proposal state
@@ -895,6 +988,7 @@ Notify --> Done["200 OK with Proposal"]
   - 404 Not Found: proposal or project not found
 
 The Proposal object includes:
+
 - id: string (UUID)
 - projectId: string (UUID)
 - freelancerId: string (UUID)
@@ -906,7 +1000,9 @@ The Proposal object includes:
 - updatedAt: string (ISO 8601)
 
 ### Example Scenario
+
 Scenario: An employer rejects a proposal because the freelancer’s skills do not match the project requirements.
+
 - The employer calls POST /api/proposals/{proposalId}/reject with a valid JWT token and role “employer”.
 - The system verifies the proposal is pending and owned by the employer.
 - The proposal status is updated to “rejected”.
@@ -914,6 +1010,7 @@ Scenario: An employer rejects a proposal because the freelancer’s skills do no
 - The endpoint returns 200 OK with the updated Proposal object.
 
 ## Dependency Analysis
+
 - Route depends on:
   - auth-middleware for JWT validation and role checks
   - validation-middleware for UUID parameter validation
@@ -939,6 +1036,7 @@ Notify --> DB
 ```
 
 ## Performance Considerations
+
 - The endpoint performs two database reads (proposal and project) and one write (proposal update). These are lightweight operations suitable for typical load.
 - UUID validation occurs before any database calls, reducing unnecessary database traffic on malformed requests.
 - Notification creation is performed synchronously in the service layer; consider offloading to a queue if high throughput is anticipated.
@@ -946,7 +1044,9 @@ Notify --> DB
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Invalid UUID: Ensure the {id} path parameter is a valid UUID.
 - 400 Invalid State: The proposal must be in “pending” status to be rejected.
 - 401 Unauthorized: Confirm the Authorization header is present and contains a valid Bearer token.
@@ -956,6 +1056,7 @@ Common issues and resolutions:
 Validation and error handling are centralized in the route handlers and middleware, returning structured error payloads with timestamps and request IDs.
 
 ## Conclusion
+
 The POST /api/proposals/{id}/reject endpoint provides a secure and robust mechanism for employers to reject proposals. It enforces JWT authentication, role-based access control, UUID parameter validation, and strict business rules (only pending proposals, only project owners). On success, it returns the updated Proposal object and triggers a notification for the freelancer. The implementation is modular, testable, and aligned with the broader system architecture.
 
 ---
@@ -963,6 +1064,7 @@ The POST /api/proposals/{id}/reject endpoint provides a secure and robust mechan
 ## Proposal Retrieval
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -974,7 +1076,9 @@ The POST /api/proposals/{id}/reject endpoint provides a secure and robust mechan
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the proposal retrieval endpoints in the FreelanceXchain system. It covers:
+
 - Two GET endpoints: retrieving a specific proposal by UUID and retrieving all proposals submitted by the authenticated freelancer.
 - Authentication and authorization requirements.
 - Response schemas aligned with the Proposal model.
@@ -983,6 +1087,7 @@ This document describes the proposal retrieval endpoints in the FreelanceXchain 
 - How the service layer validates ownership and permissions before returning data.
 
 ## Project Structure
+
 The proposal retrieval endpoints are implemented in the routing layer and backed by a service layer that interacts with repositories and uses entity mappers to produce the Proposal model.
 
 ```mermaid
@@ -998,6 +1103,7 @@ Routes --> Swagger
 ```
 
 ## Core Components
+
 - Route handlers for proposal retrieval:
   - GET /api/proposals/{id}
   - GET /api/proposals/freelancer/me
@@ -1016,6 +1122,7 @@ Routes --> Swagger
   - validateUUID middleware and isValidUUID
 
 ## Architecture Overview
+
 The retrieval flow follows a layered architecture: route handler -> middleware -> service -> repository -> mapper -> response.
 
 ```mermaid
@@ -1049,6 +1156,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint: GET /api/proposals/{id}
+
 - Method: GET
 - URL Pattern: /api/proposals/{id}
 - Path Parameters:
@@ -1069,9 +1177,11 @@ end
   - An employer retrieves a specific proposal to review details before deciding whether to accept or reject it.
 
 Access control note:
+
 - The route does not restrict roles; any authenticated user can call this endpoint. Ownership checks are enforced at the service level by verifying existence and returning errors accordingly.
 
 ### Endpoint: GET /api/proposals/freelancer/me
+
 - Method: GET
 - URL Pattern: /api/proposals/freelancer/me
 - Authentication:
@@ -1089,9 +1199,11 @@ Access control note:
   - A freelancer checks their submission history and current status of proposals across projects.
 
 Access control note:
+
 - The route enforces requireRole('freelancer'), ensuring only freelancers can access their own submissions.
 
 ### Proposal Model
+
 The Proposal model used in responses is defined in the entity mapper and Swagger components.
 
 ```mermaid
@@ -1110,6 +1222,7 @@ class Proposal {
 ```
 
 ### Service Layer Ownership and Permission Validation
+
 - getProposalById:
   - Fetches proposal by ID from the repository.
   - Returns NOT_FOUND if the proposal does not exist.
@@ -1131,6 +1244,7 @@ ReturnOk --> End
 ```
 
 ## Dependency Analysis
+
 The retrieval endpoints depend on middleware for authentication and UUID validation, and on the service/repository layers for data access and mapping.
 
 ```mermaid
@@ -1144,11 +1258,14 @@ Swagger["swagger.ts"] --> Routes
 ```
 
 ## Performance Considerations
+
 - The freelancer proposal list endpoint returns all proposals ordered by creation time. Depending on the number of proposals, consider pagination in future enhancements.
 - UUID validation occurs at the route level; keep the validation middleware lightweight and reuse the existing UUID validator.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Bad Request (UUID invalid):
   - Cause: The id path parameter is not a valid UUID.
   - Resolution: Ensure the UUID is correctly formatted and passed in the path.
@@ -1163,6 +1280,7 @@ Common issues and resolutions:
   - Resolution: Verify the proposal id and that the proposal belongs to a project.
 
 ## Conclusion
+
 The proposal retrieval endpoints provide authenticated access to proposal details and freelancer submission histories. The system enforces JWT-based authentication and role-based access for the freelancer list endpoint. UUID validation ensures robust input handling. The service layer focuses on data retrieval and mapping, returning standardized error responses aligned with the project’s error schema.
 
 ---
@@ -1170,6 +1288,7 @@ The proposal retrieval endpoints provide authenticated access to proposal detail
 ## Proposal Submission
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1182,10 +1301,13 @@ The proposal retrieval endpoints provide authenticated access to proposal detail
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the proposal submission endpoint in the FreelanceXchain system. It covers the POST /api/proposals endpoint, including HTTP method, URL pattern, request body schema, authentication via JWT, role-based access control, validation rules, response schema, and status codes. It also explains how the service layer interacts with the database through the proposal repository and triggers relevant notifications.
 
 ## Project Structure
+
 The proposal submission feature spans routing, middleware, service, repository, and documentation layers:
+
 - Routes define the endpoint and apply middleware.
 - Middleware enforces JWT authentication and role checks.
 - Service orchestrates business logic, validation, repository interactions, and notifications.
@@ -1204,6 +1326,7 @@ Swagger["Swagger Config<br/>swagger.ts"] --- Docs["API Docs<br/>API-DOCUMENTATIO
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/proposals
 - Authentication: Bearer JWT token required
 - Role-based Access Control: Only users with role "freelancer" can submit proposals
@@ -1221,6 +1344,7 @@ Swagger["Swagger Config<br/>swagger.ts"] --- Docs["API Docs<br/>API-DOCUMENTATIO
   - 409 Conflict for duplicate proposals
 
 ## Architecture Overview
+
 The proposal submission flow integrates route validation, middleware enforcement, service orchestration, repository persistence, and notification dispatch.
 
 ```mermaid
@@ -1251,6 +1375,7 @@ R-->>C : "201 {proposal}"
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Validation
+
 - HTTP Method: POST
 - URL Pattern: /api/proposals
 - Authentication: Bearer token mandatory; enforced by authMiddleware
@@ -1263,25 +1388,31 @@ R-->>C : "201 {proposal}"
 - Response: 201 with Proposal model on success; otherwise error responses with standardized shape
 
 ### Service Layer: submitProposal
+
 Responsibilities:
+
 - Validate project existence and open status
 - Prevent duplicate proposals per freelancer per project
 - Persist proposal with status "pending"
 - Emit notification for employer ("proposal_received")
 
 Key behaviors:
+
 - Project existence checked via projectRepository
 - Duplicate check via proposalRepository.getExistingProposal
 - Proposal creation via proposalRepository.createProposal
 - Notification creation via notification-service helper
 
 ### Repository Layer: ProposalRepository
+
 - Provides createProposal, findProposalById, updateProposal
 - Supports duplicate detection and project-scoped queries
 - Uses Appwrite client with explicit error handling
 
 ### Response Schema: Proposal Model
+
 The Proposal model includes:
+
 - id, projectId, freelancerId
 - coverLetter, proposedRate, estimatedDuration
 - status (pending, accepted, rejected, withdrawn)
@@ -1290,17 +1421,21 @@ The Proposal model includes:
 Swagger and API docs define the schema and enums.
 
 ### Real-World Example
+
 Submitting a proposal for a web development project:
+
 - projectId: UUID of the target project
 - coverLetter: "I am a skilled frontend developer with 5+ years of experience building responsive web applications..."
 - proposedRate: 50 (representing USD per hour)
 - estimatedDuration: 14 (days)
 
 Expected outcome:
+
 - 201 Created with the created Proposal object
 - Employer receives a "proposal_received" notification
 
 ### Status Codes
+
 - 201 Created: Successful proposal submission
 - 400 Bad Request: Validation errors (missing/invalid fields)
 - 401 Unauthorized: Missing or invalid Bearer token
@@ -1308,6 +1443,7 @@ Expected outcome:
 - 409 Conflict: Duplicate proposal for the same project by the same freelancer
 
 ### Validation Flow
+
 ```mermaid
 flowchart TD
 Start(["Request Received"]) --> CheckAuth["Check Bearer Token"]
@@ -1328,6 +1464,7 @@ Notify --> Return201["Return 201 Created"]
 ```
 
 ## Dependency Analysis
+
 - Routes depend on auth middleware and proposal service
 - Service depends on proposal repository, project repository, user repository, and notification service
 - Repositories depend on Appwrite client and shared base repository
@@ -1344,6 +1481,7 @@ Swagger["swagger.ts"] --- Docs["API-DOCUMENTATION.md"]
 ```
 
 ## Performance Considerations
+
 - Input validation occurs before database calls to minimize unnecessary operations.
 - Repository methods encapsulate Appwrite queries; ensure indexes exist on project_id and freelancer_id for efficient duplicate checks.
 - Notification creation is lightweight; ensure database indexing on user_id for notification retrieval.
@@ -1352,7 +1490,9 @@ Swagger["swagger.ts"] --- Docs["API-DOCUMENTATION.md"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized: Ensure Authorization header includes a valid Bearer token. Verify token expiration and format.
 - 403 Forbidden: Confirm the user role is "freelancer".
 - 400 Validation Error: Check that projectId is a valid UUID, coverLetter is at least 10 characters, proposedRate and estimatedDuration are ≥ 1.
@@ -1360,6 +1500,7 @@ Common issues and resolutions:
 - 409 Conflict: The freelancer has already submitted a proposal for this project.
 
 ## Conclusion
+
 The proposal submission endpoint enforces strict authentication and role-based access control, validates request payloads, prevents duplicate submissions, persists proposals, and notifies employers. The service layer cleanly separates concerns between validation, persistence, and notifications, while the repository layer abstracts database operations.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -1367,6 +1508,7 @@ The proposal submission endpoint enforces strict authentication and role-based a
 ## Appendices
 
 ### API Reference: POST /api/proposals
+
 - Authentication: Bearer JWT
 - Roles: freelancer
 - Request Body:
@@ -1386,6 +1528,7 @@ The proposal submission endpoint enforces strict authentication and role-based a
 ## Proposal with Employer History API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Endpoint Specification](#endpoint-specification)
 3. [Architecture Overview](#architecture-overview)
@@ -1402,6 +1545,7 @@ The proposal submission endpoint enforces strict authentication and role-based a
 This endpoint allows freelancers to view proposal details along with the employer's track record, including completed projects count, average rating, and company information. This transparency helps freelancers make informed decisions about which proposals to pursue.
 
 **Key Features:**
+
 - View employer's completed project count
 - See employer's average rating from previous freelancers
 - Access employer's company information
@@ -1410,21 +1554,25 @@ This endpoint allows freelancers to view proposal details along with the employe
 ## Endpoint Specification
 
 ### HTTP Method and URL
+
 ```
 GET /api/proposals/{id}/with-employer-history
 ```
 
 ### Authentication
+
 - **Required:** Yes
 - **Type:** JWT Bearer Token
 - **Role:** Freelancer only
 
 ### Path Parameters
+
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| id | UUID | Yes | Proposal ID |
+| id        | UUID | Yes      | Proposal ID |
 
 ### Headers
+
 ```http
 Authorization: Bearer {jwt_token}
 Content-Type: application/json
@@ -1552,7 +1700,7 @@ sequenceDiagram
 #### employerHistory Object
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | completedProjectsCount | number | Total number of completed contracts by this employer |
 | averageRating | number | Average rating from all reviews (0-5, rounded to 1 decimal) |
 | reviewCount | number | Total number of reviews received |
@@ -1562,12 +1710,14 @@ sequenceDiagram
 ## Authorization Rules
 
 ### Access Control
+
 1. **Freelancer Role Required:** Only users with 'freelancer' role can access this endpoint
 2. **Proposal Ownership:** Freelancer must be the one who submitted the proposal
 3. **No Employer Access:** Employers cannot view their own history through this endpoint
 4. **No Admin Override:** Even admins cannot access this freelancer-specific feature
 
 ### Authorization Flow
+
 ```typescript
 // 1. JWT validation (authMiddleware)
 // 2. Role check (requireRole('freelancer'))
@@ -1580,14 +1730,17 @@ if (result.data.proposal.freelancerId !== userId) {
 ## Use Cases
 
 ### 1. Assessing Employer Reliability
+
 **Scenario:** Freelancer receives multiple proposals and wants to prioritize reliable employers
 
 **Decision Factors:**
+
 - `completedProjectsCount > 10` → Experienced employer
 - `completedProjectsCount === 0` → New employer (higher risk)
 - `averageRating >= 4.5` → Highly rated employer
 
 **Example:**
+
 ```javascript
 if (employerHistory.completedProjectsCount >= 10 && 
     employerHistory.averageRating >= 4.5) {
@@ -1600,17 +1753,21 @@ if (employerHistory.completedProjectsCount >= 10 &&
 ```
 
 ### 2. Risk Assessment
+
 **Scenario:** Freelancer evaluates payment risk before accepting proposal
 
 **Risk Indicators:**
+
 - Low rating (`< 3.0`) → Payment issues or difficult client
 - No completed projects → Unproven track record
 - High rating (`>= 4.5`) + many projects → Safe bet
 
 ### 3. Company Verification
+
 **Scenario:** Freelancer verifies legitimacy of employer
 
 **Verification Steps:**
+
 1. Check company name matches project description
 2. Verify industry alignment with project type
 3. Cross-reference with external sources if needed
@@ -1620,6 +1777,7 @@ if (employerHistory.completedProjectsCount >= 10 &&
 ### Error Responses
 
 #### 400 Bad Request
+
 ```json
 {
   "error": {
@@ -1632,6 +1790,7 @@ if (employerHistory.completedProjectsCount >= 10 &&
 ```
 
 #### 401 Unauthorized
+
 ```json
 {
   "error": {
@@ -1644,6 +1803,7 @@ if (employerHistory.completedProjectsCount >= 10 &&
 ```
 
 #### 403 Forbidden
+
 ```json
 {
   "error": {
@@ -1656,6 +1816,7 @@ if (employerHistory.completedProjectsCount >= 10 &&
 ```
 
 #### 404 Not Found
+
 ```json
 {
   "error": {
@@ -1668,6 +1829,7 @@ if (employerHistory.completedProjectsCount >= 10 &&
 ```
 
 #### 500 Internal Server Error
+
 ```json
 {
   "error": "Failed to fetch proposal with employer history"
@@ -1677,7 +1839,9 @@ if (employerHistory.completedProjectsCount >= 10 &&
 ## Performance Considerations
 
 ### Database Queries
+
 The endpoint executes multiple queries:
+
 1. `findProposalById()` - Single row lookup (indexed)
 2. `findProjectById()` - Single row lookup (indexed)
 3. `getContractsByEmployer()` - Multiple rows (filtered by employer_id)
@@ -1687,6 +1851,7 @@ The endpoint executes multiple queries:
 ### Optimization Strategies
 
 #### 1. Caching
+
 ```typescript
 // Cache employer history for 1 hour
 const cacheKey = `employer-history:${employerId}`;
@@ -1699,6 +1864,7 @@ await cache.set(cacheKey, employerHistory, 3600); // 1 hour TTL
 ```
 
 #### 2. Parallel Queries
+
 ```typescript
 // Execute independent queries in parallel
 const [contracts, rating, profile] = await Promise.all([
@@ -1709,12 +1875,15 @@ const [contracts, rating, profile] = await Promise.all([
 ```
 
 #### 3. Database Indexing
+
 Ensure indexes exist on:
+
 - `contracts.employer_id`
 - `reviews.reviewee_id`
 - `employer_profiles.user_id`
 
 ### Expected Response Time
+
 - **Without caching:** 200-500ms
 - **With caching:** 50-100ms
 - **Under load:** May increase to 1-2s
@@ -1931,6 +2100,7 @@ except requests.HTTPError as e:
 The Proposal with Employer History endpoint provides freelancers with critical transparency into employer reliability and track record. By exposing completed project counts, average ratings, and company information, it enables informed decision-making and reduces risk for freelancers. The endpoint follows security best practices with role-based access control and ownership verification, ensuring that only authorized freelancers can view employer history for their own proposals.
 
 **Key Takeaways:**
+
 - Freelancer-only access for privacy protection
 - Multiple database queries optimized with parallel execution
 - Caching recommended for frequently accessed employer data
@@ -1942,6 +2112,7 @@ The Proposal with Employer History endpoint provides freelancers with critical t
 ## Proposal Withdrawal
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1953,10 +2124,13 @@ The Proposal with Employer History endpoint provides freelancers with critical t
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document describes the POST /api/proposals/{id}/withdraw endpoint that enables freelancers to withdraw their pending proposals. It covers the HTTP method, URL pattern, authentication and authorization requirements, state transition rules, response schema, and error handling behavior. It also includes a practical use case and validation logic that prevents withdrawal of proposals that are already accepted, rejected, or withdrawn, and ensures ownership by the requesting freelancer.
 
 ## Project Structure
+
 The proposal withdrawal feature spans routing, middleware, service, and repository layers:
+
 - Route handler enforces JWT authentication, role checks, and UUID parameter validation.
 - Service layer performs business validation and updates the proposal status.
 - Repository layer persists the change to the database.
@@ -1975,6 +2149,7 @@ Service --> Swagger["Swagger Spec<br/>swagger.ts"]
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/proposals/{id}/withdraw
 - Authentication: JWT via Authorization: Bearer <token>
 - Authorization: Requires role 'freelancer'
@@ -1984,6 +2159,7 @@ Service --> Swagger["Swagger Spec<br/>swagger.ts"]
 - Response: Updated Proposal object
 
 HTTP status codes:
+
 - 200 OK: Proposal successfully withdrawn
 - 400 Bad Request: Invalid UUID format or invalid state transition
 - 401 Unauthorized: Missing/invalid/expired JWT or missing/invalid Authorization header
@@ -1991,7 +2167,9 @@ HTTP status codes:
 - 404 Not Found: Proposal not found
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - Route layer validates JWT, role, and UUID format.
 - Service layer enforces business rules (ownership and status).
 - Repository layer updates the proposal record.
@@ -2031,6 +2209,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Behavior
+
 - Method: POST
 - URL: /api/proposals/{id}/withdraw
 - Path parameter: id (UUID)
@@ -2043,9 +2222,11 @@ end
   - On success, status transitions to 'withdrawn'
 
 Response schema:
+
 - Returns the updated Proposal object with fields: id, projectId, freelancerId, coverLetter, proposedRate, estimatedDuration, status, createdAt, updatedAt.
 
 Status codes:
+
 - 200: Successful withdrawal
 - 400: Invalid UUID format or invalid state transition
 - 401: Unauthorized (missing/invalid/expired token)
@@ -2053,6 +2234,7 @@ Status codes:
 - 404: Proposal not found
 
 ### Validation and Authorization Flow
+
 ```mermaid
 flowchart TD
 Start(["Request received"]) --> CheckAuth["Check Authorization header"]
@@ -2069,7 +2251,9 @@ CallService --> End(["Handled by service"])
 ```
 
 ### Service Layer Logic
+
 The service enforces:
+
 - Proposal existence
 - Ownership verification (freelancer_id equals caller)
 - Status validation (must be 'pending')
@@ -2091,7 +2275,9 @@ Update --> Success["Return updated Proposal"]
 ```
 
 ### Use Case: Withdraw After Accepting Another Project
+
 Scenario:
+
 - A freelancer submits Proposal A and later accepts a competing Proposal B for the same project.
 - The freelancer decides to withdraw Proposal A while keeping Proposal B active.
 - Steps:
@@ -2103,10 +2289,12 @@ Scenario:
   6. Client receives 200 OK with the updated Proposal A.
 
 Constraints:
+
 - Proposal A must be 'pending' and owned by the freelancer.
 - Proposal B’s acceptance does not affect the withdrawal of Proposal A; the withdrawal is independent.
 
 ## Dependency Analysis
+
 ```mermaid
 graph LR
 Routes["proposal-routes.ts"] --> Auth["auth-middleware.ts"]
@@ -2119,6 +2307,7 @@ Routes --> Swagger["swagger.ts"]
 ```
 
 ## Performance Considerations
+
 - The endpoint performs two database reads: one to fetch the proposal and one to update it. Both are simple indexed lookups by id.
 - No heavy computations are involved; performance is primarily bound by database latency.
 - Consider adding database-level constraints to prevent concurrent conflicting updates if needed.
@@ -2126,7 +2315,9 @@ Routes --> Swagger["swagger.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Bad Request
   - Cause: Invalid UUID format in path parameter.
   - Resolution: Ensure id is a valid UUID.
@@ -2144,11 +2335,13 @@ Common issues and resolutions:
   - Resolution: Only 'pending' proposals can be withdrawn.
 
 Validation logic highlights:
+
 - UUID enforcement occurs at route level.
 - Ownership and status checks occur in the service layer.
 - Role enforcement occurs at route level.
 
 ## Conclusion
+
 The POST /api/proposals/{id}/withdraw endpoint provides a controlled mechanism for freelancers to withdraw pending proposals. It enforces JWT authentication, role-based authorization, UUID parameter validation, and strict business rules around ownership and status. The response returns the updated Proposal object, and the endpoint adheres to standard HTTP status codes for clear client-side handling.
 
 ---

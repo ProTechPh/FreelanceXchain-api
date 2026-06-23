@@ -1,6 +1,7 @@
 # API Endpoints Reference
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Authentication Endpoints](#authentication-endpoints)
 3. [Projects Endpoints](#projects-endpoints)
@@ -18,9 +19,11 @@
 15. [Versioning Strategy](#versioning-strategy)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the FreelanceXchain system, a decentralized freelance marketplace with AI skill matching and blockchain payments. The API follows RESTful principles and uses JWT for authentication. All endpoints are versioned through the base URL path `/api` and return JSON responses.
 
 The API is organized into logical groups based on functionality:
+
 - **Authentication**: User registration, login, and token management
 - **Projects**: Project creation, management, and discovery
 - **Proposals**: Freelancer submissions for projects
@@ -58,6 +61,7 @@ AuthController-->>Client : 200 OK or 401 Unauthorized
 ```
 
 ### User Registration
+
 Registers a new user account and returns authentication tokens.
 
 **HTTP Method**: `POST`  
@@ -66,6 +70,7 @@ Registers a new user account and returns authentication tokens.
 **Rate Limit**: 10 attempts per 15 minutes
 
 **Request Body**:
+
 ```json
 {
   "email": "user@example.com",
@@ -77,6 +82,7 @@ Registers a new user account and returns authentication tokens.
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "user": {
@@ -93,10 +99,12 @@ Registers a new user account and returns authentication tokens.
 ```
 
 **Error Codes**:
+
 - `400`: Validation error (invalid email, weak password, etc.)
 - `409`: Email already registered
 
 ### User Login
+
 Authenticates a user and returns JWT tokens.
 
 **HTTP Method**: `POST`  
@@ -105,6 +113,7 @@ Authenticates a user and returns JWT tokens.
 **Rate Limit**: 10 attempts per 15 minutes
 
 **Request Body**:
+
 ```json
 {
   "email": "user@example.com",
@@ -113,6 +122,7 @@ Authenticates a user and returns JWT tokens.
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "user": {
@@ -129,10 +139,12 @@ Authenticates a user and returns JWT tokens.
 ```
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Invalid credentials
 
 ### Token Refresh
+
 Uses a refresh token to obtain new access and refresh tokens.
 
 **HTTP Method**: `POST`  
@@ -141,6 +153,7 @@ Uses a refresh token to obtain new access and refresh tokens.
 **Rate Limit**: 10 attempts per 15 minutes
 
 **Request Body**:
+
 ```json
 {
   "refreshToken": "refresh-token"
@@ -148,6 +161,7 @@ Uses a refresh token to obtain new access and refresh tokens.
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "user": {
@@ -164,10 +178,12 @@ Uses a refresh token to obtain new access and refresh tokens.
 ```
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Invalid or expired refresh token
 
 ### OAuth Integration
+
 Supports OAuth login with external providers. The flow involves redirecting to the provider, handling the callback, and exchanging the authorization code for tokens.
 
 **HTTP Method**: `GET`  
@@ -201,6 +217,7 @@ ProjectController-->>Employer : 200 OK
 ```
 
 ### Create Project
+
 Creates a new project (employer only).
 
 **HTTP Method**: `POST`  
@@ -210,6 +227,7 @@ Creates a new project (employer only).
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "title": "Web Development Project",
@@ -226,6 +244,7 @@ Creates a new project (employer only).
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "uuid",
@@ -250,11 +269,13 @@ Creates a new project (employer only).
 ```
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Unauthorized
 - `409`: Project locked (has accepted proposals)
 
 ### Get Project Details
+
 Retrieves details of a specific project.
 
 **HTTP Method**: `GET`  
@@ -263,6 +284,7 @@ Retrieves details of a specific project.
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "uuid",
@@ -296,10 +318,12 @@ Retrieves details of a specific project.
 ```
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `404`: Project not found
 
 ### Update Project
+
 Updates an existing project (employer only, project must not have accepted proposals).
 
 **HTTP Method**: `PATCH`  
@@ -309,6 +333,7 @@ Updates an existing project (employer only, project must not have accepted propo
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "title": "Updated Project Title",
@@ -322,12 +347,14 @@ Updates an existing project (employer only, project must not have accepted propo
 Returns the updated project object in the same format as GET.
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Unauthorized
 - `404`: Project not found
 - `409`: Project locked (has accepted proposals)
 
 ### List Projects with Filters
+
 Retrieves a list of open projects with optional filters.
 
 **HTTP Method**: `GET`  
@@ -336,6 +363,7 @@ Retrieves a list of open projects with optional filters.
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `keyword`: Search keyword for title/description
 - `skills`: Comma-separated skill IDs
 - `minBudget`: Minimum budget filter
@@ -344,6 +372,7 @@ Retrieves a list of open projects with optional filters.
 - `continuationToken`: Token for pagination
 
 **Response (200 OK)**:
+
 ```json
 {
   "items": [
@@ -374,6 +403,7 @@ Retrieves a list of open projects with optional filters.
 ```
 
 ### Add Milestones to Project
+
 Sets milestones for a project (employer only, milestone amounts must sum to budget).
 
 **HTTP Method**: `POST`  
@@ -383,6 +413,7 @@ Sets milestones for a project (employer only, milestone amounts must sum to budg
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "milestones": [
@@ -406,12 +437,14 @@ Sets milestones for a project (employer only, milestone amounts must sum to budg
 Returns the updated project object with milestones.
 
 **Error Codes**:
+
 - `400`: Validation error, milestone sum mismatch
 - `401`: Unauthorized
 - `404`: Project not found
 - `409`: Project locked (has accepted proposals)
 
 ### List Proposals for Project
+
 Retrieves all proposals for a specific project (employer only).
 
 **HTTP Method**: `GET`  
@@ -421,10 +454,12 @@ Retrieves all proposals for a specific project (employer only).
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `limit`: Number of results per page (default: 20)
 - `continuationToken`: Token for pagination
 
 **Response (200 OK)**:
+
 ```json
 {
   "items": [
@@ -446,6 +481,7 @@ Retrieves all proposals for a specific project (employer only).
 ```
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `401`: Unauthorized
 - `404`: Project not found
@@ -475,6 +511,7 @@ ProposalController-->>Employer : 200 OK
 ```
 
 ### Submit Proposal
+
 Submit a proposal for a project (freelancer only).
 
 **HTTP Method**: `POST`  
@@ -484,6 +521,7 @@ Submit a proposal for a project (freelancer only).
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "projectId": "uuid",
@@ -494,6 +532,7 @@ Submit a proposal for a project (freelancer only).
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "uuid",
@@ -509,12 +548,14 @@ Submit a proposal for a project (freelancer only).
 ```
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Unauthorized
 - `404`: Project not found
 - `409`: Duplicate proposal
 
 ### Get Proposal Details
+
 Retrieves details of a specific proposal.
 
 **HTTP Method**: `GET`  
@@ -526,11 +567,13 @@ Retrieves details of a specific proposal.
 Returns the proposal object in the same format as POST.
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `401`: Unauthorized
 - `404`: Proposal not found
 
 ### Get My Proposals
+
 Retrieves all proposals submitted by the authenticated freelancer.
 
 **HTTP Method**: `GET`  
@@ -540,6 +583,7 @@ Retrieves all proposals submitted by the authenticated freelancer.
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 [
   {
@@ -557,9 +601,11 @@ Retrieves all proposals submitted by the authenticated freelancer.
 ```
 
 **Error Codes**:
+
 - `401`: Unauthorized
 
 ### Accept Proposal
+
 Accept a proposal and create a contract (employer only).
 
 **HTTP Method**: `POST`  
@@ -569,6 +615,7 @@ Accept a proposal and create a contract (employer only).
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 {
   "proposal": {
@@ -598,12 +645,14 @@ Accept a proposal and create a contract (employer only).
 ```
 
 **Error Codes**:
+
 - `400`: Invalid proposal status
 - `401`: Unauthorized
 - `404`: Proposal not found
 - `403`: Forbidden (not project owner)
 
 ### Reject Proposal
+
 Reject a proposal (employer only).
 
 **HTTP Method**: `POST`  
@@ -616,12 +665,14 @@ Reject a proposal (employer only).
 Returns the rejected proposal object.
 
 **Error Codes**:
+
 - `400`: Invalid proposal status
 - `401`: Unauthorized
 - `404`: Proposal not found
 - `403`: Forbidden (not project owner)
 
 ### Withdraw Proposal
+
 Withdraw a pending proposal (freelancer only).
 
 **HTTP Method**: `POST`  
@@ -634,6 +685,7 @@ Withdraw a pending proposal (freelancer only).
 Returns the withdrawn proposal object.
 
 **Error Codes**:
+
 - `400`: Invalid proposal status
 - `401`: Unauthorized
 - `404`: Proposal not found
@@ -659,6 +711,7 @@ ContractController-->>User : 200 OK or 404 Not Found
 ```
 
 ### List User's Contracts
+
 Retrieves all contracts for the authenticated user (as freelancer or employer).
 
 **HTTP Method**: `GET`  
@@ -667,10 +720,12 @@ Retrieves all contracts for the authenticated user (as freelancer or employer).
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `limit`: Number of results per page (default: 20)
 - `continuationToken`: Token for pagination
 
 **Response (200 OK)**:
+
 ```json
 {
   "items": [
@@ -693,9 +748,11 @@ Retrieves all contracts for the authenticated user (as freelancer or employer).
 ```
 
 **Error Codes**:
+
 - `401`: Unauthorized
 
 ### Get Contract Details
+
 Retrieves details of a specific contract.
 
 **HTTP Method**: `GET`  
@@ -707,6 +764,7 @@ Retrieves details of a specific contract.
 Returns the contract object in the same format as above.
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `401`: Unauthorized
 - `404`: Contract not found
@@ -740,6 +798,7 @@ PaymentController-->>User : 200 OK
 ```
 
 ### Mark Milestone as Complete
+
 Freelancer marks a milestone as complete, triggering employer notification.
 
 **HTTP Method**: `POST`  
@@ -748,9 +807,11 @@ Freelancer marks a milestone as complete, triggering employer notification.
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `contractId`: The contract ID (UUID)
 
 **Response (200 OK)**:
+
 ```json
 {
   "milestoneId": "uuid",
@@ -760,12 +821,14 @@ Freelancer marks a milestone as complete, triggering employer notification.
 ```
 
 **Error Codes**:
+
 - `400`: Invalid request
 - `401`: Unauthorized
 - `404`: Contract or milestone not found
 - `403`: Forbidden (not freelancer on contract)
 
 ### Approve Milestone Completion
+
 Employer approves milestone completion, triggering payment release.
 
 **HTTP Method**: `POST`  
@@ -774,9 +837,11 @@ Employer approves milestone completion, triggering payment release.
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `contractId`: The contract ID (UUID)
 
 **Response (200 OK)**:
+
 ```json
 {
   "milestoneId": "uuid",
@@ -788,12 +853,14 @@ Employer approves milestone completion, triggering payment release.
 ```
 
 **Error Codes**:
+
 - `400`: Invalid request
 - `401`: Unauthorized
 - `404`: Contract or milestone not found
 - `403`: Forbidden (not employer on contract)
 
 ### Dispute Milestone
+
 Either party disputes a milestone, locking funds and creating a dispute record.
 
 **HTTP Method**: `POST`  
@@ -802,9 +869,11 @@ Either party disputes a milestone, locking funds and creating a dispute record.
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `contractId`: The contract ID (UUID)
 
 **Request Body**:
+
 ```json
 {
   "reason": "The work delivered does not meet the requirements specified in the milestone."
@@ -812,6 +881,7 @@ Either party disputes a milestone, locking funds and creating a dispute record.
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "milestoneId": "uuid",
@@ -822,11 +892,13 @@ Either party disputes a milestone, locking funds and creating a dispute record.
 ```
 
 **Error Codes**:
+
 - `400`: Invalid request
 - `401`: Unauthorized
 - `404`: Contract or milestone not found
 
 ### Get Contract Payment Status
+
 Get detailed payment status for a contract including milestone statuses.
 
 **HTTP Method**: `GET`  
@@ -835,6 +907,7 @@ Get detailed payment status for a contract including milestone statuses.
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 {
   "contractId": "uuid",
@@ -861,6 +934,7 @@ Get detailed payment status for a contract including milestone statuses.
 ```
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `401`: Unauthorized
 - `404`: Contract not found
@@ -893,6 +967,7 @@ DisputeController-->>User : 200 OK
 ```
 
 ### Create Dispute
+
 Create a dispute for a milestone, locking associated funds.
 
 **HTTP Method**: `POST`  
@@ -901,6 +976,7 @@ Create a dispute for a milestone, locking associated funds.
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "contractId": "uuid",
@@ -910,6 +986,7 @@ Create a dispute for a milestone, locking associated funds.
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "uuid",
@@ -925,6 +1002,7 @@ Create a dispute for a milestone, locking associated funds.
 ```
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Unauthorized
 - `403`: User not authorized to create dispute
@@ -932,6 +1010,7 @@ Create a dispute for a milestone, locking associated funds.
 - `409`: Milestone already disputed
 
 ### Get Dispute Details
+
 Get details of a specific dispute.
 
 **HTTP Method**: `GET`  
@@ -943,11 +1022,13 @@ Get details of a specific dispute.
 Returns the dispute object in the same format as POST.
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `401`: Unauthorized
 - `404`: Dispute not found
 
 ### Submit Evidence for Dispute
+
 Submit evidence to support a dispute case.
 
 **HTTP Method**: `POST`  
@@ -956,6 +1037,7 @@ Submit evidence to support a dispute case.
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "type": "text",
@@ -967,12 +1049,14 @@ Submit evidence to support a dispute case.
 Returns the updated dispute object with the new evidence.
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Unauthorized
 - `403`: User not authorized to submit evidence
 - `404`: Dispute not found
 
 ### Resolve Dispute
+
 Admin resolves a dispute, triggering payment based on decision.
 
 **HTTP Method**: `POST`  
@@ -982,6 +1066,7 @@ Admin resolves a dispute, triggering payment based on decision.
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "decision": "freelancer_favor",
@@ -993,12 +1078,14 @@ Admin resolves a dispute, triggering payment based on decision.
 Returns the resolved dispute object with resolution details.
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Unauthorized
 - `403`: Only administrators can resolve disputes
 - `404`: Dispute not found
 
 ### List Disputes for Contract
+
 Get all disputes associated with a contract.
 
 **HTTP Method**: `GET`  
@@ -1007,6 +1094,7 @@ Get all disputes associated with a contract.
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 [
   {
@@ -1030,6 +1118,7 @@ Get all disputes associated with a contract.
 ```
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `401`: Unauthorized
 - `403`: User not authorized to view disputes
@@ -1063,6 +1152,7 @@ NotificationController-->>User : 200 OK
 ```
 
 ### Get User Notifications
+
 Retrieves all notifications for the authenticated user, sorted by creation time (newest first).
 
 **HTTP Method**: `GET`  
@@ -1071,10 +1161,12 @@ Retrieves all notifications for the authenticated user, sorted by creation time 
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `maxItemCount`: Maximum number of notifications to return (1-100)
 - `continuationToken`: Token for pagination
 
 **Response (200 OK)**:
+
 ```json
 {
   "items": [
@@ -1099,9 +1191,11 @@ Retrieves all notifications for the authenticated user, sorted by creation time 
 ```
 
 **Error Codes**:
+
 - `401`: Unauthorized
 
 ### Get Unread Notification Count
+
 Returns the count of unread notifications for the authenticated user.
 
 **HTTP Method**: `GET`  
@@ -1110,6 +1204,7 @@ Returns the count of unread notifications for the authenticated user.
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 5
@@ -1117,9 +1212,11 @@ Returns the count of unread notifications for the authenticated user.
 ```
 
 **Error Codes**:
+
 - `401`: Unauthorized
 
 ### Mark Notification as Read
+
 Marks a specific notification as read.
 
 **HTTP Method**: `PATCH`  
@@ -1131,12 +1228,14 @@ Marks a specific notification as read.
 Returns the updated notification object with `isRead: true`.
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `401`: Unauthorized
 - `404`: Notification not found
 - `403`: Forbidden (not notification owner)
 
 ### Mark All Notifications as Read
+
 Marks all notifications for the authenticated user as read.
 
 **HTTP Method**: `PATCH`  
@@ -1145,6 +1244,7 @@ Marks all notifications for the authenticated user as read.
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 {
   "count": 5
@@ -1152,6 +1252,7 @@ Marks all notifications for the authenticated user as read.
 ```
 
 **Error Codes**:
+
 - `401`: Unauthorized
 
 ## KYC Endpoints
@@ -1183,6 +1284,7 @@ KYCController-->>Admin : 200 OK
 ```
 
 ### Get Supported Countries for KYC
+
 Returns list of countries with their KYC requirements.
 
 **HTTP Method**: `GET`  
@@ -1191,6 +1293,7 @@ Returns list of countries with their KYC requirements.
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 [
   {
@@ -1205,6 +1308,7 @@ Returns list of countries with their KYC requirements.
 ```
 
 ### Get KYC Requirements for Country
+
 Get KYC requirements for a specific country.
 
 **HTTP Method**: `GET`  
@@ -1216,9 +1320,11 @@ Get KYC requirements for a specific country.
 Returns the country requirements object in the same format as above.
 
 **Error Codes**:
+
 - `404`: Country not supported
 
 ### Get Current User's KYC Status
+
 Get the current user's KYC verification status.
 
 **HTTP Method**: `GET`  
@@ -1227,6 +1333,7 @@ Get the current user's KYC verification status.
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 {
   "id": "uuid",
@@ -1272,10 +1379,12 @@ Get the current user's KYC verification status.
 ```
 
 **Error Codes**:
+
 - `401`: Unauthorized
 - `404`: No KYC verification found
 
 ### Submit KYC Verification
+
 Submit identity documents and personal information for international KYC verification.
 
 **HTTP Method**: `POST`  
@@ -1284,6 +1393,7 @@ Submit identity documents and personal information for international KYC verific
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "firstName": "John",
@@ -1311,10 +1421,12 @@ Submit identity documents and personal information for international KYC verific
 Returns the created KYC verification object.
 
 **Error Codes**:
+
 - `400`: Validation error
 - `409`: KYC already pending or approved
 
 ### Create Face Liveness Session
+
 Initiates a liveness check session with random challenges.
 
 **HTTP Method**: `POST`  
@@ -1323,6 +1435,7 @@ Initiates a liveness check session with random challenges.
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "challenges": ["blink", "smile", "turn_left"]
@@ -1330,6 +1443,7 @@ Initiates a liveness check session with random challenges.
 ```
 
 **Response (201 Created)**:
+
 ```json
 {
   "id": "uuid",
@@ -1347,9 +1461,11 @@ Initiates a liveness check session with random challenges.
 ```
 
 **Error Codes**:
+
 - `400`: KYC not found or already approved
 
 ### Get Current Liveness Session
+
 Get the current liveness session.
 
 **HTTP Method**: `GET`  
@@ -1361,10 +1477,12 @@ Get the current liveness session.
 Returns the current liveness session object.
 
 **Error Codes**:
+
 - `401`: Unauthorized
 - `404`: No active liveness session
 
 ### Submit Liveness Verification Results
+
 Submit captured frames and challenge results for liveness verification.
 
 **HTTP Method**: `POST`  
@@ -1373,6 +1491,7 @@ Submit captured frames and challenge results for liveness verification.
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "sessionId": "uuid",
@@ -1391,9 +1510,11 @@ Submit captured frames and challenge results for liveness verification.
 Returns the updated liveness check object.
 
 **Error Codes**:
+
 - `400`: Validation error
 
 ### Verify Face Match
+
 Verify face match between selfie and document.
 
 **HTTP Method**: `POST`  
@@ -1402,6 +1523,7 @@ Verify face match between selfie and document.
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "selfieImageUrl": "https://example.com/selfie.jpg",
@@ -1410,6 +1532,7 @@ Verify face match between selfie and document.
 ```
 
 **Response (200 OK)**:
+
 ```json
 {
   "matched": true,
@@ -1418,9 +1541,11 @@ Verify face match between selfie and document.
 ```
 
 **Error Codes**:
+
 - `400`: Validation error
 
 ### Add Additional Document
+
 Add an additional document to KYC verification.
 
 **HTTP Method**: `POST`  
@@ -1429,6 +1554,7 @@ Add an additional document to KYC verification.
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "type": "utility_bill",
@@ -1442,9 +1568,11 @@ Add an additional document to KYC verification.
 Returns the updated KYC verification object.
 
 **Error Codes**:
+
 - `400`: Validation error
 
 ### Get Pending KYC Reviews
+
 Get pending KYC reviews (Admin only).
 
 **HTTP Method**: `GET`  
@@ -1454,6 +1582,7 @@ Get pending KYC reviews (Admin only).
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 [
   {
@@ -1468,6 +1597,7 @@ Get pending KYC reviews (Admin only).
 ```
 
 ### Get KYC Verifications by Status
+
 Get KYC verifications by status (Admin only).
 
 **HTTP Method**: `GET`  
@@ -1480,6 +1610,7 @@ Get KYC verifications by status (Admin only).
 Returns a list of KYC verifications with the specified status.
 
 **Error Codes**:
+
 - `400`: Invalid status
 
 ## Matching Endpoints
@@ -1511,6 +1642,7 @@ MatchingController-->>Freelancer : 200 OK
 ```
 
 ### Get Project Recommendations
+
 Returns AI-powered project recommendations for a freelancer, ranked by match score.
 
 **HTTP Method**: `GET`  
@@ -1519,9 +1651,11 @@ Returns AI-powered project recommendations for a freelancer, ranked by match sco
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `limit`: Maximum number of recommendations to return (default: 10, max: 50)
 
 **Response (200 OK)**:
+
 ```json
 [
   {
@@ -1535,10 +1669,12 @@ Returns AI-powered project recommendations for a freelancer, ranked by match sco
 ```
 
 **Error Codes**:
+
 - `401`: Unauthorized
 - `404`: Freelancer profile not found
 
 ### Get Freelancer Recommendations
+
 Returns AI-powered freelancer recommendations for a project, ranked by combined skill and reputation score.
 
 **HTTP Method**: `GET`  
@@ -1547,9 +1683,11 @@ Returns AI-powered freelancer recommendations for a project, ranked by combined 
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `limit`: Maximum number of recommendations to return (default: 10, max: 50)
 
 **Response (200 OK)**:
+
 ```json
 [
   {
@@ -1564,11 +1702,13 @@ Returns AI-powered freelancer recommendations for a project, ranked by combined 
 ```
 
 **Error Codes**:
+
 - `400`: Invalid UUID format
 - `401`: Unauthorized
 - `404`: Project not found
 
 ### Extract Skills from Text
+
 Uses AI to extract and map skills from text to the platform taxonomy.
 
 **HTTP Method**: `POST`  
@@ -1577,6 +1717,7 @@ Uses AI to extract and map skills from text to the platform taxonomy.
 **Rate Limit**: 100 requests per minute
 
 **Request Body**:
+
 ```json
 {
   "text": "I have 5 years of experience with React, Node.js, and MongoDB. I'm also familiar with Docker and Kubernetes."
@@ -1584,6 +1725,7 @@ Uses AI to extract and map skills from text to the platform taxonomy.
 ```
 
 **Response (200 OK)**:
+
 ```json
 [
   {
@@ -1605,10 +1747,12 @@ Uses AI to extract and map skills from text to the platform taxonomy.
 ```
 
 **Error Codes**:
+
 - `400`: Validation error
 - `401`: Unauthorized
 
 ### Analyze Skill Gaps
+
 Uses AI to analyze a freelancer's skills and suggest improvements based on market demand.
 
 **HTTP Method**: `GET`  
@@ -1617,6 +1761,7 @@ Uses AI to analyze a freelancer's skills and suggest improvements based on marke
 **Rate Limit**: 100 requests per minute
 
 **Response (200 OK)**:
+
 ```json
 {
   "currentSkills": ["React", "Node.js", "JavaScript"],
@@ -1636,6 +1781,7 @@ Uses AI to analyze a freelancer's skills and suggest improvements based on marke
 ```
 
 **Error Codes**:
+
 - `401`: Unauthorized
 - `404`: Freelancer profile not found
 
@@ -1659,6 +1805,7 @@ SearchController-->>User : 200 OK
 ```
 
 ### Search Projects
+
 Search for projects with keyword, skill, and budget filters.
 
 **HTTP Method**: `GET`  
@@ -1667,6 +1814,7 @@ Search for projects with keyword, skill, and budget filters.
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `keyword`: Search keyword for title/description
 - `skills`: Comma-separated skill IDs to filter by
 - `minBudget`: Minimum budget filter
@@ -1675,6 +1823,7 @@ Search for projects with keyword, skill, and budget filters.
 - `continuationToken`: Token for pagination
 
 **Response (200 OK)**:
+
 ```json
 {
   "items": [
@@ -1708,9 +1857,11 @@ Search for projects with keyword, skill, and budget filters.
 ```
 
 **Error Codes**:
+
 - `400`: Invalid request parameters
 
 ### Search Freelancers
+
 Search for freelancers with keyword and skill filters.
 
 **HTTP Method**: `GET`  
@@ -1719,12 +1870,14 @@ Search for freelancers with keyword and skill filters.
 **Rate Limit**: 100 requests per minute
 
 **Query Parameters**:
+
 - `keyword`: Search keyword for bio
 - `skills`: Comma-separated skill IDs to filter by
 - `pageSize`: Number of results per page (default: 20, max: 100)
 - `continuationToken`: Token for pagination
 
 **Response (200 OK)**:
+
 ```json
 {
   "items": [
@@ -1765,6 +1918,7 @@ Search for freelancers with keyword and skill filters.
 ```
 
 **Error Codes**:
+
 - `400`: Invalid request parameters
 
 ## Error Handling
@@ -1772,6 +1926,7 @@ Search for freelancers with keyword and skill filters.
 The API uses a consistent error response format across all endpoints. Error responses include a standardized structure with error code, message, timestamp, and request ID for debugging.
 
 **Error Response Format**:
+
 ```json
 {
   "error": {
@@ -1793,7 +1948,7 @@ The API uses a consistent error response format across all endpoints. Error resp
 ### Common Error Codes
 
 | Error Code | HTTP Status | Description |
-|------------|-------------|-------------|
+| ------------ | ------------- | ------------- |
 | `VALIDATION_ERROR` | 400 | Request data failed validation |
 | `AUTH_MISSING_TOKEN` | 401 | Authorization header is required |
 | `AUTH_INVALID_FORMAT` | 401 | Authorization header must be in format: Bearer <token> |
@@ -1807,6 +1962,7 @@ The API uses a consistent error response format across all endpoints. Error resp
 ### Error Response Examples
 
 **Validation Error**:
+
 ```json
 {
   "error": {
@@ -1829,6 +1985,7 @@ The API uses a consistent error response format across all endpoints. Error resp
 ```
 
 **Authentication Error**:
+
 ```json
 {
   "error": {
@@ -1841,6 +1998,7 @@ The API uses a consistent error response format across all endpoints. Error resp
 ```
 
 **Not Found Error**:
+
 ```json
 {
   "error": {
@@ -1853,6 +2011,7 @@ The API uses a consistent error response format across all endpoints. Error resp
 ```
 
 **Rate Limit Exceeded**:
+
 ```json
 {
   "error": {
@@ -1889,7 +2048,7 @@ J[Sensitive Operations] --> D
 ### Rate Limiting Rules
 
 | Endpoint Group | Rate Limit | Window | Description |
-|----------------|------------|--------|-------------|
+| ---------------- | ------------ | -------- | ------------- |
 | Authentication | 10 attempts | 15 minutes | Applies to login, registration, and token refresh |
 | API Endpoints | 100 requests | 1 minute | Applies to all authenticated API endpoints |
 | Sensitive Operations | 5 attempts | 1 hour | Applies to sensitive operations like KYC submission |
@@ -1909,6 +2068,7 @@ When the rate limit is exceeded, the API returns:
 
 **HTTP Status**: `429 Too Many Requests`  
 **Response Body**:
+
 ```json
 {
   "error": {
@@ -2196,6 +2356,7 @@ The API maintains backward compatibility through the following practices:
 1. **No Breaking Changes in Minor Versions**: Minor version updates (e.g., 1.1, 1.2) only add new features and endpoints without modifying existing ones.
 
 2. **Deprecation Policy**: When an endpoint or field needs to be removed, it is first marked as deprecated with a warning in the response headers:
+
    ```
    Deprecation: true
    Sunset: Wed, 31 Dec 2023 23:59:59 GMT
@@ -2220,18 +2381,21 @@ When a new major version is released, the following migration path is provided:
 ### Example Version Transition
 
 **Version 1 (Current)**:
+
 ```
 GET /api/projects
 Response: { id, title, description, budget, status }
 ```
 
 **Version 2 (Future)**:
+
 ```
 GET /api/v2/projects
 Response: { id, title, description, budget, status, createdAt, updatedAt }
 ```
 
 During the transition period:
+
 - `/api/projects` continues to work (v1)
 - `/api/v2/projects` is available (v2)
 - Both endpoints are documented

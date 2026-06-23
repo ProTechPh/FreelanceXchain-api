@@ -5,6 +5,7 @@ Utility scripts for deployment, administration, development, and testing.
 ## 📁 Script Categories
 
 ### 🚀 Deployment Scripts
+
 Scripts for deploying smart contracts to blockchain networks.
 
 **Location:** `deployment/`
@@ -15,6 +16,7 @@ Scripts for deploying smart contracts to blockchain networks.
 - **[deploy.cjs](deployment/deploy.cjs)** - General deployment script
 
 **Usage:**
+
 ```bash
 # Deploy all contracts
 node scripts/deployment/deploy-all.cjs
@@ -24,6 +26,7 @@ node scripts/deployment/deploy-escrow.cjs
 ```
 
 ### 👥 Admin Scripts
+
 Administrative tools for user management and system administration.
 
 **Location:** `admin/`
@@ -32,6 +35,7 @@ Administrative tools for user management and system administration.
 - **[reset-admin-password.js](admin/reset-admin-password.js)** - Reset admin user password
 
 **Usage:**
+
 ```bash
 # List admin users
 node scripts/admin/list-admin-users.js
@@ -41,6 +45,7 @@ node scripts/admin/reset-admin-password.js
 ```
 
 ### 🛠️ Development Scripts
+
 Development tools and utilities.
 
 **Location:** `dev/`
@@ -48,6 +53,7 @@ Development tools and utilities.
 - **[generate-openapi.ts](dev/generate-openapi.ts)** - Generate OpenAPI specification from Swagger config
 
 **Usage:**
+
 ```bash
 # Generate OpenAPI spec
 pnpm run openapi:generate
@@ -56,6 +62,7 @@ tsx scripts/dev/generate-openapi.ts
 ```
 
 ### 🧪 Testing Scripts
+
 Testing utilities and workflow scripts.
 
 **Location:** `testing/`
@@ -63,6 +70,7 @@ Testing utilities and workflow scripts.
 - **[test-workflow.cjs](testing/test-workflow.cjs)** - End-to-end workflow testing script
 
 **Usage:**
+
 ```bash
 # Run workflow tests
 node scripts/testing/test-workflow.cjs
@@ -75,15 +83,17 @@ Before running scripts, ensure you have:
 1. **Environment Variables** - Copy `.env.example` to `.env` and configure:
    - `APPWRITE_URL` - Appwrite project URL
    - `APPWRITE_SERVICE_ROLE_KEY` - Service role key for admin operations
-   - `BLOCKCHAIN_RPC_URL` - Blockchain RPC endpoint (default: http://127.0.0.1:7545)
+   - `BLOCKCHAIN_RPC_URL` - Blockchain RPC endpoint (default: <http://127.0.0.1:7545>)
    - `BLOCKCHAIN_PRIVATE_KEY` - Private key for contract deployment
 
 2. **Dependencies Installed**
+
    ```bash
    pnpm install
    ```
 
 3. **Blockchain Node Running** (for deployment scripts)
+
    ```bash
    # Start Ganache or your preferred local blockchain
    ganache-cli -p 7545
@@ -98,16 +108,19 @@ Before running scripts, ensure you have:
 ## 🚨 Important Notes
 
 ### Deployment Scripts
+
 - Always test on local blockchain (Ganache) before deploying to testnet/mainnet
 - Keep private keys secure and never commit them to version control
 - Verify contract addresses after deployment
 
 ### Admin Scripts
+
 - Admin scripts require `APPWRITE_SERVICE_ROLE_KEY` for elevated permissions
 - Use with caution in production environments
 - Always backup data before running admin operations
 
 ### Development Scripts
+
 - OpenAPI generation should be run after API changes
 - Commit generated `openapi.json` to version control
 
@@ -130,16 +143,20 @@ When adding new scripts:
 ## 🆘 Troubleshooting
 
 **Script fails with "Cannot find module"**
+
 - Run `pnpm install` to ensure all dependencies are installed
 
 **Deployment fails with "insufficient funds"**
+
 - Ensure your wallet has enough ETH/tokens for gas fees
 - Check blockchain connection and RPC URL
 
 **Admin script fails with "permission denied"**
+
 - Verify `APPWRITE_SERVICE_ROLE_KEY` is set correctly
 - Check user permissions in Appwrite dashboard
 
 **TypeScript script won't run**
+
 - Use `tsx` or `ts-node` to run TypeScript files directly
 - Or compile first: `tsc scripts/dev/generate-openapi.ts`

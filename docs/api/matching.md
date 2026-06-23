@@ -1,6 +1,7 @@
 # AI Matching API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,7 +14,9 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the AI-powered matching system in the FreelanceXchain platform. It covers:
+
 - HTTP methods, URL patterns, request/response schemas, and authentication requirements (JWT Bearer)
 - AI model inputs and outputs for project recommendations, freelancer recommendations, skill extraction, and skill gap analysis
 - Match scores, confidence levels, and reasoning explanations
@@ -21,6 +24,7 @@ This document provides comprehensive API documentation for the AI-powered matchi
 - Rate limiting for AI service calls and the data sources used for skill matching and market demand analysis
 
 ## Project Structure
+
 The AI matching endpoints are implemented as Express routes backed by a matching service that orchestrates AI clients and repositories. The system enforces JWT authentication and applies rate limiting.
 
 ```mermaid
@@ -37,6 +41,7 @@ AIClient --> Fallback["Keyword-based Fallback"]
 ```
 
 ## Core Components
+
 - Matching Routes: Define endpoints for project recommendations, freelancer recommendations, skill extraction, and skill gap analysis. All endpoints require JWT Bearer authentication.
 - Matching Service: Implements recommendation logic, integrates AI client, and falls back to keyword-based matching when AI is unavailable.
 - AI Client: Manages LLM API connectivity, retries, timeouts, and response parsing. Provides prompts for skill matching, extraction, and gap analysis.
@@ -45,7 +50,9 @@ AIClient --> Fallback["Keyword-based Fallback"]
 - Skill Service and Repositories: Provide taxonomy data (active skills) used for mapping and extraction.
 
 ## Architecture Overview
+
 The AI Matching API follows a layered architecture:
+
 - Presentation Layer: Express routes define endpoints and handle request validation.
 - Application Layer: Matching service coordinates repositories and AI client.
 - AI Layer: AI client communicates with LLM API and provides fallbacks.
@@ -77,11 +84,13 @@ R-->>C : "200 OK"
 ## Detailed Component Analysis
 
 ### Authentication and Security
+
 - All matching endpoints require a Bearer token in the Authorization header.
 - The auth middleware validates the token and attaches user context to the request.
 - The Swagger configuration defines the bearerAuth security scheme.
 
 ### Rate Limiting
+
 - General API rate limiter: 100 requests per minute per client IP.
 - Sensitive operations can use a separate limiter if needed.
 - The rate limiter responds with 429 Too Many Requests and Retry-After header.
@@ -89,6 +98,7 @@ R-->>C : "200 OK"
 ### Endpoint Definitions
 
 #### GET /api/matching/projects
+
 - Purpose: Retrieve AI-powered project recommendations for a freelancer.
 - Authentication: JWT Bearer required.
 - Query Parameters:
@@ -100,6 +110,7 @@ R-->>C : "200 OK"
   - 400 Bad Request (validation errors)
 
 ProjectRecommendation schema:
+
 - projectId: string
 - matchScore: number (0–100)
 - matchedSkills: string[]
@@ -107,6 +118,7 @@ ProjectRecommendation schema:
 - reasoning: string
 
 #### GET /api/matching/freelancers/{projectId}
+
 - Purpose: Retrieve AI-powered freelancer recommendations for a project.
 - Authentication: JWT Bearer required.
 - Path Parameters:
@@ -120,6 +132,7 @@ ProjectRecommendation schema:
   - 404 Not Found (project not found)
 
 FreelancerRecommendation schema:
+
 - freelancerId: string
 - matchScore: number (0–100)
 - reputationScore: number (fixed default in service)
@@ -128,6 +141,7 @@ FreelancerRecommendation schema:
 - reasoning: string
 
 #### POST /api/matching/extract-skills
+
 - Purpose: Extract skills from text and map them to the platform taxonomy.
 - Authentication: JWT Bearer required.
 - Request Body:
@@ -138,11 +152,13 @@ FreelancerRecommendation schema:
   - 401 Unauthorized (invalid or missing token)
 
 ExtractedSkill schema:
+
 - skillId: string
 - skillName: string
 - confidence: number (0–1)
 
 #### GET /api/matching/skill-gaps
+
 - Purpose: Analyze freelancer’s skills and suggest improvements based on market demand.
 - Authentication: JWT Bearer required.
 - Response: SkillGapAnalysis object.
@@ -151,6 +167,7 @@ ExtractedSkill schema:
   - 404 Not Found (freelancer profile not found)
 
 SkillGapAnalysis schema:
+
 - currentSkills: string[]
 - recommendedSkills: string[]
 - marketDemand: array of { skillName: string, demandLevel: "high" | "medium" | "low" }
@@ -159,6 +176,7 @@ SkillGapAnalysis schema:
 ### AI Model Inputs and Outputs
 
 #### Skill Matching (Project Recommendations)
+
 - Inputs:
   - freelancerSkills: array of SkillInfo (skillId, skillName, categoryId, yearsOfExperience)
   - projectRequirements: array of SkillInfo (skillId, skillName, categoryId, yearsOfExperience)
@@ -170,9 +188,11 @@ SkillGapAnalysis schema:
   - reasoning: string
 
 Fallback behavior:
+
 - If AI is unavailable or fails, the service uses keyword-based matching.
 
 #### Skill Extraction (Text to Taxonomy)
+
 - Inputs:
   - text: string
   - availableSkills: array of SkillInfo (from taxonomy)
@@ -180,9 +200,11 @@ Fallback behavior:
   - ExtractedSkill[] with confidence (0–1)
 
 Fallback behavior:
+
 - If AI is unavailable or fails, the service uses keyword-based extraction.
 
 #### Skill Gap Analysis
+
 - Inputs:
   - currentSkills: string[] (from freelancer profile)
 - Output:
@@ -192,9 +214,11 @@ Fallback behavior:
   - reasoning: string
 
 Fallback behavior:
+
 - If AI is unavailable, returns basic analysis with guidance.
 
 ### Data Sources Used for Skill Matching and Market Demand
+
 - Active Skills Taxonomy:
   - Provided by the skill service/repository, filtered to is_active = true.
 - Freelancer Profile:
@@ -205,6 +229,7 @@ Fallback behavior:
   - Derived from AI analysis when available; otherwise empty arrays.
 
 ### Client Implementation Examples
+
 Below are conceptual examples of how to integrate AI recommendations into user interfaces. Replace placeholders with your actual API base URL and JWT token.
 
 - Fetch Project Recommendations
@@ -279,6 +304,7 @@ MatchingService --> Repositories : "uses"
 ```
 
 ## Performance Considerations
+
 - AI Call Limits:
   - The AI client enforces a request timeout and retry logic with exponential backoff for transient failures.
   - Configure LLM_API_KEY and LLM_API_URL to enable AI features.
@@ -290,7 +316,9 @@ MatchingService --> Repositories : "uses"
   - Apply apiRateLimiter to protect the API and downstream LLM costs.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Unauthorized Access
   - Cause: Missing or invalid Authorization header.
   - Resolution: Ensure Bearer token is present and valid.
@@ -308,17 +336,20 @@ Common issues and resolutions:
   - Resolution: Respect Retry-After header and reduce request frequency.
 
 ## Conclusion
+
 The AI Matching API provides robust, extensible endpoints for skill-based recommendations and analysis. It gracefully degrades to keyword-based matching when AI is unavailable, supports JWT authentication, and applies rate limiting to protect resources. Integrating these endpoints into client applications enables dynamic, data-driven matching experiences for freelancers and employers.
 
 ## Appendices
 
 ### Environment Variables
+
 - LLM_API_KEY: LLM API key for AI features
 - LLM_API_URL: LLM API base URL
 - JWT_SECRET: Secret for JWT signing
 - APPWRITE_URL, APPWRITE_ANON_KEY: Appwrite connection credentials
 
 ### Example Request/Response Mapping
+
 - Project Recommendations
   - Request: GET /api/matching/projects?limit=10
   - Response: Array of ProjectRecommendation
@@ -337,6 +368,7 @@ The AI Matching API provides robust, extensible endpoints for skill-based recomm
 ## Freelancer Recommendations API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -349,10 +381,13 @@ The AI Matching API provides robust, extensible endpoints for skill-based recomm
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document describes the GET /api/matching/freelancers/{projectId} endpoint for retrieving AI-powered freelancer recommendations for a given project. It covers authentication, path and query parameters, response schema, AI matching logic, error handling, and client implementation guidance for integrating recommendations into a project management interface.
 
 ## Project Structure
+
 The endpoint is implemented as part of the matching module:
+
 - Route handler: GET /api/matching/freelancers/:projectId
 - Service logic: getFreelancerRecommendations
 - Data access: repositories for projects and freelancers
@@ -376,6 +411,7 @@ Router --> Client
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/matching/freelancers/{projectId}
 - Authentication: Bearer token required
 - Path parameter: projectId (UUID)
@@ -385,7 +421,9 @@ Router --> Client
 - Error responses: 400 (invalid UUID or limit), 401 (unauthorized), 404 (project not found)
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - HTTP layer: Express route with middleware
 - Service layer: Business logic for recommendation computation
 - Data layer: Repositories for projects and freelancers
@@ -431,6 +469,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: GET
 - Path: /api/matching/freelancers/{projectId}
 - Authentication: Required (Bearer token)
@@ -445,7 +484,9 @@ end
   - 404: Project not found
 
 ### Response Schema: FreelancerRecommendation
+
 Each recommendation object includes:
+
 - freelancerId: string (UUID)
 - matchScore: number (0-100)
 - reputationScore: number (0-100)
@@ -456,7 +497,9 @@ Each recommendation object includes:
 These fields are produced by the service and returned as-is to clients.
 
 ### AI Matching Logic and Weighting
+
 The service computes a combined score by combining:
+
 - Skill match score (0-100)
 - Blockchain-verified reputation score (0-100)
 Weighting constants:
@@ -465,6 +508,7 @@ Weighting constants:
 combinedScore = floor(matchScore × 0.7 + reputationScore × 0.3)
 
 Fallback behavior:
+
 - If AI is available, use analyzeSkillMatch; on AI error, fall back to keywordMatchSkills
 - If AI is unavailable, use keywordMatchSkills
 
@@ -489,6 +533,7 @@ Limit --> Done(["Return recommendations"])
 ```
 
 ### Validation and Error Handling
+
 - Path parameter validation:
   - projectId must be a valid UUID; otherwise 400
 - Query parameter validation:
@@ -528,11 +573,14 @@ Limit --> Done(["Return recommendations"])
     ]
 
 Notes:
+
 - The endpoint returns up to limit recommendations (default 10, max 50).
 - The combinedScore reflects the weighted combination of skill match and reputation.
 
 ### Client Implementation Guidance
+
 Recommended UI features for a project management interface:
+
 - Display recommendations in a sortable table with columns:
   - Freelancer name/avatar (from user profile)
   - combinedScore (primary sort)
@@ -555,7 +603,9 @@ Recommended UI features for a project management interface:
 [No sources needed since this section provides general guidance]
 
 ## Dependency Analysis
+
 The endpoint depends on:
+
 - Route handler for routing and middleware
 - Service layer for recommendation computation
 - Repositories for data access
@@ -572,6 +622,7 @@ Routes --> Val["validation-middleware.ts"]
 ```
 
 ## Performance Considerations
+
 - Recommendation computation loops over available freelancers; consider pagination or caching for large datasets.
 - AI calls are asynchronous with retries and timeouts; ensure client-side retry/backoff policies.
 - Sorting and slicing occur server-side; keep limit reasonable (≤50) to avoid heavy computations.
@@ -579,7 +630,9 @@ Routes --> Val["validation-middleware.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Bad Request:
   - Invalid UUID for projectId
   - Invalid limit (non-positive or out of range)
@@ -591,6 +644,7 @@ Common issues and resolutions:
   - If AI is unavailable or returns errors, the service falls back to keyword-based matching
 
 ## Conclusion
+
 The GET /api/matching/freelancers/{projectId} endpoint provides employer-facing recommendations by combining AI-driven skill matching with a reputation weighting. It enforces JWT authentication, validates UUIDs and limits, and returns a ranked list of freelancers suitable for the specified project. Clients should display recommendations with filtering and contact actions to streamline hiring decisions.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -598,6 +652,7 @@ The GET /api/matching/freelancers/{projectId} endpoint provides employer-facing 
 ## Appendices
 
 ### API Definition Summary
+
 - Method: GET
 - Path: /api/matching/freelancers/{projectId}
 - Auth: Bearer token
@@ -613,6 +668,7 @@ The GET /api/matching/freelancers/{projectId} endpoint provides employer-facing 
 ## Project Recommendations API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -625,10 +681,13 @@ The GET /api/matching/freelancers/{projectId} endpoint provides employer-facing 
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the GET /api/matching/projects endpoint in the FreelanceXchain system. It covers authentication requirements, query parameter validation, response schema, AI matching logic, error handling, and client integration guidance for building a dashboard UI that displays project recommendations.
 
 ## Project Structure
+
 The recommendations endpoint is implemented as part of the matching module:
+
 - Route handler: GET /api/matching/projects
 - Middleware: JWT authentication
 - Service: AI-powered skill matching between freelancer and open projects
@@ -649,6 +708,7 @@ Route --> Client
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/matching/projects
 - Authentication: Bearer JWT token required
 - Query parameter:
@@ -659,7 +719,9 @@ Route --> Client
   - 404 Not Found (freelancer profile not found)
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - Route layer validates JWT and parses query parameters
 - Service layer orchestrates data fetching and AI matching
 - Repository layer retrieves open projects and freelancer profile
@@ -707,6 +769,7 @@ end
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: GET
 - Path: /api/matching/projects
 - Authentication: Required (Bearer JWT)
@@ -715,6 +778,7 @@ end
 - Response: Array of ProjectRecommendation objects
 
 ### Request Flow and Validation
+
 - JWT validation performed by auth middleware
 - limit parameter parsing and validation:
   - If provided, must be a positive integer
@@ -735,7 +799,9 @@ CallSvc --> End(["Response Sent"])
 ```
 
 ### Response Schema: ProjectRecommendation
+
 Each recommendation object includes:
+
 - projectId: string
 - matchScore: number (0-100)
 - matchedSkills: string[]
@@ -745,11 +811,14 @@ Each recommendation object includes:
 These fields are populated by the AI matching result and returned directly to clients.
 
 ### AI Matching Logic
+
 The system computes match scores using either:
+
 - LLM-powered analysis when API key is configured
 - Keyword-based matching as fallback
 
 Key steps:
+
 - Retrieve freelancer profile and convert skills to SkillInfo
 - Fetch up to 100 open projects
 - For each project, convert required skills to SkillInfo
@@ -779,6 +848,7 @@ M --> N["Return recommendations"]
 ```
 
 ### Error Handling
+
 - 401 Unauthorized:
   - Missing Authorization header
   - Invalid Bearer format
@@ -820,7 +890,9 @@ Note: The repository’s API documentation shows a different response shape with
 ```
 
 ## Dependency Analysis
+
 The endpoint depends on:
+
 - Route handler for JWT validation and parameter parsing
 - Matching service for orchestration and scoring
 - AI client for LLM integration and fallbacks
@@ -838,6 +910,7 @@ Routes --> Swagger["swagger.ts"]
 ```
 
 ## Performance Considerations
+
 - The service fetches up to 100 open projects and computes match scores for each, then sorts and slices to top N. This is efficient for typical workloads but consider:
   - Limiting limit to reasonable values (already enforced at 50)
   - Ensuring AI API key is configured to leverage LLM scoring
@@ -847,7 +920,9 @@ Routes --> Swagger["swagger.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized:
   - Verify Authorization header format: Bearer <token>
   - Ensure token is not expired
@@ -861,6 +936,7 @@ Common issues and resolutions:
   - Retry after network stabilization
 
 ## Conclusion
+
 The GET /api/matching/projects endpoint provides AI-driven project recommendations for freelancers. It enforces JWT authentication, validates the limit parameter, and returns a ranked list of recommendations with match scores, matched skills, missing skills, and reasoning. The system gracefully falls back to keyword-based matching when AI is unavailable and maintains clear error responses for common failure modes.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -868,6 +944,7 @@ The GET /api/matching/projects endpoint provides AI-driven project recommendatio
 ## Appendices
 
 ### Client Implementation Guidance
+
 - Authentication:
   - Store JWT securely (e.g., HttpOnly cookies or secure storage)
   - Attach Authorization header with each request
@@ -891,6 +968,7 @@ The GET /api/matching/projects endpoint provides AI-driven project recommendatio
 ## Skill Extraction API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -903,9 +981,11 @@ The GET /api/matching/projects endpoint provides AI-driven project recommendatio
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the skill extraction endpoint in the FreelanceXchain system. It covers the POST /api/matching/extract-skills endpoint, including authentication requirements, request/response schemas, the AI processing pipeline powered by Google Gemini, error handling, and practical client integration guidance for profile creation and project posting workflows.
 
 ## Project Structure
+
 The skill extraction feature spans routing, service logic, AI client integration, and configuration. The endpoint is defined under the matching routes module and delegates to the matching service, which orchestrates AI extraction and keyword fallback logic. Environment variables configure the LLM API integration.
 
 ```mermaid
@@ -921,6 +1001,7 @@ Routes --> Client
 ```
 
 ## Core Components
+
 - Endpoint: POST /api/matching/extract-skills
 - Authentication: Bearer JWT token required
 - Request body: JSON object with a required string field text
@@ -928,6 +1009,7 @@ Routes --> Client
 - AI Pipeline: Uses Google Gemini via the AI client; falls back to keyword extraction if AI is unavailable
 
 ## Architecture Overview
+
 The skill extraction pipeline integrates the Express route, authentication middleware, matching service, AI client, and the Appwrite skill taxonomy. The service retrieves active skills from the taxonomy, attempts AI extraction, and falls back to keyword-based extraction when AI is unavailable.
 
 ```mermaid
@@ -961,6 +1043,7 @@ R-->>C : 200 OK [ExtractedSkill[]]
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Authentication
+
 - Method: POST
 - Path: /api/matching/extract-skills
 - Authentication: Requires a Bearer token in the Authorization header
@@ -973,11 +1056,14 @@ R-->>C : 200 OK [ExtractedSkill[]]
     - confidence: number (0–1)
 
 Error responses:
+
 - 400 Bad Request: Missing or invalid text input
 - 401 Unauthorized: Missing or invalid JWT token
 
 ### AI Processing Pipeline
+
 The pipeline uses Google Gemini to extract skills from unstructured text and map them to the platform’s standardized skill taxonomy. It follows a two-stage approach:
+
 1. AI Extraction: Sends a structured prompt to Gemini with the input text and the active skill taxonomy. Gemini responds with a JSON array of ExtractedSkill objects.
 2. Fallback: If AI is unavailable or fails, the service performs keyword-based extraction against the active skills.
 
@@ -1000,6 +1086,7 @@ Filter --> Return200["Return ExtractedSkill[]"]
 ```
 
 ### Data Models and Schemas
+
 - ExtractedSkill: skillId, skillName, confidence
 - SkillExtractionRequest: text, availableSkills (SkillInfo[])
 - SkillInfo: skillId, skillName, categoryId?, yearsOfExperience?
@@ -1007,6 +1094,7 @@ Filter --> Return200["Return ExtractedSkill[]"]
 These types define the shape of requests and responses exchanged between the route, service, and AI client.
 
 ### Skill Taxonomy and Validation
+
 The service loads active skills from the Appwrite skills table to form the taxonomy used for mapping. The service filters extracted skills to ensure their IDs correspond to active skills in the taxonomy.
 
 ```mermaid
@@ -1026,6 +1114,7 @@ boolean is_active
 ```
 
 ### Example Request and Response
+
 - Example request body:
   - text: "Looking for a developer with React, Node.js, and PostgreSQL experience"
 - Example response (sample):
@@ -1036,10 +1125,12 @@ boolean is_active
     ]
 
 Notes:
+
 - The actual skillId values are UUIDs from the Appwrite skills table.
 - Confidence values are normalized to 0–1.
 
 ### Error Handling
+
 - 400 Bad Request:
   - Missing or invalid text input
   - AI extraction failure (when AI is enabled)
@@ -1049,7 +1140,9 @@ Notes:
 The route validates the presence and type of text and forwards service errors to the client with appropriate status codes.
 
 ## Dependency Analysis
+
 The skill extraction endpoint depends on:
+
 - Express route handler for authentication and request validation
 - Matching service for orchestration and fallback logic
 - AI client for Gemini integration and response parsing
@@ -1064,6 +1157,7 @@ Routes --> Env["env.ts (LLM config)"]
 ```
 
 ## Performance Considerations
+
 - AI latency: Gemini requests are subject to network latency and rate limits. The AI client implements retry logic and timeouts.
 - Keyword fallback: When AI is unavailable, keyword extraction is efficient but less precise than AI.
 - Tokenization: The service normalizes confidence values and filters invalid skill IDs to reduce downstream processing overhead.
@@ -1071,7 +1165,9 @@ Routes --> Env["env.ts (LLM config)"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - Missing or invalid JWT token:
   - Ensure Authorization: Bearer <token> is included in the request header.
 - Missing or empty text:
@@ -1082,6 +1178,7 @@ Common issues and resolutions:
   - The service automatically falls back to keyword extraction. If both fail, the service returns an empty array or a validation error.
 
 ## Conclusion
+
 The POST /api/matching/extract-skills endpoint provides a robust mechanism to identify and map skills from unstructured text using Google Gemini, with a reliable keyword-based fallback. It enforces JWT authentication, validates inputs, and returns a standardized ExtractedSkill array suitable for enriching profiles and project requirements.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -1089,6 +1186,7 @@ The POST /api/matching/extract-skills endpoint provides a robust mechanism to id
 ## Appendices
 
 ### Client Implementation Guidance
+
 - Real-time suggestions during profile creation:
   - As users type in a resume or portfolio, trigger skill extraction with short text fragments to prepopulate skill fields.
   - Merge AI-extracted skills with manual selections and allow users to adjust confidence thresholds.
@@ -1105,6 +1203,7 @@ The POST /api/matching/extract-skills endpoint provides a robust mechanism to id
 ## Skill Gap Analysis API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -1117,9 +1216,11 @@ The POST /api/matching/extract-skills endpoint provides a robust mechanism to id
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the skill gap analysis endpoint in the FreelanceXchain system. It covers the GET /api/matching/skill-gaps endpoint, including authentication requirements, request and response schemas, error handling, and practical guidance for client-side implementation in a career development dashboard.
 
 ## Project Structure
+
 The skill gap analysis endpoint is implemented as part of the matching module. The route handler delegates to a service that orchestrates AI analysis and repository access to produce a structured SkillGapAnalysis response.
 
 ```mermaid
@@ -1135,12 +1236,14 @@ Route --> Client
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/matching/skill-gaps
 - Authentication: JWT via Bearer token
 - No query parameters
 - Response: SkillGapAnalysis object with currentSkills, recommendedSkills, marketDemand, and reasoning
 
 Key implementation references:
+
 - Route definition and Swagger schema: [matching-routes.ts](file://src/routes/matching-routes.ts#L327-L369)
 - Service logic and AI integration: [matching-service.ts](file://src/services/matching-service.ts#L271-L353)
 - AI prompt and response handling: [ai-client.ts](file://src/services/ai-client.ts#L58-L73), [ai-client.ts](file://src/services/ai-client.ts#L222-L247)
@@ -1149,7 +1252,9 @@ Key implementation references:
 - Authentication middleware: [auth-middleware.ts](file://src/middleware/auth-middleware.ts#L25-L70)
 
 ## Architecture Overview
+
 The endpoint follows a layered architecture:
+
 - HTTP Layer: Express route with auth middleware
 - Service Layer: Business logic for skill gap analysis
 - Data Access Layer: Repository for freelancer profile
@@ -1185,6 +1290,7 @@ R-->>C : "200 OK + JSON"
 ## Detailed Component Analysis
 
 ### Endpoint Definition
+
 - Method: GET
 - Path: /api/matching/skill-gaps
 - Authentication: Required (Bearer JWT)
@@ -1194,12 +1300,14 @@ R-->>C : "200 OK + JSON"
 Swagger schema and route:
 
 ### Authentication Flow
+
 - Validates Authorization header format and token signature
 - Attaches user payload (userId, email, role) to request for downstream use
 
 References:
 
 ### Service Logic and AI Integration
+
 - Retrieves freelancer profile by userId
 - Builds currentSkills from profile
 - If AI is available, generates content using SKILL_GAP_PROMPT
@@ -1229,6 +1337,7 @@ Done --> End
 ```
 
 ### Data Model: SkillGapAnalysis
+
 - currentSkills: string[]
 - recommendedSkills: string[]
 - marketDemand: Array with skillName and demandLevel (high | medium | low)
@@ -1237,12 +1346,14 @@ Done --> End
 References:
 
 ### Repository Access
+
 - getProfileByUserId(userId) returns the freelancer’s profile entity
 - Used to extract currentSkills for analysis
 
 References:
 
 ### AI Prompt and Response Handling
+
 - SKILL_GAP_PROMPT defines the instruction for the LLM
 - generateContent sends the prompt and returns either a string or an AIError
 - Response parsing handles markdown code blocks and JSON validation
@@ -1250,6 +1361,7 @@ References:
 References:
 
 ### Example Request
+
 - Method: GET
 - Path: /api/matching/skill-gaps
 - Headers:
@@ -1260,6 +1372,7 @@ References:
 References:
 
 ### Example Response
+
 Sample JSON structure:
 {
   "currentSkills": ["React", "TypeScript", "Node.js"],
@@ -1275,13 +1388,16 @@ Sample JSON structure:
 References:
 
 ### Error Handling
+
 - 401 Unauthorized: Missing or invalid Authorization header; invalid or expired token
 - 404 Not Found: Profile not found for the authenticated user
 
 References:
 
 ### Client Implementation Guidance
+
 Recommended UI/UX patterns for a career development dashboard:
+
 - Display currentSkills as a tag list with proficiency indicators
 - Show recommendedSkills grouped by demandLevel (high/medium/low) with icons
 - Render reasoning as a contextual explanation card
@@ -1295,7 +1411,9 @@ Recommended UI/UX patterns for a career development dashboard:
 [No sources needed since this section provides general guidance]
 
 ## Dependency Analysis
+
 The endpoint depends on:
+
 - Route handler for routing and Swagger documentation
 - Auth middleware for JWT validation
 - Matching service for orchestration and AI integration
@@ -1314,6 +1432,7 @@ App["app.ts"] --> Routes
 ```
 
 ## Performance Considerations
+
 - AI calls are asynchronous and include retry logic; network timeouts are handled
 - The endpoint performs a single repository read for the profile
 - Recommendations are generated once per request; caching strategies can be considered at the client level
@@ -1322,7 +1441,9 @@ App["app.ts"] --> Routes
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized
   - Verify Authorization header format: Bearer <token>
   - Confirm token validity and expiration
@@ -1338,6 +1459,7 @@ Common issues and resolutions:
   - References: [matching-service.ts](file://src/services/matching-service.ts#L301-L353)
 
 ## Conclusion
+
 The GET /api/matching/skill-gaps endpoint provides a robust, AI-enhanced skill gap analysis for freelancers. It requires JWT authentication, returns a structured SkillGapAnalysis object, and gracefully degrades when AI is unavailable. Clients can integrate this endpoint into a career development dashboard to display actionable insights and learning recommendations.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -1345,6 +1467,7 @@ The GET /api/matching/skill-gaps endpoint provides a robust, AI-enhanced skill g
 ## Appendices
 
 ### API Definition Summary
+
 - Method: GET
 - Path: /api/matching/skill-gaps
 - Authentication: Bearer JWT

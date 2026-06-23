@@ -47,38 +47,45 @@ Thank you for your interest in contributing to FreelanceXchain! This guide will 
 ### Initial Setup
 
 1. **Fork the repository**
+
    ```bash
    # Click "Fork" on GitHub
    ```
 
 2. **Clone your fork**
+
    ```bash
    git clone https://github.com/YOUR_USERNAME/FreelanceXchain-api.git
    cd FreelanceXchain-api
    ```
 
 3. **Add upstream remote**
+
    ```bash
    git remote add upstream https://github.com/ORIGINAL_OWNER/FreelanceXchain-api.git
    ```
 
 4. **Install dependencies**
+
    ```bash
    pnpm install --frozen-lockfile
    ```
 
 5. **Set up environment**
+
    ```bash
    cp .env.example .env
    # Edit .env with your credentials
    ```
 
 6. **Run the application**
+
    ```bash
    pnpm run dev
    ```
 
 7. **Run tests**
+
    ```bash
    pnpm test
    ```
@@ -86,6 +93,7 @@ Thank you for your interest in contributing to FreelanceXchain! This guide will 
 ### Project Documentation
 
 Before contributing, familiarize yourself with:
+
 - [Developer Setup Guide](docs/getting-started/setup.md)
 - [Architecture Documentation](docs/architecture/)
 - [Source Code Structure](src/README.md)
@@ -120,6 +128,7 @@ git checkout -b fix/bug-description
 - `chore/` - Maintenance tasks
 
 Examples:
+
 - `feature/add-payment-gateway`
 - `fix/authentication-token-expiry`
 - `docs/update-api-documentation`
@@ -176,6 +185,7 @@ git push origin feature/your-feature-name
 ### TypeScript Style
 
 #### Use Strict Typing
+
 ```typescript
 // ✅ Good
 function calculateTotal(items: CartItem[]): number {
@@ -189,6 +199,7 @@ function calculateTotal(items: any): any {
 ```
 
 #### Prefer Interfaces for Objects
+
 ```typescript
 // ✅ Good
 interface User {
@@ -206,6 +217,7 @@ type User = {
 ```
 
 #### Use Async/Await
+
 ```typescript
 // ✅ Good
 async function getUser(id: string): Promise<User> {
@@ -222,12 +234,14 @@ function getUser(id: string): Promise<User> {
 ### File Organization
 
 #### Naming Conventions
+
 - **Files:** `kebab-case.ts` (e.g., `user-service.ts`)
 - **Classes:** `PascalCase` (e.g., `UserService`)
 - **Functions/Variables:** `camelCase` (e.g., `getUserById`)
 - **Constants:** `UPPER_SNAKE_CASE` (e.g., `MAX_RETRY_ATTEMPTS`)
 
 #### File Structure
+
 ```typescript
 // 1. Imports
 import { Express } from 'express';
@@ -254,6 +268,7 @@ export { CreateUserDto };
 ### Code Quality
 
 #### Error Handling
+
 ```typescript
 // ✅ Good
 try {
@@ -277,6 +292,7 @@ try {
 ```
 
 #### Validation
+
 ```typescript
 // ✅ Good
 function validateEmail(email: string): boolean {
@@ -369,6 +385,7 @@ BREAKING CHANGE: JWT tokens now expire after 1 hour instead of 24 hours
 ### PR Title Format
 
 Follow commit message format:
+
 ```
 feat(scope): add new feature
 fix(scope): resolve bug
@@ -586,6 +603,7 @@ Any other relevant information
 ## 🙏 Recognition
 
 Contributors will be:
+
 - Listed in CONTRIBUTORS.md
 - Mentioned in release notes
 - Credited in documentation

@@ -1,6 +1,7 @@
 # Notification API
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -13,9 +14,11 @@
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides comprehensive API documentation for the notification system endpoints in the FreelanceXchain platform. It covers HTTP methods, URL patterns, request/response schemas, authentication requirements (JWT Bearer), and pagination mechanisms. It also documents notification types, payload structures, and client implementation guidance for building a notification center with real-time updates. The goal is to enable developers to integrate notification retrieval, marking as read, and unread counts into their applications reliably and efficiently.
 
 ## Project Structure
+
 The notification API is implemented as part of the Express route layer, backed by a service layer and a repository that interacts with the Appwrite database. Authentication is enforced via a JWT Bearer middleware. The OpenAPI/Swagger specification defines response schemas and security schemes.
 
 ```mermaid
@@ -28,6 +31,7 @@ Repo --> DB["Appwrite: notifications table"]
 ```
 
 ## Core Components
+
 - Routes: Define endpoints for listing notifications, marking a notification as read, marking all as read, and retrieving unread counts. All endpoints require JWT Bearer authentication.
 - Service: Orchestrates business logic for creating, retrieving, and updating notifications, and exposes helper functions for specific notification types.
 - Repository: Implements database operations using Appwrite client, including paginated queries, unread counts, and bulk updates.
@@ -35,13 +39,16 @@ Repo --> DB["Appwrite: notifications table"]
 - Swagger: Defines the Notification schema, error schema, and security scheme for Bearer JWT.
 
 Key responsibilities:
+
 - Enforce authentication and user identity on protected endpoints.
 - Apply pagination and ordering for notification lists.
 - Enforce ownership checks when marking notifications as read.
 - Provide unread counts and bulk read operations.
 
 ## Architecture Overview
+
 The notification API follows a layered architecture:
+
 - Route handlers accept requests, enforce authentication, and delegate to the service.
 - Services translate request options into repository calls and map entities to API models.
 - Repositories encapsulate Appwrite queries and handle pagination metadata.
@@ -70,17 +77,20 @@ R-->>C : "200 OK with items, hasMore, total"
 ## Detailed Component Analysis
 
 ### Authentication and Security
+
 - All notification endpoints require a Bearer token in the Authorization header.
 - The auth middleware validates the header format and verifies the token, attaching user identity to the request.
 - Unauthorized responses include standardized error structure with code and message.
 
 Security requirements:
+
 - Header: Authorization: Bearer <JWT>
 - Scope: User-bound access token
 
 ### Endpoints Reference
 
 #### GET /api/notifications
+
 - Purpose: Retrieve notifications for the authenticated user, sorted newest first.
 - Authentication: Required (Bearer JWT).
 - Query parameters:
@@ -91,6 +101,7 @@ Security requirements:
   - 401 Unauthorized: Missing or invalid token.
 
 Notification schema (selected fields):
+
 - id: string (UUID)
 - userId: string (UUID)
 - type: enum [proposal_received, proposal_accepted, proposal_rejected, milestone_submitted, milestone_approved, payment_released, dispute_created, dispute_resolved, rating_received, message]
@@ -101,11 +112,13 @@ Notification schema (selected fields):
 - createdAt: string (ISO 8601)
 
 Pagination:
+
 - Uses Appwrite range queries with ORDER BY created_at DESC.
 - hasMore indicates whether more records exist beyond the current page.
 - total may be included depending on count mode.
 
 #### GET /api/notifications/unread-count
+
 - Purpose: Get the count of unread notifications for the authenticated user.
 - Authentication: Required (Bearer JWT).
 - Response:
@@ -113,6 +126,7 @@ Pagination:
   - 401 Unauthorized: Missing or invalid token.
 
 #### PATCH /api/notifications/:id/read
+
 - Purpose: Mark a specific notification as read.
 - Authentication: Required (Bearer JWT).
 - Path parameters:
@@ -125,9 +139,11 @@ Pagination:
   - 404 Not Found: Notification not found.
 
 Ownership enforcement:
+
 - The service fetches the notification and verifies that user_id matches the authenticated user before marking as read.
 
 #### PATCH /api/notifications/read-all
+
 - Purpose: Mark all notifications for the authenticated user as read.
 - Authentication: Required (Bearer JWT).
 - Response:
@@ -135,10 +151,13 @@ Ownership enforcement:
   - 401 Unauthorized: Missing or invalid token.
 
 Bulk update:
+
 - Repository performs an UPDATE with conditions to mark only unread notifications as read and returns the affected count.
 
 ### Notification Types
+
 Supported notification types:
+
 - proposal_received
 - proposal_accepted
 - proposal_rejected
@@ -153,6 +172,7 @@ Supported notification types:
 These types are defined in the repository and mapped to the API model. Additional helper functions exist in the service to create notifications for specific workflow events.
 
 ### Pagination Mechanism
+
 - The repository uses Appwrite range queries with ORDER BY created_at DESC.
 - QueryOptions supports limit/offset semantics; the route handler forwards maxItemCount and continuationToken to the service, which maps them to repository options.
 - Response includes hasMore and total to guide client-side pagination.
@@ -171,6 +191,7 @@ Map --> Respond["Return 200 with items, hasMore, total"]
 ### Request/Response Schemas
 
 #### Notification Object
+
 - id: string (UUID)
 - userId: string (UUID)
 - type: enum of supported notification types
@@ -181,14 +202,17 @@ Map --> Respond["Return 200 with items, hasMore, total"]
 - createdAt: string (ISO 8601)
 
 #### List Response
+
 - items: array of Notification
 - hasMore: boolean
 - total: number (optional)
 
 #### Unread Count Response
+
 - count: number
 
 #### Error Response
+
 - error: { code: string, message: string, details?: array }
 - timestamp: string (ISO 8601)
 - requestId: string (UUID)
@@ -196,6 +220,7 @@ Map --> Respond["Return 200 with items, hasMore, total"]
 ### Client Implementation Examples
 
 #### Fetching a User’s Notification List
+
 - Endpoint: GET /api/notifications
 - Headers: Authorization: Bearer <JWT>
 - Query parameters:
@@ -207,6 +232,7 @@ Map --> Respond["Return 200 with items, hasMore, total"]
   - Persist total for progress indicators.
 
 #### Marking a Notification as Read
+
 - Endpoint: PATCH /api/notifications/:id/read
 - Headers: Authorization: Bearer <JWT>
 - Path parameter: id (UUID)
@@ -215,12 +241,14 @@ Map --> Respond["Return 200 with items, hasMore, total"]
   - Decrement the unread count displayed in the UI.
 
 #### Retrieving the Unread Notification Count
+
 - Endpoint: GET /api/notifications/unread-count
 - Headers: Authorization: Bearer <JWT>
 - On success:
   - Update the badge or indicator showing unread count.
 
 #### Building a Real-Time Notification Center
+
 - Polling strategy:
   - Initial load: GET /api/notifications with maxItemCount and continuationToken.
   - Periodic polling: Every 15–30 seconds for unread count and/or recent notifications.
@@ -236,6 +264,7 @@ Map --> Respond["Return 200 with items, hasMore, total"]
 [No sources needed since this section provides general guidance]
 
 ## Dependency Analysis
+
 The notification API stack exhibits clear separation of concerns with low coupling between layers.
 
 ```mermaid
@@ -248,6 +277,7 @@ Swagger["swagger.ts"] --> Routes
 ```
 
 ## Performance Considerations
+
 - Pagination:
   - Use maxItemCount to cap page sizes (1–100) and continuationToken for subsequent pages.
   - Sort by created_at DESC to leverage database indexes.
@@ -263,7 +293,9 @@ Swagger["swagger.ts"] --> Routes
   - Debounce UI updates to prevent flickering.
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized:
   - Ensure Authorization header is present and formatted as Bearer <JWT>.
   - Verify token validity and expiration.
@@ -280,6 +312,7 @@ Common issues and resolutions:
   - Use hasMore and total to manage client-side pagination state.
 
 ## Conclusion
+
 The notification API provides a robust, authenticated set of endpoints for retrieving, marking as read, and counting unread notifications. It supports efficient pagination and adheres to a clean layered architecture. By following the documented schemas, authentication requirements, and performance recommendations, clients can build reliable notification centers with real-time capabilities.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -287,6 +320,7 @@ The notification API provides a robust, authenticated set of endpoints for retri
 ## Appendices
 
 ### Appendix A: Notification Type Details
+
 - proposal_received: Triggered when a freelancer submits a proposal for an employer’s project.
 - proposal_accepted: Triggered when an employer accepts a freelancer’s proposal.
 - proposal_rejected: Triggered when an employer rejects a freelancer’s proposal.
@@ -299,6 +333,7 @@ The notification API provides a robust, authenticated set of endpoints for retri
 - message: General message notifications.
 
 ### Appendix B: Example Requests and Responses
+
 - Fetch notifications:
   - GET /api/notifications?maxItemCount=20
   - Response: { items: [...], hasMore: true, total: 120 }
@@ -314,6 +349,7 @@ The notification API provides a robust, authenticated set of endpoints for retri
 ## Get Unread Notification Count
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -325,10 +361,13 @@ The notification API provides a robust, authenticated set of endpoints for retri
 9. [Conclusion](#conclusion)
 
 ## Introduction
+
 This document provides API documentation for the GET /api/notifications/unread-count endpoint. It returns the number of unread notifications for the authenticated user. The endpoint is lightweight, requiring no request parameters, and responds with a simple JSON payload containing a count field. This design enables efficient real-time badge updates in the UI without transferring full notification payloads.
 
 ## Project Structure
+
 The endpoint is implemented using a layered architecture:
+
 - Route handler validates authentication and delegates to the service layer.
 - Service layer orchestrates repository operations.
 - Repository executes a database query optimized for counting unread notifications.
@@ -345,6 +384,7 @@ Appwrite --> DB["PostgreSQL Table: notifications"]
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/notifications/unread-count
 - Authentication: Bearer token required via Authorization header
 - Request: No query parameters
@@ -352,12 +392,15 @@ Appwrite --> DB["PostgreSQL Table: notifications"]
 - Example response: {"count": 3}
 
 Implementation highlights:
+
 - Lightweight response avoids transferring full notification payloads
 - Optimized database query uses COUNT aggregation with user ID and is_read filters
 - Real-time badge updates are enabled by frequent polling or push alternatives
 
 ## Architecture Overview
+
 The endpoint follows a clean separation of concerns:
+
 - Route layer: Validates authentication and constructs the response
 - Service layer: Provides business logic and error handling wrapper
 - Repository layer: Performs database operations with Appwrite client
@@ -386,6 +429,7 @@ R-->>C : "{ count }"
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Behavior
+
 - HTTP Method: GET
 - Path: /api/notifications/unread-count
 - Authentication: Required (Bearer token)
@@ -394,11 +438,13 @@ R-->>C : "{ count }"
 - Response: JSON with a single count field
 
 Behavior:
+
 - Returns the number of unread notifications for the authenticated user
 - Uses user ID from the validated token to filter records
 - Responds with a 200 status and a simple JSON object
 
 ### Authentication Flow
+
 The route enforces authentication using a Bearer token. The middleware validates the Authorization header format and verifies the token, attaching user information to the request object.
 
 ```mermaid
@@ -417,21 +463,26 @@ Next --> End
 ```
 
 ### Service Layer Implementation
+
 The service layer wraps repository calls and returns a standardized result structure. For unread count, it simply delegates to the repository.
 
 Responsibilities:
+
 - Standardized success/error result pattern
 - Delegation to repository for database operations
 - Returning primitive counts for lightweight responses
 
 ### Repository and Database Query
+
 The repository performs an optimized COUNT query:
+
 - Filters by user_id
 - Filters by is_read = false
 - Uses head: true and count: 'exact' to return only the count
 - Returns a numeric count
 
 Database schema and indexes:
+
 - Table: notifications
 - Columns: id, user_id, type, title, message, data, is_read, created_at, updated_at
 - Indexes: user_id, is_read
@@ -447,18 +498,22 @@ ReturnCount --> EndRepo(["End"])
 ```
 
 ### Real-Time Badge Updates
+
 Why this endpoint is ideal for badges:
+
 - Minimal payload: only a count integer
 - Fast network transfer
 - Low CPU/memory overhead on client
 - Efficient server-side COUNT aggregation
 
 How to integrate:
+
 - Poll the endpoint at short intervals to keep the badge fresh
 - Update the UI immediately upon receiving a new count
 - Reset or hide the badge when count reaches zero
 
 ## Dependency Analysis
+
 The endpoint’s dependencies form a straightforward chain from route to database.
 
 ```mermaid
@@ -471,6 +526,7 @@ Repo --> Schema["schema.sql (notifications)"]
 ```
 
 ## Performance Considerations
+
 - Why COUNT is efficient:
   - Head-only query with count: 'exact'
   - Minimal data transfer compared to fetching rows
@@ -491,7 +547,9 @@ Repo --> Schema["schema.sql (notifications)"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized:
   - Missing or malformed Authorization header
   - Invalid or expired Bearer token
@@ -504,11 +562,13 @@ Common issues and resolutions:
   - Resolution: Verify database connectivity and indexes; check Appwrite logs
 
 Operational checks:
+
 - Confirm auth middleware attaches user info to the request
 - Verify repository query executes with correct filters
 - Ensure notifications table exists and indexes are present
 
 ## Conclusion
+
 The GET /api/notifications/unread-count endpoint delivers a lightweight, efficient mechanism for real-time badge updates. By leveraging a server-side COUNT query filtered by user ID and unread status, it minimizes payload size and database load. Combined with appropriate polling intervals or push technologies, it provides responsive UI feedback while maintaining scalability.
 
 ---
@@ -516,6 +576,7 @@ The GET /api/notifications/unread-count endpoint delivers a lightweight, efficie
 ## Mark Notification as Read
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -528,10 +589,13 @@ The GET /api/notifications/unread-count endpoint delivers a lightweight, efficie
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides API documentation for the PATCH /api/notifications/:id/read endpoint that marks a specific notification as read. It covers the HTTP method, path parameter, request body, success and error responses, and the backend flow from route to service to repository and database. It also explains JWT-based ownership verification via auth-middleware, idempotency considerations, race conditions in high-frequency scenarios, and best practices for client-side state synchronization.
 
 ## Project Structure
+
 The notification read endpoint is implemented as part of the notifications module:
+
 - Route handler: defines the endpoint, applies middleware, and returns responses
 - Service layer: orchestrates business logic and ownership checks
 - Repository layer: performs database updates
@@ -550,6 +614,7 @@ Service --> Mapper["Entity Mapper<br/>entity-mapper.ts"]
 ```
 
 ## Core Components
+
 - Endpoint: PATCH /api/notifications/:id/read
 - Path parameter: id (UUID)
 - Request body: empty
@@ -564,7 +629,9 @@ Service --> Mapper["Entity Mapper<br/>entity-mapper.ts"]
   - 500: Internal server error (unexpected failure)
 
 ## Architecture Overview
+
 The PATCH /api/notifications/:id/read flow:
+
 1. Route handler validates JWT and UUID
 2. Service retrieves notification and verifies ownership
 3. Repository updates is_read flag
@@ -600,6 +667,7 @@ R-->>C : "200 OK with Notification"
 ## Detailed Component Analysis
 
 ### Endpoint Definition and Behavior
+
 - Method: PATCH
 - Path: /api/notifications/:id/read
 - Path parameter: id (UUID)
@@ -615,6 +683,7 @@ R-->>C : "200 OK with Notification"
   - 500: Internal server error (unexpected failure)
 
 ### Route Handler
+
 - Applies authMiddleware to enforce JWT presence and validity
 - Applies validateUUID to ensure id is a valid UUID
 - Calls markNotificationAsRead(service) with notificationId and authenticated userId
@@ -622,15 +691,18 @@ R-->>C : "200 OK with Notification"
 - Returns 200 with the updated notification model on success
 
 ### Auth Middleware
+
 - Extracts Authorization header and ensures format "Bearer <token>"
 - Validates token via service and populates req.user with decoded claims
 - Returns 401 for missing header, invalid format, expired, or invalid token
 
 ### UUID Validation Middleware
+
 - Validates that path parameter id matches UUID v4 format
 - Returns 400 with VALIDATION_ERROR when invalid
 
 ### Service Layer
+
 - Retrieves notification by id
 - Checks ownership: notification.user_id must equal authenticated userId
 - Updates is_read to true via repository
@@ -638,17 +710,21 @@ R-->>C : "200 OK with Notification"
 - Returns error codes: NOT_FOUND, UNAUTHORIZED, UPDATE_FAILED
 
 ### Repository Layer
+
 - getNotificationById(id) returns entity or null
 - markAsRead(id) updates is_read to true and returns updated entity or null
 - Throws on database errors
 
 ### Entity Mapper
+
 - mapNotificationFromEntity converts NotificationEntity to Notification model (id, userId, type, title, message, data, isRead, createdAt)
 
 ### Practical Example: Proposal Acceptance Notification
+
 Scenario: After viewing a proposal acceptance notification, the client calls PATCH /api/notifications/:id/read to mark it as read.
 
 Steps:
+
 1. Client obtains a valid Bearer token
 2. Client sends PATCH with empty body to /api/notifications/{proposalAcceptedId}/read
 3. Server validates token and UUID
@@ -658,12 +734,15 @@ Steps:
 7. Client receives 200 with the updated notification
 
 Best practices:
+
 - Store the returned notification in local state to reflect the change immediately
 - Update unread counters and lists accordingly
 - Handle 404 gracefully (e.g., notification already read or deleted)
 
 ## Dependency Analysis
+
 Key dependencies and interactions:
+
 - Routes depend on auth-middleware and validation-middleware
 - Routes call notification-service
 - Service depends on notification-repository and entity-mapper
@@ -680,6 +759,7 @@ Repo --> DB["Appwrite notifications table"]
 ```
 
 ## Performance Considerations
+
 - Idempotency: The endpoint is idempotent. Repeatedly marking the same notification as read will return the same updated model without causing duplicates or extra writes.
 - Race conditions: In high-frequency scenarios, multiple clients may attempt to mark the same notification as read concurrently. The repository update is a single-row write; the service enforces ownership before updating. While the database update itself is atomic, concurrent reads may briefly show is_read=false until the write completes. This is acceptable for UI state updates.
 - Best practices:
@@ -690,7 +770,9 @@ Repo --> DB["Appwrite notifications table"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 400 Invalid UUID format: Ensure the path parameter id is a valid UUID v4
 - 401 Unauthorized: Verify the Authorization header is present and formatted as "Bearer <token>". Confirm the token is valid and not expired
 - 403 Forbidden: The notification exists but does not belong to the authenticated user
@@ -698,6 +780,7 @@ Common issues and resolutions:
 - 500 Internal server error: Unexpected failure during database update; retry after a short delay
 
 ## Conclusion
+
 The PATCH /api/notifications/:id/read endpoint provides a straightforward mechanism to mark a notification as read. It enforces JWT-based ownership verification, validates the UUID path parameter, and returns the updated notification model on success. The flow is idempotent and designed to handle typical client-side state synchronization patterns. For robust applications, apply optimistic UI updates and handle error responses gracefully.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -705,6 +788,7 @@ The PATCH /api/notifications/:id/read endpoint provides a straightforward mechan
 ## Appendices
 
 ### API Definition Summary
+
 - Method: PATCH
 - Path: /api/notifications/:id/read
 - Path parameters:
@@ -715,6 +799,7 @@ The PATCH /api/notifications/:id/read endpoint provides a straightforward mechan
 - Errors: 400 (invalid UUID), 401 (unauthorized), 403 (forbidden), 404 (not found), 500 (internal error)
 
 ### Backend Flow Diagram (Code-Level)
+
 ```mermaid
 flowchart TD
 Start(["Route Entry"]) --> CheckAuth["Check Authorization Header"]
@@ -739,6 +824,7 @@ MapModel --> Resp200["Return 200 with Notification"]
 ## Retrieve Notifications
 
 ## Table of Contents
+
 1. [Introduction](#introduction)
 2. [Project Structure](#project-structure)
 3. [Core Components](#core-components)
@@ -751,10 +837,13 @@ MapModel --> Resp200["Return 200 with Notification"]
 10. [Appendices](#appendices)
 
 ## Introduction
+
 This document provides API documentation for retrieving a user’s notifications via the GET /api/notifications endpoint. It covers the HTTP method, query parameters for pagination, response format, and the integration between the route handler, service layer, and database layer. It also explains how continuation tokens enable efficient cursor-based pagination for large datasets, and offers guidance for client-side implementation and error handling.
 
 ## Project Structure
+
 The notifications feature is implemented across several layers:
+
 - Route handler: defines the endpoint, validates JWT, parses query parameters, and returns paginated results.
 - Service layer: orchestrates business logic and delegates database operations.
 - Repository layer: encapsulates database queries using Appwrite client.
@@ -775,6 +864,7 @@ Routes --> Response["JSON Response"]
 ```
 
 ## Core Components
+
 - Endpoint: GET /api/notifications
 - Authentication: Bearer token required via Authorization header
 - Query parameters:
@@ -786,6 +876,7 @@ Routes --> Response["JSON Response"]
   - total: optional total count when supported by the underlying query
 
 Each notification includes:
+
 - id: string
 - userId: string
 - type: enum of supported notification types
@@ -798,6 +889,7 @@ Each notification includes:
 Supported notification types include proposal_received, proposal_accepted, proposal_rejected, milestone_submitted, milestone_approved, payment_released, dispute_created, dispute_resolved, rating_received, and message.
 
 ## Architecture Overview
+
 The GET /api/notifications flow integrates the route handler, authentication middleware, service, repository, and Appwrite client.
 
 ```mermaid
@@ -827,6 +919,7 @@ end
 ## Detailed Component Analysis
 
 ### Route Handler: GET /api/notifications
+
 - Validates JWT via auth middleware and extracts user identity.
 - Parses query parameters maxItemCount and continuationToken.
 - Calls service function getNotificationsByUser with userId and options.
@@ -845,6 +938,7 @@ ReturnOK --> End
 ```
 
 ### Service Layer: NotificationService
+
 - getNotificationsByUser(userId, options):
   - Delegates to repository getNotificationsByUser.
   - Maps NotificationEntity[] to Notification[] using entity-mapper.
@@ -866,6 +960,7 @@ NotificationService --> EntityMapper : "maps"
 ```
 
 ### Repository Layer: NotificationRepository
+
 - getNotificationsByUser(userId, options):
   - Uses Appwrite client to select notifications for the given user.
   - Orders by created_at descending.
@@ -882,6 +977,7 @@ Count --> Return(["Return PaginatedResult"])
 ```
 
 ### Authentication Middleware
+
 - Ensures Authorization header is present and formatted as Bearer <token>.
 - Validates token and attaches user info to request.
 - Returns 401 for missing/invalid/expired tokens.
@@ -898,6 +994,7 @@ ValidRes --> |Yes| Attach["Attach user to request"] --> Next(["Call next()"])
 ```
 
 ### Response Format and Example
+
 - Response shape:
   - items: array of notifications
   - hasMore: boolean
@@ -918,6 +1015,7 @@ ValidRes --> |Yes| Attach["Attach user to request"] --> Next(["Call next()"])
 Note: The repository currently uses LIMIT/OFFSET semantics. The route handler documents continuationToken for pagination. For cursor-based pagination, the repository would need to be adapted to accept a cursor token and translate it into a LIMIT/OFFSET or equivalent query.
 
 ## Dependency Analysis
+
 - Route handler depends on:
   - auth-middleware for JWT validation
   - notification-service for business logic
@@ -938,6 +1036,7 @@ Service --> Mapper["entity-mapper.ts"]
 ```
 
 ## Performance Considerations
+
 - Cursor-based pagination:
   - The route handler documents continuationToken, but the repository currently uses LIMIT/OFFSET. For very large datasets, cursor-based pagination (using a cursor derived from the last item’s created_at and id) can reduce scanning overhead compared to OFFSET.
 - Sorting and indexing:
@@ -950,7 +1049,9 @@ Service --> Mapper["entity-mapper.ts"]
 [No sources needed since this section provides general guidance]
 
 ## Troubleshooting Guide
+
 Common issues and resolutions:
+
 - 401 Unauthorized:
   - Missing or invalid Authorization header. Ensure Bearer <token> is sent.
   - Expired token: client should refresh or re-authenticate.
@@ -960,6 +1061,7 @@ Common issues and resolutions:
   - Database connectivity or query failures. Verify Appwrite configuration and network.
 
 Client-side guidance:
+
 - Infinite scroll:
   - On initial load, call GET /api/notifications with maxItemCount.
   - On subsequent loads, pass continuationToken to fetch next page.
@@ -971,6 +1073,7 @@ Client-side guidance:
   - 400: display validation messages and allow retry.
 
 ## Conclusion
+
 The GET /api/notifications endpoint provides paginated access to a user’s notifications with JWT authentication. While the route handler documents continuationToken, the current repository implementation uses LIMIT/OFFSET. For large-scale deployments, adopting cursor-based pagination in the repository would improve performance. Clients should implement infinite scroll with maxItemCount and continuationToken, and handle 401/403/404/400 responses appropriately.
 
 [No sources needed since this section summarizes without analyzing specific files]
@@ -978,6 +1081,7 @@ The GET /api/notifications endpoint provides paginated access to a user’s noti
 ## Appendices
 
 ### API Definition: GET /api/notifications
+
 - Method: GET
 - Path: /api/notifications
 - Authentication: Bearer <token>

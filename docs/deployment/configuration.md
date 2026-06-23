@@ -1,6 +1,7 @@
 # Deployment Configuration
 
 ## Table of Contents
+
 1. [Environment Variable Configuration](#environment-variable-configuration)
 2. [Docker Containerization Strategy](#docker-containerization-strategy)
 3. [Deployment Configurations by Environment](#deployment-configurations-by-environment)

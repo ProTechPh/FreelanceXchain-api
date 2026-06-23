@@ -15,6 +15,7 @@ Mock implementations for external services and dependencies used in tests.
 ### Blockchain Mocks (`blockchain-mocks.ts`)
 
 #### Mock Provider Responses
+
 ```typescript
 import { mockProviderResponses } from '../mocks/blockchain-mocks.js';
 
@@ -25,6 +26,7 @@ const transaction = mockProviderResponses.transaction;
 ```
 
 #### Mock Contract Responses
+
 ```typescript
 import { mockContractResponses } from '../mocks/blockchain-mocks.js';
 
@@ -37,6 +39,7 @@ const score = mockContractResponses.reputation.getScore;
 ```
 
 #### Mock Blockchain Client
+
 ```typescript
 import { mockBlockchainClient } from '../mocks/blockchain-mocks.js';
 
@@ -50,6 +53,7 @@ jest.mock('../../services/blockchain-client.js', () => ({
 ### Appwrite Mocks (`appwrite-mocks.ts`)
 
 #### Mock Database Operations
+
 ```typescript
 import { mockAppwrite } from '../mocks/appwrite-mocks.js';
 
@@ -60,6 +64,7 @@ jest.mock('../../config/database.js', () => ({
 ```
 
 #### Generate Mock Entities
+
 ```typescript
 import { generateMockEntity } from '../mocks/appwrite-mocks.js';
 
@@ -68,6 +73,7 @@ const mockProject = generateMockEntity();
 ```
 
 #### Mock Query Responses
+
 ```typescript
 // Successful query
 mockAppwrite.from('users').select().returns({
@@ -87,6 +93,7 @@ mockAppwrite.from('users').select().returns({
 ### Test Setup (`test-setup.ts`)
 
 #### Mock Ethers.js
+
 ```typescript
 import { mockEthers } from '../mocks/test-setup.js';
 
@@ -94,6 +101,7 @@ jest.mock('ethers', () => mockEthers);
 ```
 
 #### Mock Web3 Client
+
 ```typescript
 import { mockWeb3Client } from '../mocks/test-setup.js';
 
@@ -189,6 +197,7 @@ export const mockMyServiceResponses = {
 ## 🎯 Mock Categories
 
 ### External Services
+
 - **Blockchain** - Ethereum, smart contracts
 - **Database** - Appwrite, PostgreSQL
 - **AI/LLM** - OpenAI, Claude
@@ -196,6 +205,7 @@ export const mockMyServiceResponses = {
 - **Email** - Email service providers
 
 ### Internal Services
+
 - **Authentication** - JWT, OAuth
 - **File Storage** - S3, local storage
 - **Caching** - Redis, in-memory
