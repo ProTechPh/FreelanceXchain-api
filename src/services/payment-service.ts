@@ -812,10 +812,15 @@ export async function getDisputesByContract(contractId: string): Promise<Dispute
 }
 
 /**
- * Clear all disputes (for testing)
+ * @deprecated Disputes are now persisted in the database. Use direct repository calls
+ * in tests. This function is a no-op in all environments and will throw in production
+ * to prevent accidental calls that expect side effects.
  */
 export function clearDisputes(): void {
-  // No-op: disputes are now stored in the database
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error('clearDisputes must not be called in production — disputes are persisted in the database');
+  }
+  // No-op in non-production environments: disputes are stored in the database
 }
 
 /**
