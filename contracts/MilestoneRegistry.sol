@@ -127,6 +127,36 @@ contract MilestoneRegistry {
     }
 
     /**
+     * @dev Resolve a disputed milestone — transitions Disputed -> Approved and applies
+     * the same accounting as approveMilestone. Only callable by owner (the backend relayer)
+     * after DisputeResolution records the outcome off-chain.
+     *
+     * Without this function, a milestone moved to Disputed via disputeMilestone() can never
+     * reach Approved status because approveMilestone() only accepts Submitted milestones.
+     * This would permanently under-count the freelancer's completedCount and totalEarned.
+     */
+    function resolveDisputedMilestone(bytes32 milestoneIdHash) external {
+        if (msg.sender != owner) revert OnlyOwner();
+        MilestoneRecord storage m = milestones[milestoneIdHash];
+        if (m.submittedAt == 0) revert MilestoneNotFound();
+        if (m.status != MilestoneStatus.Disputed) revert InvalidStatus();
+
+        m.status = MilestoneStatus.Approved;
+        m.completedAt = uint40(block.timestamp);
+
+        // Cache storage reads
+        address fl = m.freelancer;
+        uint256 amt = m.amount;
+
+        unchecked {
+            completedCount[fl]++;
+        }
+        totalEarned[fl] += amt;
+
+        emit MilestoneApproved(milestoneIdHash, fl, amt, block.timestamp);
+    }
+
+    /**
      * @dev Reject milestone
      * Only the employer of the milestone or the contract owner can reject
      */
