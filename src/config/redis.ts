@@ -16,5 +16,5 @@ redis.on('error', (err: Error) => {
 });
 
 redis.on('connect', () => {
-  console.info('[redis] connected');
+  console.warn('[redis] connected');
 });
