@@ -493,19 +493,19 @@ describe('Payment Routes - branch gaps', () => {
 
   it('POST /milestones/:milestoneId/complete NOT_FOUND → 404', async () => {
     mockRequestMilestoneCompletion.mockResolvedValue(errorRes('NOT_FOUND', 'Not found'));
-    const res = await request(app).post('/test/milestones/uuid-1/complete?contractId=c-1');
+    const res = await request(app).post('/test/milestones/uuid-1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(404);
   });
 
   it('POST /milestones/:milestoneId/complete UNAUTHORIZED → 403', async () => {
     mockRequestMilestoneCompletion.mockResolvedValue(errorRes('UNAUTHORIZED', 'No'));
-    const res = await request(app).post('/test/milestones/uuid-1/complete?contractId=c-1');
+    const res = await request(app).post('/test/milestones/uuid-1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(403);
   });
 
   it('POST /milestones/:milestoneId/complete other error → 400', async () => {
     mockRequestMilestoneCompletion.mockResolvedValue(errorRes('OTHER', 'Error'));
-    const res = await request(app).post('/test/milestones/uuid-1/complete?contractId=c-1');
+    const res = await request(app).post('/test/milestones/uuid-1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(400);
   });
 
@@ -517,19 +517,19 @@ describe('Payment Routes - branch gaps', () => {
 
   it('POST /milestones/:milestoneId/approve NOT_FOUND → 404', async () => {
     mockApproveMilestone.mockResolvedValue(errorRes('NOT_FOUND', 'Not found'));
-    const res = await request(app).post('/test/milestones/uuid-1/approve?contractId=c-1');
+    const res = await request(app).post('/test/milestones/uuid-1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(404);
   });
 
   it('POST /milestones/:milestoneId/approve UNAUTHORIZED → 403', async () => {
     mockApproveMilestone.mockResolvedValue(errorRes('UNAUTHORIZED', 'No'));
-    const res = await request(app).post('/test/milestones/uuid-1/approve?contractId=c-1');
+    const res = await request(app).post('/test/milestones/uuid-1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(403);
   });
 
   it('POST /milestones/:milestoneId/approve other error → 400', async () => {
     mockApproveMilestone.mockResolvedValue(errorRes('OTHER', 'Error'));
-    const res = await request(app).post('/test/milestones/uuid-1/approve?contractId=c-1');
+    const res = await request(app).post('/test/milestones/uuid-1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(400);
   });
 
@@ -540,26 +540,26 @@ describe('Payment Routes - branch gaps', () => {
   });
 
   it('POST /milestones/:milestoneId/dispute missing reason → 400', async () => {
-    const res = await request(app).post('/test/milestones/uuid-1/dispute?contractId=c-1').send({});
+    const res = await request(app).post('/test/milestones/uuid-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({});
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('POST /milestones/:milestoneId/dispute NOT_FOUND → 404', async () => {
     mockCreateDispute.mockResolvedValue(errorRes('NOT_FOUND', 'Not found'));
-    const res = await request(app).post('/test/milestones/uuid-1/dispute?contractId=c-1').send({ reason: 'test' });
+    const res = await request(app).post('/test/milestones/uuid-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'test' });
     expect(res.status).toBe(404);
   });
 
   it('POST /milestones/:milestoneId/dispute UNAUTHORIZED → 403', async () => {
     mockCreateDispute.mockResolvedValue(errorRes('UNAUTHORIZED', 'No'));
-    const res = await request(app).post('/test/milestones/uuid-1/dispute?contractId=c-1').send({ reason: 'test' });
+    const res = await request(app).post('/test/milestones/uuid-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'test' });
     expect(res.status).toBe(403);
   });
 
   it('POST /milestones/:milestoneId/dispute other error → 400', async () => {
     mockCreateDispute.mockResolvedValue(errorRes('OTHER', 'Error'));
-    const res = await request(app).post('/test/milestones/uuid-1/dispute?contractId=c-1').send({ reason: 'test' });
+    const res = await request(app).post('/test/milestones/uuid-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'test' });
     expect(res.status).toBe(400);
   });
 

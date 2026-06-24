@@ -876,13 +876,13 @@ describe('reputation-routes branch coverage', () => {
 
   it('GET /can-rate success', async () => {
     mockReputationService.canUserRate.mockResolvedValue(ok({ canRate: true }));
-    const res = await request(app).get('/api/reputation/can-rate?contractId=c1&rateeId=u2');
+    const res = await request(app).get('/api/reputation/can-rate?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa&rateeId=u2');
     expect(res.status).toBe(200);
   });
 
   it('GET /can-rate service error', async () => {
     mockReputationService.canUserRate.mockResolvedValue(fail('DB_ERROR', 'Failed'));
-    const res = await request(app).get('/api/reputation/can-rate?contractId=c1&rateeId=u2');
+    const res = await request(app).get('/api/reputation/can-rate?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa&rateeId=u2');
     expect(res.status).toBe(400);
   });
 
@@ -1996,19 +1996,19 @@ describe('payment-routes branch coverage', () => {
 
   it('POST /milestones/:milestoneId/complete NOT_FOUND returns 404', async () => {
     mockPaymentService.requestMilestoneCompletion.mockResolvedValue(fail('NOT_FOUND', 'No'));
-    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=c1');
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(404);
   });
 
   it('POST /milestones/:milestoneId/complete UNAUTHORIZED returns 403', async () => {
     mockPaymentService.requestMilestoneCompletion.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
-    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=c1');
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(403);
   });
 
   it('POST /milestones/:milestoneId/complete other error returns 400', async () => {
     mockPaymentService.requestMilestoneCompletion.mockResolvedValue(fail('INVALID_STATUS', 'No'));
-    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=c1');
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(400);
   });
 
@@ -2019,13 +2019,13 @@ describe('payment-routes branch coverage', () => {
 
   it('POST /milestones/:milestoneId/approve NOT_FOUND returns 404', async () => {
     mockPaymentService.approveMilestone.mockResolvedValue(fail('NOT_FOUND', 'No'));
-    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=c1');
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(404);
   });
 
   it('POST /milestones/:milestoneId/approve UNAUTHORIZED returns 403', async () => {
     mockPaymentService.approveMilestone.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
-    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=c1');
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(403);
   });
 
@@ -2035,19 +2035,19 @@ describe('payment-routes branch coverage', () => {
   });
 
   it('POST /milestones/:milestoneId/dispute missing reason', async () => {
-    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=c1').send({});
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({});
     expect(res.status).toBe(400);
   });
 
   it('POST /milestones/:milestoneId/dispute NOT_FOUND returns 404', async () => {
     mockDisputeService.createDispute.mockResolvedValue(fail('NOT_FOUND', 'No'));
-    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=c1').send({ reason: 'Bad work' });
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
     expect(res.status).toBe(404);
   });
 
   it('POST /milestones/:milestoneId/dispute UNAUTHORIZED returns 403', async () => {
     mockDisputeService.createDispute.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
-    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=c1').send({ reason: 'Bad work' });
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
     expect(res.status).toBe(403);
   });
 

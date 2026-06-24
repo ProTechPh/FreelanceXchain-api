@@ -76,7 +76,7 @@ describe('Payment Routes - Coverage2', () => {
   describe('POST /milestones/:milestoneId/dispute - reason validation', () => {
     it('should return 400 when reason is missing', async () => {
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/dispute?contractId=c-1')
+        .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
         .send({});
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
@@ -85,10 +85,19 @@ describe('Payment Routes - Coverage2', () => {
 
     it('should return 400 when reason is not a string', async () => {
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/dispute?contractId=c-1')
+        .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
         .send({ reason: 123 });
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 when contractId is not a valid UUID', async () => {
+      const res = await request(app)
+        .post('/api/payments/milestones/ms-1/dispute?contractId=not-a-uuid')
+        .send({ reason: 'Bad work' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toContain('UUID');
     });
   });
 
@@ -111,18 +120,13 @@ describe('Payment Routes - Coverage2', () => {
       });
 
       mockGetContractPaymentStatus.mockResolvedValue({
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'Not authorized' },
-      });
-
-      mockGetContractById.mockResolvedValue({
-        success: true,
-        data: { id: 'c-1', projectId: 'p-1', totalAmount: 1000, escrowAddress: '0x123', status: 'active' },
-      });
-
-      mockGetProjectById.mockResolvedValue({
         success: true,
         data: {
+          contractId: 'c-1',
+          escrowAddress: '0x123',
+          totalAmount: 1000,
+          releasedAmount: 500,
+          pendingAmount: 500,
           milestones: [
             { id: 'm1', title: 'MS1', amount: 500, status: 'approved' },
             { id: 'm2', title: 'MS2', amount: 500, status: 'pending' },
@@ -143,18 +147,13 @@ describe('Payment Routes - Coverage2', () => {
       });
 
       mockGetContractPaymentStatus.mockResolvedValue({
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'Not authorized' },
-      });
-
-      mockGetContractById.mockResolvedValue({
-        success: true,
-        data: { id: 'c-1', projectId: 'p-1', totalAmount: 1000, escrowAddress: '0x123', status: 'active' },
-      });
-
-      mockGetProjectById.mockResolvedValue({
         success: true,
         data: {
+          contractId: 'c-1',
+          escrowAddress: '0x123',
+          totalAmount: 1000,
+          releasedAmount: 500,
+          pendingAmount: 300,
           milestones: [
             { id: 'm1', title: 'MS1', amount: 500, status: 'approved' },
             { id: 'm2', title: 'MS2', amount: 200, status: 'refunded' },

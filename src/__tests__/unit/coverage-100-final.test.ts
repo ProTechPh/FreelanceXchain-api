@@ -925,21 +925,21 @@ describe('payment-routes.ts - Branch Coverage', () => {
   it('L145: POST complete', async () => {
     mockRequestMilestoneCompletion.mockResolvedValueOnce({ success: true, data: {} });
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=c1');
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(200);
   });
 
   it('L231: POST approve', async () => {
     mockApproveMilestone.mockResolvedValueOnce({ success: true, data: {} });
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=c1');
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
     expect(res.status).toBe(200);
   });
 
   it('L323: POST dispute', async () => {
     mockCreateDispute.mockResolvedValueOnce({ success: true, data: { id: 'd1' } });
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=c1').send({ reason: 'Bad' });
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad' });
     expect(res.status).toBe(200);
   });
 

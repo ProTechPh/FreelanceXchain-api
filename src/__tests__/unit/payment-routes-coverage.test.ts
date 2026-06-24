@@ -80,7 +80,7 @@ describe('Payment Routes - Coverage Gaps', () => {
       });
 
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/complete?contractId=c-1');
+        .post('/api/payments/milestones/ms-1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
       expect(res.status).toBe(401);
       expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
@@ -101,7 +101,7 @@ describe('Payment Routes - Coverage Gaps', () => {
       });
 
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/complete?contractId=c-1');
+        .post('/api/payments/milestones/ms-1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
       expect(res.status).toBe(404);
     });
@@ -115,7 +115,7 @@ describe('Payment Routes - Coverage Gaps', () => {
       });
 
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/approve?contractId=c-1');
+        .post('/api/payments/milestones/ms-1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
       expect(res.status).toBe(401);
       expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
@@ -136,7 +136,7 @@ describe('Payment Routes - Coverage Gaps', () => {
       });
 
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/approve?contractId=c-1');
+        .post('/api/payments/milestones/ms-1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
       expect(res.status).toBe(403);
     });
@@ -150,7 +150,7 @@ describe('Payment Routes - Coverage Gaps', () => {
       });
 
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/dispute?contractId=c-1')
+        .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
         .send({ reason: 'Work not delivered' });
 
       expect(res.status).toBe(401);
@@ -168,7 +168,7 @@ describe('Payment Routes - Coverage Gaps', () => {
 
     it('should return 400 when reason is missing', async () => {
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/dispute?contractId=c-1')
+        .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
         .send({});
 
       expect(res.status).toBe(400);
@@ -177,7 +177,7 @@ describe('Payment Routes - Coverage Gaps', () => {
 
     it('should return 400 when reason is not a string', async () => {
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/dispute?contractId=c-1')
+        .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
         .send({ reason: 123 });
 
       expect(res.status).toBe(400);
@@ -191,7 +191,7 @@ describe('Payment Routes - Coverage Gaps', () => {
       });
 
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/dispute?contractId=c-1')
+        .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
         .send({ reason: 'Work not delivered' });
 
       expect(res.status).toBe(404);
@@ -242,7 +242,7 @@ describe('Payment Routes - Coverage Gaps', () => {
       mockRequestMilestoneCompletion.mockRejectedValue(new Error('Unexpected error'));
 
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/complete?contractId=c-1');
+        .post('/api/payments/milestones/ms-1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
       expect(res.status).toBe(500);
     });
@@ -253,7 +253,7 @@ describe('Payment Routes - Coverage Gaps', () => {
       mockApproveMilestone.mockRejectedValue(new Error('Unexpected error'));
 
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/approve?contractId=c-1');
+        .post('/api/payments/milestones/ms-1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
 
       expect(res.status).toBe(500);
     });

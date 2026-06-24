@@ -56,7 +56,7 @@ describe('Payment Routes', () => {
         data: { milestoneId: 'ms-1', status: 'submitted', notificationSent: true },
       });
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/complete?contractId=contract-1');
+        .post('/api/payments/milestones/ms-1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('submitted');
     });
@@ -74,7 +74,7 @@ describe('Payment Routes', () => {
         error: { code: 'NOT_FOUND', message: 'Milestone not found' },
       });
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/complete?contractId=contract-1');
+        .post('/api/payments/milestones/ms-1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
       expect(res.status).toBe(404);
     });
   });
@@ -86,7 +86,7 @@ describe('Payment Routes', () => {
         data: { milestoneId: 'ms-1', status: 'approved', paymentReleased: true },
       });
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/approve?contractId=contract-1');
+        .post('/api/payments/milestones/ms-1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
       expect(res.status).toBe(200);
       expect(res.body.paymentReleased).toBe(true);
     });
@@ -103,7 +103,7 @@ describe('Payment Routes', () => {
         error: { code: 'UNAUTHORIZED', message: 'Not authorized' },
       });
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/approve?contractId=contract-1');
+        .post('/api/payments/milestones/ms-1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
       expect(res.status).toBe(403);
     });
   });
@@ -115,7 +115,7 @@ describe('Payment Routes', () => {
         data: { id: 'dispute-1' },
       });
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/dispute?contractId=contract-1')
+        .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
         .send({ reason: 'Work not satisfactory' });
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('disputed');
@@ -124,7 +124,7 @@ describe('Payment Routes', () => {
 
     it('should return 400 when reason is missing', async () => {
       const res = await request(app)
-        .post('/api/payments/milestones/ms-1/dispute?contractId=contract-1')
+        .post('/api/payments/milestones/ms-1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa')
         .send({});
       expect(res.status).toBe(400);
     });

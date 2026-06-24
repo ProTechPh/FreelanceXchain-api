@@ -24,6 +24,7 @@ import {
   notifyDisputeCreated,
 } from './notification-service.js';
 import { EscrowMilestone } from './blockchain-types.js';
+import { parseUnits } from 'ethers';
 import type { ServiceResult } from '../types/service-result.js';
 import {
   submitMilestoneToRegistry,
@@ -817,7 +818,6 @@ export function clearDisputes(): void {
  * e.g., 0.3 * 1e18 = 299999999999999940 (wrong), but parseUnits('0.3', 18) returns 300000000000000000 (correct)
  */
 function toWei(amount: number): bigint {
-  const { parseUnits } = require('ethers') as typeof import('ethers');
   // Convert via string to avoid IEEE 754 float precision issues.
   // Number.prototype.toString() produces the shortest string that round-trips,
   // which avoids the scientific-notation / truncation problems of toFixed(18).

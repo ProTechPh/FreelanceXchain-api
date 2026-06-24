@@ -251,8 +251,6 @@ export async function approveRefund(
       try {
         await refundRequestRepository.update(input.refundId, {
           status: 'pending',
-          approved_by: null,
-          approved_at: null,
           updated_at: new Date().toISOString(),
         });
       } catch (rollbackError) {

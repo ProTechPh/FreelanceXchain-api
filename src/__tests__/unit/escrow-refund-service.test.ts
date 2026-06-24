@@ -432,6 +432,36 @@ describe('Escrow Refund Service', () => {
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('APPROVE_FAILED');
     });
+
+    it('should rollback DB and return BLOCKCHAIN_REFUND_FAILED when blockchain call throws', async () => {
+      const { approveRefund } = await importModule();
+
+      const pendingRefund = {
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, escrow_address: '0xdeadbeef',
+        },
+      };
+      // First read: authorization check
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(pendingRefund);
+      // Second read: concurrent-approval guard
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      // DB approve write succeeds
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved' });
+      // Milestone fetch throws — propagates to outer blockchain catch
+      mockMilestoneRepository.findByContract.mockRejectedValueOnce(new Error('DB unavailable'));
+      // Rollback update
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+
+      const result = await approveRefund({
+        refundId: 'ref-1',
+        approvedBy: 'employer-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
+    });
   });
 
   describe('rejectRefund', () => {
@@ -443,6 +473,10 @@ describe('Escrow Refund Service', () => {
         contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1',
         },
+      });
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: { freelancer_id: 'freelancer-1', employer_id: 'employer-1' },
       });
       const updated = { id: 'ref-1', status: 'rejected', rejected_by: 'employer-1', rejection_reason: 'Work was delivered' };
       mockRefundRequestRepository.update.mockResolvedValueOnce(updated);
@@ -456,6 +490,30 @@ describe('Escrow Refund Service', () => {
       expect(result.success).toBe(true);
       expect(result.data).toEqual(updated);
       expect(mockCreateNotification).toHaveBeenCalled();
+    });
+
+    it('should fail when refund status changed concurrently before reject write', async () => {
+      const { rejectRefund } = await importModule();
+
+      // First read: authorization check passes (status pending)
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: { freelancer_id: 'freelancer-1', employer_id: 'employer-1' },
+      });
+      // Second read: concurrent guard detects status changed to approved
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'approved',
+        contract: { freelancer_id: 'freelancer-1', employer_id: 'employer-1' },
+      });
+
+      const result = await rejectRefund({
+        refundId: 'ref-1',
+        rejectedBy: 'employer-1',
+        reason: 'Work was delivered',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('INVALID_STATUS');
     });
 
     it('should fail when refund not found', async () => {
@@ -521,6 +579,10 @@ describe('Escrow Refund Service', () => {
         contract: {
           freelancer_id: 'freelancer-1', employer_id: 'employer-1',
         },
+      });
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: { freelancer_id: 'freelancer-1', employer_id: 'employer-1' },
       });
       mockRefundRequestRepository.update.mockResolvedValueOnce(null);
 
