@@ -1,14 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../config/env.js';
+import { redis } from '../config/redis.js';
 
-type RateLimitStore = Map<string, { count: number; resetTime: number }>;
-
-// WARNING: This store is in-process memory only.
-// In a multi-process or multi-instance deployment (PM2 cluster, Kubernetes, Docker replicas)
-// each instance maintains an independent counter, making the effective limit
-// maxRequests × numInstances. Replace with a shared Redis-backed store
-// (e.g. rate-limiter-flexible + ioredis) before horizontal scaling.
-const stores: Map<string, RateLimitStore> = new Map();
+// Atomic fixed-window rate limit via Lua — INCR + PEXPIRE in one round-trip.
+// Returns [currentCount, remainingTtlMs]
+const rateLimitScript = `
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+  redis.call('PEXPIRE', KEYS[1], ARGV[1])
+end
+return {current, redis.call('PTTL', KEYS[1])}
+`;
 
 type RateLimitConfig = {
   windowMs: number;
@@ -16,132 +18,98 @@ type RateLimitConfig = {
   message?: string;
 };
 
-function getStore(name: string): RateLimitStore {
-  if (!stores.has(name)) {
-    stores.set(name, new Map());
-  }
-  return stores.get(name)!;
-}
-
-/**
- * Get client IP for rate limiting.
- * Using req.ip which respects the trust proxy setting, falling back to socket address.
- * This prevents attackers from spoofing X-Forwarded-For to bypass rate limits.
- */
-function getClientKey(req: Request): string {
-  // req.ip respects Express 'trust proxy' setting
-  // If trust proxy is not configured, req.ip = socket remote address (safe)
-  // If trust proxy is configured, req.ip = leftmost untrusted X-Forwarded-For entry (safe)
-  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
-}
-
-/**
- * Periodic cleanup of expired rate limit entries to prevent memory leaks.
- * Runs every 5 minutes.
- */
-function cleanupExpiredEntries(): void {
-  const now = Date.now();
-  for (const [, store] of stores) {
-    for (const [key, record] of store) {
-      if (now > record.resetTime) {
-        store.delete(key);
-      }
-    }
-  }
-}
-
-// Run cleanup every 5 minutes to prevent memory leaks from expired entries
-setInterval(cleanupExpiredEntries, 5 * 60 * 1000).unref();
-
 export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
   const { windowMs, maxRequests, message } = rateLimitConfig;
 
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     if (config.server.nodeEnv === 'test') {
       next();
       return;
     }
-    const store = getStore(name);
-    const key = getClientKey(req);
-    const now = Date.now();
 
-    const record = store.get(key);
+    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    const windowStart = Math.floor(Date.now() / windowMs);
+    const key = `ratelimit:${name}:${ip}:${windowStart}`;
 
-    if (!record || now > record.resetTime) {
-      store.set(key, { count: 1, resetTime: now + windowMs });
-      next();
-      return;
+    try {
+      const [current, ttlMs] = (await redis.eval(
+        rateLimitScript,
+        1,
+        key,
+        String(windowMs),
+      )) as [number, number];
+
+      if (current > maxRequests) {
+        const retryAfter = Math.ceil(ttlMs / 1000);
+        res.set('Retry-After', String(retryAfter));
+        res.status(429).json({
+          error: {
+            code: 'RATE_LIMIT_EXCEEDED',
+            message: message ?? 'Too many requests, please try again later',
+          },
+          retryAfter,
+          timestamp: new Date().toISOString(),
+          requestId: req.headers['x-request-id'] ?? 'unknown',
+        });
+        return;
+      }
+    } catch (err) {
+      // Fail open: if Redis is unavailable, let the request through rather than
+      // blocking all traffic. Log so ops can detect the outage.
+      console.error('[rate-limiter] Redis error, failing open:', (err as Error).message);
     }
 
-    if (record.count >= maxRequests) {
-      const retryAfter = Math.ceil((record.resetTime - now) / 1000);
-      res.set('Retry-After', String(retryAfter));
-      res.status(429).json({
-        error: {
-          code: 'RATE_LIMIT_EXCEEDED',
-          message: message ?? 'Too many requests, please try again later',
-        },
-        retryAfter,
-        timestamp: new Date().toISOString(),
-        requestId: req.headers['x-request-id'] ?? 'unknown',
-      });
-      return;
-    }
-
-    record.count++;
     next();
   };
 }
 
 // Preset rate limiters
-// login exhaustion from blocking password reset
 export const loginRateLimiter = rateLimiter('login', {
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 10, // 10 login attempts per 15 minutes
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 10,
   message: 'Too many login attempts, please try again later',
 });
 
 export const registerRateLimiter = rateLimiter('register', {
-  windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 5, // 5 registration attempts per hour
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 5,
   message: 'Too many registration attempts, please try again later',
 });
 
 export const passwordResetRateLimiter = rateLimiter('password-reset', {
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 5, // 5 reset attempts per 15 minutes
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 5,
   message: 'Too many password reset attempts, please try again later',
 });
 
-// Keep backward compatible export
 export const authRateLimiter = loginRateLimiter;
 
 export const apiRateLimiter = rateLimiter('api', {
-  windowMs: 60 * 1000, // 1 minute
-  maxRequests: 100, // 100 requests per minute
+  windowMs: 60 * 1000,
+  maxRequests: 100,
   message: 'Too many requests, please slow down',
 });
 
 export const sensitiveRateLimiter = rateLimiter('sensitive', {
-  windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 5, // 5 attempts per hour
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 5,
   message: 'Too many attempts for this sensitive operation',
 });
 
 export const fileUploadRateLimiter = rateLimiter('file-upload', {
-  windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 20, // 20 file uploads per hour (allows multiple proposals/evidence submissions)
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 20,
   message: 'Too many file uploads, please try again later',
 });
 
 export const withdrawalRateLimiter = rateLimiter('withdrawal', {
-  windowMs: 60 * 60 * 1000, // 1 hour
-  maxRequests: 10, // 10 withdrawal attempts per hour
+  windowMs: 60 * 60 * 1000,
+  maxRequests: 10,
   message: 'Too many withdrawal attempts, please try again later',
 });
 
 export const mfaVerifyRateLimiter = rateLimiter('mfa-verify', {
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  maxRequests: 5, // 5 MFA verify attempts per 5 minutes
+  windowMs: 5 * 60 * 1000,
+  maxRequests: 5,
   message: 'Too many MFA verification attempts, please try again later',
 });

@@ -95,6 +95,12 @@ export const config = {
     privateKey: getEnvVarOptional('BLOCKCHAIN_PRIVATE_KEY'),
     mode: getEnvVar('BLOCKCHAIN_MODE', 'simulated') as 'real' | 'simulated',
   },
+  redis: {
+    host: getEnvVar('REDIS_HOST', 'localhost'),
+    port: getEnvVarNumber('REDIS_PORT', 6379),
+    password: getEnvVarOptional('REDIS_PASSWORD'),
+    tls: getEnvVarBoolean('REDIS_TLS', false),
+  },
 } as const;
 
 export type Config = typeof config;

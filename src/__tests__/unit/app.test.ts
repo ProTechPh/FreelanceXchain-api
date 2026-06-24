@@ -47,6 +47,12 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       privateKey: '0x' + 'a'.repeat(64),
       mode: 'simulated',
     },
+    redis: {
+      host: 'localhost',
+      port: 6379,
+      password: undefined,
+      tls: false,
+    },
     database: { url: 'postgresql://localhost/test' },
   },
 }));

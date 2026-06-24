@@ -5,103 +5,84 @@ import path from 'node:path';
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// 1. Rate Limiter — cleanupExpiredEntries (lines 37-46, branch at L41)
+// 1. Rate Limiter — Redis-backed behaviour
 // ═══════════════════════════════════════════════════════════════════════════════
-describe('Rate Limiter — cleanupExpiredEntries', () => {
+describe('Rate Limiter — Redis-backed', () => {
+  const redisStore = new Map<string, number>();
+  const evalMock = jest.fn().mockImplementation(
+    (_script: unknown, _numKeys: number, key: string, windowMs: string) => {
+      const current = (redisStore.get(key) ?? 0) + 1;
+      redisStore.set(key, current);
+      return Promise.resolve([current, parseInt(windowMs, 10)]);
+    }
+  );
+
   beforeEach(() => {
     jest.resetModules();
+    redisStore.clear();
+    evalMock.mockClear();
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
-  it('should clean up expired entries when interval fires', async () => {
-    jest.useFakeTimers();
+  it('should enforce rate limit via Redis INCR', async () => {
+    jest.unstable_mockModule(resolveModule('src/config/redis.ts'), () => ({
+      redis: { eval: evalMock, on: jest.fn() },
+    }));
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
-      config: { server: { nodeEnv: 'development' } },
+      config: { server: { nodeEnv: 'development' }, redis: { host: 'localhost', port: 6379, password: undefined, tls: false } },
     }));
 
     const { rateLimiter } = await import('../../middleware/rate-limiter.js');
-
+    const limiter = rateLimiter('gap-redis-limit', { windowMs: 60000, maxRequests: 2 });
     const req = { ip: '10.0.0.1', socket: { remoteAddress: '10.0.0.1' }, headers: {} } as any;
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), set: jest.fn().mockReturnThis() } as any;
     const next = jest.fn();
 
-    // Create rate limiters with short windows to get entries into the store
-    const limiter1 = rateLimiter('cleanup-test-1', { windowMs: 1000, maxRequests: 5 });
-    const limiter2 = rateLimiter('cleanup-test-2', { windowMs: 1000, maxRequests: 5 });
+    await limiter(req, res, next);
+    await limiter(req, res, next);
+    await limiter(req, res, next); // exceeds limit
 
-    // Populate stores
-    limiter1(req, res, next);
-    limiter2(req, res, next);
     expect(next).toHaveBeenCalledTimes(2);
-
-    // Advance time past the window AND past the cleanup interval (5 min)
-    jest.advanceTimersByTime(5 * 60 * 1000 + 100);
-
-    // After cleanup, new requests should start fresh (count=1)
-    next.mockClear();
-    const req2 = { ip: '10.0.0.1', socket: { remoteAddress: '10.0.0.1' }, headers: {} } as any;
-    limiter1(req2, res, next);
-    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).toHaveBeenCalledWith(429);
   });
 
-  it('should not delete entries that have not expired', async () => {
-    jest.useFakeTimers();
+  it('should not block when still within limit', async () => {
+    jest.unstable_mockModule(resolveModule('src/config/redis.ts'), () => ({
+      redis: { eval: evalMock, on: jest.fn() },
+    }));
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
-      config: { server: { nodeEnv: 'development' } },
+      config: { server: { nodeEnv: 'development' }, redis: { host: 'localhost', port: 6379, password: undefined, tls: false } },
     }));
 
     const { rateLimiter } = await import('../../middleware/rate-limiter.js');
-
+    const limiter = rateLimiter('gap-redis-allow', { windowMs: 600_000, maxRequests: 5 });
     const req = { ip: '10.0.0.2', socket: { remoteAddress: '10.0.0.2' }, headers: {} } as any;
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), set: jest.fn().mockReturnThis() } as any;
     const next = jest.fn();
 
-    const limiter = rateLimiter('cleanup-active-test', { windowMs: 600_000, maxRequests: 2 });
-
-    limiter(req, res, next);
-    limiter(req, res, next);
+    await limiter(req, res, next);
+    await limiter(req, res, next);
     expect(next).toHaveBeenCalledTimes(2);
-
-    // Advance 3 minutes — cleanup fires but entries still valid (10 min window)
-    jest.advanceTimersByTime(3 * 60 * 1000);
-
-    // Should still be rate-limited
-    next.mockClear();
-    limiter(req, res, next);
-    expect(next).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(429);
+    expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('should handle mixed expired and non-expired entries across stores', async () => {
-    jest.useFakeTimers();
+  it('should fail open when Redis is unavailable', async () => {
+    const failingEval = jest.fn().mockRejectedValue(new Error('Redis unavailable'));
+    jest.unstable_mockModule(resolveModule('src/config/redis.ts'), () => ({
+      redis: { eval: failingEval, on: jest.fn() },
+    }));
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
-      config: { server: { nodeEnv: 'development' } },
+      config: { server: { nodeEnv: 'development' }, redis: { host: 'localhost', port: 6379, password: undefined, tls: false } },
     }));
 
     const { rateLimiter } = await import('../../middleware/rate-limiter.js');
-
-    const req1 = { ip: '10.0.0.3', socket: { remoteAddress: '10.0.0.3' }, headers: {} } as any;
-    const req2 = { ip: '10.0.0.4', socket: { remoteAddress: '10.0.0.4' }, headers: {} } as any;
+    const limiter = rateLimiter('gap-redis-failopen', { windowMs: 60000, maxRequests: 1 });
+    const req = { ip: '10.0.0.3', socket: { remoteAddress: '10.0.0.3' }, headers: {} } as any;
     const res = { status: jest.fn().mockReturnThis(), json: jest.fn().mockReturnThis(), set: jest.fn().mockReturnThis() } as any;
     const next = jest.fn();
 
-    // Short window for req1, long window for req2
-    const limiterShort = rateLimiter('mixed-short', { windowMs: 500, maxRequests: 1 });
-    const limiterLong = rateLimiter('mixed-long', { windowMs: 600_000, maxRequests: 5 });
-
-    limiterShort(req1, res, next);
-    limiterLong(req2, res, next);
-
-    // Advance past short window + cleanup interval
-    jest.advanceTimersByTime(5 * 60 * 1000 + 1000);
-
-    // req1's entry should be cleaned (expired), req2's should survive
-    next.mockClear();
-    limiterShort(req1, res, next);
-    expect(next).toHaveBeenCalledTimes(1); // Fresh entry after cleanup
+    await limiter(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.status).not.toHaveBeenCalled();
   });
 });
 

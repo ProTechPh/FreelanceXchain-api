@@ -53,6 +53,7 @@
     "form-data": "^4.0.5",
     "hcaptcha": "^0.2.0",
     "helmet": "^8.2.0",
+    "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "node-appwrite": "^26.2.0",

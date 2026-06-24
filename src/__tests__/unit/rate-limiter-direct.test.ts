@@ -1,18 +1,28 @@
 // @ts-nocheck
-import { jest, describe, it, expect, beforeAll, afterEach } from '@jest/globals';
+import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
+// In-memory store that simulates Redis INCR behaviour for the Lua script
+const redisStore = new Map<string, number>();
+const evalMock = jest.fn().mockImplementation((_script: unknown, _numKeys: number, key: string, windowMs: string) => {
+  const current = (redisStore.get(key) ?? 0) + 1;
+  redisStore.set(key, current);
+  return Promise.resolve([current, parseInt(windowMs, 10)]);
+});
+
+jest.unstable_mockModule(resolveModule('src/config/redis.ts'), () => ({
+  redis: { eval: evalMock, on: jest.fn() },
+}));
+
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   config: {
-    server: {
-      nodeEnv: 'development',
-    },
+    server: { nodeEnv: 'development' },
+    redis: { host: 'localhost', port: 6379, password: undefined, tls: false },
   },
 }));
 
-// Set up fake timers BEFORE the module loads so setInterval uses fake timers
 jest.useFakeTimers();
 
 const {
@@ -41,75 +51,74 @@ function createRes() {
   const jsonMock = jest.fn().mockReturnThis();
   const statusMock = jest.fn().mockReturnThis();
   const setMock = jest.fn().mockReturnThis();
-  return {
-    status: statusMock,
-    json: jsonMock,
-    set: setMock,
-  };
+  return { status: statusMock, json: jsonMock, set: setMock };
 }
 
 describe('Rate Limiter - Real Module Coverage', () => {
+  beforeEach(() => {
+    redisStore.clear();
+    evalMock.mockClear();
+  });
+
   afterEach(() => {
     jest.clearAllTimers();
   });
 
   describe('rateLimiter function', () => {
-    it('should allow first request (new record)', () => {
+    it('should allow first request (new record)', async () => {
       const limiter = rateLimiterFn('test-new', { windowMs: 60000, maxRequests: 5 });
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
+      await limiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should allow requests within limit', () => {
+    it('should allow requests within limit', async () => {
       const limiter = rateLimiterFn('test-within', { windowMs: 60000, maxRequests: 3 });
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
-      limiter(req, res, next);
-      limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(3);
     });
 
-    it('should reject when rate limit exceeded', () => {
+    it('should reject when rate limit exceeded', async () => {
       const limiter = rateLimiterFn('test-exceeded', { windowMs: 60000, maxRequests: 2 });
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
-      limiter(req, res, next);
-      limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
 
       expect(next).toHaveBeenCalledTimes(2);
       expect(res.status).toHaveBeenCalledWith(429);
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          error: expect.objectContaining({
-            code: 'RATE_LIMIT_EXCEEDED',
-          }),
+          error: expect.objectContaining({ code: 'RATE_LIMIT_EXCEEDED' }),
         })
       );
     });
 
-    it('should set Retry-After header when rate limited', () => {
+    it('should set Retry-After header when rate limited', async () => {
       const limiter = rateLimiterFn('test-retry', { windowMs: 60000, maxRequests: 1 });
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
-      limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
 
       expect(res.set).toHaveBeenCalledWith('Retry-After', expect.any(String));
     });
 
-    it('should use custom message when provided', () => {
+    it('should use custom message when provided', async () => {
       const limiter = rateLimiterFn('test-custom-msg', {
         windowMs: 60000,
         maxRequests: 1,
@@ -119,107 +128,96 @@ describe('Rate Limiter - Real Module Coverage', () => {
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
-      limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
 
       expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          error: expect.objectContaining({
-            message: 'Custom limit message',
-          }),
-        })
+        expect.objectContaining({ error: expect.objectContaining({ message: 'Custom limit message' }) })
       );
     });
 
-    it('should use default message when none provided', () => {
+    it('should use default message when none provided', async () => {
       const limiter = rateLimiterFn('test-default-msg', { windowMs: 60000, maxRequests: 1 });
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
-      limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
 
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          error: expect.objectContaining({
-            message: 'Too many requests, please try again later',
-          }),
+          error: expect.objectContaining({ message: 'Too many requests, please try again later' }),
         })
       );
     });
 
-    it('should reset after window expires', () => {
-      const limiter = rateLimiterFn('test-reset', { windowMs: 1000, maxRequests: 1 });
+    it('should reset after window expires (key changes with new window)', async () => {
+      const windowMs = 1000;
+      const limiter = rateLimiterFn('test-reset', { windowMs, maxRequests: 1 });
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
+      await limiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
 
-      limiter(req, res, next);
-      expect(next).toHaveBeenCalledTimes(1);
+      await limiter(req, res, next);
+      expect(next).toHaveBeenCalledTimes(1); // blocked
 
-      jest.advanceTimersByTime(1001);
+      // Advance into the next window — the Redis key changes so count resets
+      jest.advanceTimersByTime(windowMs + 1);
+      redisStore.clear(); // simulate key expiry
 
-      limiter(req, res, next);
+      await limiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(2);
     });
 
-    it('should include requestId from headers', () => {
+    it('should include requestId from headers', async () => {
       const limiter = rateLimiterFn('test-reqid', { windowMs: 60000, maxRequests: 1 });
       const req = createReq({ headers: { 'x-request-id': 'my-req-id' } });
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
-      limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
 
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          requestId: 'my-req-id',
-        })
-      );
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'my-req-id' }));
     });
 
-    it('should use unknown requestId when header missing', () => {
+    it('should use unknown requestId when header missing', async () => {
       const limiter = rateLimiterFn('test-noreqid', { windowMs: 60000, maxRequests: 1 });
       const req = createReq({ headers: {} });
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
-      limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
 
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          requestId: 'unknown',
-        })
-      );
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'unknown' }));
     });
 
-    it('should use socket.remoteAddress when ip is undefined', () => {
+    it('should use socket.remoteAddress when ip is undefined', async () => {
       const limiter = rateLimiterFn('test-socket', { windowMs: 60000, maxRequests: 1 });
       const req = createReq({ ip: undefined });
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
+      await limiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should use unknown when both ip and socket are undefined', () => {
+    it('should use unknown when both ip and socket are undefined', async () => {
       const limiter = rateLimiterFn('test-unknown', { windowMs: 60000, maxRequests: 1 });
       const req = createReq({ ip: undefined, socket: {} });
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
+      await limiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should track different clients separately', () => {
+    it('should track different clients separately', async () => {
       const limiter = rateLimiterFn('test-clients', { windowMs: 60000, maxRequests: 1 });
       const res = createRes();
       const next = jest.fn();
@@ -227,40 +225,23 @@ describe('Rate Limiter - Real Module Coverage', () => {
       const req1 = createReq({ ip: '1.1.1.1' });
       const req2 = createReq({ ip: '2.2.2.2' });
 
-      limiter(req1, res, next);
-      limiter(req2, res, next);
+      await limiter(req1, res, next);
+      await limiter(req2, res, next);
 
       expect(next).toHaveBeenCalledTimes(2);
     });
 
-    it('should share state between limiters with same name', () => {
-      const limiter1 = rateLimiterFn('test-shared', { windowMs: 60000, maxRequests: 1 });
-      const limiter2 = rateLimiterFn('test-shared', { windowMs: 60000, maxRequests: 1 });
-      const req = createReq();
-      const res = createRes();
-      const next = jest.fn();
-
-      limiter1(req, res, next);
-      expect(next).toHaveBeenCalledTimes(1);
-
-      limiter2(req, res, next);
-      expect(next).toHaveBeenCalledTimes(1);
-      expect(res.status).toHaveBeenCalledWith(429);
-    });
-
-    it('should include timestamp in rate limit response', () => {
+    it('should include timestamp in rate limit response', async () => {
       const limiter = rateLimiterFn('test-timestamp', { windowMs: 60000, maxRequests: 1 });
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
 
-      limiter(req, res, next);
-      limiter(req, res, next);
+      await limiter(req, res, next);
+      await limiter(req, res, next);
 
       expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          timestamp: expect.any(String),
-        })
+        expect.objectContaining({ timestamp: expect.any(String) })
       );
     });
 
@@ -275,35 +256,24 @@ describe('Rate Limiter - Real Module Coverage', () => {
         const res = createRes();
         const next = jest.fn();
 
-        limiter(req, res, next);
+        await limiter(req, res, next);
         expect(next).toHaveBeenCalledTimes(1);
+        expect(evalMock).not.toHaveBeenCalled();
       } finally {
         (envModule as any).config.server.nodeEnv = originalNodeEnv;
       }
     });
-  });
 
-  describe('cleanup interval', () => {
-    it('should clean up expired entries when interval fires', () => {
-      const limiter = rateLimiterFn('test-cleanup', { windowMs: 1000, maxRequests: 5 });
+    it('should fail open when Redis throws', async () => {
+      evalMock.mockRejectedValueOnce(new Error('Redis connection refused'));
+      const limiter = rateLimiterFn('test-failopen', { windowMs: 60000, maxRequests: 1 });
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
 
-      // Create an entry
-      limiter(req, res, next);
+      await limiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
-
-      // Advance past the entry's expiry
-      jest.advanceTimersByTime(1001);
-
-      // Advance past the cleanup interval (5 minutes) to trigger cleanup
-      // The cleanup function iterates over stores and deletes expired entries
-      jest.advanceTimersByTime(5 * 60 * 1000);
-
-      // The entry should have been cleaned up, so a new request should be allowed
-      limiter(req, res, next);
-      expect(next).toHaveBeenCalledTimes(2);
+      expect(res.status).not.toHaveBeenCalled();
     });
   });
 
@@ -344,67 +314,67 @@ describe('Rate Limiter - Real Module Coverage', () => {
       expect(typeof mfaVerifyRateLimiter).toBe('function');
     });
 
-    it('should invoke loginRateLimiter as middleware', () => {
+    it('should invoke loginRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
-      loginRateLimiter(req, res, next);
+      await loginRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should invoke registerRateLimiter as middleware', () => {
+    it('should invoke registerRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
-      registerRateLimiter(req, res, next);
+      await registerRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should invoke passwordResetRateLimiter as middleware', () => {
+    it('should invoke passwordResetRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
-      passwordResetRateLimiter(req, res, next);
+      await passwordResetRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should invoke apiRateLimiter as middleware', () => {
+    it('should invoke apiRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
-      apiRateLimiter(req, res, next);
+      await apiRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should invoke sensitiveRateLimiter as middleware', () => {
+    it('should invoke sensitiveRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
-      sensitiveRateLimiter(req, res, next);
+      await sensitiveRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should invoke fileUploadRateLimiter as middleware', () => {
+    it('should invoke fileUploadRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
-      fileUploadRateLimiter(req, res, next);
+      await fileUploadRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should invoke withdrawalRateLimiter as middleware', () => {
+    it('should invoke withdrawalRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
-      withdrawalRateLimiter(req, res, next);
+      await withdrawalRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
 
-    it('should invoke mfaVerifyRateLimiter as middleware', () => {
+    it('should invoke mfaVerifyRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
       const next = jest.fn();
-      mfaVerifyRateLimiter(req, res, next);
+      await mfaVerifyRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
   });

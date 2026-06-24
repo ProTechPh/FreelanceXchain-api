@@ -35,6 +35,7 @@ export default {
     '!src/config/index.ts',
     '!src/config/database.ts',
     '!src/config/appwrite.ts',
+    '!src/config/redis.ts',
     '!src/services/contract-abis.ts',
     '!src/services/web3-client.ts',
     '!src/services/escrow-blockchain.ts',
