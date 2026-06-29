@@ -6,7 +6,7 @@ VALIDATE_ALL_CODEBASE: false
 
 # Install dependencies before running ESLint so flat config imports resolve
 TYPESCRIPT_ES_PRE_COMMANDS:
-  - command: pnpm install --frozen-lockfile
+  - command: npm install --legacy-peer-deps --ignore-scripts
     cwd: workspace
     continue_if_failed: false
 
