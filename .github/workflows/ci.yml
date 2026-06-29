@@ -32,7 +32,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Hardhat compiler
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/hardhat-nodejs
           key: ${{ runner.os }}-hardhat-${{ hashFiles('hardhat.config.cjs') }}
@@ -79,7 +79,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Hardhat compiler
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/hardhat-nodejs
           key: ${{ runner.os }}-hardhat-${{ hashFiles('hardhat.config.cjs') }}
@@ -127,7 +127,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Cache Hardhat compiler
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/hardhat-nodejs
           key: ${{ runner.os }}-hardhat-${{ hashFiles('hardhat.config.cjs') }}
