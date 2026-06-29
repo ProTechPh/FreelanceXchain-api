@@ -9,6 +9,7 @@ TYPESCRIPT_ES_PRE_COMMANDS:
   - command: npm install --legacy-peer-deps --ignore-scripts
     cwd: workspace
     continue_if_failed: false
+TYPESCRIPT_ES_CLI_EXECUTABLE: node_modules/.bin/eslint
 
 # Disable flavor/security suggestions to reduce noise
 FLAVOR_SUGGESTIONS: false
