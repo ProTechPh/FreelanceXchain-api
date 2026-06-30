@@ -3887,7 +3887,7 @@ snapshots:
     dependencies:
       '@types/cookiejar': 2.1.5
       '@types/methods': 1.1.4
-      '@types/node': 25.9.3
+      '@types/node': 26.0.1
       form-data: 4.0.6
 
   '@types/supertest@7.2.0':
