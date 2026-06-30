@@ -24,10 +24,10 @@ REST API endpoints (also available via Swagger at `/api-docs`).
 - [Contracts](api/contracts.md) - Contract management
 - [Payments](api/payments.md) - Milestone approval, completion, disputes, status
 - [Disputes](api/disputes.md) - Create, evidence, resolve, retrieve
-- [KYC](api/kyc.md) - Verification, liveness, face match, administration
+- [KYC](api/kyc.md) - Didit-based verification, webhooks, admin management
 - [Notifications](api/notifications.md) - Retrieve, mark read, unread count
-- [Reputation](api/reputation.md) - Ratings, scores, work history
-- [Search](api/search.md) - Project and freelancer search
+- [Reputation](api/reputation.md) - Ratings, scores, breakdown, leaderboard, history
+- [Search](api/search.md) - Public project and freelancer search with filters
 - [Endpoints Reference](api/endpoints-reference.md) - Comprehensive endpoint listing
 
 ## Blockchain

@@ -4,6 +4,12 @@
 
 1. [Introduction](#introduction)
 2. [API Endpoints](#api-endpoints)
+   - [List User Contracts](#list-user-contracts)
+   - [Get Contract Details](#get-contract-details)
+   - [Fund Contract Escrow](#fund-contract-escrow)
+   - [Get Contract Funding Info](#get-contract-funding-info)
+   - [Cancel Contract](#cancel-contract)
+   - [List Contract Disputes](#list-contract-disputes)
 3. [Contract Schema](#contract-schema)
 4. [Contract Status Lifecycle](#contract-status-lifecycle)
 5. [Relationships Between Contracts, Proposals, and Projects](#relationships-between-contracts-proposals-and-projects)
@@ -13,7 +19,7 @@
 
 ## Introduction
 
-The Contract API provides read-only access to contract data within the FreelanceXchain system. Contracts are created when a proposal is accepted and represent formal agreements between freelancers and employers for project work. This API allows users to retrieve their contract history and view detailed contract information. All endpoints require JWT authentication and are designed to be read-only, with contract creation handled through the proposal acceptance workflow.
+The Contract API provides access to contract data and lifecycle management within the FreelanceXchain system. Contracts are created when a proposal is accepted and represent formal agreements between freelancers and employers for project work. This API allows users to retrieve their contract history, view detailed contract information, fund escrow, cancel pending contracts, and view associated disputes. All endpoints require JWT authentication, with contract creation handled through the proposal acceptance workflow.
 
 ## API Endpoints
 
@@ -41,6 +47,8 @@ Retrieves all contracts for the authenticated user (as either freelancer or empl
       "freelancerId": "string",
       "employerId": "string",
       "escrowAddress": "string",
+      "baseAmount": number,
+      "rushFee": number,
       "totalAmount": number,
       "status": "active",
       "createdAt": "string",
@@ -78,8 +86,15 @@ Retrieves details of a specific contract.
   "freelancerId": "string",
   "employerId": "string",
   "escrowAddress": "string",
+  "baseAmount": number,
+  "rushFee": number,
   "totalAmount": number,
   "status": "active",
+  "title": "string",
+  "description": "string",
+  "startDate": "string",
+  "endDate": "string",
+  "milestones": [],
   "createdAt": "string",
   "updatedAt": "string"
 }
@@ -90,6 +105,163 @@ Retrieves details of a specific contract.
 - 200: Contract retrieved successfully
 - 400: Invalid UUID format
 - 401: Unauthorized (missing or invalid JWT)
+- 403: Forbidden (user is not the freelancer, employer, or admin)
+- 404: Contract not found
+
+### Fund Contract Escrow
+
+Deploys and funds the escrow for a pending contract, activating it. Only the employer can fund the escrow. If the contract is already active and funded, returns a success response indicating no action was needed. Requires KYC verification.
+
+**HTTP Method**: POST  
+**URL Pattern**: `/api/contracts/{id}/fund`  
+**Authentication**: JWT (Bearer token), KYC verified  
+**Path Parameters**:
+
+- `id` (string, required): Contract ID (UUID)
+
+**Request Body** (optional):
+
+```json
+{
+  "escrowAddress": "string",
+  "transactionHash": "string"
+}
+```
+
+- `escrowAddress` (string, optional): Pre-deployed escrow address from the frontend (MetaMask flow)
+- `transactionHash` (string, optional): Transaction hash of the frontend-deployed escrow
+
+If no `escrowAddress` is provided in the request body, the server deploys the escrow contract itself using the employer and freelancer wallet addresses.
+
+**Response** (success):
+
+```json
+{
+  "message": "Contract funded and activated",
+  "escrowAddress": "string",
+  "contractStatus": "active"
+}
+```
+
+**Response** (already funded):
+
+```json
+{
+  "message": "Contract already funded and active",
+  "escrowAddress": "string",
+  "contractStatus": "active"
+}
+```
+
+**Status Codes**:
+
+- 200: Escrow funded and contract activated (or already funded)
+- 400: Contract not in pending status, missing wallet addresses, or associated project not found
+- 401: Unauthorized (missing or invalid JWT)
+- 403: Forbidden (only the employer can fund the escrow)
+- 404: Contract not found
+
+### Get Contract Funding Info
+
+Returns the data needed by the frontend to deploy the escrow contract via MetaMask. Only the employer can access this endpoint. Includes milestone amounts converted to wei, wallet addresses, and the platform wallet address.
+
+**HTTP Method**: GET  
+**URL Pattern**: `/api/contracts/{id}/fund-info`  
+**Authentication**: JWT (Bearer token)  
+**Path Parameters**:
+
+- `id` (string, required): Contract ID (UUID)
+
+**Response**:
+
+```json
+{
+  "contractId": "string",
+  "freelancerWallet": "string",
+  "platformWallet": "string",
+  "milestoneAmounts": ["string"],
+  "milestoneDescriptions": ["string"],
+  "totalAmount": "string"
+}
+```
+
+**Field Descriptions**:
+
+- `contractId`: The contract ID
+- `freelancerWallet`: Freelancer's blockchain wallet address
+- `platformWallet`: Platform's wallet address (used as arbiter for milestone approvals)
+- `milestoneAmounts`: Array of milestone amounts in wei (strings)
+- `milestoneDescriptions`: Array of milestone titles
+- `totalAmount`: Total contract amount in wei (string)
+
+**Status Codes**:
+
+- 200: Funding info retrieved successfully
+- 400: Missing wallet addresses or associated project not found
+- 401: Unauthorized (missing or invalid JWT)
+- 403: Forbidden (only the employer can view fund info)
+- 404: Contract not found
+
+### Cancel Contract
+
+Cancels a contract that is still in pending status. Requires KYC verification. Only parties to the contract (freelancer or employer) can cancel it.
+
+**HTTP Method**: POST  
+**URL Pattern**: `/api/contracts/{id}/cancel`  
+**Authentication**: JWT (Bearer token), KYC verified  
+**Path Parameters**:
+
+- `id` (string, required): Contract ID (UUID)
+
+**Response**:
+
+```json
+{
+  "message": "Contract cancelled successfully"
+}
+```
+
+**Status Codes**:
+
+- 200: Contract cancelled successfully
+- 400: Contract cannot be cancelled (not in pending status)
+- 401: Unauthorized (missing or invalid JWT)
+- 403: Forbidden (user is not authorized to cancel this contract)
+- 404: Contract not found
+
+### List Contract Disputes
+
+Retrieves all disputes associated with a contract. Only parties to the contract (freelancer or employer) can view disputes.
+
+**HTTP Method**: GET  
+**URL Pattern**: `/api/contracts/{contractId}/disputes`  
+**Authentication**: JWT (Bearer token)  
+**Path Parameters**:
+
+- `contractId` (string, required): Contract ID (UUID)
+
+**Response**:
+
+```json
+[
+  {
+    "id": "string",
+    "contractId": "string",
+    "initiatorId": "string",
+    "reason": "string",
+    "status": "string",
+    "resolution": "string",
+    "createdAt": "string",
+    "updatedAt": "string"
+  }
+]
+```
+
+**Status Codes**:
+
+- 200: Disputes retrieved successfully
+- 401: Unauthorized (missing or invalid JWT)
+- 403: Forbidden (user is not authorized to view disputes for this contract)
 - 404: Contract not found
 
 ## Contract Schema
@@ -104,8 +276,15 @@ The contract object represents a formal agreement between a freelancer and emplo
   "freelancerId": "string",
   "employerId": "string",
   "escrowAddress": "string",
+  "baseAmount": number,
+  "rushFee": number,
   "totalAmount": number,
   "status": "active",
+  "title": "string",
+  "description": "string",
+  "startDate": "string",
+  "endDate": "string",
+  "milestones": [],
   "createdAt": "string",
   "updatedAt": "string"
 }
@@ -119,33 +298,46 @@ The contract object represents a formal agreement between a freelancer and emplo
 - `freelancerId`: ID of the freelancer party
 - `employerId`: ID of the employer party
 - `escrowAddress`: Blockchain address of the escrow contract holding funds
-- `totalAmount`: Total contract value in ETH
-- `status`: Current status of the contract (active, completed, disputed, cancelled)
+- `baseAmount`: Base contract amount before rush fees (in ETH)
+- `rushFee`: Additional fee for rush delivery (in ETH, 0 if standard timeline)
+- `totalAmount`: Total contract value in ETH (baseAmount + rushFee). The server converts this to wei when interacting with the blockchain escrow contract.
+- `status`: Current status of the contract (pending, active, completed, disputed, resolved, cancelled)
+- `title`: Optional contract title (typically derived from the associated project)
+- `description`: Optional contract description
+- `startDate`: Optional contract start date
+- `endDate`: Optional contract end date
+- `milestones`: Optional array of milestone objects
 - `createdAt`: Timestamp when the contract was created
 - `updatedAt`: Timestamp when the contract was last updated
 
 ## Contract Status Lifecycle
 
-Contracts progress through a defined status lifecycle that governs their state transitions. The valid statuses are: `active`, `completed`, `disputed`, and `cancelled`.
+Contracts progress through a defined status lifecycle that governs their state transitions. The valid statuses are: `pending`, `active`, `completed`, `disputed`, `resolved`, and `cancelled`.
 
 ```mermaid
 stateDiagram-v2
-[*] --> active
+[*] --> pending : Contract created on proposal acceptance
+pending --> active : Employer funds escrow
+pending --> cancelled : Contract cancelled
 active --> completed : All milestones approved
 active --> disputed : Milestone dispute initiated
 active --> cancelled : Contract cancelled
 disputed --> active : Dispute resolved, contract continues
 disputed --> completed : Dispute resolved, work accepted
+disputed --> resolved : Dispute resolved with outcome
 disputed --> cancelled : Dispute resolved, contract terminated
 completed --> [*]
+resolved --> [*]
 cancelled --> [*]
 ```
 
 **State Transition Rules**:
 
+- From `pending`: Can transition to `active` (via funding) or `cancelled`
 - From `active`: Can transition to `completed`, `disputed`, or `cancelled`
-- From `disputed`: Can transition to `active`, `completed`, or `cancelled`
+- From `disputed`: Can transition to `active`, `completed`, `resolved`, or `cancelled`
 - From `completed`: No further transitions allowed
+- From `resolved`: No further transitions allowed
 - From `cancelled`: No further transitions allowed
 
 ## Relationships Between Contracts, Proposals, and Projects
@@ -192,7 +384,7 @@ PROJECT ||--o{ CONTRACT : "has"
 2. Freelancer submits a proposal for the project
 3. Employer accepts the proposal
 4. System automatically creates a contract linked to the project and accepted proposal
-5. Contract status is set to `active` and escrow is established
+5. Contract status is set to `pending` until the employer funds the escrow, then it transitions to `active`
 
 ## Blockchain Escrow Integration
 
@@ -309,8 +501,17 @@ The Contract API follows a consistent error response format for all endpoints.
 **Common Error Codes**:
 
 - `AUTH_UNAUTHORIZED`: User not authenticated (401)
+- `UNAUTHORIZED`: User not authorized to perform this action (403)
+- `FORBIDDEN`: User lacks permission for this resource (403)
 - `NOT_FOUND`: Contract not found (404)
 - `INVALID_UUID_FORMAT`: Invalid UUID format (400)
+- `INVALID_STATUS`: Contract is not in the required status for this operation (400)
+- `INVALID_STATUS_TRANSITION`: The requested status change is not allowed (400)
+- `ESCROW_FAILED`: Failed to initialize escrow contract (500)
+- `ACTIVATION_FAILED`: Escrow funded but contract activation failed (500)
+- `CANCEL_FAILED`: Failed to cancel contract (400)
+- `PROJECT_NOT_FOUND`: Associated project not found (400)
+- `INTERNAL_ERROR`: Internal server error (500)
 
 All error responses include a timestamp and request ID for debugging purposes.
 

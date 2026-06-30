@@ -1,393 +1,213 @@
+<div align="center">
+
+# 🔗 FreelanceXchain API
+
+**Blockchain-Based Freelance Marketplace with AI Skill Matching**
+
+[![CodeRabbit Reviews](https://img.shields.io/coderabbit/prs/github/ProTechPh/FreelanceXchain-api?utm_source=oss&utm_medium=github&utm_campaign=ProTechPh%2FFreelanceXchain-api&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org)
+
+A decentralized freelance marketplace that combines AI-powered skill matching with blockchain-based secure payments — eliminating high platform fees and building transparent reputations on-chain.
+
+</div>
+
 ---
-title: FreelanceXchain API
-emoji: 🔗
-colorFrom: blue
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
----
 
-# Blockchain-Based Freelance Marketplace with AI Skill Matching
+## ✨ Why FreelanceXchain?
 
-![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/ProTechPh/FreelanceXchain-api?utm_source=oss&utm_medium=github&utm_campaign=ProTechPh%2FFreelanceXchain-api&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+| Problem | Our Solution |
+| --- | --- |
+| High platform fees (up to 20%) | Decentralized architecture with minimal fees |
+| Delayed & unfair payments | Smart contract escrow with milestone-based releases |
+| Fake reviews & opaque ratings | Immutable on-chain reputation system |
+| Mismatched hires | AI-powered skill extraction & project matching |
 
-A decentralized freelance marketplace that leverages AI for intelligent skill matching and blockchain for secure, transparent transactions.
-
-## Product Overview
-
-FreelanceXchain is a decentralized freelance marketplace that combines AI-powered skill matching with blockchain-based secure payments. The platform addresses key challenges in the gig economy through:
-
-- **Fair Payments**: Smart contract escrow system with milestone-based payments
-- **Transparent Reputation**: Immutable on-chain work histories and ratings
-- **Intelligent Matching**: AI-powered skill extraction and project-freelancer recommendations
-- **Reduced Exploitation**: Decentralized architecture eliminating high platform fees
-
-### Target Users
-
-- **Freelancers**: Seeking fair payment terms and transparent reputation building
-- **Employers**: Looking for skilled freelancers with secure payment guarantees
-- **Platform Administrators**: Managing disputes and platform operations
-
-### SDG Alignment
-
-The platform supports UN Sustainable Development Goals:
-
-- **SDG 8**: Decent Work and Economic Growth
-- **SDG 9**: Industry, Innovation, and Infrastructure  
-- **SDG 16**: Peace, Justice, and Strong Institutions
-
-## Tech Stack
+## 🚀 Tech Stack
 
 | Layer | Technology |
-| ------- | ------------ |
-| Backend | Node.js, Express, TypeScript |
-| Database | PostgreSQL |
-| Storage | Appwrite |
-| Blockchain | Ethereum (Solidity), Hardhat, Ethers.js |
-| AI/ML | LLM API |
-| Documentation | Swagger/OpenAPI |
+| --- | --- |
+| **Backend** | Node.js, Express, TypeScript |
+| **Database** | PostgreSQL, Appwrite |
+| **Blockchain** | Ethereum / Polygon (Solidity, Hardhat, Ethers.js) |
+| **AI/ML** | LLM-powered skill matching |
+| **Auth** | JWT + KYC via Didit (220+ countries) |
+| **Docs** | Swagger / OpenAPI |
 
-## Core Features
-
-### User Management
-
-- JWT-based authentication with role-based access (freelancer/employer/admin)
-- Comprehensive profile management with skills, experience, and portfolios
-- KYC verification through Didit integration (220+ countries supported)
-
-### Project & Contract Management
-
-- Project creation with milestones, budgets, and deadlines
-- Proposal submission and acceptance system
-- Automated contract creation upon proposal acceptance
-- Milestone-based payment tracking
-
-### Blockchain Integration
-
-- Escrow smart contracts for secure fund holding
-- Automated payment release upon milestone approval
-- Immutable reputation system on-chain
-- Dispute resolution mechanism with arbiter support
-
-### AI-Powered Features
-
-- Skill matching between freelancers and projects
-- Automatic skill extraction from text descriptions
-- Gap analysis to identify skill mismatches
-- Intelligent project recommendations
-
-## Additional Features
-
-### KYC Verification (Didit Integration)
-
-- **ID Verification** - Document verification for 220+ countries
-- **Passive Liveness Detection** - Anti-spoofing and fraud prevention
-- **Face Match 1:1** - Selfie to document photo matching
-- **IP Analysis** - Location verification and risk assessment
-
-## Project Structure
-
-```
-├── contracts/                 # Solidity smart contracts
-│   ├── FreelanceEscrow.sol   # Escrow for milestone payments
-│   └── FreelanceReputation.sol # On-chain reputation system
-├── scripts/                   # Deployment scripts
-├── src/
-│   ├── config/               # Configuration (env, database, swagger)
-│   ├── middleware/           # Express middleware
-│   ├── models/               # Data models/types
-│   ├── repositories/         # Data access layer
-│   ├── routes/               # API route handlers
-│   ├── services/             # Business logic
-│   └── utils/                # Utility functions
-├── artifacts/                # Compiled contracts
-└── dist/                     # Compiled TypeScript
-```
-
-## 📚 Documentation Hub
-
-### Quick Access Guides
-
-- **[Configuration Guide](CONFIGURATION.md)** - All configuration files explained
-- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
-
-### Complete Documentation
-
-- **[Full Documentation Index](docs/README.md)** - Browse all documentation by category
-
----
-
-## Installation
+## 📦 Getting Started
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm 8+ (fast, disk space efficient package manager)
-- PostgreSQL database
-- Appwrite account (<https://appwrite.io>)
-- Ethereum wallet (for blockchain features)
-- LLM API key (for AI features)
-- Docker (optional, for containerized deployment)
+- **Node.js** 20+
+- **pnpm** 8+
+- **PostgreSQL** database
+- **Appwrite** account ([appwrite.io](https://appwrite.io))
+- **Ethereum wallet** (for blockchain features)
+- **LLM API key** (for AI features)
 
 ### Quick Setup
 
-**See [Developer Setup Guide](docs/getting-started/setup.md) for detailed setup instructions.**
-
-### Local Development Setup
-
-1. **Clone and install dependencies**
-
 ```bash
-git clone <repository-url>
+# 1. Clone the repo
+git clone https://github.com/ProTechPh/FreelanceXchain-api.git
 cd FreelanceXchain-api
+
+# 2. Install dependencies
 pnpm install --frozen-lockfile
-```
 
-1. **Configure environment variables**
-
-```bash
+# 3. Configure environment
 cp .env.example .env
-# Edit .env with your credentials
-```
+# Edit .env with your credentials (see Environment Variables below)
 
-1. **Set up PostgreSQL database**
-
-- Create a PostgreSQL database
-- Run migrations if available
-- Update DATABASE_URL in `.env`
-
-1. **Set up Appwrite**
-
-- Create a project at <https://appwrite.io>
-- Create storage buckets for file uploads
-- Copy your credentials to `.env`
-
-1. **Compile smart contracts**
-
-```bash
+# 4. Compile smart contracts
 pnpm run compile
-```
 
-1. **Build TypeScript**
-
-```bash
+# 5. Build & run
 pnpm run build
-```
-
-1. **Start the server**
-
-```bash
-pnpm start
-# Or for development with hot reload:
 pnpm run dev
-# Or for production mode:
-pnpm run prod
 ```
 
-### Docker Deployment
+The API will be available at `http://localhost:7860`. Swagger docs at `http://localhost:7860/api-docs`.
 
-1. **Build Docker image**
+### Docker
 
 ```bash
 docker build -t freelancexchain-api:latest .
-```
-
-1. **Run locally with Docker**
-
-```bash
 docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```
 
-## Environment Variables
+> 📖 For detailed setup instructions, see the [Developer Setup Guide](docs/deployment/setup.md).
+
+## 🔑 Environment Variables
 
 | Variable | Description |
-| ---------- | ------------- |
-| `PORT` | Server port (default: 7860) |
-| `NODE_ENV` | Environment (development/production/test) |
+| --- | --- |
+| `PORT` | Server port (default: `7860`) |
+| `NODE_ENV` | `development` / `production` / `test` |
 | `DATABASE_URL` | PostgreSQL connection string |
 | `APPWRITE_ENDPOINT` | Appwrite API endpoint |
 | `APPWRITE_PROJECT_ID` | Appwrite project ID |
 | `APPWRITE_API_KEY` | Appwrite API key |
-| `JWT_SECRET` | Secret for JWT signing (min 32 chars) |
-| `JWT_EXPIRES_IN` | Access token expiry (e.g., 1h) |
-| `JWT_REFRESH_EXPIRES_IN` | Refresh token expiry (e.g., 7d) |
+| `JWT_SECRET` | JWT signing secret (min 32 chars) |
+| `JWT_EXPIRES_IN` | Access token expiry (e.g., `1h`) |
+| `JWT_REFRESH_EXPIRES_IN` | Refresh token expiry (e.g., `7d`) |
 | `LLM_API_KEY` | LLM API key for AI features |
 | `LLM_API_URL` | LLM API base URL |
-| `BLOCKCHAIN_RPC_URL` | Ethereum RPC endpoint |
+| `BLOCKCHAIN_RPC_URL` | Ethereum/Polygon RPC endpoint |
 | `BLOCKCHAIN_PRIVATE_KEY` | Deployer wallet private key |
 | `DIDIT_API_KEY` | Didit KYC API key |
-| `DIDIT_API_URL` | Didit API base URL (default: <https://verification.didit.me>) |
+| `DIDIT_API_URL` | Didit API base URL |
 | `DIDIT_WEBHOOK_SECRET` | Didit webhook signature secret |
-| `DIDIT_WORKFLOW_ID` | Didit workflow ID for KYC verification |
+| `DIDIT_WORKFLOW_ID` | Didit workflow ID |
 
-## API Documentation
+## 📡 API Endpoints
 
-Interactive API documentation available at:
+All endpoints are prefixed with `/api`. Full interactive docs at `/api-docs`.
 
-```
-http://localhost:7860/api-docs
-```
-
-### API Endpoints Overview
-
-| Module | Base Path | Description |
-| -------- | ----------- | ------------- |
+| Module | Path | Description |
+| --- | --- | --- |
 | Health | `/api/health` | Health check |
 | Auth | `/api/auth` | Registration, login, token refresh |
 | Skills | `/api/skills` | Skill taxonomy management |
 | Freelancers | `/api/freelancers` | Freelancer profiles |
 | Employers | `/api/employers` | Employer profiles |
-| Projects | `/api/projects` | Project CRUD, milestones |
-| Search | `/api/search` | Search projects/freelancers |
+| Projects | `/api/projects` | Project CRUD & milestones |
+| Search | `/api/search` | Search projects & freelancers |
 | Matching | `/api/matching` | AI-powered recommendations |
 | Proposals | `/api/proposals` | Proposal management |
 | Contracts | `/api/contracts` | Contract management |
-| Payments | `/api/payments` | Milestone payments, escrow |
-| Reputation | `/api/reputation` | Ratings and reviews |
+| Payments | `/api/payments` | Milestone payments & escrow |
+| Reputation | `/api/reputation` | Ratings & reviews |
 | Disputes | `/api/disputes` | Dispute resolution |
 | Notifications | `/api/notifications` | User notifications |
 
-## Smart Contracts
+## ⛓️ Smart Contracts
 
 ### FreelanceEscrow.sol
 
-Handles milestone-based payments with:
-
-- Fund deposit by employer
-- Milestone submission by freelancer
-- Approval and automatic payment release
+Milestone-based escrow system:
+- Employer deposits funds into contract
+- Freelancer submits milestones for approval
+- Automatic payment release upon approval
 - Dispute mechanism with arbiter resolution
 - Reentrancy protection
 
 ### FreelanceReputation.sol
 
-Immutable reputation system:
-
-- Submit ratings (1-5 stars) with comments
-- Prevent duplicate ratings per contract
+On-chain reputation system:
+- Submit ratings (1–5 stars) with comments
+- Duplicate rating prevention per contract
 - Aggregate score calculation
 - Query ratings by user or contract
 
-### Deployment
-
-**Local (Hardhat):**
+### Deploy
 
 ```bash
+# Local (Hardhat node)
 pnpm run deploy:local
-```
 
-**Testnet (Sepolia):**
-
-```bash
+# Testnet (Polygon Amoy)
 pnpm run deploy:reputation
 pnpm run deploy:escrow
 ```
 
-## Testing
+## 🧪 Testing
 
 ```bash
-# Run all tests
-pnpm test
-
-# Watch mode
-pnpm run test:watch
+pnpm test            # Run all tests
+pnpm run test:watch  # Watch mode
+pnpm run test:ci     # CI mode with coverage
 ```
 
-## Scripts
+## 🗂️ Project Structure
 
-| Command | Description |
-| --------- | ------------- |
-| `pnpm run dev` | Start dev server with hot reload |
-| `pnpm run build` | Compile TypeScript |
-| `pnpm start` | Start production server |
-| `pnpm test` | Run tests |
-| `pnpm run compile` | Compile Solidity contracts |
-| `pnpm run deploy:local` | Deploy to local Hardhat node |
-| `pnpm run deploy:reputation` | Deploy reputation contract to Sepolia |
-| `pnpm run deploy:escrow` | Deploy escrow contract to Sepolia |
+```
+├── contracts/                 # Solidity smart contracts
+│   ├── FreelanceEscrow.sol    # Escrow for milestone payments
+│   └── FreelanceReputation.sol# On-chain reputation system
+├── scripts/                   # Deployment & utility scripts
+├── src/
+│   ├── config/                # Configuration (env, database, swagger)
+│   ├── middleware/             # Express middleware
+│   ├── models/                # Data models & types
+│   ├── repositories/          # Data access layer
+│   ├── routes/                # API route handlers
+│   ├── services/              # Business logic
+│   └── utils/                 # Utility functions
+├── docs/                      # Full documentation
+├── artifacts/                 # Compiled contracts
+└── dist/                      # Compiled TypeScript
+```
 
-## Documentation
+## 📚 Documentation
 
-### 📚 Complete Documentation Index
-
-**[View Full Documentation →](docs/README.md)**
-
-### Quick Links by Category
-
-#### 🚀 Getting Started
-
-- [Project Overview](docs/getting-started/overview.md) - Platform overview and goals
-- [Developer Setup Guide](docs/getting-started/setup.md) - Complete setup instructions
-- [Technology Stack](docs/getting-started/tech-stack.md) - Technologies used
-
-#### 🏗️ Architecture & API
-
-- [API Endpoints Reference](docs/architecture/api-overview.md) - Complete API documentation
-- [Business Logic Layer](docs/architecture/services-overview.md) - Service layer architecture
-- [Database Schema Design](docs/architecture/database-overview.md) - Database structure
-- [Data Models & ORM](docs/architecture/models-overview.md) - Entity models
-
-#### 🔐 Security
-
-- [Security Implementation](docs/security/overview.md) - Security architecture
-- [MFA Implementation](docs/security/MFA_IMPLEMENTATION.md) - Multi-factor authentication
-- [OWASP Validation Report](docs/security/OWASP_TOP_10_VALIDATION_REPORT.md) - Security compliance
-
-#### ⛓️ Blockchain
-
-- [Blockchain Integration](docs/blockchain/integration.md) - Smart contract setup
-- [Blockchain Testing](docs/blockchain/testing.md) - Testing guide
-- [Smart Contracts Documentation](contracts/README.md) - Contract details
-
-#### ✨ Features
-
-- [Audit Logs](docs/features/audit-logs/) - Audit logging system
-- [Proposal File Uploads](docs/features/proposal-uploads/) - File upload feature
-
-#### 📖 Guides & Operations
-
-- [Deployment Configuration](docs/guides/deployment.md) - Deployment guide
-- [Testing Strategy](docs/guides/testing.md) - Testing approach
-- [Troubleshooting](docs/guides/TROUBLESHOOTING.md) - Common issues and solutions
-- [Maintenance](docs/guides/MAINTENANCE.md) - System maintenance
-
-#### 🔧 Additional Resources
-
-- [Scripts Documentation](scripts/README.md) - Utility scripts guide
-- [Database Documentation](appwrite/README.md) - Database schema and migrations
-- [Changelog](CHANGELOG.md) - Version history
+| Topic | Link |
+| --- | --- |
+| Full Documentation Index | [docs/README.md](docs/README.md) |
+| API Reference | [docs/api/](docs/api/) |
+| Architecture | [docs/architecture/](docs/architecture/) |
+| Blockchain Integration | [docs/blockchain/](docs/blockchain/) |
+| Database Schema | [docs/database/](docs/database/) |
+| Deployment Guide | [docs/deployment/](docs/deployment/) |
+| Smart Contracts | [contracts/README.md](contracts/README.md) |
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a PR.
 
-- Code of conduct
-- Development workflow
-- Coding standards
-- Commit guidelines
-- Pull request process
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## 📖 Additional Resources
+## 📜 License
 
-- **[Configuration Guide](CONFIGURATION.md)** - Detailed configuration documentation
-- **[Changelog](CHANGELOG.md)** - Version history and changes
+This project is licensed under the [ISC License](LICENSE).
 
-## 🆘 Support & Help
+## 🆘 Support
 
-- **Issues:** Report bugs or request features via GitHub Issues
-- **Documentation:** Check [docs/](docs/) for comprehensive guides
-- **Troubleshooting:** See [Troubleshooting Guide](docs/guides/TROUBLESHOOTING.md)
-
-## 📊 Project Status
-
-- ✅ Core API functionality
-- ✅ Blockchain integration
-- ✅ AI-powered matching
-- ✅ KYC verification
-- ✅ Comprehensive testing
-- ✅ Complete documentation
-
-## License
-
-ISC
+- **Bug Reports & Feature Requests:** [GitHub Issues](https://github.com/ProTechPh/FreelanceXchain-api/issues)
+- **Documentation:** [docs/](docs/)
+- **Troubleshooting:** [docs/deployment/troubleshooting.md](docs/deployment/troubleshooting.md)
