@@ -1,0 +1,18 @@
+---
+extends: default
+
+rules:
+  # GitHub Actions uses 'on:' which yamllint flags as truthy
+  truthy:
+    allowed-values: ['true', 'false', 'on']
+    check-keys: false
+  # Relax line length for workflow files and comments
+  line-length:
+    max: 200
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+  # Allow both # comment styles
+  comments:
+    min-spaces-from-content: 1
+  # Don't require document-start '---'
+  document-start: disable

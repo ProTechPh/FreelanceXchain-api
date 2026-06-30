@@ -1,0 +1,15 @@
+# MegaLinter configuration
+# https://megalinter.io/latest/configuration/
+
+# Lint only changed files in PRs, full codebase on main
+VALIDATE_ALL_CODEBASE: false
+
+# Install dependencies before running ESLint so flat config imports resolve
+TYPESCRIPT_ES_PRE_COMMANDS:
+  - command: npm install --legacy-peer-deps --ignore-scripts
+    cwd: workspace
+    continue_if_failed: false
+
+# Disable flavor/security suggestions to reduce noise
+FLAVOR_SUGGESTIONS: false
+SECURITY_SUGGESTIONS: false

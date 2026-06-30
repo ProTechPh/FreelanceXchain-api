@@ -1,7 +1,10 @@
-import eslint from '@eslint/js';
-import tseslint from '@typescript-eslint/eslint-plugin';
-import tsparser from '@typescript-eslint/parser';
-import globals from 'globals';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+const eslint = require('@eslint/js');
+const tseslint = require('@typescript-eslint/eslint-plugin');
+const tsparser = require('@typescript-eslint/parser');
+const globals = require('globals');
 
 export default [
     // Base ESLint recommended config
