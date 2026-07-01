@@ -78,7 +78,8 @@ export type MfaRequiredResult = {
   code: 'MFA_REQUIRED';
   message: string;
   mfaRequired: true;
-  accessToken: string;
+  /** Session token for MFA completion only — not a fully authenticated token */
+  mfaSessionToken: string;
 };
 
 export type AuthResponse = AuthResult | AuthError | MfaRequiredResult;

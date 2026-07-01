@@ -570,7 +570,7 @@ describe('auth-routes.ts – branch coverage', () => {
 
   describe('POST /login – MFA_REQUIRED path', () => {
     it('should return 200 with mfaRequired when MFA_REQUIRED', async () => {
-      mockLogin.mockResolvedValue({ code: 'MFA_REQUIRED', message: 'MFA needed', accessToken: 'mfa-session-token' });
+      mockLogin.mockResolvedValue({ code: 'MFA_REQUIRED', message: 'MFA needed', mfaSessionToken: 'mfa-session-token' });
       // Override isAuthError to return true for MFA_REQUIRED
       const res = await requestMod(app)
         .post('/api/auth/login')
@@ -578,7 +578,7 @@ describe('auth-routes.ts – branch coverage', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.mfaRequired).toBe(true);
-      expect(res.body.accessToken).toBe('mfa-session-token');
+      expect(res.body.mfaSessionToken).toBe('mfa-session-token');
     });
   });
 
@@ -720,7 +720,7 @@ describe('auth-routes.ts – branch coverage', () => {
 
   describe('POST /oauth/callback – MFA_REQUIRED path', () => {
     it('should return 200 with mfaRequired when MFA_REQUIRED', async () => {
-      mockLoginWithAppwrite.mockResolvedValue({ code: 'MFA_REQUIRED', message: 'MFA needed', accessToken: 'mfa-token' });
+      mockLoginWithAppwrite.mockResolvedValue({ code: 'MFA_REQUIRED', message: 'MFA needed', mfaSessionToken: 'mfa-token' });
       const res = await requestMod(app)
         .post('/api/auth/oauth/callback')
         .send({ access_token: 'valid-token' });

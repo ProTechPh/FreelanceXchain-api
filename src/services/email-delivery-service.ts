@@ -53,6 +53,18 @@ function getEmailClient() {
 }
 
 /**
+ * HTML-escape a string to prevent injection in email templates
+ */
+function escapeHtml(str: string): string {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
  * Render email template with data
  */
 async function renderTemplate(template: EmailTemplate, data: Record<string, any>): Promise<string> {
@@ -60,17 +72,18 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
     const templatePath = path.join(process.cwd(), 'docs/email-templates', `${template}.html`);
     let html = await fs.readFile(templatePath, 'utf-8');
 
-    // Simple template variable replacement
+    // Template variable replacement with HTML escaping to prevent injection
     Object.keys(data).forEach(key => {
       const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-      html = html.replace(regex, String(data[key]));
+      html = html.replace(regex, escapeHtml(String(data[key])));
     });
 
     return html;
   } catch (error) {
     logger.error('Failed to render email template:', error);
-    // Fallback to plain text
-    return `<html><body><pre>${JSON.stringify(data, null, 2)}</pre></body></html>`;
+    // Fallback to escaped plain text
+    const escaped = escapeHtml(JSON.stringify(data, null, 2));
+    return `<html><body><pre>${escaped}</pre></body></html>`;
   }
 }
 

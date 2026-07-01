@@ -333,7 +333,7 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
       const mfaResult = result as MfaRequiredResult;
       res.status(200).json({
         mfaRequired: true,
-        accessToken: mfaResult.accessToken,
+        mfaSessionToken: mfaResult.mfaSessionToken,
       });
       return;
     }
@@ -391,14 +391,16 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
  *         description: Unauthorized
  */
 router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
-  const { accessToken, factorId, code } = req.body;
+  const { mfaSessionToken, factorId, code } = req.body;
+  // Backward compatibility: also accept accessToken for MFA session token
+  const sessionToken = mfaSessionToken || req.body.accessToken;
   const requestId = getRequestId(req);
 
-  if (!accessToken || !factorId || !code) {
+  if (!sessionToken || !factorId || !code) {
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'accessToken, factorId, and code are required',
+        message: 'mfaSessionToken, factorId, and code are required',
       },
       timestamp: new Date().toISOString(),
       requestId,
@@ -406,8 +408,8 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
     return;
   }
 
-  // Create challenge using the session access token
-  const challengeResult = await challengeMFA(accessToken, factorId);
+  // Create challenge using the MFA session token
+  const challengeResult = await challengeMFA(sessionToken, factorId);
   
   if (isAuthError(challengeResult)) {
     res.status(400).json({
@@ -422,8 +424,8 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   }
 
   // Verify the code
-  const verifyResult = await verifyMFAChallenge(accessToken, factorId, challengeResult.challengeId, code);
-  
+  const verifyResult = await verifyMFAChallenge(sessionToken, factorId, challengeResult.challengeId, code);
+
   if (isAuthError(verifyResult)) {
     res.status(400).json({
       error: {
@@ -437,7 +439,7 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   }
 
   // MFA verified - get user and return full auth result
-  const authResult = await validateTokenAndGetUser(accessToken);
+  const authResult = await validateTokenAndGetUser(sessionToken);
   
   if (isAuthError(authResult)) {
     res.status(401).json({
@@ -909,7 +911,7 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
       const mfaResult = result as MfaRequiredResult;
       res.status(200).json({
         mfaRequired: true,
-        accessToken: mfaResult.accessToken,
+        mfaSessionToken: mfaResult.mfaSessionToken,
       });
       return;
     }

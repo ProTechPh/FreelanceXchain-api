@@ -61,21 +61,28 @@ export async function uploadFileToStorage(
   originalFilename: string,
   mimeType: string,
   bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS,
-  _folder?: string
+  _folder?: string,
+  userId?: string
 ): Promise<UploadResult> {
   try {
     // Generate unique filename
     const uniqueFilename = generateUniqueFilename(originalFilename);
-    
+
     // Create InputFile from buffer
     const inputFile = InputFile.fromBuffer(buffer, uniqueFilename);
-    
+
+    // Sensitive buckets use user-scoped read permissions; public buckets use public read
+    const SENSITIVE_BUCKETS = [BUCKETS.DISPUTE_EVIDENCE, BUCKETS.MILESTONE_DELIVERABLES];
+    const permissions = SENSITIVE_BUCKETS.includes(bucket) && userId
+      ? [`read("user:${userId}")`]
+      : ['read("any")'];
+
     // Upload to Appwrite Storage
     const file = await storage.createFile(
       bucket,
       ID.unique(),
       inputFile,
-      ['read("any")'] // Public read access
+      permissions
     );
     
     // Get file view URL (public URL)
@@ -128,18 +135,20 @@ export async function uploadFileToStorage(
 export async function uploadMultipleFiles(
   files: Express.Multer.File[],
   bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS,
-  folder?: string
+  folder?: string,
+  userId?: string
 ): Promise<UploadResult[]> {
   const uploadPromises = files.map(file => {
     // Use detected MIME type from magic number validation if available
     const mimeType = (file as any).detectedMimeType || file.mimetype;
-    
+
     return uploadFileToStorage(
       file.buffer,
       file.originalname,
       mimeType,
       bucket,
-      folder
+      folder,
+      userId
     );
   });
   

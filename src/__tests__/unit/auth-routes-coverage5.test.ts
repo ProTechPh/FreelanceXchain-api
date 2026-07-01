@@ -160,7 +160,7 @@ describe('Auth Routes - Coverage5 (remaining gaps)', () => {
       mockLoginWithAppwrite.mockResolvedValue({
         code: 'MFA_REQUIRED',
         message: 'MFA required',
-        accessToken: 'mfa-session-token',
+        mfaSessionToken: 'mfa-session-token',
       });
 
       const res = await request(app)
@@ -169,7 +169,7 @@ describe('Auth Routes - Coverage5 (remaining gaps)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.mfaRequired).toBe(true);
-      expect(res.body.accessToken).toBe('mfa-session-token');
+      expect(res.body.mfaSessionToken).toBe('mfa-session-token');
     });
   });
 

@@ -115,7 +115,7 @@ describe('CSRF Middleware — coverage gaps', () => {
     }));
 
     await expect(import('../../middleware/csrf-middleware.js')).rejects.toThrow(
-      'CSRF_SECRET not set — using JWT_SECRET as fallback (insecure in production)'
+      'CSRF_SECRET not set'
     );
 
     process.env.NODE_ENV = originalEnv;

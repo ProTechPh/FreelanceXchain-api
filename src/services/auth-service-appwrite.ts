@@ -195,12 +195,17 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       await account.get();
     } catch (mfaError: any) {
       if (mfaError.type === 'user_more_factors_required') {
-        // MFA is required — return the session token so frontend can complete MFA
+        // SECURITY NOTE: The session.secret returned here is a partially-authenticated
+        // Appwrite session. It is needed for the MFA challenge/verify flow but should
+        // NOT be treated as a fully authenticated token. Appwrite enforces MFA at the
+        // session level for account.get(), but other session-scoped operations may not
+        // be protected. Frontend must complete MFA before using this token for any
+        // purpose other than the /api/auth/login/mfa-verify endpoint.
         return {
           code: 'MFA_REQUIRED',
           message: 'Multi-factor authentication required',
           mfaRequired: true,
-          accessToken: session.secret,
+          mfaSessionToken: session.secret,
         };
       }
       // Other error — rethrow
@@ -668,19 +673,36 @@ export async function getMFAFactors(accessToken: string): Promise<{ factors: { i
 /**
  * Disable MFA
  */
-export async function disableMFA(accessToken: string, factorType: 'totp' | 'email', _otpCode?: string): Promise<{ success: boolean } | AuthError> {
+export async function disableMFA(accessToken: string, factorType: 'totp' | 'email', otpCode?: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Appwrite only supports TOTP as an authenticator type
-    // Email is challenge-based, not authenticator-based
+    // Verify OTP code before disabling MFA (security: require second factor)
     if (factorType === 'totp') {
+      if (!otpCode) {
+        return {
+          code: 'MFA_CODE_REQUIRED',
+          message: 'OTP code is required to disable MFA',
+        };
+      }
+
+      // Create a challenge and verify the OTP code
+      const challenge = await account.createMFAChallenge({
+        factor: 'totp' as any,
+      });
+
+      await account.updateMFAChallenge({
+        challengeId: challenge.$id,
+        otp: otpCode,
+      });
+
+      // OTP verified — now safe to delete the authenticator
       await account.deleteMFAAuthenticator({
         type: AuthenticatorType.Totp
       });
     }
-    
+
     const appwriteUser = await account.get();
     await userRepository.update(appwriteUser.$id, { mfa_enabled: false });
 
@@ -699,14 +721,14 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
 export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient('');
-    const _account = new Account(userClient);
-    
+    const account = new Account(userClient);
+
     const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    const _redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
-    
-    // await account.createVerification(redirectUrl);
-    
-    logger.warn('resendConfirmationEmail called but Appwrite email verification is not implemented', { email });
+    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+
+    await account.createVerification(redirectUrl);
+
+    logger.info('Confirmation email sent', { email });
     return { success: true };
   } catch (error: any) {
     return {

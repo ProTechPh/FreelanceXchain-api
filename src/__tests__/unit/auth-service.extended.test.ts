@@ -11,6 +11,7 @@ const mockAppwriteAccount = {
   createEmailPasswordSession: jest.fn(),
   deleteSession: jest.fn(),
   createRecovery: jest.fn(),
+  createVerification: jest.fn(),
   updatePassword: jest.fn(),
   createOAuth2Token: jest.fn(),
   createMFAAuthenticator: jest.fn(),
@@ -483,17 +484,20 @@ describe('resendConfirmationEmail', () => {
   });
 
   it('returns success on valid resend', async () => {
-    mockAppwriteAccount.createRecovery.mockResolvedValue({} as never);
+    mockAppwriteAccount.createVerification.mockResolvedValue({} as never);
 
     const result = await resendConfirmationEmail('test@example.com');
     expect(result).toEqual({ success: true });
   });
 
-  it('returns success even when createRecovery would fail (verification disabled)', async () => {
-    mockAppwriteAccount.createRecovery.mockRejectedValue(new Error('rate limit exceeded') as never);
+  it('returns INTERNAL_ERROR when createVerification fails', async () => {
+    mockAppwriteAccount.createVerification.mockRejectedValue(new Error('rate limit exceeded') as never);
 
     const result = await resendConfirmationEmail('test@example.com');
-    expect(result).toEqual({ success: true });
+    expect(isAuthError(result)).toBe(true);
+    if (isAuthError(result)) {
+      expect(result.code).toBe('INTERNAL_ERROR');
+    }
   });
 });
 
@@ -861,13 +865,11 @@ describe('disableMFA', () => {
     expect(result).toEqual({ success: true });
   });
 
-  it('returns MFA_DISABLE_FAILED when deleteMFAAuthenticator fails without code', async () => {
-    mockAppwriteAccount.deleteMFAAuthenticator.mockRejectedValue(new Error('no code') as never);
-
+  it('returns MFA_CODE_REQUIRED when no OTP code is provided', async () => {
     const result = await disableMFA('valid-token', 'totp');
     expect(isAuthError(result)).toBe(true);
     if (isAuthError(result)) {
-      expect(result.code).toBe('MFA_DISABLE_FAILED');
+      expect(result.code).toBe('MFA_CODE_REQUIRED');
     }
   });
 

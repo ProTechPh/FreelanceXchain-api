@@ -25,21 +25,17 @@ export const ALLOWED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   'text/plain',
   'text/csv',
-  // Images
+  // Images (SVG excluded — can contain embedded JavaScript)
   'image/png',
   'image/jpeg',
   'image/jpg',
   'image/gif',
   'image/webp',
-  'image/svg+xml',
   // Archives
   'application/zip',
   'application/x-rar-compressed',
   'application/x-7z-compressed',
-  // Code files
-  'text/html',
-  'text/css',
-  'text/javascript',
+  // Data formats (non-executable)
   'application/json',
   'text/xml',
   // Video
@@ -61,13 +57,9 @@ export const ALLOWED_EXTENSIONS = [
   '.jpeg',
   '.gif',
   '.webp',
-  '.svg',
   '.zip',
   '.rar',
   '.7z',
-  '.html',
-  '.css',
-  '.js',
   '.json',
   '.xml',
   '.mp4',

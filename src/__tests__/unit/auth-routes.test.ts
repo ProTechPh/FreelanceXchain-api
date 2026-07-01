@@ -172,11 +172,11 @@ describe('Auth Routes', () => {
     });
 
     it('should handle MFA_REQUIRED response', async () => {
-      mockLogin.mockResolvedValue({ code: 'MFA_REQUIRED', message: 'MFA required', accessToken: 'mfa-access-token' });
+      mockLogin.mockResolvedValue({ code: 'MFA_REQUIRED', message: 'MFA required', mfaSessionToken: 'mfa-access-token' });
       const res = await request(app).post('/api/auth/login').send({ email: 'test@test.com', password: 'StrongPass1!' });
       expect(res.status).toBe(200);
       expect(res.body.mfaRequired).toBe(true);
-      expect(res.body.accessToken).toBe('mfa-access-token');
+      expect(res.body.mfaSessionToken).toBe('mfa-access-token');
     });
   });
 

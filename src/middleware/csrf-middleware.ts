@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
+import { randomBytes } from 'crypto';
 import { doubleCsrf } from 'csrf-csrf';
-import { config } from '../config/env.js';
 import { logger } from '../config/logger.js';
 
-const csrfSecret = process.env['CSRF_SECRET'];
-if (!csrfSecret) {
-  const msg = 'CSRF_SECRET not set — using JWT_SECRET as fallback (insecure in production)';
+const csrfSecret = process.env['CSRF_SECRET'] ?? randomBytes(32).toString('hex');
+if (!process.env['CSRF_SECRET']) {
+  const msg = 'CSRF_SECRET not set — generated random secret (will change on restart, set CSRF_SECRET env var for persistence)';
   if (process.env['NODE_ENV'] === 'production') {
     throw new Error(msg);
   }
@@ -16,7 +16,7 @@ const {
   generateCsrfToken: csrfTokenGenerator,
   doubleCsrfProtection,
 } = doubleCsrf({
-  getSecret: () => csrfSecret ?? config.jwt.secret,
+  getSecret: () => csrfSecret,
   /* istanbul ignore next */
   cookieName: process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token',
   cookieOptions: {
