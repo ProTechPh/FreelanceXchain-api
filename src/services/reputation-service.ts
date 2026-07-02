@@ -16,6 +16,7 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
 import { logger } from '../config/logger.js';
+import { SECONDS_PER_DAY, DEFAULT_REPUTATION_DECAY_LAMBDA, DEFAULT_REPUTATION_SCORE } from '../utils/constants.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type { Review, ReviewEntity } from '../models/review.js';
 
@@ -347,7 +348,7 @@ export async function getReputation(
 /**
  * Compute aggregate reputation score with time decay
  */
-function computeAggregateScore(ratings: RatingData[], decayLambda: number = 0.01): number {
+function computeAggregateScore(ratings: RatingData[], decayLambda: number = DEFAULT_REPUTATION_DECAY_LAMBDA): number {
   if (ratings.length === 0) return 0;
 
   const now = Math.floor(Date.now() / 1000);
@@ -356,7 +357,7 @@ function computeAggregateScore(ratings: RatingData[], decayLambda: number = 0.01
 
   for (const rating of ratings) {
     const ageInSeconds = now - rating.timestamp;
-    const ageInDays = ageInSeconds / 86400;
+    const ageInDays = ageInSeconds / SECONDS_PER_DAY;
     const weight = Math.exp(-decayLambda * ageInDays);
     weightedSum += rating.rating * weight;
     weightSum += weight;

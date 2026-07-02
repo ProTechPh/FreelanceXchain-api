@@ -94,6 +94,54 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'test-request-id',
+  asyncHandler: (fn: any) => fn,
+  extractBearerToken: (req: any, res: any) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      res.status(401).json({ error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization token is required' }, timestamp: new Date().toISOString(), requestId: 'test-request-id' });
+      return null;
+    }
+    const token = authHeader.slice(7);
+    if (!token) {
+      res.status(401).json({ error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization token is required' }, timestamp: new Date().toISOString(), requestId: 'test-request-id' });
+      return null;
+    }
+    return token;
+  },
+  sendValidationError: (res: any, errors: any, requestId?: any) => {
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, timestamp: new Date().toISOString(), requestId: requestId ?? 'unknown' });
+  },
+  sendAuthError: (res: any, error: any, requestId?: any) => {
+    const statusMap: Record<string, number> = { DUPLICATE_EMAIL: 409, AUTH_INVALID_TOKEN: 401, INVALID_TOKEN: 401, TOKEN_EXPIRED: 401, AUTH_TOKEN_EXPIRED: 401, MFA_REQUIRED: 200, NOT_FOUND: 404, USER_NOT_FOUND: 404 };
+    const statusCode = statusMap[error.code] ?? 400;
+    res.status(statusCode).json({ error: { code: error.code, message: error.message }, timestamp: new Date().toISOString(), requestId: requestId ?? 'unknown' });
+  },
+  sendSuccess: (res: any, data: any, statusCode = 200) => {
+    res.status(statusCode).json(data);
+  },
+  sendError: (res: any, statusCode: number, error: any, requestId?: any) => {
+    res.status(statusCode).json({ error, timestamp: new Date().toISOString(), requestId: requestId ?? 'unknown' });
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/utils/validators.ts'), () => ({
+  isValidEmail: (email: any) => typeof email === 'string' && email.includes('@') && email.length >= 5,
+  isValidRole: (role: any) => role === 'freelancer' || role === 'employer',
+  isValidWalletAddress: (addr: any) => typeof addr === 'string' && /^0x[a-fA-F0-9]{40}$/.test(addr),
+  validatePasswordStrength: (pw: any) => ({ valid: typeof pw === 'string' && pw.length >= 8, errors: [] }),
+  validateRegisterInput: (email: any, password: any, role: any) => {
+    const errors: any[] = [];
+    if (typeof email !== 'string' || !email.includes('@')) errors.push({ field: 'email', message: 'Valid email is required' });
+    if (typeof password !== 'string' || password.length < 8) errors.push({ field: 'password', message: 'Password is required' });
+    if (role !== 'freelancer' && role !== 'employer') errors.push({ field: 'role', message: 'Role must be freelancer or employer' });
+    return errors;
+  },
+  validateLoginInput: (email: any, password: any) => {
+    const errors: any[] = [];
+    if (typeof email !== 'string' || !email.includes('@')) errors.push({ field: 'email', message: 'Valid email is required' });
+    if (!password || typeof password !== 'string') errors.push({ field: 'password', message: 'Password is required' });
+    return errors;
+  },
 }));
 
 const authRouter = (await import('../../routes/auth-routes.js')).default;
@@ -186,9 +234,9 @@ describe('Auth Routes - Coverage5 (remaining gaps)', () => {
       const res = await request(app)
         .post('/api/auth/logout');
 
-      expect(res.status).toBe(200);
-      // accessToken should be undefined since header doesn't start with 'Bearer '
-      expect(mockLogout).toHaveBeenCalledWith(undefined);
+      expect(res.status).toBe(401);
+      // Non-Bearer token should be rejected by extractBearerToken
+      expect(mockLogout).not.toHaveBeenCalled();
     });
   });
 

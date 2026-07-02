@@ -34,6 +34,7 @@ import { completeAgreement } from './agreement-contract.js';
 import { approveMilestone as approveOnChainMilestone, deployEscrowContract as deployRealEscrow } from './escrow-blockchain.js';
 import { isWeb3Available } from './web3-client.js';
 import { getBlockchainMode } from './blockchain/factory.js';
+import { DEFAULT_CURRENCY } from '../utils/constants.js';
 
 const escrowOps = {
   deployEscrow,
@@ -71,7 +72,7 @@ async function createPaymentRecord(params: {
       payer_id: params.payerId,
       payee_id: params.payeeId,
       amount: params.amount,
-      currency: 'ETH',
+      currency: DEFAULT_CURRENCY,
       tx_hash: params.txHash,
       status: params.status,
       payment_type: params.paymentType,

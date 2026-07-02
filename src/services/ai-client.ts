@@ -17,11 +17,7 @@ import {
   SerializableAIResponse,
 } from './ai-types.js';
 import { generateId } from '../utils/id.js';
-
-// Constants
-const MAX_RETRIES = 3;
-const INITIAL_RETRY_DELAY_MS = 1000;
-const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses (can be slow)
+import { AI_MAX_RETRIES, AI_INITIAL_RETRY_DELAY_MS, AI_REQUEST_TIMEOUT_MS } from '../utils/constants.js';
 
 // Prompt templates
 export const SKILL_MATCH_PROMPT = `
@@ -118,7 +114,7 @@ async function makeAIRequest(
   }
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
 
   try {
     // Convert to OpenAI-compatible format
@@ -149,8 +145,8 @@ async function makeAIRequest(
       const errorText = await response.text();
       const isRetryable = response.status >= 500 || response.status === 429;
       
-      if (isRetryable && retryCount < MAX_RETRIES) {
-        const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount);
+      if (isRetryable && retryCount < AI_MAX_RETRIES) {
+        const delay = AI_INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount);
         await sleep(delay);
         return makeAIRequest(request, retryCount + 1);
       }
@@ -192,8 +188,8 @@ async function makeAIRequest(
     const isNetworkError = error instanceof TypeError;
     const isRetryable = isAbortError || isNetworkError;
 
-    if (isRetryable && retryCount < MAX_RETRIES) {
-      const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount);
+    if (isRetryable && retryCount < AI_MAX_RETRIES) {
+      const delay = AI_INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount);
       await sleep(delay);
       return makeAIRequest(request, retryCount + 1);
     }

@@ -1,5 +1,5 @@
 import { jest, describe, it, expect } from '@jest/globals';
-import { getRequestId, sendError, sendServiceError } from '../../utils/route-helpers.js';
+import { getRequestId, sendError, sendServiceError, asyncHandler, extractBearerToken, sendValidationError, sendAuthError, sendSuccess } from '../../utils/route-helpers.js';
 import type { ServiceResult } from '../../types/service-result.js';
 
 const mockReq = (headers: Record<string, string | undefined> = {}) =>
@@ -164,6 +164,105 @@ describe('route-helpers', () => {
       };
       sendServiceError(res2, resultForbidden, 'r2', statusMap);
       expect(res2.status).toHaveBeenCalledWith(403);
+    });
+  });
+
+  describe('asyncHandler', () => {
+    it('catches rejected promises and calls next', async () => {
+      const fn = jest.fn<any>().mockRejectedValue(new Error('boom'));
+      const wrapped = asyncHandler(fn);
+      const next = jest.fn();
+      await wrapped(mockReq({}), mockRes(), next);
+      expect(next).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('does not call next on success', async () => {
+      const fn = jest.fn<any>().mockResolvedValue(undefined);
+      const wrapped = asyncHandler(fn);
+      const next = jest.fn();
+      await wrapped(mockReq({}), mockRes(), next);
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('extractBearerToken', () => {
+    it('extracts token from Bearer header', () => {
+      const res = mockRes();
+      const token = extractBearerToken(mockReq({ authorization: 'Bearer mytoken' }), res);
+      expect(token).toBe('mytoken');
+    });
+
+    it('returns null and sends 401 when no authorization header', () => {
+      const res = mockRes();
+      const token = extractBearerToken(mockReq({}), res);
+      expect(token).toBeNull();
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
+    it('handles non-Bearer auth header', () => {
+      const res = mockRes();
+      const token = extractBearerToken(mockReq({ authorization: 'Basic abc' }), res);
+      expect(token).toBe('abc');
+    });
+  });
+
+  describe('sendValidationError', () => {
+    it('sends 400 with validation error structure', () => {
+      const res = mockRes();
+      const errors = [{ field: 'email', message: 'Invalid email' }];
+      sendValidationError(res, errors, 'req-1');
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        error: expect.objectContaining({ code: 'VALIDATION_ERROR', details: errors }),
+        requestId: 'req-1',
+      }));
+    });
+
+    it('defaults requestId to unknown', () => {
+      const res = mockRes();
+      sendValidationError(res, []);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ requestId: 'unknown' }));
+    });
+  });
+
+  describe('sendAuthError', () => {
+    it('maps DUPLICATE_EMAIL to 409', () => {
+      const res = mockRes();
+      sendAuthError(res, { code: 'DUPLICATE_EMAIL', message: 'dup' });
+      expect(res.status).toHaveBeenCalledWith(409);
+    });
+
+    it('maps AUTH_INVALID_CREDENTIALS to 401', () => {
+      const res = mockRes();
+      sendAuthError(res, { code: 'AUTH_INVALID_CREDENTIALS', message: 'bad' });
+      expect(res.status).toHaveBeenCalledWith(401);
+    });
+
+    it('maps NOT_FOUND to 404', () => {
+      const res = mockRes();
+      sendAuthError(res, { code: 'NOT_FOUND', message: 'gone' });
+      expect(res.status).toHaveBeenCalledWith(404);
+    });
+
+    it('defaults unknown code to 400', () => {
+      const res = mockRes();
+      sendAuthError(res, { code: 'SOMETHING_ELSE', message: 'huh' });
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+  });
+
+  describe('sendSuccess', () => {
+    it('sends 200 by default', () => {
+      const res = mockRes();
+      sendSuccess(res, { ok: true });
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({ ok: true });
+    });
+
+    it('sends custom status code', () => {
+      const res = mockRes();
+      sendSuccess(res, { created: true }, 201);
+      expect(res.status).toHaveBeenCalledWith(201);
     });
   });
 });

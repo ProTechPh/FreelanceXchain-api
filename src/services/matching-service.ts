@@ -27,14 +27,9 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
 import { getActiveSkills } from './skill-service.js';
 import { getReputation } from './reputation-service.js';
+import { DEFAULT_RECOMMENDATION_LIMIT, REPUTATION_WEIGHT, SKILL_MATCH_WEIGHT, DEFAULT_REPUTATION_SCORE } from '../utils/constants.js';
 
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
-
-
-// Constants
-const DEFAULT_RECOMMENDATION_LIMIT = 10;
-const REPUTATION_WEIGHT = 0.3;
-const SKILL_MATCH_WEIGHT = 0.7;
 
 // Helper type for freelancer skill entity (new simplified structure)
 type FreelancerSkillEntity = { name: string; years_of_experience: number };
@@ -168,9 +163,9 @@ export async function getFreelancerRecommendations(
 
   for (const freelancerEntity of freelancerEntities) {
     const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
-    
+
     // Get actual reputation score from reputation service
-    let reputationScore = 50; // Default if lookup fails
+    let reputationScore = DEFAULT_REPUTATION_SCORE;
     try {
       const repResult = await getReputation(freelancerEntity.user_id);
       if (repResult.success && repResult.data.score > 0) {

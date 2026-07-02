@@ -2,6 +2,18 @@
 // This file will export all utility functions as they are created
 
 export { generateId } from './id.js';
+export { asyncHandler, extractBearerToken, sendValidationError, sendAuthError, sendSuccess } from './route-helpers.js';
+export {
+  isValidEmail,
+  validatePasswordStrength,
+  isValidRole,
+  isValidWalletAddress,
+  isValidUUID,
+  isValidRating,
+  validateRegisterInput,
+  validateLoginInput,
+} from './validators.js';
+export type { ValidationError } from './validators.js';
 
 /**
  * Clamp a pagination limit to safe bounds.

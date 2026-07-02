@@ -16,9 +16,7 @@ import {
   AuthError,
   AuthResponse,
 } from './auth-types.js';
-
-const PASSWORD_MIN_LENGTH = 8;
-const PASSWORD_MAX_LENGTH = 72;
+import { PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '../utils/constants.js';
 
 export type PasswordValidationResult = {
   valid: boolean;
