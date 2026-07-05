@@ -41,8 +41,6 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
         attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
       }
     }
-    attrs.created_at = new Date().toISOString();
-    attrs.updated_at = new Date().toISOString();
 
     const doc = await databases.createDocument(
       DATABASE_ID,
@@ -71,7 +69,6 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
           attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
         }
       }
-      attrs.updated_at = new Date().toISOString();
 
       const doc = await databases.updateDocument(
         DATABASE_ID,

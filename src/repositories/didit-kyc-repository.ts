@@ -37,15 +37,12 @@ function mapKyc(doc: Record<string, any>): KycVerification {
 export async function createKycVerification(
   verification: Omit<KycVerification, 'created_at' | 'updated_at'>
 ): Promise<KycVerification | null> {
-  const now = new Date().toISOString();
   const attrs: Record<string, any> = {};
   for (const [key, value] of Object.entries(verification)) {
     if (value !== undefined) {
       attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
     }
   }
-  attrs.created_at = now;
-  attrs.updated_at = now;
 
   try {
     const doc = await databases.createDocument(
@@ -84,7 +81,7 @@ export async function getKycVerificationByUserId(userId: string): Promise<KycVer
       TABLE_NAME,
       [
         Query.equal('user_id', userId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
         Query.limit(1),
       ]
     );
@@ -126,14 +123,12 @@ export async function updateKycVerification(
 ): Promise<KycVerification | null> {
   if (Object.keys(updates).length === 0) return getKycVerificationById(id);
 
-  const now = new Date().toISOString();
   const attrs: Record<string, any> = {};
   for (const [key, value] of Object.entries(updates)) {
-    if (key !== 'id' && key !== 'user_id' && key !== 'created_at' && value !== undefined) {
+    if (key !== 'id' && key !== 'user_id' && key !== 'created_at' && key !== 'updated_at' && value !== undefined) {
       attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
     }
   }
-  attrs.updated_at = now;
 
   try {
     const doc = await databases.updateDocument(
@@ -159,7 +154,7 @@ export async function getKycVerificationsByStatus(status: KycVerification['statu
       TABLE_NAME,
       [
         Query.equal('status', status),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
         Query.limit(1000),
       ]
     );
@@ -215,7 +210,7 @@ export async function getKycVerificationHistory(userId: string): Promise<KycVeri
       TABLE_NAME,
       [
         Query.equal('user_id', userId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
         Query.limit(1000),
       ]
     );

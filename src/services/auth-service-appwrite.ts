@@ -123,12 +123,14 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       mfa_enabled: false,
     });
 
-    // Create session for the user
-    const userClient = createUserClient(''); // Will be set after login
-    const account = new Account(userClient);
-    
-    // Create email session
-    const session = await account.createEmailPasswordSession(normalizedEmail, input.password);
+    // Create a session to establish credentials, then mint a proper Appwrite
+    // JWT via the privileged Users (admin) API. Server SDKs don't return a
+    // usable session secret for the Account service (it comes back empty), so
+    // the JWT is the only viable token format validateToken()/refreshTokens() expect.
+    const loginClient = createUserClient('');
+    const loginAccount = new Account(loginClient);
+    const session = await loginAccount.createEmailPasswordSession(normalizedEmail, input.password);
+    const jwt = await users.createJWT({ userId: session.userId, sessionId: session.$id });
 
     return {
       user: {
@@ -138,8 +140,8 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
         walletAddress: publicUser.wallet_address,
         createdAt: publicUser.created_at,
       },
-      accessToken: session.secret, // Appwrite session secret as access token
-      refreshToken: session.secret, // Same for now, can be enhanced
+      accessToken: jwt.jwt,
+      refreshToken: jwt.jwt, // Same for now, can be enhanced
     };
   } catch (error: any) {
     // Compensate: if Appwrite user was created but session failed, delete the Appwrite user
@@ -182,12 +184,19 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
   const normalizedEmail = input.email.toLowerCase().trim();
 
   try {
-    // Create a temporary client for login
-    const userClient = createUserClient('');
-    const account = new Account(userClient);
+    // Validate credentials the only way Appwrite exposes: creating a session.
+    // Server SDKs don't return a usable session secret for the Account service
+    // (it comes back empty), so we can't reuse this client for anything else.
+    const loginClient = createUserClient('');
+    const loginAccount = new Account(loginClient);
+    const session = await loginAccount.createEmailPasswordSession(normalizedEmail, input.password);
 
-    // Create email session
-    const session = await account.createEmailPasswordSession(normalizedEmail, input.password);
+    // Mint a proper Appwrite JWT for this session via the privileged Users
+    // (admin, API-key authenticated) API — that's the token format
+    // validateToken()/refreshTokens() expect via setJWT().
+    const jwt = await users.createJWT({ userId: session.userId, sessionId: session.$id });
+    const userClient = createUserClient(jwt.jwt);
+    const account = new Account(userClient);
 
     // Check if MFA is required by calling account.get()
     // Appwrite throws user_more_factors_required if MFA is enabled
@@ -195,17 +204,17 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       await account.get();
     } catch (mfaError: any) {
       if (mfaError.type === 'user_more_factors_required') {
-        // SECURITY NOTE: The session.secret returned here is a partially-authenticated
-        // Appwrite session. It is needed for the MFA challenge/verify flow but should
-        // NOT be treated as a fully authenticated token. Appwrite enforces MFA at the
-        // session level for account.get(), but other session-scoped operations may not
-        // be protected. Frontend must complete MFA before using this token for any
-        // purpose other than the /api/auth/login/mfa-verify endpoint.
+        // SECURITY NOTE: The token returned here is a partially-authenticated
+        // Appwrite session JWT. It is needed for the MFA challenge/verify flow but
+        // should NOT be treated as a fully authenticated token. Appwrite enforces
+        // MFA at the session level for account.get(), but other session-scoped
+        // operations may not be protected. Frontend must complete MFA before using
+        // this token for any purpose other than the /api/auth/login/mfa-verify endpoint.
         return {
           code: 'MFA_REQUIRED',
           message: 'Multi-factor authentication required',
           mfaRequired: true,
-          mfaSessionToken: session.secret,
+          mfaSessionToken: jwt.jwt,
         };
       }
       // Other error — rethrow
@@ -222,7 +231,7 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       };
     }
 
-    return await createAuthResult(publicUser, session.secret, session.secret);
+    return await createAuthResult(publicUser, jwt.jwt, jwt.jwt);
   } catch (error: any) {
     logger.error('Login failed', { error: error.message, email: normalizedEmail });
     

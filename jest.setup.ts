@@ -113,7 +113,7 @@ const mockAppwriteAccount = {
     if (password === 'wrong-password') {
       return Promise.reject(new Error('Invalid credentials'));
     }
-    return Promise.resolve({ secret: 'test-session-secret' });
+    return Promise.resolve({ secret: 'test-session-secret', $id: 'test-session-id', userId: 'test-user-id' });
   }),
   deleteSession: jest.fn().mockResolvedValue({}),
   createRecovery: jest.fn().mockResolvedValue({}),
@@ -132,6 +132,7 @@ global.mockAppwriteAccount = mockAppwriteAccount;
 const mockAppwriteUsers = {
   create: jest.fn().mockResolvedValue({ $id: 'test-user-id' }),
   get: jest.fn().mockResolvedValue({ $id: 'test-user-id' }),
+  createJWT: jest.fn().mockResolvedValue({ jwt: 'test-session-secret' }),
 };
 
 global.mockAppwriteUsers = mockAppwriteUsers;
