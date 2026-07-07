@@ -23,6 +23,20 @@ const { ReviewRepository } = await import('../../repositories/review-repository.
 const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
 const { projectRepository } = await import('../../repositories/project-repository.js');
 const { skillRepository } = await import('../../repositories/skill-repository.js');
+const { RepositoryError } = await import('../../repositories/types.js');
+
+describe('RepositoryError', () => {
+  it('should create an error with operation, collection, and cause', () => {
+    const cause = new Error('original');
+    const err = new RepositoryError('getById failed', 'getById', 'users', cause);
+    expect(err.name).toBe('RepositoryError');
+    expect(err.message).toBe('getById failed');
+    expect(err.operation).toBe('getById');
+    expect(err.collection).toBe('users');
+    expect(err.cause).toBe(cause);
+    expect(err).toBeInstanceOf(Error);
+  });
+});
 
 describe('Repository coverage gaps', () => {
   let mockDatabases: any;

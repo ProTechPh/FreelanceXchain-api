@@ -4,9 +4,12 @@
  */
 
 import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
+import { logger } from '../config/logger.js';
 import type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
+import { RepositoryError } from './types.js';
 
 export type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
+export { RepositoryError } from './types.js';
 
 // Map Appwrite document to entity (remove $ prefixed fields)
 function mapDocument<T extends BaseEntity>(doc: Record<string, any>): T {
@@ -57,7 +60,8 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
     try {
       const doc = await databases.getDocument(DATABASE_ID, this.collectionId, id);
       return mapDocument<T>(doc);
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.getById`, { id, error });
       return null;
     }
   }
@@ -80,7 +84,8 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
         attrs
       );
       return mapDocument<T>(doc);
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.update`, { id, error });
       return null;
     }
   }
@@ -89,7 +94,8 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
     try {
       await databases.deleteDocument(DATABASE_ID, this.collectionId, id);
       return true;
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.delete`, { id, error });
       return false;
     }
   }
@@ -102,7 +108,8 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
         [Query.equal(column, value as any), Query.limit(1)]
       );
       return response.documents.length > 0 ? mapDocument<T>(response.documents[0]!) : null;
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.findOne`, { column, error });
       return null;
     }
   }
@@ -118,7 +125,8 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
         ]
       );
       return mapDocuments<T>(response.documents);
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.queryAll`, { error });
       return [];
     }
   }
@@ -148,7 +156,8 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
         hasMore: response.documents.length === limit,
         total: response.total,
       };
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.queryPaginated`, { error });
       return { items: [], hasMore: false, total: 0 };
     }
   }
@@ -156,7 +165,7 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
   // ─── Appwrite-specific helpers ──────────────────────────────────────────
 
   protected async listWithQueries<U = T>(
-    queries: any[],
+    queries: any[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings
     mapper?: (doc: Record<string, any>) => U
   ): Promise<U[]> {
     try {
@@ -168,7 +177,8 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
       return mapper
         ? response.documents.map(mapper)
         : mapDocuments<T>(response.documents) as unknown as U[];
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.listWithQueries`, { error });
       return [];
     }
   }
@@ -181,13 +191,14 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
         [...queries, Query.limit(1)]
       );
       return response.total;
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.countWithQueries`, { error });
       return 0;
     }
   }
 
   protected async paginatedWithQueries<U = T>(
-    queries: any[],
+    queries: any[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings
     limit: number,
     offset: number,
     mapper?: (doc: Record<string, any>) => U
@@ -206,7 +217,8 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
         hasMore: response.documents.length === limit,
         total: response.total,
       };
-    } catch {
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.paginatedWithQueries`, { error });
       return { items: [], hasMore: false, total: 0 };
     }
   }
