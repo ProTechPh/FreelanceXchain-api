@@ -81,15 +81,19 @@ jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts')
   disputeRepository: mockDisputeRepo,
 }));
 
-jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
-  PaymentRepository: {
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => {
+  const repo = {
     create: jest.fn<any>(async (payment: any) => ({ ...payment, id: generateId(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
     findByContractId: jest.fn<any>(async () => []),
     findByUserId: jest.fn<any>(async () => ({ items: [], hasMore: false })),
     updateStatus: jest.fn<any>(async () => null),
-  },
-  PaymentType: {},
-}));
+  };
+  return {
+    PaymentRepository: repo,
+    paymentRepository: repo,
+    PaymentType: {},
+  };
+});
 
 // Mock blockchain-related functions
 jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({

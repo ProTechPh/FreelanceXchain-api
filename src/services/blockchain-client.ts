@@ -1,8 +1,11 @@
 /**
- * Blockchain Client
- * Handles blockchain transactions, serialization, and status polling
- * 
- * instead of in-memory Maps, so data survives server restarts.
+ * Simulated Blockchain Client
+ *
+ * Provides a simulated blockchain transaction layer backed by Appwrite.
+ * Generates mock transaction hashes and wallet addresses — does NOT interact
+ * with any real blockchain network. Used when BLOCKCHAIN_MODE=simulated.
+ *
+ * Data is persisted in Appwrite so it survives server restarts.
  */
 
 import { config } from '../config/env.js';

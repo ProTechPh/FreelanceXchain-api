@@ -515,7 +515,7 @@ function calculateEarningsByMonth(contracts: any[]): { month: string; amount: nu
 
   for (const contract of contracts) {
     const date = new Date(contract.created_at);
-  const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
 
     const current = monthMap.get(monthKey) || 0;
     monthMap.set(monthKey, current + Number(contract.total_amount || 0));
@@ -531,7 +531,7 @@ function computeMonthlyCounts(documents: any[]): { month: string; count: number 
 
   for (const doc of documents) {
     const date = new Date(doc.created_at);
-  const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+    const monthKey = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
     monthMap.set(monthKey, (monthMap.get(monthKey) || 0) + 1);
   }
 

@@ -1,4 +1,4 @@
-export interface PortfolioItem {
+export type PortfolioItem = {
   id: string;
   freelancerId: string;
   title: string;
@@ -6,19 +6,19 @@ export interface PortfolioItem {
   projectUrl?: string;
   images: PortfolioImage[];
   skills: string[];
-  completedAt?: Date;
-  createdAt: Date;
-  updatedAt: Date;
-}
+  completedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 
-export interface PortfolioImage {
+export type PortfolioImage = {
   url: string;
   filename: string;
   size: number;
   mimeType: string;
-}
+};
 
-export interface PortfolioItemEntity {
+export type PortfolioItemEntity = {
   id: string;
   freelancer_id: string;
   title: string;
@@ -29,13 +29,13 @@ export interface PortfolioItemEntity {
   completed_at?: string;
   created_at: string;
   updated_at: string;
-}
+};
 
-export interface PortfolioItemInput {
+export type PortfolioItemInput = {
   title: string;
   description: string;
   projectUrl?: string;
   images: PortfolioImage[];
   skills?: string[];
   completedAt?: string;
-}
+};

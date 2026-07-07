@@ -229,7 +229,7 @@ describe('Portfolio Service', () => {
         expect(result.data.description).toBe('Original Desc');
         expect(result.data.images).toEqual(['img1.jpg']);
         expect(result.data.skills).toEqual(['React']);
-        expect(result.data.completedAt).toEqual(new Date('2025-01-01'));
+        expect(result.data.completedAt).toEqual('2025-01-01');
       }
     });
 

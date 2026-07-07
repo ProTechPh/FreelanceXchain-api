@@ -41,15 +41,19 @@ jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts')
     getAllDisputesByContract: jest.fn(async () => []),
   },
 }));
-jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
-  PaymentRepository: {
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => {
+  const repo = {
     create: jest.fn(async (p: any) => ({ ...p, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
     findByContractId: jest.fn(async () => []),
     findByUserId: jest.fn(async () => ({ items: [], hasMore: false })),
     updateStatus: jest.fn(async () => null),
-  },
-  PaymentType: {},
-}));
+  };
+  return {
+    PaymentRepository: repo,
+    paymentRepository: repo,
+    PaymentType: {},
+  };
+});
 jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), () => ({
   notifyMilestoneSubmitted: jest.fn().mockResolvedValue(undefined),
   notifyMilestoneApproved: jest.fn().mockResolvedValue(undefined),

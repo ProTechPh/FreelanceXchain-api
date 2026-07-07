@@ -71,15 +71,19 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
 jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
   disputeRepository: mockDisputeRepo,
 }));
-jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
-  PaymentRepository: {
-    create: jest.fn<any>(async (p: any) => ({ ...p, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
-    findByContractId: jest.fn<any>(async () => []),
-    findByUserId: jest.fn<any>(async () => ({ items: [], hasMore: false })),
-    updateStatus: jest.fn<any>(async () => null),
-  },
-  PaymentType: {},
-}));
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => {
+  const repo = {
+    create: jest.fn(async (p: any) => ({ ...p, created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
+    findByContractId: jest.fn(async () => []),
+    findByUserId: jest.fn(async () => ({ items: [], hasMore: false })),
+    updateStatus: jest.fn(async () => null),
+  };
+  return {
+    PaymentRepository: repo,
+    paymentRepository: repo,
+    PaymentType: {},
+  };
+});
 
 jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
   isWeb3Available: mockIsWeb3Available,
