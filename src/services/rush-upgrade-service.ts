@@ -3,7 +3,7 @@ import { Contract, mapContractFromEntity } from '../utils/entity-mapper.js';
 import { rushUpgradeRequestRepository, RushUpgradeRequestEntity } from '../repositories/rush-upgrade-request-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
-import { notificationRepository } from '../repositories/notification-repository.js';
+import { notificationRepository, type NotificationType } from '../repositories/notification-repository.js';
 import { generateId } from '../utils/id.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
@@ -24,6 +24,25 @@ export type RushUpgradeWithContract = {
   request: RushUpgradeRequest;
   contract: Contract;
 };
+
+async function sendNotificationSafe(params: {
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  data?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await notificationRepository.createNotification({
+      id: generateId(),
+      ...params,
+      data: params.data ?? {},
+      is_read: false,
+    });
+  } catch (error) {
+    logger.error('Failed to send notification', { error, type: params.type });
+  }
+}
 
 // Employer requests a rush upgrade on an active contract
 export async function requestRushUpgrade(
@@ -99,25 +118,19 @@ export async function requestRushUpgrade(
   const created = mapRushUpgradeRequestFromEntity(createdEntity);
 
   // Notify freelancer
-  try {
-    const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
-    await notificationRepository.createNotification({
-      id: generateId(),
-      user_id: contractEntity.freelancer_id,
-      type: 'rush_upgrade_requested',
-      title: 'Rush Upgrade Request',
-      message: `The employer has requested a rush upgrade for "${projectEntity?.title ?? 'your contract'}" with a ${input.proposedPercentage}% rush fee.`,
-      data: {
-        requestId: created.id,
-        contractId: input.contractId,
-        proposedPercentage: input.proposedPercentage,
-        projectTitle: projectEntity?.title,
-      },
-      is_read: false,
-    });
-  } catch (error) {
-    logger.error('Failed to create rush upgrade notification', { error });
-  }
+  const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
+  await sendNotificationSafe({
+    user_id: contractEntity.freelancer_id,
+    type: 'rush_upgrade_requested',
+    title: 'Rush Upgrade Request',
+    message: `The employer has requested a rush upgrade for "${projectEntity?.title ?? 'your contract'}" with a ${input.proposedPercentage}% rush fee.`,
+    data: {
+      requestId: created.id,
+      contractId: input.contractId,
+      proposedPercentage: input.proposedPercentage,
+      projectTitle: projectEntity?.title,
+    },
+  });
 
   return { success: true, data: created };
 }
@@ -191,25 +204,19 @@ export async function respondToRushUpgrade(
     const updatedRequest = mapRushUpgradeRequestFromEntity(updatedEntity);
 
     // Notify employer
-    try {
-      const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
-      await notificationRepository.createNotification({
-        id: generateId(),
-        user_id: contractEntity.employer_id,
-        type: 'rush_upgrade_accepted',
-        title: 'Rush Upgrade Accepted',
-        message: `The freelancer has accepted the rush upgrade for "${projectEntity?.title ?? 'your contract'}". Rush fee: ${agreedPercentage}%.`,
-        data: {
-          requestId: input.requestId,
-          contractId: requestEntity.contract_id,
-          rushFeePercentage: agreedPercentage,
-          newTotalAmount: updatedContract.totalAmount,
-        },
-        is_read: false,
-      });
-    } catch (error) {
-      logger.error('Failed to create rush upgrade accepted notification', { error });
-    }
+    const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
+    await sendNotificationSafe({
+      user_id: contractEntity.employer_id,
+      type: 'rush_upgrade_accepted',
+      title: 'Rush Upgrade Accepted',
+      message: `The freelancer has accepted the rush upgrade for "${projectEntity?.title ?? 'your contract'}". Rush fee: ${agreedPercentage}%.`,
+      data: {
+        requestId: input.requestId,
+        contractId: requestEntity.contract_id,
+        rushFeePercentage: agreedPercentage,
+        newTotalAmount: updatedContract.totalAmount,
+      },
+    });
 
     return {
       success: true,
@@ -232,22 +239,16 @@ export async function respondToRushUpgrade(
     }
 
     // Notify employer
-    try {
-      await notificationRepository.createNotification({
-        id: generateId(),
-        user_id: contractEntity.employer_id,
-        type: 'rush_upgrade_declined',
-        title: 'Rush Upgrade Declined',
-        message: 'The freelancer has declined the rush upgrade request.',
-        data: {
-          requestId: input.requestId,
-          contractId: requestEntity.contract_id,
-        },
-        is_read: false,
-      });
-    } catch (error) {
-      logger.error('Failed to create rush upgrade declined notification', { error });
-    }
+    await sendNotificationSafe({
+      user_id: contractEntity.employer_id,
+      type: 'rush_upgrade_declined',
+      title: 'Rush Upgrade Declined',
+      message: 'The freelancer has declined the rush upgrade request.',
+      data: {
+        requestId: input.requestId,
+        contractId: requestEntity.contract_id,
+      },
+    });
 
     return { success: true, data: mapRushUpgradeRequestFromEntity(updatedEntity) };
   }
@@ -275,23 +276,17 @@ export async function respondToRushUpgrade(
     }
 
     // Notify employer about counter-offer
-    try {
-      await notificationRepository.createNotification({
-        id: generateId(),
-        user_id: contractEntity.employer_id,
-        type: 'rush_upgrade_counter_offered',
-        title: 'Rush Upgrade Counter-Offer',
-        message: `The freelancer has counter-offered with a ${input.counterPercentage}% rush fee.`,
-        data: {
-          requestId: input.requestId,
-          contractId: requestEntity.contract_id,
-          counterPercentage: input.counterPercentage,
-        },
-        is_read: false,
-      });
-    } catch (error) {
-      logger.error('Failed to create rush upgrade counter-offer notification', { error });
-    }
+    await sendNotificationSafe({
+      user_id: contractEntity.employer_id,
+      type: 'rush_upgrade_counter_offered',
+      title: 'Rush Upgrade Counter-Offer',
+      message: `The freelancer has counter-offered with a ${input.counterPercentage}% rush fee.`,
+      data: {
+        requestId: input.requestId,
+        contractId: requestEntity.contract_id,
+        counterPercentage: input.counterPercentage,
+      },
+    });
 
     return { success: true, data: mapRushUpgradeRequestFromEntity(updatedEntity) };
   }
@@ -373,24 +368,18 @@ export async function acceptCounterOffer(
   const updatedRequest = mapRushUpgradeRequestFromEntity(updatedEntity);
 
   // Notify freelancer
-  try {
-    await notificationRepository.createNotification({
-      id: generateId(),
-      user_id: contractEntity.freelancer_id,
-      type: 'rush_upgrade_accepted',
-      title: 'Rush Upgrade Counter-Offer Accepted',
-      message: `The employer has accepted your counter-offer of ${requestEntity.counter_percentage}% rush fee.`,
-      data: {
-        requestId,
-        contractId: requestEntity.contract_id,
-        rushFeePercentage: requestEntity.counter_percentage,
-        newTotalAmount: updatedContract.totalAmount,
-      },
-      is_read: false,
-    });
-  } catch (error) {
-    logger.error('Failed to create rush upgrade accepted notification', { error });
-  }
+  await sendNotificationSafe({
+    user_id: contractEntity.freelancer_id,
+    type: 'rush_upgrade_accepted',
+    title: 'Rush Upgrade Counter-Offer Accepted',
+    message: `The employer has accepted your counter-offer of ${requestEntity.counter_percentage}% rush fee.`,
+    data: {
+      requestId,
+      contractId: requestEntity.contract_id,
+      rushFeePercentage: requestEntity.counter_percentage,
+      newTotalAmount: updatedContract.totalAmount,
+    },
+  });
 
   return {
     success: true,
@@ -441,22 +430,16 @@ export async function declineCounterOffer(
   }
 
   // Notify freelancer
-  try {
-    await notificationRepository.createNotification({
-      id: generateId(),
-      user_id: contractEntity.freelancer_id,
-      type: 'rush_upgrade_declined',
-      title: 'Rush Upgrade Counter-Offer Declined',
-      message: 'The employer has declined your counter-offer for the rush upgrade.',
-      data: {
-        requestId,
-        contractId: requestEntity.contract_id,
-      },
-      is_read: false,
-    });
-  } catch (error) {
-    logger.error('Failed to create rush upgrade declined notification', { error });
-  }
+  await sendNotificationSafe({
+    user_id: contractEntity.freelancer_id,
+    type: 'rush_upgrade_declined',
+    title: 'Rush Upgrade Counter-Offer Declined',
+    message: 'The employer has declined your counter-offer for the rush upgrade.',
+    data: {
+      requestId,
+      contractId: requestEntity.contract_id,
+    },
+  });
 
   return { success: true, data: mapRushUpgradeRequestFromEntity(updatedEntity) };
 }

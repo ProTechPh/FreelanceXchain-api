@@ -36,6 +36,10 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
     this.collectionId = collectionId;
   }
 
+  protected mapDoc(doc: Record<string, any>): T {
+    return mapDocument<T>(doc);
+  }
+
   async create(item: Omit<T, 'created_at' | 'updated_at'>): Promise<T> {
     const { id, ...data } = item as any;
     const attrs: Record<string, any> = {};

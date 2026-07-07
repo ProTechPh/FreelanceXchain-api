@@ -24,16 +24,6 @@ export type BlockchainDisputeRecordEntity = {
 
 const COLLECTION_ID = 'blockchain_dispute_records';
 
-function mapDoc(doc: Record<string, any>): BlockchainDisputeRecordEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as BlockchainDisputeRecordEntity;
-}
-
 export class BlockchainDisputeRecordRepository extends BaseRepositoryAppwrite<BlockchainDisputeRecordEntity> {
   constructor() {
     super(COLLECTION_ID);
@@ -41,17 +31,17 @@ export class BlockchainDisputeRecordRepository extends BaseRepositoryAppwrite<Bl
 
   async getDisputeRecordById(id: string): Promise<BlockchainDisputeRecordEntity | null> {
     const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async createDisputeRecord(data: Omit<BlockchainDisputeRecordEntity, 'created_at' | 'updated_at'>): Promise<BlockchainDisputeRecordEntity> {
     const doc = await this.create(data);
-    return mapDoc(doc as any);
+    return this.mapDoc(doc as any);
   }
 
   async updateDisputeRecord(id: string, updates: Partial<BlockchainDisputeRecordEntity>): Promise<BlockchainDisputeRecordEntity | null> {
     const doc = await this.update(id, updates);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async findByDisputeIdHash(disputeIdHash: string): Promise<BlockchainDisputeRecordEntity | null> {
@@ -60,7 +50,7 @@ export class BlockchainDisputeRecordRepository extends BaseRepositoryAppwrite<Bl
         DATABASE_ID, COLLECTION_ID,
         [Query.equal('dispute_id_hash', disputeIdHash), Query.limit(1)]
       );
-      return response.documents.length > 0 ? mapDoc(response.documents[0]!) : null;
+      return response.documents.length > 0 ? this.mapDoc(response.documents[0]!) : null;
     } catch {
       return null;
     }
@@ -70,11 +60,11 @@ export class BlockchainDisputeRecordRepository extends BaseRepositoryAppwrite<Bl
     const [freelancerResults, employerResults] = await Promise.all([
       this.listWithQueries<BlockchainDisputeRecordEntity>(
         [Query.equal('freelancer_wallet', walletAddress), Query.orderDesc('created_at_ts')],
-        mapDoc
+        (doc) => this.mapDoc(doc)
       ),
       this.listWithQueries<BlockchainDisputeRecordEntity>(
         [Query.equal('employer_wallet', walletAddress), Query.orderDesc('created_at_ts')],
-        mapDoc
+        (doc) => this.mapDoc(doc)
       ),
     ]);
 
@@ -95,7 +85,7 @@ export class BlockchainDisputeRecordRepository extends BaseRepositoryAppwrite<Bl
       [Query.equal('outcome', outcome), Query.orderDesc('created_at_ts')],
       options?.limit ?? 20,
       options?.offset ?? 0,
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 }
