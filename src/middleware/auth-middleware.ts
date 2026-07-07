@@ -132,12 +132,6 @@ export async function requireAuthentication(req: Request, res: Response, next: N
   next();
 }
 
-/**
- * @deprecated Use `requireAuthentication` instead. This alias exists only for
- * backward compatibility with existing tests and mocks. It does NOT enforce MFA —
- * the name was misleading. Remove this export once all references are updated.
- */
-export const requireMFA = requireAuthentication;
 
 export function requireRole(...roles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {

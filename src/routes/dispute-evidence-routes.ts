@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { logger } from '../config/logger.js';
 import {
   submitEvidence,
   getDisputeEvidence,
@@ -79,7 +80,7 @@ router.post('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']),
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error submitting evidence:', error);
+    logger.error('Error submitting evidence', error);
     return res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to submit evidence' },
       timestamp: new Date().toISOString(),
@@ -123,7 +124,7 @@ router.get('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']), 
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error getting evidence:', error);
+    logger.error('Error getting evidence', error);
     return res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to get evidence' },
       timestamp: new Date().toISOString(),
@@ -172,7 +173,7 @@ router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, validateUUID([
 
     return res.json({ message: 'Evidence deleted successfully' });
   } catch (error) {
-    console.error('Error deleting evidence:', error);
+    logger.error('Error deleting evidence', error);
     return res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to delete evidence' },
       timestamp: new Date().toISOString(),
@@ -224,7 +225,7 @@ router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, validateU
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error verifying evidence:', error);
+    logger.error('Error verifying evidence', error);
     return res.status(500).json({
       error: { code: 'INTERNAL_ERROR', message: 'Failed to verify evidence' },
       timestamp: new Date().toISOString(),
