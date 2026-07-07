@@ -10,6 +10,7 @@
 
 import { config } from '../config/env.js';
 import { generateId } from '../utils/id.js';
+import { safeJsonParse } from '../utils/index.js';
 import { blockchainTransactionRepository } from '../repositories/blockchain-transaction-repository.js';
 import {
   Transaction,
@@ -170,7 +171,7 @@ export async function getTransaction(txId: string): Promise<Transaction | null> 
     from: entity.from_address,
     to: entity.to_address,
     amount: BigInt(entity.amount),
-    data: typeof entity.data === 'string' ? JSON.parse(entity.data) : entity.data,
+    data: safeJsonParse<Record<string, unknown>>(entity.data),
     timestamp: entity.timestamp,
     status: entity.status as Transaction['status'],
     hash: entity.hash ?? undefined,
@@ -191,7 +192,7 @@ export async function getTransactionByHash(hash: string): Promise<Transaction | 
     from: entity.from_address,
     to: entity.to_address,
     amount: BigInt(entity.amount),
-    data: typeof entity.data === 'string' ? JSON.parse(entity.data) : entity.data,
+    data: safeJsonParse<Record<string, unknown>>(entity.data),
     timestamp: entity.timestamp,
     status: entity.status as Transaction['status'],
     hash: entity.hash ?? undefined,
@@ -279,7 +280,7 @@ export async function confirmTransaction(txId: string): Promise<Transaction | nu
     from: entity.from_address,
     to: entity.to_address,
     amount: BigInt(entity.amount),
-    data: typeof entity.data === 'string' ? JSON.parse(entity.data) : entity.data,
+    data: safeJsonParse<Record<string, unknown>>(entity.data),
     timestamp: entity.timestamp,
     status: entity.status as Transaction['status'],
     hash: entity.hash ?? undefined,
@@ -304,7 +305,7 @@ export async function failTransaction(txId: string): Promise<Transaction | null>
     from: entity.from_address,
     to: entity.to_address,
     amount: BigInt(entity.amount),
-    data: typeof entity.data === 'string' ? JSON.parse(entity.data) : entity.data,
+    data: safeJsonParse<Record<string, unknown>>(entity.data),
     timestamp: entity.timestamp,
     status: entity.status as Transaction['status'],
     hash: entity.hash ?? undefined,

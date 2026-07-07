@@ -1,5 +1,6 @@
 import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { safeJsonParse } from '../utils/index.js';
 
 export type ContractStatus = 'pending' | 'active' | 'completed' | 'disputed' | 'resolved' | 'cancelled';
 
@@ -84,7 +85,7 @@ export class ContractRepository extends BaseRepositoryAppwrite<ContractEntity> {
           profile: freelancerProfile ? {
             id: freelancerProfile.$id,
             hourly_rate: (freelancerProfile as any).hourly_rate,
-            skills: typeof (freelancerProfile as any).skills === 'string' ? JSON.parse((freelancerProfile as any).skills) : (freelancerProfile as any).skills,
+            skills: safeJsonParse((freelancerProfile as any).skills),
           } : null,
         },
         employer: {

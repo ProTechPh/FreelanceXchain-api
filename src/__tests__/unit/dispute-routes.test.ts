@@ -57,6 +57,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
 
 jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
   clampLimit: (v: any) => v || 20,
+  safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
 }));
 
 const disputeRouter = (await import('../../routes/dispute-routes.js')).default;

@@ -4,6 +4,7 @@ import type { ServiceResult } from '../types/service-result.js';
 import { savedSearchRepository } from '../repositories/saved-search-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
+import { safeJsonParse } from '../utils/index.js';
 
 /**
  * Create a saved search
@@ -39,7 +40,7 @@ export async function createSavedSearch(
         userId: created.user_id,
         name: created.name,
         searchType: created.search_type,
-        filters: typeof created.filters === 'string' ? JSON.parse(created.filters) : created.filters,
+        filters: safeJsonParse<Record<string, any>>(created.filters),
         notifyOnNew: created.notify_on_new,
         createdAt: created.created_at,
         updatedAt: created.updated_at,
@@ -74,7 +75,7 @@ export async function getUserSavedSearches(
         userId: row.user_id,
         name: row.name,
         searchType: row.search_type,
-        filters: typeof row.filters === 'string' ? JSON.parse(row.filters) : row.filters,
+        filters: safeJsonParse<Record<string, any>>(row.filters),
         notifyOnNew: row.notify_on_new,
         createdAt: row.created_at,
         updatedAt: row.updated_at,
@@ -133,7 +134,7 @@ export async function updateSavedSearch(
           userId: (existing as any).user_id,
           name: (existing as any).name,
           searchType: (existing as any).search_type,
-          filters: typeof (existing as any).filters === 'string' ? JSON.parse((existing as any).filters) : (existing as any).filters,
+          filters: safeJsonParse<Record<string, any>>((existing as any).filters),
           notifyOnNew: (existing as any).notify_on_new,
           createdAt: (existing as any).created_at,
           updatedAt: (existing as any).updated_at,
@@ -160,7 +161,7 @@ export async function updateSavedSearch(
         userId: (updated as any).user_id,
         name: (updated as any).name,
         searchType: (updated as any).search_type,
-        filters: typeof (updated as any).filters === 'string' ? JSON.parse((updated as any).filters) : (updated as any).filters,
+        filters: safeJsonParse<Record<string, any>>((updated as any).filters),
         notifyOnNew: (updated as any).notify_on_new,
         createdAt: (updated as any).created_at,
         updatedAt: (updated as any).updated_at,
@@ -259,9 +260,7 @@ export async function executeSavedSearch(
       };
     }
 
-    const filters = typeof (savedSearchDoc as any).filters === 'string'
-      ? JSON.parse((savedSearchDoc as any).filters)
-      : (savedSearchDoc as any).filters;
+    const filters = safeJsonParse((savedSearchDoc as any).filters);
     const searchType = (savedSearchDoc as any).search_type;
 
     // Execute search based on type

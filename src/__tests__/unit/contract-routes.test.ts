@@ -57,6 +57,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
   clampLimit: (v: any) => v || 20,
   clampOffset: (v: any) => v || 0,
+  safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
 }));
 
 const contractRouter = (await import('../../routes/contract-routes.js')).default;

@@ -66,6 +66,7 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => (
 }));
 jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
   clampLimit: (v: any) => Math.min(Math.max(Number(v) || 20, 1), 100), clampOffset: (v: any) => Math.max(Number(v) || 0, 0),
+  safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
 }));
 
 // ─── Service mocks ─────────────────────────────────────────────
