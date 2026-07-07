@@ -1,5 +1,6 @@
-import { Request } from 'express';
+import type { Request } from 'express';
 
 export function getRequestId(req: Request): string {
-  return req.headers['x-request-id'] as string ?? 'unknown';
+  const header = req.headers['x-request-id'];
+  return Array.isArray(header) ? (header[0] ?? 'unknown') : (header ?? 'unknown');
 }
