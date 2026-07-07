@@ -817,7 +817,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
   });
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { NOT_FOUND: 404, PROJECT_LOCKED: 409, UNAUTHORIZED: 400 });
+    sendServiceError(res, result, requestId, { NOT_FOUND: 404, PROJECT_LOCKED: 409, UNAUTHORIZED: 403 });
     return;
   }
 
