@@ -1,4 +1,4 @@
-export type EmailPreference = {
+export interface EmailPreference {
   id: string;
   userId: string;
   proposalReceived: boolean;
@@ -8,11 +8,11 @@ export type EmailPreference = {
   disputeNotifications: boolean;
   marketingEmails: boolean;
   weeklyDigest: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-export type EmailPreferenceEntity = {
+export interface EmailPreferenceEntity {
   id: string;
   user_id: string;
   proposal_received: boolean;
@@ -24,7 +24,7 @@ export type EmailPreferenceEntity = {
   weekly_digest: boolean;
   created_at: string;
   updated_at: string;
-};
+}
 
 export type EmailType =
   | 'proposal_received'

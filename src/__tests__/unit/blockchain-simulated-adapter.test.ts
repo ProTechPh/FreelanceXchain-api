@@ -202,7 +202,7 @@ describe('SimulatedBlockchainAdapter', () => {
 
       const ms = await adapter.getMilestone(ESCROW_ADDR, 0);
       expect(ms.amount).toBe(BigInt(500));
-      expect(ms.status).toBe('Pending');
+      expect(ms.status).toBe('pending');
       expect(ms.description).toBe('Milestone 1');
     });
 

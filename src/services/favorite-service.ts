@@ -57,7 +57,7 @@ export async function addFavorite(
         userId: created.user_id,
         targetType: created.target_type,
         targetId: created.target_id,
-        createdAt: created.created_at,
+        createdAt: new Date(created.created_at),
       } as Favorite,
     };
   } catch (error) {
@@ -137,7 +137,7 @@ export async function getUserFavorites(
         userId: fav.user_id,
         targetType: fav.target_type,
         targetId: fav.target_id,
-        createdAt: fav.created_at,
+        createdAt: new Date(fav.created_at),
         target: targetMap.get(fav.target_id) ?? null,
       };
     });

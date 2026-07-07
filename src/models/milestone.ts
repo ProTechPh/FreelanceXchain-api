@@ -1,18 +1,9 @@
-/**
- * Canonical MilestoneStatus — superset of all milestone lifecycle states.
- *
- * Project-context values: 'pending' | 'in_progress' | 'submitted' | 'releasing' | 'approved' | 'disputed' | 'refunded'
- * Standalone values:      'pending' | 'submitted' | 'approved' | 'rejected' | 'disputed' | 'completed'
- */
-export type MilestoneStatus =
+export type MilestoneStatus = 
   | 'pending'
-  | 'in_progress'
   | 'submitted'
-  | 'releasing'
   | 'approved'
   | 'rejected'
   | 'disputed'
-  | 'refunded'
   | 'completed';
 
 export type FileAttachment = {
@@ -28,17 +19,17 @@ export type Milestone = {
   title: string;
   description: string;
   amount: number;
-  dueDate: string;
+  dueDate: Date;
   status: MilestoneStatus;
-  submittedAt?: string;
-  approvedAt?: string;
-  rejectedAt?: string;
-  completedAt?: string;
+  submittedAt?: Date;
+  approvedAt?: Date;
+  rejectedAt?: Date;
+  completedAt?: Date;
   deliverableFiles?: FileAttachment[];
   rejectionReason?: string;
   revisionCount: number;
-  createdAt: string;
-  updatedAt: string;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type SubmitMilestoneInput = {

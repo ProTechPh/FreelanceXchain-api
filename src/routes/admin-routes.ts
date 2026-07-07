@@ -3,7 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { reviewRepository } from '../repositories/review-repository.js';
+import { ReviewRepository } from '../repositories/review-repository.js';
 
 import {
   getPlatformStats,
@@ -327,7 +327,7 @@ router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response
 
   let satisfactionRate = 0;
   try {
-    const reviews = await reviewRepository.getAllReviews();
+    const reviews = await ReviewRepository.getAllReviews();
     const positive = reviews.filter(r => r.rating >= 4.0).length;
     const total = reviews.length;
     satisfactionRate = total > 0 ? Math.round((positive / total) * 100) : 0;

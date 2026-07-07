@@ -3,8 +3,12 @@
  * Validates file URLs, types, count, and size limits
  */
 
-import type { FileAttachment } from '../models/milestone.js';
-export type { FileAttachment } from '../models/milestone.js';
+export type FileAttachment = {
+  url: string;
+  filename: string;
+  size: number;
+  mimeType: string;
+};
 
 export type FileValidationError = {
   field: string;

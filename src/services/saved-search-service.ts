@@ -41,8 +41,8 @@ export async function createSavedSearch(
         searchType: created.search_type,
         filters: typeof created.filters === 'string' ? JSON.parse(created.filters) : created.filters,
         notifyOnNew: created.notify_on_new,
-        createdAt: created.created_at,
-        updatedAt: created.updated_at,
+        createdAt: new Date(created.created_at),
+        updatedAt: new Date(created.updated_at),
       } as SavedSearch,
     };
   } catch (error) {
@@ -76,8 +76,8 @@ export async function getUserSavedSearches(
         searchType: row.search_type,
         filters: typeof row.filters === 'string' ? JSON.parse(row.filters) : row.filters,
         notifyOnNew: row.notify_on_new,
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
+        createdAt: new Date(row.created_at),
+        updatedAt: new Date(row.updated_at),
       } as SavedSearch)),
     };
   } catch (error) {
@@ -135,8 +135,8 @@ export async function updateSavedSearch(
           searchType: (existing as any).search_type,
           filters: typeof (existing as any).filters === 'string' ? JSON.parse((existing as any).filters) : (existing as any).filters,
           notifyOnNew: (existing as any).notify_on_new,
-          createdAt: (existing as any).created_at,
-          updatedAt: (existing as any).updated_at,
+          createdAt: new Date((existing as any).created_at),
+          updatedAt: new Date((existing as any).updated_at),
         } as SavedSearch,
       };
     }
@@ -162,8 +162,8 @@ export async function updateSavedSearch(
         searchType: (updated as any).search_type,
         filters: typeof (updated as any).filters === 'string' ? JSON.parse((updated as any).filters) : (updated as any).filters,
         notifyOnNew: (updated as any).notify_on_new,
-        createdAt: (updated as any).created_at,
-        updatedAt: (updated as any).updated_at,
+        createdAt: new Date((updated as any).created_at),
+        updatedAt: new Date((updated as any).updated_at),
       } as SavedSearch,
     };
   } catch (error) {
@@ -292,7 +292,7 @@ export async function executeSavedSearch(
       }
 
       // Sort and limit
-      filtered.sort((a, b) => b.created_at.localeCompare(a.created_at));
+      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       const results = filtered.slice(0, 50);
 
       return {
@@ -321,7 +321,7 @@ export async function executeSavedSearch(
       }
 
       // Sort and limit
-      filtered.sort((a, b) => b.created_at.localeCompare(a.created_at));
+      filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
       const results = filtered.slice(0, 50);
 
       return {

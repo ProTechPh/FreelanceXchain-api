@@ -469,16 +469,12 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   },
 }));
 
-jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => {
-  const repo = {
+jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+  ReviewRepository: {
     getAllReviews: jest.fn().mockResolvedValue([]),
     getReviewsByUser: jest.fn().mockResolvedValue([]),
-  };
-  return {
-    ReviewRepository: repo,
-    reviewRepository: repo,
-  };
-});
+  },
+}));
 
 jest.unstable_mockModule(resolveModule('src/middleware/csrf-middleware.ts'), () => ({
   generateCsrfToken: jest.fn(() => 'csrf-token'),

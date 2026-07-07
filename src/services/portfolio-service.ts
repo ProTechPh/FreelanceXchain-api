@@ -62,9 +62,9 @@ export async function createPortfolioItem(
         projectUrl: created.project_url,
         images: typeof created.images === 'string' ? JSON.parse(created.images) : created.images,
         skills: typeof created.skills === 'string' ? JSON.parse(created.skills) : created.skills,
-        completedAt: created.completed_at ?? undefined,
-        createdAt: created.created_at,
-        updatedAt: created.updated_at,
+        completedAt: created.completed_at ? new Date(created.completed_at) : undefined,
+        createdAt: new Date(created.created_at),
+        updatedAt: new Date(created.updated_at),
       } as PortfolioItem,
     };
   } catch (error) {
@@ -132,9 +132,9 @@ export async function updatePortfolioItem(
           projectUrl: (existing as any).project_url,
           images: typeof (existing as any).images === 'string' ? JSON.parse((existing as any).images) : (existing as any).images,
           skills: typeof (existing as any).skills === 'string' ? JSON.parse((existing as any).skills) : (existing as any).skills,
-          completedAt: (existing as any).completed_at ?? undefined,
-          createdAt: (existing as any).created_at,
-          updatedAt: (existing as any).updated_at,
+          completedAt: (existing as any).completed_at ? new Date((existing as any).completed_at) : undefined,
+          createdAt: new Date((existing as any).created_at),
+          updatedAt: new Date((existing as any).updated_at),
         } as PortfolioItem,
       };
     }
@@ -151,9 +151,9 @@ export async function updatePortfolioItem(
         projectUrl: (updated as any).project_url,
         images: typeof (updated as any).images === 'string' ? JSON.parse((updated as any).images) : (updated as any).images,
         skills: typeof (updated as any).skills === 'string' ? JSON.parse((updated as any).skills) : (updated as any).skills,
-        completedAt: (updated as any).completed_at ?? undefined,
-        createdAt: (updated as any).created_at,
-        updatedAt: (updated as any).updated_at,
+        completedAt: (updated as any).completed_at ? new Date((updated as any).completed_at) : undefined,
+        createdAt: new Date((updated as any).created_at),
+        updatedAt: new Date((updated as any).updated_at),
       } as PortfolioItem,
     };
   } catch (error) {
@@ -262,9 +262,9 @@ export async function getFreelancerPortfolio(
         projectUrl: item.project_url,
         images: typeof item.images === 'string' ? JSON.parse(item.images) : item.images,
         skills: typeof item.skills === 'string' ? JSON.parse(item.skills) : item.skills,
-        completedAt: item.completed_at ?? undefined,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
+        completedAt: item.completed_at ? new Date(item.completed_at) : undefined,
+        createdAt: new Date(item.created_at),
+        updatedAt: new Date(item.updated_at),
       } as PortfolioItem)),
     };
   } catch (error) {
@@ -306,9 +306,9 @@ export async function getPortfolioItem(portfolioId: string): Promise<ServiceResu
         projectUrl: (item as any).project_url,
         images: typeof (item as any).images === 'string' ? JSON.parse((item as any).images) : (item as any).images,
         skills: typeof (item as any).skills === 'string' ? JSON.parse((item as any).skills) : (item as any).skills,
-        completedAt: (item as any).completed_at ?? undefined,
-        createdAt: (item as any).created_at,
-        updatedAt: (item as any).updated_at,
+        completedAt: (item as any).completed_at ? new Date((item as any).completed_at) : undefined,
+        createdAt: new Date((item as any).created_at),
+        updatedAt: new Date((item as any).updated_at),
       } as PortfolioItem,
     };
   } catch (error) {

@@ -3,7 +3,7 @@
  * Direct messaging between users
  */
 
-export type Message = {
+export interface Message {
   id: string;
   conversationId: string;
   senderId: string;
@@ -11,30 +11,30 @@ export type Message = {
   content: string;
   isRead: boolean;
   attachments?: MessageAttachment[];
-  createdAt: string;
-  updatedAt: string;
-};
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-export type MessageAttachment = {
+export interface MessageAttachment {
   url: string;
   filename: string;
   size: number;
   mimeType: string;
-};
+}
 
-export type Conversation = {
+export interface Conversation {
   id: string;
   participant1Id: string;
   participant2Id: string;
-  lastMessageAt: string;
+  lastMessageAt: Date;
   lastMessagePreview?: string;
   unreadCount1: number;
   unreadCount2: number;
-  createdAt: string;
-  updatedAt: string;
-};
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-export type MessageEntity = {
+export interface MessageEntity {
   id: string;
   conversation_id: string;
   sender_id: string;
@@ -44,9 +44,9 @@ export type MessageEntity = {
   attachments?: MessageAttachment[];
   created_at: string;
   updated_at: string;
-};
+}
 
-export type ConversationEntity = {
+export interface ConversationEntity {
   id: string;
   participant1_id: string;
   participant2_id: string;
@@ -56,11 +56,11 @@ export type ConversationEntity = {
   unread_count_2: number;
   created_at: string;
   updated_at: string;
-};
+}
 
-export type SendMessageInput = {
+export interface SendMessageInput {
   senderId: string;
   receiverId: string;
   content: string;
   attachments?: MessageAttachment[];
-};
+}

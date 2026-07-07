@@ -16,13 +16,9 @@ const mockGetDisputeManagement = jest.fn<any>();
 const mockGetSystemHealth = jest.fn<any>();
 
 const mockGetAllReviews = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => {
-  const repo = { getAllReviews: mockGetAllReviews };
-  return {
-    ReviewRepository: repo,
-    reviewRepository: repo,
-  };
-});
+jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+  ReviewRepository: { getAllReviews: mockGetAllReviews },
+}));
 
 jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => ({
   getPlatformStats: mockGetPlatformStats,

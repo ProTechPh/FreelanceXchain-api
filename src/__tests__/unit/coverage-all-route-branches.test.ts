@@ -218,7 +218,6 @@ const mockReviewRepository = {
 };
 jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
   ReviewRepository: mockReviewRepository,
-  reviewRepository: mockReviewRepository,
 }));
 
 const mockSavedSearchService = {

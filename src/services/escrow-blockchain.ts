@@ -7,11 +7,12 @@ import { Contract, TransactionReceipt } from 'ethers';
 import { getContractWithSigner, getContract, isWeb3Available, getWallet } from './web3-client.js';
 import { FreelanceEscrowABI, FreelanceEscrowBytecode } from './contract-abis.js';
 import { ContractFactory } from 'ethers';
-import type { BlockchainMilestoneStatus } from './blockchain/adapter.js';
+
+export type MilestoneStatus = 'Pending' | 'Submitted' | 'Approved' | 'Disputed' | 'Refunded';
 
 export type EscrowMilestone = {
   amount: bigint;
-  status: BlockchainMilestoneStatus;
+  status: MilestoneStatus;
   description: string;
 };
 
@@ -266,10 +267,9 @@ export async function getMilestone(
   const contract = getEscrowContract(escrowAddress);
   const milestone = await (contract as any).getMilestone(milestoneIndex);
 
-  const statusMap: BlockchainMilestoneStatus[] = ['Pending', 'Submitted', 'Approved', 'Disputed', 'Refunded'];
   return {
     amount: milestone[0],
-    status: statusMap[Number(milestone[1])] as BlockchainMilestoneStatus,
+    status: ['Pending', 'Submitted', 'Approved', 'Disputed', 'Refunded'][Number(milestone[1])] as MilestoneStatus,
     description: milestone[2],
   };
 }

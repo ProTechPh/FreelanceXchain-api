@@ -98,15 +98,11 @@ jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   pool: { query: mockPoolQuery },
 }));
 
-jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => {
-  const repo = {
+jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+  ReviewRepository: {
     getAllReviews: jest.fn<any>().mockResolvedValue([]),
-  };
-  return {
-    ReviewRepository: repo,
-    reviewRepository: repo,
-  };
-});
+  },
+}));
 
 // Import routers
 const adminRouter = (await import('../../routes/admin-routes.js')).default;

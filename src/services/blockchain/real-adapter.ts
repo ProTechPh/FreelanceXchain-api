@@ -9,7 +9,7 @@ import {
   EscrowDeploymentResult,
   EscrowInfo,
   TransactionResult,
-  BlockchainMilestoneStatus,
+  MilestoneStatus,
 } from './adapter.js';
 import {
   deployEscrowContract as realDeployEscrow,
@@ -101,7 +101,7 @@ export class RealBlockchainAdapter implements IBlockchainAdapter {
   async getMilestone(
     escrowAddress: string,
     milestoneIndex: number
-  ): Promise<{ amount: bigint; status: BlockchainMilestoneStatus; description: string }> {
+  ): Promise<{ amount: bigint; status: MilestoneStatus; description: string }> {
     return await realGetMilestone(escrowAddress, milestoneIndex);
   }
 

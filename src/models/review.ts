@@ -1,4 +1,4 @@
-export type Review = {
+export interface Review {
   id: string;
   contractId: string;
   projectId?: string | undefined;
@@ -11,11 +11,11 @@ export type Review = {
   communication?: number | undefined;
   professionalism?: number | undefined;
   wouldWorkAgain?: boolean | undefined;
-  createdAt: string;
-  updatedAt: string;
-};
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-export type ReviewEntity = {
+export interface ReviewEntity {
   id: string;
   contract_id: string;
   project_id?: string | undefined;
@@ -30,9 +30,9 @@ export type ReviewEntity = {
   would_work_again?: boolean | undefined;
   created_at: string;
   updated_at: string;
-};
+}
 
-export type SubmitReviewInput = {
+export interface SubmitReviewInput {
   contractId: string;
   reviewerId: string;
   rateeId?: string;
@@ -43,4 +43,4 @@ export type SubmitReviewInput = {
   communication?: number;
   professionalism?: number;
   wouldWorkAgain?: boolean;
-};
+}

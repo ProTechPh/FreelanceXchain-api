@@ -195,8 +195,8 @@ export async function getProposalWithEmployerHistory(proposalId: string): Promis
   const completedContracts = allContracts.filter(c => c.status === 'completed');
 
   // Get employer's average rating and review count
-  const { reviewRepository } = await import('../repositories/review-repository.js');
-  const { average: averageRating, count: reviewCount } = await reviewRepository.getAverageRating(project.employerId);
+  const { ReviewRepository } = await import('../repositories/review-repository.js');
+  const { average: averageRating, count: reviewCount } = await ReviewRepository.getAverageRating(project.employerId);
 
   // Get employer profile
   const { employerProfileRepository } = await import('../repositories/employer-profile-repository.js');

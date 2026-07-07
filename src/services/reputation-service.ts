@@ -644,8 +644,8 @@ function mapReviewFromEntity(entity: ReviewEntity): Review {
     communication: entity.communication,
     professionalism: entity.professionalism,
     wouldWorkAgain: entity.would_work_again,
-    createdAt: entity.created_at,
-    updatedAt: entity.updated_at,
+    createdAt: new Date(entity.created_at),
+    updatedAt: new Date(entity.updated_at),
   };
 }
 

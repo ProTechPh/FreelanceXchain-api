@@ -1,15 +1,15 @@
-export type SavedSearch = {
+export interface SavedSearch {
   id: string;
   userId: string;
   name: string;
   searchType: 'project' | 'freelancer';
   filters: Record<string, any>;
   notifyOnNew: boolean;
-  createdAt: string;
-  updatedAt: string;
-};
+  createdAt: Date;
+  updatedAt: Date;
+}
 
-export type SavedSearchEntity = {
+export interface SavedSearchEntity {
   id: string;
   user_id: string;
   name: string;
@@ -18,11 +18,11 @@ export type SavedSearchEntity = {
   notify_on_new: boolean;
   created_at: string;
   updated_at: string;
-};
+}
 
-export type SavedSearchInput = {
+export interface SavedSearchInput {
   name: string;
   searchType: 'project' | 'freelancer';
   filters: Record<string, any>;
   notifyOnNew?: boolean;
-};
+}

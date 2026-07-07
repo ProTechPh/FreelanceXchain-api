@@ -144,6 +144,4 @@ class PaymentRepositoryClass extends BaseRepositoryAppwrite<PaymentEntity> {
   }
 }
 
-export const paymentRepository = new PaymentRepositoryClass();
-/** @deprecated Use `paymentRepository` (camelCase) instead. */
-export const PaymentRepository = paymentRepository;
+export const PaymentRepository = new PaymentRepositoryClass();
