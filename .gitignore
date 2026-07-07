@@ -52,3 +52,4 @@ deployment.json
 .env.development
 .claude/settings.local.json
 .bug-hunter/
+.zcode/
