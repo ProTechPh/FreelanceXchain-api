@@ -71,11 +71,14 @@ export async function uploadFileToStorage(
     // Create InputFile from buffer
     const inputFile = InputFile.fromBuffer(buffer, uniqueFilename);
 
-    // Sensitive buckets use user-scoped read permissions; public buckets use public read
+    // Sensitive buckets use user-scoped read permissions; public buckets use public read.
+    // All user-uploaded files store the owner in a write permission for ownership verification.
     const SENSITIVE_BUCKETS = [BUCKETS.DISPUTE_EVIDENCE, BUCKETS.MILESTONE_DELIVERABLES];
     const permissions = SENSITIVE_BUCKETS.includes(bucket) && userId
-      ? [`read("user:${userId}")`]
-      : ['read("any")'];
+      ? [`read("user:${userId}")`, `write("user:${userId}")`]
+      : userId
+        ? ['read("any")', `write("user:${userId}")`]
+        : ['read("any")'];
 
     // Upload to Appwrite Storage
     const file = await storage.createFile(
@@ -262,7 +265,8 @@ export async function uploadFile(options: {
     options.filename,
     options.mimetype || 'application/octet-stream',
     options.bucket,
-    options.folder
+    options.folder,
+    options.userId
   );
 
   const finalResult: UploadResult = {

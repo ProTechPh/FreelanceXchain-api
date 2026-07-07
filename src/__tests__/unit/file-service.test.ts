@@ -28,8 +28,8 @@ describe('file-service', () => {
   describe('getUserFiles', () => {
     it('lists files from default buckets when no bucket specified', async () => {
       const user123 = 'user-123';
-      const file1 = { $id: 'f1', name: `${user123}/image.png`, sizeOriginal: 1024, $createdAt: '2024-01-01', $updatedAt: '2024-01-01' };
-      const file2 = { $id: 'f2', name: `${user123}/doc.pdf`, sizeOriginal: 2048, $createdAt: '2024-01-01', $updatedAt: '2024-01-01' };
+      const file1 = { $id: 'f1', name: 'image.png', sizeOriginal: 1024, $createdAt: '2024-01-01', $updatedAt: '2024-01-01', $permissions: ['read("any")', `write("user:${user123}")`] };
+      const file2 = { $id: 'f2', name: 'doc.pdf', sizeOriginal: 2048, $createdAt: '2024-01-01', $updatedAt: '2024-01-01', $permissions: ['read("any")', `write("user:${user123}")`] };
 
       mockAppwriteStorage.listFiles
         .mockResolvedValueOnce({ files: [file1] }) // First bucket
@@ -48,7 +48,7 @@ describe('file-service', () => {
 
     it('lists files from specific bucket when provided', async () => {
       const user456 = 'user-456';
-      const file = { $id: 'f3', name: `${user456}/file.jpg`, sizeOriginal: 512, $createdAt: '2024-01-01', $updatedAt: '2024-01-01' };
+      const file = { $id: 'f3', name: 'file.jpg', sizeOriginal: 512, $createdAt: '2024-01-01', $updatedAt: '2024-01-01', $permissions: ['read("any")', `write("user:${user456}")`] };
       mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: [file] });
 
       const result = await getUserFiles(user456, 'my-bucket');
@@ -63,8 +63,8 @@ describe('file-service', () => {
 
     it('filters files that do not belong to the user', async () => {
       const userId = 'user-789';
-      const myFile = { $id: 'f1', name: `${userId}/image.png`, sizeOriginal: 1024 };
-      const otherFile = { $id: 'f2', name: 'other-user/image.png', sizeOriginal: 2048 };
+      const myFile = { $id: 'f1', name: 'image.png', sizeOriginal: 1024, $permissions: ['read("any")', `write("user:${userId}")`] };
+      const otherFile = { $id: 'f2', name: 'other-image.png', sizeOriginal: 2048, $permissions: ['read("any")', 'write("user:other-user")'] };
 
       mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: [myFile, otherFile] });
       mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: [] });
@@ -106,8 +106,8 @@ describe('file-service', () => {
       const userId = 'user-123';
       const fileId = 'file-id';
       const bucket = 'bucket';
-      
-      mockAppwriteStorage.getFile.mockResolvedValueOnce({ name: `${userId}/image.jpg` });
+
+      mockAppwriteStorage.getFile.mockResolvedValueOnce({ name: 'image.jpg', $permissions: ['read("any")', `write("user:${userId}")`] });
       mockAppwriteStorage.deleteFile.mockResolvedValueOnce({});
 
       const result = await deleteFile(userId, bucket, fileId);
@@ -118,7 +118,7 @@ describe('file-service', () => {
 
     it('returns unauthorized error when path does not belong to user', async () => {
       const userId = 'user-123';
-      mockAppwriteStorage.getFile.mockResolvedValueOnce({ name: 'other-user/some-image.jpg' });
+      mockAppwriteStorage.getFile.mockResolvedValueOnce({ name: 'some-image.jpg', $permissions: ['read("any")', 'write("user:other-user")'] });
 
       const result = await deleteFile(userId, 'bucket', 'file-id');
 
@@ -144,8 +144,8 @@ describe('file-service', () => {
   describe('getFileQuota', () => {
     it('returns quota with file usage', async () => {
       const userId = 'user-1';
-      const file1 = { $id: 'f1', name: `${userId}/f-1`, sizeOriginal: 10 * 1024 * 1024 }; // 10MB
-      
+      const file1 = { $id: 'f1', name: 'f-1', sizeOriginal: 10 * 1024 * 1024, $permissions: ['read("any")', `write("user:${userId}")`] }; // 10MB
+
       mockAppwriteStorage.listFiles
         .mockResolvedValueOnce({ files: [file1] })
         .mockResolvedValueOnce({ files: [] });

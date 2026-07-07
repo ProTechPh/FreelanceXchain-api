@@ -119,14 +119,20 @@ describe('Admin Routes', () => {
 
   describe('PATCH /users/:userId', () => {
     it('should update user', async () => {
-      mockUpdateUser.mockResolvedValue({ success: true, data: { id: 'u-1', email: 'test@test.com', role: 'admin', name: 'New Name', created_at: '2025-01-01', is_suspended: false } });
-      const res = await request(app).patch('/api/admin/users/u-1').send({ name: 'New Name', role: 'admin' });
+      mockUpdateUser.mockResolvedValue({ success: true, data: { id: 'u-1', email: 'test@test.com', role: 'freelancer', name: 'New Name', created_at: '2025-01-01', is_suspended: false } });
+      const res = await request(app).patch('/api/admin/users/u-1').send({ name: 'New Name', role: 'freelancer' });
       expect(res.status).toBe(200);
       expect(res.body.name).toBe('New Name');
     });
 
     it('should reject invalid role', async () => {
       const res = await request(app).patch('/api/admin/users/u-1').send({ role: 'superadmin' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_ROLE');
+    });
+
+    it('should reject admin role assignment', async () => {
+      const res = await request(app).patch('/api/admin/users/u-1').send({ role: 'admin' });
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('INVALID_ROLE');
     });

@@ -61,11 +61,12 @@ describe('File Service - Error Coverage', () => {
         .mockResolvedValueOnce({
           files: [
             {
-              name: 'user-1/doc.pdf',
+              name: 'doc.pdf',
               $id: 'file-2',
               sizeOriginal: 2048,
               $createdAt: '2024-01-01',
               $updatedAt: '2024-01-01',
+              $permissions: ['read("any")', 'write("user:user-1")'],
             },
           ],
         });
@@ -74,7 +75,7 @@ describe('File Service - Error Coverage', () => {
 
       expect(result.success).toBe(true);
       expect(result.data).toHaveLength(1);
-      expect(result.data[0].name).toBe('user-1/doc.pdf');
+      expect(result.data[0].name).toBe('doc.pdf');
       expect(mockLogger.error).toHaveBeenCalledWith(
         'Failed to list files',
         expect.objectContaining({ userId: 'user-1' })
@@ -99,18 +100,20 @@ describe('File Service - Error Coverage', () => {
       mockListFiles.mockResolvedValue({
         files: [
           {
-            name: 'user-1/avatar.png',
+            name: 'avatar.png',
             $id: 'file-1',
             sizeOriginal: 1024,
             $createdAt: '2024-01-01',
             $updatedAt: '2024-01-01',
+            $permissions: ['read("any")', 'write("user:user-1")'],
           },
           {
-            name: 'user-2/avatar.png',
+            name: 'other-avatar.png',
             $id: 'file-2',
             sizeOriginal: 2048,
             $createdAt: '2024-01-01',
             $updatedAt: '2024-01-01',
+            $permissions: ['read("any")', 'write("user:user-2")'],
           },
         ],
       });
@@ -120,7 +123,6 @@ describe('File Service - Error Coverage', () => {
       expect(result.success).toBe(true);
       // Only user-1 files from 2 buckets
       expect(result.data).toHaveLength(2);
-      expect(result.data.every((f: any) => f.name.startsWith('user-1/'))).toBe(true);
     });
   });
 
@@ -129,11 +131,12 @@ describe('File Service - Error Coverage', () => {
       mockListFiles.mockResolvedValue({
         files: [
           {
-            name: 'user-1/photo.png',
+            name: 'photo.png',
             $id: 'file-1',
             sizeOriginal: 512,
             $createdAt: '2024-01-01',
             $updatedAt: '2024-01-01',
+            $permissions: ['read("any")', 'write("user:user-1")'],
           },
         ],
       });
@@ -183,11 +186,12 @@ describe('File Service - Error Coverage', () => {
       mockListFiles.mockResolvedValue({
         files: [
           {
-            name: 'user-1/file.png',
+            name: 'file.png',
             $id: 'file-1',
             sizeOriginal: 5000,
             $createdAt: '2024-01-01',
             $updatedAt: '2024-01-01',
+            $permissions: ['read("any")', 'write("user:user-1")'],
           },
         ],
       });
@@ -211,11 +215,12 @@ describe('File Service - Error Coverage', () => {
       mockListFiles.mockResolvedValue({
         files: [
           {
-            name: 'user-1/large.bin',
+            name: 'large.bin',
             $id: 'file-1',
             sizeOriginal: largeSize,
             $createdAt: '2024-01-01',
             $updatedAt: '2024-01-01',
+            $permissions: ['read("any")', 'write("user:user-1")'],
           },
         ],
       });
