@@ -131,7 +131,7 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
   const { name, role, isActive } = req.body;
   const requestId = getRequestId(req);
 
-  const validRoles = ['freelancer', 'employer', 'admin'];
+  const validRoles = ['freelancer', 'employer'];
   if (role !== undefined && !validRoles.includes(role)) {
     res.status(400).json({
       error: { code: 'INVALID_ROLE', message: `Invalid role. Must be one of: ${validRoles.join(', ')}` },

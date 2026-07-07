@@ -96,7 +96,7 @@ describe('File Service - Coverage4', () => {
       // The outer catch at lines 159-167 catches errors from storage.deleteFile
       // This is already tested in coverage3 as "unexpected error during delete"
       // But let's make sure we hit it with a non-Error throw
-      mockStorage.getFile.mockResolvedValue({ name: 'user-1/photo.jpg' });
+      mockStorage.getFile.mockResolvedValue({ name: 'photo.jpg', $permissions: ['read("any")', 'write("user:user-1")'] });
       mockStorage.deleteFile.mockRejectedValue('string error');
 
       const result = await deleteFile('user-1', 'portfolio', 'f-1');

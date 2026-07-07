@@ -275,6 +275,45 @@ describe('Rate Limiter - Real Module Coverage', () => {
       expect(next).toHaveBeenCalledTimes(1);
       expect(res.status).not.toHaveBeenCalled();
     });
+
+    it('should fail closed when Redis throws and failOpen is false', async () => {
+      evalMock.mockRejectedValueOnce(new Error('Redis connection refused'));
+      const limiter = rateLimiterFn('test-failclosed', { windowMs: 60000, maxRequests: 1, failOpen: false });
+      const req = createReq();
+      const res = createRes();
+      const next = jest.fn();
+
+      await limiter(req, res, next);
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(429);
+      expect(res.set).toHaveBeenCalledWith('Retry-After', expect.any(String));
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'RATE_LIMIT_EXCEEDED' }),
+        })
+      );
+    });
+
+    it('should fail closed with custom message when Redis throws and failOpen is false', async () => {
+      evalMock.mockRejectedValueOnce(new Error('Redis connection refused'));
+      const limiter = rateLimiterFn('test-failclosed-msg', {
+        windowMs: 60000,
+        maxRequests: 1,
+        failOpen: false,
+        message: 'Custom fail-closed message',
+      });
+      const req = createReq();
+      const res = createRes();
+      const next = jest.fn();
+
+      await limiter(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(429);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ message: 'Custom fail-closed message' }),
+        })
+      );
+    });
   });
 
   describe('preset rate limiters', () => {

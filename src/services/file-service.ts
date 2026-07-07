@@ -24,6 +24,17 @@ export interface FileQuota {
 const DEFAULT_QUOTA_BYTES = 100 * 1024 * 1024;
 
 /**
+ * Check if a file is owned by a user based on Appwrite file permissions.
+ * Files uploaded with write("user:{userId}") permission indicate ownership.
+ */
+function isFileOwnedByUser(file: { $permissions?: string[] }, userId: string): boolean {
+  if (file.$permissions) {
+    return file.$permissions.some(p => p === `write("user:${userId}")`);
+  }
+  return false;
+}
+
+/**
  * Get user's files from Appwrite Storage
  */
 export async function getUserFiles(
@@ -40,9 +51,9 @@ export async function getUserFiles(
         const result = await storage.listFiles(bucketName);
 
         if (result.files) {
-          // Filter files that belong to the user (by filename pattern or metadata)
+          // Filter files that belong to the user by checking owner write permission
           const files = result.files
-            .filter(file => file.name.startsWith(userId + '/') || file.name.startsWith(userId + '_'))
+            .filter(file => isFileOwnedByUser(file, userId))
             .map(file => ({
               name: file.name,
               bucket: bucketName,
@@ -86,11 +97,11 @@ export async function deleteFile(
   path: string
 ): Promise<ServiceResult<void>> {
   try {
-    // Get file info to verify ownership
+    // Get file info to verify ownership via Appwrite permissions
     try {
       const file = await storage.getFile(bucket, path);
-      // Verify file ownership by checking if filename starts with userId
-      if (!file.name.startsWith(userId + '/') && !file.name.startsWith(userId + '_')) {
+      // Verify file ownership by checking owner write permission
+      if (!isFileOwnedByUser(file, userId)) {
         return {
           success: false,
           error: {

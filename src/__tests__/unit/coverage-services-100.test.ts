@@ -653,7 +653,7 @@ describe('file-service – branch coverage', () => {
 
   it('L50: files with missing sizeOriginal use 0', async () => {
     mockStorage.listFiles.mockResolvedValueOnce({
-      files: [{ name: 'user1/test.txt', $id: 'f1', sizeOriginal: undefined, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' }],
+      files: [{ name: 'test.txt', $id: 'f1', sizeOriginal: undefined, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', $permissions: ['read("any")', 'write("user:user1")'] }],
       total: 1,
     });
 
