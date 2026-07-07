@@ -88,14 +88,18 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () 
   approveMilestoneCompletion: jest.fn(),
 }));
 
-jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
-  PaymentRepository: {
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => {
+  const repo = {
     getById: jest.fn(),
     findByContractId: jest.fn(),
     create: jest.fn(),
     updateStatus: jest.fn(),
-  },
-}));
+  };
+  return {
+    PaymentRepository: repo,
+    paymentRepository: repo,
+  };
+});
 
 const paymentRouter = (await import('../../routes/payment-routes.js')).default;
 

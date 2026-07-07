@@ -1,5 +1,5 @@
 // Proposal domain types
-import type { FileAttachment } from '../utils/file-validator.js';
+import type { FileAttachment } from './milestone.js';
 
 export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
 

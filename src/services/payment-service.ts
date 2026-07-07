@@ -8,7 +8,7 @@ import { logger } from '../config/logger.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
-import { PaymentRepository, PaymentType } from '../repositories/payment-repository.js';
+import { paymentRepository, PaymentType } from '../repositories/payment-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { generateId } from '../utils/id.js';
 import {
@@ -64,7 +64,7 @@ async function createPaymentRecord(params: {
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 }): Promise<void> {
   try {
-    await PaymentRepository.create({
+    await paymentRepository.create({
       id: generateId(),
       contract_id: params.contractId,
       milestone_id: params.milestoneId,
