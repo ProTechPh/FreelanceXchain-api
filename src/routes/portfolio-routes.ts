@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendError, sendServiceError } from '../utils/response.js';
 import { uploadPortfolioImages } from '../middleware/file-upload-middleware.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
@@ -49,11 +50,7 @@ async function handleMultipartPortfolio(req: Request, res: Response, _next: any)
   } catch {
     if (res.headersSent) return;
     const requestId = getRequestId(req);
-    res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 500, { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' }, requestId);
   }
 }
 
@@ -64,19 +61,13 @@ async function processMultipartPortfolio(req: Request, res: Response) {
   const { title, description, projectUrl, skills, completedAt } = req.body;
 
   if (!userId) {
-    return res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    return;
   }
 
   if (!files || files.length === 0) {
-    return res.status(400).json({
-      error: { code: 'NO_FILES', message: 'At least 1 image is required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: 'NO_FILES', message: 'At least 1 image is required' }, requestId);
+    return;
   }
 
   const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PORTFOLIO_IMAGES, userId);
@@ -87,11 +78,8 @@ async function processMultipartPortfolio(req: Request, res: Response) {
     if (successfulUploads.length > 0) {
       await cleanupUploadedFiles(successfulUploads.map(r => r.metadata!), STORAGE_BUCKETS.PORTFOLIO_IMAGES);
     }
-    return res.status(500).json({
-      error: { code: 'UPLOAD_FAILED', message: 'Failed to upload one or more files' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 500, { code: 'UPLOAD_FAILED', message: 'Failed to upload one or more files' }, requestId);
+    return;
   }
 
   const images = uploadResults.map(r => r.metadata!);
@@ -108,11 +96,8 @@ async function processMultipartPortfolio(req: Request, res: Response) {
 
   if (!result.success) {
     await cleanupUploadedFiles(images, STORAGE_BUCKETS.PORTFOLIO_IMAGES);
-    return res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, result.error, requestId);
+    return;
   }
 
   return res.status(201).json(result.data);
@@ -124,11 +109,8 @@ async function handleJsonPortfolio(req: Request, res: Response) {
   const { title, description, projectUrl, images, skills, completedAt } = req.body;
 
   if (!userId) {
-    return res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    return;
   }
 
   const result = await createPortfolioItem(userId, {
@@ -141,11 +123,8 @@ async function handleJsonPortfolio(req: Request, res: Response) {
   });
 
   if (!result.success) {
-    return res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, result.error, requestId);
+    return;
   }
 
   return res.status(201).json(result.data);
@@ -158,11 +137,7 @@ router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelance
   const result = await getFreelancerPortfolio(freelancerId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, result.error, requestId);
     return;
   }
 
@@ -176,12 +151,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   const result = await getPortfolioItem(portfolioId);
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { NOT_FOUND: 404 });
     return;
   }
 
@@ -195,23 +165,14 @@ router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, 
   const updates = req.body;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   const result = await updatePortfolioItem(portfolioId, userId, updates);
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
     return;
   }
 
@@ -224,23 +185,14 @@ router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter,
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   const result = await deletePortfolioItem(portfolioId, userId);
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
     return;
   }
 
