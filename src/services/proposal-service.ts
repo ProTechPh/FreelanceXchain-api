@@ -39,6 +39,188 @@ export type RejectProposalResult = {
 };
 
 
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+function fail(code: string, message: string): ServiceResult<never> {
+  return { success: false, error: { code, message } };
+}
+
+async function validateProposalAcceptance(
+  proposalId: string,
+  employerId: string
+): Promise<ServiceResult<{
+  proposalEntity: any;
+  project: Project;
+  projectEntity: any;
+  proposalRate: number;
+  rushFee: number;
+  totalAmount: number;
+  freelancerLimit: number;
+}>> {
+  const proposalEntity = await proposalRepository.findProposalById(proposalId);
+  if (!proposalEntity) {
+    return fail('NOT_FOUND', 'Proposal not found');
+  }
+
+  // Check if proposal is pending
+  if (proposalEntity.status !== 'pending') {
+    return fail('INVALID_STATUS', `Cannot accept proposal with status "${proposalEntity.status}"`);
+  }
+
+  // Verify employer owns the project
+  const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
+  if (!projectEntity) {
+    return fail('NOT_FOUND', 'Project not found');
+  }
+  const project = mapProjectFromEntity(projectEntity);
+
+  if (project.employerId !== employerId) {
+    return fail('UNAUTHORIZED', 'You are not authorized to accept proposals for this project');
+  }
+
+  // Check that the project has milestones defined
+  if (!project.milestones || project.milestones.length === 0) {
+    return fail('NO_MILESTONES', 'Project must have milestones defined before accepting a proposal');
+  }
+
+  const proposalRate = proposalEntity.proposed_rate;
+  if (proposalRate === null || proposalRate === undefined || proposalRate <= 0) {
+    return fail('INVALID_PROPOSAL_RATE', 'Accepted proposal must have a valid positive rate');
+  }
+
+  // Milestone total must match the base amount (proposed rate), not the total with rush fee
+  const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
+  if (Math.abs(milestoneTotal - proposalRate) > 0.01) {
+    return fail('AMOUNT_MISMATCH', 'Proposal rate must match the total project milestone amount before contract creation');
+  }
+
+  // Calculate rush fee if project is marked as rush
+  const isRush = project.isRush ?? false;
+  const rushFeePercentage = project.rushFeePercentage ?? 25;
+  const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
+  const totalAmount = proposalRate + rushFee;
+
+  // Pre-check: Verify freelancer limit hasn't been reached
+  const freelancerLimit = projectEntity.freelancer_limit ?? 1;
+  const preCheckAcceptedCount = await proposalRepository.getAcceptedProposalCount(proposalEntity.project_id);
+  if (preCheckAcceptedCount >= freelancerLimit) {
+    return fail('FREELANCER_LIMIT_REACHED', `This project has already accepted the maximum number of freelancers (${freelancerLimit})`);
+  }
+
+  return {
+    success: true,
+    data: { proposalEntity, project, projectEntity, proposalRate, rushFee, totalAmount, freelancerLimit },
+  };
+}
+
+async function rejectOtherPendingProposals(projectId: string, acceptedProposalId: string): Promise<void> {
+  try {
+    const otherProposals = await proposalRepository.getProposalsByProject(projectId, { limit: 1000, offset: 0 });
+    for (const otherProposal of otherProposals.items) {
+      if (otherProposal.id !== acceptedProposalId && otherProposal.status === 'pending') {
+        await proposalRepository.updateProposal(otherProposal.id, { status: 'rejected' });
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to reject other pending proposals', { error });
+    // Continue - this is non-critical
+  }
+}
+
+async function initializeBlockchainEscrow(
+  contract: Contract,
+  project: Project,
+  employerId: string,
+  freelancerId: string,
+  totalAmount: number,
+  rushFee: number
+): Promise<{ escrowAddress?: string }> {
+  const employer = await userRepository.getUserById(employerId);
+  const freelancer = await userRepository.getUserById(freelancerId);
+
+  if (!employer?.wallet_address || !freelancer?.wallet_address) {
+    return {};
+  }
+
+  const isRush = project.isRush ?? false;
+  const rushFeePercentage = project.rushFeePercentage ?? 25;
+
+  // Create agreement on blockchain (employer signs on creation)
+  await createAgreementOnBlockchain({
+    contractId: contract.id,
+    employerWallet: employer.wallet_address,
+    freelancerWallet: freelancer.wallet_address,
+    totalAmount: totalAmount,
+    milestoneCount: project.milestones.length,
+    terms: {
+      projectTitle: project.title,
+      description: project.description ?? '',
+      milestones: project.milestones.map(m => ({ title: m.title, amount: m.amount })),
+      deadline: project.deadline ?? '',
+      ...(isRush ? { isRush: true, rushFee, rushFeePercentage } : {}),
+    },
+  });
+
+  // Note: Freelancer should explicitly sign the agreement, not auto-sign
+  // The employer accepted the proposal; the freelancer submitted it.
+  // Auto-signing is kept for now but should be replaced with explicit consent flow.
+  await signAgreement(contract.id, freelancer.wallet_address);
+
+  // Initialize escrow and activate contract
+  const { initializeContractEscrow } = await import('./payment-service.js');
+  const escrowResult = await initializeContractEscrow(
+    contract,
+    project,
+    employer.wallet_address,
+    freelancer.wallet_address
+  );
+
+  if (escrowResult.success) {
+    return { escrowAddress: escrowResult.data.escrowAddress };
+  }
+
+  return {};
+}
+
+async function updateProjectStatusForAcceptance(
+  project: Project,
+  projectId: string
+): Promise<void> {
+  // Update project status based on freelancer limit
+  // Only transition to in_progress when all freelancer slots are filled
+  const maxFreelancers = project.freelancerLimit ?? 1;
+  const acceptedProposals = await proposalRepository.getProposalsByProject(projectId, { limit: 1000, offset: 0 });
+  const acceptedCount = acceptedProposals.items.filter(p => p.status === 'accepted').length;
+  const limitReached = acceptedCount >= maxFreelancers;
+
+  if (limitReached) {
+    // All freelancer slots filled — transition project to in_progress and activate first milestone
+    const updatedMilestones = project.milestones?.map((milestone, index) => {
+      // Automatically set the first milestone to in_progress so the freelancer can begin
+      if (index === 0) {
+        return {
+          ...milestone,
+          status: 'in_progress' as any,
+          due_date: milestone.dueDate,
+        };
+      }
+      return {
+        ...milestone,
+        due_date: milestone.dueDate,
+      };
+    }) || [];
+
+    await projectRepository.updateProject(projectId, {
+      status: 'in_progress',
+      milestones: updatedMilestones,
+    });
+  }
+  // If limit is not reached, project stays 'open' so more freelancers can be accepted
+}
+
+
 // Submit a proposal for a project
 export async function submitProposal(
   freelancerId: string,
@@ -60,38 +242,26 @@ export async function submitProposal(
   // Check if project exists
   const projectEntity = await projectRepository.findProjectById(input.projectId);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return fail('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
   // Check if project is open for proposals
   if (project.status !== 'open') {
-    return {
-      success: false,
-      error: { code: 'PROJECT_NOT_OPEN', message: 'Project is not accepting proposals' },
-    };
+    return fail('PROJECT_NOT_OPEN', 'Project is not accepting proposals');
   }
 
   // Check for duplicate proposal
   const existingProposal = await proposalRepository.getExistingProposal(input.projectId, freelancerId);
   if (existingProposal) {
-    return {
-      success: false,
-      error: { code: 'DUPLICATE_PROPOSAL', message: 'You have already submitted a proposal for this project' },
-    };
+    return fail('DUPLICATE_PROPOSAL', 'You have already submitted a proposal for this project');
   }
 
   // Check if freelancer limit has been reached (all slots filled)
   const acceptedCount = await proposalRepository.getAcceptedProposalCount(input.projectId);
   const freelancerLimit = projectEntity.freelancer_limit ?? 1;
   if (acceptedCount >= freelancerLimit) {
-    return {
-      success: false,
-      error: { code: 'FREELANCER_LIMIT_REACHED', message: `This project has already accepted the maximum number of freelancers (${freelancerLimit})` },
-    };
+    return fail('FREELANCER_LIMIT_REACHED', `This project has already accepted the maximum number of freelancers (${freelancerLimit})`);
   }
 
   const proposalEntity: Omit<ProposalEntity, 'created_at' | 'updated_at'> = {
@@ -146,10 +316,7 @@ export async function submitProposal(
 export async function getProposalById(proposalId: string): Promise<ServiceResult<Proposal>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Proposal not found' },
-    };
+    return fail('NOT_FOUND', 'Proposal not found');
   }
   return { success: true, data: mapProposalFromEntity(proposalEntity) };
 }
@@ -172,10 +339,7 @@ export type ProposalWithEmployerHistory = {
 export async function getProposalWithEmployerHistory(proposalId: string): Promise<ServiceResult<ProposalWithEmployerHistory>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Proposal not found' },
-    };
+    return fail('NOT_FOUND', 'Proposal not found');
   }
 
   const proposal = mapProposalFromEntity(proposalEntity);
@@ -183,10 +347,7 @@ export async function getProposalWithEmployerHistory(proposalId: string): Promis
   // Get project to find employer
   const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return fail('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
@@ -225,10 +386,7 @@ export async function getProposalsByProject(
 ): Promise<ServiceResult<PaginatedResult<Proposal>>> {
   const projectEntity = await projectRepository.findProjectById(projectId);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return fail('NOT_FOUND', 'Project not found');
   }
 
   const result = await proposalRepository.getProposalsByProject(projectId, options);
@@ -260,248 +418,99 @@ export async function acceptProposal(
   proposalId: string,
   employerId: string
 ): Promise<ServiceResult<AcceptProposalResult>> {
-  const proposalEntity = await proposalRepository.findProposalById(proposalId);
-  if (!proposalEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Proposal not found' },
-    };
-  }
-
-  // Check if proposal is pending
-  if (proposalEntity.status !== 'pending') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot accept proposal with status "${proposalEntity.status}"` },
-    };
-  }
-
-  // Verify employer owns the project
-  const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
-  if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
-  }
-  const project = mapProjectFromEntity(projectEntity);
-
-  if (project.employerId !== employerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'You are not authorized to accept proposals for this project' },
-    };
-  }
-
-  // Check that the project has milestones defined
-  if (!project.milestones || project.milestones.length === 0) {
-    return {
-      success: false,
-      error: { code: 'NO_MILESTONES', message: 'Project must have milestones defined before accepting a proposal' },
-    };
-  }
-
-  const proposalRate = proposalEntity.proposed_rate;
-  if (proposalRate === null || proposalRate === undefined || proposalRate <= 0) {
-    return {
-      success: false,
-      error: { code: 'INVALID_PROPOSAL_RATE', message: 'Accepted proposal must have a valid positive rate' },
-    };
-  }
-
-  // Milestone total must match the base amount (proposed rate), not the total with rush fee
-  const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
-  if (Math.abs(milestoneTotal - proposalRate) > 0.01) {
-    return {
-      success: false,
-      error: {
-        code: 'AMOUNT_MISMATCH',
-        message: 'Proposal rate must match the total project milestone amount before contract creation',
-      },
-    };
-  }
-
-  // Calculate rush fee if project is marked as rush
-  const isRush = project.isRush ?? false;
-  const rushFeePercentage = project.rushFeePercentage ?? 25;
-  const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
-  const totalAmount = proposalRate + rushFee;
-
-  // Pre-check: Verify freelancer limit hasn't been reached
-  const freelancerLimit = projectEntity.freelancer_limit ?? 1;
-  const preCheckAcceptedCount = await proposalRepository.getAcceptedProposalCount(proposalEntity.project_id);
-  if (preCheckAcceptedCount >= freelancerLimit) {
-    return {
-      success: false,
-      error: { code: 'FREELANCER_LIMIT_REACHED', message: `This project has already accepted the maximum number of freelancers (${freelancerLimit})` },
-    };
-  }
-
-  // Accept proposal: update status to 'accepted'
-  const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
-    status: 'accepted',
-  });
-
-  if (!updatedProposalEntity) {
-    logger.error('Failed to accept proposal');
-    return {
-      success: false,
-      error: { 
-        code: 'UPDATE_FAILED', 
-        message: 'Failed to accept proposal or proposal already accepted' 
-      },
-    };
-  }
-
-  // Create contract record
-  const contractEntity = await contractRepository.create({
-    id: generateId(),
-    project_id: project.id,
-    proposal_id: proposalId,
-    freelancer_id: proposalEntity.freelancer_id,
-    employer_id: employerId,
-    base_amount: proposalRate,
-    rush_fee: rushFee,
-    total_amount: totalAmount,
-    status: 'pending',
-    escrow_address: '',
-  });
-
-  if (!contractEntity) {
-    return {
-      success: false,
-      error: { 
-        code: 'UPDATE_FAILED', 
-        message: 'Proposal accepted but no contract was created' 
-      },
-    };
-  }
-
-  // Reject other pending proposals for this project
   try {
-    const otherProposals = await proposalRepository.getProposalsByProject(project.id, { limit: 1000, offset: 0 });
-    for (const otherProposal of otherProposals.items) {
-      if (otherProposal.id !== proposalId && otherProposal.status === 'pending') {
-        await proposalRepository.updateProposal(otherProposal.id, { status: 'rejected' });
-      }
+    // Validate all preconditions
+    const validation = await validateProposalAcceptance(proposalId, employerId);
+    if (!validation.success) return validation;
+    const { proposalEntity, project, proposalRate, rushFee, totalAmount } = validation.data;
+
+    // Accept proposal: update status to 'accepted'
+    const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
+      status: 'accepted',
+    });
+
+    if (!updatedProposalEntity) {
+      logger.error('Failed to accept proposal');
+      return fail('UPDATE_FAILED', 'Failed to accept proposal or proposal already accepted');
     }
-  } catch (error) {
-    logger.error('Failed to reject other pending proposals', { error });
-    // Continue - this is non-critical
-  }
 
-  // Get the updated entities
-  const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
-  const createdContract = mapContractFromEntity(contractEntity);
+    // Create contract record
+    const contractEntity = await contractRepository.create({
+      id: generateId(),
+      project_id: project.id,
+      proposal_id: proposalId,
+      freelancer_id: proposalEntity.freelancer_id,
+      employer_id: employerId,
+      base_amount: proposalRate,
+      rush_fee: rushFee,
+      total_amount: totalAmount,
+      status: 'pending',
+      escrow_address: '',
+    });
 
-  // Create agreement on blockchain and initialize escrow
-  try {
-    const employer = await userRepository.getUserById(project.employerId);
-    const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
-    
-    if (employer?.wallet_address && freelancer?.wallet_address) {
-      // Create agreement on blockchain (employer signs on creation)
-      await createAgreementOnBlockchain({
-        contractId: createdContract.id,
-        employerWallet: employer.wallet_address,
-        freelancerWallet: freelancer.wallet_address,
-        totalAmount: totalAmount,
-        milestoneCount: project.milestones.length,
-        terms: {
-          projectTitle: project.title,
-          description: project.description ?? '',
-          milestones: project.milestones.map(m => ({ title: m.title, amount: m.amount })),
-          deadline: project.deadline ?? '',
-          ...(isRush ? { isRush: true, rushFee, rushFeePercentage } : {}),
-        },
-      });
+    if (!contractEntity) {
+      return fail('UPDATE_FAILED', 'Proposal accepted but no contract was created');
+    }
 
-      // Note: Freelancer should explicitly sign the agreement, not auto-sign
-      // The employer accepted the proposal; the freelancer submitted it.
-      // Auto-signing is kept for now but should be replaced with explicit consent flow.
-      await signAgreement(createdContract.id, freelancer.wallet_address);
+    // Map entities for downstream use
+    const proposal = mapProposalFromEntity(updatedProposalEntity);
+    const contract = mapContractFromEntity(contractEntity);
 
-      // Initialize escrow and activate contract
-      const { initializeContractEscrow } = await import('./payment-service.js');
-      const escrowResult = await initializeContractEscrow(
-        createdContract,
-        project,
-        employer.wallet_address,
-        freelancer.wallet_address
+    // Reject other pending proposals for this project (fire-and-forget)
+    await rejectOtherPendingProposals(project.id, proposalId);
+
+    // Create agreement on blockchain and initialize escrow (non-critical)
+    try {
+      const escrowResult = await initializeBlockchainEscrow(
+        contract, project, employerId, proposalEntity.freelancer_id, totalAmount, rushFee
       );
-
-      if (escrowResult.success) {
+      if (escrowResult.escrowAddress) {
         // Update contract status to active and set escrow address
-        await contractRepository.updateContract(createdContract.id, {
+        await contractRepository.updateContract(contract.id, {
           status: 'active',
-          escrow_address: escrowResult.data.escrowAddress,
+          escrow_address: escrowResult.escrowAddress,
         });
       }
+    } catch (error) {
+      logger.error('Failed to create blockchain agreement or initialize escrow', { error });
+      // Continue - blockchain is secondary, contract remains pending
     }
-  } catch (error) {
-    logger.error('Failed to create blockchain agreement or initialize escrow', { error });
-    // Continue - blockchain is secondary, contract remains pending
-  }
 
-  // Update project status based on freelancer limit
-  // Only transition to in_progress when all freelancer slots are filled
-  const maxFreelancers = project.freelancerLimit ?? 1;
-  const acceptedProposals = await proposalRepository.getProposalsByProject(project.id, { limit: 1000, offset: 0 });
-  const acceptedCount = acceptedProposals.items.filter(p => p.status === 'accepted').length;
-  const limitReached = acceptedCount >= maxFreelancers;
+    // Update project status based on freelancer limit
+    await updateProjectStatusForAcceptance(project, project.id);
 
-  if (limitReached) {
-    // All freelancer slots filled — transition project to in_progress and activate first milestone
-    const updatedMilestones = project.milestones?.map((milestone, index) => {
-      // Automatically set the first milestone to in_progress so the freelancer can begin
-      if (index === 0) {
-        return {
-          ...milestone,
-          status: 'in_progress' as any,
-          due_date: milestone.dueDate,
-        };
-      }
-      return {
-        ...milestone,
-        due_date: milestone.dueDate,
-      };
-    }) || [];
+    // Create notification for freelancer
+    try {
+      await notificationRepository.createNotification({
+        id: generateId(),
+        user_id: proposalEntity.freelancer_id,
+        type: 'proposal_accepted',
+        title: 'Proposal Accepted',
+        message: `Your proposal for "${project.title}" has been accepted!`,
+        data: {
+          proposalId: proposalEntity.id,
+          projectId: project.id,
+          projectTitle: project.title,
+          contractId: contract.id,
+        },
+        is_read: false,
+      });
+    } catch (error) {
+      logger.error('Failed to create notification', { error });
+      // Continue - notification is secondary
+    }
 
-    await projectRepository.updateProject(project.id, {
-      status: 'in_progress',
-      milestones: updatedMilestones,
-    });
-  }
-  // If limit is not reached, project stays 'open' so more freelancers can be accepted
-
-  // Create notification for freelancer
-  try {
-    await notificationRepository.createNotification({
-      id: generateId(),
-      user_id: proposalEntity.freelancer_id,
-      type: 'proposal_accepted',
-      title: 'Proposal Accepted',
-      message: `Your proposal for "${project.title}" has been accepted!`,
+    return {
+      success: true,
       data: {
-        proposalId: proposalEntity.id,
-        projectId: project.id,
-        projectTitle: project.title,
-        contractId: createdContract.id,
+        proposal,
+        contract,
       },
-      is_read: false,
-    });
+    };
   } catch (error) {
-    logger.error('Failed to create notification', { error });
-    // Continue - notification is secondary
+    logger.error('Unexpected error accepting proposal', { error });
+    return fail('INTERNAL_ERROR', 'An unexpected error occurred');
   }
-
-  return {
-    success: true,
-    data: {
-      proposal: updatedProposal,
-      contract: createdContract,
-    },
-  };
 }
 
 
@@ -512,35 +521,23 @@ export async function rejectProposal(
 ): Promise<ServiceResult<RejectProposalResult>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Proposal not found' },
-    };
+    return fail('NOT_FOUND', 'Proposal not found');
   }
 
   // Check if proposal is pending
   if (proposalEntity.status !== 'pending') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot reject proposal with status "${proposalEntity.status}"` },
-    };
+    return fail('INVALID_STATUS', `Cannot reject proposal with status "${proposalEntity.status}"`);
   }
 
   // Verify employer owns the project
   const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return fail('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
   if (project.employerId !== employerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'You are not authorized to reject proposals for this project' },
-    };
+    return fail('UNAUTHORIZED', 'You are not authorized to reject proposals for this project');
   }
 
   // Update proposal status
@@ -549,10 +546,7 @@ export async function rejectProposal(
   });
 
   if (!updatedProposalEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update proposal status' },
-    };
+    return fail('UPDATE_FAILED', 'Failed to update proposal status');
   }
   const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
 
@@ -591,26 +585,17 @@ export async function withdrawProposal(
 ): Promise<ServiceResult<Proposal>> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Proposal not found' },
-    };
+    return fail('NOT_FOUND', 'Proposal not found');
   }
 
   // Verify freelancer owns the proposal
   if (proposalEntity.freelancer_id !== freelancerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'You are not authorized to withdraw this proposal' },
-    };
+    return fail('UNAUTHORIZED', 'You are not authorized to withdraw this proposal');
   }
 
   // Check if proposal can be withdrawn
   if (proposalEntity.status !== 'pending') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot withdraw proposal with status "${proposalEntity.status}"` },
-    };
+    return fail('INVALID_STATUS', `Cannot withdraw proposal with status "${proposalEntity.status}"`);
   }
 
   const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
@@ -618,10 +603,7 @@ export async function withdrawProposal(
   });
 
   if (!updatedProposalEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to withdraw proposal' },
-    };
+    return fail('UPDATE_FAILED', 'Failed to withdraw proposal');
   }
 
   return { success: true, data: mapProposalFromEntity(updatedProposalEntity) };

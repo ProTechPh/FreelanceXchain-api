@@ -9,6 +9,7 @@ import {
   verifyEvidence,
 } from '../services/dispute-evidence-service.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendError, sendValidationError } from '../utils/response.js';
 
 const router = Router();
 
@@ -54,11 +55,8 @@ router.post('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']),
     const { evidenceType, fileUrl, description } = req.body;
 
     if (!evidenceType || !description) {
-      return res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'Evidence type and description are required' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendValidationError(res, 'Evidence type and description are required', requestId);
+      return;
     }
 
     const result = await submitEvidence({
@@ -70,21 +68,15 @@ router.post('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']),
     });
 
     if (!result.success) {
-      return res.status(400).json({
-        error: { code: result.error.code ?? 'EVIDENCE_SUBMIT_FAILED', message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendError(res, 400, { code: result.error.code ?? 'EVIDENCE_SUBMIT_FAILED', message: result.error.message }, requestId);
+      return;
     }
 
     return res.json(result.data);
   } catch (error) {
     console.error('Error submitting evidence:', error);
-    return res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to submit evidence' },
-      timestamp: new Date().toISOString(),
-      requestId: getRequestId(req),
-    });
+    sendError(res, 500, { code: 'INTERNAL_ERROR', message: 'Failed to submit evidence' }, getRequestId(req));
+    return;
   }
 });
 
@@ -114,21 +106,15 @@ router.get('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']), 
     const result = await getDisputeEvidence(disputeId, userId);
 
     if (!result.success) {
-      return res.status(400).json({
-        error: { code: result.error.code ?? 'EVIDENCE_FETCH_FAILED', message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendError(res, 400, { code: result.error.code ?? 'EVIDENCE_FETCH_FAILED', message: result.error.message }, requestId);
+      return;
     }
 
     return res.json(result.data);
   } catch (error) {
     console.error('Error getting evidence:', error);
-    return res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to get evidence' },
-      timestamp: new Date().toISOString(),
-      requestId: getRequestId(req),
-    });
+    sendError(res, 500, { code: 'INTERNAL_ERROR', message: 'Failed to get evidence' }, getRequestId(req));
+    return;
   }
 });
 
@@ -163,21 +149,15 @@ router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, validateUUID([
     const result = await deleteEvidence(evidenceId, userId);
 
     if (!result.success) {
-      return res.status(400).json({
-        error: { code: result.error.code ?? 'EVIDENCE_DELETE_FAILED', message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendError(res, 400, { code: result.error.code ?? 'EVIDENCE_DELETE_FAILED', message: result.error.message }, requestId);
+      return;
     }
 
     return res.json({ message: 'Evidence deleted successfully' });
   } catch (error) {
     console.error('Error deleting evidence:', error);
-    return res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to delete evidence' },
-      timestamp: new Date().toISOString(),
-      requestId: getRequestId(req),
-    });
+    sendError(res, 500, { code: 'INTERNAL_ERROR', message: 'Failed to delete evidence' }, getRequestId(req));
+    return;
   }
 });
 
@@ -215,21 +195,15 @@ router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, validateU
     });
 
     if (!result.success) {
-      return res.status(400).json({
-        error: { code: result.error.code ?? 'EVIDENCE_VERIFY_FAILED', message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendError(res, 400, { code: result.error.code ?? 'EVIDENCE_VERIFY_FAILED', message: result.error.message }, requestId);
+      return;
     }
 
     return res.json(result.data);
   } catch (error) {
     console.error('Error verifying evidence:', error);
-    return res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to verify evidence' },
-      timestamp: new Date().toISOString(),
-      requestId: getRequestId(req),
-    });
+    sendError(res, 500, { code: 'INTERNAL_ERROR', message: 'Failed to verify evidence' }, getRequestId(req));
+    return;
   }
 });
 

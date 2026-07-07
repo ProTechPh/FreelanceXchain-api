@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendError, sendServiceError, sendValidationError } from '../utils/response.js';
 import {
   createProfile,
   getProfileByUserId,
@@ -124,11 +125,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
@@ -145,23 +142,14 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
     return;
   }
 
   const result = await createProfile(userId, { bio, hourlyRate, availability });
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_EXISTS' ? 409 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { PROFILE_EXISTS: 409 });
     return;
   }
 
@@ -197,22 +185,14 @@ router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   const result = await getProfileByUserId(userId);
 
   if (!result.success) {
-    res.status(404).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 404, result.error, requestId);
     return;
   }
 
@@ -265,11 +245,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimit
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
@@ -286,23 +262,14 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimit
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
     return;
   }
 
   const result = await updateProfile(userId, { bio, hourlyRate, availability });
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { PROFILE_NOT_FOUND: 404 });
     return;
   }
 
@@ -371,21 +338,13 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   // Validate input
   if (!Array.isArray(skills) || skills.length === 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Skills array is required', details: [{ field: 'skills', message: 'Skills must be a non-empty array' }] },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Skills array is required', details: [{ field: 'skills', message: 'Skills must be a non-empty array' }] }, requestId);
     return;
   }
 
@@ -401,23 +360,14 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
     return;
   }
 
   const result = await addSkillsToProfile(userId, skills);
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message, details: result.error.details },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { PROFILE_NOT_FOUND: 404 });
     return;
   }
 
@@ -461,32 +411,19 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   if (!skillName || skillName.trim().length === 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Skill name is required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, 'Skill name is required', requestId);
     return;
   }
 
   const result = await removeSkillFromProfile(userId, skillName);
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { PROFILE_NOT_FOUND: 404 });
     return;
   }
 
@@ -550,11 +487,7 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
@@ -574,23 +507,14 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
     return;
   }
 
   const result = await addExperience(userId, { title, company, description, startDate, endDate });
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { PROFILE_NOT_FOUND: 404 });
     return;
   }
 
@@ -656,11 +580,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
@@ -668,11 +588,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
 
   // Validate at least one field is provided
   if (title === undefined && company === undefined && description === undefined && startDate === undefined && endDate === undefined) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'At least one field must be provided for update' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, 'At least one field must be provided for update', requestId);
     return;
   }
 
@@ -689,24 +605,14 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
     return;
   }
 
   const result = await updateExperience(userId, experienceId, { title, company, description, startDate, endDate });
 
   if (!result.success) {
-    const statusCode =
-      result.error.code === 'PROFILE_NOT_FOUND' || result.error.code === 'EXPERIENCE_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { PROFILE_NOT_FOUND: 404, EXPERIENCE_NOT_FOUND: 404 });
     return;
   }
 
@@ -750,23 +656,14 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   const result = await removeExperience(userId, experienceId);
 
   if (!result.success) {
-    const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { PROFILE_NOT_FOUND: 404 });
     return;
   }
 
@@ -809,14 +706,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   const result = await getProfileByUserId(id);
 
   if (!result.success) {
-    res.status(404).json({
-      error: {
-        code: result.error.code,
-        message: result.error.message,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 404, result.error, requestId);
     return;
   }
 
