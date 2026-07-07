@@ -23,20 +23,20 @@ Interactive docs: `http://localhost:7860/api-docs`
 Freelancer marks a milestone as complete. The system updates the milestone status to `submitted`, records the event on the blockchain milestone registry, and notifies the employer.
 
 | | |
-|---|---|
+| --- | --- |
 | **Auth** | Bearer JWT |
 | **Access** | Freelancer associated with the contract |
 
 **Path Parameters**
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| --- | --- | --- | --- |
 | milestoneId | UUID | Yes | ID of the milestone to complete |
 
 **Query Parameters**
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| --- | --- | --- | --- |
 | contractId | UUID | Yes | ID of the contract containing the milestone |
 
 **Request Body** -- None
@@ -58,20 +58,20 @@ Freelancer marks a milestone as complete. The system updates the milestone statu
 Employer approves a completed milestone. Releases funds from the blockchain escrow, updates milestone status to `approved`, and notifies the freelancer. If all milestones are approved, marks the contract and project as completed and finalizes the agreement on-chain.
 
 | | |
-|---|---|
+| --- | --- |
 | **Auth** | Bearer JWT |
 | **Access** | Employer associated with the contract |
 
 **Path Parameters**
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| --- | --- | --- | --- |
 | milestoneId | UUID | Yes | ID of the milestone to approve |
 
 **Query Parameters**
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| --- | --- | --- | --- |
 | contractId | UUID | Yes | ID of the contract containing the milestone |
 
 **Request Body** -- None
@@ -95,20 +95,20 @@ Employer approves a completed milestone. Releases funds from the blockchain escr
 Either party (freelancer or employer) disputes a milestone. This locks the associated escrow funds, creates a dispute record, and notifies both parties. A milestone cannot be disputed if it is already approved or already under dispute.
 
 | | |
-|---|---|
+| --- | --- |
 | **Auth** | Bearer JWT |
 | **Access** | Freelancer or employer associated with the contract |
 
 **Path Parameters**
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| --- | --- | --- | --- |
 | milestoneId | UUID | Yes | ID of the milestone to dispute |
 
 **Query Parameters**
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| --- | --- | --- | --- |
 | contractId | UUID | Yes | ID of the contract containing the milestone |
 
 **Request Body**
@@ -137,14 +137,14 @@ Either party (freelancer or employer) disputes a milestone. This locks the assoc
 Retrieves detailed payment status for a contract, including escrow address, aggregate amounts, and individual milestone statuses. Aggregates off-chain data (project budget and milestone statuses) with on-chain metadata (escrow address).
 
 | | |
-|---|---|
+| --- | --- |
 | **Auth** | Bearer JWT |
 | **Access** | Freelancer or employer associated with the contract |
 
 **Path Parameters**
 
 | Name | Type | Required | Description |
-|------|------|----------|-------------|
+| --- | --- | --- | --- |
 | contractId | UUID | Yes | ID of the contract to query |
 
 **Query Parameters** -- None
@@ -177,7 +177,7 @@ Retrieves detailed payment status for a contract, including escrow address, aggr
 ### MilestoneCompletionResult
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | milestoneId | string | UUID of the milestone |
 | status | "submitted" | Updated milestone status |
 | notificationSent | boolean | Whether the employer was notified |
@@ -185,7 +185,7 @@ Retrieves detailed payment status for a contract, including escrow address, aggr
 ### MilestoneApprovalResult
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | milestoneId | string | UUID of the milestone |
 | status | "approved" | Updated milestone status |
 | paymentReleased | boolean | Whether escrow funds were released |
@@ -195,7 +195,7 @@ Retrieves detailed payment status for a contract, including escrow address, aggr
 ### MilestoneDisputeResult
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | milestoneId | string | UUID of the milestone |
 | status | "disputed" | Updated milestone status |
 | disputeId | string | UUID of the created dispute record |
@@ -204,7 +204,7 @@ Retrieves detailed payment status for a contract, including escrow address, aggr
 ### ContractPaymentStatus
 
 | Field | Type | Description |
-|-------|------|-------------|
+| ------- | ------ | ------------- |
 | contractId | string | UUID of the contract |
 | escrowAddress | string | On-chain escrow contract address |
 | totalAmount | number | Total project budget |
@@ -222,7 +222,7 @@ Retrieves detailed payment status for a contract, including escrow address, aggr
 All endpoints return standard error responses. Service error codes are mapped to HTTP status codes as follows:
 
 | Status | Meaning | Common Causes |
-|--------|---------|---------------|
+| -------- | --------- | --------------- |
 | **400** | Bad Request | Invalid UUID format, missing required parameter (`contractId`, `reason`) |
 | **401** | Unauthorized | Missing or invalid Authorization header / expired JWT |
 | **403** | Forbidden | User is not a party to the contract or not the correct role (e.g., non-employer approving) |

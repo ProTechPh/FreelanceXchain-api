@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { searchProjects, searchFreelancers } from '../services/search-service.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendError, sendValidationError } from '../utils/response.js';
 
 const router = Router();
 
@@ -116,30 +117,18 @@ router.get('/projects', apiRateLimiter, async (req: Request, res: Response) => {
 
   // Validate budget parameters
   if (minBudgetParam && isNaN(minBudget!)) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'minBudget must be a valid number' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, 'minBudget must be a valid number', requestId);
     return;
   }
   if (maxBudgetParam && isNaN(maxBudget!)) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'maxBudget must be a valid number' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, 'maxBudget must be a valid number', requestId);
     return;
   }
 
   // Parse page size
   const pageSize = pageSizeParam ? Number(pageSizeParam) : undefined;
   if (pageSizeParam && (isNaN(pageSize!) || pageSize! < 1)) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'pageSize must be a positive integer' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, 'pageSize must be a positive integer', requestId);
     return;
   }
 
@@ -160,11 +149,7 @@ router.get('/projects', apiRateLimiter, async (req: Request, res: Response) => {
   const result = await searchProjects(filters, pagination);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: result.error.code, message: result.error.message }, requestId);
     return;
   }
 
@@ -231,11 +216,7 @@ router.get('/freelancers', apiRateLimiter, async (req: Request, res: Response) =
   // Parse page size
   const pageSize = pageSizeParam ? Number(pageSizeParam) : undefined;
   if (pageSizeParam && (isNaN(pageSize!) || pageSize! < 1)) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'pageSize must be a positive integer' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, 'pageSize must be a positive integer', requestId);
     return;
   }
 
@@ -254,11 +235,7 @@ router.get('/freelancers', apiRateLimiter, async (req: Request, res: Response) =
   const result = await searchFreelancers(filters, pagination);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, { code: result.error.code, message: result.error.message }, requestId);
     return;
   }
 

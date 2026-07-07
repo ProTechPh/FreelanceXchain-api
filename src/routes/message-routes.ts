@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendError, sendServiceError } from '../utils/response.js';
 import { clampLimit } from '../utils/index.js';
 import {
   sendMessage,
@@ -30,22 +31,17 @@ router.get('/conversations', authMiddleware, apiRateLimiter, async (req: Request
   const page = req.query['page'] ? Number(req.query['page']) : 1;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   const result = await getConversations(userId, { page, limit });
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, {
+      code: result.error?.code ?? 'UNKNOWN',
+      message: result.error?.message ?? 'An error occurred',
+    }, requestId);
     return;
   }
 
@@ -68,11 +64,7 @@ router.post('/send', authMiddleware, apiRateLimiter, async (req: Request, res: R
   const { receiverId, content, attachments } = req.body;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
@@ -88,11 +80,10 @@ router.post('/send', authMiddleware, apiRateLimiter, async (req: Request, res: R
   const result = await sendMessage({ senderId: userId, receiverId, content, attachments });
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, {
+      code: result.error?.code ?? 'UNKNOWN',
+      message: result.error?.message ?? 'An error occurred',
+    }, requestId);
     return;
   }
 
@@ -116,23 +107,18 @@ router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, val
   const page = req.query['page'] ? Number(req.query['page']) : 1;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   const result = await getConversationMessages(conversationId, userId, { page, limit });
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    if (result.error) {
+      sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
+    } else {
+      sendError(res, 400, { code: 'UNKNOWN', message: 'An error occurred' }, requestId);
+    }
     return;
   }
 
@@ -154,22 +140,17 @@ router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimit
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   const result = await markConversationAsRead(conversationId, userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, {
+      code: result.error?.code ?? 'UNKNOWN',
+      message: result.error?.message ?? 'An error occurred',
+    }, requestId);
     return;
   }
 
@@ -190,22 +171,17 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request,
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   const result = await getUnreadMessageCount(userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 400, {
+      code: result.error?.code ?? 'UNKNOWN',
+      message: result.error?.message ?? 'An error occurred',
+    }, requestId);
     return;
   }
 

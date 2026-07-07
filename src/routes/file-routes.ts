@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendError, sendServiceError, sendValidationError } from '../utils/response.js';
 import {
   getUserFiles,
   deleteFile,
@@ -17,11 +18,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
@@ -46,32 +43,19 @@ router.delete('/:bucket/:path', authMiddleware, apiRateLimiter, async (req: Requ
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
   if (!bucket || !path) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'bucket and path are required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, 'bucket and path are required', requestId);
     return;
   }
 
   const result = await deleteFile(userId, bucket, path);
 
   if (!result.success) {
-    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
     return;
   }
 
@@ -84,11 +68,7 @@ router.get('/quota', authMiddleware, apiRateLimiter, async (req: Request, res: R
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
     return;
   }
 
