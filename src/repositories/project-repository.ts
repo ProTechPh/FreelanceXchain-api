@@ -1,9 +1,7 @@
 import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
 import { Query } from '../config/appwrite.js';
-import type { MilestoneStatus } from '../models/project.js';
-export type { MilestoneStatus } from '../models/project.js';
-
-type FileAttachment = { url: string; filename: string; size: number; mimeType: string };
+import type { MilestoneStatus, FileAttachment } from '../models/milestone.js';
+export type { MilestoneStatus } from '../models/milestone.js';
 
 export type MilestoneEntity = {
   id: string;

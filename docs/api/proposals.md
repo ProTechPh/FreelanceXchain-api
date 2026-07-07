@@ -27,7 +27,7 @@ The Proposals API enables freelancers to submit proposals for open projects and 
 Submit a new proposal for an open project.
 
 | | |
-| --- | --- |
+|---|---|
 | **Auth** | JWT Bearer token |
 | **Role** | `freelancer` |
 | **Rate Limit** | Standard |
@@ -35,7 +35,7 @@ Submit a new proposal for an open project.
 **Request Body**
 
 | Field | Type | Required | Validation |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `projectId` | string | yes | Valid UUID |
 | `coverLetter` | string | yes | Min 10 characters |
 | `proposedRate` | number | yes | >= 1 |
@@ -44,7 +44,7 @@ Submit a new proposal for an open project.
 **Responses**
 
 | Status | Description |
-| --- | --- |
+|---|---|
 | 201 | Proposal created. Returns the [Proposal](#proposal) object. |
 | 400 | Validation error (invalid fields) |
 | 401 | Missing or invalid token |
@@ -58,20 +58,20 @@ Submit a new proposal for an open project.
 Retrieve a single proposal by its ID. Any authenticated user can access this endpoint.
 
 | | |
-| --- | --- |
+|---|---|
 | **Auth** | JWT Bearer token |
 | **Role** | Any authenticated user |
 
 **Path Parameters**
 
 | Param | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `id` | UUID | Proposal ID |
 
 **Responses**
 
 | Status | Description |
-| --- | --- |
+|---|---|
 | 200 | Returns the [Proposal](#proposal) object. |
 | 400 | Invalid UUID format |
 | 401 | Missing or invalid token |
@@ -84,14 +84,14 @@ Retrieve a single proposal by its ID. Any authenticated user can access this end
 List all proposals submitted by the authenticated freelancer.
 
 | | |
-| --- | --- |
+|---|---|
 | **Auth** | JWT Bearer token |
 | **Role** | `freelancer` |
 
 **Responses**
 
 | Status | Description |
-| --- | --- |
+|---|---|
 | 200 | Array of [Proposal](#proposal) objects. |
 | 401 | Missing or invalid token |
 | 403 | Caller does not have the `freelancer` role |
@@ -103,27 +103,27 @@ List all proposals submitted by the authenticated freelancer.
 List all proposals for a project. Only the project owner (employer) can access this endpoint.
 
 | | |
-| --- | --- |
+|---|---|
 | **Auth** | JWT Bearer token |
 | **Role** | `employer` (must own the project) |
 
 **Path Parameters**
 
 | Param | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `id` | UUID | Project ID |
 
 **Query Parameters**
 
 | Param | Type | Default | Description |
-| --- | --- | --- | --- |
+|---|---|---|---|
 | `limit` | integer | 20 | Number of items per page |
 | `continuationToken` | string | -- | Token for fetching the next page |
 
 **Responses**
 
 | Status | Description |
-| --- | --- |
+|---|---|
 | 200 | `{ items: Proposal[], hasMore: boolean, continuationToken: string }` |
 | 400 | Invalid UUID format |
 | 401 | Missing or invalid token |
@@ -137,20 +137,20 @@ List all proposals for a project. Only the project owner (employer) can access t
 Accept a pending proposal. Creates a contract and attempts to create a blockchain agreement (best-effort). Updates the project status to `in_progress`.
 
 | | |
-| --- | --- |
+|---|---|
 | **Auth** | JWT Bearer token |
 | **Role** | `employer` (must own the project) |
 
 **Path Parameters**
 
 | Param | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `id` | UUID | Proposal ID |
 
 **Responses**
 
 | Status | Description |
-| --- | --- |
+|---|---|
 | 200 | `{ proposal: Proposal, contract: Contract }` |
 | 400 | Invalid UUID or proposal is not in `pending` status |
 | 401 | Missing or invalid token |
@@ -174,20 +174,20 @@ Accept a pending proposal. Creates a contract and attempts to create a blockchai
 Reject a pending proposal. Sends a notification to the freelancer.
 
 | | |
-| --- | --- |
+|---|---|
 | **Auth** | JWT Bearer token |
 | **Role** | `employer` (must own the project) |
 
 **Path Parameters**
 
 | Param | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `id` | UUID | Proposal ID |
 
 **Responses**
 
 | Status | Description |
-| --- | --- |
+|---|---|
 | 200 | Updated [Proposal](#proposal) with `status: "rejected"` |
 | 400 | Invalid UUID or proposal is not in `pending` status |
 | 401 | Missing or invalid token |
@@ -201,20 +201,20 @@ Reject a pending proposal. Sends a notification to the freelancer.
 Withdraw a pending proposal. Only the freelancer who submitted the proposal can withdraw it.
 
 | | |
-| --- | --- |
+|---|---|
 | **Auth** | JWT Bearer token |
 | **Role** | `freelancer` (must own the proposal) |
 
 **Path Parameters**
 
 | Param | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `id` | UUID | Proposal ID |
 
 **Responses**
 
 | Status | Description |
-| --- | --- |
+|---|---|
 | 200 | Updated [Proposal](#proposal) with `status: "withdrawn"` |
 | 400 | Invalid UUID or proposal is not in `pending` status |
 | 401 | Missing or invalid token |
@@ -228,20 +228,20 @@ Withdraw a pending proposal. Only the freelancer who submitted the proposal can 
 Retrieve a proposal along with the employer's track record (completed projects, average rating, company info). Only accessible by the freelancer who submitted the proposal.
 
 | | |
-| --- | --- |
+|---|---|
 | **Auth** | JWT Bearer token |
 | **Role** | `freelancer` (must own the proposal) |
 
 **Path Parameters**
 
 | Param | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `id` | UUID | Proposal ID |
 
 **Responses**
 
 | Status | Description |
-| --- | --- |
+|---|---|
 | 200 | `{ proposal: Proposal, project: Project, employerHistory: EmployerHistory }` |
 | 400 | Invalid UUID format |
 | 401 | Missing or invalid token |
@@ -254,7 +254,7 @@ Retrieve a proposal along with the employer's track record (completed projects, 
 ### Proposal
 
 | Field | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `id` | string (UUID) | Unique proposal ID |
 | `projectId` | string (UUID) | Associated project |
 | `freelancerId` | string (UUID) | Freelancer who submitted |
@@ -270,7 +270,7 @@ Retrieve a proposal along with the employer's track record (completed projects, 
 Created when a proposal is accepted.
 
 | Field | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `id` | string (UUID) | Unique contract ID |
 | `projectId` | string (UUID) | Associated project |
 | `proposalId` | string (UUID) | Source proposal |
@@ -287,7 +287,7 @@ Created when a proposal is accepted.
 Returned by the employer-history endpoint.
 
 | Field | Type | Description |
-| --- | --- | --- |
+|---|---|---|
 | `completedProjectsCount` | number | Total completed contracts by this employer |
 | `averageRating` | number | Average review rating (0-5, one decimal) |
 | `reviewCount` | number | Total reviews received |
@@ -312,7 +312,7 @@ All terminal states (`accepted`, `rejected`, `withdrawn`) are final.
 ## Error Codes
 
 | HTTP Status | Error Code | Meaning |
-| --- | --- | --- |
+|---|---|---|
 | 400 | `VALIDATION_ERROR` | Invalid request body or UUID format |
 | 400 | `INVALID_STATUS` | Proposal is not in the required status (e.g., trying to accept a non-pending proposal) |
 | 401 | `AUTH_UNAUTHORIZED` | Missing, invalid, or expired JWT token |

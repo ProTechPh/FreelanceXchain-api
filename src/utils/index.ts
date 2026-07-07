@@ -4,6 +4,18 @@
 export { generateId } from './id.js';
 
 /**
+ * Safely parse a JSON string, or return the value as-is if it's already an object.
+ * Replaces the common `typeof x === 'string' ? JSON.parse(x) : x` pattern.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function safeJsonParse<T = any>(value: string | T): T {
+  if (typeof value === 'string') {
+    return JSON.parse(value) as T;
+  }
+  return value;
+}
+
+/**
  * Clamp a pagination limit to safe bounds.
  * Handles NaN, negative, zero, and excessively large values.
  * @param raw - The raw value from query params (already parsed to number)

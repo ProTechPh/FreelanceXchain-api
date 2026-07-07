@@ -23,7 +23,6 @@ import {
 } from '../services/user-custom-skill-service.js';
 import { CreateUserCustomSkillInput, UpdateUserCustomSkillInput } from '../models/user-custom-skill.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendServiceError } from '../utils/response.js';
 
 const router = Router();
 
@@ -146,11 +145,15 @@ router.get('/search', apiRateLimiter, async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   if (!keyword || typeof keyword !== 'string') {
-    sendError(res, 400, {
-      code: 'VALIDATION_ERROR',
-      message: 'Keyword parameter is required',
-      details: [{ field: 'keyword', message: 'Keyword is required' }],
-    }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Keyword parameter is required',
+        details: [{ field: 'keyword', message: 'Keyword is required' }],
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -261,11 +264,15 @@ router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter,
   }
 
   if (errors.length > 0) {
-    sendError(res, 400, {
-      code: 'VALIDATION_ERROR',
-      message: 'Invalid request data',
-      details: errors,
-    }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request data',
+        details: errors,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -273,7 +280,15 @@ router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter,
   const result = await createCategory(input);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { DUPLICATE_CATEGORY: 409 });
+    const statusCode = result.error.code === 'DUPLICATE_CATEGORY' ? 409 : 400;
+    res.status(statusCode).json({
+      error: {
+        code: result.error.code,
+        message: result.error.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -337,11 +352,15 @@ router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (re
   }
 
   if (errors.length > 0) {
-    sendError(res, 400, {
-      code: 'VALIDATION_ERROR',
-      message: 'Invalid request data',
-      details: errors,
-    }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request data',
+        details: errors,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -353,7 +372,15 @@ router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (re
   const result = await createSkill(input);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { DUPLICATE_SKILL: 409 });
+    const statusCode = result.error.code === 'DUPLICATE_SKILL' ? 409 : 400;
+    res.status(statusCode).json({
+      error: {
+        code: result.error.code,
+        message: result.error.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -402,18 +429,30 @@ router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimi
   /* istanbul ignore next */
   /* istanbul ignore next */
   if (!id) {
-    sendError(res, 400, {
-      code: 'VALIDATION_ERROR',
-      message: 'Skill ID is required',
-      details: [{ field: 'id', message: 'Skill ID is required' }],
-    }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Skill ID is required',
+        details: [{ field: 'id', message: 'Skill ID is required' }],
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await deprecateSkill(id);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { SKILL_NOT_FOUND: 404 });
+    const statusCode = result.error.code === 'SKILL_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: {
+        code: result.error.code,
+        message: result.error.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -547,7 +586,11 @@ router.post('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter
   /* istanbul ignore next */
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -568,7 +611,11 @@ router.post('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter
   }
 
   if (errors.length > 0) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -581,7 +628,12 @@ router.post('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter
   });
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { SKILL_EXISTS_GLOBALLY: 409, DUPLICATE_USER_SKILL: 409 });
+    const statusCode = result.error.code === 'SKILL_EXISTS_GLOBALLY' || result.error.code === 'DUPLICATE_USER_SKILL' ? 409 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message, details: result.error.details },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -611,7 +663,11 @@ router.get('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter,
   /* istanbul ignore next */
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -648,12 +704,20 @@ router.get('/custom/search', authMiddleware, requireRole('freelancer'), apiRateL
   /* istanbul ignore next */
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   if (!keyword || typeof keyword !== 'string') {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Keyword parameter is required', details: [{ field: 'keyword', message: 'Keyword is required' }] }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Keyword parameter is required', details: [{ field: 'keyword', message: 'Keyword is required' }] },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -693,21 +757,33 @@ router.get('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
   /* istanbul ignore next */
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   /* istanbul ignore next */
 
   if (!id) {
-    sendError(res, 400, { code: 'INVALID_INPUT', message: 'Skill ID is required' }, requestId);
+    res.status(400).json({
+      error: { code: 'INVALID_INPUT', message: 'Skill ID is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await getUserCustomSkillById(id, userId);
 
   if (!result.success) {
-    sendError(res, 404, { code: result.error.code, message: result.error.message }, requestId);
+    res.status(404).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -763,7 +839,11 @@ router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
   /* istanbul ignore next */
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -784,14 +864,22 @@ router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
   }
 
   if (errors.length > 0) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   /* istanbul ignore next */
 
   if (!id) {
-    sendError(res, 400, { code: 'INVALID_INPUT', message: 'Skill ID is required' }, requestId);
+    res.status(400).json({
+      error: { code: 'INVALID_INPUT', message: 'Skill ID is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -804,7 +892,12 @@ router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
   const result = await updateUserCustomSkill(id, userId, updateData);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { SKILL_NOT_FOUND: 404, DUPLICATE_USER_SKILL: 409 });
+    const statusCode = result.error.code === 'SKILL_NOT_FOUND' ? 404 : result.error.code === 'DUPLICATE_USER_SKILL' ? 409 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message, details: result.error.details },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -843,21 +936,34 @@ router.delete('/custom/:id', authMiddleware, requireRole('freelancer'), validate
   /* istanbul ignore next */
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   /* istanbul ignore next */
 
   if (!id) {
-    sendError(res, 400, { code: 'INVALID_INPUT', message: 'Skill ID is required' }, requestId);
+    res.status(400).json({
+      error: { code: 'INVALID_INPUT', message: 'Skill ID is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await deleteUserCustomSkill(id, userId);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { SKILL_NOT_FOUND: 404 });
+    const statusCode = result.error.code === 'SKILL_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message, details: result.error.details },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -922,21 +1028,34 @@ router.put('/suggestions/:id/status', authMiddleware, requireRole('admin'), vali
   const requestId = getRequestId(req);
 
   if (!status || !['approved', 'rejected'].includes(status)) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Status must be either "approved" or "rejected"', details: [{ field: 'status', message: 'Invalid status value' }] }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Status must be either "approved" or "rejected"', details: [{ field: 'status', message: 'Invalid status value' }] },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   /* istanbul ignore next */
 
   if (!id) {
-    sendError(res, 400, { code: 'INVALID_INPUT', message: 'Suggestion ID is required' }, requestId);
+    res.status(400).json({
+      error: { code: 'INVALID_INPUT', message: 'Suggestion ID is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await updateSkillSuggestionStatus(id, status);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { SUGGESTION_NOT_FOUND: 404 });
+    const statusCode = result.error.code === 'SUGGESTION_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message, details: result.error.details },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 

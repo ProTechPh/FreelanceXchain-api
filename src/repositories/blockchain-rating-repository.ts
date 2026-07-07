@@ -16,16 +16,6 @@ export type BlockchainRatingEntity = {
 
 const COLLECTION_ID = 'blockchain_ratings';
 
-function mapDoc(doc: Record<string, any>): BlockchainRatingEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as BlockchainRatingEntity;
-}
-
 export class BlockchainRatingRepository extends BaseRepositoryAppwrite<BlockchainRatingEntity> {
   constructor() {
     super(COLLECTION_ID);
@@ -33,17 +23,17 @@ export class BlockchainRatingRepository extends BaseRepositoryAppwrite<Blockchai
 
   async getRatingById(id: string): Promise<BlockchainRatingEntity | null> {
     const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async createRating(data: Omit<BlockchainRatingEntity, 'created_at' | 'updated_at'>): Promise<BlockchainRatingEntity> {
     const doc = await this.create(data);
-    return mapDoc(doc as any);
+    return this.mapDoc(doc as any);
   }
 
   async updateRating(id: string, updates: Partial<BlockchainRatingEntity>): Promise<BlockchainRatingEntity | null> {
     const doc = await this.update(id, updates);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async findByRatee(rateeId: string, options?: QueryOptions): Promise<PaginatedResult<BlockchainRatingEntity>> {
@@ -51,7 +41,7 @@ export class BlockchainRatingRepository extends BaseRepositoryAppwrite<Blockchai
       [Query.equal('ratee_id', rateeId), Query.orderDesc('timestamp')],
       options?.limit ?? 20,
       options?.offset ?? 0,
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 
@@ -60,7 +50,7 @@ export class BlockchainRatingRepository extends BaseRepositoryAppwrite<Blockchai
       [Query.equal('rater_id', raterId), Query.orderDesc('timestamp')],
       options?.limit ?? 20,
       options?.offset ?? 0,
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 
@@ -74,7 +64,7 @@ export class BlockchainRatingRepository extends BaseRepositoryAppwrite<Blockchai
           Query.limit(1),
         ]
       );
-      return response.documents.length > 0 ? mapDoc(response.documents[0]!) : null;
+      return response.documents.length > 0 ? this.mapDoc(response.documents[0]!) : null;
     } catch {
       return null;
     }

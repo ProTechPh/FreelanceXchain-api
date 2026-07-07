@@ -3,7 +3,6 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendValidationError } from '../utils/response.js';
 import {
   addFavorite,
   removeFavorite,
@@ -28,19 +27,31 @@ router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respo
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   if (!targetType || !targetId) {
-    sendValidationError(res, 'targetType and targetId are required', requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'targetType and targetId are required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await addFavorite(userId, targetType, targetId);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -63,14 +74,22 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await getUserFavorites(userId, targetType);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -92,14 +111,22 @@ router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validate
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await removeFavorite(userId, targetType as 'project' | 'freelancer', targetId ?? '');
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -121,14 +148,22 @@ router.get('/check/:targetType/:targetId', authMiddleware, apiRateLimiter, valid
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await isFavorited(userId, targetType as 'project' | 'freelancer', targetId ?? '');
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 

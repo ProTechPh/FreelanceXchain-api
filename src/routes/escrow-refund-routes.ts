@@ -101,7 +101,7 @@ router.get('/:contractId/refunds', authMiddleware, validateUUID(['contractId']),
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error getting refunds:', error);
+    logger.error('Error getting refunds', error);
     return res.status(500).json({ error: 'Failed to get refunds' });
   }
 });

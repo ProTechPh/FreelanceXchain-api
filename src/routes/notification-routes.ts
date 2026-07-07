@@ -3,7 +3,6 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendServiceError } from '../utils/response.js';
 import { clampLimit } from '../utils/index.js';
 import {
   getNotificationsByUser,
@@ -90,7 +89,11 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -107,7 +110,11 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const result = await getNotificationsByUser(userId, options);
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error.code, message: result.error.message }, requestId);
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -143,14 +150,22 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request,
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await getUnreadCount(userId);
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error.code, message: result.error.message }, requestId);
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -196,14 +211,26 @@ router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async 
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await markNotificationAsRead(notificationId, userId);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
+    let statusCode = 400;
+    if (result.error.code === 'NOT_FOUND') statusCode = 404;
+    if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -240,14 +267,22 @@ router.patch('/read-all', authMiddleware, apiRateLimiter, async (req: Request, r
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await markAllNotificationsAsRead(userId);
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error.code, message: result.error.message }, requestId);
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 

@@ -154,4 +154,6 @@ class ReviewRepositoryClass extends BaseRepositoryAppwrite<ReviewEntity> {
   }
 }
 
-export const ReviewRepository = new ReviewRepositoryClass();
+export const reviewRepository = new ReviewRepositoryClass();
+/** @deprecated Use `reviewRepository` (camelCase) instead. */
+export const ReviewRepository = reviewRepository;

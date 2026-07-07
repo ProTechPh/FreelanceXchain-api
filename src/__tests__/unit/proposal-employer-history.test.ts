@@ -52,6 +52,7 @@ const mockReviewRepo = {
 
 jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
   ReviewRepository: mockReviewRepo,
+  reviewRepository: mockReviewRepo,
 }));
 
 // Import after mocking

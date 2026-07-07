@@ -20,16 +20,6 @@ export type BlockchainTransactionEntity = {
 
 const COLLECTION_ID = 'blockchain_transactions';
 
-function mapDoc(doc: Record<string, any>): BlockchainTransactionEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as BlockchainTransactionEntity;
-}
-
 export class BlockchainTransactionRepository extends BaseRepositoryAppwrite<BlockchainTransactionEntity> {
   constructor() {
     super(COLLECTION_ID);
@@ -37,17 +27,17 @@ export class BlockchainTransactionRepository extends BaseRepositoryAppwrite<Bloc
 
   async getTransactionById(id: string): Promise<BlockchainTransactionEntity | null> {
     const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async createTransaction(data: Omit<BlockchainTransactionEntity, 'created_at' | 'updated_at'>): Promise<BlockchainTransactionEntity> {
     const doc = await this.create(data);
-    return mapDoc(doc as any);
+    return this.mapDoc(doc as any);
   }
 
   async updateTransaction(id: string, updates: Partial<BlockchainTransactionEntity>): Promise<BlockchainTransactionEntity | null> {
     const doc = await this.update(id, updates);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async findByHash(hash: string): Promise<BlockchainTransactionEntity | null> {
@@ -56,7 +46,7 @@ export class BlockchainTransactionRepository extends BaseRepositoryAppwrite<Bloc
         DATABASE_ID, COLLECTION_ID,
         [Query.equal('hash', hash), Query.limit(1)]
       );
-      return response.documents.length > 0 ? mapDoc(response.documents[0]!) : null;
+      return response.documents.length > 0 ? this.mapDoc(response.documents[0]!) : null;
     } catch {
       return null;
     }
@@ -76,14 +66,14 @@ export class BlockchainTransactionRepository extends BaseRepositoryAppwrite<Bloc
       [Query.equal('type', type), Query.orderDesc('timestamp')],
       options?.limit ?? 20,
       options?.offset ?? 0,
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 
   async getTransactionsByStatus(status: string): Promise<BlockchainTransactionEntity[]> {
     return this.listWithQueries<BlockchainTransactionEntity>(
       [Query.equal('status', status), Query.orderDesc('timestamp')],
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 }

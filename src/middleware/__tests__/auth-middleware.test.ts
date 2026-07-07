@@ -31,7 +31,7 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 
 const { validateToken } = await import(resolveModule('src/services/auth-service.ts'));
 const { isUserVerified } = await import(resolveModule('src/services/didit-kyc-service.ts'));
-const { authMiddleware, requireMFA, requireRole, requireVerifiedKyc } = await import('../auth-middleware.js');
+const { authMiddleware, requireAuthentication, requireRole, requireVerifiedKyc } = await import('../auth-middleware.js');
 
 const mockedValidateToken = validateToken as jest.MockedFunction<typeof validateToken>;
 const mockedIsUserVerified = isUserVerified as jest.MockedFunction<typeof isUserVerified>;
@@ -260,7 +260,7 @@ describe('authMiddleware', () => {
   });
 });
 
-describe('requireMFA', () => {
+describe('requireAuthentication', () => {
   let req: any;
   let res: any;
   let next: any;
@@ -273,17 +273,17 @@ describe('requireMFA', () => {
   });
 
   it('should return 401 AUTH_UNAUTHORIZED when no req.user', async () => {
-    await requireMFA(req, res, next);
+    await requireAuthentication(req, res, next);
 
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('should call next() when user exists (MFA handled by Appwrite)', async () => {
+  it('should call next() when user exists', async () => {
     req.user = { id: '1', userId: '1', email: 'a@b.com', role: 'freelancer' };
 
-    await requireMFA(req, res, next);
+    await requireAuthentication(req, res, next);
 
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();
@@ -292,13 +292,13 @@ describe('requireMFA', () => {
   it('should include requestId in error responses', async () => {
     req.headers['x-request-id'] = 'mfa-req-1';
 
-    await requireMFA(req, res, next);
+    await requireAuthentication(req, res, next);
 
     expect(res.body.requestId).toBe('mfa-req-1');
   });
 
   it('should use "unknown" as requestId when x-request-id missing', async () => {
-    await requireMFA(req, res, next);
+    await requireAuthentication(req, res, next);
 
     expect(res.body.requestId).toBe('unknown');
   });

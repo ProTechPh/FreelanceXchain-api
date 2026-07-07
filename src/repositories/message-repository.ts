@@ -165,14 +165,11 @@ export const messageRepository = {
           Query.limit(1000),
         ]
       );
-      for (const doc of response.documents) {
-        await databases.updateDocument(
-          DATABASE_ID,
-          MESSAGES_COLLECTION,
-          doc.$id,
-          { is_read: true }
-        );
-      }
+      await Promise.all(
+        response.documents.map(doc =>
+          databases.updateDocument(DATABASE_ID, MESSAGES_COLLECTION, doc.$id, { is_read: true })
+        )
+      );
     } catch {
       // ignore
     }

@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { config } from '../config/env.js';
 import { redis } from '../config/redis.js';
+import { logger } from '../config/logger.js';
 
 // Atomic fixed-window rate limit via Lua — INCR + PEXPIRE in one round-trip.
 // Returns [currentCount, remainingTtlMs]
@@ -56,7 +57,7 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
     } catch (err) {
       // Fail open: if Redis is unavailable, let the request through rather than
       // blocking all traffic. Log so ops can detect the outage.
-      console.error('[rate-limiter] Redis error, failing open:', (err as Error).message);
+      logger.error('[rate-limiter] Redis error, failing open', err as Error);
     }
 
     next();

@@ -21,16 +21,6 @@ export type BlockchainMilestoneRecordEntity = {
 
 const COLLECTION_ID = 'blockchain_milestones';
 
-function mapDoc(doc: Record<string, any>): BlockchainMilestoneRecordEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as BlockchainMilestoneRecordEntity;
-}
-
 export class BlockchainMilestoneRecordRepository extends BaseRepositoryAppwrite<BlockchainMilestoneRecordEntity> {
   constructor() {
     super(COLLECTION_ID);
@@ -38,17 +28,17 @@ export class BlockchainMilestoneRecordRepository extends BaseRepositoryAppwrite<
 
   async getMilestoneRecordById(id: string): Promise<BlockchainMilestoneRecordEntity | null> {
     const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async createMilestoneRecord(data: Omit<BlockchainMilestoneRecordEntity, 'created_at' | 'updated_at'>): Promise<BlockchainMilestoneRecordEntity> {
     const doc = await this.create(data);
-    return mapDoc(doc as any);
+    return this.mapDoc(doc as any);
   }
 
   async updateMilestoneRecord(id: string, updates: Partial<BlockchainMilestoneRecordEntity>): Promise<BlockchainMilestoneRecordEntity | null> {
     const doc = await this.update(id, updates);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async findByMilestoneIdHash(milestoneIdHash: string): Promise<BlockchainMilestoneRecordEntity | null> {
@@ -57,7 +47,7 @@ export class BlockchainMilestoneRecordRepository extends BaseRepositoryAppwrite<
         DATABASE_ID, COLLECTION_ID,
         [Query.equal('milestone_id_hash', milestoneIdHash), Query.limit(1)]
       );
-      return response.documents.length > 0 ? mapDoc(response.documents[0]!) : null;
+      return response.documents.length > 0 ? this.mapDoc(response.documents[0]!) : null;
     } catch {
       return null;
     }
@@ -66,7 +56,7 @@ export class BlockchainMilestoneRecordRepository extends BaseRepositoryAppwrite<
   async findByWallet(walletAddress: string): Promise<BlockchainMilestoneRecordEntity[]> {
     return this.listWithQueries<BlockchainMilestoneRecordEntity>(
       [Query.equal('freelancer_wallet', walletAddress), Query.orderDesc('submitted_at')],
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 
@@ -75,14 +65,14 @@ export class BlockchainMilestoneRecordRepository extends BaseRepositoryAppwrite<
       [Query.equal('status', status), Query.orderDesc('submitted_at')],
       options?.limit ?? 20,
       options?.offset ?? 0,
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 
   async getMilestonesByContract(contractIdHash: string): Promise<BlockchainMilestoneRecordEntity[]> {
     return this.listWithQueries<BlockchainMilestoneRecordEntity>(
       [Query.equal('contract_id_hash', contractIdHash), Query.orderAsc('submitted_at')],
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 }

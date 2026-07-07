@@ -3,7 +3,6 @@ import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/a
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendServiceError, sendValidationError } from '../utils/response.js';
 
 import {
   requestRushUpgrade,
@@ -71,20 +70,34 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
     /* istanbul ignore next */
 
     if (!userId) {
-      sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
-      return;
+      return res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
     }
 
     if (!proposedPercentage || typeof proposedPercentage !== 'number' || proposedPercentage <= 0 || proposedPercentage > 100) {
-      sendValidationError(res, 'Proposed percentage must be between 0.01 and 100', requestId);
-      return;
+      return res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Proposed percentage must be between 0.01 and 100' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
     }
 
     const result = await requestRushUpgrade(userId, { contractId, proposedPercentage });
 
     if (!result.success) {
-      sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403, PENDING_REQUEST_EXISTS: 409, ALREADY_RUSH: 409 });
-      return;
+      let statusCode = 400;
+      if (result.error.code === 'NOT_FOUND') statusCode = 404;
+      if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+      if (result.error.code === 'PENDING_REQUEST_EXISTS' || result.error.code === 'ALREADY_RUSH') statusCode = 409;
+
+      return res.status(statusCode).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
     }
 
     return res.status(201).json(result.data);
@@ -152,18 +165,27 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
     /* istanbul ignore next */
 
     if (!userId) {
-      sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, xRequestId);
-      return;
+      return res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     if (!action || !['accept', 'decline', 'counter_offer'].includes(action)) {
-      sendValidationError(res, 'Action must be accept, decline, or counter_offer', xRequestId);
-      return;
+      return res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Action must be accept, decline, or counter_offer' },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     if (action === 'counter_offer' && (!counterPercentage || typeof counterPercentage !== 'number' || counterPercentage <= 0 || counterPercentage > 100)) {
-      sendValidationError(res, 'Counter percentage must be between 0.01 and 100', xRequestId);
-      return;
+      return res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Counter percentage must be between 0.01 and 100' },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     const result = await respondToRushUpgrade(userId, {
@@ -173,8 +195,15 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
     });
 
     if (!result.success) {
-      sendServiceError(res, result, xRequestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
-      return;
+      let statusCode = 400;
+      if (result.error.code === 'NOT_FOUND') statusCode = 404;
+      if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+
+      return res.status(statusCode).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     // If accepted, the result includes both request and contract
@@ -233,15 +262,25 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
     /* istanbul ignore next */
 
     if (!userId) {
-      sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, xRequestId);
-      return;
+      return res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     const result = await acceptCounterOffer(userId, requestIdParam);
 
     if (!result.success) {
-      sendServiceError(res, result, xRequestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
-      return;
+      let statusCode = 400;
+      if (result.error.code === 'NOT_FOUND') statusCode = 404;
+      if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+
+      return res.status(statusCode).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     return res.status(200).json(result.data);
@@ -291,15 +330,25 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
     /* istanbul ignore next */
 
     if (!userId) {
-      sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, xRequestId);
-      return;
+      return res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     const result = await declineCounterOffer(userId, requestIdParam);
 
     if (!result.success) {
-      sendServiceError(res, result, xRequestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
-      return;
+      let statusCode = 400;
+      if (result.error.code === 'NOT_FOUND') statusCode = 404;
+      if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+
+      return res.status(statusCode).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     return res.status(200).json(result.data);
@@ -344,8 +393,11 @@ router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimite
     const result = await getRushUpgradeRequestsByContract(contractId);
 
     if (!result.success) {
-      sendError(res, 400, result.error, xRequestId);
-      return;
+      return res.status(400).json({
+        error: { code: result.error.code, message: result.error.message },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
     }
 
     return res.status(200).json(result.data);

@@ -24,7 +24,7 @@ describe('Portfolio Routes Integration Tests', () => {
         (req as any).user = { id: 'test-user-id', userId: 'test-user-id', email: 'test@example.com', role: currentRole };
         next();
       }),
-      requireMFA: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
+      requireAuthentication: jest.fn((_req: Request, _res: Response, next: NextFunction) => next()),
       requireRole: jest.fn((...roles: string[]) => (req: Request, res: Response, next: NextFunction) => {
         if (!roles.includes((req as any).user?.role)) {
           res.status(403).json({
