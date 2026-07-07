@@ -251,109 +251,119 @@ export async function getProposalsByFreelancer(
 }
 
 
-// Accept a proposal - creates a contract
-// - Checks if another proposal was already accepted (prevents race condition)
-// - Uses freelancer's proposedRate for contract amount (not project.budget)
-// - Rejects all other pending proposals for the same project
-// - Checks that project has milestones before creating contract
-export async function acceptProposal(
+/**
+ * Validate all preconditions for proposal acceptance.
+ * Returns validated data or a ServiceResult error.
+ */
+async function validateProposalAcceptance(
   proposalId: string,
-  employerId: string
-): Promise<ServiceResult<AcceptProposalResult>> {
+  employerId: string,
+): Promise<
+  | { error: ServiceResult<AcceptProposalResult> }
+  | {
+      proposalEntity: ProposalEntity;
+      project: Project;
+      projectEntity: any;
+      proposalRate: number;
+      totalAmount: number;
+      rushFee: number;
+      isRush: boolean;
+      rushFeePercentage: number;
+    }
+> {
   const proposalEntity = await proposalRepository.findProposalById(proposalId);
   if (!proposalEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Proposal not found' },
-    };
+    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Proposal not found' } } };
   }
 
-  // Check if proposal is pending
   if (proposalEntity.status !== 'pending') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot accept proposal with status "${proposalEntity.status}"` },
-    };
+    return { error: { success: false, error: { code: 'INVALID_STATUS', message: `Cannot accept proposal with status "${proposalEntity.status}"` } } };
   }
 
-  // Verify employer owns the project
   const projectEntity = await projectRepository.findProjectById(proposalEntity.project_id);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } } };
   }
   const project = mapProjectFromEntity(projectEntity);
 
   if (project.employerId !== employerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'You are not authorized to accept proposals for this project' },
-    };
+    return { error: { success: false, error: { code: 'UNAUTHORIZED', message: 'You are not authorized to accept proposals for this project' } } };
   }
 
-  // Check that the project has milestones defined
   if (!project.milestones || project.milestones.length === 0) {
-    return {
-      success: false,
-      error: { code: 'NO_MILESTONES', message: 'Project must have milestones defined before accepting a proposal' },
-    };
+    return { error: { success: false, error: { code: 'NO_MILESTONES', message: 'Project must have milestones defined before accepting a proposal' } } };
   }
 
   const proposalRate = proposalEntity.proposed_rate;
   if (proposalRate === null || proposalRate === undefined || proposalRate <= 0) {
-    return {
-      success: false,
-      error: { code: 'INVALID_PROPOSAL_RATE', message: 'Accepted proposal must have a valid positive rate' },
-    };
+    return { error: { success: false, error: { code: 'INVALID_PROPOSAL_RATE', message: 'Accepted proposal must have a valid positive rate' } } };
   }
 
-  // Milestone total must match the base amount (proposed rate), not the total with rush fee
   const milestoneTotal = project.milestones.reduce((sum, milestone) => sum + milestone.amount, 0);
   if (Math.abs(milestoneTotal - proposalRate) > 0.01) {
-    return {
-      success: false,
-      error: {
-        code: 'AMOUNT_MISMATCH',
-        message: 'Proposal rate must match the total project milestone amount before contract creation',
-      },
-    };
+    return { error: { success: false, error: { code: 'AMOUNT_MISMATCH', message: 'Proposal rate must match the total project milestone amount before contract creation' } } };
   }
 
-  // Calculate rush fee if project is marked as rush
   const isRush = project.isRush ?? false;
   const rushFeePercentage = project.rushFeePercentage ?? 25;
   const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
   const totalAmount = proposalRate + rushFee;
 
-  // Pre-check: Verify freelancer limit hasn't been reached
   const freelancerLimit = projectEntity.freelancer_limit ?? 1;
   const preCheckAcceptedCount = await proposalRepository.getAcceptedProposalCount(proposalEntity.project_id);
   if (preCheckAcceptedCount >= freelancerLimit) {
-    return {
-      success: false,
-      error: { code: 'FREELANCER_LIMIT_REACHED', message: `This project has already accepted the maximum number of freelancers (${freelancerLimit})` },
-    };
+    return { error: { success: false, error: { code: 'FREELANCER_LIMIT_REACHED', message: `This project has already accepted the maximum number of freelancers (${freelancerLimit})` } } };
   }
 
-  // Accept proposal: update status to 'accepted'
+  return { proposalEntity, project, projectEntity, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage };
+}
+
+/**
+ * Reject all other pending proposals for the same project.
+ * Non-critical: logs errors and continues.
+ */
+async function rejectOtherProposals(projectId: string, acceptedProposalId: string): Promise<void> {
+  try {
+    const otherProposals = await proposalRepository.getProposalsByProject(projectId, { limit: 1000, offset: 0 });
+    for (const otherProposal of otherProposals.items) {
+      if (otherProposal.id !== acceptedProposalId && otherProposal.status === 'pending') {
+        await proposalRepository.updateProposal(otherProposal.id, { status: 'rejected' });
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to reject other pending proposals', { error });
+    // Continue - this is non-critical
+  }
+}
+
+/**
+ * Accept the proposal and create the contract record.
+ * Returns the created contract and updated proposal, or a ServiceResult error.
+ */
+async function createContractFromProposal(
+  proposalId: string,
+  proposalEntity: ProposalEntity,
+  project: Project,
+  employerId: string,
+  proposalRate: number,
+  rushFee: number,
+  totalAmount: number,
+): Promise<
+  | { error: ServiceResult<AcceptProposalResult> }
+  | {
+      updatedProposalEntity: NonNullable<Awaited<ReturnType<typeof proposalRepository.updateProposal>>>;
+      contractEntity: any;
+    }
+> {
   const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
     status: 'accepted',
   });
 
   if (!updatedProposalEntity) {
     logger.error('Failed to accept proposal');
-    return {
-      success: false,
-      error: { 
-        code: 'UPDATE_FAILED', 
-        message: 'Failed to accept proposal or proposal already accepted' 
-      },
-    };
+    return { error: { success: false, error: { code: 'UPDATE_FAILED', message: 'Failed to accept proposal or proposal already accepted' } } };
   }
 
-  // Create contract record
   const contractEntity = await contractRepository.create({
     id: generateId(),
     project_id: project.id,
@@ -368,41 +378,33 @@ export async function acceptProposal(
   });
 
   if (!contractEntity) {
-    return {
-      success: false,
-      error: { 
-        code: 'UPDATE_FAILED', 
-        message: 'Proposal accepted but no contract was created' 
-      },
-    };
+    return { error: { success: false, error: { code: 'UPDATE_FAILED', message: 'Proposal accepted but no contract was created' } } };
   }
 
-  // Reject other pending proposals for this project
-  try {
-    const otherProposals = await proposalRepository.getProposalsByProject(project.id, { limit: 1000, offset: 0 });
-    for (const otherProposal of otherProposals.items) {
-      if (otherProposal.id !== proposalId && otherProposal.status === 'pending') {
-        await proposalRepository.updateProposal(otherProposal.id, { status: 'rejected' });
-      }
-    }
-  } catch (error) {
-    logger.error('Failed to reject other pending proposals', { error });
-    // Continue - this is non-critical
-  }
+  return { updatedProposalEntity, contractEntity };
+}
 
-  // Get the updated entities
-  const updatedProposal = mapProposalFromEntity(updatedProposalEntity);
-  const createdContract = mapContractFromEntity(contractEntity);
-
-  // Create agreement on blockchain and initialize escrow
+/**
+ * Deploy blockchain agreement, initialize escrow, and activate contract.
+ * Also updates project status when all freelancer slots are filled.
+ * Non-critical: logs errors and continues on blockchain failures.
+ */
+async function initializeEscrowForContract(
+  contract: Contract,
+  project: Project,
+  proposalEntity: ProposalEntity,
+  totalAmount: number,
+  rushFee: number,
+  isRush: boolean,
+  rushFeePercentage: number,
+): Promise<void> {
   try {
     const employer = await userRepository.getUserById(project.employerId);
     const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
-    
+
     if (employer?.wallet_address && freelancer?.wallet_address) {
-      // Create agreement on blockchain (employer signs on creation)
       await createAgreementOnBlockchain({
-        contractId: createdContract.id,
+        contractId: contract.id,
         employerWallet: employer.wallet_address,
         freelancerWallet: freelancer.wallet_address,
         totalAmount: totalAmount,
@@ -419,20 +421,18 @@ export async function acceptProposal(
       // Note: Freelancer should explicitly sign the agreement, not auto-sign
       // The employer accepted the proposal; the freelancer submitted it.
       // Auto-signing is kept for now but should be replaced with explicit consent flow.
-      await signAgreement(createdContract.id, freelancer.wallet_address);
+      await signAgreement(contract.id, freelancer.wallet_address);
 
-      // Initialize escrow and activate contract
       const { initializeContractEscrow } = await import('./payment-service.js');
       const escrowResult = await initializeContractEscrow(
-        createdContract,
+        contract,
         project,
         employer.wallet_address,
         freelancer.wallet_address
       );
 
       if (escrowResult.success) {
-        // Update contract status to active and set escrow address
-        await contractRepository.updateContract(createdContract.id, {
+        await contractRepository.updateContract(contract.id, {
           status: 'active',
           escrow_address: escrowResult.data.escrowAddress,
         });
@@ -473,6 +473,35 @@ export async function acceptProposal(
     });
   }
   // If limit is not reached, project stays 'open' so more freelancers can be accepted
+}
+
+// Accept a proposal - creates a contract
+// - Checks if another proposal was already accepted (prevents race condition)
+// - Uses freelancer's proposedRate for contract amount (not project.budget)
+// - Rejects all other pending proposals for the same project
+// - Checks that project has milestones before creating contract
+export async function acceptProposal(
+  proposalId: string,
+  employerId: string
+): Promise<ServiceResult<AcceptProposalResult>> {
+  const validated = await validateProposalAcceptance(proposalId, employerId);
+  if ('error' in validated) return validated.error;
+
+  const { proposalEntity, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
+
+  const created = await createContractFromProposal(
+    proposalId, proposalEntity, project, employerId, proposalRate, rushFee, totalAmount,
+  );
+  if ('error' in created) return created.error;
+
+  const { updatedProposalEntity, contractEntity } = created;
+  const createdContract = mapContractFromEntity(contractEntity);
+
+  await rejectOtherProposals(project.id, proposalId);
+
+  await initializeEscrowForContract(
+    createdContract, project, proposalEntity, totalAmount, rushFee, isRush, rushFeePercentage,
+  );
 
   // Create notification for freelancer
   try {
@@ -498,7 +527,7 @@ export async function acceptProposal(
   return {
     success: true,
     data: {
-      proposal: updatedProposal,
+      proposal: mapProposalFromEntity(updatedProposalEntity),
       contract: createdContract,
     },
   };
