@@ -119,7 +119,6 @@ describe('response', () => {
         error: {
           code: 'SERVER_ERROR',
           message: 'Crash',
-          details: undefined,
         },
         timestamp: expect.any(String),
         requestId: 'rid-5',
