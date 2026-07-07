@@ -11,7 +11,6 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendServiceError } from '../utils/response.js';
 import { verifyWebhookSignature } from '../services/didit-client.js';
 import { logger } from '../config/logger.js';
 import {
@@ -184,14 +183,23 @@ router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, re
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'UNAUTHORIZED', message: 'Authentication required' }, requestId);
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await initiateKycVerification({ user_id: userId });
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { USER_NOT_FOUND: 404 });
+    const statusCode = result.error.code === 'USER_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -222,19 +230,31 @@ router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: 
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'UNAUTHORIZED', message: 'Authentication required' }, requestId);
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await getKycStatus(userId);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   if (!result.data) {
-    sendError(res, 404, { code: 'NOT_FOUND', message: 'No KYC verification found' }, requestId);
+    res.status(404).json({
+      error: { code: 'NOT_FOUND', message: 'No KYC verification found' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -401,25 +421,42 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
   const requestId = getRequestId(req);
 
   if (!verificationId) {
-    sendError(res, 400, { code: 'INVALID_ID', message: 'Verification ID required' }, requestId);
+    res.status(400).json({
+      error: { code: 'INVALID_ID', message: 'Verification ID required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   // Ownership check: verify this verification belongs to the requesting user
   const verification = await getKycById(verificationId);
   if (!verification || !verification.success || !verification.data) {
-    sendError(res, 404, { code: 'VERIFICATION_NOT_FOUND', message: 'Verification not found' }, requestId);
+    res.status(404).json({
+      error: { code: 'VERIFICATION_NOT_FOUND', message: 'Verification not found' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
   if (verification.data.user_id !== userId && req.user?.role !== 'admin') {
-    sendError(res, 403, { code: 'FORBIDDEN', message: 'You can only refresh your own verifications' }, requestId);
+    res.status(403).json({
+      error: { code: 'FORBIDDEN', message: 'You can only refresh your own verifications' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await refreshVerificationStatus(verificationId);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { VERIFICATION_NOT_FOUND: 404 });
+    const statusCode = result.error.code === 'VERIFICATION_NOT_FOUND' ? 404 : 400;
+    res.status(statusCode).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -460,7 +497,11 @@ router.post('/webhook', async (req: Request, res: Response) => {
       bodyType: typeof req.body,
     });
 
-    sendError(res, 400, { code: 'INVALID_PAYLOAD', message: 'Invalid webhook payload' }, requestId);
+    res.status(400).json({
+      error: { code: 'INVALID_PAYLOAD', message: 'Invalid webhook payload' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -472,8 +513,12 @@ router.post('/webhook', async (req: Request, res: Response) => {
       ip: req.ip,
       webhookType: webhookPayload.webhook_type,
     });
-
-    sendError(res, 401, { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' }, requestId);
+    
+    res.status(401).json({
+      error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -496,7 +541,11 @@ router.post('/webhook', async (req: Request, res: Response) => {
         sessionId: webhookPayload.session_id,
       });
 
-      sendError(res, 400, result.error, requestId);
+      res.status(400).json({
+        error: result.error,
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
 
@@ -508,7 +557,11 @@ router.post('/webhook', async (req: Request, res: Response) => {
       sessionId: webhookPayload.session_id,
     });
 
-    sendError(res, 500, { code: 'INTERNAL_ERROR', message: 'Failed to process webhook' }, requestId);
+    res.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: 'Failed to process webhook' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
   }
 });
 

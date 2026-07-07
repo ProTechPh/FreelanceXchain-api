@@ -3,7 +3,6 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendServiceError, sendValidationError } from '../utils/response.js';
 import { logger } from '../config/logger.js';
 import {
   submitRating,
@@ -152,7 +151,11 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
 
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -160,14 +163,25 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
   const rateeId = req.query['rateeId'] as string | undefined;
 
   if (!contractId || !rateeId) {
-    sendValidationError(res, 'contractId and rateeId are required query parameters', requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'contractId and rateeId are required query parameters',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await canUserRate(userId, rateeId, contractId);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -217,7 +231,11 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
 
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -235,7 +253,15 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
   if (rating === undefined || rating === null) missingFields.push('rating');
 
   if (missingFields.length > 0) {
-    sendValidationError(res, 'Missing required fields', requestId, missingFields);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Missing required fields',
+        details: missingFields,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -249,12 +275,15 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
   }
 
   if (uuidErrors.length > 0) {
-    sendError(
-      res,
-      400,
-      { code: 'VALIDATION_ERROR', message: 'Invalid UUID format', details: uuidErrors },
-      requestId
-    );
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid UUID format',
+        details: uuidErrors,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -268,10 +297,15 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
   const result = await submitRating(ratingInput);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, {
-      NOT_FOUND: 404,
-      UNAUTHORIZED: 403,
-      DUPLICATE_RATING: 409,
+    let statusCode = 400;
+    if (result.error.code === 'NOT_FOUND') statusCode = 404;
+    if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
+    if (result.error.code === 'DUPLICATE_RATING') statusCode = 409;
+
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
     });
     return;
   }
@@ -357,14 +391,22 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
 
   /* istanbul ignore next */
   if (!userId) {
-    sendValidationError(res, 'User ID is required', requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'User ID is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await getReputation(userId);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -407,14 +449,22 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (
 
   /* istanbul ignore next */
   if (!userId) {
-    sendValidationError(res, 'User ID is required', requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'User ID is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await getWorkHistory(userId);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 

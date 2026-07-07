@@ -3,7 +3,6 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendServiceError, sendValidationError } from '../utils/response.js';
 import {
   createSavedSearch,
   getUserSavedSearches,
@@ -20,19 +19,31 @@ router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respo
   const { name, searchType, filters, notifyOnNew } = req.body;
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   if (!name || !searchType || !filters) {
-    sendValidationError(res, 'name, searchType, and filters are required', requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'name, searchType, and filters are required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await createSavedSearch(userId, { name, searchType, filters, notifyOnNew });
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -45,14 +56,22 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const searchType = req.query['searchType'] as 'project' | 'freelancer' | undefined;
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await getUserSavedSearches(userId, searchType);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -66,14 +85,23 @@ router.patch('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req:
   const updates = req.body;
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await updateSavedSearch(searchId, userId, updates);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
+    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -86,14 +114,23 @@ router.delete('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await deleteSavedSearch(searchId, userId);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
+    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -106,14 +143,23 @@ router.post('/:id/execute', authMiddleware, apiRateLimiter, validateUUID(), asyn
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await executeSavedSearch(searchId, userId);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { NOT_FOUND: 404, UNAUTHORIZED: 403 });
+    const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
+    res.status(statusCode).json({
+      error: { code: result.error?.code, message: result.error?.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 

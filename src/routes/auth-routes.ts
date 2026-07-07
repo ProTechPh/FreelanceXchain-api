@@ -29,7 +29,6 @@ import { RegisterInput, LoginInput, MfaRequiredResult } from '../services/auth-t
 import { UserRole } from '../models/user.js';
 import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendValidationError } from '../utils/response.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
@@ -52,7 +51,11 @@ function extractBearerToken(req: Request, res: Response): string | null {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader?.split(' ')[1];
   if (!token) {
-    sendError(res, 401, { code: 'AUTH_MISSING_TOKEN', message: 'Authorization token is required' }, getRequestId(req));
+    res.status(401).json({
+      error: { code: 'AUTH_MISSING_TOKEN', message: 'Authorization token is required' },
+      timestamp: new Date().toISOString(),
+      requestId: getRequestId(req),
+    });
     return null;
   }
   return token;
@@ -224,7 +227,15 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
   }
 
   if (errors.length > 0) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request data',
+        details: errors,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -237,7 +248,14 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
 
   if (isAuthError(result)) {
     const statusCode = result.code === 'DUPLICATE_EMAIL' ? 409 : 400;
-    sendError(res, statusCode, { code: result.code, message: result.message }, requestId);
+    res.status(statusCode).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -294,7 +312,15 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
   }
 
   if (errors.length > 0) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request data',
+        details: errors,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -312,7 +338,14 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
       return;
     }
     
-    sendError(res, 401, { code: 'AUTH_INVALID_CREDENTIALS', message: result.message }, requestId);
+    res.status(401).json({
+      error: {
+        code: 'AUTH_INVALID_CREDENTIALS',
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -364,7 +397,14 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   const requestId = getRequestId(req);
 
   if (!sessionToken || !factorId || !code) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'mfaSessionToken, factorId, and code are required' }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'mfaSessionToken, factorId, and code are required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -372,7 +412,14 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   const challengeResult = await challengeMFA(sessionToken, factorId);
   
   if (isAuthError(challengeResult)) {
-    sendError(res, 400, { code: challengeResult.code, message: challengeResult.message }, requestId);
+    res.status(400).json({
+      error: {
+        code: challengeResult.code,
+        message: challengeResult.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -380,7 +427,14 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   const verifyResult = await verifyMFAChallenge(sessionToken, factorId, challengeResult.challengeId, code);
 
   if (isAuthError(verifyResult)) {
-    sendError(res, 400, { code: verifyResult.code, message: verifyResult.message }, requestId);
+    res.status(400).json({
+      error: {
+        code: verifyResult.code,
+        message: verifyResult.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -388,7 +442,14 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   const authResult = await validateTokenAndGetUser(sessionToken);
   
   if (isAuthError(authResult)) {
-    sendError(res, 401, { code: authResult.code, message: authResult.message }, requestId);
+    res.status(401).json({
+      error: {
+        code: authResult.code,
+        message: authResult.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -435,7 +496,15 @@ router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: 
   const requestId = getRequestId(req);
 
   if (!refreshToken || typeof refreshToken !== 'string') {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Refresh token is required', details: [{ field: 'refreshToken', message: 'Refresh token is required' }] }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Refresh token is required',
+        details: [{ field: 'refreshToken', message: 'Refresh token is required' }],
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -443,7 +512,14 @@ router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: 
 
   if (isAuthError(result)) {
     const statusCode = result.code === 'TOKEN_EXPIRED' ? 401 : 400;
-    sendError(res, statusCode, { code: result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN', message: result.message }, requestId);
+    res.status(statusCode).json({
+      error: {
+        code: result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN',
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -592,11 +668,11 @@ router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Req
   const requestId = getRequestId(req);
 
   if (!accessToken || typeof accessToken !== 'string') {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'accessToken is required' }, requestId);
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'accessToken is required' }, timestamp: new Date().toISOString(), requestId });
     return;
   }
   if (!validateRole(role)) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Valid role is required (freelancer or employer)' }, requestId);
+    res.status(400).json({ error: { code: 'VALIDATION_ERROR', message: 'Valid role is required (freelancer or employer)' }, timestamp: new Date().toISOString(), requestId });
     return;
   }
 
@@ -604,7 +680,11 @@ router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Req
 
   if (isAuthError(result)) {
     const status = result.code === 'AUTH_INVALID_TOKEN' ? 401 : 400;
-    sendError(res, status, { code: result.code, message: result.message }, requestId);
+    res.status(status).json({
+      error: { code: result.code, message: result.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -739,7 +819,14 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
   try {
     // Valid provider check
     if (!['google', 'github'].includes(provider)) {
-      sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid provider' }, requestId);
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid provider',
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
 
@@ -747,7 +834,14 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
     const url = await getOAuthUrl(provider);
     res.redirect(url);
   } catch {
-    sendError(res, 500, { code: 'INTERNAL_ERROR', message: 'Failed to initiate OAuth flow' }, requestId);
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'Failed to initiate OAuth flow',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
   }
 }));
 
@@ -791,7 +885,14 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
 
   if (!access_token || typeof access_token !== 'string') {
     logger.warn('OAuth callback missing access_token', { requestId });
-    sendValidationError(res, 'access_token is required', requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'access_token is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -829,7 +930,14 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
       errorCode: result.code,
     });
     
-    sendError(res, 401, { code: 'AUTH_INVALID_TOKEN', message: result.message || 'Invalid token' }, requestId);
+    res.status(401).json({
+      error: {
+        code: 'AUTH_INVALID_TOKEN',
+        message: result.message || 'Invalid token',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -892,7 +1000,15 @@ router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Req
   }
 
   if (errors.length > 0) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Invalid request data',
+        details: errors,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -903,14 +1019,28 @@ router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Req
     );
 
     if (isAuthError(result)) {
-      sendError(res, 401, { code: 'AUTH_INVALID_TOKEN', message: result.message || 'Registration failed' }, requestId);
+      res.status(401).json({
+        error: {
+          code: 'AUTH_INVALID_TOKEN',
+          message: result.message || 'Registration failed',
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
 
     res.status(201).json(result);
   } catch (error) {
     console.error('OAuth registration error:', error);
-    sendError(res, 500, { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred during registration' }, requestId);
+    res.status(500).json({
+      error: {
+        code: 'INTERNAL_ERROR',
+        message: 'An unexpected error occurred during registration',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
   }
 }));
 
@@ -945,14 +1075,22 @@ router.post('/resend-confirmation', passwordResetRateLimiter, asyncHandler(async
   const requestId = getRequestId(req);
 
   if (!email || typeof email !== 'string' || !email.includes('@')) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Valid email is required' }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Valid email is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await resendConfirmationEmail(email);
 
   if (isAuthError(result)) {
-    sendError(res, 400, { code: result.code, message: result.message }, requestId);
+    res.status(400).json({
+      error: { code: result.code, message: result.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -990,7 +1128,11 @@ router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (re
   const requestId = getRequestId(req);
 
   if (!email || typeof email !== 'string' || !email.includes('@')) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Valid email is required' }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Valid email is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1095,7 +1237,11 @@ router.post('/reset-password', passwordResetRateLimiter, asyncHandler(async (req
   }
 
   if (errors.length > 0) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1103,7 +1249,11 @@ router.post('/reset-password', passwordResetRateLimiter, asyncHandler(async (req
 
   if (isAuthError(result)) {
     const statusCode = result.code === 'INVALID_TOKEN' ? 401 : 500;
-    sendError(res, statusCode, { code: result.code, message: result.message }, requestId);
+    res.status(statusCode).json({
+      error: { code: result.code, message: result.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1151,7 +1301,14 @@ router.post('/logout', authMiddleware, authRateLimiter, asyncHandler(async (req:
 
   if (isAuthError(result)) {
     logger.error('Logout failed', { userId, requestId, error: result.message });
-    sendError(res, 500, { code: result.code, message: result.message }, requestId);
+    res.status(500).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1190,7 +1347,14 @@ router.post('/mfa/enroll', authMiddleware, authRateLimiter, asyncHandler(async (
   const result = await enrollMFA(token);
 
   if (isAuthError(result)) {
-    sendError(res, 400, { code: result.code, message: result.message }, requestId);
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1237,14 +1401,28 @@ router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, asyncHand
   if (!token) return;
 
   if (!factorId || !code) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'factorId and code are required' }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId and code are required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await verifyMFAEnrollment(token, factorId, code);
 
   if (isAuthError(result)) {
-    sendError(res, 400, { code: result.code, message: result.message }, requestId);
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1292,14 +1470,28 @@ router.post('/mfa/challenge', authMiddleware, authRateLimiter, asyncHandler(asyn
   if (!token) return;
 
   if (!factorId) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'factorId is required' }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await challengeMFA(token, factorId);
 
   if (isAuthError(result)) {
-    sendError(res, 400, { code: result.code, message: result.message }, requestId);
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1349,14 +1541,28 @@ router.post('/mfa/verify', authMiddleware, mfaVerifyRateLimiter, asyncHandler(as
   if (!token) return;
 
   if (!factorId || !challengeId || !code) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'factorId, challengeId, and code are required' }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId, challengeId, and code are required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await verifyMFAChallenge(token, factorId, challengeId, code);
 
   if (isAuthError(result)) {
-    sendError(res, 400, { code: result.code, message: result.message }, requestId);
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1396,7 +1602,14 @@ router.get('/mfa/factors', authMiddleware, authRateLimiter, asyncHandler(async (
   const result = await getMFAFactors(token);
 
   if (isAuthError(result)) {
-    sendError(res, 400, { code: result.code, message: result.message }, requestId);
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1441,19 +1654,40 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, asyncHandler(async 
   if (!token) return;
 
   if (!factorId) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'factorId is required' }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'factorId is required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   if (!otpCode || typeof otpCode !== 'string') {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'otpCode is required for re-authentication' }, requestId);
+    res.status(400).json({
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'otpCode is required for re-authentication',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await disableMFA(token, factorId, otpCode);
 
   if (isAuthError(result)) {
-    sendError(res, 400, { code: result.code, message: result.message }, requestId);
+    res.status(400).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1502,14 +1736,28 @@ router.get('/me', authMiddleware, authRateLimiter, asyncHandler(async (req: Requ
 
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'Authentication required' }, requestId);
+    res.status(401).json({
+      error: {
+        code: 'AUTH_UNAUTHORIZED',
+        message: 'Authentication required',
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await getCurrentUserWithKyc(userId);
 
   if (isAuthError(result)) {
-    sendError(res, 404, { code: result.code, message: result.message }, requestId);
+    res.status(404).json({
+      error: {
+        code: result.code,
+        message: result.message,
+      },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1568,18 +1816,30 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
 
   /* istanbul ignore next */
   if (!userId) {
-    sendError(res, 401, { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   // Validate wallet address format
   if (!walletAddress || typeof walletAddress !== 'string' || walletAddress.trim() === '') {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Wallet address is required' }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Wallet address is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   if (!WALLET_REGEX.test(walletAddress)) {
-    sendError(res, 400, { code: 'VALIDATION_ERROR', message: 'Invalid Ethereum wallet address format' }, requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid Ethereum wallet address format' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -1588,7 +1848,11 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
     const updatedUser = await userRepository.updateUser(userId, { wallet_address: walletAddress });
     
     if (!updatedUser) {
-      sendError(res, 404, { code: 'USER_NOT_FOUND', message: 'User not found' }, requestId);
+      res.status(404).json({
+        error: { code: 'USER_NOT_FOUND', message: 'User not found' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
 
@@ -1600,7 +1864,11 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
     });
   } catch (error) {
     logger.error('Failed to update wallet address:', error);
-    sendError(res, 500, { code: 'UPDATE_FAILED', message: 'Failed to update wallet address' }, requestId);
+    res.status(500).json({
+      error: { code: 'UPDATE_FAILED', message: 'Failed to update wallet address' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
   }
 }));
 

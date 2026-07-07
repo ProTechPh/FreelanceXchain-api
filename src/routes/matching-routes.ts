@@ -3,7 +3,6 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendValidationError } from '../utils/response.js';
 import { TokenPayload } from '../services/auth-types.js';
 import {
   getProjectRecommendations,
@@ -159,7 +158,11 @@ router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res
   if (limitParam) {
     limit = Number(limitParam);
     if (isNaN(limit) || limit < 1) {
-      sendValidationError(res, 'limit must be a positive integer', requestId);
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'limit must be a positive integer' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
     limit = Math.min(limit, 50); // Cap at 50
@@ -169,7 +172,11 @@ router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res
 
   if (isMatchingError(result)) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendError(res, statusCode, { code: result.error.code, message: result.error.message }, requestId);
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -224,7 +231,11 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
 
   /* istanbul ignore next */
   if (!projectId) {
-    sendValidationError(res, 'projectId is required', requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'projectId is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -234,7 +245,11 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
   if (limitParam) {
     limit = Number(limitParam);
     if (isNaN(limit) || limit < 1) {
-      sendValidationError(res, 'limit must be a positive integer', requestId);
+      res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'limit must be a positive integer' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
     limit = Math.min(limit, 50); // Cap at 50
@@ -244,7 +259,11 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
 
   if (isMatchingError(result)) {
     const statusCode = result.error.code === 'PROJECT_NOT_FOUND' ? 404 : 400;
-    sendError(res, statusCode, { code: result.error.code, message: result.error.message }, requestId);
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -286,14 +305,22 @@ router.post('/extract-skills', authMiddleware, apiRateLimiter, async (req: Reque
   const { text } = req.body as { text?: string };
 
   if (!text || typeof text !== 'string') {
-    sendValidationError(res, 'text is required and must be a string', requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'text is required and must be a string' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await extractSkillsFromText(text);
 
   if (isMatchingError(result)) {
-    sendError(res, 400, { code: result.error.code, message: result.error.message }, requestId);
+    res.status(400).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -331,7 +358,11 @@ router.get('/skill-gaps', authMiddleware, apiRateLimiter, async (req: Request, r
 
   if (isMatchingError(result)) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendError(res, statusCode, { code: result.error.code, message: result.error.message }, requestId);
+    res.status(statusCode).json({
+      error: { code: result.error.code, message: result.error.message },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 

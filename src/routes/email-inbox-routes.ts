@@ -2,7 +2,6 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError, sendServiceError, sendValidationError } from '../utils/response.js';
 import {
   processInboundEmail,
   verifyWebhookSignature,
@@ -25,12 +24,20 @@ router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
   const secret = process.env['EMAIL_WEBHOOK_SECRET'];
 
   if (!secret) {
-    sendError(res, 500, { code: 'CONFIG_ERROR', message: 'Webhook secret not configured' }, requestId);
+    res.status(500).json({
+      error: { code: 'CONFIG_ERROR', message: 'Webhook secret not configured' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   if (!signature) {
-    sendError(res, 401, { code: 'AUTH_MISSING_SIGNATURE', message: 'Missing webhook signature' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_MISSING_SIGNATURE', message: 'Missing webhook signature' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -38,11 +45,19 @@ router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const valid = verifyWebhookSignature(rawBody, signature, secret);
     if (!valid) {
-      sendError(res, 401, { code: 'AUTH_INVALID_SIGNATURE', message: 'Invalid webhook signature' }, requestId);
+      res.status(401).json({
+        error: { code: 'AUTH_INVALID_SIGNATURE', message: 'Invalid webhook signature' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
   } catch {
-    sendError(res, 401, { code: 'AUTH_INVALID_SIGNATURE', message: 'Invalid webhook signature' }, requestId);
+    res.status(401).json({
+      error: { code: 'AUTH_INVALID_SIGNATURE', message: 'Invalid webhook signature' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -50,7 +65,11 @@ router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
   const result = await processInboundEmail(payload);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -71,7 +90,11 @@ router.get('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (req
   const result = await listEmails(userId, folder, limit, offset, isRead);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -86,7 +109,11 @@ router.get('/unread-count', authMiddleware, requireRole('admin'), apiRateLimiter
   const result = await getUnreadCount(userId, folder);
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -101,7 +128,12 @@ router.get('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async (
   const result = await getEmail(userId, emailId);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { EMAIL_NOT_FOUND: 404 });
+    const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;
+    res.status(status).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -122,7 +154,12 @@ router.patch('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const result = await updateEmail(userId, emailId, updates);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { EMAIL_NOT_FOUND: 404 });
+    const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;
+    res.status(status).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -137,7 +174,12 @@ router.delete('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, asyn
   const result = await deleteEmail(userId, emailId);
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { EMAIL_NOT_FOUND: 404 });
+    const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;
+    res.status(status).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -151,14 +193,22 @@ router.post('/send', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const { to, subject, text, html } = req.body;
 
   if (!to || !subject) {
-    sendValidationError(res, 'to and subject are required', requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'to and subject are required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await sendNewEmail(userId, to, subject, text || '', html || text || '');
 
   if (!result.success) {
-    sendError(res, 400, result.error, requestId);
+    res.status(400).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -173,14 +223,23 @@ router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, 
   const { text, html } = req.body;
 
   if (!text && !html) {
-    sendValidationError(res, 'text or html body is required', requestId);
+    res.status(400).json({
+      error: { code: 'VALIDATION_ERROR', message: 'text or html body is required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await replyToEmail(userId, emailId, text || '', html || text || '');
 
   if (!result.success) {
-    sendServiceError(res, result, requestId, { EMAIL_NOT_FOUND: 404 });
+    const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;
+    res.status(status).json({
+      error: result.error,
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 

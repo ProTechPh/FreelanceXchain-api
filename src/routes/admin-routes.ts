@@ -3,8 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendError } from '../utils/response.js';
-import { ReviewRepository } from '../repositories/review-repository.js';
+import { reviewRepository } from '../repositories/review-repository.js';
 
 import {
   getPlatformStats,
@@ -35,7 +34,11 @@ router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const result = await getPlatformStats();
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -57,7 +60,11 @@ router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, a
   const result = await getAdminAnalytics();
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -84,7 +91,11 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const result = await getUserManagement(filters);
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -122,14 +133,22 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
 
   const validRoles = ['freelancer', 'employer', 'admin'];
   if (role !== undefined && !validRoles.includes(role)) {
-    sendError(res, 400, { code: 'INVALID_ROLE', message: `Invalid role. Must be one of: ${validRoles.join(', ')}` }, requestId);
+    res.status(400).json({
+      error: { code: 'INVALID_ROLE', message: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
   const result = await updateUser(userId, { name, role, isActive });
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -164,7 +183,11 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
   const result = await suspendUser(userId, reason);
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -187,7 +210,11 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
   const result = await unsuspendUser(userId);
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -210,7 +237,11 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
   const result = await verifyUser(userId);
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -235,7 +266,11 @@ router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, as
   const result = await getDisputeManagement(filters);
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -257,7 +292,11 @@ router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimite
   const result = await getSystemHealth();
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
@@ -278,7 +317,11 @@ router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response
   const result = await getPlatformStats();
 
   if (!result.success) {
-    sendError(res, 400, { code: result.error.code ?? 'UNKNOWN', message: result.error.message ?? 'An error occurred' }, requestId);
+    res.status(400).json({
+      error: { code: result.error.code ?? 'UNKNOWN', message: result.error.message ?? 'An error occurred' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
     return;
   }
 
