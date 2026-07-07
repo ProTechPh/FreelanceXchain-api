@@ -120,19 +120,37 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
 
   async queryAll(orderBy: string = 'created_at', ascending: boolean = false): Promise<T[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        this.collectionId,
-        [
-          ascending ? Query.orderAsc(orderBy) : Query.orderDesc(orderBy),
-          Query.limit(1000),
-        ]
-      );
-      return mapDocuments<T>(response.documents);
+      return await this.fetchAll([ascending ? Query.orderAsc(orderBy) : Query.orderDesc(orderBy)]);
     } catch (error) {
       logger.error(`Repository error in ${this.collectionId}.queryAll`, { error });
       return [];
     }
+  }
+
+  /**
+   * Fetch ALL documents matching the given queries, using cursor-based pagination.
+   * Replaces the `Query.limit(1000)` pattern that silently loses data past 1000 records.
+   */
+  protected async fetchAll(baseQueries: any[] = [], pageSize = 100): Promise<T[]> {
+    const allDocs: Record<string, any>[] = [];
+    let lastId: string | undefined;
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const queries = [...baseQueries, Query.limit(pageSize)];
+      if (lastId) {
+        queries.push(Query.cursorAfter(lastId));
+      }
+
+      const response = await databases.listDocuments(DATABASE_ID, this.collectionId, queries);
+      allDocs.push(...response.documents);
+
+      if (response.documents.length < pageSize) break;
+      lastId = response.documents[response.documents.length - 1]?.$id;
+      if (!lastId) break;
+    }
+
+    return mapDocuments<T>(allDocs);
   }
 
   async queryPaginated(
