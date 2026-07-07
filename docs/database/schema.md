@@ -240,7 +240,7 @@ erDiagram
 Central identity store for all platform users.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | email | VARCHAR(255) | UNIQUE, NOT NULL | Email address for authentication |
 | password_hash | VARCHAR(255) | NOT NULL | Hashed password (managed by Appwrite Auth) |
@@ -259,7 +259,7 @@ Central identity store for all platform users.
 Hierarchical classification system for skills.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | name | VARCHAR(255) | NOT NULL | Category name |
 | description | TEXT | | Category description |
@@ -276,7 +276,7 @@ Hierarchical classification system for skills.
 Atomic skill definitions linked to categories.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | category_id | UUID | REFERENCES skill_categories(id) ON DELETE CASCADE | Parent category |
 | name | VARCHAR(255) | NOT NULL | Skill name |
@@ -294,7 +294,7 @@ Atomic skill definitions linked to categories.
 Detailed professional identity for freelancers. One-to-one with users.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | user_id | UUID | UNIQUE, REFERENCES users(id) ON DELETE CASCADE | Associated user |
 | bio | TEXT | | Professional biography |
@@ -312,7 +312,7 @@ Detailed professional identity for freelancers. One-to-one with users.
 Organizational identity for employers. One-to-one with users.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | user_id | UUID | UNIQUE, REFERENCES users(id) ON DELETE CASCADE | Associated user |
 | company_name | VARCHAR(255) | | Company name |
@@ -328,7 +328,7 @@ Organizational identity for employers. One-to-one with users.
 Freelance work opportunities posted by employers.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | employer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Creating employer |
 | title | VARCHAR(255) | NOT NULL | Project title |
@@ -350,7 +350,7 @@ Freelance work opportunities posted by employers.
 Bids from freelancers on projects.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | project_id | UUID | REFERENCES projects(id) ON DELETE CASCADE | Target project |
 | freelancer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Submitting freelancer |
@@ -372,7 +372,7 @@ Bids from freelancers on projects.
 Formal agreements between freelancers and employers, linking off-chain data to on-chain escrow.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | project_id | UUID | REFERENCES projects(id) ON DELETE CASCADE | Source project |
 | proposal_id | UUID | REFERENCES proposals(id) ON DELETE CASCADE | Accepted proposal |
@@ -385,6 +385,7 @@ Formal agreements between freelancers and employers, linking off-chain data to o
 | updated_at | TIMESTAMPTZ | DEFAULT NOW() | Last update timestamp |
 
 **Status transitions:**
+
 - `active` -> `completed`, `disputed`, `cancelled`
 - `disputed` -> `active`, `completed`, `cancelled`
 - `completed` and `cancelled` are terminal states
@@ -398,7 +399,7 @@ Formal agreements between freelancers and employers, linking off-chain data to o
 Conflict resolution tracking for contract milestones.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Disputed contract |
 | milestone_id | VARCHAR(255) | | Blockchain milestone identifier |
@@ -421,7 +422,7 @@ Conflict resolution tracking for contract milestones.
 Transaction history ledger bridging off-chain records with on-chain events.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Associated contract |
 | milestone_id | VARCHAR(255) | | Blockchain milestone identifier |
@@ -444,7 +445,7 @@ Transaction history ledger bridging off-chain records with on-chain events.
 Off-chain reputation feedback linked to completed contracts.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Reviewed contract |
 | reviewer_id | UUID | REFERENCES users(id) ON DELETE CASCADE | User writing review |
@@ -466,7 +467,7 @@ Off-chain reputation feedback linked to completed contracts.
 Event-driven notification system for user engagement.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | user_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Recipient user |
 | type | VARCHAR(50) | NOT NULL | Notification type (proposal_received, proposal_accepted, proposal_rejected, milestone_submitted, milestone_approved, payment_released, dispute_created, dispute_resolved, rating_received) |
@@ -484,7 +485,7 @@ Event-driven notification system for user engagement.
 Secure, contract-scoped communication between parties.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | contract_id | UUID | REFERENCES contracts(id) ON DELETE CASCADE | Related contract |
 | sender_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Message sender |
@@ -502,7 +503,7 @@ Secure, contract-scoped communication between parties.
 Know Your Customer identity verification records.
 
 | Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
+| -------- | ------ | ------------- | ------------- |
 | id | UUID | PRIMARY KEY, DEFAULT uuid_generate_v4() | Unique identifier |
 | user_id | UUID | REFERENCES users(id) ON DELETE CASCADE | Verified user |
 | status | VARCHAR(20) | DEFAULT 'pending', CHECK (pending, submitted, under_review, approved, rejected) | Verification status |
@@ -537,7 +538,7 @@ Know Your Customer identity verification records.
 ### Foreign Key Indexes
 
 | Index | Table | Column(s) |
-|-------|-------|-----------|
+| ------- | ------- | ----------- |
 | idx_freelancer_profiles_user_id | freelancer_profiles | user_id |
 | idx_employer_profiles_user_id | employer_profiles | user_id |
 | idx_projects_employer_id | projects | employer_id |
@@ -560,7 +561,7 @@ Know Your Customer identity verification records.
 ### Status and Lookup Indexes
 
 | Index | Table | Column(s) |
-|-------|-------|-----------|
+| ------- | ------- | ----------- |
 | idx_projects_status | projects | status |
 | idx_notifications_is_read | notifications | is_read |
 | idx_users_email | users | email |
@@ -568,7 +569,7 @@ Know Your Customer identity verification records.
 ### Composite Unique Constraints
 
 | Constraint | Table | Column(s) |
-|------------|-------|-----------|
+| ------------ | ------- | ----------- |
 | UNIQUE(project_id, freelancer_id) | proposals | project_id, freelancer_id |
 | UNIQUE(contract_id, reviewer_id) | reviews | contract_id, reviewer_id |
 
@@ -581,7 +582,7 @@ RLS is enabled on all tables. The following policies are in effect:
 ### Public Read Policies
 
 | Table | Access | Condition |
-|-------|--------|-----------|
+| ------- | -------- | ----------- |
 | skill_categories | SELECT | All users (no auth required) |
 | skills | SELECT | All users (no auth required) |
 | projects | SELECT | Only when `status = 'open'` |
@@ -626,7 +627,7 @@ Initial skill categories and skills are seeded via `appwrite/seed-skills.sql`.
 ### Seeded Skill Taxonomy
 
 | Category | Skills |
-|----------|--------|
+| ---------- | -------- |
 | Web Development | TypeScript, JavaScript, React, Node.js, Vue.js, Angular, Next.js, Express.js, HTML/CSS, Tailwind CSS |
 | Mobile Development | React Native, Flutter, Swift, Kotlin |
 | Data Science | Python, Machine Learning, TensorFlow, SQL |

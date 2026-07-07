@@ -35,7 +35,7 @@ Each request receives a UUID v4 request ID for logging and debugging.
 Three rate limiting profiles, tracked per client IP:
 
 | Profile | Limit | Use Case |
-|---------|-------|----------|
+| ------- | ------- | ---------- |
 | **authRateLimiter** | 10 attempts / 15 min | Login, registration |
 | **apiRateLimiter** | 100 requests / min | General API usage |
 | **sensitiveRateLimiter** | 5 attempts / hour | High-risk operations |
@@ -78,7 +78,7 @@ A custom `AppError` class standardizes error codes, messages, and HTTP status co
 **Error codes:**
 
 | Code | Status | Meaning |
-|------|--------|---------|
+| ------ | -------- | --------- |
 | `VALIDATION_ERROR` | 400 | Input validation failure |
 | `UNAUTHORIZED` | 401 | Missing or invalid auth |
 | `FORBIDDEN` | 403 | Insufficient permissions |
@@ -102,7 +102,7 @@ Missing or non-whitelisted origins are rejected in production with 403; developm
 ### OWASP Top 10 Mitigation
 
 | Vulnerability | Mitigation |
-|---------------|------------|
+| --------------- | ------------ |
 | **Injection** | Appwrite parameterized queries, schema validation, type checking |
 | **Broken Authentication** | Rate limiting (10/15min), strong password policies, JWT with refresh tokens |
 | **Sensitive Data Exposure** | HTTPS enforcement, HSTS, data minimization, generic error messages |
@@ -123,7 +123,7 @@ Missing or non-whitelisted origins are rejected in production with 403; developm
 Dual-token system using JWT:
 
 | Token | Expiration | Config Variable | Purpose |
-|-------|-----------|-----------------|---------|
+| ------- | ----------- | ----------------- | --------- |
 | Access Token | 1 hour | `JWT_EXPIRES_IN` | Authenticate API requests |
 | Refresh Token | 7 days | `JWT_REFRESH_EXPIRES_IN` | Obtain new access tokens |
 
@@ -172,7 +172,7 @@ Appwrite Auth handles user registration, login, email verification, password res
 ### Secure Token Storage Recommendations
 
 | Token | Storage | Notes |
-|-------|---------|-------|
+| ------- | --------- | ------- |
 | Access Token | JavaScript memory (variable) | Never persist to avoid XSS |
 | Refresh Token | HTTP-only, secure cookie | Not accessible via JS |
 
@@ -205,7 +205,7 @@ JWT in the `Authorization` header is not vulnerable to traditional CSRF, but pro
 **Cookie configuration:**
 
 | Setting | Value |
-|---------|-------|
+| --------- | ------- |
 | Name | `__Host-csrf-token` |
 | HttpOnly | `true` |
 | Secure | `true` (production) |
@@ -297,7 +297,7 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
 ### Error Responses
 
 | Code | Status | Meaning |
-|------|--------|---------|
+| ------ | -------- | --------- |
 | `CSRF_VALIDATION_FAILED` | 403 | Invalid or missing CSRF token |
 | `CSRF_TOKEN_MISSING` | 403 | CSRF token required |
 
@@ -313,7 +313,7 @@ export const csrfProtection = (req: Request, res: Response, next: NextFunction) 
 ### Troubleshooting
 
 | Issue | Cause | Solution |
-|-------|-------|----------|
+| ------- | ------- | ---------- |
 | Token always invalid | Session identifier changed | Check proxy (X-Forwarded-For), verify consistent User-Agent |
 | Token not in cookie | Cookie not sent | Ensure `credentials: 'include'`, verify CORS allows credentials |
 | CORS errors with CSRF | CSRF header not allowed | Add `X-CSRF-Token` to `allowedHeaders` in CORS config |
@@ -396,7 +396,7 @@ DIDIT_WORKFLOW_ID=your-didit-workflow-id
 ### Verification Features (Handled by Didit)
 
 | Feature | Description |
-|---------|-------------|
+| --------- | ------------- |
 | ID Verification | Passport, national ID, driver's license (220+ countries) |
 | Passive Liveness | Anti-spoofing with no user interaction |
 | Face Match 1:1 | Selfie-to-document comparison with similarity scoring |
@@ -411,7 +411,7 @@ DIDIT_WORKFLOW_ID=your-didit-workflow-id
 ### GDPR Compliance
 
 | Right | Implementation |
-|-------|----------------|
+| ------- | ---------------- |
 | Right to Access | `GET /api/kyc/status` returns verification status |
 | Right to Erasure | Admin deletes records; Didit handles PII deletion |
 | Right to Portability | `GET /api/kyc/history` exports verification history |
@@ -440,7 +440,7 @@ Additional protections: rate limiting, idempotency handling for duplicate webhoo
 **User endpoints:**
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+| -------- | ---------- | ------------- |
 | POST | `/api/kyc/initiate` | Start verification, get session URL |
 | GET | `/api/kyc/status` | Current verification status |
 | GET | `/api/kyc/verified` | Check if user is verified |
@@ -450,7 +450,7 @@ Additional protections: rate limiting, idempotency handling for duplicate webhoo
 **Admin endpoints:**
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+| -------- | ---------- | ------------- |
 | GET | `/api/kyc/admin/pending` | Pending reviews |
 | GET | `/api/kyc/admin/status/:status` | Verifications by status |
 | POST | `/api/kyc/admin/review/:id` | Approve/reject verification |
@@ -492,7 +492,7 @@ CREATE POLICY "Service role full access" ON kyc_verifications
 ### Status Values
 
 | Status | Description |
-|--------|-------------|
+| -------- | ------------- |
 | `pending` | Session created, user hasn't started |
 | `in_progress` | User completing verification |
 | `completed` | Awaiting admin review |
@@ -507,7 +507,7 @@ CREATE POLICY "Service role full access" ON kyc_verifications
 ### Three-Tier Role Model
 
 | Role | Capabilities |
-|------|-------------|
+| ------ | ------------- |
 | **Freelancer** | Profile management, proposal submission, contract viewing, milestone tracking |
 | **Employer** | Project creation, hiring, milestone approval, payment management |
 | **Admin** | Full system access, dispute resolution, skill management, KYC review |
@@ -532,7 +532,7 @@ Returns `401 Unauthorized` for missing/invalid auth, `403 Forbidden` for insuffi
 ### Permitted Operations
 
 | Operation | Freelancer | Employer | Admin |
-|-----------|:----------:|:--------:|:-----:|
+| ----------- | :----------: | :--------: | :-----: |
 | Manage profile | Yes | Yes | Yes |
 | Submit proposals | Yes | No | Yes |
 | Create projects | No | Yes | Yes |
@@ -562,7 +562,7 @@ Function Entry -> Check _status != ENTERED -> Set _status = ENTERED -> Execute L
 ### Access Control Modifiers
 
 | Modifier | Restricts To |
-|----------|-------------|
+| ---------- | ------------- |
 | `onlyEmployer` | Employer address |
 | `onlyFreelancer` | Freelancer address |
 | `onlyArbiter` | Dispute arbiter |

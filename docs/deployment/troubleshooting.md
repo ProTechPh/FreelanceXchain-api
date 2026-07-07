@@ -22,15 +22,17 @@ Centralized index for troubleshooting resources and feature documentation for th
 ### General Setup & Configuration
 
 **Developer Environment** - [Setup Guide - Troubleshooting](setup.md#troubleshooting)
+
 - Environment variable configuration, database connection problems, dependency failures, port conflicts
 
 **Deployment** - [Configuration Guide](configuration.md)
+
 - Docker container failures, environment-specific config, log aggregation setup
 
 ### Blockchain Integration
 
 | Component | Guide | Common Issues |
-|---|---|---|
+| --- | --- | --- |
 | Blockchain Client | [client.md](../blockchain/client.md) | Misconfigured env vars, invalid private keys, network connectivity, transaction failures |
 | Contract Agreement | [contracts.md](../blockchain/contracts.md) | Creation failures, status transition errors, sync issues |
 | Escrow System | [escrow.md](../blockchain/escrow.md) | Fund deposit failures, release/refund errors, balance sync |
@@ -47,7 +49,7 @@ Centralized index for troubleshooting resources and feature documentation for th
 ### Business Logic Services
 
 | Service | Guide | Common Issues |
-|---|---|---|
+| --- | --- | --- |
 | Matching | [service-matching.md](../architecture/service-matching.md) | AI matching failures, score calculation errors, performance |
 | Notification | [service-notification.md](../architecture/service-notification.md) | Delivery failures, template rendering, batch problems |
 | Payment | [service-payment.md](../architecture/service-payment.md) | Processing failures, escrow sync errors, status mismatches |
@@ -58,7 +60,7 @@ Centralized index for troubleshooting resources and feature documentation for th
 ### Data Models
 
 | Model | Guide | Common Issues |
-|---|---|---|
+| --- | --- | --- |
 | Contract | [model-contract.md](../architecture/model-contract.md) | Validation errors, FK violations, status transitions |
 | Dispute | [model-dispute.md](../architecture/model-dispute.md) | Creation failures, evidence submission, resolution workflow |
 | KYC | [model-kyc.md](../architecture/model-kyc.md) | Sync errors, status updates, document URL validation |
@@ -76,18 +78,21 @@ Centralized index for troubleshooting resources and feature documentation for th
 ### Common Issues
 
 **Missing/incorrect environment variables:**
+
 1. Verify `.env` file exists and contains all required variables
 2. Check `src/config/env.ts` for required variable names
 3. Ensure Appwrite credentials are correct
 4. Validate blockchain RPC URLs and private keys
 
 **Database connection errors:**
+
 1. Verify `DATABASE_URL` or Appwrite credentials
 2. Check network connectivity
 3. Ensure database migrations are applied
 4. Verify RLS policies are not blocking access
 
 **Blockchain transaction failures:**
+
 1. Check wallet has sufficient funds for gas
 2. Verify RPC endpoint is responsive
 3. Ensure contract addresses are correct
@@ -95,6 +100,7 @@ Centralized index for troubleshooting resources and feature documentation for th
 5. Review blockchain network status
 
 **JWT token issues:**
+
 1. Verify `JWT_SECRET` is configured correctly
 2. Check token expiration settings
 3. Ensure Appwrite Auth is properly initialized
@@ -178,7 +184,7 @@ If escrow initialization fails, the contract remains `'pending'`, the error is l
 - [src/services/proposal-service.ts](../../src/services/proposal-service.ts)
 - [src/services/payment-service.ts](../../src/services/payment-service.ts)
 - [src/services/contract-service.ts](../../src/services/contract-service.ts)
-- [src/__tests__/unit/proposal-service.test.ts](../../src/__tests__/unit/proposal-service.test.ts)
+- [src/**tests**/unit/proposal-service.test.ts](../../src/__tests__/unit/proposal-service.test.ts)
 
 ---
 
@@ -189,7 +195,7 @@ Users can add skills not in the global taxonomy. Popular skills can be promoted 
 ### Endpoints
 
 | Method | Endpoint | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/api/skills/custom` | Create custom skill |
 | `GET` | `/api/skills/custom` | Get your custom skills |
 | `GET` | `/api/skills/custom/search?keyword=` | Search your custom skills |
@@ -246,7 +252,7 @@ Freelancers can upload deliverable files when completing milestones for employer
 ### Endpoints
 
 | Method | Endpoint | Description |
-|---|---|---|
+| --- | --- | --- |
 | `POST` | `/api/milestones/:id/upload-deliverables` | Upload files without submitting |
 | `POST` | `/api/milestones/:id/submit-with-files` | Upload files and submit in one request |
 | `POST` | `/api/milestones/:id/submit` | Submit with pre-uploaded file references |
@@ -408,7 +414,7 @@ Authorization: Bearer <token>
 **Form Fields:**
 
 | Field | Type | Required | Notes |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | `title` | string | yes | min 5 characters |
 | `description` | string | yes | min 20 characters |
 | `requiredSkills` | JSON string | yes | Array of `{skillId}` objects |
@@ -549,7 +555,7 @@ CREATE TABLE audit_log_entries (
 ### Auditable Actions
 
 | Category | Actions |
-|---|---|
+| --- | --- |
 | Authentication | `user_login`, `user_logout`, `user_signup`, `user_password_change` |
 | User Management | `user_created`, `user_updated`, `user_deleted` |
 | Contracts | `contract_created`, `contract_signed`, `contract_updated`, `contract_cancelled` |
@@ -560,7 +566,7 @@ CREATE TABLE audit_log_entries (
 ### API Endpoints
 
 | Endpoint | Access | Description |
-|---|---|---|
+| --- | --- | --- |
 | `GET /api/audit-logs/me` | All users | Current user's own audit logs |
 | `GET /api/audit-logs/user/:userId` | Admin | User's audit logs |
 | `GET /api/audit-logs/resource/:type/:id` | Admin | Resource audit logs |
@@ -658,7 +664,7 @@ Proposals support file attachments (1-5 files) instead of text-based cover lette
 ### File Requirements
 
 | Constraint | Value |
-|---|---|
+| --- | --- |
 | File count | 1-5 files required |
 | Per-file size | 10MB max |
 | Total size | 25MB max |
