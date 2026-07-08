@@ -251,3 +251,127 @@ describe('Favorite Routes', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+function makeApp(basePath: string, r: any) {
+  const a = express();
+  a.use(express.json());
+  a.use(basePath, r);
+  return a;
+}
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockFavoriteService = {
+  addFavorite: mockAddFavorite,
+  removeFavorite: mockRemoveFavorite,
+  getUserFavorites: mockGetUserFavorites,
+  isFavorited: mockIsFavorited,
+};
+
+describe('favorite-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/favorites', favoriteRouter);
+  });
+
+  it('POST / missing targetType or targetId', async () => {
+    const res = await request(app).post('/api/favorites').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST / success', async () => {
+    mockFavoriteService.addFavorite.mockResolvedValue(ok({ id: 'f1' }));
+    const res = await request(app).post('/api/favorites').send({ targetType: 'project', targetId: 'p1' });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST / error', async () => {
+    mockFavoriteService.addFavorite.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/favorites').send({ targetType: 'project', targetId: 'p1' });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET / without targetType (undefined branch)', async () => {
+    mockFavoriteService.getUserFavorites.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/favorites');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET / with targetType', async () => {
+    mockFavoriteService.getUserFavorites.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/favorites?targetType=project');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET / error', async () => {
+    mockFavoriteService.getUserFavorites.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/favorites');
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /:targetType/:targetId success', async () => {
+    mockFavoriteService.removeFavorite.mockResolvedValue(ok({}));
+    const res = await request(app).delete('/api/favorites/project/p1');
+    expect(res.status).toBe(200);
+  });
+
+  it('DELETE /:targetType/:targetId error', async () => {
+    mockFavoriteService.removeFavorite.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).delete('/api/favorites/project/p1');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /check/:targetType/:targetId success', async () => {
+    mockFavoriteService.isFavorited.mockResolvedValue(ok(true));
+    const res = await request(app).get('/api/favorites/check/project/p1');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /check/:targetType/:targetId error', async () => {
+    mockFavoriteService.isFavorited.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/favorites/check/project/p1');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('favorite-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockRemoveFavorite = jest.fn<any>();
+  const mockIsFavorited = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/favorite-service.ts'), () => ({
+      addFavorite: jest.fn(),
+      removeFavorite: mockRemoveFavorite,
+      isFavorited: mockIsFavorited,
+      getUserFavorites: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/favorite-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/favorites', router);
+    jest.clearAllMocks();
+  });
+
+  it('L122: DELETE favorite', async () => {
+    mockRemoveFavorite.mockResolvedValueOnce({ success: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/favorites/project/t1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L159: GET check favorite', async () => {
+    mockIsFavorited.mockResolvedValueOnce({ success: true, data: { isFavorited: true } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/favorites/check/project/t1');
+    expect(res.status).toBe(200);
+  });
+});

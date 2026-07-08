@@ -47,6 +47,13 @@ jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
 
 const router = (await import('../../routes/rush-upgrade-routes.js')).default;
 
+const rushUpgradeRouter = router;
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockRushUpgradeService = { requestRushUpgrade: mockRequestRushUpgrade, respondToRushUpgrade: mockRespondToRushUpgrade, acceptCounterOffer: mockAcceptCounterOffer, declineCounterOffer: mockDeclineCounterOffer, getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract };
+const mockContractRepository = { getContractById: mockGetContractById };
+
 describe('Rush Upgrade Routes', () => {
   let app: express.Express;
 
@@ -216,5 +223,198 @@ describe('Rush Upgrade Routes', () => {
       const res = await request(app).get('/api/contracts/c-1/rush-upgrade-requests');
       expect(res.status).toBe(400);
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('rush-upgrade-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContractRepository.getContractById.mockResolvedValue({ id: 'c1', employer_id: 'user-2', freelancer_id: 'user-1', status: 'active' });
+    app = makeApp('/api', rushUpgradeRouter);
+  });
+
+  it('POST /contracts/:id/rush-upgrade missing percentage', async () => {
+    const res = await request(app).post('/api/contracts/c1/rush-upgrade').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /contracts/:id/rush-upgrade invalid percentage (negative)', async () => {
+    const res = await request(app).post('/api/contracts/c1/rush-upgrade').send({ proposedPercentage: -1 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /contracts/:id/rush-upgrade service NOT_FOUND', async () => {
+    mockRushUpgradeService.requestRushUpgrade.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/contracts/c1/rush-upgrade').send({ proposedPercentage: 25 });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /contracts/:id/rush-upgrade service UNAUTHORIZED', async () => {
+    mockRushUpgradeService.requestRushUpgrade.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/contracts/c1/rush-upgrade').send({ proposedPercentage: 25 });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /contracts/:id/rush-upgrade service PENDING_REQUEST_EXISTS', async () => {
+    mockRushUpgradeService.requestRushUpgrade.mockResolvedValue(fail('PENDING_REQUEST_EXISTS', 'No'));
+    const res = await request(app).post('/api/contracts/c1/rush-upgrade').send({ proposedPercentage: 25 });
+    expect(res.status).toBe(409);
+  });
+
+  it('POST /contracts/:id/rush-upgrade service ALREADY_RUSH', async () => {
+    mockRushUpgradeService.requestRushUpgrade.mockResolvedValue(fail('ALREADY_RUSH', 'No'));
+    const res = await request(app).post('/api/contracts/c1/rush-upgrade').send({ proposedPercentage: 25 });
+    expect(res.status).toBe(409);
+  });
+
+  // POST respond — action validation and counter_percentage
+  it('POST respond missing action', async () => {
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST respond invalid action', async () => {
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'invalid' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST respond counter_offer missing percentage', async () => {
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'counter_offer' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST respond counter_offer invalid percentage', async () => {
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'counter_offer', counterPercentage: -1 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST respond NOT_FOUND', async () => {
+    mockRushUpgradeService.respondToRushUpgrade.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'accept' });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST respond UNAUTHORIZED', async () => {
+    mockRushUpgradeService.respondToRushUpgrade.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'accept' });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST respond with contract in result', async () => {
+    mockRushUpgradeService.respondToRushUpgrade.mockResolvedValue(ok({ request: { id: 'r1' }, contract: { id: 'c1' } }));
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'accept' });
+    expect(res.status).toBe(200);
+    expect(res.body.contract).toBeDefined();
+  });
+
+  it('POST respond without contract in result (decline)', async () => {
+    mockRushUpgradeService.respondToRushUpgrade.mockResolvedValue(ok({ request: { id: 'r1' } }));
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'decline' });
+    expect(res.status).toBe(200);
+  });
+
+  // POST accept-counter and decline-counter
+  it('POST accept-counter NOT_FOUND', async () => {
+    mockRushUpgradeService.acceptCounterOffer.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/accept-counter');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST accept-counter UNAUTHORIZED', async () => {
+    mockRushUpgradeService.acceptCounterOffer.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/accept-counter');
+    expect(res.status).toBe(403);
+  });
+
+  it('POST decline-counter NOT_FOUND', async () => {
+    mockRushUpgradeService.declineCounterOffer.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/decline-counter');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST decline-counter UNAUTHORIZED', async () => {
+    mockRushUpgradeService.declineCounterOffer.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/decline-counter');
+    expect(res.status).toBe(403);
+  });
+
+  // GET rush-upgrade-requests
+  it('GET rush-upgrade-requests error', async () => {
+    mockRushUpgradeService.getRushUpgradeRequestsByContract.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/contracts/c1/rush-upgrade-requests');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('rush-upgrade-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockRequestRushUpgrade = jest.fn<any>();
+  const mockRespondToRushUpgrade = jest.fn<any>();
+  const mockAcceptCounterOffer = jest.fn<any>();
+  const mockDeclineCounterOffer = jest.fn<any>();
+  const mockGetRushUpgradeRequestsByContract = jest.fn<any>();
+  const mockRepoGetContractById = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { getContractById: mockRepoGetContractById },
+    }));
+    mockRepoGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'freelancer-1' });
+    jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), () => ({
+      requestRushUpgrade: mockRequestRushUpgrade,
+      respondToRushUpgrade: mockRespondToRushUpgrade,
+      acceptCounterOffer: mockAcceptCounterOffer,
+      declineCounterOffer: mockDeclineCounterOffer,
+      getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/rush-upgrade-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api', router);
+    jest.clearAllMocks();
+  });
+
+  it('L65: POST rush-upgrade', async () => {
+    mockRequestRushUpgrade.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/rush-upgrade').send({ proposedPercentage: 25 });
+    expect(res.status).toBe(201);
+  });
+
+  it('L160: POST respond', async () => {
+    mockRespondToRushUpgrade.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'accept' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L258: POST accept-counter', async () => {
+    mockAcceptCounterOffer.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/accept-counter');
+    expect(res.status).toBe(200);
+  });
+
+  it('L326: POST decline-counter', async () => {
+    mockDeclineCounterOffer.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/decline-counter');
+    expect(res.status).toBe(200);
+  });
+
+  it('L390: GET rush-upgrade-requests', async () => {
+    mockGetRushUpgradeRequestsByContract.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/rush-upgrade-requests');
+    expect(res.status).toBe(200);
   });
 });

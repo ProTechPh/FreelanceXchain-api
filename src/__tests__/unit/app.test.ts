@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import path from 'node:path';
 import request from 'supertest';

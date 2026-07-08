@@ -1,20 +1,27 @@
+// @ts-nocheck
 /**
  * Property-Based Tests for Request Validation Middleware
- * 
+ *
  * **Property 41: Invalid data validation errors**
  * **Property 42: Missing field validation errors**
  * **Validates: Requirements 12.2, 12.3**
  */
-import { describe, it, expect } from '@jest/globals';
+import { jest, describe, it, expect } from '@jest/globals';
+import path from 'node:path';
 import fc from 'fast-check';
+
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 import {
   validateRequest,
+  validate,
   registerSchema,
   loginSchema,
   createProjectSchema,
   submitProposalSchema,
   submitRatingSchema,
   createFreelancerProfileSchema,
+  validateUUID,
+  isValidUUID,
   RequestSchema,
 } from '../validation-middleware.js';
 // Helper to extract body schema with proper typing
@@ -413,3 +420,739 @@ describe('Validation Middleware - Property Tests', () => {
   });
 });
 
+// ===========================================================================
+// Merged from validation-middleware-coverage.test.ts – branch coverage
+// ===========================================================================
+describe('Validation Middleware – Branch Coverage', () => {
+  describe('pattern validation (ReDoS protection)', () => {
+    it('should report pattern does not match for non-matching input', () => {
+      const result = validateRequest(
+        { input: 'abc123' },
+        {
+          type: 'object',
+          properties: {
+            input: { type: 'string', pattern: '^[0-9]+$' },
+          },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('does not match required pattern');
+    });
+
+    it('should catch invalid regex patterns', () => {
+      const result = validateRequest(
+        { code: 'test' },
+        {
+          type: 'object',
+          properties: {
+            code: { type: 'string', pattern: '[invalid(' },
+          },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('pattern validation failed');
+    });
+  });
+
+  describe('validate middleware – query type conversion', () => {
+    it('should convert query params with array type', () => {
+      const middleware = validate({
+        query: {
+          type: 'object',
+          properties: {
+            tags: { type: 'array' },
+            count: { type: 'integer' },
+            active: { type: 'boolean' },
+            name: { type: 'string' },
+          },
+        },
+      });
+
+      const req = {
+        body: {},
+        query: { tags: 'js,ts,python', count: '5', active: 'true', name: 'test' },
+        params: {},
+        headers: { 'x-request-id': 'test-id' },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      middleware(req as any, res as any, next);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should handle number query conversion', () => {
+      const middleware = validate({
+        query: {
+          type: 'object',
+          properties: {
+            limit: { type: 'number' },
+          },
+        },
+      });
+
+      const req = {
+        body: {},
+        query: { limit: '25' },
+        params: {},
+        headers: { 'x-request-id': 'test-id' },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      middleware(req as any, res as any, next);
+      expect(next).toHaveBeenCalled();
+    });
+  });
+
+  describe('format validation – date and date-time', () => {
+    it('should validate date format correctly', () => {
+      const result = validateRequest(
+        { startDate: 'not-a-date' },
+        {
+          type: 'object',
+          properties: { startDate: { type: 'string', format: 'date' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('date');
+    });
+
+    it('should validate date-time format correctly', () => {
+      const result = validateRequest(
+        { timestamp: 'not-a-datetime' },
+        {
+          type: 'object',
+          properties: { timestamp: { type: 'string', format: 'date-time' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('date-time');
+    });
+
+    it('should pass valid date-time', () => {
+      const result = validateRequest(
+        { timestamp: '2025-01-15T10:30:00Z' },
+        {
+          type: 'object',
+          properties: { timestamp: { type: 'string', format: 'date-time' } },
+        }
+      );
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('type validation – boolean, array, object', () => {
+    it('should validate boolean type', () => {
+      const result = validateRequest(
+        { active: 'not-a-boolean' },
+        {
+          type: 'object',
+          properties: { active: { type: 'boolean' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be a boolean');
+    });
+
+    it('should validate array type', () => {
+      const result = validateRequest(
+        { tags: 'not-an-array' },
+        {
+          type: 'object',
+          properties: { tags: { type: 'array' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be an array');
+    });
+
+    it('should validate object type', () => {
+      const result = validateRequest(
+        { metadata: 'not-an-object' },
+        {
+          type: 'object',
+          properties: { metadata: { type: 'object' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be an object');
+    });
+
+    it('should reject array when object type expected', () => {
+      const result = validateRequest(
+        { metadata: [1, 2, 3] },
+        {
+          type: 'object',
+          properties: { metadata: { type: 'object' } },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be an object');
+    });
+  });
+
+  describe('schema without properties', () => {
+    it('should return valid when schema has no properties', () => {
+      const result = validateRequest(
+        { anything: 'goes' },
+        { type: 'object' }
+      );
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('nested object validation', () => {
+    it('should validate nested object number type', () => {
+      const result = validateRequest(
+        { config: { timeout: 'not-a-number' } },
+        {
+          type: 'object',
+          properties: {
+            config: {
+              type: 'object',
+              properties: {
+                timeout: { type: 'number' },
+              },
+            },
+          },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be a number');
+    });
+  });
+
+  describe('array items validation', () => {
+    it('should validate array items number type', () => {
+      const result = validateRequest(
+        { scores: [1, 'not-a-number', 3] },
+        {
+          type: 'object',
+          properties: {
+            scores: {
+              type: 'array',
+              items: { type: 'number' },
+            },
+          },
+        }
+      );
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be a number');
+    });
+  });
+
+  describe('boolean coercion', () => {
+    it('should coerce "false" string to false boolean in query', () => {
+      const middleware = validate({
+        query: {
+          type: 'object',
+          properties: {
+            active: { type: 'boolean' },
+          },
+        },
+      });
+
+      const req = {
+        body: {},
+        query: { active: 'false' },
+        params: {},
+        headers: { 'x-request-id': 'test-id' },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      middleware(req as any, res as any, next);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should coerce "true" string to true boolean in query', () => {
+      const middleware = validate({
+        query: {
+          type: 'object',
+          properties: {
+            active: { type: 'boolean' },
+          },
+        },
+      });
+
+      const req = {
+        body: {},
+        query: { active: 'true' },
+        params: {},
+        headers: { 'x-request-id': 'test-id' },
+      };
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+      const next = jest.fn();
+
+      middleware(req as any, res as any, next);
+      expect(next).toHaveBeenCalled();
+    });
+  });
+});
+
+describe('Validation Middleware - addExperienceSchema date validation', () => {
+  it('should accept valid date string in startDate field', async () => {
+    const { validate, addExperienceSchema } = await import('../validation-middleware.js');
+    const req = {
+      headers: { 'x-request-id': 'req-123' },
+      body: {
+        title: 'Software Engineer',
+        company: 'Tech Corp',
+        description: 'Worked on various software projects',
+        startDate: '2024-01-15',
+      },
+    };
+    const res = {};
+    const next = jest.fn();
+
+    const middleware = validate(addExperienceSchema);
+    middleware(req as any, res as any, next);
+
+    expect(next).toHaveBeenCalled();
+  });
+});
+
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('validation-middleware.ts - Branch Coverage', () => {
+  it('L206: requiredProperties triggers on null value', async () => {
+    const { validateRequest } = await import('../../middleware/validation-middleware.js');
+    const schema = {
+      type: 'object' as const,
+      properties: {
+        data: {
+          type: 'object' as const,
+          requiredProperties: ['name'],
+          properties: { name: { type: 'string' as const } },
+        },
+      },
+    };
+    const result = validateRequest({ data: { name: null } }, schema);
+    expect(result.valid).toBe(false);
+    expect(result.errors?.some((e: any) => e.field === 'data.name')).toBe(true);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('validation-middleware.ts - Branch Coverage', () => {
+  it('L206: requiredProperties triggers on null value', async () => {
+    const { validateRequest } = await import('../../middleware/validation-middleware.js');
+    const schema = {
+      type: 'object' as const,
+      properties: {
+        data: {
+          type: 'object' as const,
+          requiredProperties: ['name'],
+          properties: { name: { type: 'string' as const } },
+        },
+      },
+    };
+    const result = validateRequest({ data: { name: null } }, schema);
+    expect(result.valid).toBe(false);
+    expect(result.errors?.some((e: any) => e.field === 'data.name')).toBe(true);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('validation-middleware.ts - Branch Coverage', () => {
+  it('L206: requiredProperties triggers on null value', async () => {
+    const { validateRequest } = await import('../../middleware/validation-middleware.js');
+    const schema = {
+      type: 'object' as const,
+      properties: {
+        data: {
+          type: 'object' as const,
+          requiredProperties: ['name'],
+          properties: { name: { type: 'string' as const } },
+        },
+      },
+    };
+    const result = validateRequest({ data: { name: null } }, schema);
+    expect(result.valid).toBe(false);
+    expect(result.errors?.some((e: any) => e.field === 'data.name')).toBe(true);
+  });
+});
+
+describe('merged branch coverage', () => {
+  it('validation-middleware L206: requiredProperties check', async () => {
+    const { validateRequest } = await import(resolveModule('src/middleware/validation-middleware.ts'));
+    const result = validateRequest(
+      { nested: { other_field: 'value' } } as any,
+      {
+        type: 'object',
+        properties: {
+          nested: {
+            type: 'object',
+            properties: {},
+            requiredProperties: ['required_field'],
+          },
+        },
+      }
+    );
+    expect(result.valid).toBe(false);
+  });
+});
+
+describe('Validation Middleware - Extended Coverage', () => {
+  describe('validateRequest', () => {
+    it('should validate required fields', () => {
+      const result = validateRequest({}, {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].field).toBe('name');
+    });
+
+    it('should pass when all required fields present', () => {
+      const result = validateRequest({ name: 'John' }, {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+        required: ['name'],
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('should validate string minLength', () => {
+      const result = validateRequest({ name: 'Hi' }, {
+        type: 'object',
+        properties: { name: { type: 'string', minLength: 3 } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('at least 3');
+    });
+
+    it('should validate string maxLength', () => {
+      const result = validateRequest({ name: 'A very long name that exceeds the limit' }, {
+        type: 'object',
+        properties: { name: { type: 'string', maxLength: 10 } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('at most 10');
+    });
+
+    it('should validate string pattern', () => {
+      const result = validateRequest({ code: 'abc' }, {
+        type: 'object',
+        properties: { code: { type: 'string', pattern: '^[0-9]+$' } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('pattern');
+    });
+
+    it('should pass valid pattern', () => {
+      const result = validateRequest({ code: '12345' }, {
+        type: 'object',
+        properties: { code: { type: 'string', pattern: '^[0-9]+$' } },
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('should validate string enum', () => {
+      const result = validateRequest({ role: 'admin' }, {
+        type: 'object',
+        properties: { role: { type: 'string', enum: ['freelancer', 'employer'] } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('must be one of');
+    });
+
+    it('should validate email format', () => {
+      const result = validateRequest({ email: 'not-an-email' }, {
+        type: 'object',
+        properties: { email: { type: 'string', format: 'email' } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('email');
+    });
+
+    it('should validate date format', () => {
+      const result = validateRequest({ date: 'not-a-date' }, {
+        type: 'object',
+        properties: { date: { type: 'string', format: 'date' } },
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    it('should validate date-time format', () => {
+      const result = validateRequest({ dt: 'not-datetime' }, {
+        type: 'object',
+        properties: { dt: { type: 'string', format: 'date-time' } },
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    it('should validate uri format', () => {
+      const result = validateRequest({ url: 'not-a-url' }, {
+        type: 'object',
+        properties: { url: { type: 'string', format: 'uri' } },
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    it('should validate uuid format', () => {
+      const result = validateRequest({ id: 'not-a-uuid' }, {
+        type: 'object',
+        properties: { id: { type: 'string', format: 'uuid' } },
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    it('should pass valid uuid format', () => {
+      const result = validateRequest({ id: '550e8400-e29b-41d4-a716-446655440000' }, {
+        type: 'object',
+        properties: { id: { type: 'string', format: 'uuid' } },
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('should validate number minimum', () => {
+      const result = validateRequest({ age: -1 }, {
+        type: 'object',
+        properties: { age: { type: 'number', minimum: 0 } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('at least 0');
+    });
+
+    it('should validate number maximum', () => {
+      const result = validateRequest({ age: 200 }, {
+        type: 'object',
+        properties: { age: { type: 'number', maximum: 150 } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('at most 150');
+    });
+
+    it('should validate integer type', () => {
+      const result = validateRequest({ count: 3.5 }, {
+        type: 'object',
+        properties: { count: { type: 'integer' } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('integer');
+    });
+
+    it('should validate number enum', () => {
+      const result = validateRequest({ rating: 6 }, {
+        type: 'object',
+        properties: { rating: { type: 'number', enum: [1, 2, 3, 4, 5] } },
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    it('should validate array minItems', () => {
+      const result = validateRequest({ tags: [] }, {
+        type: 'object',
+        properties: { tags: { type: 'array', minItems: 1 } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('at least 1');
+    });
+
+    it('should validate array maxItems', () => {
+      const result = validateRequest({ tags: ['a', 'b', 'c', 'd'] }, {
+        type: 'object',
+        properties: { tags: { type: 'array', maxItems: 3 } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('at most 3');
+    });
+
+    it('should validate array items', () => {
+      const result = validateRequest({ tags: ['valid', 123] }, {
+        type: 'object',
+        properties: { tags: { type: 'array', items: { type: 'string' } } },
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    it('should validate nested object properties', () => {
+      const result = validateRequest({ address: { city: 123 } }, {
+        type: 'object',
+        properties: {
+          address: {
+            type: 'object',
+            properties: { city: { type: 'string' } },
+          },
+        },
+      });
+      expect(result.valid).toBe(false);
+    });
+
+    it('should validate object required properties', () => {
+      const result = validateRequest({ address: {} }, {
+        type: 'object',
+        properties: {
+          address: {
+            type: 'object',
+            properties: { city: { type: 'string' } },
+            requiredProperties: ['city'],
+          },
+        },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('city');
+    });
+
+    it('should validate type mismatch', () => {
+      const result = validateRequest({ name: 123 }, {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+      });
+      expect(result.valid).toBe(false);
+      expect(result.errors[0].message).toContain('type string');
+    });
+
+    it('should skip undefined optional fields', () => {
+      const result = validateRequest({}, {
+        type: 'object',
+        properties: { name: { type: 'string' } },
+      });
+      expect(result.valid).toBe(true);
+    });
+
+    it('should handle null required field', () => {
+      const result = validateRequest({ name: null }, {
+        type: 'object',
+        properties: { name: { type: 'string', required: true } },
+        required: ['name'],
+      });
+      expect(result.valid).toBe(false);
+    });
+  });
+
+  describe('validate middleware', () => {
+    it('should call next when validation passes', () => {
+      const middleware = validate({
+        body: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+      });
+
+      const req = { body: { name: 'John' }, params: {}, query: {}, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should return 400 when body validation fails', () => {
+      const middleware = validate({
+        body: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+      });
+
+      const req = { body: {}, params: {}, query: {}, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('should validate params', () => {
+      const middleware = validate({
+        params: {
+          type: 'object',
+          properties: { id: { type: 'string', format: 'uuid' } },
+          required: ['id'],
+        },
+      });
+
+      const req = { body: {}, params: { id: 'not-uuid' }, query: {}, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it('should validate query with type conversion', () => {
+      const middleware = validate({
+        query: {
+          type: 'object',
+          properties: {
+            page: { type: 'number', minimum: 1 },
+            active: { type: 'boolean' },
+            tags: { type: 'array' },
+          },
+        },
+      });
+
+      const req = { body: {}, params: {}, query: { page: '2', active: 'true', tags: 'a,b,c' }, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+      expect(next).toHaveBeenCalled();
+    });
+  });
+
+  describe('validateUUID', () => {
+    it('should pass for valid UUID in params', () => {
+      const middleware = validateUUID();
+      const req = { params: { id: '550e8400-e29b-41d4-a716-446655440000' }, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should fail for invalid UUID', () => {
+      const middleware = validateUUID();
+      const req = { params: { id: 'not-a-uuid' }, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+
+    it('should validate specific param names', () => {
+      const middleware = validateUUID(['userId', 'projectId']);
+      const req = { params: { userId: '550e8400-e29b-41d4-a716-446655440000', projectId: 'invalid' }, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+      expect(res.status).toHaveBeenCalledWith(400);
+    });
+  });
+
+  describe('isValidUUID', () => {
+    it('should return true for valid UUID', () => {
+      expect(isValidUUID('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+    });
+
+    it('should return false for invalid UUID', () => {
+      expect(isValidUUID('not-a-uuid')).toBe(false);
+    });
+
+    it('should return false for empty string', () => {
+      expect(isValidUUID('')).toBe(false);
+    });
+  });
+});

@@ -240,3 +240,198 @@ describe('Admin Routes', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+function makeApp(basePath: string, r: any) {
+  const a = express();
+  a.use(express.json());
+  a.use(basePath, r);
+  return a;
+}
+const ok = (data: any) => ({ success: true, data });
+const mockAdminService = {
+  getPlatformStats: mockGetPlatformStats,
+  getUserManagement: mockGetUserManagement,
+  suspendUser: mockSuspendUser,
+  unsuspendUser: mockUnsuspendUser,
+  verifyUser: mockVerifyUser,
+  updateUser: mockUpdateUser,
+  getDisputeManagement: mockGetDisputeManagement,
+  getSystemHealth: mockGetSystemHealth,
+};
+const mockReviewRepository = { getAllReviews: mockGetAllReviews };
+
+describe('admin-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/admin', adminRouter);
+  });
+
+  // GET /users with status and role filters
+  it('GET /users with status and role filters', async () => {
+    mockAdminService.getUserManagement.mockResolvedValue(ok({ users: [{ id: 'u1', email: 'a@b.com', role: 'freelancer', wallet_address: '', created_at: '2025-01-01', is_suspended: false }], total: 1 }));
+    const res = await request(app).get('/api/admin/users?status=active&role=freelancer');
+    expect(res.status).toBe(200);
+    expect(mockAdminService.getUserManagement).toHaveBeenCalledWith({ status: 'active', role: 'freelancer' });
+  });
+
+  it('GET /users with wallet_address and name', async () => {
+    mockAdminService.getUserManagement.mockResolvedValue(ok({ users: [{ id: 'u1', email: 'a@b.com', role: 'freelancer', wallet_address: '0x123', name: 'John', created_at: '2025-01-01', is_suspended: true }], total: 1 }));
+    const res = await request(app).get('/api/admin/users');
+    expect(res.status).toBe(200);
+    expect(res.body.users[0].isActive).toBe(false);
+    expect(res.body.users[0].walletAddress).toBe('0x123');
+  });
+
+  // PATCH /users/:userId — error.code ?? 'UNKNOWN' fallback
+  it('PATCH /users/:userId error without code', async () => {
+    mockAdminService.updateUser.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).patch('/api/admin/users/u1').send({ name: 'Test' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /users/:userId invalid role', async () => {
+    const res = await request(app).patch('/api/admin/users/u1').send({ role: 'invalid' });
+    expect(res.status).toBe(400);
+  });
+
+  // GET /disputes with status filter
+  it('GET /disputes with status filter', async () => {
+    mockAdminService.getDisputeManagement.mockResolvedValue(ok({ disputes: [] }));
+    const res = await request(app).get('/api/admin/disputes?status=open');
+    expect(res.status).toBe(200);
+    expect(mockAdminService.getDisputeManagement).toHaveBeenCalledWith({ status: 'open' });
+  });
+
+  it('GET /disputes without filter', async () => {
+    mockAdminService.getDisputeManagement.mockResolvedValue(ok({ disputes: [] }));
+    const res = await request(app).get('/api/admin/disputes');
+    expect(res.status).toBe(200);
+    expect(mockAdminService.getDisputeManagement).toHaveBeenCalledWith({});
+  });
+
+  // Suspend/Unsuspend/Verify error fallbacks
+  it('POST /users/:userId/suspend error without code', async () => {
+    mockAdminService.suspendUser.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).post('/api/admin/users/u1/suspend').send({ reason: 'test' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /users/:userId/unsuspend error without code', async () => {
+    mockAdminService.unsuspendUser.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).post('/api/admin/users/u1/unsuspend');
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /users/:userId/verify error without code', async () => {
+    mockAdminService.verifyUser.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).post('/api/admin/users/u1/verify');
+    expect(res.status).toBe(400);
+  });
+
+  // GET /system/health error fallback
+  it('GET /system/health error without code', async () => {
+    mockAdminService.getSystemHealth.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).get('/api/admin/system/health');
+    expect(res.status).toBe(400);
+  });
+
+  // GET /platform-stats — satisfactionRate branches
+  it('GET /platform-stats with reviews', async () => {
+    mockAdminService.getPlatformStats.mockResolvedValue(ok({ totalTransactionVolume: 1000 }));
+    mockReviewRepository.getAllReviews.mockResolvedValue([{ rating: 5 }, { rating: 3 }, { rating: 4 }]);
+    const res = await request(app).get('/api/admin/platform-stats');
+    expect(res.status).toBe(200);
+    expect(res.body.satisfactionRate).toBe(67);
+  });
+
+  it('GET /platform-stats no reviews', async () => {
+    mockAdminService.getPlatformStats.mockResolvedValue(ok({ totalTransactionVolume: 0 }));
+    mockReviewRepository.getAllReviews.mockResolvedValue([]);
+    const res = await request(app).get('/api/admin/platform-stats');
+    expect(res.status).toBe(200);
+    expect(res.body.satisfactionRate).toBe(0);
+  });
+
+  it('GET /platform-stats review fetch throws', async () => {
+    mockAdminService.getPlatformStats.mockResolvedValue(ok({ totalTransactionVolume: 0 }));
+    mockReviewRepository.getAllReviews.mockRejectedValue(new Error('DB error'));
+    const res = await request(app).get('/api/admin/platform-stats');
+    expect(res.status).toBe(200);
+    expect(res.body.satisfactionRate).toBe(0);
+  });
+
+  it('GET /platform-stats error without code', async () => {
+    mockAdminService.getPlatformStats.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).get('/api/admin/platform-stats');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('admin-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockUpdateUser = jest.fn<any>();
+  const mockSuspendUser = jest.fn<any>();
+  const mockUnsuspendUser = jest.fn<any>();
+  const mockVerifyUser = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => ({
+      getPlatformStats: jest.fn(),
+      getUserManagement: jest.fn(),
+      suspendUser: mockSuspendUser,
+      unsuspendUser: mockUnsuspendUser,
+      verifyUser: mockVerifyUser,
+      updateUser: mockUpdateUser,
+      getDisputeManagement: jest.fn(),
+      getSystemHealth: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
+      getAdminAnalytics: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const adminRouter = (await import('../../routes/admin-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/admin', adminRouter);
+    jest.clearAllMocks();
+  });
+
+  it('L130: PATCH /users/:userId', async () => {
+    mockUpdateUser.mockResolvedValueOnce({
+      success: true,
+      data: { id: 'u1', email: 'a@b.com', role: 'freelancer', wallet_address: '', created_at: '2024-01-01', name: '', is_suspended: false },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/admin/users/user-1').send({ name: 'Test' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L179: POST /users/:userId/suspend', async () => {
+    mockSuspendUser.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/user-1/suspend').send({ reason: 'test' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L207: POST /users/:userId/unsuspend', async () => {
+    mockUnsuspendUser.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/user-1/unsuspend');
+    expect(res.status).toBe(200);
+  });
+
+  it('L234: POST /users/:userId/verify', async () => {
+    mockVerifyUser.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/user-1/verify');
+    expect(res.status).toBe(200);
+  });
+});

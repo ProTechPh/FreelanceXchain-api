@@ -532,3 +532,62 @@ describe('User Custom Skill Service', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('User Custom Skill Service - Direct Branch Coverage', () => {
+  const importModule = async () => import('../../services/user-custom-skill-service.js');
+
+  it('should return error when skill exists globally', async () => {
+    const { createUserCustomSkill } = await importModule();
+    const { searchSkills } = await import('../../services/skill-service.ts');
+    (searchSkills as jest.Mock).mockResolvedValueOnce([
+      { id: 's1', name: 'React', categoryName: 'Frontend' },
+    ]);
+
+    const result = await createUserCustomSkill('u1', 'John', {
+      name: 'React', description: 'Frontend framework', yearsOfExperience: 3,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('SKILL_EXISTS_GLOBALLY');
+  });
+
+  it('should return error when user already has this skill', async () => {
+    const { createUserCustomSkill } = await importModule();
+    const { searchSkills } = await import('../../services/skill-service.ts');
+    (searchSkills as jest.Mock).mockResolvedValueOnce([]);
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+    (userCustomSkillRepository as any).getUserCustomSkills = jest.fn().mockResolvedValueOnce([
+      { id: 'sk-1', name: 'React' },
+    ]);
+
+    const result = await createUserCustomSkill('u1', 'John', {
+      name: 'React', description: 'Frontend framework', yearsOfExperience: 3,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('DUPLICATE_USER_SKILL');
+  });
+
+  it('should return error when custom skill not found by id', async () => {
+    const { getUserCustomSkillById } = await importModule();
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+    (userCustomSkillRepository as any).getUserCustomSkillById = jest.fn().mockResolvedValueOnce(null);
+
+    const result = await getUserCustomSkillById('sk-1', 'u1');
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle searchUserCustomSkills', async () => {
+    const { searchUserCustomSkills } = await importModule();
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+    (userCustomSkillRepository as any).searchUserCustomSkills = jest.fn().mockResolvedValueOnce([
+      { id: 'sk-1', user_id: 'u1', name: 'React', description: 'Frontend', years_of_experience: 3, is_approved: false, suggested_for_global: false, created_at: '2025-01-01', updated_at: '2025-01-01' },
+    ]);
+
+    const result = await searchUserCustomSkills('u1', 'React');
+    expect(result.length).toBe(1);
+  });
+});

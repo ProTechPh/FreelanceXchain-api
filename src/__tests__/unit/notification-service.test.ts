@@ -22,8 +22,11 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
 const {
   createNotification,
   getAllNotificationsByUser,
+  getNotificationsByUser,
   markNotificationAsRead,
   markAllNotificationsAsRead,
+  getUnreadCount,
+  getNotificationById,
   notifyProposalReceived,
   notifyProposalAccepted,
   notifyProposalRejected,

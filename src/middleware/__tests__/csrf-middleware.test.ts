@@ -779,3 +779,448 @@ describe('csrf-middleware', () => {
     });
   });
 });
+// ============================================================
+// CSRF Middleware - Branch Coverage
+// ============================================================
+describe('CSRF Middleware - Branch Coverage', () => {
+  const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
+    jest.clearAllMocks();
+  });
+
+  it('should handle missing user-agent header in getSessionIdentifier', async () => {
+    const capturedOptions: any = {};
+    const mockGenerateCsrfToken = jest.fn(() => 'mock-token');
+    const mockDoubleCsrfProtection = jest.fn((_req: any, _res: any, next: any) => next());
+
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn((options: any) => {
+        capturedOptions.getSessionIdentifier = options.getSessionIdentifier;
+        return {
+          generateCsrfToken: mockGenerateCsrfToken,
+          doubleCsrfProtection: mockDoubleCsrfProtection,
+        };
+      }),
+    }));
+
+    const { csrfProtection } = await import('../../middleware/csrf-middleware.js');
+
+    const req = {
+      ip: undefined,
+      socket: { remoteAddress: undefined },
+      headers: {},
+    } as any;
+
+    const result = capturedOptions.getSessionIdentifier(req);
+    expect(result).toBe('unknown-unknown');
+  });
+
+  it('should handle HEAD and OPTIONS methods', async () => {
+    const mockGenerateCsrfToken = jest.fn(() => 'mock-token');
+    const mockDoubleCsrfProtection = jest.fn((_req: any, _res: any, next: any) => next());
+
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn(() => ({
+        generateCsrfToken: mockGenerateCsrfToken,
+        doubleCsrfProtection: mockDoubleCsrfProtection,
+      })),
+    }));
+
+    const { csrfProtection } = await import('../../middleware/csrf-middleware.js');
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+
+    // Test HEAD
+    const reqHead = { method: 'HEAD', path: '/api/test', headers: {} } as any;
+    const nextHead = jest.fn();
+    csrfProtection(reqHead, {} as any, nextHead);
+    expect(nextHead).toHaveBeenCalled();
+
+    // Test OPTIONS
+    const reqOptions = { method: 'OPTIONS', path: '/api/test', headers: {} } as any;
+    const nextOptions = jest.fn();
+    csrfProtection(reqOptions, {} as any, nextOptions);
+    expect(nextOptions).toHaveBeenCalled();
+
+    process.env.NODE_ENV = originalEnv;
+  });
+
+  it('should test all exempt paths', async () => {
+    const mockGenerateCsrfToken = jest.fn(() => 'mock-token');
+    const mockDoubleCsrfProtection = jest.fn((_req: any, _res: any, next: any) => next());
+
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn(() => ({
+        generateCsrfToken: mockGenerateCsrfToken,
+        doubleCsrfProtection: mockDoubleCsrfProtection,
+      })),
+    }));
+
+    const { csrfProtection } = await import('../../middleware/csrf-middleware.js');
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+
+    const exemptPaths = [
+      '/health',
+      '/api/health',
+      '/api/webhooks',
+      '/api/auth/login',
+      '/api/auth/login/mfa-verify',
+      '/api/auth/register',
+      '/api/auth/callback',
+      '/api/auth/oauth/callback',
+      '/api/auth/oauth/register',
+      '/api/auth/refresh',
+      '/api/auth/forgot-password',
+      '/api/auth/reset-password',
+      '/api/auth/resend-confirmation',
+      '/api/auth/csrf-token',
+      '/api/kyc/webhook',
+    ];
+
+    for (const exemptPath of exemptPaths) {
+      const req = { method: 'POST', path: exemptPath, headers: {} } as any;
+      const nextFn = jest.fn();
+      csrfProtection(req, {} as any, nextFn);
+      expect(nextFn).toHaveBeenCalled();
+    }
+
+    process.env.NODE_ENV = originalEnv;
+  });
+
+  it('should test webhook path prefix matching', async () => {
+    const mockGenerateCsrfToken = jest.fn(() => 'mock-token');
+    const mockDoubleCsrfProtection = jest.fn((_req: any, _res: any, next: any) => next());
+
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn(() => ({
+        generateCsrfToken: mockGenerateCsrfToken,
+        doubleCsrfProtection: mockDoubleCsrfProtection,
+      })),
+    }));
+
+    const { csrfProtection } = await import('../../middleware/csrf-middleware.js');
+
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+
+    // Test sub-paths of exempt paths
+    const subPaths = [
+      '/api/webhooks/stripe',
+      '/api/auth/login/mfa',
+    ];
+
+    for (const subPath of subPaths) {
+      const req = { method: 'POST', path: subPath, headers: {} } as any;
+      const nextFn = jest.fn();
+      csrfProtection(req, {} as any, nextFn);
+      expect(nextFn).toHaveBeenCalled();
+    }
+
+    process.env.NODE_ENV = originalEnv;
+  });
+});
+
+// ============================================================
+// Merged from coverage-csrf-config.test.ts
+// ============================================================
+describe('CSRF Middleware - config callback (merged)', () => {
+  it('should invoke getSecret callback via doubleCsrfProtection', async () => {
+    jest.resetModules();
+
+    process.env.NODE_ENV = 'development';
+
+    const capturedOptions: any = {};
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn((opts: any) => {
+        capturedOptions.getSecret = opts.getSecret;
+        return {
+          generateCsrfToken: jest.fn(() => 'mock-token'),
+          doubleCsrfProtection: jest.fn((_req: any, _res: any, next: any) => next()),
+        };
+      }),
+    }));
+
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: { jwt: { secret: 'test-jwt-secret' } },
+    }));
+
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
+      logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+    }));
+
+    const { csrfProtection: freshCsrfProtection } = await import('../csrf-middleware.js');
+
+    const mockReq = {
+      path: '/api/some-protected-path',
+      method: 'POST',
+      ip: '127.0.0.1',
+      socket: { remoteAddress: '127.0.0.1' },
+      headers: { 'user-agent': 'test', 'x-request-id': 'req-123' },
+      csrfToken: () => 'mock-token',
+    } as any;
+    const mockRes = {
+      status: jest.fn(() => mockRes),
+      json: jest.fn(),
+    } as any;
+    const mockNext = jest.fn();
+
+    freshCsrfProtection(mockReq, mockRes, mockNext);
+    expect(mockNext).toHaveBeenCalled();
+
+    delete process.env.NODE_ENV;
+    process.env.NODE_ENV = 'test';
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('CSRF Middleware — coverage gaps', () => {
+  const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should throw when CSRF_SECRET is not set in production', async () => {
+    jest.resetModules();
+    const originalEnv = process.env.NODE_ENV;
+    const originalCsrfSecret = process.env.CSRF_SECRET;
+    delete process.env.CSRF_SECRET;
+    process.env.NODE_ENV = 'production';
+
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: { jwt: { secret: 'test-secret' }, server: { nodeEnv: 'production' } },
+    }));
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn(() => ({
+        generateCsrfToken: jest.fn(),
+        doubleCsrfProtection: jest.fn(),
+      })),
+    }));
+
+    await expect(import('../../middleware/csrf-middleware.js')).rejects.toThrow(
+      'CSRF_SECRET not set'
+    );
+
+    process.env.NODE_ENV = originalEnv;
+    if (originalCsrfSecret !== undefined) process.env.CSRF_SECRET = originalCsrfSecret;
+  });
+
+  it('should cover getSecret fallback when csrfSecret is set', async () => {
+    jest.resetModules();
+    process.env.CSRF_SECRET = 'my-csrf-secret';
+    process.env.NODE_ENV = 'test';
+
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
+
+    let capturedGetSecret: any;
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn((options: any) => {
+        capturedGetSecret = options.getSecret;
+        return {
+          generateCsrfToken: jest.fn(() => 'token'),
+          doubleCsrfProtection: jest.fn((_req: any, _res: any, next: any) => next()),
+        };
+      }),
+    }));
+
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: { jwt: { secret: 'jwt-fallback' }, server: { nodeEnv: 'test' } },
+    }));
+
+    await import('../../middleware/csrf-middleware.js');
+    // getSecret should return csrfSecret (not the jwt fallback)
+    expect(capturedGetSecret()).toBe('my-csrf-secret');
+    delete process.env.CSRF_SECRET;
+  });
+});
+
+describe('csrf-middleware.ts - Branch Coverage', () => {
+  it('L19/21/24: module init exercises fallback paths', async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'test';
+    try {
+      const mod = await import('../../middleware/csrf-middleware.js');
+      expect(mod.generateCsrfToken).toBeDefined();
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('CSRF Middleware — coverage gaps', () => {
+  const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should throw when CSRF_SECRET is not set in production', async () => {
+    jest.resetModules();
+    const originalEnv = process.env.NODE_ENV;
+    const originalCsrfSecret = process.env.CSRF_SECRET;
+    delete process.env.CSRF_SECRET;
+    process.env.NODE_ENV = 'production';
+
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: { jwt: { secret: 'test-secret' }, server: { nodeEnv: 'production' } },
+    }));
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn(() => ({
+        generateCsrfToken: jest.fn(),
+        doubleCsrfProtection: jest.fn(),
+      })),
+    }));
+
+    await expect(import('../../middleware/csrf-middleware.js')).rejects.toThrow(
+      'CSRF_SECRET not set'
+    );
+
+    process.env.NODE_ENV = originalEnv;
+    if (originalCsrfSecret !== undefined) process.env.CSRF_SECRET = originalCsrfSecret;
+  });
+
+  it('should cover getSecret fallback when csrfSecret is set', async () => {
+    jest.resetModules();
+    process.env.CSRF_SECRET = 'my-csrf-secret';
+    process.env.NODE_ENV = 'test';
+
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
+
+    let capturedGetSecret: any;
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn((options: any) => {
+        capturedGetSecret = options.getSecret;
+        return {
+          generateCsrfToken: jest.fn(() => 'token'),
+          doubleCsrfProtection: jest.fn((_req: any, _res: any, next: any) => next()),
+        };
+      }),
+    }));
+
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: { jwt: { secret: 'jwt-fallback' }, server: { nodeEnv: 'test' } },
+    }));
+
+    await import('../../middleware/csrf-middleware.js');
+    // getSecret should return csrfSecret (not the jwt fallback)
+    expect(capturedGetSecret()).toBe('my-csrf-secret');
+    delete process.env.CSRF_SECRET;
+  });
+});
+
+describe('csrf-middleware.ts - Branch Coverage', () => {
+  it('L19/21/24: module init exercises fallback paths', async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'test';
+    try {
+      const mod = await import('../../middleware/csrf-middleware.js');
+      expect(mod.generateCsrfToken).toBeDefined();
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('CSRF Middleware — coverage gaps', () => {
+  const mockLogger = { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should throw when CSRF_SECRET is not set in production', async () => {
+    jest.resetModules();
+    const originalEnv = process.env.NODE_ENV;
+    const originalCsrfSecret = process.env.CSRF_SECRET;
+    delete process.env.CSRF_SECRET;
+    process.env.NODE_ENV = 'production';
+
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: { jwt: { secret: 'test-secret' }, server: { nodeEnv: 'production' } },
+    }));
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn(() => ({
+        generateCsrfToken: jest.fn(),
+        doubleCsrfProtection: jest.fn(),
+      })),
+    }));
+
+    await expect(import('../../middleware/csrf-middleware.js')).rejects.toThrow(
+      'CSRF_SECRET not set'
+    );
+
+    process.env.NODE_ENV = originalEnv;
+    if (originalCsrfSecret !== undefined) process.env.CSRF_SECRET = originalCsrfSecret;
+  });
+
+  it('should cover getSecret fallback when csrfSecret is set', async () => {
+    jest.resetModules();
+    process.env.CSRF_SECRET = 'my-csrf-secret';
+    process.env.NODE_ENV = 'test';
+
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
+
+    let capturedGetSecret: any;
+    jest.unstable_mockModule('csrf-csrf', () => ({
+      doubleCsrf: jest.fn((options: any) => {
+        capturedGetSecret = options.getSecret;
+        return {
+          generateCsrfToken: jest.fn(() => 'token'),
+          doubleCsrfProtection: jest.fn((_req: any, _res: any, next: any) => next()),
+        };
+      }),
+    }));
+
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: { jwt: { secret: 'jwt-fallback' }, server: { nodeEnv: 'test' } },
+    }));
+
+    await import('../../middleware/csrf-middleware.js');
+    // getSecret should return csrfSecret (not the jwt fallback)
+    expect(capturedGetSecret()).toBe('my-csrf-secret');
+    delete process.env.CSRF_SECRET;
+  });
+});
+
+describe('csrf-middleware.ts - Branch Coverage', () => {
+  it('L19/21/24: module init exercises fallback paths', async () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'test';
+    try {
+      const mod = await import('../../middleware/csrf-middleware.js');
+      expect(mod.generateCsrfToken).toBeDefined();
+    } finally {
+      process.env.NODE_ENV = originalEnv;
+    }
+  });
+});
+
+describe('merged branch coverage', () => {
+  it('csrf-middleware L19: module loads with config', async () => {
+    const mod = await import(resolveModule('src/middleware/csrf-middleware.ts'));
+    expect(mod).toBeDefined();
+  });
+});

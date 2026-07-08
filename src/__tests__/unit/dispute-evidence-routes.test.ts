@@ -134,3 +134,146 @@ describe('Dispute Evidence Routes', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+function makeApp(basePath: string, r: any) {
+  const a = express();
+  a.use(express.json());
+  a.use(basePath, r);
+  return a;
+}
+const ok = (data: any) => ({ success: true, data });
+const mockDisputeEvidenceService = {
+  submitEvidence: mockSubmitEvidence,
+  getDisputeEvidence: mockGetDisputeEvidence,
+  deleteEvidence: mockDeleteEvidence,
+  verifyEvidence: mockVerifyEvidence,
+};
+const mockDisputeRepository = {
+  submitEvidence: mockSubmitEvidence,
+  getDisputeEvidence: mockGetDisputeEvidence,
+  deleteEvidence: mockDeleteEvidence,
+  verifyEvidence: mockVerifyEvidence,
+};
+
+describe('dispute-evidence-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/disputes', disputeEvidenceRouter);
+  });
+
+  // POST — userId ?? '' and error.code ?? 'EVIDENCE_SUBMIT_FAILED'
+  it('POST evidence success', async () => {
+    mockDisputeEvidenceService.submitEvidence.mockResolvedValue(ok({ id: 'e1' }));
+    const res = await request(app).post('/api/disputes/d1/evidence').send({ evidenceType: 'document', description: 'test' });
+    expect(res.status).toBe(200);
+  });
+
+  it('POST evidence missing fields', async () => {
+    const res = await request(app).post('/api/disputes/d1/evidence').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST evidence service error without code', async () => {
+    mockDisputeEvidenceService.submitEvidence.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).post('/api/disputes/d1/evidence').send({ evidenceType: 'document', description: 'test' });
+    expect(res.status).toBe(400);
+  });
+
+  // GET — error.code ?? 'EVIDENCE_FETCH_FAILED'
+  it('GET evidence success', async () => {
+    mockDisputeEvidenceService.getDisputeEvidence.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/disputes/d1/evidence');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET evidence service error without code', async () => {
+    mockDisputeEvidenceService.getDisputeEvidence.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).get('/api/disputes/d1/evidence');
+    expect(res.status).toBe(400);
+  });
+
+  // DELETE — error.code ?? 'EVIDENCE_DELETE_FAILED'
+  it('DELETE evidence success', async () => {
+    mockDisputeEvidenceService.deleteEvidence.mockResolvedValue(ok({}));
+    const res = await request(app).delete('/api/disputes/d1/evidence/e1');
+    expect(res.status).toBe(200);
+  });
+
+  it('DELETE evidence service error without code', async () => {
+    mockDisputeEvidenceService.deleteEvidence.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).delete('/api/disputes/d1/evidence/e1');
+    expect(res.status).toBe(400);
+  });
+
+  // POST verify — error.code ?? 'EVIDENCE_VERIFY_FAILED'
+  it('POST verify evidence success', async () => {
+    mockDisputeEvidenceService.verifyEvidence.mockResolvedValue(ok({ verified: true }));
+    const res = await request(app).post('/api/disputes/d1/evidence/e1/verify');
+    expect(res.status).toBe(200);
+  });
+
+  it('POST verify evidence service error without code', async () => {
+    mockDisputeEvidenceService.verifyEvidence.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).post('/api/disputes/d1/evidence/e1/verify');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('dispute-evidence-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockSubmitEvidence = jest.fn<any>();
+  const mockGetDisputeEvidence = jest.fn<any>();
+  const mockDeleteEvidence = jest.fn<any>();
+  const mockVerifyEvidence = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/dispute-evidence-service.ts'), () => ({
+      submitEvidence: mockSubmitEvidence,
+      getDisputeEvidence: mockGetDisputeEvidence,
+      deleteEvidence: mockDeleteEvidence,
+      verifyEvidence: mockVerifyEvidence,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/dispute-evidence-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/disputes', router);
+    jest.clearAllMocks();
+  });
+
+  it('L52/53: POST evidence', async () => {
+    mockSubmitEvidence.mockResolvedValueOnce({ success: true, data: { id: 'e1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/disputes/d1/evidence').send({ evidenceType: 'doc', description: 'test' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L111/112: GET evidence', async () => {
+    mockGetDisputeEvidence.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/disputes/d1/evidence');
+    expect(res.status).toBe(200);
+  });
+
+  it('L160/161: DELETE evidence', async () => {
+    mockDeleteEvidence.mockResolvedValueOnce({ success: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/disputes/d1/evidence/e1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L209/210: POST verify evidence', async () => {
+    mockVerifyEvidence.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/disputes/d1/evidence/e1/verify');
+    expect(res.status).toBe(200);
+  });
+});

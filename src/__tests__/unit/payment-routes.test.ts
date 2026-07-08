@@ -39,6 +39,13 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 
 const router = (await import('../../routes/payment-routes.js')).default;
 
+const paymentRouter = router;
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockPaymentService = { requestMilestoneCompletion: mockRequestMilestoneCompletion, approveMilestone: mockApproveMilestone, getContractPaymentStatus: mockGetContractPaymentStatus };
+const mockDisputeService = { createDispute: mockCreateDispute };
+
 describe('Payment Routes', () => {
   let app: express.Express;
 
@@ -165,5 +172,153 @@ describe('Payment Routes', () => {
       const res = await request(app).get('/api/payments/contracts/c-1/status');
       expect(res.status).toBe(403);
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('payment-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/payments', paymentRouter);
+  });
+
+  it('POST /milestones/:milestoneId/complete missing contractId', async () => {
+    const res = await request(app).post('/api/payments/milestones/m1/complete');
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /milestones/:milestoneId/complete NOT_FOUND returns 404', async () => {
+    mockPaymentService.requestMilestoneCompletion.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /milestones/:milestoneId/complete UNAUTHORIZED returns 403', async () => {
+    mockPaymentService.requestMilestoneCompletion.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /milestones/:milestoneId/complete other error returns 400', async () => {
+    mockPaymentService.requestMilestoneCompletion.mockResolvedValue(fail('INVALID_STATUS', 'No'));
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /milestones/:milestoneId/approve missing contractId', async () => {
+    const res = await request(app).post('/api/payments/milestones/m1/approve');
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /milestones/:milestoneId/approve NOT_FOUND returns 404', async () => {
+    mockPaymentService.approveMilestone.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /milestones/:milestoneId/approve UNAUTHORIZED returns 403', async () => {
+    mockPaymentService.approveMilestone.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /milestones/:milestoneId/dispute missing contractId', async () => {
+    const res = await request(app).post('/api/payments/milestones/m1/dispute').send({ reason: 'Bad work' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /milestones/:milestoneId/dispute missing reason', async () => {
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /milestones/:milestoneId/dispute NOT_FOUND returns 404', async () => {
+    mockDisputeService.createDispute.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /milestones/:milestoneId/dispute UNAUTHORIZED returns 403', async () => {
+    mockDisputeService.createDispute.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /contracts/:contractId/status success', async () => {
+    mockPaymentService.getContractPaymentStatus.mockResolvedValue(ok({ contractId: 'c1' }));
+    const res = await request(app).get('/api/payments/contracts/c1/status');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /contracts/:contractId/status NOT_FOUND returns 404', async () => {
+    mockPaymentService.getContractPaymentStatus.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/payments/contracts/c1/status');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /contracts/:contractId/status UNAUTHORIZED non-admin returns 403', async () => {
+    mockPaymentService.getContractPaymentStatus.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).get('/api/payments/contracts/c1/status');
+    expect(res.status).toBe(403);
+  });
+});
+
+describe('payment-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockRequestMilestoneCompletion = jest.fn<any>();
+  const mockApproveMilestone = jest.fn<any>();
+  const mockCreateDispute = jest.fn<any>();
+  const mockGetContractPaymentStatus = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      requestMilestoneCompletion: mockRequestMilestoneCompletion,
+      approveMilestone: mockApproveMilestone,
+      getContractPaymentStatus: mockGetContractPaymentStatus,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      createDispute: mockCreateDispute,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/payment-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/payments', router);
+    jest.clearAllMocks();
+  });
+
+  it('L145: POST complete', async () => {
+    mockRequestMilestoneCompletion.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(200);
+  });
+
+  it('L231: POST approve', async () => {
+    mockApproveMilestone.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(200);
+  });
+
+  it('L323: POST dispute', async () => {
+    mockCreateDispute.mockResolvedValueOnce({ success: true, data: { id: 'd1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L414: GET payment status', async () => {
+    mockGetContractPaymentStatus.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/payments/contracts/c1/status');
+    expect(res.status).toBe(200);
   });
 });

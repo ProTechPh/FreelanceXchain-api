@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
@@ -275,10 +276,10 @@ describe('Contract Service - Unit Tests', () => {
 
   it('should handle pagination for user contracts', async () => {
     const userId = 'user-123';
-    
+
     // Create 10 contracts for the user
     for (let i = 0; i < 10; i++) {
-      const contract = createTestContract({ 
+      const contract = createTestContract({
         freelancer_id: userId,
         created_at: new Date(Date.now() - i * 1000).toISOString()
       });
@@ -290,7 +291,7 @@ describe('Contract Service - Unit Tests', () => {
 
     expect(page1.success).toBe(true);
     expect(page2.success).toBe(true);
-    
+
     if (page1.success && page2.success) {
       expect(page1.data.items).toHaveLength(5);
       expect(page1.data.hasMore).toBe(true);

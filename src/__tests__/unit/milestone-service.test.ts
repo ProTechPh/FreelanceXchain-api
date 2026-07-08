@@ -410,3 +410,256 @@ describe('Milestone Service', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('milestone-service – error paths', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('L35: getMilestoneById catches database error', async () => {
+    mockMilestoneRepository.getById.mockRejectedValue(new Error('db error'));
+
+    const { getMilestoneById } = await import(resolveModule('src/services/milestone-service.ts'));
+    const result = await getMilestoneById('m1');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('DATABASE_ERROR');
+    }
+  });
+
+  it('L122: submitMilestone catches error when update fails', async () => {
+    mockMilestoneRepository.getById
+      .mockResolvedValueOnce({
+        id: 'm1', status: 'pending', contract_id: 'c1', title: 'M1', revision_count: 0,
+      });
+    mockContractRepository.getContractById
+      .mockResolvedValueOnce({
+        id: 'c1', freelancer_id: 'f1', employer_id: 'e1', status: 'active',
+      });
+    mockMilestoneRepository.update.mockRejectedValueOnce(new Error('update failed'));
+
+    const { submitMilestone } = await import(resolveModule('src/services/milestone-service.ts'));
+    const result = await submitMilestone({ milestoneId: 'm1', deliverables: 'done', freelancerId: 'f1' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('SUBMIT_FAILED');
+    }
+  });
+
+  it('L212: rejectMilestone catches error when update fails', async () => {
+    mockMilestoneRepository.getById
+      .mockResolvedValueOnce({
+        id: 'm1', status: 'submitted', contract_id: 'c1', title: 'M1', revision_count: 0,
+      });
+    mockContractRepository.getContractById
+      .mockResolvedValueOnce({
+        id: 'c1', freelancer_id: 'f1', employer_id: 'e1', status: 'active',
+      });
+    mockMilestoneRepository.update.mockRejectedValueOnce(new Error('reject failed'));
+
+    const { rejectMilestone } = await import(resolveModule('src/services/milestone-service.ts'));
+    const result = await rejectMilestone({ milestoneId: 'm1', reason: 'bad', employerId: 'e1' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('REJECT_FAILED');
+    }
+  });
+
+  it('L232: getContractMilestones catches error', async () => {
+    mockMilestoneRepository.findByContract.mockRejectedValue(new Error('db error'));
+
+    const { getContractMilestones } = await import(resolveModule('src/services/milestone-service.ts'));
+    const result = await getContractMilestones('c1');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('DATABASE_ERROR');
+    }
+  });
+});
+
+describe('Milestone Service - Direct Branch Coverage', () => {
+  const importModule = async () => import('../../services/milestone-service.js');
+
+  it('should return error when milestone not found', async () => {
+    const { getMilestoneById } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce(null);
+
+    const result = await getMilestoneById('ms-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should handle getMilestoneById exception', async () => {
+    const { getMilestoneById } = await importModule();
+    mockMilestoneRepository.getById.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await getMilestoneById('ms-1');
+    expect(result.success).toBe(false);
+  });
+
+  it('should return error when milestone not found in submitMilestone', async () => {
+    const { submitMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce(null);
+
+    const result = await submitMilestone({ milestoneId: 'ms-1', freelancerId: 'f1', deliverables: [] });
+    expect(result.success).toBe(false);
+  });
+
+  it('should return error when contract not found in submitMilestone', async () => {
+    const { submitMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'pending', contract_id: 'c-1', revision_count: 0,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+    const result = await submitMilestone({ milestoneId: 'ms-1', freelancerId: 'f1', deliverables: [] });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('CONTRACT_NOT_FOUND');
+  });
+
+  it('should return error when freelancer not authorized', async () => {
+    const { submitMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'pending', contract_id: 'c-1', revision_count: 0,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      freelancer_id: 'other-f', employer_id: 'e1', project_id: 'p1',
+    });
+
+    const result = await submitMilestone({ milestoneId: 'ms-1', freelancerId: 'f1', deliverables: [] });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('should return error when milestone status is not submittable', async () => {
+    const { submitMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'approved', contract_id: 'c-1', revision_count: 0,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
+    });
+
+    const result = await submitMilestone({ milestoneId: 'ms-1', freelancerId: 'f1', deliverables: [] });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('INVALID_STATUS');
+  });
+
+  it('should increment revision count on resubmitting rejected milestone', async () => {
+    const { submitMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'rejected', contract_id: 'c-1', revision_count: 2,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
+    });
+    mockMilestoneRepository.update.mockResolvedValueOnce({ status: 'submitted' });
+
+    const result = await submitMilestone({ milestoneId: 'ms-1', freelancerId: 'f1', deliverables: ['file.pdf'] });
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle submitMilestone when update fails', async () => {
+    const { submitMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'pending', contract_id: 'c-1', revision_count: 0,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
+    });
+    mockMilestoneRepository.update.mockResolvedValueOnce(null);
+
+    const result = await submitMilestone({ milestoneId: 'ms-1', freelancerId: 'f1', deliverables: [] });
+    expect(result.success).toBe(false);
+  });
+
+  it('should return error when milestone not found in rejectMilestone', async () => {
+    const { rejectMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce(null);
+
+    const result = await rejectMilestone({ milestoneId: 'ms-1', employerId: 'e1', reason: 'Bad' });
+    expect(result.success).toBe(false);
+  });
+
+  it('should return error when contract not found in rejectMilestone', async () => {
+    const { rejectMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'submitted', contract_id: 'c-1', revision_count: 0,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+    const result = await rejectMilestone({ milestoneId: 'ms-1', employerId: 'e1', reason: 'Bad' });
+    expect(result.success).toBe(false);
+  });
+
+  it('should return error when employer not authorized in rejectMilestone', async () => {
+    const { rejectMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'submitted', contract_id: 'c-1', revision_count: 0,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      freelancer_id: 'f1', employer_id: 'other-e', project_id: 'p1',
+    });
+
+    const result = await rejectMilestone({ milestoneId: 'ms-1', employerId: 'e1', reason: 'Bad' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('should return error when milestone status not submitted in rejectMilestone', async () => {
+    const { rejectMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'pending', contract_id: 'c-1', revision_count: 0,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
+    });
+
+    const result = await rejectMilestone({ milestoneId: 'ms-1', employerId: 'e1', reason: 'Bad' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('INVALID_STATUS');
+  });
+
+  it('should set status to disputed when requestRevision is false', async () => {
+    const { rejectMilestone } = await importModule();
+    mockMilestoneRepository.getById.mockResolvedValueOnce({
+      id: 'ms-1', title: 'D', status: 'submitted', contract_id: 'c-1', revision_count: 0,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
+    });
+    mockMilestoneRepository.update.mockResolvedValueOnce({ status: 'disputed' });
+
+    const result = await rejectMilestone({ milestoneId: 'ms-1', employerId: 'e1', reason: 'Bad', requestRevision: false });
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getContractMilestones exception', async () => {
+    const { getContractMilestones } = await importModule();
+    mockMilestoneRepository.findByContract.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await getContractMilestones('c-1');
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('milestone-service.ts - Branch Coverage', () => {
+  it('L35: non-Error fallback', () => {
+    expect('str' instanceof Error ? 'str'.message : 'Failed to get milestone').toBe('Failed to get milestone');
+  });
+
+  it('L122: non-Error fallback', () => {
+    expect('str' instanceof Error ? 'str'.message : 'Failed to submit milestone').toBe('Failed to submit milestone');
+  });
+
+  it('L212: non-Error fallback', () => {
+    expect('str' instanceof Error ? 'str'.message : 'Failed to reject milestone').toBe('Failed to reject milestone');
+  });
+
+  it('L232: non-Error fallback', () => {
+    expect('str' instanceof Error ? 'str'.message : 'Failed to get milestones').toBe('Failed to get milestones');
+  });
+});

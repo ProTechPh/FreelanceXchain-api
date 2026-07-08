@@ -1,9 +1,11 @@
+// @ts-nocheck
 /**
  * File Upload Middleware Tests
  * Tests for multer-based file upload validation
  */
 
-import { Request, Response } from 'express';
+import { jest, describe, it, expect, beforeEach } from '@jest/globals';
+import { Request, Response, NextFunction } from 'express';
 import {
   sanitizeFilename,
   MAX_FILE_SIZE,
