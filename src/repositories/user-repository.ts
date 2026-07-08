@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type UserEntity = {
@@ -17,7 +17,7 @@ export type UserEntity = {
 
 const COLLECTION_ID = 'users';
 
-export class UserRepository extends BaseRepositoryAppwrite<UserEntity> {
+export class UserRepository extends BaseRepository<UserEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

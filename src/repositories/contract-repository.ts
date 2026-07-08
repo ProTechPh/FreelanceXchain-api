@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { safeJsonParse } from '../utils/index.js';
 
@@ -31,7 +31,7 @@ function mapDoc(doc: Record<string, any>): ContractEntity {
   } as ContractEntity;
 }
 
-export class ContractRepository extends BaseRepositoryAppwrite<ContractEntity> {
+export class ContractRepository extends BaseRepository<ContractEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

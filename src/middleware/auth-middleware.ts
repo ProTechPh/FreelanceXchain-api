@@ -38,7 +38,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       method: req.method,
       ip: req.ip,
     });
-    
+
     res.status(401).json({
       error: {
         code: 'AUTH_MISSING_TOKEN',
@@ -58,7 +58,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       method: req.method,
       ip: req.ip,
     });
-    
+
     res.status(401).json({
       error: {
         code: 'AUTH_INVALID_FORMAT',
@@ -71,6 +71,11 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   }
 
   const token = parts[1] as string;
+
+  // C4: Check if this is an MFA-pending session token by attempting Appwrite validation.
+  // Appwrite's account.get() will throw 'user_more_factors_required' for MFA-pending sessions.
+  // The validateToken function already calls account.get() internally, so MFA-pending tokens
+  // will fail validation and be rejected here.
   const result = await validateToken(token);
 
   if (isTokenError(result)) {
@@ -81,7 +86,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       ip: req.ip,
       errorCode: result.code,
     });
-    
+
     res.status(401).json({
       error: {
         code: result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN',

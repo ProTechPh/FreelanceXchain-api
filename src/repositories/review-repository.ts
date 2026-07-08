@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type ReviewEntity = {
@@ -17,7 +17,7 @@ export type CreateReviewInput = Omit<ReviewEntity, 'id' | 'created_at' | 'update
 
 const COLLECTION_ID = 'reviews';
 
-class ReviewRepositoryClass extends BaseRepositoryAppwrite<ReviewEntity> {
+class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

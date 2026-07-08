@@ -249,6 +249,7 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => m
 
 const mockContractRepository = {
   updateContract: jest.fn(),
+  getContractById: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepository,
@@ -1021,6 +1022,7 @@ describe('rush-upgrade-routes branch coverage', () => {
   let app: express.Express;
   beforeEach(() => {
     jest.clearAllMocks();
+    mockContractRepository.getContractById.mockResolvedValue({ id: 'c1', employer_id: 'user-2', freelancer_id: 'user-1', status: 'active' });
     app = makeApp('/api', rushUpgradeRouter);
   });
 

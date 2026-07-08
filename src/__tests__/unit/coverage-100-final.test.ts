@@ -446,9 +446,16 @@ describe('contract-routes.ts - Branch Coverage', () => {
     expect(res.body.message).toBe('Contract already funded and active');
   });
 
-  it('L275: POST /:id/fund pending with frontend escrow', async () => {
+  it('L275: POST /:id/fund pending with server-side escrow deployment', async () => {
     mockGetContractById.mockResolvedValueOnce({
       success: true, data: { id: 'c1', employerId: 'user-1', status: 'pending', escrowAddress: null, projectId: 'p1', totalAmount: 100 },
+    });
+    // Frontend escrow address is now ignored — server always deploys
+    mockGetProjectById.mockResolvedValueOnce({
+      success: true, data: { id: 'p1', title: 'Test', employerId: 'user-1', milestones: [{ id: 'm1', title: 'M1', amount: 100, status: 'pending' }] },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({
+      success: true, data: { employerWallet: '0xEMP', freelancerWallet: '0xFREE' },
     });
     mockInitializeContractEscrow.mockResolvedValueOnce({ success: true, data: { escrowAddress: '0xESC' } });
     mockUpdateContractStatus.mockResolvedValueOnce({ success: true });
@@ -1203,9 +1210,14 @@ describe('rush-upgrade-routes.ts - Branch Coverage', () => {
   const mockAcceptCounterOffer = jest.fn<any>();
   const mockDeclineCounterOffer = jest.fn<any>();
   const mockGetRushUpgradeRequestsByContract = jest.fn<any>();
+  const mockRepoGetContractById = jest.fn<any>();
 
   beforeEach(async () => {
     jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { getContractById: mockRepoGetContractById },
+    }));
+    mockRepoGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'freelancer-1' });
     jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), () => ({
       requestRushUpgrade: mockRequestRushUpgrade,
       respondToRushUpgrade: mockRespondToRushUpgrade,

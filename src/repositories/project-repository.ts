@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
 import type { MilestoneStatus, FileAttachment } from '../models/milestone.js';
 export type { MilestoneStatus } from '../models/milestone.js';
@@ -74,7 +74,7 @@ function mapDoc(doc: Record<string, any>): ProjectEntity {
   } as ProjectEntity;
 }
 
-export class ProjectRepository extends BaseRepositoryAppwrite<ProjectEntity> {
+export class ProjectRepository extends BaseRepository<ProjectEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

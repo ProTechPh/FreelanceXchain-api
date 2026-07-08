@@ -278,7 +278,9 @@ export function verifyWebhookSignature(
   const allowInsecureDevWebhooks = process.env['ALLOW_INSECURE_DIDIT_WEBHOOKS'] === 'true';
   
   if (!secret) {
-    if (allowInsecureDevWebhooks && process.env['NODE_ENV'] !== 'production') {
+    // M14: Strict environment check — only allow insecure bypass in explicit 'development' mode
+    // Previously used !== 'production' which could match undefined or misconfigured environments
+    if (allowInsecureDevWebhooks && process.env['NODE_ENV'] === 'development') {
       /* istanbul ignore next */
       logger.warn('DIDIT_WEBHOOK_SECRET not configured - insecure webhook bypass enabled for development');
       /* istanbul ignore next */

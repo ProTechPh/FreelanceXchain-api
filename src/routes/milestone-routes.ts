@@ -198,7 +198,9 @@ async function submitMilestoneFromProjectContext(
 router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
-    const result = await getMilestoneById(milestoneId);
+    const userId = req.user?.userId;
+    // M15: Pass userId to enforce authorization check
+    const result = await getMilestoneById(milestoneId, userId);
 
     if (!result.success) {
       const message = 'error' in result ? result.error.message : 'Milestone not found';

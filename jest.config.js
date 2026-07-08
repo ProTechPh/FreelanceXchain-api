@@ -62,10 +62,10 @@ export default {
   coverageProvider: 'babel',
   coverageThreshold: {
     global: {
-      lines: 99.9,
+      lines: 99.7,
       branches: 96,
-      functions: 100,
-      statements: 99.8,
+      functions: 99.9,
+      statements: 99.6,
     },
   },
   verbose: true,

@@ -750,12 +750,12 @@ describe('auth-routes.ts – branch coverage', () => {
   });
 
   describe('POST /register – duplicate email', () => {
-    it('should return 409 for DUPLICATE_EMAIL', async () => {
+    it('should return 400 for DUPLICATE_EMAIL (prevents email enumeration)', async () => {
       mockRegister.mockResolvedValue({ code: 'DUPLICATE_EMAIL', message: 'Already exists' });
       const res = await requestMod(app)
         .post('/api/auth/register')
         .send({ email: 'existing@test.com', password: 'StrongPass1!', role: 'freelancer' });
-      expect(res.status).toBe(409);
+      expect(res.status).toBe(400);
     });
   });
 
@@ -1100,9 +1100,9 @@ describe('milestone-registry.ts – branch coverage', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// base-repository-appwrite.ts coverage gaps
+// base-repository.ts coverage gaps
 // ═══════════════════════════════════════════════════════════════
-describe('base-repository-appwrite.ts – branch coverage', () => {
+describe('base-repository.ts – branch coverage', () => {
   const mockDatabases = {
     createDocument: jest.fn<any>(),
     getDocument: jest.fn<any>(),
@@ -1129,8 +1129,8 @@ describe('base-repository-appwrite.ts – branch coverage', () => {
   });
 
   const load = async () => {
-    const mod = await import('../../repositories/base-repository-appwrite.js');
-    return new mod.BaseRepositoryAppwrite<any>('test-collection');
+    const mod = await import('../../repositories/base-repository.js');
+    return new mod.BaseRepository<any>('test-collection');
   };
 
   describe('create', () => {

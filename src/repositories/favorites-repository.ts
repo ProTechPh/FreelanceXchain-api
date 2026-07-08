@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type FavoriteTargetType = 'project' | 'freelancer';
@@ -24,7 +24,7 @@ function mapDoc(doc: Record<string, any>): FavoriteEntity {
   } as FavoriteEntity;
 }
 
-export class FavoriteRepository extends BaseRepositoryAppwrite<FavoriteEntity> {
+export class FavoriteRepository extends BaseRepository<FavoriteEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

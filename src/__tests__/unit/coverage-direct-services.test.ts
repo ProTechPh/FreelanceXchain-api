@@ -1542,7 +1542,7 @@ describe('Direct Service Coverage Tests', () => {
         id: 'ms-1', title: 'D', status: 'approved', contract_id: 'c-1', revision_count: 0,
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1',
+        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
       });
 
       const result = await submitMilestone({ milestoneId: 'ms-1', freelancerId: 'f1', deliverables: [] });
@@ -1556,7 +1556,7 @@ describe('Direct Service Coverage Tests', () => {
         id: 'ms-1', title: 'D', status: 'rejected', contract_id: 'c-1', revision_count: 2,
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1',
+        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
       });
       mockMilestoneRepository.update.mockResolvedValueOnce({ status: 'submitted' });
 
@@ -1570,7 +1570,7 @@ describe('Direct Service Coverage Tests', () => {
         id: 'ms-1', title: 'D', status: 'pending', contract_id: 'c-1', revision_count: 0,
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1',
+        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
       });
       mockMilestoneRepository.update.mockResolvedValueOnce(null);
 
@@ -1617,7 +1617,7 @@ describe('Direct Service Coverage Tests', () => {
         id: 'ms-1', title: 'D', status: 'pending', contract_id: 'c-1', revision_count: 0,
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1',
+        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
       });
 
       const result = await rejectMilestone({ milestoneId: 'ms-1', employerId: 'e1', reason: 'Bad' });
@@ -1631,7 +1631,7 @@ describe('Direct Service Coverage Tests', () => {
         id: 'ms-1', title: 'D', status: 'submitted', contract_id: 'c-1', revision_count: 0,
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1',
+        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
       });
       mockMilestoneRepository.update.mockResolvedValueOnce({ status: 'disputed' });
 

@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
 
 export type SavedSearchType = 'project' | 'freelancer';
@@ -26,7 +26,7 @@ function mapDoc(doc: Record<string, any>): SavedSearchEntity {
   } as SavedSearchEntity;
 }
 
-export class SavedSearchRepository extends BaseRepositoryAppwrite<SavedSearchEntity> {
+export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

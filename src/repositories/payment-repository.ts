@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
@@ -33,7 +33,7 @@ function mapPayment(doc: any): PaymentEntity {
   } as PaymentEntity;
 }
 
-class PaymentRepositoryClass extends BaseRepositoryAppwrite<PaymentEntity> {
+class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

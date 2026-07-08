@@ -299,7 +299,7 @@ jest.unstable_mockModule('./src/config/appwrite.js', () => ({
   users: mockAppwriteUsers,
   databases: mockDatabases,
   DATABASE_ID: 'freelancexchain',
-  Query: { equal: jest.fn(), notEqual: jest.fn(), orderDesc: jest.fn(), orderAsc: jest.fn(), limit: jest.fn(), offset: jest.fn() },
+  Query: { equal: jest.fn(), notEqual: jest.fn(), orderDesc: jest.fn(), orderAsc: jest.fn(), limit: jest.fn(), offset: jest.fn(), cursorAfter: jest.fn() },
   ID: { unique: () => 'unique-id' },
   Permission: { read: 'read', write: 'write', create: 'create', update: 'update', delete: 'delete' },
   Role: { any: () => 'any', user: (id: string) => `user:${id}` },

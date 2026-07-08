@@ -1696,6 +1696,11 @@ describe('Rush Upgrade Routes - Branch Coverage', () => {
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: (req: any) => req.headers['x-request-id'] ?? 'unknown',
     }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: {
+        getContractById: jest.fn().mockResolvedValue({ id: 'c-1', employer_id: 'employer-123', freelancer_id: 'freelancer-456' }),
+      },
+    }));
     jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), () => ({
       requestRushUpgrade: jest.fn(),
       respondToRushUpgrade: jest.fn(),

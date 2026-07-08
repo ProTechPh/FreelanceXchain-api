@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
 
 export type PortfolioItemEntity = {
@@ -26,7 +26,7 @@ function mapDoc(doc: Record<string, any>): PortfolioItemEntity {
   } as PortfolioItemEntity;
 }
 
-export class PortfolioRepository extends BaseRepositoryAppwrite<PortfolioItemEntity> {
+export class PortfolioRepository extends BaseRepository<PortfolioItemEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

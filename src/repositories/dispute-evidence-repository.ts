@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type DisputeEvidenceEntity = {
@@ -26,7 +26,7 @@ function mapDoc(doc: Record<string, any>): DisputeEvidenceEntity {
   } as DisputeEvidenceEntity;
 }
 
-export class DisputeEvidenceRepository extends BaseRepositoryAppwrite<DisputeEvidenceEntity> {
+export class DisputeEvidenceRepository extends BaseRepository<DisputeEvidenceEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

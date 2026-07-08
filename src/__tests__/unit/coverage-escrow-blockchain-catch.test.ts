@@ -54,6 +54,10 @@ jest.unstable_mockModule(resolveModule('src/services/notification-delivery-servi
   sendNotificationToUser: jest.fn().mockResolvedValue(undefined),
 }));
 
+jest.unstable_mockModule(resolveModule('src/utils/async-lock.ts'), () => ({
+  withLock: jest.fn(async (_key: string, fn: () => Promise<any>) => fn()),
+}));
+
 const { approveRefund } = await import('../../services/escrow-refund-service.js');
 
 describe('Escrow Refund - blockchain milestone refund catch (line 205)', () => {
@@ -100,7 +104,10 @@ describe('Escrow Refund - blockchain milestone refund catch (line 205)', () => {
     mockRefundMilestone.mockRejectedValue(new Error('Blockchain refund failed'));
 
     const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'u-2' });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('PARTIAL_REFUND_FAILED');
+    }
     expect(mockRefundMilestone).toHaveBeenCalled();
   });
 });

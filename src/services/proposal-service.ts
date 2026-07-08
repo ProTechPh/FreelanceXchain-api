@@ -9,9 +9,10 @@ import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { logger } from '../config/logger.js';
 
-import { createAgreementOnBlockchain, signAgreement } from './agreement-contract.js';
+import { createAgreementOnBlockchain } from './agreement-contract.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { withLock } from '../utils/async-lock.js';
 
 export type CreateProposalInput = {
   projectId: string;
@@ -418,10 +419,9 @@ async function initializeEscrowForContract(
         },
       });
 
-      // Note: Freelancer should explicitly sign the agreement, not auto-sign
-      // The employer accepted the proposal; the freelancer submitted it.
-      // Auto-signing is kept for now but should be replaced with explicit consent flow.
-      await signAgreement(contract.id, freelancer.wallet_address);
+      // H11: Do NOT auto-sign the agreement on behalf of the freelancer.
+      // The freelancer must explicitly sign the agreement after reviewing the final terms.
+      // The agreement is created on-chain but left unsigned by the freelancer until they confirm.
 
       const { initializeContractEscrow } = await import('./payment-service.js');
       const escrowResult = await initializeContractEscrow(
@@ -484,53 +484,64 @@ export async function acceptProposal(
   proposalId: string,
   employerId: string
 ): Promise<ServiceResult<AcceptProposalResult>> {
-  const validated = await validateProposalAcceptance(proposalId, employerId);
-  if ('error' in validated) return validated.error;
+  // H10: Lock per proposal to prevent concurrent accepts from exceeding freelancer limit
+  return withLock(`proposal-accept:${proposalId}`, async () => {
+    const validated = await validateProposalAcceptance(proposalId, employerId);
+    if ('error' in validated) return validated.error;
 
-  const { proposalEntity, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
+    const { proposalEntity, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
 
-  const created = await createContractFromProposal(
-    proposalId, proposalEntity, project, employerId, proposalRate, rushFee, totalAmount,
-  );
-  if ('error' in created) return created.error;
+    const created = await createContractFromProposal(
+      proposalId, proposalEntity, project, employerId, proposalRate, rushFee, totalAmount,
+    );
+    if ('error' in created) return created.error;
 
-  const { updatedProposalEntity, contractEntity } = created;
-  const createdContract = mapContractFromEntity(contractEntity);
+    const { updatedProposalEntity, contractEntity } = created;
+    const createdContract = mapContractFromEntity(contractEntity);
 
-  await rejectOtherProposals(project.id, proposalId);
+    await rejectOtherProposals(project.id, proposalId);
 
-  await initializeEscrowForContract(
-    createdContract, project, proposalEntity, totalAmount, rushFee, isRush, rushFeePercentage,
-  );
-
-  // Create notification for freelancer
-  try {
-    await notificationRepository.createNotification({
-      id: generateId(),
-      user_id: proposalEntity.freelancer_id,
-      type: 'proposal_accepted',
-      title: 'Proposal Accepted',
-      message: `Your proposal for "${project.title}" has been accepted!`,
-      data: {
-        proposalId: proposalEntity.id,
-        projectId: project.id,
-        projectTitle: project.title,
+    // H12: Log non-critical failures but don't silently swallow them
+    try {
+      await initializeEscrowForContract(
+        createdContract, project, proposalEntity, totalAmount, rushFee, isRush, rushFeePercentage,
+      );
+    } catch (escrowError) {
+      logger.error('Escrow initialization failed after contract creation — contract remains pending', {
         contractId: createdContract.id,
-      },
-      is_read: false,
-    });
-  } catch (error) {
-    logger.error('Failed to create notification', { error });
-    // Continue - notification is secondary
-  }
+        error: escrowError,
+      });
+    }
 
-  return {
-    success: true,
-    data: {
-      proposal: mapProposalFromEntity(updatedProposalEntity),
-      contract: createdContract,
-    },
-  };
+    // Create notification for freelancer
+    try {
+      await notificationRepository.createNotification({
+        id: generateId(),
+        user_id: proposalEntity.freelancer_id,
+        type: 'proposal_accepted',
+        title: 'Proposal Accepted',
+        message: `Your proposal for "${project.title}" has been accepted!`,
+        data: {
+          proposalId: proposalEntity.id,
+          projectId: project.id,
+          projectTitle: project.title,
+          contractId: createdContract.id,
+        },
+        is_read: false,
+      });
+    } catch (error) {
+      logger.error('Failed to create notification', { error });
+      // Continue - notification is secondary
+    }
+
+    return {
+      success: true,
+      data: {
+        proposal: mapProposalFromEntity(updatedProposalEntity),
+        contract: createdContract,
+      },
+    };
+  });
 }
 
 

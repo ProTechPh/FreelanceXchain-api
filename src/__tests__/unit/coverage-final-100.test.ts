@@ -459,9 +459,10 @@ mockService('user-custom-skill-service', {
 });
 
 // ─── Repositories mocks ────────────────────────────────────────
+const mockRepoGetContractById = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: {
-    getContractById: jest.fn(),
+    getContractById: mockRepoGetContractById,
     updateContract: jest.fn(),
     getContractsByUser: jest.fn(),
   },
@@ -1095,7 +1096,10 @@ describe('Review Routes', () => {
 // 14. Rush Upgrade Routes
 // ═══════════════════════════════════════════════════════════════════
 describe('Rush Upgrade Routes', () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRepoGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'freelancer-1' });
+  });
 
   it('?? "" param fallbacks + error fallbacks', async () => {
     const svc = await import('../../services/rush-upgrade-service.js');

@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type BlockchainAgreementEntity = {
@@ -21,7 +21,7 @@ export type BlockchainAgreementEntity = {
 
 const COLLECTION_ID = 'blockchain_agreements';
 
-export class BlockchainAgreementRepository extends BaseRepositoryAppwrite<BlockchainAgreementEntity> {
+export class BlockchainAgreementRepository extends BaseRepository<BlockchainAgreementEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

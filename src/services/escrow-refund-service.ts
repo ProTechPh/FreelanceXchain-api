@@ -11,6 +11,7 @@ import { createNotification } from './notification-service.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { milestoneRepository } from '../repositories/milestone-repository.js';
+import { withLock } from '../utils/async-lock.js';
 
 /**
  * Create refund request
@@ -151,165 +152,197 @@ export async function createRefundRequest(
 export async function approveRefund(
   input: ApproveRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
-  try {
-    // Get refund request with contract data
-    const refundData = await refundRequestRepository.findWithContract(input.refundId);
-
-    if (!refundData || !refundData.contract) {
-      return {
-        success: false,
-        error: { code: 'REFUND_NOT_FOUND', message: 'Refund request not found' },
-      };
-    }
-
-    const { contract, ...refund } = refundData;
-
-    // Verify approver is the other party
-    const otherPartyId = contract.freelancer_id === refund.requested_by
-      ? contract.employer_id
-      : contract.freelancer_id;
-
-    if (otherPartyId !== input.approvedBy) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'Only the other party can approve refund' },
-      };
-    }
-
-    // Check status
-    if (refund.status !== 'pending') {
-      return {
-        success: false,
-        error: { code: 'INVALID_STATUS', message: 'Refund request is not pending' },
-      };
-    }
-
-    // Re-read immediately before writing to narrow the concurrent-approval race window.
-    // Appwrite lacks atomic compare-and-set; this second read catches most races.
-    const freshRefund = await refundRequestRepository.findWithContract(input.refundId);
-    if (!freshRefund || freshRefund.status !== 'pending') {
-      return {
-        success: false,
-        error: { code: 'INVALID_STATUS', message: 'Refund request status changed concurrently' },
-      };
-    }
-
-    // Update refund request
-    const updated = await refundRequestRepository.update(input.refundId, {
-      status: 'approved',
-      approved_by: input.approvedBy,
-      approved_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-
-    if (!updated) {
-      throw new Error('Failed to approve refund');
-    }
-
-    // Execute blockchain refund for all non-approved milestones
+  // Serialize concurrent refund approval attempts to prevent double-refund
+  return withLock(`refund-approve:${input.refundId}`, async () => {
     try {
-      if (contract.escrow_address) {
-        const { refundMilestone } = await import('./escrow-blockchain.js');
+      // Get refund request with contract data
+      const refundData = await refundRequestRepository.findWithContract(input.refundId);
 
-        // Get all milestones for this contract to determine correct indices
-        const milestones = await milestoneRepository.findByContract(refund.contract_id);
-
-        const pendingMilestones = milestones
-          .map((m: any, index: number) => ({ ...m, index }))
-          .filter((m: any) => m.status !== 'approved');
-
-        for (const milestone of pendingMilestones) {
-          try {
-            await refundMilestone(contract.escrow_address, milestone.index);
-            logger.info('Blockchain refund executed for milestone', {
-              refundId: input.refundId,
-              milestoneIndex: milestone.index,
-              milestoneId: milestone.id,
-              escrowAddress: contract.escrow_address,
-            });
-          } catch (milestoneRefundError) {
-            logger.error('Failed to refund individual milestone on-chain', {
-              error: milestoneRefundError,
-              milestoneIndex: milestone.index,
-              milestoneId: milestone.id,
-            });
-          }
-        }
-      } else {
-        /* istanbul ignore next */
-        logger.warn('Contract has no escrow address, skipping blockchain refund', {
-          contractId: refund.contract_id
-        });
+      if (!refundData || !refundData.contract) {
+        return {
+          success: false,
+          error: { code: 'REFUND_NOT_FOUND', message: 'Refund request not found' },
+        };
       }
-    } catch (blockchainError) {
-      // Blockchain call failed — rollback the DB approval so the state stays consistent.
-      // Without this rollback the requester would see "approved" but receive no on-chain refund.
-      logger.error('Failed to execute blockchain refund, rolling back DB approval', {
-        error: blockchainError,
-        refundId: input.refundId,
+
+      const { contract, ...refund } = refundData;
+
+      // Verify approver is the other party
+      const otherPartyId = contract.freelancer_id === refund.requested_by
+        ? contract.employer_id
+        : contract.freelancer_id;
+
+      if (otherPartyId !== input.approvedBy) {
+        return {
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'Only the other party can approve refund' },
+        };
+      }
+
+      // Check status
+      if (refund.status !== 'pending') {
+        return {
+          success: false,
+          error: { code: 'INVALID_STATUS', message: 'Refund request is not pending' },
+        };
+      }
+
+      // Re-read immediately before writing to narrow the concurrent-approval race window.
+      // Appwrite lacks atomic compare-and-set; this second read catches most races.
+      const freshRefund = await refundRequestRepository.findWithContract(input.refundId);
+      if (!freshRefund || freshRefund.status !== 'pending') {
+        return {
+          success: false,
+          error: { code: 'INVALID_STATUS', message: 'Refund request status changed concurrently' },
+        };
+      }
+
+      // Update refund request
+      const updated = await refundRequestRepository.update(input.refundId, {
+        status: 'approved',
+        approved_by: input.approvedBy,
+        approved_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       });
+
+      if (!updated) {
+        throw new Error('Failed to approve refund');
+      }
+
+      // Execute blockchain refund for all non-approved milestones
+      // Track failures to implement all-or-nothing semantics
+      const failedMilestones: Array<{ index: number; id: string; error: unknown }> = [];
       try {
-        await refundRequestRepository.update(input.refundId, {
-          status: 'pending',
-          updated_at: new Date().toISOString(),
-        });
-      } catch (rollbackError) {
-        logger.error('CRITICAL: Failed to rollback refund approval after blockchain failure', {
-          error: rollbackError,
+        if (contract.escrow_address) {
+          const { refundMilestone } = await import('./escrow-blockchain.js');
+
+          // Get all milestones for this contract to determine correct indices
+          const milestones = await milestoneRepository.findByContract(refund.contract_id);
+
+          const pendingMilestones = milestones
+            .map((m: any, index: number) => ({ ...m, index }))
+            .filter((m: any) => m.status !== 'approved' && m.status !== 'refunded');
+
+          for (const milestone of pendingMilestones) {
+            try {
+              await refundMilestone(contract.escrow_address, milestone.index);
+              logger.info('Blockchain refund executed for milestone', {
+                refundId: input.refundId,
+                milestoneIndex: milestone.index,
+                milestoneId: milestone.id,
+                escrowAddress: contract.escrow_address,
+              });
+            } catch (milestoneRefundError) {
+              logger.error('Failed to refund individual milestone on-chain', {
+                error: milestoneRefundError,
+                milestoneIndex: milestone.index,
+                milestoneId: milestone.id,
+              });
+              failedMilestones.push({ index: milestone.index, id: milestone.id, error: milestoneRefundError });
+            }
+          }
+        } else {
+          /* istanbul ignore next */
+          logger.warn('Contract has no escrow address, skipping blockchain refund', {
+            contractId: refund.contract_id
+          });
+        }
+      } catch (blockchainError) {
+        // Blockchain call failed — rollback the DB approval so the state stays consistent.
+        logger.error('Failed to execute blockchain refund, rolling back DB approval', {
+          error: blockchainError,
           refundId: input.refundId,
         });
+        try {
+          await refundRequestRepository.update(input.refundId, {
+            status: 'pending',
+            updated_at: new Date().toISOString(),
+          });
+        } catch (rollbackError) {
+          logger.error('CRITICAL: Failed to rollback refund approval after blockchain failure', {
+            error: rollbackError,
+            refundId: input.refundId,
+          });
+        }
+        return {
+          success: false,
+          error: { code: 'BLOCKCHAIN_REFUND_FAILED', message: 'Blockchain refund failed; approval has been rolled back' },
+        };
       }
+
+      // H7: If any milestone refunds failed, rollback to prevent inconsistent state
+      if (failedMilestones.length > 0) {
+        logger.error('Partial refund failure — rolling back DB approval', {
+          refundId: input.refundId,
+          failedCount: failedMilestones.length,
+          failedMilestones: failedMilestones.map(f => ({ index: f.index, id: f.id })),
+        });
+        try {
+          await refundRequestRepository.update(input.refundId, {
+            status: 'pending',
+            updated_at: new Date().toISOString(),
+          });
+        } catch (rollbackError) {
+          logger.error('CRITICAL: Failed to rollback refund approval after partial blockchain failure', {
+            error: rollbackError,
+            refundId: input.refundId,
+          });
+        }
+        return {
+          success: false,
+          error: {
+            code: 'PARTIAL_REFUND_FAILED',
+            message: `${failedMilestones.length} milestone refund(s) failed on-chain. Approval has been rolled back. Please retry.`,
+          },
+        };
+      }
+
+      // Update contract status to cancelled after refund approval
+      await contractRepository.updateContract(refund.contract_id, {
+        status: 'cancelled',
+      });
+
+      // Cancel any other pending refund requests for this contract
+      const otherRefunds = await refundRequestRepository.findByContract(refund.contract_id);
+      for (const r of otherRefunds) {
+        if (r.status === 'pending' && r.id !== input.refundId) {
+          await refundRequestRepository.update(r.id, {
+            status: 'cancelled',
+            updated_at: new Date().toISOString(),
+          });
+        }
+      }
+
+      // Notify requester
+      const notificationResult = await createNotification({
+        userId: refund.requested_by,
+        type: 'refund_approved',
+        title: 'Refund Approved',
+        message: 'Your refund request has been approved and will be processed shortly.',
+        data: {
+          relatedId: refund.contract_id,
+          relatedType: 'contract',
+        },
+      });
+
+      if (notificationResult.success) {
+        await sendNotificationToUser(refund.requested_by, notificationResult.data);
+      }
+
+      logger.info(`Refund ${input.refundId} approved by ${input.approvedBy}`);
+
+      return { success: true, data: updated as unknown as RefundRequest };
+    } catch (error) {
+      logger.error('Failed to approve refund:', error);
       return {
         success: false,
-        error: { code: 'BLOCKCHAIN_REFUND_FAILED', message: 'Blockchain refund failed; approval has been rolled back' },
+        error: {
+          code: 'APPROVE_FAILED',
+          message: error instanceof Error ? error.message : 'Failed to approve refund',
+        },
       };
     }
-
-    // Update contract status to cancelled after refund approval
-    await contractRepository.updateContract(refund.contract_id, {
-      status: 'cancelled',
-    });
-
-    // Cancel any other pending refund requests for this contract
-    const otherRefunds = await refundRequestRepository.findByContract(refund.contract_id);
-    for (const r of otherRefunds) {
-      if (r.status === 'pending' && r.id !== input.refundId) {
-        await refundRequestRepository.update(r.id, {
-          status: 'cancelled',
-          updated_at: new Date().toISOString(),
-        });
-      }
-    }
-
-    // Notify requester
-    const notificationResult = await createNotification({
-      userId: refund.requested_by,
-      type: 'refund_approved',
-      title: 'Refund Approved',
-      message: 'Your refund request has been approved and will be processed shortly.',
-      data: {
-        relatedId: refund.contract_id,
-        relatedType: 'contract',
-      },
-    });
-
-    if (notificationResult.success) {
-      await sendNotificationToUser(refund.requested_by, notificationResult.data);
-    }
-
-    logger.info(`Refund ${input.refundId} approved by ${input.approvedBy}`);
-
-    return { success: true, data: updated as unknown as RefundRequest };
-  } catch (error) {
-    logger.error('Failed to approve refund:', error);
-    return {
-      success: false,
-      error: {
-        code: 'APPROVE_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to approve refund',
-      },
-    };
-  }
+  });
 }
 
 /**

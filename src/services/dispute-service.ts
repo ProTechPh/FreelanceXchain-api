@@ -28,6 +28,7 @@ import {
 import { disputeAgreement } from './agreement-contract.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import { withLock } from '../utils/async-lock.js';
 
 export type DisputeServiceResult<T> = ServiceResult<T>;
 export type DisputeServiceError = ServiceError;
@@ -131,7 +132,7 @@ export async function createDispute(
     };
   }
 
-  // Check for existing active dispute on this milestone
+  // Check for existing active dispute on this milestone (M9: use lock to prevent race)
   const existingDispute = await disputeRepository.getDisputeByMilestone(milestoneId);
   if (existingDispute) {
     return {
@@ -567,33 +568,36 @@ async function updateDisputeStatuses(
 export async function resolveDispute(
   input: ResolveDisputeInput
 ): Promise<DisputeServiceResult<Dispute>> {
-  const { disputeId, decision, reasoning, resolvedBy } = input;
+  // Serialize concurrent resolution attempts for the same dispute to prevent double-disbursement
+  return withLock(`dispute-resolve:${input.disputeId}`, async () => {
+    const { disputeId, decision, reasoning, resolvedBy } = input;
 
-  const validated = await validateDisputeResolution(input);
-  if ('error' in validated) return validated.error;
+    const validated = await validateDisputeResolution(input);
+    if ('error' in validated) return validated.error;
 
-  const { disputeEntity, contract, project, projectEntity, milestone, milestoneEntity } = validated;
+    const { disputeEntity, contract, project, projectEntity, milestone, milestoneEntity } = validated;
 
-  // Create resolution entity
-  const resolutionEntity: DisputeResolutionEntity = {
-    decision,
-    reasoning,
-    resolved_by: resolvedBy,
-    resolved_at: new Date().toISOString(),
-  };
+    // Create resolution entity
+    const resolutionEntity: DisputeResolutionEntity = {
+      decision,
+      reasoning,
+      resolved_by: resolvedBy,
+      resolved_at: new Date().toISOString(),
+    };
 
-  const paymentResult = await processDisputeEscrowPayment(
-    disputeId, disputeEntity, decision, milestoneEntity,
-  );
-  if ('error' in paymentResult) return paymentResult.error;
+    const paymentResult = await processDisputeEscrowPayment(
+      disputeId, disputeEntity, decision, milestoneEntity,
+    );
+    if ('error' in paymentResult) return paymentResult.error;
 
-  const statusResult = await updateDisputeStatuses(
-    disputeId, disputeEntity, decision, reasoning, resolvedBy,
-    contract, project, projectEntity, milestone, resolutionEntity,
-  );
-  if ('error' in statusResult) return statusResult.error;
+    const statusResult = await updateDisputeStatuses(
+      disputeId, disputeEntity, decision, reasoning, resolvedBy,
+      contract, project, projectEntity, milestone, resolutionEntity,
+    );
+    if ('error' in statusResult) return statusResult.error;
 
-  return { success: true, data: statusResult.dispute };
+    return { success: true, data: statusResult.dispute };
+  });
 }
 
 

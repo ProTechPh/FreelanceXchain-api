@@ -2,9 +2,9 @@ import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import { RegisterInput, LoginInput } from '../../services/auth-types.js';
 
 // Mocks are handled by jest.setup.ts
-const { register, login, validateToken, logout } = await import('../../services/auth-service-appwrite.js');
+const { register, login, validateToken, logout } = await import('../../services/auth-service.js');
 
-describe('AuthService (Appwrite)', () => {
+describe('AuthService', () => {
   let mockDatabases: any;
 
   beforeEach(() => {

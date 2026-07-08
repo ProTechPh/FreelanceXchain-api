@@ -34,6 +34,8 @@ import { completeAgreement } from './agreement-contract.js';
 import { approveMilestone as approveOnChainMilestone, deployEscrowContract as deployRealEscrow } from './escrow-blockchain.js';
 import { isWeb3Available } from './web3-client.js';
 import { getBlockchainMode } from './blockchain/factory.js';
+import { withLock } from '../utils/async-lock.js';
+import { refundRequestRepository } from '../repositories/refund-request-repository.js';
 
 const escrowOps = {
   deployEscrow,
@@ -63,6 +65,11 @@ async function createPaymentRecord(params: {
   txHash: string | null;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 }): Promise<void> {
+  // Validate amount to prevent negative/zero/NaN payments
+  if (typeof params.amount !== 'number' || !isFinite(params.amount) || params.amount <= 0) {
+    logger.error('Invalid payment amount rejected', { amount: params.amount, contractId: params.contractId });
+    return;
+  }
   try {
     await paymentRepository.create({
       id: generateId(),
@@ -361,19 +368,20 @@ async function releaseEscrowPaymentWithSaga(
       const onChainResult = await approveOnChainMilestone(contract.escrowAddress, milestoneIndex);
       transactionHash = onChainResult.transactionHash;
       logger.info('Real blockchain milestone release tx', { transactionHash });
-    }
-
-    try {
-      const escrow = await escrowOps.getEscrowByContractId(contractId);
-      if (escrow) {
-        const simReceipt = await escrowOps.releaseMilestone(escrow.address, milestoneId, employerWallet);
-        if (!transactionHash) transactionHash = simReceipt.transactionHash;
-      } else if (!transactionHash) {
-        return { error: { success: false, error: { code: 'ESCROW_NOT_FOUND', message: 'No escrow record found for this contract. Payment cannot be released.' } } };
+    } else {
+      // Simulated mode: only run when NOT using real blockchain
+      try {
+        const escrow = await escrowOps.getEscrowByContractId(contractId);
+        if (escrow) {
+          const simReceipt = await escrowOps.releaseMilestone(escrow.address, milestoneId, employerWallet);
+          if (!transactionHash) transactionHash = simReceipt.transactionHash;
+        } else if (!transactionHash) {
+          return { error: { success: false, error: { code: 'ESCROW_NOT_FOUND', message: 'No escrow record found for this contract. Payment cannot be released.' } } };
+        }
+      } catch (simError) {
+        if (!transactionHash) throw simError;
+        logger.error('Simulated escrow update failed (non-critical)', { error: simError });
       }
-    } catch (simError) {
-      if (!transactionHash) throw simError;
-      logger.error('Simulated escrow update failed (non-critical)', { error: simError });
     }
 
     await createPaymentRecord({
@@ -443,7 +451,7 @@ async function finalizeMilestoneApproval(
     logger.error('Failed to approve milestone on blockchain registry', { error });
   }
 
-  const allApproved = updatedMilestones.every((m: any) => m.status === 'approved');
+  const allApproved = updatedMilestones.every((m: any) => m.status === 'approved' || m.status === 'refunded');
   let contractCompleted = false;
 
   if (allApproved) {
@@ -480,24 +488,36 @@ export async function approveMilestone(
   milestoneId: string,
   employerId: string
 ): Promise<ServiceResult<MilestoneApprovalResult>> {
-  const validated = await validateMilestoneApproval(contractId, milestoneId, employerId);
-  if ('error' in validated) return validated.error;
+  // Serialize concurrent approval attempts for the same milestone to prevent double-spend
+  return withLock(`milestone-approve:${milestoneId}`, async () => {
+    const validated = await validateMilestoneApproval(contractId, milestoneId, employerId);
+    if ('error' in validated) return validated.error;
 
-  const { contract, project, milestone, milestoneIndex, employer, freshProjectEntity } = validated;
-  const releasingBaseEntity = freshProjectEntity ?? validated.projectEntity;
+    const { contract, project, milestone, milestoneIndex, employer, freshProjectEntity } = validated;
+    const releasingBaseEntity = freshProjectEntity ?? validated.projectEntity;
 
-  const released = await releaseEscrowPaymentWithSaga(
-    contractId, contract, project, milestoneId, milestoneIndex,
-    milestone.amount, employerId, employer.wallet_address, releasingBaseEntity,
-  );
-  if ('error' in released) return released.error;
+    // H9: Check for pending refund requests before approving
+    const pendingRefund = await refundRequestRepository.findPendingByContract(contractId);
+    if (pendingRefund) {
+      return {
+        success: false,
+        error: { code: 'PENDING_REFUND', message: 'Cannot approve milestone while a refund request is pending. Resolve the refund first.' },
+      };
+    }
 
-  const result = await finalizeMilestoneApproval(
-    contractId, contract, project, milestoneId, milestone,
-    milestoneIndex, employerId, releasingBaseEntity, released.transactionHash,
-  );
+    const released = await releaseEscrowPaymentWithSaga(
+      contractId, contract, project, milestoneId, milestoneIndex,
+      milestone.amount, employerId, employer.wallet_address, releasingBaseEntity,
+    );
+    if ('error' in released) return released.error;
 
-  return { success: true, data: result };
+    const result = await finalizeMilestoneApproval(
+      contractId, contract, project, milestoneId, milestone,
+      milestoneIndex, employerId, releasingBaseEntity, released.transactionHash,
+    );
+
+    return { success: true, data: result };
+  });
 }
 
 
@@ -820,8 +840,10 @@ export async function initializeContractEscrow(
       // Use a dedicated platform arbiter address.
       // The server wallet (msg.sender) is the on-chain "employer" (deployer).
       // The arbiter must differ from both the deployer and the freelancer.
-      const platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS']
-        || '0x0000000000000000000000000000000000000001';
+      const platformArbiterAddress = process.env['PLATFORM_ARBITER_ADDRESS'];
+      if (!platformArbiterAddress) {
+        throw new Error('PLATFORM_ARBITER_ADDRESS environment variable is required for real escrow deployment');
+      }
 
       const realDeployment = await deployRealEscrow({
         contractId: contract.id,
