@@ -23,7 +23,9 @@ import {
   listProjectsByMultipleCategories,
 } from '../services/project-service.js';
 import { getProposalsByProject } from '../services/proposal-service.js';
-import { mapProjectFromEntity } from '../utils/entity-mapper.js';
+import { mapProjectFromEntity, mapEmployerProfileFromEntity } from '../utils/entity-mapper.js';
+import { proposalRepository } from '../repositories/proposal-repository.js';
+import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
 
 const router = Router();
 
@@ -152,13 +154,13 @@ const router = Router();
  *                   type: string
  */
 router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
-   const keyword = req.query['keyword'] as string | undefined;
-   const skillsParam = req.query['skills'] as string | undefined;
-   const minBudget = req.query['minBudget'] ? Number(req.query['minBudget']) : undefined;
-   const maxBudget = req.query['maxBudget'] ? Number(req.query['maxBudget']) : undefined;
-   const categoryParam = req.query['category'] as string | undefined;
-   const categoriesParam = req.query['categories'] as string | undefined;
-   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
+  const keyword = req.query['keyword'] as string | undefined;
+  const skillsParam = req.query['skills'] as string | undefined;
+  const minBudget = req.query['minBudget'] ? Number(req.query['minBudget']) : undefined;
+  const maxBudget = req.query['maxBudget'] ? Number(req.query['maxBudget']) : undefined;
+  const categoryParam = req.query['category'] as string | undefined;
+  const categoriesParam = req.query['categories'] as string | undefined;
+  const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
 
   const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
   const options = { limit, offset };
@@ -190,8 +192,21 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
     return;
   }
 
-  // Map entities to API models (snake_case to camelCase)
-  const mappedItems = result.data.items.map(mapProjectFromEntity);
+  // Enrich with proposal count + employer profile, then map entities to API models
+  const projectIds = result.data.items.map(p => p.id);
+  const employerIds = result.data.items.map(p => p.employer_id);
+  const [proposalCounts, employerProfiles] = await Promise.all([
+    projectIds.length > 0 ? proposalRepository.getProposalCountsByProjects(projectIds) : new Map<string, number>(),
+    employerIds.length > 0 ? employerProfileRepository.getProfilesByUserIds(employerIds) : new Map(),
+  ]);
+  const mappedItems = result.data.items.map(entity => {
+    const employerEntity = employerProfiles.get(entity.employer_id);
+    return {
+      ...mapProjectFromEntity(entity),
+      proposalCount: proposalCounts.get(entity.id) ?? 0,
+      employer: employerEntity ? mapEmployerProfileFromEntity(employerEntity) : undefined,
+    };
+  });
   res.status(200).json({
     ...result.data,
     items: mappedItems
@@ -269,8 +284,15 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
     return;
   }
 
-  // Map entities to API models (snake_case to camelCase)
-  const mappedItems = result.data.items.map(mapProjectFromEntity);
+  // Map entities to API models, carrying through the proposalCount already computed
+  // by listProjectsByEmployer, and attaching the requesting employer's own profile.
+  const employerProfile = await employerProfileRepository.getProfileByUserId(userId);
+  const mappedEmployer = employerProfile ? mapEmployerProfileFromEntity(employerProfile) : undefined;
+  const mappedItems = result.data.items.map(entity => ({
+    ...mapProjectFromEntity(entity),
+    proposalCount: entity.proposalCount,
+    employer: mappedEmployer,
+  }));
   res.status(200).json({
     ...result.data,
     items: mappedItems
@@ -409,8 +431,16 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
     return;
   }
 
-  // Map entity to API model (snake_case to camelCase)
-  const projectModel = mapProjectFromEntity(result.data);
+  // Map entity to API model, enriched with proposal count + employer profile
+  const [proposalCount, employerProfile] = await Promise.all([
+    proposalRepository.getProposalCountByProject(result.data.id),
+    employerProfileRepository.getProfileByUserId(result.data.employer_id),
+  ]);
+  const projectModel = {
+    ...mapProjectFromEntity(result.data),
+    proposalCount,
+    employer: employerProfile ? mapEmployerProfileFromEntity(employerProfile) : undefined,
+  };
   res.status(200).json(projectModel);
 });
 

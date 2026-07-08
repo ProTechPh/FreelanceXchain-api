@@ -40,6 +40,20 @@ jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () =
   getProposalsByProject: mockGetProposalsByProject,
 }));
 
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+  proposalRepository: {
+    getProposalCountByProject: jest.fn().mockResolvedValue(0),
+    getProposalCountsByProjects: jest.fn().mockResolvedValue(new Map()),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: {
+    getProfileByUserId: jest.fn().mockResolvedValue(null),
+    getProfilesByUserIds: jest.fn().mockResolvedValue(new Map()),
+  },
+}));
+
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'employer' }; next(); },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
@@ -90,6 +104,7 @@ jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
 
 jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
   mapProjectFromEntity: (entity: any) => entity,
+  mapEmployerProfileFromEntity: (entity: any) => entity,
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({

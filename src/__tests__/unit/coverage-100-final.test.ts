@@ -989,6 +989,22 @@ describe('project-routes.ts - Branch Coverage', () => {
     jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
       uploadProjectAttachments: (_req: any, _res: any, next: any) => next(),
     }));
+    jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
+      mapProjectFromEntity: (e: any) => e,
+      mapEmployerProfileFromEntity: (e: any) => e,
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+      proposalRepository: {
+        getProposalCountByProject: jest.fn().mockResolvedValue(0),
+        getProposalCountsByProjects: jest.fn().mockResolvedValue(new Map()),
+      },
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+      employerProfileRepository: {
+        getProfileByUserId: jest.fn().mockResolvedValue(null),
+        getProfilesByUserIds: jest.fn().mockResolvedValue(new Map()),
+      },
+    }));
 
     const express = (await import('express')).default;
     const router = (await import('../../routes/project-routes.js')).default;

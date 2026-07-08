@@ -47,6 +47,19 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   createUserClient: jest.fn(() => ({ setEndpoint: jest.fn().mockReturnThis(), setProject: jest.fn().mockReturnThis(), setJWT: jest.fn().mockReturnThis() })),
   BUCKETS: { PORTFOLIO_IMAGES: 'pi', PROPOSAL_ATTACHMENTS: 'pa', PROJECT_ATTACHMENTS: 'pj', AVATARS: 'av', DELIVERABLES: 'del' },
   Query: { equal: jest.fn((...a: any[]) => a), notEqual: jest.fn((...a: any[]) => a), orderDesc: jest.fn((...a: any[]) => a), orderAsc: jest.fn((...a: any[]) => a), limit: jest.fn((...a: any[]) => a), offset: jest.fn((...a: any[]) => a), search: jest.fn((...a: any[]) => a), isNull: jest.fn((...a: any[]) => a) },
+  ID: { unique: jest.fn(() => 'generated-id') },
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+  proposalRepository: {
+    getProposalCountByProject: jest.fn().mockResolvedValue(0),
+    getProposalCountsByProjects: jest.fn().mockResolvedValue(new Map()),
+  },
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: {
+    getProfileByUserId: jest.fn().mockResolvedValue(null),
+    getProfilesByUserIds: jest.fn().mockResolvedValue(new Map()),
+  },
 }));
 jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({ generateId: () => 'gid' }));
 jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({

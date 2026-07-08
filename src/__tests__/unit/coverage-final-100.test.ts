@@ -105,10 +105,25 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     search: jest.fn((...args: any[]) => args),
     isNull: jest.fn((...args: any[]) => args),
   },
+  ID: { unique: jest.fn(() => 'generated-id') },
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
   generateId: () => 'generated-id',
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+  proposalRepository: {
+    getProposalCountByProject: jest.fn().mockResolvedValue(0),
+    getProposalCountsByProjects: jest.fn().mockResolvedValue(new Map()),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: {
+    getProfileByUserId: jest.fn().mockResolvedValue(null),
+    getProfilesByUserIds: jest.fn().mockResolvedValue(new Map()),
+  },
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({

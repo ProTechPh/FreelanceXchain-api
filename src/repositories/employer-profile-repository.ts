@@ -1,4 +1,5 @@
 import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { Query } from '../config/appwrite.js';
 
 export type EmployerProfileEntity = {
   id: string;
@@ -25,6 +26,16 @@ export class EmployerProfileRepository extends BaseRepositoryAppwrite<EmployerPr
 
   async getProfileByUserId(userId: string): Promise<EmployerProfileEntity | null> {
     return this.findOne('user_id', userId);
+  }
+
+  async getProfilesByUserIds(userIds: string[]): Promise<Map<string, EmployerProfileEntity>> {
+    const uniqueIds = [...new Set(userIds)];
+    if (uniqueIds.length === 0) return new Map();
+
+    const docs = await this.listWithQueries([Query.equal('user_id', uniqueIds)]);
+    const map = new Map<string, EmployerProfileEntity>();
+    docs.forEach(doc => map.set(doc.user_id, doc));
+    return map;
   }
 
   async updateProfile(id: string, updates: Partial<EmployerProfileEntity>): Promise<EmployerProfileEntity | null> {

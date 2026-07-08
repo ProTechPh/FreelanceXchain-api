@@ -60,6 +60,46 @@ describe('EmployerProfileRepository', () => {
     });
   });
 
+  describe('getProfilesByUserIds', () => {
+    it('should return a map of profiles keyed by user_id', async () => {
+      const docs = [
+        toAppwriteDoc({ id: 'ep1', user_id: 'u1', company_name: 'Acme' }),
+        toAppwriteDoc({ id: 'ep2', user_id: 'u2', company_name: 'Globex' }),
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 2 });
+      const result = await repo.getProfilesByUserIds(['u1', 'u2']);
+      expect(result.size).toBe(2);
+      expect(result.get('u1')?.company_name).toBe('Acme');
+      expect(result.get('u2')?.company_name).toBe('Globex');
+    });
+
+    it('should dedupe user ids before querying', async () => {
+      const docs = [toAppwriteDoc({ id: 'ep1', user_id: 'u1', company_name: 'Acme' })];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 1 });
+      const result = await repo.getProfilesByUserIds(['u1', 'u1', 'u1']);
+      expect(result.size).toBe(1);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return an empty map for an empty input array without querying', async () => {
+      const result = await repo.getProfilesByUserIds([]);
+      expect(result.size).toBe(0);
+      expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+    });
+
+    it('should return an empty map when no profiles match', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await repo.getProfilesByUserIds(['u1']);
+      expect(result.size).toBe(0);
+    });
+
+    it('should return an empty map on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('query failed'));
+      const result = await repo.getProfilesByUserIds(['u1']);
+      expect(result.size).toBe(0);
+    });
+  });
+
   describe('updateProfile', () => {
     it('should update and return a profile', async () => {
       const doc = toAppwriteDoc({ id: 'ep1', company_name: 'Updated' });

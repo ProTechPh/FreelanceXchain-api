@@ -37,6 +37,24 @@ jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () =
   getProposalsByProject: mockGetProposalsByProject,
 }));
 
+const mockGetProposalCountByProject = jest.fn<any>();
+const mockGetProposalCountsByProjects = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+  proposalRepository: {
+    getProposalCountByProject: mockGetProposalCountByProject,
+    getProposalCountsByProjects: mockGetProposalCountsByProjects,
+  },
+}));
+
+const mockGetProfileByUserId = jest.fn<any>();
+const mockGetProfilesByUserIds = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: {
+    getProfileByUserId: mockGetProfileByUserId,
+    getProfilesByUserIds: mockGetProfilesByUserIds,
+  },
+}));
+
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
   authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'employer' }; next(); },
   requireRole: () => (_req: any, _res: any, next: any) => next(),
@@ -84,6 +102,7 @@ jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
 
 jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
   mapProjectFromEntity: (entity: any) => entity,
+  mapEmployerProfileFromEntity: (entity: any) => entity,
 }));
 
 const router = (await import('../../routes/project-routes.js')).default;
@@ -93,6 +112,10 @@ describe('Project Routes', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetProposalCountByProject.mockResolvedValue(0);
+    mockGetProposalCountsByProjects.mockResolvedValue(new Map());
+    mockGetProfileByUserId.mockResolvedValue(null);
+    mockGetProfilesByUserIds.mockResolvedValue(new Map());
     app = express();
     app.use(express.json());
     app.use('/api/projects', router);
@@ -107,6 +130,23 @@ describe('Project Routes', () => {
       const res = await request(app).get('/api/projects');
       expect(res.status).toBe(200);
       expect(res.body.items).toHaveLength(1);
+    });
+
+    it('should enrich items with employer profile and proposalCount', async () => {
+      mockListOpenProjects.mockResolvedValue({
+        success: true,
+        data: { items: [{ id: 'p-1', title: 'Project 1', employer_id: 'emp-1' }], hasMore: false },
+      });
+      mockGetProposalCountsByProjects.mockResolvedValue(new Map([['p-1', 3]]));
+      mockGetProfilesByUserIds.mockResolvedValue(new Map([['emp-1', { user_id: 'emp-1', company_name: 'Acme' }]]));
+
+      const res = await request(app).get('/api/projects');
+
+      expect(res.status).toBe(200);
+      expect(mockGetProposalCountsByProjects).toHaveBeenCalledWith(['p-1']);
+      expect(mockGetProfilesByUserIds).toHaveBeenCalledWith(['emp-1']);
+      expect(res.body.items[0].proposalCount).toBe(3);
+      expect(res.body.items[0].employer).toEqual({ user_id: 'emp-1', company_name: 'Acme' });
     });
 
     it('should search projects by keyword', async () => {
@@ -147,6 +187,23 @@ describe('Project Routes', () => {
       });
       const res = await request(app).get('/api/projects/p-1');
       expect(res.status).toBe(404);
+    });
+
+    it('should enrich the project with employer profile and proposalCount', async () => {
+      mockGetProjectById.mockResolvedValue({
+        success: true,
+        data: { id: 'p-1', title: 'Project 1', status: 'open', employer_id: 'emp-1' },
+      });
+      mockGetProposalCountByProject.mockResolvedValue(5);
+      mockGetProfileByUserId.mockResolvedValue({ user_id: 'emp-1', company_name: 'Acme' });
+
+      const res = await request(app).get('/api/projects/p-1');
+
+      expect(res.status).toBe(200);
+      expect(mockGetProposalCountByProject).toHaveBeenCalledWith('p-1');
+      expect(mockGetProfileByUserId).toHaveBeenCalledWith('emp-1');
+      expect(res.body.proposalCount).toBe(5);
+      expect(res.body.employer).toEqual({ user_id: 'emp-1', company_name: 'Acme' });
     });
   });
 
@@ -273,6 +330,21 @@ describe('Project Routes', () => {
       });
       const res = await request(app).get('/api/projects/my-projects');
       expect(res.status).toBe(400);
+    });
+
+    it('should carry through proposalCount and attach the employer profile', async () => {
+      mockListProjectsByEmployer.mockResolvedValue({
+        success: true,
+        data: { items: [{ id: 'p-1', title: 'My Project', proposalCount: 2 }], hasMore: false },
+      });
+      mockGetProfileByUserId.mockResolvedValue({ user_id: 'user-1', company_name: 'My Company' });
+
+      const res = await request(app).get('/api/projects/my-projects');
+
+      expect(res.status).toBe(200);
+      expect(mockGetProfileByUserId).toHaveBeenCalledWith('user-1');
+      expect(res.body.items[0].proposalCount).toBe(2);
+      expect(res.body.items[0].employer).toEqual({ user_id: 'user-1', company_name: 'My Company' });
     });
   });
 });

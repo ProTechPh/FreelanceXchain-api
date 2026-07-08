@@ -1,6 +1,7 @@
 // Project domain types
 import type { ProjectSkillReference } from './skill.js';
 import type { FileAttachment, MilestoneStatus } from './milestone.js';
+import type { EmployerProfile } from './employer-profile.js';
 
 export type { MilestoneStatus } from './milestone.js';
 export type ProjectStatus = 'draft' | 'open' | 'in_progress' | 'completed' | 'cancelled' | 'disputed';
@@ -40,4 +41,6 @@ export type Project = {
   attachments: FileAttachment[];
   createdAt: string;
   updatedAt: string;
+  employer?: EmployerProfile;
+  proposalCount?: number;
 };

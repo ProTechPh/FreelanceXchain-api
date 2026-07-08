@@ -37,12 +37,27 @@ jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () =
   getProposalsByProject: mockGetProposalsByProject,
 }));
 
+jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
+  proposalRepository: {
+    getProposalCountByProject: jest.fn().mockResolvedValue(0),
+    getProposalCountsByProjects: jest.fn().mockResolvedValue(new Map()),
+  },
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: {
+    getProfileByUserId: jest.fn().mockResolvedValue(null),
+    getProfilesByUserIds: jest.fn().mockResolvedValue(new Map()),
+  },
+}));
+
 const mockMapProjectFromEntity = jest.fn<any>((entity: any) => ({
   ...entity,
   milestones: entity.milestones || [],
 }));
 jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
   mapProjectFromEntity: mockMapProjectFromEntity,
+  mapEmployerProfileFromEntity: (entity: any) => entity,
 }));
 
 const mockUploadMultipleFiles = jest.fn<any>();
