@@ -7,7 +7,7 @@ import {
   type EmailFolder,
 } from '../repositories/email-inbox-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
-import type { PaginatedResult } from '../repositories/base-repository-appwrite.js';
+import type { PaginatedResult } from '../repositories/base-repository.js';
 import crypto from 'crypto';
 
 export type InboundEmailPayload = {

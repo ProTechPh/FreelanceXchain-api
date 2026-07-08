@@ -1,11 +1,8 @@
 /**
  * Database Configuration
- * 
- * PostgreSQL has been completely removed.
- * This project uses Appwrite for all data storage.
- * 
+ *
  * @deprecated This module is kept for backward compatibility.
- * New code should import directly from config/appwrite.ts
+ * New code should import directly from config/appwrite
  */
 
 // Re-export Appwrite client for convenience

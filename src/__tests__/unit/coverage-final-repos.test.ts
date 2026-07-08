@@ -20,7 +20,7 @@ const { contractRepository } = await import('../../repositories/contract-reposit
 const { PaymentRepository } = await import('../../repositories/payment-repository.js');
 const { userRepository } = await import('../../repositories/user-repository.js');
 const { ReviewRepository } = await import('../../repositories/review-repository.js');
-const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
+const { BaseRepository } = await import('../../repositories/base-repository.js');
 const { projectRepository } = await import('../../repositories/project-repository.js');
 const { skillRepository } = await import('../../repositories/skill-repository.js');
 const { RepositoryError } = await import('../../repositories/types.js');
@@ -342,9 +342,9 @@ describe('Repository coverage gaps', () => {
     });
   });
 
-  // ─── 13. base-repository-appwrite: countWithQueries method ───
-  describe('base-repository-appwrite: countWithQueries', () => {
-    class TestRepo extends BaseRepositoryAppwrite<{ id: string; created_at: string; updated_at: string }> {
+  // ─── 13. base-repository: countWithQueries method ───
+  describe('base-repository: countWithQueries', () => {
+    class TestRepo extends BaseRepository<{ id: string; created_at: string; updated_at: string }> {
       constructor() {
         super('test_collection');
       }
@@ -512,6 +512,68 @@ describe('Repository coverage gaps', () => {
       const result = await skillRepository.searchSkillsByKeyword('javascript');
       expect(result).toHaveLength(1);
       expect(result[0]!.name).toBe('TypeScript');
+    });
+  });
+
+  // ─── base-repository: fetchAll cursor pagination (lines 142, 149-150) ───
+  describe('base-repository: fetchAll cursor pagination', () => {
+    class TestRepo extends BaseRepository<{ id: string; created_at: string; updated_at: string }> {
+      constructor() {
+        super('test_collection');
+      }
+      async testFetchAll(baseQueries: any[] = [], pageSize?: number) {
+        return this.fetchAll(baseQueries, pageSize);
+      }
+    }
+
+    it('should use cursorAfter for second page when first page is full', async () => {
+      const repo = new TestRepo();
+      const page1 = Array.from({ length: 3 }, (_, i) => ({
+        $id: `doc-${i}`,
+        $createdAt: '2025-01-01T00:00:00Z',
+        $updatedAt: '2025-01-01T00:00:00Z',
+      }));
+      const page2 = [
+        { $id: 'doc-3', $createdAt: '2025-01-01T00:00:00Z', $updatedAt: '2025-01-01T00:00:00Z' },
+      ];
+
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: page1, total: 4 })
+        .mockResolvedValueOnce({ documents: page2, total: 4 });
+
+      const result = await repo.testFetchAll([], 3);
+      expect(result).toHaveLength(4);
+      expect(result[0]!.id).toBe('doc-0');
+      expect(result[3]!.id).toBe('doc-3');
+    });
+
+    it('should stop when last document has no $id', async () => {
+      const repo = new TestRepo();
+      // Page is full but last doc has no $id — should break
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'doc-1', $createdAt: '2025-01-01T00:00:00Z', $updatedAt: '2025-01-01T00:00:00Z' },
+          { $createdAt: '2025-01-01T00:00:00Z', $updatedAt: '2025-01-01T00:00:00Z' }, // no $id
+        ],
+        total: 2,
+      });
+
+      const result = await repo.testFetchAll([], 2);
+      expect(result).toHaveLength(2);
+    });
+
+    it('should return single page when results are less than pageSize', async () => {
+      const repo = new TestRepo();
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'doc-1', $createdAt: '2025-01-01T00:00:00Z', $updatedAt: '2025-01-01T00:00:00Z' },
+        ],
+        total: 1,
+      });
+
+      const result = await repo.testFetchAll([]);
+      expect(result).toHaveLength(1);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
     });
   });
 });

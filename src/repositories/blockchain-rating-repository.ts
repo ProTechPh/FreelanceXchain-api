@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type BlockchainRatingEntity = {
@@ -16,7 +16,7 @@ export type BlockchainRatingEntity = {
 
 const COLLECTION_ID = 'blockchain_ratings';
 
-export class BlockchainRatingRepository extends BaseRepositoryAppwrite<BlockchainRatingEntity> {
+export class BlockchainRatingRepository extends BaseRepository<BlockchainRatingEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

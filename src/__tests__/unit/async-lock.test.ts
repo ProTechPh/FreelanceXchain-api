@@ -54,6 +54,8 @@ describe('async-lock', () => {
 
   it('should clean up lock after completion', async () => {
     await withLock('c-key4', async () => 'done');
+    // Yield to let the cleanup .then() handler run (line 27)
+    await new Promise(r => setTimeout(r, 10));
     const result = await withLock('c-key4', async () => 'immediate');
     expect(result).toBe('immediate');
   });
@@ -68,6 +70,8 @@ describe('async-lock', () => {
       caught = true;
     }
     expect(caught).toBe(true);
+    // Yield to let the cleanup .then() handler run (line 32)
+    await new Promise(r => setTimeout(r, 10));
     // Lock should be cleaned up — second call should not be blocked
     const result = await withLock('r-key5', async () => 'recovered');
     expect(result).toBe('recovered');

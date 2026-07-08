@@ -1,6 +1,6 @@
 /**
- * Base Repository for Appwrite Database
- * Provides CRUD operations using Appwrite SDK
+ * Base Repository
+ * Provides CRUD operations for the database
  */
 
 import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
@@ -29,7 +29,7 @@ function mapDocuments<T extends BaseEntity>(docs: Record<string, any>[]): T[] {
   return docs.map(doc => mapDocument<T>(doc));
 }
 
-export class BaseRepositoryAppwrite<T extends BaseEntity> {
+export class BaseRepository<T extends BaseEntity> {
   protected collectionId: string;
 
   constructor(collectionId: string) {
@@ -184,7 +184,7 @@ export class BaseRepositoryAppwrite<T extends BaseEntity> {
     }
   }
 
-  // ─── Appwrite-specific helpers ──────────────────────────────────────────
+  // ─── Query helpers ──────────────────────────────────────────
 
   protected async listWithQueries<U = T>(
     queries: any[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings

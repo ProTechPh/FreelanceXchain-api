@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type TransactionEntity = {
@@ -28,7 +28,7 @@ function mapDoc(doc: Record<string, any>): TransactionEntity {
   } as TransactionEntity;
 }
 
-export class TransactionRepository extends BaseRepositoryAppwrite<TransactionEntity> {
+export class TransactionRepository extends BaseRepository<TransactionEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type MilestoneEntity = {
@@ -31,7 +31,7 @@ function mapDoc(doc: Record<string, any>): MilestoneEntity {
   } as MilestoneEntity;
 }
 
-export class MilestoneRepository extends BaseRepositoryAppwrite<MilestoneEntity> {
+export class MilestoneRepository extends BaseRepository<MilestoneEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

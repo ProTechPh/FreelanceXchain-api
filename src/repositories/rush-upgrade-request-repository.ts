@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type RushUpgradeRequestStatus = 'pending' | 'accepted' | 'declined' | 'counter_offered' | 'expired';
@@ -18,7 +18,7 @@ export type RushUpgradeRequestEntity = {
 
 const COLLECTION_ID = 'rush_upgrade_requests';
 
-export class RushUpgradeRequestRepository extends BaseRepositoryAppwrite<RushUpgradeRequestEntity> {
+export class RushUpgradeRequestRepository extends BaseRepository<RushUpgradeRequestEntity> {
   constructor() {
     super(COLLECTION_ID);
   }
