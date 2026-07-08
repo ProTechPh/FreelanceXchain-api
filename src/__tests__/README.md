@@ -6,12 +6,17 @@ Comprehensive testing strategy and test suite for FreelanceXchain API.
 
 ```
 src/__tests__/
-├── unit/                        # Unit tests (28 test files)
-├── integration/                 # Integration tests
-├── security/                    # Security & OWASP tests
+├── unit/                        # Unit tests (152 test files)
+├── integration/                 # Integration tests (15 files)
+├── security/                    # Security & OWASP tests (1 file)
+├── routes/                      # Route-level tests (2 files)
 ├── mocks/                       # Mock implementations
 ├── helpers/                     # Test helper utilities
 └── README.md                    # This file
+
+Co-located tests:
+├── src/middleware/__tests__/     # Middleware tests (5 files)
+└── src/utils/__tests__/         # Utility tests (1 file)
 ```
 
 ## 🗂️ Test Organization
@@ -20,7 +25,7 @@ src/__tests__/
 
 Individual service, client, and utility tests.
 
-- **28 test files** covering all services
+- **175 test files** covering all services
 - Authentication, profiles, projects, payments
 - Blockchain clients and contracts
 - AI and external integrations
@@ -241,14 +246,12 @@ open coverage/lcov-report/index.html
 
 ## 📊 Test Coverage Goals
 
-| Category | Target | Current |
-| ---------- | -------- | --------- |
-| **Overall** | >80% | Check coverage report |
-| **Services** | >90% | High priority |
-| **Routes** | >85% | Critical paths |
-| **Repositories** | >90% | Data access |
-| **Utils** | >95% | Pure functions |
-| **Smart Contracts** | >90% | Security critical |
+| Category | Threshold (jest.config.js) |
+| ---------- | -------------------------- |
+| **Lines** | 90% |
+| **Branches** | 80% |
+| **Functions** | 94% |
+| **Statements** | 90% |
 
 ---
 
@@ -332,19 +335,9 @@ module.exports = {
 };
 ```
 
-### Setup File (`jest.setup.js`)
+### Setup File (`jest.setup.ts`)
 
-```javascript
-// Global test setup
-beforeAll(async () => {
-  // Initialize test database
-  // Setup test environment
-});
-
-afterAll(async () => {
-  // Cleanup
-});
-```
+Provides global mocks for: jsonwebtoken, node-appwrite, database pool, file-type, web3-client, contract-abis, appwrite config. Also provides `global.mockAppwriteResult()` and `global.createMockBuilder()` helpers.
 
 ---
 

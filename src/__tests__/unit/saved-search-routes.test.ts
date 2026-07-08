@@ -44,6 +44,11 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 
 const savedSearchRouter = (await import('../../routes/saved-search-routes.js')).default;
 
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockSavedSearchService = { createSavedSearch: mockCreateSavedSearch, getUserSavedSearches: mockGetUserSavedSearches, updateSavedSearch: mockUpdateSavedSearch, deleteSavedSearch: mockDeleteSavedSearch, executeSavedSearch: mockExecuteSavedSearch };
+
 describe('Saved Search Routes', () => {
   let app: express.Express;
 
@@ -379,5 +384,153 @@ describe('Saved Search Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('INVALID_FILTERS');
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('saved-search-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/saved-searches', savedSearchRouter);
+  });
+
+  it('POST / missing fields', async () => {
+    const res = await request(app).post('/api/saved-searches').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST / success', async () => {
+    mockSavedSearchService.createSavedSearch.mockResolvedValue(ok({ id: 'ss1' }));
+    const res = await request(app).post('/api/saved-searches').send({ name: 'My Search', searchType: 'project', filters: {} });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST / error', async () => {
+    mockSavedSearchService.createSavedSearch.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/saved-searches').send({ name: 'My Search', searchType: 'project', filters: {} });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET / with searchType', async () => {
+    mockSavedSearchService.getUserSavedSearches.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/saved-searches?searchType=project');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET / without searchType', async () => {
+    mockSavedSearchService.getUserSavedSearches.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/saved-searches');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET / error', async () => {
+    mockSavedSearchService.getUserSavedSearches.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/saved-searches');
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /:id NOT_FOUND returns 404', async () => {
+    mockSavedSearchService.updateSavedSearch.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).patch('/api/saved-searches/s1').send({ name: 'Updated' });
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /:id UNAUTHORIZED returns 403', async () => {
+    mockSavedSearchService.updateSavedSearch.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).patch('/api/saved-searches/s1').send({ name: 'Updated' });
+    expect(res.status).toBe(403);
+  });
+
+  it('PATCH /:id other error returns 400', async () => {
+    mockSavedSearchService.updateSavedSearch.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).patch('/api/saved-searches/s1').send({ name: 'Updated' });
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /:id NOT_FOUND returns 404', async () => {
+    mockSavedSearchService.deleteSavedSearch.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).delete('/api/saved-searches/s1');
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE /:id UNAUTHORIZED returns 403', async () => {
+    mockSavedSearchService.deleteSavedSearch.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).delete('/api/saved-searches/s1');
+    expect(res.status).toBe(403);
+  });
+
+  it('DELETE /:id other error returns 400', async () => {
+    mockSavedSearchService.deleteSavedSearch.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).delete('/api/saved-searches/s1');
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /:id/execute NOT_FOUND returns 404', async () => {
+    mockSavedSearchService.executeSavedSearch.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/saved-searches/s1/execute');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /:id/execute UNAUTHORIZED returns 403', async () => {
+    mockSavedSearchService.executeSavedSearch.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/saved-searches/s1/execute');
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /:id/execute other error returns 400', async () => {
+    mockSavedSearchService.executeSavedSearch.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/saved-searches/s1/execute');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('saved-search-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockUpdateSavedSearch = jest.fn<any>();
+  const mockDeleteSavedSearch = jest.fn<any>();
+  const mockExecuteSavedSearch = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/saved-search-service.ts'), () => ({
+      createSavedSearch: jest.fn(),
+      getUserSavedSearches: jest.fn(),
+      updateSavedSearch: mockUpdateSavedSearch,
+      deleteSavedSearch: mockDeleteSavedSearch,
+      executeSavedSearch: mockExecuteSavedSearch,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/saved-search-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/saved-searches', router);
+    jest.clearAllMocks();
+  });
+
+  it('L83: PATCH update', async () => {
+    mockUpdateSavedSearch.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/saved-searches/s1').send({ name: 'Updated' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L113: DELETE', async () => {
+    mockDeleteSavedSearch.mockResolvedValueOnce({ success: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/saved-searches/s1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L142: POST execute', async () => {
+    mockExecuteSavedSearch.mockResolvedValueOnce({ success: true, data: { items: [] } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/saved-searches/s1/execute');
+    expect(res.status).toBe(200);
   });
 });

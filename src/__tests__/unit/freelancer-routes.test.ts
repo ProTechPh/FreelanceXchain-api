@@ -48,6 +48,12 @@ jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
 
 const router = (await import('../../routes/freelancer-routes.js')).default;
 
+const freelancerRouter = router;
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockFreelancerProfileService = { createProfile: mockCreateProfile, getProfileByUserId: mockGetProfileByUserId, updateProfile: mockUpdateProfile, addSkillsToProfile: mockAddSkillsToProfile, removeSkillFromProfile: mockRemoveSkillFromProfile, addExperience: mockAddExperience, updateExperience: mockUpdateExperience, removeExperience: mockRemoveExperience };
+
 describe('Freelancer Routes', () => {
   let app: express.Express;
 
@@ -262,5 +268,256 @@ describe('Freelancer Routes', () => {
       const res = await request(app).get('/api/freelancers/some-uuid');
       expect(res.status).toBe(404);
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('freelancer-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/freelancers', freelancerRouter);
+  });
+
+  // POST /profile — availability validation branch
+  it('POST /profile with invalid availability', async () => {
+    const res = await request(app).post('/api/freelancers/profile').send({ bio: 'A valid bio that is long enough', hourlyRate: 50, availability: 'invalid' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /profile with valid availability', async () => {
+    mockFreelancerProfileService.createProfile.mockResolvedValue(ok({ id: 'fp1' }));
+    const res = await request(app).post('/api/freelancers/profile').send({ bio: 'A valid bio that is long enough', hourlyRate: 50, availability: 'available' });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST /profile PROFILE_EXISTS returns 409', async () => {
+    mockFreelancerProfileService.createProfile.mockResolvedValue(fail('PROFILE_EXISTS', 'Exists'));
+    const res = await request(app).post('/api/freelancers/profile').send({ bio: 'A valid bio that is long enough', hourlyRate: 50 });
+    expect(res.status).toBe(409);
+  });
+
+  it('POST /profile other error returns 400', async () => {
+    mockFreelancerProfileService.createProfile.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/freelancers/profile').send({ bio: 'A valid bio that is long enough', hourlyRate: 50 });
+    expect(res.status).toBe(400);
+  });
+
+  // PATCH /profile — availability validation branch
+  it('PATCH /profile with invalid availability', async () => {
+    const res = await request(app).patch('/api/freelancers/profile').send({ availability: 'invalid' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /profile PROFILE_NOT_FOUND returns 404', async () => {
+    mockFreelancerProfileService.updateProfile.mockResolvedValue(fail('PROFILE_NOT_FOUND', 'No'));
+    const res = await request(app).patch('/api/freelancers/profile').send({ bio: 'Updated bio that is long enough' });
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /profile other error returns 400', async () => {
+    mockFreelancerProfileService.updateProfile.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).patch('/api/freelancers/profile').send({ bio: 'Updated bio that is long enough' });
+    expect(res.status).toBe(400);
+  });
+
+  // POST /profile/skills
+  it('POST /profile/skills validation error', async () => {
+    const res = await request(app).post('/api/freelancers/profile/skills').send({ skills: [{ name: '', yearsOfExperience: -1 }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /profile/skills not array', async () => {
+    const res = await request(app).post('/api/freelancers/profile/skills').send({ skills: 'not-array' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /profile/skills empty array', async () => {
+    const res = await request(app).post('/api/freelancers/profile/skills').send({ skills: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /profile/skills PROFILE_NOT_FOUND returns 404', async () => {
+    mockFreelancerProfileService.addSkillsToProfile.mockResolvedValue(fail('PROFILE_NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/freelancers/profile/skills').send({ skills: [{ name: 'React', yearsOfExperience: 3 }] });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /profile/skills other error returns 400', async () => {
+    mockFreelancerProfileService.addSkillsToProfile.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/freelancers/profile/skills').send({ skills: [{ name: 'React', yearsOfExperience: 3 }] });
+    expect(res.status).toBe(400);
+  });
+
+  // DELETE /profile/skills/:name
+  it('DELETE /profile/skills/:name empty name', async () => {
+    const res = await request(app).delete('/api/freelancers/profile/skills/%20');
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /profile/skills/:name PROFILE_NOT_FOUND returns 404', async () => {
+    mockFreelancerProfileService.removeSkillFromProfile.mockResolvedValue(fail('PROFILE_NOT_FOUND', 'No'));
+    const res = await request(app).delete('/api/freelancers/profile/skills/React');
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE /profile/skills/:name other error returns 400', async () => {
+    mockFreelancerProfileService.removeSkillFromProfile.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).delete('/api/freelancers/profile/skills/React');
+    expect(res.status).toBe(400);
+  });
+
+  // POST /profile/experience
+  it('POST /profile/experience success', async () => {
+    mockFreelancerProfileService.addExperience.mockResolvedValue(ok({ id: 'exp1' }));
+    const res = await request(app).post('/api/freelancers/profile/experience').send({ title: 'Dev', company: 'Co', description: 'A valid desc that is long', startDate: '2025-01-01' });
+    expect(res.status).toBe(200);
+  });
+
+  it('POST /profile/experience validation error', async () => {
+    const res = await request(app).post('/api/freelancers/profile/experience').send({ title: 'a', company: 'b', description: 'short', startDate: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /profile/experience PROFILE_NOT_FOUND returns 404', async () => {
+    mockFreelancerProfileService.addExperience.mockResolvedValue(fail('PROFILE_NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/freelancers/profile/experience').send({ title: 'Dev', company: 'Co', description: 'A valid desc that is long', startDate: '2025-01-01' });
+    expect(res.status).toBe(404);
+  });
+
+  // PATCH /profile/experience/:id
+  it('PATCH /profile/experience/:id no fields', async () => {
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /profile/experience/:id validation error', async () => {
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ title: 'a', company: 'b', description: 'short' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /profile/experience/:id PROFILE_NOT_FOUND returns 404', async () => {
+    mockFreelancerProfileService.updateExperience.mockResolvedValue(fail('PROFILE_NOT_FOUND', 'No'));
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ title: 'Dev' });
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /profile/experience/:id EXPERIENCE_NOT_FOUND returns 404', async () => {
+    mockFreelancerProfileService.updateExperience.mockResolvedValue(fail('EXPERIENCE_NOT_FOUND', 'No'));
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ title: 'Dev' });
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /profile/experience/:id other error returns 400', async () => {
+    mockFreelancerProfileService.updateExperience.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ title: 'Dev' });
+    expect(res.status).toBe(400);
+  });
+
+  // DELETE /profile/experience/:id
+  it('DELETE /profile/experience/:id success', async () => {
+    mockFreelancerProfileService.removeExperience.mockResolvedValue(ok({}));
+    const res = await request(app).delete('/api/freelancers/profile/experience/exp1');
+    expect(res.status).toBe(200);
+  });
+
+  it('DELETE /profile/experience/:id PROFILE_NOT_FOUND returns 404', async () => {
+    mockFreelancerProfileService.removeExperience.mockResolvedValue(fail('PROFILE_NOT_FOUND', 'No'));
+    const res = await request(app).delete('/api/freelancers/profile/experience/exp1');
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE /profile/experience/:id other error returns 400', async () => {
+    mockFreelancerProfileService.removeExperience.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).delete('/api/freelancers/profile/experience/exp1');
+    expect(res.status).toBe(400);
+  });
+
+  // GET /:id — safe date mapping
+  it('GET /:id returns profile with safe dates', async () => {
+    mockFreelancerProfileService.getProfileByUserId.mockResolvedValue(ok({ id: 'fp1', createdAt: '2025-01-01', experience: [{ startDate: '2025-01-01', endDate: null }] }));
+    const res = await request(app).get('/api/freelancers/u1');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:id returns profile with undefined dates', async () => {
+    mockFreelancerProfileService.getProfileByUserId.mockResolvedValue(ok({ id: 'fp1', createdAt: undefined, experience: [{ startDate: undefined, endDate: undefined }] }));
+    const res = await request(app).get('/api/freelancers/u1');
+    expect(res.status).toBe(200);
+    expect(res.body.experience[0].endDate).toBeNull();
+  });
+
+  it('GET /:id not found', async () => {
+    mockFreelancerProfileService.getProfileByUserId.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/freelancers/u1');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /:id profile with null experience', async () => {
+    mockFreelancerProfileService.getProfileByUserId.mockResolvedValue(ok({ id: 'fp1', createdAt: '2025-01-01', experience: null }));
+    const res = await request(app).get('/api/freelancers/u1');
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('freelancer-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockRemoveSkill = jest.fn<any>();
+  const mockUpdateExperience = jest.fn<any>();
+  const mockRemoveExperience = jest.fn<any>();
+  const mockGetProfileByUserId = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/freelancer-profile-service.ts'), () => ({
+      getFreelancerProfile: jest.fn(),
+      createProfile: jest.fn(),
+      updateProfile: jest.fn(),
+      addSkillsToProfile: jest.fn(),
+      removeSkillFromProfile: mockRemoveSkill,
+      addExperience: jest.fn(),
+      updateExperience: mockUpdateExperience,
+      removeExperience: mockRemoveExperience,
+      getProfileByUserId: mockGetProfileByUserId,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/freelancer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/freelancers', router);
+    jest.clearAllMocks();
+  });
+
+  it('L458: DELETE skill', async () => {
+    mockRemoveSkill.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/freelancers/profile/skills/TypeScript');
+    expect(res.status).toBe(200);
+  });
+
+  it('L653: PATCH experience', async () => {
+    mockUpdateExperience.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ title: 'Dev' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L747: DELETE experience', async () => {
+    mockRemoveExperience.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/freelancers/profile/experience/exp1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L806: GET profile by id', async () => {
+    mockGetProfileByUserId.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/freelancers/user-1');
+    expect(res.status).toBe(200);
   });
 });

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
@@ -55,6 +56,13 @@ jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), 
 // Import after mocking
 const {
   submitRating,
+  canUserRate,
+  getWorkHistory,
+  getReviewById,
+  getReputation,
+  getUserReviews,
+  getProjectReviews,
+  getContractRatings,
 } = await import('../../services/reputation-service.js');
 
 const {

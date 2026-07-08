@@ -40,6 +40,11 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 
 const transactionRouter = (await import('../../routes/transaction-routes.js')).default;
 
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockTransactionService = { getUserTransactions: mockGetUserTransactions, getTransactionById: mockGetTransactionById, getContractTransactions: mockGetContractTransactions };
+
 describe('Transaction Routes', () => {
   let app: express.Express;
 
@@ -257,5 +262,126 @@ describe('Transaction Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('DB_ERROR');
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('transaction-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/transactions', transactionRouter);
+  });
+
+  it('GET / with type and status filters', async () => {
+    mockTransactionService.getUserTransactions.mockResolvedValue(ok({ items: [] }));
+    const res = await request(app).get('/api/transactions?type=payment&status=completed');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET / without type/status (spread skipped)', async () => {
+    mockTransactionService.getUserTransactions.mockResolvedValue(ok({ items: [] }));
+    const res = await request(app).get('/api/transactions');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET / with limit and page', async () => {
+    mockTransactionService.getUserTransactions.mockResolvedValue(ok({ items: [] }));
+    const res = await request(app).get('/api/transactions?limit=5&page=10');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET / error', async () => {
+    mockTransactionService.getUserTransactions.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/transactions');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /:id success', async () => {
+    mockTransactionService.getTransactionById.mockResolvedValue(ok({ id: 't1' }));
+    const res = await request(app).get('/api/transactions/t1');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:id NOT_FOUND returns 404', async () => {
+    mockTransactionService.getTransactionById.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/transactions/t1');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /:id UNAUTHORIZED returns 403', async () => {
+    mockTransactionService.getTransactionById.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).get('/api/transactions/t1');
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /:id other error returns 400', async () => {
+    mockTransactionService.getTransactionById.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/transactions/t1');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /contract/:contractId success', async () => {
+    mockTransactionService.getContractTransactions.mockResolvedValue(ok({ items: [] }));
+    const res = await request(app).get('/api/transactions/contract/c1');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /contract/:contractId CONTRACT_NOT_FOUND returns 404', async () => {
+    mockTransactionService.getContractTransactions.mockResolvedValue(fail('CONTRACT_NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/transactions/contract/c1');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /contract/:contractId UNAUTHORIZED returns 403', async () => {
+    mockTransactionService.getContractTransactions.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).get('/api/transactions/contract/c1');
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /contract/:contractId other error returns 400', async () => {
+    mockTransactionService.getContractTransactions.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/transactions/contract/c1');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('transaction-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockGetTransactionById = jest.fn<any>();
+  const mockGetContractTransactions = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/transaction-service.ts'), () => ({
+      getUserTransactions: jest.fn(),
+      getTransactionById: mockGetTransactionById,
+      getContractTransactions: mockGetContractTransactions,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/transaction-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/transactions', router);
+    jest.clearAllMocks();
+  });
+
+  it('L53: GET /:id', async () => {
+    mockGetTransactionById.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/transactions/t1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L82: GET /contract/:contractId', async () => {
+    mockGetContractTransactions.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/transactions/contract/c1');
+    expect(res.status).toBe(200);
   });
 });

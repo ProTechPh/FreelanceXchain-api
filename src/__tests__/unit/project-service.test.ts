@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
@@ -69,7 +70,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), 
 }));
 
 // Import after mocking
-const { createProject, getProjectById, updateProject, setMilestones } = await import('../../services/project-service.js');
+const { createProject, getProjectById, updateProject, setMilestones, listProjectsBySkills, listProjectsByBudgetRange } = await import('../../services/project-service.js');
 
 // Helper to add accepted proposal
 function addAcceptedProposal(projectId: string, freelancerId: string): ProposalEntity {
@@ -886,5 +887,124 @@ describe('Project Service - Category Filtering Tests', () => {
     if (backendResult.success && backendResult.data && Array.isArray(backendResult.data.items) && backendResult.data.items.length > 0) {
       expect(backendResult.data.items[0]!.id).toBe(project.id);
     }
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from project-service-extended.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+const SKILL_ID = 'test-skill-id';
+const CATEGORY_ID = 'test-category-id';
+const EMP = 'test-employer-id';
+
+function makeProject(overrides: Record<string, any> = {}) {
+  const p = createTestProject({
+    employer_id: EMP,
+    status: 'open',
+    budget: 1000,
+    milestones: [],
+    ...overrides,
+  });
+  projectStore.set(p.id, p);
+  return p;
+}
+
+describe('Project Service - Extended Coverage (setMilestones, search/filter)', () => {
+  beforeEach(() => {
+    projectStore.clear();
+    proposalStore.clear();
+    skillStore.clear();
+    jest.clearAllMocks();
+
+    const skill = createTestSkill({ id: SKILL_ID, name: 'TypeScript', category_id: CATEGORY_ID, is_active: true });
+    skillStore.set(skill.id, skill);
+  });
+
+  describe('setMilestones - error paths', () => {
+    it('should return NOT_FOUND when project does not exist', async () => {
+      const milestones = [
+        { title: 'Phase 1', description: 'Desc', amount: 1000, dueDate: new Date(Date.now() + 86400_000).toISOString() },
+      ];
+      const result = await setMilestones('nonexistent', EMP, milestones);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('should return NOT_FOUND when employer does not own project', async () => {
+      const p = makeProject();
+      const milestones = [
+        { title: 'Phase 1', description: 'Desc', amount: 1000, dueDate: new Date(Date.now() + 86400_000).toISOString() },
+      ];
+      const result = await setMilestones(p.id, 'wrong-employer', milestones);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('should return PROJECT_LOCKED when project has accepted proposals', async () => {
+      const p = makeProject({ budget: 1000 });
+      const proposalId = generateId();
+      proposalStore.set(proposalId, { id: proposalId, project_id: p.id, status: 'accepted', freelancer_id: 'fl-1' });
+
+      const milestones = [
+        { title: 'Phase 1', description: 'Desc', amount: 1000, dueDate: new Date(Date.now() + 86400_000).toISOString() },
+      ];
+
+      const result = await setMilestones(p.id, EMP, milestones);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROJECT_LOCKED');
+    });
+  });
+
+  describe('listProjectsBySkills', () => {
+    it('should return projects matching skill IDs', async () => {
+      makeProject({
+        required_skills: [{ skill_id: SKILL_ID, skill_name: 'TypeScript', category_id: CATEGORY_ID, years_of_experience: 0 }],
+      });
+      makeProject({
+        required_skills: [{ skill_id: 'other-skill', skill_name: 'Python', category_id: 'cat-2', years_of_experience: 0 }],
+      });
+
+      const result = await listProjectsBySkills([SKILL_ID]);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(1);
+      }
+    });
+
+    it('should return empty results when no projects match', async () => {
+      makeProject({ required_skills: [] });
+
+      const result = await listProjectsBySkills(['nonexistent-skill']);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(0);
+      }
+    });
+  });
+
+  describe('listProjectsByBudgetRange', () => {
+    it('should return projects within budget range', async () => {
+      makeProject({ budget: 500 });
+      makeProject({ budget: 1500 });
+      makeProject({ budget: 3000 });
+
+      const result = await listProjectsByBudgetRange(400, 2000);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(2);
+      }
+    });
+
+    it('should return empty when no projects in range', async () => {
+      makeProject({ budget: 100 });
+
+      const result = await listProjectsByBudgetRange(5000, 10000);
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.items).toHaveLength(0);
+      }
+    });
   });
 });

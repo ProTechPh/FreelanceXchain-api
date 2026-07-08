@@ -153,3 +153,126 @@ describe('Employer Routes', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+function makeApp(basePath: string, r: any) {
+  const a = express();
+  a.use(express.json());
+  a.use(basePath, r);
+  return a;
+}
+const employerRouter = router;
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockProjectService = { listProjectsByEmployer: mockListProjectsByEmployer };
+const mockEmployerProfileService = {
+  getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
+  updateEmployerProfile: mockUpdateEmployerProfile,
+};
+
+describe('employer-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/employers', employerRouter);
+  });
+
+  it('GET /projects with continuationToken', async () => {
+    mockProjectService.listProjectsByEmployer.mockResolvedValue(ok({ items: [] }));
+    const res = await request(app).get('/api/employers/projects?continuationToken=tok1');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /projects with limit', async () => {
+    mockProjectService.listProjectsByEmployer.mockResolvedValue(ok({ items: [] }));
+    const res = await request(app).get('/api/employers/projects?limit=5');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /projects service error', async () => {
+    mockProjectService.listProjectsByEmployer.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/employers/projects');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /profile success', async () => {
+    mockEmployerProfileService.getEmployerProfileByUserId.mockResolvedValue(ok({ id: 'ep1' }));
+    const res = await request(app).get('/api/employers/profile');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /profile not found', async () => {
+    mockEmployerProfileService.getEmployerProfileByUserId.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/employers/profile');
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /profile success', async () => {
+    mockEmployerProfileService.updateEmployerProfile.mockResolvedValue(ok({ id: 'ep1' }));
+    const res = await request(app).patch('/api/employers/profile').send({ companyName: 'Acme' });
+    expect(res.status).toBe(200);
+  });
+
+  it('PATCH /profile validation error', async () => {
+    const res = await request(app).patch('/api/employers/profile').send({ companyName: 'a' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /profile PROFILE_NOT_FOUND returns 404', async () => {
+    mockEmployerProfileService.updateEmployerProfile.mockResolvedValue(fail('PROFILE_NOT_FOUND', 'No'));
+    const res = await request(app).patch('/api/employers/profile').send({ companyName: 'Acme Corp' });
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /profile other error returns 400', async () => {
+    mockEmployerProfileService.updateEmployerProfile.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).patch('/api/employers/profile').send({ companyName: 'Acme Corp' });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /:id success', async () => {
+    mockEmployerProfileService.getEmployerProfileByUserId.mockResolvedValue(ok({ id: 'ep1' }));
+    const res = await request(app).get('/api/employers/u1');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:id not found', async () => {
+    mockEmployerProfileService.getEmployerProfileByUserId.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/employers/u1');
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('employer-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockGetEmployerProfileByUserId = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
+      getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
+      updateEmployerProfile: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      listProjectsByEmployer: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/employer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/employers', router);
+    jest.clearAllMocks();
+  });
+
+  it('L289: GET /:id', async () => {
+    mockGetEmployerProfileByUserId.mockResolvedValueOnce({ success: true, data: { id: 'ep1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/employers/user-1');
+    expect(res.status).toBe(200);
+  });
+});

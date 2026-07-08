@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
@@ -336,4 +337,3 @@ describe('Auth Service - Authentication Properties', () => {
     );
   }, 60000);
 });
-

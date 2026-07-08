@@ -199,3 +199,34 @@ describe('Matching Routes - Coverage Gaps', () => {
     });
   });
 });
+describe('Matching Routes - defensive guard', () => {
+  let app: express.Express;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/matching', matchingRouter);
+  });
+
+  // Lines 234-240: getFreelancerRecommendations success path
+  it('GET /freelancers/:projectId returns recommendations', async () => {
+    mockGetFreelancerRecommendations.mockResolvedValue({
+      success: true,
+      data: [{ freelancerId: 'f-1', matchScore: 85, combinedScore: 90 }],
+    });
+
+    const res = await request(app).get('/api/matching/freelancers/proj-123');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /freelancers/:projectId returns 400 on failure', async () => {
+    mockGetFreelancerRecommendations.mockResolvedValue({
+      success: false,
+      error: { code: 'NOT_FOUND', message: 'Project not found' },
+    });
+
+    const res = await request(app).get('/api/matching/freelancers/proj-123');
+    expect(res.status).toBe(400);
+  });
+});

@@ -236,3 +236,98 @@ describe('Favorite Service', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('Favorite Service - Direct Branch Coverage', () => {
+  const importModule = async () => import('../../services/favorite-service.js');
+
+  it('should return error when already favorited', async () => {
+    const { addFavorite } = await importModule();
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce({ id: 'fav-1' });
+
+    const result = await addFavorite('user-1', 'project', 'proj-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('ALREADY_FAVORITED');
+  });
+
+  it('should return error when target not found (project)', async () => {
+    const { addFavorite } = await importModule();
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+    mockProjectRepository.getById.mockResolvedValueOnce(null);
+
+    const result = await addFavorite('user-1', 'project', 'proj-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('TARGET_NOT_FOUND');
+  });
+
+  it('should return error when target not found (freelancer)', async () => {
+    const { addFavorite } = await importModule();
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+    mockUserRepository.getUserById.mockResolvedValueOnce(null);
+
+    const result = await addFavorite('user-1', 'freelancer', 'user-2');
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle addFavorite exception', async () => {
+    const { addFavorite } = await importModule();
+    mockFavoriteRepository.findByUserAndTarget.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await addFavorite('user-1', 'project', 'proj-1');
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle removeFavorite exception', async () => {
+    const { removeFavorite } = await importModule();
+    mockFavoriteRepository.removeByUserAndTarget.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await removeFavorite('user-1', 'project', 'proj-1');
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle getUserFavorites exception', async () => {
+    const { getUserFavorites } = await importModule();
+    mockFavoriteRepository.findByUser.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await getUserFavorites('user-1');
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle isFavorited exception', async () => {
+    const { isFavorited } = await importModule();
+    mockFavoriteRepository.findByUserAndTarget.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await isFavorited('user-1', 'project', 'proj-1');
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle addFavorite with project target', async () => {
+    const { addFavorite } = await importModule();
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+    mockProjectRepository.getById.mockResolvedValueOnce({ id: 'proj-1' });
+    mockFavoriteRepository.create.mockResolvedValueOnce({
+      id: 'fav-1', user_id: 'user-1', target_type: 'project', target_id: 'proj-1',
+      created_at: '2025-01-01',
+    });
+
+    const result = await addFavorite('user-1', 'project', 'proj-1');
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle addFavorite with freelancer target', async () => {
+    const { addFavorite } = await importModule();
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+    mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'user-2' });
+    mockFavoriteRepository.create.mockResolvedValueOnce({
+      id: 'fav-1', user_id: 'user-1', target_type: 'freelancer', target_id: 'user-2',
+      created_at: '2025-01-01',
+    });
+
+    const result = await addFavorite('user-1', 'freelancer', 'user-2');
+    expect(result.success).toBe(true);
+  });
+});

@@ -44,7 +44,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-  isValidUUID: jest.fn(() => true),
+  isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
@@ -56,6 +56,13 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
 }));
 
 const router = (await import('../../routes/reputation-routes.js')).default;
+
+const reputationRouter = router;
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockReputationService = { submitRating: mockSubmitRating, getReputation: mockGetReputation, getWorkHistory: mockGetWorkHistory, canUserRate: mockCanUserRate };
+const mockReputationAggService = { getAggregatedScore: mockGetAggregatedScore, getReputationBreakdown: mockGetReputationBreakdown, getReputationHistory: mockGetReputationHistory, getReputationLeaderboard: mockGetReputationLeaderboard };
 
 describe('Reputation Routes', () => {
   let app: express.Express;
@@ -251,5 +258,227 @@ describe('Reputation Routes', () => {
       const res = await request(app).get('/api/reputation/user-2/reputation-history');
       expect(res.status).toBe(400);
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('reputation-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/reputation', reputationRouter);
+  });
+
+  it('GET /can-rate missing params', async () => {
+    const res = await request(app).get('/api/reputation/can-rate');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /can-rate success', async () => {
+    mockReputationService.canUserRate.mockResolvedValue(ok({ canRate: true }));
+    const res = await request(app).get('/api/reputation/can-rate?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa&rateeId=u2');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /can-rate service error', async () => {
+    mockReputationService.canUserRate.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/reputation/can-rate?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa&rateeId=u2');
+    expect(res.status).toBe(400);
+  });
+
+  // POST /rate — missing fields, UUID validation, error ternaries
+  it('POST /rate missing fields', async () => {
+    const res = await request(app).post('/api/reputation/rate').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /rate invalid UUID', async () => {
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: 'bad', rateeId: 'bad', rating: 5 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /rate service NOT_FOUND returns 404', async () => {
+    mockReputationService.submitRating.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: '00000000-0000-0000-0000-000000000001', rateeId: '00000000-0000-0000-0000-000000000002', rating: 5 });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /rate service UNAUTHORIZED returns 403', async () => {
+    mockReputationService.submitRating.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: '00000000-0000-0000-0000-000000000001', rateeId: '00000000-0000-0000-0000-000000000002', rating: 5 });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /rate service DUPLICATE_RATING returns 409', async () => {
+    mockReputationService.submitRating.mockResolvedValue(fail('DUPLICATE_RATING', 'No'));
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: '00000000-0000-0000-0000-000000000001', rateeId: '00000000-0000-0000-0000-000000000002', rating: 5 });
+    expect(res.status).toBe(409);
+  });
+
+  it('POST /rate with comment', async () => {
+    mockReputationService.submitRating.mockResolvedValue(ok({ id: 'r1' }));
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: '00000000-0000-0000-0000-000000000001', rateeId: '00000000-0000-0000-0000-000000000002', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(201);
+  });
+
+  // GET /leaderboard — parseInt fallback
+  it('GET /leaderboard with limit', async () => {
+    mockReputationAggService.getReputationLeaderboard.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/reputation/leaderboard?limit=5');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /leaderboard without limit (fallback to 10)', async () => {
+    mockReputationAggService.getReputationLeaderboard.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/reputation/leaderboard');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /leaderboard service error', async () => {
+    mockReputationAggService.getReputationLeaderboard.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/reputation/leaderboard');
+    expect(res.status).toBe(400);
+  });
+
+  // GET /:userId
+  it('GET /:userId success', async () => {
+    mockReputationService.getReputation.mockResolvedValue(ok({ score: 4.5 }));
+    const res = await request(app).get('/api/reputation/u1');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:userId error', async () => {
+    mockReputationService.getReputation.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/reputation/u1');
+    expect(res.status).toBe(400);
+  });
+
+  // GET /:userId/history
+  it('GET /:userId/history success', async () => {
+    mockReputationService.getWorkHistory.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/reputation/u1/history');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:userId/history error', async () => {
+    mockReputationService.getWorkHistory.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/reputation/u1/history');
+    expect(res.status).toBe(400);
+  });
+
+  // GET /:userId/score
+  it('GET /:userId/score success', async () => {
+    mockReputationAggService.getAggregatedScore.mockResolvedValue(ok({ score: 4.2 }));
+    const res = await request(app).get('/api/reputation/u1/score');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:userId/score error', async () => {
+    mockReputationAggService.getAggregatedScore.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/reputation/u1/score');
+    expect(res.status).toBe(400);
+  });
+
+  // GET /:userId/breakdown
+  it('GET /:userId/breakdown success', async () => {
+    mockReputationAggService.getReputationBreakdown.mockResolvedValue(ok({ breakdown: {} }));
+    const res = await request(app).get('/api/reputation/u1/breakdown');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:userId/breakdown error', async () => {
+    mockReputationAggService.getReputationBreakdown.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/reputation/u1/breakdown');
+    expect(res.status).toBe(400);
+  });
+
+  // GET /:userId/reputation-history — months parseInt fallback
+  it('GET /:userId/reputation-history with months', async () => {
+    mockReputationAggService.getReputationHistory.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/reputation/u1/reputation-history?months=6');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:userId/reputation-history without months (fallback to 12)', async () => {
+    mockReputationAggService.getReputationHistory.mockResolvedValue(ok([]));
+    const res = await request(app).get('/api/reputation/u1/reputation-history');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:userId/reputation-history error', async () => {
+    mockReputationAggService.getReputationHistory.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/reputation/u1/reputation-history');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('reputation-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockGetReputation = jest.fn<any>();
+  const mockGetWorkHistory = jest.fn<any>();
+  const mockGetAggregatedScore = jest.fn<any>();
+  const mockGetReputationBreakdown = jest.fn<any>();
+  const mockGetReputationHistory = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({
+      submitRating: jest.fn(),
+      getReputation: mockGetReputation,
+      getWorkHistory: mockGetWorkHistory,
+      canUserRate: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/reputation-aggregation-service.ts'), () => ({
+      getAggregatedScore: mockGetAggregatedScore,
+      getReputationBreakdown: mockGetReputationBreakdown,
+      getReputationHistory: mockGetReputationHistory,
+      getReputationLeaderboard: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/reputation-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/reputation', router);
+    jest.clearAllMocks();
+  });
+
+  it('L389: GET /:userId', async () => {
+    mockGetReputation.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L447: GET /:userId/history', async () => {
+    mockGetWorkHistory.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/history');
+    expect(res.status).toBe(200);
+  });
+
+  it('L493: GET /:userId/score', async () => {
+    mockGetAggregatedScore.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/score');
+    expect(res.status).toBe(200);
+  });
+
+  it('L527: GET /:userId/breakdown', async () => {
+    mockGetReputationBreakdown.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/breakdown');
+    expect(res.status).toBe(200);
+  });
+
+  it('L566: GET /:userId/reputation-history', async () => {
+    mockGetReputationHistory.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/reputation-history');
+    expect(res.status).toBe(200);
   });
 });

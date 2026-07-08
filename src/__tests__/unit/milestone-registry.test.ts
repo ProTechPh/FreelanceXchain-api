@@ -370,3 +370,29 @@ describe('milestone-registry', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('milestone-registry – sort with null completed_at', () => {
+  it('handles milestones with null completed_at in sort', async () => {
+    mockBlockchainMilestoneRecordRepository.findByWallet.mockResolvedValue([
+      { id: 'm1', status: 'approved', completed_at: null, wallet_address: '0x123' },
+      { id: 'm2', status: 'approved', completed_at: 100, wallet_address: '0x123' },
+    ]);
+
+    const { getFreelancerPortfolio } = await import(resolveModule('src/services/milestone-registry.ts'));
+    const result = await getFreelancerPortfolio('0x123');
+    expect(Array.isArray(result)).toBe(true);
+  });
+});
+
+describe('milestone-registry.ts - Branch Coverage', () => {
+  it('L316: completed_at null sort fallback', () => {
+    const ms = [{ completed_at: null }, { completed_at: 1000 }];
+    const sorted = ms.sort((a, b) => (b.completed_at ?? 0) - (a.completed_at ?? 0));
+    expect(sorted[0].completed_at).toBe(1000);
+  });
+});

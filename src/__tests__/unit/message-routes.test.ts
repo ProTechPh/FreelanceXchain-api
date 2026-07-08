@@ -44,6 +44,11 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 
 const messageRouter = (await import('../../routes/message-routes.js')).default;
 
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockMessageService = { sendMessage: mockSendMessage, getConversations: mockGetConversations, getConversationMessages: mockGetConversationMessages, markConversationAsRead: mockMarkConversationAsRead, getUnreadMessageCount: mockGetUnreadMessageCount };
+
 describe('Message Routes', () => {
   let app: express.Express;
 
@@ -346,5 +351,121 @@ describe('Message Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('DB_ERROR');
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('message-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/messages', messageRouter);
+  });
+
+  it('GET /conversations with limit and page', async () => {
+    mockMessageService.getConversations.mockResolvedValue(ok({ items: [] }));
+    const res = await request(app).get('/api/messages/conversations?limit=5&page=2');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /conversations without limit/page (fallback)', async () => {
+    mockMessageService.getConversations.mockResolvedValue(ok({ items: [] }));
+    const res = await request(app).get('/api/messages/conversations');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /conversations error without code', async () => {
+    mockMessageService.getConversations.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).get('/api/messages/conversations');
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /send success', async () => {
+    mockMessageService.sendMessage.mockResolvedValue(ok({ id: 'm1' }));
+    const res = await request(app).post('/api/messages/send').send({ receiverId: 'u2', content: 'Hello' });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST /send missing fields', async () => {
+    const res = await request(app).post('/api/messages/send').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /send error without code', async () => {
+    mockMessageService.sendMessage.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).post('/api/messages/send').send({ receiverId: 'u2', content: 'Hello' });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /conversations/:conversationId NOT_FOUND returns 404', async () => {
+    mockMessageService.getConversationMessages.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /conversations/:conversationId UNAUTHORIZED returns 403', async () => {
+    mockMessageService.getConversationMessages.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /conversations/:conversationId other error returns 400', async () => {
+    mockMessageService.getConversationMessages.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /conversations/:conversationId/read error without code', async () => {
+    mockMessageService.markConversationAsRead.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).patch('/api/messages/conversations/c1/read');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /unread-count error without code', async () => {
+    mockMessageService.getUnreadMessageCount.mockResolvedValue({ success: false, error: { message: 'Failed' } });
+    const res = await request(app).get('/api/messages/unread-count');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('message-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockGetConversationMessages = jest.fn<any>();
+  const mockMarkConversationAsRead = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/message-service.ts'), () => ({
+      sendMessage: jest.fn(),
+      getConversations: jest.fn(),
+      getConversationMessages: mockGetConversationMessages,
+      markConversationAsRead: mockMarkConversationAsRead,
+      getUnreadMessageCount: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/message-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/messages', router);
+    jest.clearAllMocks();
+  });
+
+  it('L113: GET conversation messages', async () => {
+    mockGetConversationMessages.mockResolvedValueOnce({ success: true, data: { messages: [], total: 0 } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L153: PATCH mark as read', async () => {
+    mockMarkConversationAsRead.mockResolvedValueOnce({ success: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/messages/conversations/c1/read');
+    expect(res.status).toBe(200);
   });
 });

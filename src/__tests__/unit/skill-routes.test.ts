@@ -59,7 +59,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-  isValidUUID: jest.fn(() => true),
+  isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
@@ -67,6 +67,13 @@ jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
 }));
 
 const router = (await import('../../routes/skill-routes.js')).default;
+
+const skillRouter = router;
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockSkillService = { createCategory: mockCreateCategory, createSkill: mockCreateSkill, deprecateSkill: mockDeprecateSkill, getFullTaxonomy: mockGetFullTaxonomy, searchSkills: mockSearchSkills, getActiveSkillsByCategory: mockGetActiveSkillsByCategory };
+const mockUserCustomSkillService = { createUserCustomSkill: mockCreateUserCustomSkill, getUserCustomSkills: mockGetUserCustomSkills, getUserCustomSkillById: mockGetUserCustomSkillById, updateUserCustomSkill: mockUpdateUserCustomSkill, deleteUserCustomSkill: mockDeleteUserCustomSkill, searchUserCustomSkills: mockSearchUserCustomSkills, getPendingSkillSuggestions: mockGetPendingSkillSuggestions, updateSkillSuggestionStatus: mockUpdateSkillSuggestionStatus };
 
 describe('Skill Routes', () => {
   let app: express.Express;
@@ -363,5 +370,237 @@ describe('Skill Routes', () => {
       expect([400, 404]).toContain(res.status);
 
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('skill-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/skills', skillRouter);
+  });
+
+  it('GET / returns taxonomy', async () => {
+    mockSkillService.getFullTaxonomy.mockResolvedValue({ categories: [] });
+    const res = await request(app).get('/api/skills');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /search missing keyword', async () => {
+    const res = await request(app).get('/api/skills/search');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /search success', async () => {
+    mockSkillService.searchSkills.mockResolvedValue([]);
+    const res = await request(app).get('/api/skills/search?keyword=react');
+    expect(res.status).toBe(200);
+  });
+
+  // POST /categories — DUPLICATE_CATEGORY ternary
+  it('POST /categories success', async () => {
+    mockSkillService.createCategory.mockResolvedValue(ok({ id: 'cat1' }));
+    const res = await request(app).post('/api/skills/categories').send({ name: 'Web', description: 'desc' });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST /categories validation error', async () => {
+    const res = await request(app).post('/api/skills/categories').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /categories DUPLICATE_CATEGORY returns 409', async () => {
+    mockSkillService.createCategory.mockResolvedValue(fail('DUPLICATE_CATEGORY', 'Exists'));
+    const res = await request(app).post('/api/skills/categories').send({ name: 'Web', description: 'desc' });
+    expect(res.status).toBe(409);
+  });
+
+  it('POST /categories other error returns 400', async () => {
+    mockSkillService.createCategory.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/skills/categories').send({ name: 'Web', description: 'desc' });
+    expect(res.status).toBe(400);
+  });
+
+  // POST / — DUPLICATE_SKILL ternary and categoryId validation
+  it('POST / success', async () => {
+    mockSkillService.createSkill.mockResolvedValue(ok({ id: 's1' }));
+    const res = await request(app).post('/api/skills').send({ categoryId: '00000000-0000-0000-0000-000000000001', name: 'React', description: 'desc' });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST / missing categoryId', async () => {
+    const res = await request(app).post('/api/skills').send({ name: 'React', description: 'desc' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST / invalid categoryId UUID', async () => {
+    const res = await request(app).post('/api/skills').send({ categoryId: 'bad', name: 'React', description: 'desc' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST / DUPLICATE_SKILL returns 409', async () => {
+    mockSkillService.createSkill.mockResolvedValue(fail('DUPLICATE_SKILL', 'Exists'));
+    const res = await request(app).post('/api/skills').send({ categoryId: '00000000-0000-0000-0000-000000000001', name: 'React', description: 'desc' });
+    expect(res.status).toBe(409);
+  });
+
+  it('POST / other error returns 400', async () => {
+    mockSkillService.createSkill.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/skills').send({ categoryId: '00000000-0000-0000-0000-000000000001', name: 'React', description: 'desc' });
+    expect(res.status).toBe(400);
+  });
+
+  // PATCH /:id/deprecate — SKILL_NOT_FOUND ternary
+  it('PATCH /:id/deprecate success', async () => {
+    mockSkillService.deprecateSkill.mockResolvedValue(ok({ id: 's1' }));
+    const res = await request(app).patch('/api/skills/s1/deprecate');
+    expect(res.status).toBe(200);
+  });
+
+  it('PATCH /:id/deprecate SKILL_NOT_FOUND returns 404', async () => {
+    mockSkillService.deprecateSkill.mockResolvedValue(fail('SKILL_NOT_FOUND', 'No'));
+    const res = await request(app).patch('/api/skills/s1/deprecate');
+    expect(res.status).toBe(404);
+  });
+
+  it('PATCH /:id/deprecate other error returns 400', async () => {
+    mockSkillService.deprecateSkill.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).patch('/api/skills/s1/deprecate');
+    expect(res.status).toBe(400);
+  });
+
+  // POST /custom — categoryName || undefined, suggestForGlobal || false
+  it('POST /custom success without optional fields', async () => {
+    mockUserCustomSkillService.createUserCustomSkill.mockResolvedValue(ok({ id: 'cs1' }));
+    const res = await request(app).post('/api/skills/custom').send({ name: 'My Skill', description: 'A long description for testing', yearsOfExperience: 3 });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST /custom success with optional fields', async () => {
+    mockUserCustomSkillService.createUserCustomSkill.mockResolvedValue(ok({ id: 'cs1' }));
+    const res = await request(app).post('/api/skills/custom').send({ name: 'My Skill', description: 'A long description for testing', yearsOfExperience: 3, categoryName: 'Web', suggestForGlobal: true });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST /custom validation: name too short', async () => {
+    const res = await request(app).post('/api/skills/custom').send({ name: 'a', description: 'A long description for testing', yearsOfExperience: 3 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /custom validation: description too short', async () => {
+    const res = await request(app).post('/api/skills/custom').send({ name: 'My Skill', description: 'short', yearsOfExperience: 3 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /custom validation: invalid yearsOfExperience', async () => {
+    const res = await request(app).post('/api/skills/custom').send({ name: 'My Skill', description: 'A long description for testing', yearsOfExperience: -1 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /custom validation: categoryName too long', async () => {
+    const res = await request(app).post('/api/skills/custom').send({ name: 'My Skill', description: 'A long description for testing', yearsOfExperience: 3, categoryName: 'x'.repeat(101) });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /custom SKILL_EXISTS_GLOBALLY returns 409', async () => {
+    mockUserCustomSkillService.createUserCustomSkill.mockResolvedValue(fail('SKILL_EXISTS_GLOBALLY', 'Exists'));
+    const res = await request(app).post('/api/skills/custom').send({ name: 'My Skill', description: 'A long description for testing', yearsOfExperience: 3 });
+    expect(res.status).toBe(409);
+  });
+
+  it('POST /custom DUPLICATE_USER_SKILL returns 409', async () => {
+    mockUserCustomSkillService.createUserCustomSkill.mockResolvedValue(fail('DUPLICATE_USER_SKILL', 'Exists'));
+    const res = await request(app).post('/api/skills/custom').send({ name: 'My Skill', description: 'A long description for testing', yearsOfExperience: 3 });
+    expect(res.status).toBe(409);
+  });
+
+  // GET /custom/search — keyword validation
+  it('GET /custom/search missing keyword', async () => {
+    const res = await request(app).get('/api/skills/custom/search');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /custom/search success', async () => {
+    mockUserCustomSkillService.searchUserCustomSkills.mockResolvedValue([]);
+    const res = await request(app).get('/api/skills/custom/search?keyword=react');
+    expect(res.status).toBe(200);
+  });
+
+  // PUT /custom/:id — SKILL_NOT_FOUND, DUPLICATE_USER_SKILL ternaries
+  it('PUT /custom/:id success', async () => {
+    mockUserCustomSkillService.updateUserCustomSkill.mockResolvedValue(ok({ id: 'cs1' }));
+    const res = await request(app).put('/api/skills/custom/cs1').send({ name: 'Updated Skill Name' });
+    expect(res.status).toBe(200);
+  });
+
+  it('PUT /custom/:id validation errors', async () => {
+    const res = await request(app).put('/api/skills/custom/cs1').send({ name: 'a', description: 'short', yearsOfExperience: -1, categoryName: 'x'.repeat(101) });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /custom/:id SKILL_NOT_FOUND returns 404', async () => {
+    mockUserCustomSkillService.updateUserCustomSkill.mockResolvedValue(fail('SKILL_NOT_FOUND', 'No'));
+    const res = await request(app).put('/api/skills/custom/cs1').send({ name: 'Updated Skill Name' });
+    expect(res.status).toBe(404);
+  });
+
+  it('PUT /custom/:id DUPLICATE_USER_SKILL returns 409', async () => {
+    mockUserCustomSkillService.updateUserCustomSkill.mockResolvedValue(fail('DUPLICATE_USER_SKILL', 'Exists'));
+    const res = await request(app).put('/api/skills/custom/cs1').send({ name: 'Updated Skill Name' });
+    expect(res.status).toBe(409);
+  });
+
+  it('PUT /custom/:id other error returns 400', async () => {
+    mockUserCustomSkillService.updateUserCustomSkill.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).put('/api/skills/custom/cs1').send({ name: 'Updated Skill Name' });
+    expect(res.status).toBe(400);
+  });
+
+  // DELETE /custom/:id — SKILL_NOT_FOUND ternary
+  it('DELETE /custom/:id success', async () => {
+    mockUserCustomSkillService.deleteUserCustomSkill.mockResolvedValue(ok({}));
+    const res = await request(app).delete('/api/skills/custom/cs1');
+    expect(res.status).toBe(204);
+  });
+
+  it('DELETE /custom/:id SKILL_NOT_FOUND returns 404', async () => {
+    mockUserCustomSkillService.deleteUserCustomSkill.mockResolvedValue(fail('SKILL_NOT_FOUND', 'No'));
+    const res = await request(app).delete('/api/skills/custom/cs1');
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE /custom/:id other error returns 400', async () => {
+    mockUserCustomSkillService.deleteUserCustomSkill.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).delete('/api/skills/custom/cs1');
+    expect(res.status).toBe(400);
+  });
+
+  // PUT /suggestions/:id/status — SUGGESTION_NOT_FOUND ternary and validation
+  it('PUT /suggestions/:id/status invalid status', async () => {
+    const res = await request(app).put('/api/skills/suggestions/s1/status').send({ status: 'invalid' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /suggestions/:id/status success', async () => {
+    mockUserCustomSkillService.updateSkillSuggestionStatus.mockResolvedValue(ok({ id: 's1' }));
+    const res = await request(app).put('/api/skills/suggestions/s1/status').send({ status: 'approved' });
+    expect(res.status).toBe(200);
+  });
+
+  it('PUT /suggestions/:id/status SUGGESTION_NOT_FOUND returns 404', async () => {
+    mockUserCustomSkillService.updateSkillSuggestionStatus.mockResolvedValue(fail('SUGGESTION_NOT_FOUND', 'No'));
+    const res = await request(app).put('/api/skills/suggestions/s1/status').send({ status: 'approved' });
+    expect(res.status).toBe(404);
+  });
+
+  it('PUT /suggestions/:id/status other error returns 400', async () => {
+    mockUserCustomSkillService.updateSkillSuggestionStatus.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).put('/api/skills/suggestions/s1/status').send({ status: 'approved' });
+    expect(res.status).toBe(400);
   });
 });

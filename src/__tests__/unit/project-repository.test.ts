@@ -30,6 +30,8 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
 
 const { ProjectRepository } = await import('../../repositories/project-repository.js');
 
+const mockDatabases = { getDocument: mockGetDocument, listDocuments: mockListDocuments, createDocument: mockCreateDocument, updateDocument: mockUpdateDocument, deleteDocument: mockDeleteDocument };
+
 function toAppwriteDoc(data: Record<string, any>) {
   const { id, created_at, updated_at, ...rest } = data;
   return {
@@ -131,6 +133,243 @@ describe('ProjectRepository', () => {
       mockListDocuments.mockResolvedValueOnce({ documents: projects, total: 1 });
       const result = await repo.getProjectsBySkills(['s1']);
       expect(result.items).toHaveLength(0);
+    });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('project-repository.ts - Branch Coverage', () => {
+  it('L60: parse uses undefined fallback when no arg provided', () => {
+    const parse = (val: any, fallback: any = undefined) => {
+      if (val === undefined || val === null) return fallback;
+      return val;
+    };
+    expect(parse(undefined)).toBeUndefined();
+    expect(parse(undefined, 'default')).toBe('default');
+  });
+});
+
+describe('merged branch coverage', () => {
+  it('project-repository L60: mapDoc parse with undefined/null fallback', async () => {
+    mockDatabases.getDocument.mockResolvedValue({
+      $id: 'p1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01',
+      required_skills: undefined, milestones: null, budget: 1000,
+    });
+
+    const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+    const result = await projectRepository.findProjectById('p1');
+    expect(result).toBeDefined();
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from project-repository-extended.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('Project Repository - Extended Coverage', () => {
+  let repo_ext: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo_ext = new ProjectRepository();
+    mockListDocuments.mockReset();
+    mockGetDocument.mockReset();
+  });
+
+  describe('getProjectsBySkills', () => {
+    it('should return empty results when no matches', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [],
+        total: 0,
+      });
+      const result = await repo_ext.getProjectsBySkills(['skill-999']);
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should handle pagination', async () => {
+      const projects = [];
+      for (let i = 0; i < 15; i++) {
+        projects.push({
+          $id: `p-${i}`, title: `Project ${i}`, status: 'open',
+          required_skills: JSON.stringify([{ skill_id: 'skill-1', skill_name: 'React', category_id: 'cat-1', years_of_experience: 2 }]),
+          milestones: '[]', tags: '[]', attachments: '[]',
+        });
+      }
+      mockListDocuments.mockResolvedValueOnce({
+        documents: projects,
+        total: 15,
+      });
+      const result = await repo_ext.getProjectsBySkills(['skill-1'], { limit: 5, offset: 0 });
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('should return empty results on query error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB error'));
+      const result = await repo_ext.getProjectsBySkills(['skill-1']);
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+    });
+  });
+
+  describe('getProjectsByBudgetRange', () => {
+    it('should return projects within budget range', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p-1', title: 'Project 1', status: 'open', budget: 1000, required_skills: '[]', milestones: '[]', tags: '[]', attachments: '[]' },
+          { $id: 'p-2', title: 'Project 2', status: 'open', budget: 2000, required_skills: '[]', milestones: '[]', tags: '[]', attachments: '[]' },
+        ],
+        total: 2,
+      });
+      const result = await repo_ext.getProjectsByBudgetRange(500, 3000);
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(2);
+    });
+
+    it('should return empty results for no matches', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [],
+        total: 0,
+      });
+      const result = await repo_ext.getProjectsByBudgetRange(100000, 200000);
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+    });
+
+    it('should return empty results on query error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB error'));
+      const result = await repo_ext.getProjectsByBudgetRange(100, 500);
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+    });
+  });
+
+  describe('getProjectsByCategory', () => {
+    it('should return projects by category', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p-1', title: 'Web Project', status: 'open', required_skills: JSON.stringify([{ skill_id: 's-1', skill_name: 'React', category_id: 'cat-web', years_of_experience: 2 }]), milestones: '[]', tags: '[]', attachments: '[]' },
+        ],
+        total: 1,
+      });
+      const result = await repo_ext.getProjectsByCategory('cat-web');
+      expect(result.items).toHaveLength(1);
+      expect(result.total).toBe(1);
+    });
+
+    it('should return empty results for unknown category', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [],
+        total: 0,
+      });
+      const result = await repo_ext.getProjectsByCategory('cat-unknown');
+      expect(result.items).toHaveLength(0);
+    });
+
+    it('should return empty results on query error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB error'));
+      const result = await repo_ext.getProjectsByCategory('cat-1');
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+    });
+  });
+
+  describe('getProjectsByMultipleCategories', () => {
+    it('should return projects matching any of the categories', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p-1', title: 'Project 1', status: 'open', required_skills: JSON.stringify([{ skill_id: 's-1', skill_name: 'React', category_id: 'cat-1', years_of_experience: 2 }]), milestones: '[]', tags: '[]', attachments: '[]' },
+          { $id: 'p-2', title: 'Project 2', status: 'open', required_skills: JSON.stringify([{ skill_id: 's-2', skill_name: 'Node.js', category_id: 'cat-2', years_of_experience: 3 }]), milestones: '[]', tags: '[]', attachments: '[]' },
+        ],
+        total: 2,
+      });
+      const result = await repo_ext.getProjectsByMultipleCategories(['cat-1', 'cat-2']);
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(2);
+    });
+
+    it('should return empty results for no matches', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [],
+        total: 0,
+      });
+      const result = await repo_ext.getProjectsByMultipleCategories(['cat-unknown']);
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+    });
+
+    it('should handle pagination with hasMore', async () => {
+      const projects = [];
+      for (let i = 0; i < 10; i++) {
+        projects.push({
+          $id: `p-${i}`, title: `Project ${i}`, status: 'open',
+          required_skills: JSON.stringify([{ skill_id: 's-1', skill_name: 'React', category_id: 'cat-1', years_of_experience: 2 }]),
+          milestones: '[]', tags: '[]', attachments: '[]',
+        });
+      }
+      mockListDocuments.mockResolvedValueOnce({
+        documents: projects,
+        total: 10,
+      });
+      const result = await repo_ext.getProjectsByMultipleCategories(['cat-1'], { limit: 5, offset: 0 });
+      expect(result.hasMore).toBe(true);
+    });
+
+    it('should return empty results on query error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB error'));
+      const result = await repo_ext.getProjectsByMultipleCategories(['cat-1']);
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+    });
+  });
+
+  describe('getAllOpenProjects', () => {
+    it('should return all open projects', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p-1', title: 'Project 1', status: 'open', required_skills: '[]', milestones: '[]', tags: '[]', attachments: '[]' },
+          { $id: 'p-2', title: 'Project 2', status: 'open', required_skills: '[]', milestones: '[]', tags: '[]', attachments: '[]' },
+        ],
+        total: 5,
+      });
+      const result = await repo_ext.getAllOpenProjects();
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(5);
+    });
+
+    it('should return empty results when no open projects', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [],
+        total: 0,
+      });
+      const result = await repo_ext.getAllOpenProjects();
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should handle pagination options', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p-1', title: 'Project 1', status: 'open', required_skills: '[]', milestones: '[]', tags: '[]', attachments: '[]' },
+        ],
+        total: 20,
+      });
+      const result = await repo_ext.getAllOpenProjects({ limit: 10, offset: 0 });
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should return empty results on query error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB error'));
+      const result = await repo_ext.getAllOpenProjects();
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
     });
   });
 });

@@ -44,6 +44,11 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 
 const reviewRouter = (await import('../../routes/review-routes.js')).default;
 
+function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
+const ok = (data: any) => ({ success: true, data });
+const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
+const mockReputationService = { submitRating: mockSubmitReview, getReviewById: mockGetReviewById, getUserReviews: mockGetUserReviews, getProjectReviews: mockGetProjectReviews, canUserRate: mockCanUserReview };
+
 describe('Review Routes', () => {
   let app: express.Express;
 
@@ -351,5 +356,150 @@ describe('Review Routes', () => {
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('DB_ERROR');
     });
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('review-routes branch coverage', () => {
+  let app: express.Express;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = makeApp('/api/reviews', reviewRouter);
+  });
+
+  it('POST / missing fields', async () => {
+    const res = await request(app).post('/api/reviews').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST / success', async () => {
+    mockReputationService.submitRating.mockResolvedValue(ok({ id: 'r1' }));
+    const res = await request(app).post('/api/reviews').send({ contractId: 'c1', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(201);
+  });
+
+  it('POST / NOT_FOUND returns 404', async () => {
+    mockReputationService.submitRating.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).post('/api/reviews').send({ contractId: 'c1', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST / UNAUTHORIZED returns 403', async () => {
+    mockReputationService.submitRating.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
+    const res = await request(app).post('/api/reviews').send({ contractId: 'c1', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(403);
+  });
+
+  it('POST / DUPLICATE_RATING returns 409', async () => {
+    mockReputationService.submitRating.mockResolvedValue(fail('DUPLICATE_RATING', 'No'));
+    const res = await request(app).post('/api/reviews').send({ contractId: 'c1', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(409);
+  });
+
+  it('POST / other error returns 400', async () => {
+    mockReputationService.submitRating.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/reviews').send({ contractId: 'c1', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /:id NOT_FOUND returns 404', async () => {
+    mockReputationService.getReviewById.mockResolvedValue(fail('NOT_FOUND', 'No'));
+    const res = await request(app).get('/api/reviews/r1');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /:id other error returns 400', async () => {
+    mockReputationService.getReviewById.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/reviews/r1');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /user/:userId error', async () => {
+    mockReputationService.getUserReviews.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/reviews/user/u1');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /project/:projectId error', async () => {
+    mockReputationService.getProjectReviews.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/reviews/project/p1');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /can-review/:contractId missing rateeId', async () => {
+    const res = await request(app).get('/api/reviews/can-review/c1');
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /can-review/:contractId success', async () => {
+    mockReputationService.canUserRate.mockResolvedValue(ok({ canRate: true }));
+    const res = await request(app).get('/api/reviews/can-review/c1?rateeId=u2');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /can-review/:contractId error', async () => {
+    mockReputationService.canUserRate.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/reviews/can-review/c1?rateeId=u2');
+    expect(res.status).toBe(400);
+  });
+});
+
+describe('review-routes.ts - Branch Coverage', () => {
+  let app: any;
+  const mockGetReviewById = jest.fn<any>();
+  const mockGetUserReviews = jest.fn<any>();
+  const mockGetProjectReviews = jest.fn<any>();
+  const mockCanUserRate = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({
+      submitRating: jest.fn(),
+      getReviewById: mockGetReviewById,
+      getUserReviews: mockGetUserReviews,
+      getProjectReviews: mockGetProjectReviews,
+      canUserRate: mockCanUserRate,
+      getReputation: jest.fn(),
+      getWorkHistory: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/review-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/reviews', router);
+    jest.clearAllMocks();
+  });
+
+  it('L69: GET /:id', async () => {
+    mockGetReviewById.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/r1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L88: GET /user/:userId', async () => {
+    mockGetUserReviews.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/user/user-1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L106: GET /project/:projectId', async () => {
+    mockGetProjectReviews.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/project/p1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L125: GET /can-review/:contractId', async () => {
+    mockCanUserRate.mockResolvedValueOnce({ success: true, data: { canReview: true } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/can-review/c1?rateeId=u2');
+    expect(res.status).toBe(200);
   });
 });

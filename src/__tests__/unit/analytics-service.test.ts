@@ -1,4 +1,9 @@
-import { describe, it, expect } from '@jest/globals';
+// @ts-nocheck
+import { jest, describe, it, expect } from '@jest/globals';
+import path from 'node:path';
+
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
+const mockDatabases = (globalThis as any).__mockDatabases;
 
 describe('Analytics Service', () => {
   it('should have getFreelancerAnalytics function', () => {
@@ -15,5 +20,757 @@ describe('Analytics Service', () => {
 
   it('should have getPlatformMetrics function', () => {
     expect(true).toBe(true);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('analytics-service – branch coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+  });
+
+  it('L105: getFreelancerAnalytics with reviews missing rating', async () => {
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ rating: undefined }, { rating: 5 }, { rating: 0 }],
+      total: 3,
+    }).mockResolvedValue({ documents: [], total: 0 });
+
+    const { getFreelancerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getFreelancerAnalytics('user1');
+    expect(result).toBeDefined();
+  });
+
+  it('L273: getPlatformMetrics handles contracts with missing total_amount', async () => {
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'a@b.com' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [{ $id: 'p1' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [{ $id: 'c1', status: 'active' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [{ total_amount: undefined }], total: 1 })
+      .mockResolvedValue({ documents: [{ user_id: 'u1', created_at: '2025-01-01' }], total: 1 });
+
+    const { getPlatformMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getPlatformMetrics();
+    expect(result).toBeDefined();
+  });
+
+  it('L346: getAdminAnalytics revenue from completed contracts', async () => {
+    mockDatabases.listDocuments.mockResolvedValue({
+      documents: [], total: 0,
+    });
+
+    const { getAdminAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getAdminAnalytics();
+    expect(result).toBeDefined();
+  });
+
+  it('L442: getSkillTrends with required_skills as string', async () => {
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'p1', required_skills: '[{"skill_name":"React"}]',
+        budget: 5000, created_at: new Date().toISOString(),
+      }],
+      total: 1,
+    }).mockResolvedValue({ documents: [], total: 0 });
+
+    const { getSkillTrends } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getSkillTrends();
+    expect(result).toBeDefined();
+  });
+
+  it('L466,L469: growthRate calc with olderCount > 0', async () => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 60);
+    const recent = new Date();
+    recent.setDate(recent.getDate() - 5);
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { $id: 'p1', required_skills: '[{"skill_name":"React"}]', budget: 1000, created_at: thirtyDaysAgo.toISOString() },
+        { $id: 'p2', required_skills: '[{"skill_name":"React"}]', budget: 2000, created_at: recent.toISOString() },
+      ],
+      total: 2,
+    }).mockResolvedValue({ documents: [], total: 0 });
+
+    const { getSkillTrends } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getSkillTrends();
+    expect(result).toBeDefined();
+  });
+
+  it('L570: freelancerDemand with required_skills as string', async () => {
+    // getSkillDemandTrends is an alias for getSkillTrends
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'p1', required_skills: '[{"skill_name":"Solidity"}]',
+        budget: 5000, created_at: new Date().toISOString(),
+      }],
+      total: 1,
+    }).mockResolvedValue({ documents: [], total: 0 });
+
+    const { getSkillDemandTrends } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getSkillDemandTrends();
+    expect(result).toBeDefined();
+  });
+});
+
+describe('Analytics Service - Direct Branch Coverage', () => {
+  const importModule = async () => import('../../services/analytics-service.js');
+
+  beforeEach(() => {
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDatabases.getDocument.mockResolvedValue({ $id: 'doc-id' });
+  });
+
+  it('should filter contracts by startDate', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'c1', total_amount: 100, status: 'completed', created_at: '2025-01-15' },
+          { $id: 'c2', total_amount: 200, status: 'completed', created_at: '2025-03-15' },
+        ],
+        total: 2,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getFreelancerAnalytics('user-1', { startDate: '2025-03-01' });
+    expect(result.success).toBe(true);
+  });
+
+  it('should filter contracts by endDate', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'c1', total_amount: 100, status: 'completed', created_at: '2025-01-15' },
+          { $id: 'c2', total_amount: 200, status: 'completed', created_at: '2025-03-15' },
+        ],
+        total: 2,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getFreelancerAnalytics('user-1', { endDate: '2025-02-01' });
+    expect(result.success).toBe(true);
+  });
+
+  it('should return correct average rating when reviews exist', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'c1', total_amount: 100, created_at: '2025-01-15' }], total: 1 })
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'r1', rating: 4 }, { $id: 'r2', rating: 5 }],
+        total: 2,
+      })
+      .mockResolvedValueOnce({ documents: [{ $id: 'p1', status: 'accepted' }, { $id: 'p2', status: 'pending' }], total: 2 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.averageRating).toBe(4.5);
+  });
+
+  it('should return 0 average rating when no reviews', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.averageRating).toBe(0);
+  });
+
+  it('should calculate proposal acceptance rate correctly', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', status: 'accepted' },
+          { $id: 'p2', status: 'pending' },
+          { $id: 'p3', status: 'accepted' },
+        ],
+        total: 3,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.proposalAcceptanceRate).toBe(66.7);
+  });
+
+  it('should handle employer analytics with date filtering', async () => {
+    const { getEmployerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'proj1', budget: 500, created_at: '2025-01-15' },
+          { $id: 'proj2', budget: 1000, created_at: '2025-06-15' },
+        ],
+        total: 2,
+      })
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', total_amount: 500, created_at: '2025-01-20' }],
+        total: 1,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getEmployerAnalytics('user-1', { startDate: '2025-01-01', endDate: '2025-12-31' });
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getPlatformMetrics cache hit', async () => {
+    const { getPlatformMetrics } = await importModule();
+    const { platformMetricsCache } = await import('../../utils/cache.js');
+    platformMetricsCache.set('platform_metrics', {
+      totalUsers: 10, totalProjects: 5, totalContracts: 3,
+      totalTransactionVolume: 1000, activeUsers: 5, completionRate: 66.7,
+    });
+
+    const result = await getPlatformMetrics();
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getPlatformMetrics with zero contracts', async () => {
+    const { getPlatformMetrics } = await importModule();
+    const { platformMetricsCache } = await import('../../utils/cache.js');
+    platformMetricsCache.delete('platform_metrics');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getPlatformMetrics();
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getSkillTrends cache hit', async () => {
+    const { getSkillTrends } = await importModule();
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.set('skill_trends', []);
+
+    const result = await getSkillTrends();
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getSkillTrends with projects having string required_skills', async () => {
+    const { getSkillTrends } = await importModule();
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { $id: 'p1', required_skills: '["React", "Node.js"]', budget: 1000, status: 'open', created_at: '2025-01-15' },
+        { $id: 'p2', required_skills: [{ skill_name: 'React' }], budget: 500, status: 'open', created_at: '2025-01-15' },
+      ],
+      total: 2,
+    });
+
+    const result = await getSkillTrends();
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getSkillTrends with old projects only', async () => {
+    const { getSkillTrends } = await importModule();
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { $id: 'p1', required_skills: [{ skill_name: 'React' }], budget: 1000, status: 'open', created_at: '2024-01-01' },
+      ],
+      total: 1,
+    });
+
+    const result = await getSkillTrends();
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getSkillTrends with many projects (high demand)', async () => {
+    const { getSkillTrends } = await importModule();
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    const projects = Array.from({ length: 12 }, (_, i) => ({
+      $id: `p${i}`, required_skills: [{ skill_name: 'React' }], budget: 1000, status: 'open', created_at: '2025-01-15',
+    }));
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: projects, total: 12 });
+
+    const result = await getSkillTrends();
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getSkillTrends with 3-9 projects (medium demand)', async () => {
+    const { getSkillTrends } = await importModule();
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    const projects = Array.from({ length: 5 }, (_, i) => ({
+      $id: `p${i}`, required_skills: [{ skill_name: 'React' }], budget: 1000, status: 'open', created_at: '2025-01-15',
+    }));
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: projects, total: 5 });
+
+    const result = await getSkillTrends();
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle getSkillTrends error', async () => {
+    const { getSkillTrends } = await importModule();
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await getSkillTrends();
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle calculateTopSkills error gracefully', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle calculateTopSkills fetching project docs', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'c1', total_amount: 100, created_at: '2025-01-15' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [{ $id: 'c1', project_id: 'proj1' }], total: 1 });
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'proj1', required_skills: [{ skill_name: 'React' }], created_at: '2025-01-15',
+    });
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle calculateTopSkills with string required_skills', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'c1', total_amount: 100, created_at: '2025-01-15' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [{ $id: 'c1', project_id: 'proj1' }], total: 1 });
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'proj1', required_skills: '["React"]', created_at: '2025-01-15',
+    });
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle calculateTopSkills when getDocument fails', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'c1', total_amount: 100, created_at: '2025-01-15' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [{ $id: 'c1', project_id: 'proj1' }], total: 1 });
+    mockDatabases.getDocument.mockRejectedValueOnce(new Error('Not found'));
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle employer analytics with zero projects', async () => {
+    const { getEmployerAnalytics } = await importModule();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getEmployerAnalytics('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.averageProjectBudget).toBe(0);
+  });
+
+  it('should handle freelancer analytics exception', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB failure'));
+
+    const result = await getFreelancerAnalytics('user-1');
+    expect(result.success).toBe(false);
+  });
+
+  it('should handle employer analytics exception', async () => {
+    const { getEmployerAnalytics } = await importModule();
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB failure'));
+
+    const result = await getEmployerAnalytics('user-1');
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('analytics-service.ts - Branch Coverage', () => {
+  it('L105: reviews.reduce with null rating', () => {
+    const reviews = [{ rating: null }, { rating: 4 }];
+    expect(reviews.reduce((s: number, r: any) => s + (r.rating || 0), 0)).toBe(4);
+  });
+
+  it('L273: completedDocs reduce null total_amount', () => {
+    expect([{ total_amount: null }, { total_amount: '100' }].reduce((s: number, c: any) => s + Number(c.total_amount || 0), 0)).toBe(100);
+  });
+
+  it('L346: revenue calc null total_amount', () => {
+    expect([{ total_amount: null }, { total_amount: '200' }].reduce((s: number, c: any) => s + Number(c.total_amount || 0) * 0.05, 0)).toBe(10);
+  });
+
+  it('L442: skills from invalid JSON string', () => {
+    const project = { required_skills: 'invalid' };
+    const skills = typeof project.required_skills === 'string'
+      ? (() => { try { return JSON.parse(project.required_skills); } catch { return []; } })()
+      : project.required_skills || [];
+    expect(skills).toEqual([]);
+  });
+
+  it('L466/469: avgBudget and growthRate', () => {
+    const stats = { projectCount: 2, totalBudget: 200, recentCount: 3, olderCount: 1 };
+    expect(stats.projectCount > 0 ? stats.totalBudget / stats.projectCount : 0).toBe(100);
+    expect(stats.olderCount > 0 ? Math.round(((stats.recentCount - stats.olderCount) / stats.olderCount) * 100 * 10) / 10 : 0).toBe(200);
+  });
+
+  it('L570: skills as array (not string)', () => {
+    const doc = { required_skills: [{ skill_name: 'JS' }] };
+    const skills = typeof doc.required_skills === 'string' ? JSON.parse(doc.required_skills) : doc.required_skills || [];
+    expect(skills).toEqual([{ skill_name: 'JS' }]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from analytics-service-extended.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('Analytics Service - Extended Tests', () => {
+  let mockDatabasesExt: any;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockDatabasesExt = (globalThis as any).__mockDatabases;
+    mockDatabasesExt.listDocuments.mockReset();
+    mockDatabasesExt.getDocument.mockReset();
+    mockDatabasesExt.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDatabasesExt.getDocument.mockResolvedValue({ $id: 'doc-id' });
+    const cache = await import('../../utils/cache.js');
+    cache.platformMetricsCache?.clear();
+    cache.skillTrendsCache?.clear();
+    cache.adminAnalyticsCache?.clear();
+  });
+
+  const importModule = async () => {
+    return await import('../../services/analytics-service.js');
+  };
+
+  describe('getFreelancerAnalytics - catch block and edge cases', () => {
+    it('should handle thrown errors gracefully', async () => {
+      const { getFreelancerAnalytics } = await importModule();
+      mockDatabasesExt.listDocuments.mockRejectedValueOnce(new Error('Unexpected'));
+
+      const result = await getFreelancerAnalytics('user-1');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+    });
+
+    it('should apply both startDate and endDate filters', async () => {
+      const { getFreelancerAnalytics } = await importModule();
+
+      mockDatabasesExt.listDocuments
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'c1', total_amount: 1000, created_at: '2024-06-15T00:00:00Z' },
+            { $id: 'c2', total_amount: 500, created_at: '2025-06-15T00:00:00Z' },
+          ],
+          total: 2,
+        })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getFreelancerAnalytics('user-1', {
+        startDate: '2024-01-01',
+        endDate: '2024-12-31',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.projectsCompleted).toBe(1);
+        expect(result.data.totalEarnings).toBe(1000);
+      }
+    });
+
+    it('should handle null reviews', async () => {
+      const { getFreelancerAnalytics } = await importModule();
+
+      mockDatabasesExt.listDocuments
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'c-1', total_amount: 1000, created_at: '2024-01-01T00:00:00Z' }],
+          total: 1,
+        })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getFreelancerAnalytics('user-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.averageRating).toBe(0);
+      }
+    });
+
+    it('should handle no proposals', async () => {
+      const { getFreelancerAnalytics } = await importModule();
+
+      mockDatabasesExt.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'r1', rating: 5 }],
+          total: 1,
+        })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getFreelancerAnalytics('user-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.proposalAcceptanceRate).toBe(0);
+      }
+    });
+  });
+
+  describe('getEmployerAnalytics - catch block and edge cases', () => {
+    it('should handle thrown errors gracefully', async () => {
+      const { getEmployerAnalytics } = await importModule();
+      mockDatabasesExt.listDocuments.mockRejectedValueOnce(new Error('Unexpected'));
+
+      const result = await getEmployerAnalytics('user-1');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+    });
+
+    it('should apply date range filters', async () => {
+      const { getEmployerAnalytics } = await importModule();
+
+      mockDatabasesExt.listDocuments
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'p1', budget: 5000, created_at: '2024-06-15T00:00:00Z' },
+            { $id: 'p2', budget: 3000, created_at: '2025-06-15T00:00:00Z' },
+          ],
+          total: 2,
+        })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getEmployerAnalytics('user-1', {
+        startDate: '2024-01-01',
+        endDate: '2024-12-31',
+      });
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.projectsPosted).toBe(1);
+      }
+    });
+
+    it('should handle zero projects posted', async () => {
+      const { getEmployerAnalytics } = await importModule();
+
+      mockDatabasesExt.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getEmployerAnalytics('user-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.averageProjectBudget).toBe(0);
+      }
+    });
+  });
+
+  describe('getSkillDemandTrends - edge cases', () => {
+    it('should handle empty skill results', async () => {
+      const { getSkillDemandTrends } = await importModule();
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getSkillDemandTrends();
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data).toHaveLength(0);
+      }
+    });
+
+    it('should return skill trends from projects', async () => {
+      const { getSkillDemandTrends } = await importModule();
+
+      const now = new Date();
+      mockDatabasesExt.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', required_skills: ['JavaScript', 'Python'], budget: 1000, created_at: now.toISOString() },
+          { $id: 'p2', required_skills: ['JavaScript', 'CSS'], budget: 500, created_at: now.toISOString() },
+          { $id: 'p3', required_skills: ['JavaScript'], budget: 800, created_at: now.toISOString() },
+        ],
+        total: 3,
+      });
+
+      const result = await getSkillDemandTrends();
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.length).toBeGreaterThan(0);
+        const jsSkill = result.data.find((s: any) => s.skillName === 'JavaScript');
+        expect(jsSkill).toBeDefined();
+        expect(jsSkill!.projectCount).toBe(3);
+      }
+    });
+
+    it('should handle thrown errors gracefully', async () => {
+      const { getSkillDemandTrends } = await importModule();
+      mockDatabasesExt.listDocuments.mockRejectedValueOnce(new Error('DB error'));
+
+      const result = await getSkillDemandTrends();
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+    });
+  });
+
+  describe('getAdminAnalytics - edge cases', () => {
+    it('should handle user growth data with items', async () => {
+      const { getAdminAnalytics } = await importModule();
+      const now = new Date();
+      const sixMonthsAgo = new Date(now.getTime() - 180 * 24 * 60 * 60 * 1000);
+
+      mockDatabasesExt.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 10 })
+        .mockResolvedValueOnce({ documents: [], total: 8 })
+        .mockResolvedValueOnce({ documents: [{ total_amount: 500 }], total: 5 })
+        .mockResolvedValueOnce({ documents: [], total: 3 })
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'u1', created_at: sixMonthsAgo.toISOString() },
+            { $id: 'u2', created_at: now.toISOString() },
+          ],
+          total: 2,
+        })
+        .mockResolvedValueOnce({
+          documents: [
+            { $id: 'p1', created_at: sixMonthsAgo.toISOString() },
+            { $id: 'p2', created_at: now.toISOString() },
+          ],
+          total: 2,
+        });
+
+      const result = await getAdminAnalytics();
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.userGrowthData).toBeDefined();
+        expect(result.data.projectActivityData).toBeDefined();
+      }
+    });
+
+    it('should handle null counts for growth calculations', async () => {
+      const { getAdminAnalytics } = await importModule();
+
+      mockDatabasesExt.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getAdminAnalytics();
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.userGrowth).toBe(0);
+        expect(result.data.projectGrowth).toBe(0);
+      }
+    });
+
+    it('should handle thrown errors gracefully', async () => {
+      const { getAdminAnalytics } = await importModule();
+      mockDatabasesExt.listDocuments.mockRejectedValueOnce(new Error('Unexpected'));
+
+      const result = await getAdminAnalytics();
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+    });
+  });
+
+  describe('getPlatformMetrics - edge cases', () => {
+    it('should handle null counts', async () => {
+      const { getPlatformMetrics } = await importModule();
+
+      mockDatabasesExt.listDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await getPlatformMetrics();
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.totalUsers).toBe(0);
+        expect(result.data.totalContracts).toBe(0);
+      }
+    });
+
+    it('should handle thrown errors gracefully', async () => {
+      const { getPlatformMetrics } = await importModule();
+      mockDatabasesExt.listDocuments.mockRejectedValueOnce(new Error('Unexpected'));
+
+      const result = await getPlatformMetrics();
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+    });
   });
 });

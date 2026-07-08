@@ -409,3 +409,35 @@ describe('Reputation Aggregation Service', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('reputation-aggregation – milestones as string', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('L121: parses milestones from string', async () => {
+    const mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', project_id: 'p1', status: 'completed' }],
+      total: 1,
+    }).mockResolvedValueOnce({
+      documents: [{ $id: 'p1', milestones: '[{"status":"approved","approved_at":"2025-01-01","due_date":"2025-01-02"}]' }],
+      total: 1,
+    }).mockResolvedValue({ documents: [], total: 0 });
+
+    const { getAggregatedScore } = await import(resolveModule('src/services/reputation-aggregation-service.ts'));
+    const result = await getAggregatedScore('user1');
+    expect(result).toBeDefined();
+  });
+});
+
+describe('reputation-aggregation-service.ts - Branch Coverage', () => {
+  it('L121: null milestones fallback', () => {
+    const doc = { milestones: null };
+    const ms = typeof doc.milestones === 'string' ? JSON.parse(doc.milestones) : doc.milestones || [];
+    expect(ms).toEqual([]);
+  });
+});

@@ -342,3 +342,77 @@ describe('Email Preference Service', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from coverage files
+// ═══════════════════════════════════════════════════════════════
+
+describe('Email Preference Service - Direct Branch Coverage', () => {
+  const importModule = async () => import('../../services/email-preference-service.js');
+
+  it('should create default preferences when none exist', async () => {
+    const { getEmailPreferences } = await importModule();
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    mockDatabases.createDocument.mockResolvedValueOnce({
+      $id: 'ep-1', user_id: 'user-1', proposal_received: true, proposal_accepted: true,
+      milestone_updates: true, payment_notifications: true, dispute_notifications: true,
+      marketing_emails: false, weekly_digest: true,
+      created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    const result = await getEmailPreferences('user-1');
+    expect(result.success).toBe(true);
+  });
+
+  it('should return existing preferences', async () => {
+    const { getEmailPreferences } = await importModule();
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'ep-1', user_id: 'user-1', proposal_received: true,
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      }],
+      total: 1,
+    });
+
+    const result = await getEmailPreferences('user-1');
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle updateEmailPreferences with no matching keys', async () => {
+    const { updateEmailPreferences } = await importModule();
+    // proposalReceived is camelCase, but ALLOWED_COLUMNS uses snake_case
+    // So updateData will be empty, falling through to getEmailPreferences
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'ep-1', user_id: 'user-1', proposal_received: true,
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      }],
+      total: 1,
+    });
+
+    const result = await updateEmailPreferences('user-1', { proposalReceived: false } as any);
+    // Falls through to getEmailPreferences which returns existing prefs
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle unsubscribeAll when no preferences exist', async () => {
+    const { unsubscribeAll } = await importModule();
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await unsubscribeAll('user-1');
+    expect(result.success).toBe(true);
+  });
+
+  it('should handle shouldSendEmail when preferences not found', async () => {
+    const { shouldSendEmail } = await importModule();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDatabases.createDocument.mockResolvedValue({
+      $id: 'ep-1', user_id: 'user-1', proposal_received: true,
+      created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    const result = await shouldSendEmail('user-1', 'proposal_received');
+    expect(typeof result).toBe('boolean');
+  });
+});
