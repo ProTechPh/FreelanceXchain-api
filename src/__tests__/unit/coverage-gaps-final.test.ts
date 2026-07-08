@@ -826,8 +826,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle create with object values being JSON.stringified', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -847,8 +847,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle create with id provided', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -863,8 +863,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle create with undefined values (skip branch)', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -879,8 +879,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle update with id/created_at keys being skipped', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -896,8 +896,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle update with undefined values (skip branch)', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -913,8 +913,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle update with object values being JSON.stringified', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -930,8 +930,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle mapDocument with created_at/updated_at fallback branches', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -948,8 +948,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle findOne returning null', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -960,8 +960,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle queryPaginated with ascending=true', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -975,8 +975,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle listWithQueries with mapper', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
       public testListWithQueries(queries: any[], mapper?: (doc: any) => any) {
         return this.listWithQueries(queries, mapper);
@@ -994,8 +994,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle listWithQueries without mapper', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
       public testListWithQueries(queries: any[]) {
         return this.listWithQueries(queries);
@@ -1012,8 +1012,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle listWithQueries error', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
       public testListWithQueries(queries: any[]) {
         return this.listWithQueries(queries);
@@ -1027,8 +1027,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle countWithQueries error', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
       public testCountWithQueries(queries: any[]) {
         return this.countWithQueries(queries);
@@ -1042,8 +1042,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle paginatedWithQueries error', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
       public testPaginatedWithQueries(queries: any[], limit: number, offset: number, mapper?: (doc: any) => any) {
         return this.paginatedWithQueries(queries, limit, offset, mapper);
@@ -1059,8 +1059,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle paginatedWithQueries with mapper', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
       public testPaginatedWithQueries(queries: any[], limit: number, offset: number, mapper?: (doc: any) => any) {
         return this.paginatedWithQueries(queries, limit, offset, mapper);
@@ -1078,8 +1078,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle paginatedWithQueries without mapper', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
       public testPaginatedWithQueries(queries: any[], limit: number, offset: number) {
         return this.paginatedWithQueries(queries, limit, offset);
@@ -1096,8 +1096,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle queryAll with ascending=true', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -1111,8 +1111,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle queryAll error', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 
@@ -1123,8 +1123,8 @@ describe('Base Repository Appwrite — branch coverage', () => {
   });
 
   it('should handle queryPaginated error', async () => {
-    const { BaseRepositoryAppwrite } = await import('../../repositories/base-repository-appwrite.js');
-    const repo = new (class extends BaseRepositoryAppwrite<any> {
+    const { BaseRepository } = await import('../../repositories/base-repository.js');
+    const repo = new (class extends BaseRepository<any> {
       constructor() { super('test-collection'); }
     })();
 

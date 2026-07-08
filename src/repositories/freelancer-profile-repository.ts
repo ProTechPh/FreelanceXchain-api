@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, PaginatedResult, QueryOptions } from './base-repository-appwrite.js';
+import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type FreelancerProfileEntity = {
@@ -34,7 +34,7 @@ function mapProfile(doc: Record<string, any>): FreelancerProfileEntity {
   return result as FreelancerProfileEntity;
 }
 
-export class FreelancerProfileRepository extends BaseRepositoryAppwrite<FreelancerProfileEntity> {
+export class FreelancerProfileRepository extends BaseRepository<FreelancerProfileEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

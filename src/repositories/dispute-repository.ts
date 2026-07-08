@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, PaginatedResult, QueryOptions } from './base-repository-appwrite.js';
+import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import type { DisputeStatus } from '../models/dispute.js';
 
@@ -51,7 +51,7 @@ function mapDispute(doc: Record<string, any>): DisputeEntity {
   return result as DisputeEntity;
 }
 
-export class DisputeRepository extends BaseRepositoryAppwrite<DisputeEntity> {
+export class DisputeRepository extends BaseRepository<DisputeEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

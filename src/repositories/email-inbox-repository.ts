@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, type PaginatedResult } from './base-repository-appwrite.js';
+import { BaseRepository, type PaginatedResult } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type EmailFolder = 'inbox' | 'sent' | 'trash';
@@ -48,7 +48,7 @@ function mapListItem(doc: Record<string, any>): EmailListItem {
   } as EmailListItem;
 }
 
-export class EmailInboxRepository extends BaseRepositoryAppwrite<EmailEntity> {
+export class EmailInboxRepository extends BaseRepository<EmailEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

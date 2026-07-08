@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
 
 export type UserCustomSkillEntity = {
@@ -30,7 +30,7 @@ export type SkillSuggestionEntity = {
 const USER_CUSTOM_SKILLS_COLLECTION = 'user_custom_skills';
 const SKILL_SUGGESTIONS_COLLECTION = 'skill_suggestions';
 
-class UserCustomSkillRepositoryAppwrite extends BaseRepositoryAppwrite<UserCustomSkillEntity> {
+class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
   constructor() {
     super(USER_CUSTOM_SKILLS_COLLECTION);
   }
@@ -105,7 +105,7 @@ class UserCustomSkillRepositoryAppwrite extends BaseRepositoryAppwrite<UserCusto
   }
 }
 
-class SkillSuggestionRepositoryAppwrite extends BaseRepositoryAppwrite<SkillSuggestionEntity> {
+class SkillSuggestionRepositoryAppwrite extends BaseRepository<SkillSuggestionEntity> {
   constructor() {
     super(SKILL_SUGGESTIONS_COLLECTION);
   }
@@ -159,5 +159,5 @@ class SkillSuggestionRepositoryAppwrite extends BaseRepositoryAppwrite<SkillSugg
   }
 }
 
-export const userCustomSkillRepository = new UserCustomSkillRepositoryAppwrite();
+export const userCustomSkillRepository = new UserCustomSkillRepository();
 export const skillSuggestionRepository = new SkillSuggestionRepositoryAppwrite();

@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 
 export type EmployerProfileEntity = {
   id: string;
@@ -14,7 +14,7 @@ export type EmployerProfileEntity = {
 
 const COLLECTION_ID = 'employer_profiles';
 
-export class EmployerProfileRepository extends BaseRepositoryAppwrite<EmployerProfileEntity> {
+export class EmployerProfileRepository extends BaseRepository<EmployerProfileEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

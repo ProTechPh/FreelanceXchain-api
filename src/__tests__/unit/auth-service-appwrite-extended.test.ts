@@ -18,7 +18,7 @@ describe('Auth Service Appwrite - Extended Coverage (MFA sessions, registration 
   });
 
   const importModule = async () => {
-    return await import('../../services/auth-service-appwrite.js');
+    return await import('../../services/auth-service.js');
   };
 
   describe('registerWithAppwrite', () => {

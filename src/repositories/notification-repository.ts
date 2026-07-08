@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite, PaginatedResult, QueryOptions } from './base-repository-appwrite.js';
+import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 export type { NotificationType } from '../models/notification.js';
 import type { NotificationType } from '../models/notification.js';
@@ -31,7 +31,7 @@ function mapNotification(doc: Record<string, any>): NotificationEntity {
   return result as NotificationEntity;
 }
 
-export class NotificationRepository extends BaseRepositoryAppwrite<NotificationEntity> {
+export class NotificationRepository extends BaseRepository<NotificationEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

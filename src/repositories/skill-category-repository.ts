@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type SkillCategoryEntity = {
@@ -12,7 +12,7 @@ export type SkillCategoryEntity = {
 
 const COLLECTION_ID = 'skill_categories';
 
-export class SkillCategoryRepository extends BaseRepositoryAppwrite<SkillCategoryEntity> {
+export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity> {
   constructor() {
     super(COLLECTION_ID);
   }

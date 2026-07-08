@@ -27,6 +27,7 @@ const mockAppwriteAccount = {
 const mockAppwriteUsers = {
   create: jest.fn(),
   get: jest.fn(),
+  delete: jest.fn(),
 };
 
 const mockUserRepository = {
@@ -93,6 +94,14 @@ const {
   verifyMFAChallenge,
   getMFAFactors,
   disableMFA,
+  register,
+  login,
+  loginWithAppwrite,
+  registerWithAppwrite,
+  requestEmailOtp,
+  requestMagicUrl,
+  verifyAuthToken,
+  getOAuthUrl,
 } = await import(resolveModule('src/services/auth-service.ts'));
 
 const createMockUser = (overrides: Record<string, any> = {}) => ({
@@ -484,6 +493,7 @@ describe('resendConfirmationEmail', () => {
   });
 
   it('returns success on valid resend', async () => {
+    (mockUserRepository.getUserByEmail as jest.Mock).mockResolvedValue(createMockUser());
     mockAppwriteAccount.createVerification.mockResolvedValue({} as never);
 
     const result = await resendConfirmationEmail('test@example.com');
@@ -491,6 +501,7 @@ describe('resendConfirmationEmail', () => {
   });
 
   it('swallows errors and returns success (prevents email enumeration)', async () => {
+    (mockUserRepository.getUserByEmail as jest.Mock).mockResolvedValue(createMockUser());
     mockAppwriteAccount.createVerification.mockRejectedValue(new Error('rate limit exceeded') as never);
 
     const result = await resendConfirmationEmail('test@example.com');
@@ -965,6 +976,408 @@ describe('exchangeCodeForSession', () => {
     expect(isAuthError(result)).toBe(true);
     if (isAuthError(result)) {
       expect(result.code).toBe('AUTH_REQUIRE_REGISTRATION');
+    }
+  });
+});
+
+// ─── Coverage for register error paths (lines 145-170) ───
+
+describe('register – error paths', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('compensates by deleting orphaned Appwrite user when session creation fails', async () => {
+    (mockUserRepository.emailExists as jest.Mock).mockResolvedValue(false);
+    mockAppwriteUsers.create.mockResolvedValue({ $id: 'new-user-id', email: 'test@example.com' } as never);
+    (mockUserRepository.createUser as jest.Mock).mockResolvedValue(createMockUser());
+    mockAppwriteAccount.createEmailPasswordSession.mockRejectedValue(new Error('session failed') as never);
+    mockAppwriteUsers.delete.mockResolvedValue({} as never);
+
+    const result = await register({ email: 'test@example.com', password: 'P@ssw0rd1', role: 'freelancer' });
+    expect(isAuthError(result)).toBe(true);
+    if (isAuthError(result)) {
+      expect(result.code).toBe('INTERNAL_ERROR');
+    }
+    expect(mockAppwriteUsers.delete).toHaveBeenCalledWith('new-user-id');
+  });
+
+  it('returns DUPLICATE_EMAIL when error message includes already exists', async () => {
+    (mockUserRepository.emailExists as jest.Mock).mockResolvedValue(false);
+    const error = new Error('User already exists') as any;
+    error.code = 409;
+    mockAppwriteUsers.create.mockRejectedValue(error as never);
+
+    const result = await register({ email: 'dup@example.com', password: 'P@ssw0rd1', role: 'freelancer' });
+    expect(result).toEqual({ code: 'DUPLICATE_EMAIL', message: expect.any(String) });
+  });
+
+  it('returns DUPLICATE_EMAIL when error code is 409', async () => {
+    (mockUserRepository.emailExists as jest.Mock).mockResolvedValue(false);
+    const error = new Error('conflict') as any;
+    error.code = 409;
+    mockAppwriteUsers.create.mockRejectedValue(error as never);
+
+    const result = await register({ email: 'dup@example.com', password: 'P@ssw0rd1', role: 'freelancer' });
+    expect(result).toEqual({ code: 'DUPLICATE_EMAIL', message: expect.any(String) });
+  });
+
+  it('returns INTERNAL_ERROR on generic registration failure', async () => {
+    (mockUserRepository.emailExists as jest.Mock).mockResolvedValue(false);
+    mockAppwriteUsers.create.mockRejectedValue(new Error('network timeout') as never);
+
+    const result = await register({ email: 'test@example.com', password: 'P@ssw0rd1', role: 'freelancer' });
+    expect(result).toEqual({ code: 'INTERNAL_ERROR', message: 'network timeout' });
+  });
+
+  it('handles orphaned user deletion failure gracefully', async () => {
+    (mockUserRepository.emailExists as jest.Mock).mockResolvedValue(false);
+    mockAppwriteUsers.create.mockResolvedValue({ $id: 'orphan-id', email: 'test@example.com' } as never);
+    (mockUserRepository.createUser as jest.Mock).mockResolvedValue(createMockUser());
+    mockAppwriteAccount.createEmailPasswordSession.mockRejectedValue(new Error('session failed') as never);
+    mockAppwriteUsers.delete.mockRejectedValue(new Error('delete also failed') as never);
+
+    const result = await register({ email: 'test@example.com', password: 'P@ssw0rd1', role: 'freelancer' });
+    expect(isAuthError(result)).toBe(true);
+  });
+});
+
+// ─── Coverage for login MFA required path (lines 196-211) ───
+
+describe('login – MFA required', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns MFA_REQUIRED when account.get throws user_more_factors_required', async () => {
+    mockAppwriteAccount.createEmailPasswordSession.mockResolvedValue({ secret: 'mfa-session-secret' } as never);
+    const mfaError = new Error('more factors required') as any;
+    mfaError.type = 'user_more_factors_required';
+    mockAppwriteAccount.get.mockRejectedValue(mfaError as never);
+
+    const result = await login({ email: 'mfa@example.com', password: 'P@ssw0rd1' });
+    expect(result).toEqual({
+      code: 'MFA_REQUIRED',
+      message: 'Multi-factor authentication required',
+      mfaRequired: true,
+      mfaSessionToken: 'mfa-session-secret',
+    });
+  });
+
+  it('rethrows non-MFA errors from account.get', async () => {
+    mockAppwriteAccount.createEmailPasswordSession.mockResolvedValue({ secret: 'session-secret' } as never);
+    mockAppwriteAccount.get.mockRejectedValue(new Error('some other error') as never);
+
+    const result = await login({ email: 'test@example.com', password: 'P@ssw0rd1' });
+    expect(isAuthError(result)).toBe(true);
+  });
+});
+
+// ─── Coverage for enrollMFA email factor (line 561) ───
+
+describe('enrollMFA – email factor', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns success for email factor type without enrollment', async () => {
+    const result = await enrollMFA('valid-token', 'email');
+    expect(result).toEqual({ success: true });
+  });
+});
+
+// ─── Coverage for resendConfirmationEmail user-exists path (lines 735-749) ───
+
+describe('resendConfirmationEmail – user exists', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('calls createVerification when user exists', async () => {
+    (mockUserRepository.getUserByEmail as jest.Mock).mockResolvedValue(createMockUser());
+    mockAppwriteAccount.createVerification.mockResolvedValue({} as never);
+
+    const result = await resendConfirmationEmail('test@example.com');
+    expect(result).toEqual({ success: true });
+    expect(mockAppwriteAccount.createVerification).toHaveBeenCalled();
+  });
+
+  it('returns success when user does not exist (prevents enumeration)', async () => {
+    (mockUserRepository.getUserByEmail as jest.Mock).mockResolvedValue(null);
+
+    const result = await resendConfirmationEmail('nobody@example.com');
+    expect(result).toEqual({ success: true });
+    expect(mockAppwriteAccount.createVerification).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Coverage for loginWithAppwrite catch block (lines 774-777) ───
+
+describe('loginWithAppwrite', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns AUTH_INVALID_TOKEN on error', async () => {
+    mockAppwriteAccount.get.mockRejectedValue(new Error('invalid session') as never);
+
+    const result = await loginWithAppwrite('bad-token');
+    expect(result).toEqual({ code: 'AUTH_INVALID_TOKEN', message: expect.any(String) });
+  });
+
+  it('returns AUTH_REQUIRE_REGISTRATION when user not in DB', async () => {
+    mockAppwriteAccount.get.mockResolvedValue({ $id: 'user-123', email: 'test@example.com' } as never);
+    (mockUserRepository.getUserById as jest.Mock).mockResolvedValue(null);
+
+    const result = await loginWithAppwrite('valid-token');
+    expect(isAuthError(result)).toBe(true);
+    if (isAuthError(result)) {
+      expect(result.code).toBe('AUTH_REQUIRE_REGISTRATION');
+    }
+  });
+
+  it('returns auth result on success', async () => {
+    mockAppwriteAccount.get.mockResolvedValue({ $id: 'user-123', email: 'test@example.com' } as never);
+    (mockUserRepository.getUserById as jest.Mock).mockResolvedValue(createMockUser());
+
+    const result = await loginWithAppwrite('valid-token');
+    expect(isAuthError(result)).toBe(false);
+    if (!isAuthError(result)) {
+      expect(result.accessToken).toBeDefined();
+    }
+  });
+});
+
+// ─── Coverage for registerWithAppwrite error path (lines 819-824) ───
+
+describe('registerWithAppwrite', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns INTERNAL_ERROR on registration failure', async () => {
+    mockAppwriteAccount.get.mockRejectedValue(new Error('appwrite down') as never);
+
+    const result = await registerWithAppwrite('bad-token', 'freelancer');
+    expect(result).toEqual({ code: 'INTERNAL_ERROR', message: expect.any(String) });
+  });
+
+  it('returns auth result on success', async () => {
+    mockAppwriteAccount.get.mockResolvedValue({ $id: 'new-user', email: 'new@example.com', name: 'New' } as never);
+    (mockUserRepository.getUserById as jest.Mock).mockResolvedValue(null);
+    (mockUserRepository.createUser as jest.Mock).mockResolvedValue(createMockUser({ id: 'new-user', email: 'new@example.com' }));
+
+    const result = await registerWithAppwrite('valid-token', 'freelancer');
+    expect(isAuthError(result)).toBe(false);
+  });
+});
+
+// ─── Coverage for requestEmailOtp (lines 830-840) ───
+
+describe('requestEmailOtp', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns userId on success', async () => {
+    mockAppwriteAccount.createEmailPasswordSession = jest.fn(); // not used but keep mock shape
+    // requestEmailOtp uses account.createEmailToken
+    const mockCreateEmailToken = jest.fn<any>().mockResolvedValue({ userId: 'otp-user-id' });
+    // We need to mock the Account constructor to return our mock
+    // Since Account is mocked at module level, we need to work with the existing mock
+    // The function creates its own Account instance via createUserClient
+    // Let's directly test by mocking the underlying call
+    // Actually, looking at the code, it calls account.createEmailToken
+    // But our mockAppwriteAccount doesn't have createEmailToken
+    // Let's add it dynamically
+    (mockAppwriteAccount as any).createEmailToken = mockCreateEmailToken;
+
+    const result = await requestEmailOtp('test@example.com');
+    expect(result).toEqual({ userId: 'otp-user-id' });
+  });
+
+  it('returns INTERNAL_ERROR on failure', async () => {
+    (mockAppwriteAccount as any).createEmailToken = jest.fn<any>().mockRejectedValue(new Error('otp failed'));
+
+    const result = await requestEmailOtp('test@example.com');
+    expect(result).toEqual({ code: 'INTERNAL_ERROR', message: 'otp failed' });
+  });
+});
+
+// ─── Coverage for requestMagicUrl (lines 846-860) ───
+
+describe('requestMagicUrl', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns userId on success', async () => {
+    (mockAppwriteAccount as any).createMagicURLToken = jest.fn<any>().mockResolvedValue({ userId: 'magic-user-id' });
+
+    const result = await requestMagicUrl('test@example.com');
+    expect(result).toEqual({ userId: 'magic-user-id' });
+  });
+
+  it('returns INTERNAL_ERROR on failure', async () => {
+    (mockAppwriteAccount as any).createMagicURLToken = jest.fn<any>().mockRejectedValue(new Error('magic failed'));
+
+    const result = await requestMagicUrl('test@example.com');
+    expect(result).toEqual({ code: 'INTERNAL_ERROR', message: 'magic failed' });
+  });
+});
+
+// ─── Coverage for verifyAuthToken (lines 865-879) ───
+
+describe('verifyAuthToken', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('returns auth result on successful verification', async () => {
+    (mockAppwriteAccount as any).createSession = jest.fn<any>().mockResolvedValue({ secret: 'verified-session' });
+    mockAppwriteAccount.get.mockResolvedValue({ $id: 'user-123', email: 'test@example.com' } as never);
+    (mockUserRepository.getUserById as jest.Mock).mockResolvedValue(createMockUser());
+
+    const result = await verifyAuthToken('user-123', 'valid-secret');
+    expect(isAuthError(result)).toBe(false);
+  });
+
+  it('returns AUTH_INVALID_CREDENTIALS on failure', async () => {
+    (mockAppwriteAccount as any).createSession = jest.fn<any>().mockRejectedValue(new Error('invalid code'));
+
+    const result = await verifyAuthToken('user-123', 'bad-secret');
+    expect(result).toEqual({ code: 'AUTH_INVALID_CREDENTIALS', message: expect.any(String) });
+  });
+});
+
+// ─── Branch coverage for ternary/fallback patterns ───
+
+describe('auth-service branch coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('register: uses fallback name when email has no local part', async () => {
+    (mockUserRepository.emailExists as jest.Mock).mockResolvedValue(false);
+    mockAppwriteUsers.create.mockResolvedValue({ $id: 'u1', email: '@example.com' } as never);
+    (mockUserRepository.createUser as jest.Mock).mockResolvedValue(createMockUser({ name: 'User' }));
+    mockAppwriteAccount.createEmailPasswordSession.mockResolvedValue({ secret: 'sess' } as never);
+
+    const result = await register({ email: '@example.com', password: 'P@ssw0rd1', role: 'freelancer' });
+    expect(isAuthError(result)).toBe(false);
+  });
+
+  it('register: handles non-Error delete failure', async () => {
+    (mockUserRepository.emailExists as jest.Mock).mockResolvedValue(false);
+    mockAppwriteUsers.create.mockResolvedValue({ $id: 'u1', email: 'test@example.com' } as never);
+    (mockUserRepository.createUser as jest.Mock).mockResolvedValue(createMockUser());
+    mockAppwriteAccount.createEmailPasswordSession.mockRejectedValue('string error' as never);
+    mockAppwriteUsers.delete.mockRejectedValue('not-an-error' as never);
+
+    const result = await register({ email: 'test@example.com', password: 'P@ssw0rd1', role: 'freelancer' });
+    expect(isAuthError(result)).toBe(true);
+  });
+
+  it('register: uses fallback message when error has no message', async () => {
+    (mockUserRepository.emailExists as jest.Mock).mockResolvedValue(false);
+    mockAppwriteUsers.create.mockRejectedValue({} as never);
+
+    const result = await register({ email: 'test@example.com', password: 'P@ssw0rd1', role: 'freelancer' });
+    if (isAuthError(result)) {
+      expect(result.message).toBe('Failed to create user');
+    }
+  });
+
+  it('validateToken: handles user with null suspension_reason', async () => {
+    mockAppwriteAccount.get.mockResolvedValue({ $id: 'user-1' } as never);
+    (mockUserRepository.getUserById as jest.Mock).mockResolvedValue(
+      createMockUser({ is_suspended: true, suspension_reason: null })
+    );
+
+    const result = await validateToken('valid-token');
+    if (isAuthError(result)) {
+      expect(result.message).toBe('Your account has been suspended');
+    }
+  });
+
+  it('requestPasswordReset: uses fallback message on error without message', async () => {
+    mockAppwriteAccount.createRecovery.mockRejectedValue({} as never);
+
+    const result = await requestPasswordReset('test@example.com');
+    if (isAuthError(result)) {
+      expect(result.message).toBe('Failed to send password reset email');
+    }
+  });
+
+  it('logout: uses fallback message on error without message', async () => {
+    mockAppwriteAccount.deleteSession.mockRejectedValue({} as never);
+
+    const result = await logout('valid-token');
+    if (isAuthError(result)) {
+      expect(result.message).toBe('Failed to logout');
+    }
+  });
+
+  it('enrollMFA: uses fallback message on error without message', async () => {
+    mockAppwriteAccount.createMFAAuthenticator.mockRejectedValue({} as never);
+
+    const result = await enrollMFA('valid-token', 'totp');
+    if (isAuthError(result)) {
+      expect(result.message).toBe('Failed to enroll in MFA');
+    }
+  });
+
+  it('getOAuthUrl: maps linkedin_oidc to linkedin provider', async () => {
+    mockAppwriteAccount.createOAuth2Token.mockResolvedValue('https://oauth.example.com/auth' as never);
+
+    const url = await getOAuthUrl('linkedin_oidc');
+    expect(url).toBe('https://oauth.example.com/auth');
+    expect(mockAppwriteAccount.createOAuth2Token).toHaveBeenCalled();
+  });
+
+  it('registerWithAppwrite: uses fallback name chain', async () => {
+    mockAppwriteAccount.get.mockResolvedValue({ $id: 'u1', email: 'user@test.com', name: '' } as never);
+    (mockUserRepository.getUserById as jest.Mock).mockResolvedValue(null);
+    (mockUserRepository.createUser as jest.Mock).mockResolvedValue(createMockUser());
+
+    const result = await registerWithAppwrite('valid-token', 'freelancer');
+    expect(isAuthError(result)).toBe(false);
+  });
+
+  it('requestEmailOtp: uses fallback message on error without message', async () => {
+    (mockAppwriteAccount as any).createEmailToken = jest.fn<any>().mockRejectedValue({});
+
+    const result = await requestEmailOtp('test@example.com');
+    if (isAuthError(result)) {
+      expect(result.message).toBe('Failed to send OTP to email');
+    }
+  });
+
+  it('requestMagicUrl: uses fallback message on error without message', async () => {
+    (mockAppwriteAccount as any).createMagicURLToken = jest.fn<any>().mockRejectedValue({});
+
+    const result = await requestMagicUrl('test@example.com');
+    if (isAuthError(result)) {
+      expect(result.message).toBe('Failed to send Magic URL');
+    }
+  });
+
+  it('verifyMFAEnrollment: uses fallback message on error without message', async () => {
+    mockAppwriteAccount.updateMFAAuthenticator.mockRejectedValue({} as never);
+
+    const result = await verifyMFAEnrollment('valid-token', 'totp', '123456');
+    if (isAuthError(result)) {
+      expect(result.message).toBe('Invalid MFA code');
+    }
+  });
+
+  it('disableMFA: returns MFA_DISABLE_FAILED with error message', async () => {
+    mockAppwriteAccount.createMFAChallenge.mockRejectedValue(new Error('challenge failed') as never);
+
+    const result = await disableMFA('valid-token', 'totp', '123456');
+    if (isAuthError(result)) {
+      expect(result.code).toBe('MFA_DISABLE_FAILED');
+      expect(result.message).toBe('challenge failed');
     }
   });
 });

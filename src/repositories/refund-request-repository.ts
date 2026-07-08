@@ -1,4 +1,4 @@
-import { BaseRepositoryAppwrite } from './base-repository-appwrite.js';
+import { BaseRepository } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type RefundRequestEntity = {
@@ -30,7 +30,7 @@ function mapDoc(doc: Record<string, any>): RefundRequestEntity {
   } as RefundRequestEntity;
 }
 
-export class RefundRequestRepository extends BaseRepositoryAppwrite<RefundRequestEntity> {
+export class RefundRequestRepository extends BaseRepository<RefundRequestEntity> {
   constructor() {
     super(COLLECTION_ID);
   }
