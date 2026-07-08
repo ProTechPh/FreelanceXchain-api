@@ -750,12 +750,12 @@ describe('auth-routes.ts – branch coverage', () => {
   });
 
   describe('POST /register – duplicate email', () => {
-    it('should return 409 for DUPLICATE_EMAIL', async () => {
+    it('should return 400 for DUPLICATE_EMAIL (prevents email enumeration)', async () => {
       mockRegister.mockResolvedValue({ code: 'DUPLICATE_EMAIL', message: 'Already exists' });
       const res = await requestMod(app)
         .post('/api/auth/register')
         .send({ email: 'existing@test.com', password: 'StrongPass1!', role: 'freelancer' });
-      expect(res.status).toBe(409);
+      expect(res.status).toBe(400);
     });
   });
 

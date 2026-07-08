@@ -25,6 +25,11 @@ jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () =>
   initializeContractEscrow: mockInitializeContractEscrow,
 }));
 
+const mockContractRepo = { updateContract: jest.fn<any>().mockResolvedValue({}) };
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepo,
+}));
+
 const mockGetProjectById = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
   getProjectById: mockGetProjectById,
@@ -159,18 +164,16 @@ describe('Contract Routes', () => {
       expect(res.body.error.code).toBe('INVALID_STATUS');
     });
 
-    it('should accept frontend escrow address', async () => {
+    it('should ignore frontend escrow address and deploy server-side', async () => {
       mockGetContractById.mockResolvedValue({ success: true, data: { id: 'c-1', employerId: 'user-1', status: 'pending', projectId: 'p-1', totalAmount: 1000 } });
-      
-      const mockContractRepo = { updateContract: jest.fn<any>().mockResolvedValue({}) };
-      jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
-        contractRepository: mockContractRepo,
-      }));
-      
+      mockGetProjectById.mockResolvedValue({ success: true, data: { id: 'p-1', title: 'Test' } });
+      mockGetContractWalletAddresses.mockResolvedValue({ success: true, data: { employerWallet: '0xemp', freelancerWallet: '0xfl' } });
+      mockInitializeContractEscrow.mockResolvedValue({ success: true, data: { escrowAddress: '0xserver' } });
       mockUpdateContractStatus.mockResolvedValue({ success: true, data: { status: 'active' } });
 
       const res = await request(app).post('/api/contracts/c-1/fund').send({ escrowAddress: '0xfrontend', transactionHash: '0xtx' });
       expect(res.status).toBe(200);
+      expect(mockInitializeContractEscrow).toHaveBeenCalled();
     });
   });
 

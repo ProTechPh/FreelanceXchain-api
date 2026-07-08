@@ -98,6 +98,10 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () 
 
 jest.unstable_mockModule(resolveModule('src/services/blockchain-types.ts'), () => ({}));
 
+jest.unstable_mockModule(resolveModule('src/utils/async-lock.ts'), () => ({
+  withLock: (_key: string, fn: () => Promise<any>) => fn(),
+}));
+
 const { deployEscrow, depositToEscrow, releaseMilestone, refundMilestone } = await import(
   '../../services/escrow-contract.js'
 );

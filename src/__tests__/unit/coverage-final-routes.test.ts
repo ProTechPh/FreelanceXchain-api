@@ -120,8 +120,9 @@ jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () =>
 }));
 
 // ===== CONTRACT REPOSITORY =====
+const mockRepoGetContractById = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
-  contractRepository: { updateContract: jest.fn<any>() },
+  contractRepository: { getContractById: mockRepoGetContractById, updateContract: jest.fn<any>() },
 }));
 
 // ===== ENTITY MAPPER =====
@@ -943,6 +944,7 @@ describe('Rush Upgrade Routes - success coverage', () => {
   let app: any;
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRepoGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'freelancer-1' });
     app = setupApp(rushUpgradeRouter);
   });
 

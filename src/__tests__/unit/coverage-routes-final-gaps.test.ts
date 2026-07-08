@@ -62,6 +62,11 @@ jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), 
   getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
 }));
 
+const mockContractRepository = { getContractById: jest.fn(), updateContract: jest.fn() };
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: mockContractRepository,
+}));
+
 // ===== SKILL SERVICE =====
 const mockCreateCategory = jest.fn();
 const mockUpdateCategory = jest.fn();
@@ -127,6 +132,7 @@ describe('Rush Upgrade Routes - final gaps', () => {
       req.user = { userId: 'user-1', role: 'employer' };
       next();
     });
+    mockContractRepository.getContractById.mockResolvedValue({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'user-2', status: 'active' });
     app = express();
     app.use(express.json());
     app.use('/api', rushRouter);

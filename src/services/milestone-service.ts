@@ -10,11 +10,13 @@ import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
 import { milestoneRepository } from '../repositories/milestone-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
+import { disputeRepository } from '../repositories/dispute-repository.js';
+import { generateId } from '../utils/id.js';
 
 /**
  * Get milestone by ID
  */
-export async function getMilestoneById(milestoneId: string): Promise<ServiceResult<Milestone>> {
+export async function getMilestoneById(milestoneId: string, userId?: string): Promise<ServiceResult<Milestone>> {
   try {
     const milestone = await milestoneRepository.getById(milestoneId);
 
@@ -23,6 +25,17 @@ export async function getMilestoneById(milestoneId: string): Promise<ServiceResu
         success: false,
         error: { code: 'NOT_FOUND', message: 'Milestone not found' },
       };
+    }
+
+    // M15: Verify user is a party to the contract before returning milestone details
+    if (userId) {
+      const contract = await contractRepository.getContractById(milestone.contract_id);
+      if (contract && contract.employer_id !== userId && contract.freelancer_id !== userId) {
+        return {
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this milestone' },
+        };
+      }
     }
 
     return { success: true, data: milestone as unknown as Milestone };
@@ -67,6 +80,17 @@ export async function submitMilestone(
       return {
         success: false,
         error: { code: 'UNAUTHORIZED', message: 'You are not authorized to submit this milestone' },
+      };
+    }
+
+    // H4: Verify contract is active before allowing milestone submission
+    if (contract.status !== 'active') {
+      return {
+        success: false,
+        error: {
+          code: 'INVALID_STATUS',
+          message: `Cannot submit milestone on a ${contract.status} contract`,
+        },
       };
     }
 
@@ -168,6 +192,18 @@ export async function rejectMilestone(
       };
     }
 
+    // L2: Enforce revision count cap to prevent infinite rejection loop
+    const MAX_REVISIONS = 5;
+    if (input.requestRevision && milestone.revision_count >= MAX_REVISIONS) {
+      return {
+        success: false,
+        error: {
+          code: 'MAX_REVISIONS_REACHED',
+          message: `Maximum number of revisions (${MAX_REVISIONS}) has been reached. The milestone must be disputed or approved.`,
+        },
+      };
+    }
+
     // Update milestone
     const newStatus: MilestoneStatus = input.requestRevision ? 'rejected' : 'disputed';
 
@@ -180,6 +216,22 @@ export async function rejectMilestone(
 
     if (!updated) {
       throw new Error('Failed to update milestone');
+    }
+
+    // H5: When rejecting without revision (disputed), create a proper dispute record
+    if (!input.requestRevision) {
+      const disputeId = generateId();
+      await disputeRepository.createDispute({
+        id: disputeId,
+        contract_id: milestone.contract_id,
+        milestone_id: input.milestoneId,
+        initiator_id: input.employerId,
+        reason: input.reason || 'Milestone rejected without revision',
+        evidence: [],
+        status: 'open',
+        resolution: null,
+      });
+      logger.info(`Dispute record created for rejected milestone ${input.milestoneId}`, { disputeId });
     }
 
     // Create notification for freelancer

@@ -490,14 +490,11 @@ describe('resendConfirmationEmail', () => {
     expect(result).toEqual({ success: true });
   });
 
-  it('returns INTERNAL_ERROR when createVerification fails', async () => {
+  it('swallows errors and returns success (prevents email enumeration)', async () => {
     mockAppwriteAccount.createVerification.mockRejectedValue(new Error('rate limit exceeded') as never);
 
     const result = await resendConfirmationEmail('test@example.com');
-    expect(isAuthError(result)).toBe(true);
-    if (isAuthError(result)) {
-      expect(result.code).toBe('INTERNAL_ERROR');
-    }
+    expect(result).toEqual({ success: true });
   });
 });
 

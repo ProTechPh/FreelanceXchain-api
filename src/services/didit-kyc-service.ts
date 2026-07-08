@@ -221,10 +221,40 @@ export async function refreshVerificationStatus(
   return { success: true, data: updated };
 }
 
+// L4: Track processed webhook event IDs to prevent duplicate processing
+const processedWebhookEvents = new Map<string, number>();
+const WEBHOOK_EVENT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+
+function cleanupProcessedEvents(): void {
+  const now = Date.now();
+  for (const [eventId, timestamp] of processedWebhookEvents) {
+    if (now - timestamp > WEBHOOK_EVENT_TTL_MS) {
+      processedWebhookEvents.delete(eventId);
+    }
+  }
+}
+
 /**
  * Process webhook from Didit
  */
 export async function processWebhook(payload: DiditWebhookPayload): Promise<ServiceResult<KycVerification>> {
+  // L4: Deduplicate webhook events — Didit uses at-least-once delivery
+  if (payload.event_id) {
+    if (processedWebhookEvents.has(payload.event_id)) {
+      logger.info('Duplicate webhook event ignored', { eventId: payload.event_id, sessionId: payload.session_id });
+      // Return success since the event was already processed
+      const existingVerification = await getKycVerificationBySessionId(payload.session_id);
+      if (existingVerification) {
+        return { success: true, data: existingVerification };
+      }
+    }
+    processedWebhookEvents.set(payload.event_id, Date.now());
+    // Periodic cleanup
+    if (processedWebhookEvents.size > 1000) {
+      cleanupProcessedEvents();
+    }
+  }
+
   const verification = await getKycVerificationBySessionId(payload.session_id);
   if (!verification) {
     return {

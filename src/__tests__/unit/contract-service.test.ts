@@ -135,7 +135,7 @@ describe('Contract Service - Property-Based Tests', () => {
    * Setting an escrow address for a contract shall persist the address.
    */
   it('Property 43: Escrow address assignment', async () => {
-    const contract = createTestContract({ escrow_address: '' });
+    const contract = createTestContract({ escrow_address: '', status: 'pending' });
     contractStore.set(contract.id, contract);
     const escrowAddress = '0x1234567890123456789012345678901234567890';
 
@@ -261,7 +261,7 @@ describe('Contract Service - Unit Tests', () => {
   });
 
   it('should set escrow address', async () => {
-    const contract = createTestContract({ escrow_address: '' });
+    const contract = createTestContract({ escrow_address: '', status: 'pending' });
     contractStore.set(contract.id, contract);
     const escrowAddress = '0xABCDEF1234567890123456789012345678901234';
 

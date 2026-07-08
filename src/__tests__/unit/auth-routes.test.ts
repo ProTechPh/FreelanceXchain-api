@@ -133,10 +133,11 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(201);
     });
 
-    it('should return 409 for duplicate email', async () => {
+    it('should return 400 for duplicate email', async () => {
       mockRegister.mockResolvedValue({ code: 'DUPLICATE_EMAIL', message: 'Email already registered' });
       const res = await request(app).post('/api/auth/register').send({ email: 'test@test.com', password: 'StrongPass1!', role: 'freelancer' });
-      expect(res.status).toBe(409);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('REGISTRATION_FAILED');
     });
 
     it('should accept valid wallet address', async () => {

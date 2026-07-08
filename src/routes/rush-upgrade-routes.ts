@@ -11,6 +11,7 @@ import {
   declineCounterOffer,
   getRushUpgradeRequestsByContract,
 } from '../services/rush-upgrade-service.js';
+import { contractRepository } from '../repositories/contract-repository.js';
 
 const router = Router();
 
@@ -388,7 +389,34 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
 router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
   try {
     const contractId = req.params['id'] ?? '';
+    const userId = req.user?.userId;
     const xRequestId = getRequestId(req);
+
+    // M11: Verify the user is a party to the contract before returning rush upgrade requests
+    if (!userId) {
+      return res.status(401).json({
+        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
+    }
+
+    const contract = await contractRepository.getContractById(contractId);
+    if (!contract) {
+      return res.status(404).json({
+        error: { code: 'NOT_FOUND', message: 'Contract not found' },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
+    }
+
+    if (contract.employer_id !== userId && contract.freelancer_id !== userId && req.user?.role !== 'admin') {
+      return res.status(403).json({
+        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view rush upgrade requests for this contract' },
+        timestamp: new Date().toISOString(),
+        requestId: xRequestId,
+      });
+    }
 
     const result = await getRushUpgradeRequestsByContract(contractId);
 

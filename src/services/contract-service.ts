@@ -61,13 +61,22 @@ export async function getContractsByProject(
 
 export async function updateContractStatus(
   contractId: string,
-  status: ContractStatus
+  status: ContractStatus,
+  userId?: string,
 ): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.getContractById(contractId);
   if (!entity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
+    };
+  }
+
+  // H2: Verify the caller is a contract party (unless called internally without userId)
+  if (userId && entity.employer_id !== userId && entity.freelancer_id !== userId) {
+    return {
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can update contract status' },
     };
   }
 
@@ -117,13 +126,29 @@ export async function updateContractStatus(
 
 export async function setEscrowAddress(
   contractId: string,
-  escrowAddress: string
+  escrowAddress: string,
+  userId?: string,
 ): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.getContractById(contractId);
   if (!entity) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Contract not found' },
+    };
+  }
+
+  // H3: Only allow setting escrow on pending contracts by contract parties
+  if (entity.status !== 'pending') {
+    return {
+      success: false,
+      error: { code: 'INVALID_STATUS', message: `Cannot set escrow address on a ${entity.status} contract` },
+    };
+  }
+
+  if (userId && entity.employer_id !== userId && entity.freelancer_id !== userId) {
+    return {
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can set escrow address' },
     };
   }
 

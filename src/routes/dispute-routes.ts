@@ -341,6 +341,7 @@ router.post(
 router.get(
   '/:disputeId',
   authMiddleware,
+  requireVerifiedKyc,
   apiRateLimiter,
   validateUUID(['disputeId']),
   async (req: Request, res: Response, next: NextFunction) => {
