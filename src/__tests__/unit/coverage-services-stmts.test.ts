@@ -167,7 +167,7 @@ describe('File Service - deleteFile outer catch (lines 159-167)', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('returns INTERNAL_ERROR when storage.deleteFile throws', async () => {
-    mockStorage.getFile.mockResolvedValue({ name: 'user-1/photo.jpg' });
+    mockStorage.getFile.mockResolvedValue({ name: 'photo.jpg', $permissions: ['read("any")', 'write("user:user-1")'] });
     mockStorage.deleteFile.mockRejectedValue(new Error('Storage unavailable'));
 
     const result = await deleteFile('user-1', 'portfolio', 'file-123');

@@ -65,6 +65,7 @@ jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
 jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
   clampLimit: (v: any) => v ?? 20,
   clampOffset: (v: any) => v ?? 0,
+  safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({

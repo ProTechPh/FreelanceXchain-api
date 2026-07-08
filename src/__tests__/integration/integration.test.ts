@@ -700,15 +700,19 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-category-reposito
   },
   SkillCategoryRepository: jest.fn(),
 }));
-jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => ({
-  PaymentRepository: {
+jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => {
+  const repo = {
     create: jest.fn(async (payment: any) => ({ ...payment, id: generateId(), created_at: new Date().toISOString(), updated_at: new Date().toISOString() })),
     findByContractId: jest.fn(async () => []),
     findByUserId: jest.fn(async () => ({ items: [], hasMore: false })),
     updateStatus: jest.fn(async () => null),
-  },
-  PaymentType: {},
-}));
+  };
+  return {
+    PaymentRepository: repo,
+    paymentRepository: repo,
+    PaymentType: {},
+  };
+});
 // Mock escrow contract
 jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () => ({
   deployEscrow: jest.fn(async () => ({

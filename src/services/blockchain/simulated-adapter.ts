@@ -9,7 +9,8 @@ import {
   EscrowDeploymentResult,
   EscrowInfo,
   TransactionResult,
-  MilestoneStatus,
+  BlockchainMilestoneStatus,
+  fromBlockchainMilestoneStatus,
 } from './adapter.js';
 import {
   deployEscrow,
@@ -195,7 +196,7 @@ export class SimulatedBlockchainAdapter implements IBlockchainAdapter {
   async getMilestone(
     escrowAddress: string,
     milestoneIndex: number
-  ): Promise<{ amount: bigint; status: MilestoneStatus; description: string }> {
+  ): Promise<{ amount: bigint; status: BlockchainMilestoneStatus; description: string }> {
     const state = await getEscrowState(escrowAddress);
     if (!state) {
       throw new Error('Escrow not found');
@@ -210,9 +211,16 @@ export class SimulatedBlockchainAdapter implements IBlockchainAdapter {
       throw new Error('Milestone not found');
     }
 
+    // Map simulated escrow statuses to blockchain adapter statuses
+    const simulatedToBlockchain: Record<string, BlockchainMilestoneStatus> = {
+      pending: 'Pending',
+      released: 'Approved',
+      refunded: 'Refunded',
+    };
+
     return {
       amount: milestone.amount,
-      status: milestone.status as MilestoneStatus,
+      status: simulatedToBlockchain[milestone.status] ?? 'Pending',
       description: `Milestone ${milestoneIndex + 1}`,
     };
   }

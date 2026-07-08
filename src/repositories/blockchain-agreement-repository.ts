@@ -21,16 +21,6 @@ export type BlockchainAgreementEntity = {
 
 const COLLECTION_ID = 'blockchain_agreements';
 
-function mapDoc(doc: Record<string, any>): BlockchainAgreementEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as BlockchainAgreementEntity;
-}
-
 export class BlockchainAgreementRepository extends BaseRepositoryAppwrite<BlockchainAgreementEntity> {
   constructor() {
     super(COLLECTION_ID);
@@ -38,17 +28,17 @@ export class BlockchainAgreementRepository extends BaseRepositoryAppwrite<Blockc
 
   async getAgreementById(id: string): Promise<BlockchainAgreementEntity | null> {
     const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async createAgreement(data: Omit<BlockchainAgreementEntity, 'created_at' | 'updated_at'>): Promise<BlockchainAgreementEntity> {
     const doc = await this.create(data);
-    return mapDoc(doc as any);
+    return this.mapDoc(doc as any);
   }
 
   async updateAgreement(id: string, updates: Partial<BlockchainAgreementEntity>): Promise<BlockchainAgreementEntity | null> {
     const doc = await this.update(id, updates);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? this.mapDoc(doc as any) : null;
   }
 
   async findByContractIdHash(contractIdHash: string): Promise<BlockchainAgreementEntity | null> {
@@ -57,7 +47,7 @@ export class BlockchainAgreementRepository extends BaseRepositoryAppwrite<Blockc
         DATABASE_ID, COLLECTION_ID,
         [Query.equal('contract_id_hash', contractIdHash), Query.limit(1)]
       );
-      return response.documents.length > 0 ? mapDoc(response.documents[0]!) : null;
+      return response.documents.length > 0 ? this.mapDoc(response.documents[0]!) : null;
     } catch {
       return null;
     }
@@ -67,11 +57,11 @@ export class BlockchainAgreementRepository extends BaseRepositoryAppwrite<Blockc
     const [employerResults, freelancerResults] = await Promise.all([
       this.listWithQueries<BlockchainAgreementEntity>(
         [Query.equal('employer_wallet', walletAddress), Query.orderDesc('created_at_ts')],
-        mapDoc
+        (doc) => this.mapDoc(doc)
       ),
       this.listWithQueries<BlockchainAgreementEntity>(
         [Query.equal('freelancer_wallet', walletAddress), Query.orderDesc('created_at_ts')],
-        mapDoc
+        (doc) => this.mapDoc(doc)
       ),
     ]);
 
@@ -92,7 +82,7 @@ export class BlockchainAgreementRepository extends BaseRepositoryAppwrite<Blockc
       [Query.equal('status', status), Query.orderDesc('created_at_ts')],
       options?.limit ?? 20,
       options?.offset ?? 0,
-      mapDoc
+      (doc) => this.mapDoc(doc)
     );
   }
 }

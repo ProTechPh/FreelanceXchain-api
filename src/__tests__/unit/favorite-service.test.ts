@@ -63,7 +63,7 @@ describe('Favorite Service', () => {
         userId: 'user-1',
         targetType: 'project',
         targetId: 'project-1',
-        createdAt: new Date('2025-01-01'),
+        createdAt: '2025-01-01',
       });
     });
 
@@ -83,7 +83,7 @@ describe('Favorite Service', () => {
         userId: 'user-1',
         targetType: 'freelancer',
         targetId: 'user-2',
-        createdAt: new Date('2025-01-01'),
+        createdAt: '2025-01-01',
       });
     });
 

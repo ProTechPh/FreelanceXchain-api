@@ -8,7 +8,7 @@ import { logger } from '../config/logger.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
-import { PaymentRepository, PaymentType } from '../repositories/payment-repository.js';
+import { paymentRepository, PaymentType } from '../repositories/payment-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { generateId } from '../utils/id.js';
 import {
@@ -64,7 +64,7 @@ async function createPaymentRecord(params: {
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 }): Promise<void> {
   try {
-    await PaymentRepository.create({
+    await paymentRepository.create({
       id: generateId(),
       contract_id: params.contractId,
       milestone_id: params.milestoneId,
@@ -256,209 +256,147 @@ export async function requestMilestoneCompletion(
 
 
 /**
- * Approve milestone completion
- * Called by employer to approve and release payment
- * 
- * - Only milestones with status 'submitted' can be approved
- * - Contract must be 'active' status
- * - Looks up employer wallet address instead of passing UUID
- * - Blockchain-first: only updates DB after successful escrow release
- * - paymentReleased reflects actual blockchain result
+ * Validate all preconditions for milestone approval.
+ * Returns validated data or a ServiceResult error.
  */
-export async function approveMilestone(
+async function validateMilestoneApproval(
   contractId: string,
   milestoneId: string,
-  employerId: string
-): Promise<ServiceResult<MilestoneApprovalResult>> {
-  // Get contract
+  employerId: string,
+): Promise<
+  | { error: ServiceResult<MilestoneApprovalResult> }
+  | {
+      contract: Contract;
+      project: Project;
+      milestone: NonNullable<Project['milestones'][number]>;
+      milestoneIndex: number;
+      employer: { wallet_address: string };
+      freshProject: Project;
+      projectEntity: any;
+      freshProjectEntity: any;
+    }
+> {
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Contract not found' } } };
   }
   const contract = mapContractFromEntity(contractEntity);
 
-  // Verify contract is active
   if (contract.status !== 'active') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot approve milestone on a ${contract.status} contract` },
-    };
+    return { error: { success: false, error: { code: 'INVALID_STATUS', message: `Cannot approve milestone on a ${contract.status} contract` } } };
   }
-
-  // Verify employer owns this contract
   if (contract.employerId !== employerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only the contract employer can approve milestones' },
-    };
+    return { error: { success: false, error: { code: 'UNAUTHORIZED', message: 'Only the contract employer can approve milestones' } } };
   }
 
-  // Get project to access milestones
   const projectEntity = await projectRepository.findProjectById(contract.projectId);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } } };
   }
   const project = mapProjectFromEntity(projectEntity);
 
-  // Find milestone
   const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
   const milestone = project.milestones.find(m => m.id === milestoneId);
   if (!milestone || milestoneIndex === -1) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-    };
+    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Milestone not found' } } };
   }
 
-  // Only milestones with status 'submitted' can be approved
   if (milestone.status !== 'submitted') {
-    return {
-      success: false,
-      error: { 
-        code: 'INVALID_STATUS', 
-        message: milestone.status === 'approved' 
-          ? 'Milestone already approved' 
-          : milestone.status === 'disputed'
-          ? 'Milestone is under dispute and cannot be approved'
-          : milestone.status === 'releasing'
+    const statusMsg = milestone.status === 'approved'
+      ? 'Milestone already approved'
+      : milestone.status === 'disputed'
+        ? 'Milestone is under dispute and cannot be approved'
+        : milestone.status === 'releasing'
           ? 'Milestone payment is already being processed'
-          : `Milestone must be submitted before it can be approved (current status: ${milestone.status})` 
-      },
-    };
+          : `Milestone must be submitted before it can be approved (current status: ${milestone.status})`;
+    return { error: { success: false, error: { code: 'INVALID_STATUS', message: statusMsg } } };
   }
 
-  // Validate all preconditions before recording SAGA intent (fixes BUG-2: prevents
-  // milestone getting stuck in 'releasing' when wallet is missing)
   const employer = await userRepository.getUserById(employerId);
   if (!employer?.wallet_address) {
-    return {
-      success: false,
-      error: {
-        code: 'MISSING_WALLET',
-        message: 'Employer wallet address is required to approve and release milestone payment.',
-      },
-    };
+    return { error: { success: false, error: { code: 'MISSING_WALLET', message: 'Employer wallet address is required to approve and release milestone payment.' } } };
   }
 
-  // Re-read project immediately before intent write to reduce concurrent-approval race window
-  // (BUG-1 mitigation: Appwrite lacks atomic compare-and-set; this re-verify catches most races)
-  const freshProjectForLock = await projectRepository.findProjectById(contract.projectId);
-  const freshMilestoneStatus = freshProjectForLock?.milestones[milestoneIndex]?.status;
-  if (freshMilestoneStatus !== 'submitted') {
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_STATUS',
-        message: freshMilestoneStatus === 'releasing'
-          ? 'Milestone payment is already being processed'
-          : `Milestone status changed concurrently (current: ${freshMilestoneStatus ?? 'unknown'})`,
-      },
-    };
+  // Re-read project before intent write to reduce concurrent-approval race window
+  const freshProject = await projectRepository.findProjectById(contract.projectId);
+  const freshStatus = freshProject?.milestones[milestoneIndex]?.status;
+  if (freshStatus !== 'submitted') {
+    const msg = freshStatus === 'releasing'
+      ? 'Milestone payment is already being processed'
+      : `Milestone status changed concurrently (current: ${freshStatus ?? 'unknown'})`;
+    return { error: { success: false, error: { code: 'INVALID_STATUS', message: msg } } };
   }
 
-  // SAGA: Record intent before blockchain call
-  // Use freshProjectForLock (most recent read) to minimise stale-snapshot writes.
-  // freshProjectForLock is guaranteed non-null here: a null would have caused an
-  // earlier NOT_FOUND return (projectEntity was fetched and verified above).
-  const releasingBase = freshProjectForLock ?? projectEntity;
-  const releasingMilestones = releasingBase.milestones.map((m, i) =>
+  return { contract, project, milestone, milestoneIndex, employer: { wallet_address: employer.wallet_address }, freshProject: project, projectEntity, freshProjectEntity: freshProject as any };
+}
+
+/**
+ * Record SAGA releasing intent and release escrow payment.
+ * Returns transactionHash or a ServiceResult error. Rolls back on failure.
+ */
+async function releaseEscrowPaymentWithSaga(
+  contractId: string,
+  contract: Contract,
+  project: Project,
+  milestoneId: string,
+  milestoneIndex: number,
+  milestoneAmount: number,
+  employerId: string,
+  employerWallet: string,
+  releasingBaseEntity: any,
+): Promise<
+  { transactionHash: string } | { error: ServiceResult<MilestoneApprovalResult> }
+> {
+  const releasingMilestones = releasingBaseEntity.milestones.map((m: any, i: number) =>
     i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
   );
-  await projectRepository.updateProject(project.id, {
-    milestones: releasingMilestones,
-  });
+  await projectRepository.updateProject(project.id, { milestones: releasingMilestones });
 
-  // Release payment from escrow - BLOCKCHAIN FIRST
   let transactionHash: string | undefined;
   try {
-    // employer was already fetched and validated above
-
-    // Call real blockchain escrow if in real mode and Web3 is available
     if (getBlockchainMode() === 'real' && isWeb3Available()) {
-      const realEscrowAddress = contract.escrowAddress;
-      if (!realEscrowAddress) {
-        return {
-          success: false,
-          error: {
-            code: 'ESCROW_NOT_FOUND',
-            message: 'No escrow contract address found on this contract.',
-          },
-        };
+      if (!contract.escrowAddress) {
+        return { error: { success: false, error: { code: 'ESCROW_NOT_FOUND', message: 'No escrow contract address found on this contract.' } } };
       }
-
-      // Call the real smart contract on Ganache - use milestone index (0-based)
-      const onChainResult = await approveOnChainMilestone(realEscrowAddress, milestoneIndex);
+      const onChainResult = await approveOnChainMilestone(contract.escrowAddress, milestoneIndex);
       transactionHash = onChainResult.transactionHash;
       logger.info('Real blockchain milestone release tx', { transactionHash });
     }
 
-    // Also update simulated escrow state in DB for tracking
     try {
       const escrow = await escrowOps.getEscrowByContractId(contractId);
       if (escrow) {
-        const simReceipt = await escrowOps.releaseMilestone(
-          escrow.address,
-          milestoneId,
-          employer.wallet_address
-        );
-        if (!transactionHash) {
-          transactionHash = simReceipt.transactionHash;
-        }
+        const simReceipt = await escrowOps.releaseMilestone(escrow.address, milestoneId, employerWallet);
+        if (!transactionHash) transactionHash = simReceipt.transactionHash;
       } else if (!transactionHash) {
-        // No escrow record and no real blockchain transaction — cannot release funds
-        return {
-          success: false,
-          error: {
-            code: 'ESCROW_NOT_FOUND',
-            message: 'No escrow record found for this contract. Payment cannot be released.',
-          },
-        };
+        return { error: { success: false, error: { code: 'ESCROW_NOT_FOUND', message: 'No escrow record found for this contract. Payment cannot be released.' } } };
       }
     } catch (simError) {
-      // If real blockchain succeeded, simulated failure is non-critical
-      if (!transactionHash) {
-        throw simError;
-      }
+      if (!transactionHash) throw simError;
       logger.error('Simulated escrow update failed (non-critical)', { error: simError });
     }
 
-    // Create payment record for audit trail
     await createPaymentRecord({
       contractId,
       milestoneId,
       payerId: employerId,
       payeeId: contract.freelancerId,
-      amount: milestone.amount,
+      amount: milestoneAmount,
       paymentType: 'milestone_release',
       txHash: transactionHash || null,
       status: 'completed',
     });
   } catch (error) {
-    // SAGA: Rollback - revert milestone status from 'releasing' back to 'submitted'.
-    // Re-fetch the project so concurrent changes to other milestones are not overwritten.
+    // SAGA rollback
     try {
       const latestProject = await projectRepository.findProjectById(contract.projectId);
       if (!latestProject) {
-        // Cannot safely rollback without a fresh snapshot — writing the stale projectEntity
-        // would silently overwrite any concurrent milestone updates made between the original
-        // fetch and now. Alert operations and leave the milestone in 'releasing' state.
-        logger.error('CRITICAL: Cannot rollback — project fetch returned null. Milestone may be stuck in releasing.', {
-          milestoneId,
-          contractId,
-        });
+        logger.error('CRITICAL: Cannot rollback — project fetch returned null. Milestone may be stuck in releasing.', { milestoneId, contractId });
       } else {
         const rollbackMilestones = latestProject.milestones.map((m, i) =>
           i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
         );
-        await projectRepository.updateProject(project.id, {
-          milestones: rollbackMilestones,
-        });
+        await projectRepository.updateProject(project.id, { milestones: rollbackMilestones });
       }
     } catch (rollbackError) {
       logger.error('CRITICAL: Failed to rollback milestone status after payment failure', {
@@ -467,33 +405,35 @@ export async function approveMilestone(
       });
     }
     return {
-      success: false,
       error: {
-        code: 'PAYMENT_RELEASE_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to release escrow payment',
+        success: false,
+        error: { code: 'PAYMENT_RELEASE_FAILED', message: error instanceof Error ? error.message : 'Failed to release escrow payment' },
       },
     };
   }
 
-  // Update milestone status to approved only after successful payment release
-  // Build updatedMilestones from releasingBase (the freshest read used for the SAGA intent
-  // write) rather than projectEntity (the original snapshot). Using the original snapshot
-  // would silently discard any concurrent milestone updates made between the first fetch
-  // and the releasing intent write.
-  const updatedMilestones = releasingBase.milestones.map((m, i) =>
+  return { transactionHash: transactionHash! };
+}
+
+/**
+ * Finalize milestone approval: update DB, blockchain registry, check contract completion, notify.
+ */
+async function finalizeMilestoneApproval(
+  contractId: string,
+  contract: Contract,
+  project: Project,
+  milestoneId: string,
+  milestone: NonNullable<Project['milestones'][number]>,
+  milestoneIndex: number,
+  employerId: string,
+  releasingBaseEntity: any,
+  transactionHash: string,
+): Promise<MilestoneApprovalResult> {
+  const updatedMilestones = releasingBaseEntity.milestones.map((m: any, i: number) =>
     i === milestoneIndex ? { ...m, status: 'approved' as const } : m
   );
+  await projectRepository.updateProject(project.id, { milestones: updatedMilestones });
 
-  // Update project in database
-  await projectRepository.updateProject(project.id, {
-    milestones: updatedMilestones,
-  });
-
-  // Also update the milestone in the project entity so the UI reflects the change
-  // (milestones are stored as a JSONB array in the projects table)
-  // The project was already updated above with updatedMilestones
-
-  // Approve milestone on blockchain registry
   try {
     const employer = await userRepository.getUserById(employerId);
     if (employer?.wallet_address) {
@@ -503,21 +443,14 @@ export async function approveMilestone(
     logger.error('Failed to approve milestone on blockchain registry', { error });
   }
 
-  // Check if all milestones are approved
-  const allApproved = updatedMilestones.every(m => m.status === 'approved');
+  const allApproved = updatedMilestones.every((m: any) => m.status === 'approved');
   let contractCompleted = false;
 
   if (allApproved) {
-    // Update contract status to completed
     await contractRepository.updateContract(contractId, { status: 'completed' });
     contractCompleted = true;
+    await projectRepository.updateProject(project.id, { status: 'completed' });
 
-    // Update project status to completed
-    await projectRepository.updateProject(project.id, {
-      status: 'completed',
-    });
-
-    // Complete agreement on blockchain
     try {
       const employer = await userRepository.getUserById(employerId);
       if (employer?.wallet_address) {
@@ -528,37 +461,43 @@ export async function approveMilestone(
     }
   }
 
-  // Send notifications
-  await notifyMilestoneApproved(
-    contract.freelancerId,
-    milestoneId,
-    milestone.title,
-    project.id,
-    project.title,
-    contractId
+  await notifyMilestoneApproved(contract.freelancerId, milestoneId, milestone.title, project.id, project.title, contractId);
+  await notifyPaymentReleased(contract.freelancerId, milestone.amount, milestoneId, milestone.title, project.id, project.title, contractId);
+
+  return { milestoneId, status: 'approved', paymentReleased: true, transactionHash, contractCompleted };
+}
+
+/**
+ * Approve a milestone and release payment
+ * Called by employer to approve and release payment
+ *
+ * - Only milestones with status 'submitted' can be approved
+ * - Contract must be 'active' status
+ * - Blockchain-first: only updates DB after successful escrow release
+ */
+export async function approveMilestone(
+  contractId: string,
+  milestoneId: string,
+  employerId: string
+): Promise<ServiceResult<MilestoneApprovalResult>> {
+  const validated = await validateMilestoneApproval(contractId, milestoneId, employerId);
+  if ('error' in validated) return validated.error;
+
+  const { contract, project, milestone, milestoneIndex, employer, freshProjectEntity } = validated;
+  const releasingBaseEntity = freshProjectEntity ?? validated.projectEntity;
+
+  const released = await releaseEscrowPaymentWithSaga(
+    contractId, contract, project, milestoneId, milestoneIndex,
+    milestone.amount, employerId, employer.wallet_address, releasingBaseEntity,
+  );
+  if ('error' in released) return released.error;
+
+  const result = await finalizeMilestoneApproval(
+    contractId, contract, project, milestoneId, milestone,
+    milestoneIndex, employerId, releasingBaseEntity, released.transactionHash,
   );
 
-  // Only send payment notification if payment was actually released
-  await notifyPaymentReleased(
-    contract.freelancerId,
-    milestone.amount,
-    milestoneId,
-    milestone.title,
-    project.id,
-    project.title,
-    contractId
-  );
-
-  return {
-    success: true,
-    data: {
-      milestoneId,
-      status: 'approved',
-      paymentReleased: true,
-      transactionHash,
-      contractCompleted,
-    },
-  };
+  return { success: true, data: result };
 }
 
 

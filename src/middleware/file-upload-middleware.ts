@@ -44,7 +44,6 @@ export const ALLOWED_MIME_TYPES = {
   'image/jpg': true,
   'image/gif': true,
   'image/webp': true,
-  'image/svg+xml': true,
   // Archives
   'application/zip': true,
   'application/x-rar-compressed': true,
@@ -69,7 +68,6 @@ const ALLOWED_EXTENSIONS = [
   '.jpeg',
   '.gif',
   '.webp',
-  '.svg',
   '.zip',
   '.rar',
   '.7z',
@@ -117,17 +115,6 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
       );
       if (isText) {
         return { valid: true, detectedType: 'text/plain' };
-      }
-    }
-
-    // Special handling for SVG files — XML text with no binary magic number
-    if (filename.toLowerCase().endsWith('.svg')) {
-      const sample = buffer.slice(0, 512).toString('utf8');
-      const isSvg = sample.trimStart().startsWith('<svg') ||
-                    sample.trimStart().startsWith('<?xml') ||
-                    sample.includes('<svg');
-      if (isSvg) {
-        return { valid: true, detectedType: 'image/svg+xml' };
       }
     }
 

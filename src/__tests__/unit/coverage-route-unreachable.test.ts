@@ -66,6 +66,7 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => (
 }));
 jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
   clampLimit: (v: any) => Math.min(Math.max(Number(v) || 20, 1), 100), clampOffset: (v: any) => Math.max(Number(v) || 0, 0),
+  safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
 }));
 
 // ─── Service mocks ─────────────────────────────────────────────
@@ -107,7 +108,10 @@ mockService('user-custom-skill-service', { addUserSkill: jest.fn(), createUserCu
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({ contractRepository: { getContractById: jest.fn(), updateContract: jest.fn(), getContractsByUser: jest.fn() } }));
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({ projectRepository: { findProjectById: jest.fn(), getAllOpenProjects: jest.fn().mockResolvedValue({ items: [], total: 0 }), updateProject: jest.fn() }, ProjectRepository: jest.fn().mockImplementation(() => ({ findProjectById: jest.fn(), getAllOpenProjects: jest.fn().mockResolvedValue({ items: [], total: 0 }), updateProject: jest.fn() })) }));
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({ userRepository: { getUserById: jest.fn(), updateUserName: jest.fn(), findByEmail: jest.fn(), createUser: jest.fn(), updateUser: jest.fn() } }));
-jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({ ReviewRepository: { getAllReviews: jest.fn().mockResolvedValue([]), getReviewsByUser: jest.fn().mockResolvedValue([]) } }));
+jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => {
+  const repo = { getAllReviews: jest.fn().mockResolvedValue([]), getReviewsByUser: jest.fn().mockResolvedValue([]) };
+  return { ReviewRepository: repo, reviewRepository: repo };
+});
 jest.unstable_mockModule(resolveModule('src/middleware/csrf-middleware.ts'), () => ({ generateCsrfToken: jest.fn(() => 'csrf'), doubleCsrfProtection: (_: any, __: any, next: any) => next(), csrfProtection: (_: any, __: any, next: any) => next() }));
 jest.unstable_mockModule(resolveModule('src/models/user.ts'), () => ({ UserRole: { FREELANCER: 'freelancer', EMPLOYER: 'employer', ADMIN: 'admin' }, UserModel: {} }));
 jest.unstable_mockModule(resolveModule('src/models/skill.ts'), () => ({ SkillModel: {} }));

@@ -1,3 +1,4 @@
+<!-- markdownlint-disable-next-line MD041 -->
 <div align="center">
 
 # 🔗 FreelanceXchain API
@@ -127,6 +128,7 @@ All endpoints are prefixed with `/api`. Full interactive docs at `/api-docs`.
 ### FreelanceEscrow.sol
 
 Milestone-based escrow system:
+
 - Employer deposits funds into contract
 - Freelancer submits milestones for approval
 - Automatic payment release upon approval
@@ -136,6 +138,7 @@ Milestone-based escrow system:
 ### FreelanceReputation.sol
 
 On-chain reputation system:
+
 - Submit ratings (1–5 stars) with comments
 - Duplicate rating prevention per contract
 - Aggregate score calculation

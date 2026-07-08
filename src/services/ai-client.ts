@@ -4,6 +4,7 @@
  */
 
 import { config } from '../config/env.js';
+import { logger } from '../config/logger.js';
 import {
   AIRequest,
   AIResponse,
@@ -319,7 +320,7 @@ export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
       return result;
     }
   } catch (err) {
-    console.error(`[${label}] Failed to parse response:`, (err as Error).message);
+    logger.error(`[${label}] Failed to parse response`, err as Error);
     return null;
   }
 }

@@ -1,15 +1,15 @@
-export interface Favorite {
+export type Favorite = {
   id: string;
   userId: string;
   targetType: 'project' | 'freelancer';
   targetId: string;
-  createdAt: Date;
-}
+  createdAt: string;
+};
 
-export interface FavoriteEntity {
+export type FavoriteEntity = {
   id: string;
   user_id: string;
   target_type: 'project' | 'freelancer';
   target_id: string;
   created_at: string;
-}
+};

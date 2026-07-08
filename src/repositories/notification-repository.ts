@@ -119,17 +119,13 @@ export class NotificationRepository extends BaseRepositoryAppwrite<NotificationE
           Query.limit(1000),
         ]
       );
-      let updatedCount = 0;
-      for (const doc of response.documents) {
-        await databases.updateDocument(
-          DATABASE_ID,
-          COLLECTION_ID,
-          doc.$id,
-          { is_read: true, updated_at: new Date().toISOString() }
-        );
-        updatedCount++;
-      }
-      return updatedCount;
+      const now = new Date().toISOString();
+      await Promise.all(
+        response.documents.map(doc =>
+          databases.updateDocument(DATABASE_ID, COLLECTION_ID, doc.$id, { is_read: true, updated_at: now })
+        )
+      );
+      return response.documents.length;
     } catch {
       return 0;
     }

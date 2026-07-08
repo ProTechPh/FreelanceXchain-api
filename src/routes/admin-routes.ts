@@ -3,7 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { ReviewRepository } from '../repositories/review-repository.js';
+import { reviewRepository } from '../repositories/review-repository.js';
 
 import {
   getPlatformStats,
@@ -131,7 +131,7 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
   const { name, role, isActive } = req.body;
   const requestId = getRequestId(req);
 
-  const validRoles = ['freelancer', 'employer', 'admin'];
+  const validRoles = ['freelancer', 'employer'];
   if (role !== undefined && !validRoles.includes(role)) {
     res.status(400).json({
       error: { code: 'INVALID_ROLE', message: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
@@ -327,7 +327,7 @@ router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response
 
   let satisfactionRate = 0;
   try {
-    const reviews = await ReviewRepository.getAllReviews();
+    const reviews = await reviewRepository.getAllReviews();
     const positive = reviews.filter(r => r.rating >= 4.0).length;
     const total = reviews.length;
     satisfactionRate = total > 0 ? Math.round((positive / total) * 100) : 0;

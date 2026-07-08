@@ -38,24 +38,26 @@ describe('File Service - Coverage3', () => {
 
   describe('getUserFiles', () => {
     it('should return files from multiple buckets', async () => {
+      // Return same files for both buckets - only user-1's files should pass the filter
       mockStorage.listFiles.mockResolvedValue({
         files: [
-          { name: 'user-1/photo.jpg', $id: 'f-1', sizeOriginal: 1024, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
-          { name: 'other-user/photo.jpg', $id: 'f-2', sizeOriginal: 2048, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+          { name: 'photo.jpg', $id: 'f-1', sizeOriginal: 1024, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', $permissions: ['read("any")', 'write("user:user-1")'] },
+          { name: 'other-photo.jpg', $id: 'f-2', sizeOriginal: 2048, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', $permissions: ['read("any")', 'write("user:other-user")'] },
         ],
       });
 
       const result = await getUserFiles('user-1');
       expect(result.success).toBe(true);
       if (result.success) {
-        // Only files belonging to userId should be returned
-        expect(result.data.every(f => f.name.startsWith('user-1/'))).toBe(true);
+        // Only files belonging to userId should be returned (1 per bucket = 2 total)
+        expect(result.data.length).toBe(2);
+        expect(result.data.every(f => f.name === 'photo.jpg')).toBe(true);
       }
     });
 
     it('should return files from specific bucket', async () => {
       mockStorage.listFiles.mockResolvedValue({
-        files: [{ name: 'user-1/doc.pdf', $id: 'f-1', sizeOriginal: 5000, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' }],
+        files: [{ name: 'doc.pdf', $id: 'f-1', sizeOriginal: 5000, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', $permissions: ['read("any")', 'write("user:user-1")'] }],
       });
 
       const result = await getUserFiles('user-1', 'portfolio');
@@ -81,7 +83,7 @@ describe('File Service - Coverage3', () => {
 
   describe('deleteFile', () => {
     it('should return UNAUTHORIZED when file does not belong to user', async () => {
-      mockStorage.getFile.mockResolvedValue({ name: 'other-user-file.jpg' });
+      mockStorage.getFile.mockResolvedValue({ name: 'other-user-file.jpg', $permissions: ['read("any")', 'write("user:other-user")'] });
 
       const result = await deleteFile('user-1', 'portfolio', 'f-1');
       expect(result.success).toBe(false);
@@ -97,7 +99,7 @@ describe('File Service - Coverage3', () => {
     });
 
     it('should delete file successfully', async () => {
-      mockStorage.getFile.mockResolvedValue({ name: 'user-1/photo.jpg' });
+      mockStorage.getFile.mockResolvedValue({ name: 'photo.jpg', $permissions: ['read("any")', 'write("user:user-1")'] });
       mockStorage.deleteFile.mockResolvedValue(undefined);
 
       const result = await deleteFile('user-1', 'portfolio', 'f-1');
@@ -105,7 +107,7 @@ describe('File Service - Coverage3', () => {
     });
 
     it('should handle unexpected error during delete', async () => {
-      mockStorage.getFile.mockResolvedValue({ name: 'user-1/photo.jpg' });
+      mockStorage.getFile.mockResolvedValue({ name: 'photo.jpg', $permissions: ['read("any")', 'write("user:user-1")'] });
       mockStorage.deleteFile.mockRejectedValue(new Error('Storage error'));
 
       const result = await deleteFile('user-1', 'portfolio', 'f-1');
@@ -118,8 +120,8 @@ describe('File Service - Coverage3', () => {
     it('should return quota information', async () => {
       mockStorage.listFiles.mockResolvedValue({
         files: [
-          { name: 'user-1/photo.jpg', $id: 'f-1', sizeOriginal: 1024, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
-          { name: 'user-1/doc.pdf', $id: 'f-2', sizeOriginal: 2048, $createdAt: '2025-01-01', $updatedAt: '2025-01-01' },
+          { name: 'photo.jpg', $id: 'f-1', sizeOriginal: 1024, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', $permissions: ['read("any")', 'write("user:user-1")'] },
+          { name: 'doc.pdf', $id: 'f-2', sizeOriginal: 2048, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', $permissions: ['read("any")', 'write("user:user-1")'] },
         ],
       });
 

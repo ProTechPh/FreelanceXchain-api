@@ -1,7 +1,6 @@
 import { BaseRepositoryAppwrite, type QueryOptions, type PaginatedResult } from './base-repository-appwrite.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
-
-type FileAttachment = { url: string; filename: string; size: number; mimeType: string };
+import type { FileAttachment } from '../models/milestone.js';
 
 export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
 

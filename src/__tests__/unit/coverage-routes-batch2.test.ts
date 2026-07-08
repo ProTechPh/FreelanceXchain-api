@@ -36,6 +36,7 @@ jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
 jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
   clampLimit: (v) => v ?? 20,
   clampOffset: (v) => v ?? 0,
+  safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
 }));
 
 // ===== DISPUTE EVIDENCE ROUTES =====

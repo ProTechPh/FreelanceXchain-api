@@ -218,7 +218,7 @@ function mapEmailPreference(doc: Record<string, any>): EmailPreference {
     disputeNotifications: attrs.dispute_notifications,
     marketingEmails: attrs.marketing_emails,
     weeklyDigest: attrs.weekly_digest,
-    createdAt: new Date(attrs.created_at ?? $createdAt),
-    updatedAt: new Date(attrs.updated_at ?? $updatedAt),
+    createdAt: attrs.created_at ?? $createdAt,
+    updatedAt: attrs.updated_at ?? $updatedAt,
   } as EmailPreference;
 }
