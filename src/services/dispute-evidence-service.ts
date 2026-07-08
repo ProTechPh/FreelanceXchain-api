@@ -1,6 +1,7 @@
 import { disputeEvidenceRepository, DisputeEvidenceEntity } from '../repositories/dispute-evidence-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import type {
@@ -276,11 +277,17 @@ export async function verifyEvidence(
       };
     }
 
-    // Check if user is arbiter
-    if (disputeEntity.resolution?.resolved_by !== input.verifiedBy) {
+    // M12: Allow admins to verify evidence at any stage (not just after resolution).
+    // Previously, evidence could only be verified by resolution.resolved_by which is
+    // only set after the dispute is resolved — making the feature completely unusable.
+    const verifier = await userRepository.getUserById(input.verifiedBy);
+    const isAdmin = verifier?.role === 'admin';
+    const isArbiter = disputeEntity.resolution?.resolved_by === input.verifiedBy;
+
+    if (!isAdmin && !isArbiter) {
       return {
         success: false,
-        error: { code: 'UNAUTHORIZED', message: 'Only the assigned arbiter can verify evidence' },
+        error: { code: 'UNAUTHORIZED', message: 'Only admins or the assigned arbiter can verify evidence' },
       };
     }
 

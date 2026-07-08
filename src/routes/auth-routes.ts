@@ -247,11 +247,17 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
   const result = await register(input);
 
   if (isAuthError(result)) {
-    const statusCode = result.code === 'DUPLICATE_EMAIL' ? 409 : 400;
+    // M5: Use generic error message and status code to prevent email enumeration.
+    // Previously, DUPLICATE_EMAIL returned 409 while other errors returned 400,
+    // allowing attackers to enumerate registered emails.
+    const statusCode = 400;
+    const message = result.code === 'DUPLICATE_EMAIL'
+      ? 'Registration failed. Please try again or use a different email.'
+      : result.message;
     res.status(statusCode).json({
       error: {
-        code: result.code,
-        message: result.message,
+        code: 'REGISTRATION_FAILED',
+        message,
       },
       timestamp: new Date().toISOString(),
       requestId,

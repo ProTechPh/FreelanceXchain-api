@@ -18,6 +18,7 @@ import {
 } from './blockchain-types.js';
 import { databases, DATABASE_ID } from '../config/appwrite.js';
 import { ID, Query } from '../config/appwrite.js';
+import { withLock } from '../utils/async-lock.js';
 
 // Collection IDs for escrow storage
 const ESCROW_COLLECTION = 'blockchain_escrows';
@@ -278,62 +279,65 @@ export async function releaseMilestone(
   milestoneId: string,
   approverAddress: string
 ): Promise<TransactionReceipt> {
-  const escrow = await loadEscrow(escrowAddress);
-  if (!escrow) {
-    throw new Error('Escrow contract not found');
-  }
+  // Serialize concurrent operations on the same escrow to prevent lost-update bugs
+  return withLock(`escrow:${escrowAddress}`, async () => {
+    const escrow = await loadEscrow(escrowAddress);
+    if (!escrow) {
+      throw new Error('Escrow contract not found');
+    }
 
-  if (approverAddress !== escrow.employerAddress) {
-    throw new Error('Only employer can release milestone payments');
-  }
+    if (approverAddress !== escrow.employerAddress) {
+      throw new Error('Only employer can release milestone payments');
+    }
 
-  const milestone = escrow.milestones.find(m => m.id === milestoneId);
-  if (!milestone) {
-    throw new Error('Milestone not found');
-  }
+    const milestone = escrow.milestones.find(m => m.id === milestoneId);
+    if (!milestone) {
+      throw new Error('Milestone not found');
+    }
 
-  if (milestone.status === 'released') {
-    throw new Error('Milestone already released');
-  }
+    if (milestone.status === 'released') {
+      throw new Error('Milestone already released');
+    }
 
-  if (milestone.status === 'refunded') {
-    throw new Error('Milestone was refunded');
-  }
+    if (milestone.status === 'refunded') {
+      throw new Error('Milestone was refunded');
+    }
 
-  if (escrow.balance < milestone.amount) {
-    throw new Error('Insufficient escrow balance');
-  }
+    if (escrow.balance < milestone.amount) {
+      throw new Error('Insufficient escrow balance');
+    }
 
-  // Submit release transaction
-  const tx = await submitTransaction({
-    type: 'milestone_release',
-    from: escrowAddress,
-    to: escrow.freelancerAddress,
-    amount: milestone.amount,
-    data: {
-      contractId: escrow.contractId,
-      milestoneId,
-    },
+    // Submit release transaction
+    const tx = await submitTransaction({
+      type: 'milestone_release',
+      from: escrowAddress,
+      to: escrow.freelancerAddress,
+      amount: milestone.amount,
+      data: {
+        contractId: escrow.contractId,
+        milestoneId,
+      },
+    });
+
+    // Confirm the transaction
+    const confirmed = await confirmTransaction(tx.id);
+    if (!confirmed) {
+      throw new Error('Failed to confirm release transaction');
+    }
+
+    // Update escrow state in Appwrite
+    milestone.status = 'released';
+    escrow.balance -= milestone.amount;
+    await saveEscrow(escrow);
+
+    return {
+      transactionHash: confirmed.hash!,
+      blockNumber: confirmed.blockNumber!,
+      status: 'success',
+      gasUsed: confirmed.gasUsed!,
+      timestamp: Date.now(),
+    };
   });
-
-  // Confirm the transaction
-  const confirmed = await confirmTransaction(tx.id);
-  if (!confirmed) {
-    throw new Error('Failed to confirm release transaction');
-  }
-
-  // Update escrow state in Appwrite
-  milestone.status = 'released';
-  escrow.balance -= milestone.amount;
-  await saveEscrow(escrow);
-
-  return {
-    transactionHash: confirmed.hash!,
-    blockNumber: confirmed.blockNumber!,
-    status: 'success',
-    gasUsed: confirmed.gasUsed!,
-    timestamp: Date.now(),
-  };
 }
 
 
@@ -346,64 +350,67 @@ export async function refundMilestone(
   milestoneId: string,
   resolverAddress: string
 ): Promise<TransactionReceipt> {
-  const escrow = await loadEscrow(escrowAddress);
-  if (!escrow) {
-    throw new Error('Escrow contract not found');
-  }
+  // Serialize concurrent operations on the same escrow to prevent lost-update bugs
+  return withLock(`escrow:${escrowAddress}`, async () => {
+    const escrow = await loadEscrow(escrowAddress);
+    if (!escrow) {
+      throw new Error('Escrow contract not found');
+    }
 
-  // Authorization: only employer or designated resolver can trigger refund
-  if (resolverAddress !== escrow.employerAddress) {
-    throw new Error('Only the employer or authorized resolver can refund a milestone');
-  }
+    // Authorization: only employer or designated resolver can trigger refund
+    if (resolverAddress !== escrow.employerAddress) {
+      throw new Error('Only the employer or authorized resolver can refund a milestone');
+    }
 
-  const milestone = escrow.milestones.find(m => m.id === milestoneId);
-  if (!milestone) {
-    throw new Error('Milestone not found');
-  }
+    const milestone = escrow.milestones.find(m => m.id === milestoneId);
+    if (!milestone) {
+      throw new Error('Milestone not found');
+    }
 
-  if (milestone.status === 'released') {
-    throw new Error('Milestone already released');
-  }
+    if (milestone.status === 'released') {
+      throw new Error('Milestone already released');
+    }
 
-  if (milestone.status === 'refunded') {
-    throw new Error('Milestone already refunded');
-  }
+    if (milestone.status === 'refunded') {
+      throw new Error('Milestone already refunded');
+    }
 
-  if (escrow.balance < milestone.amount) {
-    throw new Error('Insufficient escrow balance');
-  }
+    if (escrow.balance < milestone.amount) {
+      throw new Error('Insufficient escrow balance');
+    }
 
-  // Submit refund transaction
-  const tx = await submitTransaction({
-    type: 'refund',
-    from: escrowAddress,
-    to: escrow.employerAddress,
-    amount: milestone.amount,
-    data: {
-      contractId: escrow.contractId,
-      milestoneId,
-      resolverAddress,
-    },
+    // Submit refund transaction
+    const tx = await submitTransaction({
+      type: 'refund',
+      from: escrowAddress,
+      to: escrow.employerAddress,
+      amount: milestone.amount,
+      data: {
+        contractId: escrow.contractId,
+        milestoneId,
+        resolverAddress,
+      },
+    });
+
+    // Confirm the transaction
+    const confirmed = await confirmTransaction(tx.id);
+    if (!confirmed) {
+      throw new Error('Failed to confirm refund transaction');
+    }
+
+    // Update escrow state in Appwrite
+    milestone.status = 'refunded';
+    escrow.balance -= milestone.amount;
+    await saveEscrow(escrow);
+
+    return {
+      transactionHash: confirmed.hash!,
+      blockNumber: confirmed.blockNumber!,
+      status: 'success',
+      gasUsed: confirmed.gasUsed!,
+      timestamp: Date.now(),
+    };
   });
-
-  // Confirm the transaction
-  const confirmed = await confirmTransaction(tx.id);
-  if (!confirmed) {
-    throw new Error('Failed to confirm refund transaction');
-  }
-
-  // Update escrow state in Appwrite
-  milestone.status = 'refunded';
-  escrow.balance -= milestone.amount;
-  await saveEscrow(escrow);
-
-  return {
-    transactionHash: confirmed.hash!,
-    blockNumber: confirmed.blockNumber!,
-    status: 'success',
-    gasUsed: confirmed.gasUsed!,
-    timestamp: Date.now(),
-  };
 }
 
 /**

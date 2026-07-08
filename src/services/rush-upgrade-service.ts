@@ -7,6 +7,7 @@ import { notificationRepository, type NotificationType } from '../repositories/n
 import { generateId } from '../utils/id.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { withLock } from '../utils/async-lock.js';
 
 
 export type RequestRushUpgradeInput = {
@@ -49,22 +50,24 @@ export async function requestRushUpgrade(
   employerId: string,
   input: RequestRushUpgradeInput
 ): Promise<ServiceResult<RushUpgradeRequest>> {
-  // Validate percentage
-  if (input.proposedPercentage <= 0 || input.proposedPercentage > 100) {
-    return {
-      success: false,
-      error: { code: 'VALIDATION_ERROR', message: 'Proposed percentage must be between 0.01 and 100' },
-    };
-  }
+  // M18: Lock per contract to prevent duplicate rush upgrade requests
+  return withLock(`rush-upgrade:${input.contractId}`, async () => {
+    // Validate percentage
+    if (input.proposedPercentage <= 0 || input.proposedPercentage > 100) {
+      return {
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: 'Proposed percentage must be between 0.01 and 100' },
+      };
+    }
 
-  // Check if contract exists and is active
-  const contractEntity = await contractRepository.getContractById(input.contractId);
-  if (!contractEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
-  }
+    // Check if contract exists and is active
+    const contractEntity = await contractRepository.getContractById(input.contractId);
+    if (!contractEntity) {
+      return {
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Contract not found' },
+      };
+    }
 
   if (contractEntity.employer_id !== employerId) {
     return {
@@ -133,6 +136,7 @@ export async function requestRushUpgrade(
   });
 
   return { success: true, data: created };
+  }); // end withLock
 }
 
 // Freelancer responds to a rush upgrade request

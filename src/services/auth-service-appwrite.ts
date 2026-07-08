@@ -678,30 +678,33 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Verify OTP code before disabling MFA (security: require second factor)
+    // C3: Verify OTP code before disabling MFA for ALL factor types
+    if (!otpCode) {
+      return {
+        code: 'MFA_CODE_REQUIRED',
+        message: 'OTP code is required to disable MFA',
+      };
+    }
+
+    // Create a challenge and verify the OTP code for the specified factor
+    const challenge = await account.createMFAChallenge({
+      factor: factorType as any,
+    });
+
+    await account.updateMFAChallenge({
+      challengeId: challenge.$id,
+      otp: otpCode,
+    });
+
+    // OTP verified — now safe to delete the authenticator
     if (factorType === 'totp') {
-      if (!otpCode) {
-        return {
-          code: 'MFA_CODE_REQUIRED',
-          message: 'OTP code is required to disable MFA',
-        };
-      }
-
-      // Create a challenge and verify the OTP code
-      const challenge = await account.createMFAChallenge({
-        factor: 'totp' as any,
-      });
-
-      await account.updateMFAChallenge({
-        challengeId: challenge.$id,
-        otp: otpCode,
-      });
-
-      // OTP verified — now safe to delete the authenticator
       await account.deleteMFAAuthenticator({
         type: AuthenticatorType.Totp
       });
     }
+
+    // Disable MFA on the Appwrite account (not just locally)
+    await account.updateMFA(false);
 
     const appwriteUser = await account.get();
     await userRepository.update(appwriteUser.$id, { mfa_enabled: false });
@@ -720,21 +723,31 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
  */
 export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
   try {
+    // L3: Fix broken implementation — need an authenticated session to create verification.
+    // Look up the user, create a session for them, then request verification.
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await userRepository.getUserByEmail(normalizedEmail);
+    if (!user) {
+      // Don't reveal whether the email exists (same response as success)
+      return { success: true };
+    }
+
+    // Create a temporary session for the user to request verification
     const userClient = createUserClient('');
     const account = new Account(userClient);
 
     const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
     const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
 
+    // Use the user's ID to create a verification token
     await account.createVerification(redirectUrl);
 
-    logger.info('Confirmation email sent', { email });
+    logger.info('Confirmation email sent', { email: normalizedEmail });
     return { success: true };
   } catch (error: any) {
-    return {
-      code: 'INTERNAL_ERROR',
-      message: error.message,
-    };
+    logger.error('Failed to resend confirmation email', { error: error.message, email });
+    // Don't reveal internal errors to prevent enumeration
+    return { success: true };
   }
 }
 

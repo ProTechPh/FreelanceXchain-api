@@ -677,7 +677,7 @@ describe('Branch Coverage Gaps - Services', () => {
         id: 'ms-1', title: 'D', status: 'rejected', contract_id: 'c-1', revision_count: 2,
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1',
+        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
       });
       mockMilestoneRepository.update.mockResolvedValueOnce({ status: 'submitted' });
 
@@ -693,7 +693,7 @@ describe('Branch Coverage Gaps - Services', () => {
         id: 'ms-1', title: 'D', status: 'pending', contract_id: 'c-1', revision_count: 0,
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1',
+        freelancer_id: 'f1', employer_id: 'e1', project_id: 'p1', status: 'active',
       });
       mockMilestoneRepository.update.mockResolvedValueOnce({ status: 'submitted' });
       mockCreateNotification.mockResolvedValueOnce({ success: false, error: { message: 'fail' } });

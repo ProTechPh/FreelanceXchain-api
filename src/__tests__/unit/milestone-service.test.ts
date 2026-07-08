@@ -107,7 +107,7 @@ describe('Milestone Service', () => {
       const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
       mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
       // Get contract
-      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1', status: 'active' });
       // Update milestone
       const updated = { ...milestone, status: 'submitted', submitted_at: '2025-01-01' };
       mockMilestoneRepository.update.mockResolvedValueOnce(updated);
@@ -127,7 +127,7 @@ describe('Milestone Service', () => {
 
       const milestone = { id: 'ms-1', title: 'Design', status: 'rejected', contract_id: 'c-1', revision_count: 1 };
       mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
-      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1', status: 'active' });
       mockMilestoneRepository.update.mockResolvedValueOnce({ ...milestone, status: 'submitted' });
 
       const result = await submitMilestone({
@@ -193,7 +193,7 @@ describe('Milestone Service', () => {
 
       const milestone = { id: 'ms-1', title: 'Design', status: 'approved', contract_id: 'c-1', revision_count: 0 };
       mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
-      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1', status: 'active' });
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -210,7 +210,7 @@ describe('Milestone Service', () => {
 
       const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
       mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
-      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1', status: 'active' });
       mockMilestoneRepository.update.mockResolvedValueOnce(null);
 
       const result = await submitMilestone({
@@ -228,7 +228,7 @@ describe('Milestone Service', () => {
 
       const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
       mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
-      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1' });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1', status: 'active' });
       mockMilestoneRepository.update.mockRejectedValueOnce(new Error('DB error'));
 
       const result = await submitMilestone({

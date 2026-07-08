@@ -271,13 +271,12 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     return;
   }
 
-  // Accept frontend-deployed escrow address (MetaMask flow)
-  const { escrowAddress: frontendEscrowAddress, transactionHash: _frontendTxHash } = req.body || {};
-
-  let escrowAddress = contract.escrowAddress || frontendEscrowAddress;
+  // H1: Only use server-side escrow deployment. Do NOT accept arbitrary escrow addresses
+  // from the frontend, as an attacker could submit a fake address to bypass fund verification.
+  let escrowAddress = contract.escrowAddress;
 
   if (!escrowAddress) {
-    // No escrow from frontend — fall back to server-side deployment
+    // No escrow yet — deploy server-side
     const projectResult = await getProjectById(contract.projectId);
     if (!projectResult.success) {
       res.status(400).json({

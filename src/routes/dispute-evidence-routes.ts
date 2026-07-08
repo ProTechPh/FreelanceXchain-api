@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import { authMiddleware } from '../middleware/auth-middleware.js';
+import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { logger } from '../config/logger.js';
@@ -10,6 +10,21 @@ import {
   verifyEvidence,
 } from '../services/dispute-evidence-service.js';
 import { getRequestId } from '../utils/route-helpers.js';
+
+// M13: Validate fileUrl to prevent SSRF/XSS via malicious schemes
+const ALLOWED_URL_SCHEMES = ['https:'];
+const MAX_FILE_URL_LENGTH = 2048;
+
+function isValidFileUrl(url: string | undefined): boolean {
+  if (!url) return true; // Optional field
+  if (url.length > MAX_FILE_URL_LENGTH) return false;
+  try {
+    const parsed = new URL(url);
+    return ALLOWED_URL_SCHEMES.includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
 
 const router = Router();
 
@@ -47,7 +62,7 @@ const router = Router();
  *       200:
  *         description: Evidence submitted successfully
  */
-router.post('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const disputeId = req.params['disputeId'] ?? '';
@@ -57,6 +72,15 @@ router.post('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']),
     if (!evidenceType || !description) {
       return res.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: 'Evidence type and description are required' },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
+    }
+
+    // M13: Validate fileUrl scheme to prevent SSRF
+    if (!isValidFileUrl(fileUrl)) {
+      return res.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid file URL. Only HTTPS URLs are allowed.' },
         timestamp: new Date().toISOString(),
         requestId,
       });
@@ -106,7 +130,7 @@ router.post('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']),
  *       200:
  *         description: List of evidence
  */
-router.get('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const disputeId = req.params['disputeId'] ?? '';
@@ -155,7 +179,7 @@ router.get('/:disputeId/evidence', authMiddleware, validateUUID(['disputeId']), 
  *       200:
  *         description: Evidence deleted successfully
  */
-router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const evidenceId = req.params['evidenceId'] ?? '';
@@ -204,7 +228,7 @@ router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, validateUUID([
  *       200:
  *         description: Evidence verified successfully
  */
-router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const evidenceId = req.params['evidenceId'] ?? '';

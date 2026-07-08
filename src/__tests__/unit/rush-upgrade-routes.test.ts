@@ -36,6 +36,11 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
+const mockGetContractById = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+  contractRepository: { getContractById: mockGetContractById },
+}));
+
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'test-request-id',
 }));
@@ -47,6 +52,7 @@ describe('Rush Upgrade Routes', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'freelancer-1' });
     app = express();
     app.use(express.json());
     app.use('/api', router);

@@ -30,6 +30,10 @@ jest.unstable_mockModule(resolveModule('src/services/blockchain-client.ts'), () 
   generateWalletAddress: jest.fn(() => '0x' + 'a'.repeat(40)),
 }));
 
+jest.unstable_mockModule(resolveModule('src/utils/async-lock.ts'), () => ({
+  withLock: (_key: string, fn: () => Promise<any>) => fn(),
+}));
+
 const {
   depositToEscrow,
   releaseMilestone,
