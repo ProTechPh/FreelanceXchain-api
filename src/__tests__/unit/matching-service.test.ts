@@ -582,3 +582,58 @@ describe('matching-service - extractSkillsFromText', () => {
     }
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Branch coverage: matching-service.ts line 374
+// typeof response === 'string' ternary in catch block
+// ═══════════════════════════════════════════════════════════════
+
+describe('matching-service - line 374 branch coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetActiveSkills.mockResolvedValue([{ id: 's1', name: 'React', categoryId: 'c1' }]);
+    mockGetReputation.mockResolvedValue({ success: true, data: { score: 50 } });
+  });
+
+  it('should handle catch block when response is a string (typeof response === \'string\' true branch)', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }],
+    });
+    mockIsAIAvailable.mockReturnValue(true);
+    // Return a string that will cause parseJsonResponse to return null
+    mockGenerateContentFn.mockResolvedValue('invalid json response that cannot be parsed');
+    mockParseJsonResponse.mockReturnValue(null);
+
+    const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await analyzeSkillGaps('u1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.currentSkills).toEqual(['React']);
+      expect(result.data.recommendedSkills).toEqual([]);
+      expect(result.data.marketDemand).toEqual([]);
+      expect(result.data.reasoning).toContain('Failed to parse');
+    }
+  });
+
+  it('should handle non-string response from generateContent (typeof response !== \'string\' early return)', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }],
+    });
+    mockIsAIAvailable.mockReturnValue(true);
+    // Return a non-string value (object) — the typeof check at line 313 returns early
+    mockGenerateContentFn.mockResolvedValue({ text: '{}' });
+
+    const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await analyzeSkillGaps('u1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.currentSkills).toEqual(['React']);
+      expect(result.data.recommendedSkills).toEqual([]);
+      expect(result.data.marketDemand).toEqual([]);
+      expect(result.data.reasoning).toContain('AI analysis failed');
+    }
+  });
+});

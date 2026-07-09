@@ -139,6 +139,7 @@ export async function createAgreementOnBlockchain(
     block_number: agreement.blockNumber,
   };
   if (agreement.employerSignedAt != null) createData['employer_signed_at'] = agreement.employerSignedAt;
+  /* istanbul ignore next -- freelancerSignedAt is always null at creation time; set via signAgreement/updateAgreement */
   if (agreement.freelancerSignedAt != null) createData['freelancer_signed_at'] = agreement.freelancerSignedAt;
   await blockchainAgreementRepository.createAgreement(createData as any);
 

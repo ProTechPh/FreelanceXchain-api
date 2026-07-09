@@ -389,3 +389,97 @@ describe('notification-routes - !userId guards and /stream endpoint', () => {
     expect(res.body.error).toBe('SSE connection failed');
   });
 });
+
+describe('notification-routes - additional branch coverage', () => {
+  let app: any;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/notifications', router);
+  });
+
+  it('GET / with only maxItemCount (no continuationToken)', async () => {
+    mockGetNotificationsByUser.mockResolvedValue({ success: true, data: { items: [], hasMore: false } });
+    const res = await request(app).get('/api/notifications?maxItemCount=10');
+    expect(res.status).toBe(200);
+    expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', { maxItemCount: 10 });
+  });
+
+  it('GET / with only continuationToken (no maxItemCount)', async () => {
+    mockGetNotificationsByUser.mockResolvedValue({ success: true, data: { items: [], hasMore: false } });
+    const res = await request(app).get('/api/notifications?continuationToken=abc123');
+    expect(res.status).toBe(200);
+    // clampLimit(undefined) returns 20 from the mock, so maxItemCount is always present
+    expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', { maxItemCount: 20, continuationToken: 'abc123' });
+  });
+
+  it('PATCH /:id/read with generic error code returns 400', async () => {
+    mockMarkNotificationAsRead.mockResolvedValue({
+      success: false,
+      error: { code: 'DB_ERROR', message: 'Database error' },
+    });
+    const res = await request(app).patch('/api/notifications/n-1/read');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DB_ERROR');
+  });
+});
+
+describe('notification-routes - ?? "" param fallback coverage', () => {
+  let app: any;
+  const mockMarkNotificationAsRead = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), () => ({
+      getNotificationsByUser: jest.fn(),
+      markNotificationAsRead: mockMarkNotificationAsRead,
+      markAllNotificationsAsRead: jest.fn(),
+      getUnreadCount: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
+      initializeSSEConnection: jest.fn(),
+      getSSEStats: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', id: 'user-1', role: 'freelancer' };
+        delete req.params.id;
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
+      clampLimit: (v: any) => v ?? 20,
+      clampOffset: (v: any) => v ?? 0,
+      safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/notification-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/notifications', router);
+    jest.clearAllMocks();
+  });
+
+  it('L209: PATCH /:id/read uses ?? "" fallback when id param is nullish', async () => {
+    mockMarkNotificationAsRead.mockResolvedValueOnce({ success: true, data: { id: '', isRead: true } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/notifications/any-id/read');
+    expect(res.status).toBe(200);
+    expect(mockMarkNotificationAsRead).toHaveBeenCalledWith('', 'user-1');
+  });
+});

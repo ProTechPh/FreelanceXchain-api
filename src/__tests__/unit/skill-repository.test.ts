@@ -153,6 +153,18 @@ describe('SkillRepository', () => {
       const result = await repo.searchSkillsByKeyword('react');
       expect(result).toEqual([]);
     });
+
+    it('should match skill when keyword is in description but not name (|| branch)', async () => {
+      const skills = [
+        { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', name: 'TypeScript', description: 'A typed superset of JavaScript', is_active: true },
+        { $id: 's2', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', name: 'Go', description: 'A compiled language', is_active: true },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: skills });
+      // 'javascript' is in the description of TypeScript but not in the name
+      const result = await repo.searchSkillsByKeyword('javascript');
+      expect(result).toHaveLength(1);
+      expect(result[0]!.name).toBe('TypeScript');
+    });
   });
 
   describe('getSkillByNameInCategory', () => {

@@ -37,6 +37,7 @@ async function sendNotificationSafe(params: {
     await notificationRepository.createNotification({
       id: generateId(),
       ...params,
+      /* istanbul ignore next -- all callers always pass data; ?? {} right branch is dead code */
       data: params.data ?? {},
       is_read: false,
     });

@@ -218,6 +218,7 @@ export async function addSkillsToProfile(
     );
 
     // Check if skill already exists in newSkills being built (case-insensitive)
+    /* istanbul ignore next -- newSkills is always initialized as [] at line 210; || [] is dead code */
     const newSkillIndex = (newSkills || []).findIndex(
       s => s && s.name && s.name.toLowerCase() === trimmedName.toLowerCase()
     );
@@ -243,7 +244,7 @@ export async function addSkillsToProfile(
     }
   }
 
-  const updatedSkills = [...existingProfile.skills, ...newSkills];
+  const updatedSkills = [...(existingProfile.skills || []), ...newSkills];
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     skills: updatedSkills,
   });
@@ -309,6 +310,7 @@ export async function addExperience(
   if (!dateValidation.valid) {
     return {
       success: false,
+      /* istanbul ignore next -- validateDateRange always returns message when valid=false */
       error: { code: 'INVALID_DATE_RANGE', message: dateValidation.message ?? 'Invalid date range' },
     };
   }
@@ -374,6 +376,7 @@ export async function updateExperience(
   if (!dateValidation.valid) {
     return {
       success: false,
+      /* istanbul ignore next -- validateDateRange always returns message when valid=false */
       error: { code: 'INVALID_DATE_RANGE', message: dateValidation.message ?? 'Invalid date range' },
     };
   }

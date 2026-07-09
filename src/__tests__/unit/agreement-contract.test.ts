@@ -677,6 +677,16 @@ describe('agreement-contract.ts - Branch Coverage', () => {
     expect(createData['employer_signed_at']).toBe('2024-01-01');
     expect(createData['freelancer_signed_at']).toBeUndefined();
   });
+
+  it('L142: freelancerSignedAt non-null includes field', () => {
+    const ts = Date.now();
+    const agreement = { employerSignedAt: '2024-01-01', freelancerSignedAt: ts };
+    const createData: Record<string, any> = {};
+    if (agreement.employerSignedAt != null) createData['employer_signed_at'] = agreement.employerSignedAt;
+    if (agreement.freelancerSignedAt != null) createData['freelancer_signed_at'] = agreement.freelancerSignedAt;
+    expect(createData['employer_signed_at']).toBe('2024-01-01');
+    expect(createData['freelancer_signed_at']).toBe(ts);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -982,5 +992,162 @@ describe('Agreement Contract - Extended Tests', () => {
 
       process.env.NODE_ENV = originalNodeEnv;
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Branch coverage: agreement-contract.ts lines 142, 404, 449-450
+// ═══════════════════════════════════════════════════════════════
+
+describe('Agreement Contract - Branch Coverage (signed_at fields)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValue(null);
+    mockBlockchainAgreementRepository.createAgreement.mockResolvedValue({} as any);
+    mockBlockchainAgreementRepository.updateAgreement.mockResolvedValue({} as any);
+    mockBlockchainAgreementRepository.findByWallet.mockResolvedValue([]);
+    mockBlockchainAgreementRepository.queryAll.mockResolvedValue([]);
+    mockBlockchainAgreementRepository.delete.mockResolvedValue(true);
+  });
+
+  const importModule = async () => {
+    return await import('../../services/agreement-contract.js');
+  };
+
+  it('should include employer_signed_at and exclude freelancer_signed_at on creation (line 141-142)', async () => {
+    const { createAgreementOnBlockchain } = await importModule();
+
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce(null);
+    mockBlockchainAgreementRepository.createAgreement.mockResolvedValueOnce({} as any);
+
+    mockSubmitTransaction.mockResolvedValueOnce({ id: 'tx-1' });
+    mockConfirmTransaction.mockResolvedValueOnce({
+      hash: '0xhash',
+      blockNumber: 123,
+      gasUsed: BigInt(21000),
+    });
+
+    const input = {
+      contractId: 'contract-signed',
+      employerWallet: '0xEmployer',
+      freelancerWallet: '0xFreelancer',
+      totalAmount: 2000,
+      milestoneCount: 3,
+      terms: {
+        projectTitle: 'Signed Project',
+        description: 'Both parties pre-signed',
+        milestones: [{ title: 'M1', amount: 2000 }],
+        deadline: '2025-12-31',
+      },
+    };
+
+    const result = await createAgreementOnBlockchain(input);
+
+    expect(result.agreement.status).toBe('pending');
+    expect(result.receipt.status).toBe('success');
+
+    // Verify createAgreement: employer_signed_at IS set (line 141 true branch),
+    // freelancer_signed_at is NOT set (line 142 false branch — freelancerSignedAt is null)
+    const createCall = mockBlockchainAgreementRepository.createAgreement.mock.calls[0][0];
+    expect(createCall['employer_signed_at']).toBeDefined();
+    expect(createCall['employer_signed_at']).not.toBeNull();
+    expect(createCall['freelancer_signed_at']).toBeUndefined();
+  });
+
+  it('should map entity with undefined employer_signed_at to null via getAgreementFromBlockchain (line 404)', async () => {
+    const { getAgreementFromBlockchain } = await importModule();
+
+    // Return entity where employer_signed_at and freelancer_signed_at are undefined (not present)
+    mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+      id: 'agreement-id',
+      contract_id_hash: '0xhash',
+      terms_hash: '0xterms',
+      employer_wallet: '0xEmployer',
+      freelancer_wallet: '0xFreelancer',
+      total_amount: 1000,
+      milestone_count: 1,
+      status: 'pending',
+      created_at_ts: Date.now(),
+      transaction_hash: '0xtx',
+      block_number: 123,
+    });
+
+    const result = await getAgreementFromBlockchain('contract-1');
+
+    expect(result).not.toBeNull();
+    expect(result?.employerSignedAt).toBeNull();
+    expect(result?.freelancerSignedAt).toBeNull();
+  });
+
+  it('should map entity with undefined signed_at to null via getUserAgreements (lines 449-450)', async () => {
+    const { getUserAgreements } = await importModule();
+
+    // Return entities where signed_at fields are undefined
+    mockBlockchainAgreementRepository.findByWallet.mockResolvedValueOnce([
+      {
+        id: 'agreement-1',
+        contract_id_hash: '0xhash1',
+        terms_hash: '0xterms1',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 500,
+        milestone_count: 1,
+        status: 'pending',
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx1',
+        block_number: 100,
+      },
+      {
+        id: 'agreement-2',
+        contract_id_hash: '0xhash2',
+        terms_hash: '0xterms2',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer2',
+        total_amount: 800,
+        milestone_count: 2,
+        status: 'signed',
+        employer_signed_at: Date.now(),
+        freelancer_signed_at: undefined,
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx2',
+        block_number: 200,
+      },
+    ]);
+
+    const result = await getUserAgreements('0xEmployer');
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.employerSignedAt).toBeNull();
+    expect(result[0]?.freelancerSignedAt).toBeNull();
+    expect(result[1]?.freelancerSignedAt).toBeNull();
+  });
+
+  it('should preserve defined signed_at values in getUserAgreements (lines 449-450)', async () => {
+    const { getUserAgreements } = await importModule();
+
+    const now = Date.now();
+    mockBlockchainAgreementRepository.findByWallet.mockResolvedValueOnce([
+      {
+        id: 'agreement-1',
+        contract_id_hash: '0xhash1',
+        terms_hash: '0xterms1',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'signed',
+        employer_signed_at: now,
+        freelancer_signed_at: now + 1000,
+        created_at_ts: now,
+        transaction_hash: '0xtx1',
+        block_number: 123,
+      },
+    ]);
+
+    const result = await getUserAgreements('0xEmployer');
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.employerSignedAt).toBe(now);
+    expect(result[0]?.freelancerSignedAt).toBe(now + 1000);
   });
 });

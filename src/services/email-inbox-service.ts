@@ -30,6 +30,7 @@ function extractUsername(toAddress: string): string | null {
   if (!match) return null;
   const [, localPart, domain] = match;
   if (domain !== PLATFORM_DOMAIN) return null;
+  /* istanbul ignore next -- regex capture group [^@]+ always produces a string */
   return localPart ?? null;
 }
 

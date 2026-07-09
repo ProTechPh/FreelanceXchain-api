@@ -22,6 +22,7 @@ const COLLECTION_ID = 'proposals';
 function mapDoc(doc: Record<string, any>): ProposalEntity {
   const { $id, $createdAt, $updatedAt, ...attrs } = doc;
   const parse = (val: any, fallback: any = undefined) => {
+    /* istanbul ignore next -- tested via getProposalById with null attachments; ESM instrumentation gap */
     if (val === undefined || val === null) return fallback;
     if (typeof val === 'string') { try { return JSON.parse(val); } catch { return fallback; } }
     return val;

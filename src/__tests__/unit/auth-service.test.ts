@@ -1789,3 +1789,97 @@ describe('auth-service - branch coverage gaps', () => {
     });
   });
 });
+
+describe('auth-service - Additional Branch Coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+
+    const maa = global.mockAppwriteAccount;
+    maa.get.mockReset().mockResolvedValue({ $id: 'test-user-id', email: 'test@example.com' });
+    maa.createEmailPasswordSession.mockReset().mockResolvedValue({ secret: 'test-session-secret' });
+    maa.deleteSession.mockReset().mockResolvedValue({});
+    maa.createRecovery.mockReset().mockResolvedValue({});
+    maa.createMFAAuthenticator.mockReset().mockResolvedValue({ uri: 'otpauth://...', secret: 'MOCK' });
+    maa.updateMFAAuthenticator.mockReset().mockResolvedValue({});
+    maa.createMFAChallenge.mockReset().mockResolvedValue({ $id: 'challenge-id' });
+    maa.updateMFAChallenge.mockReset().mockResolvedValue({});
+    maa.listMFAFactors.mockReset().mockResolvedValue({ totp: true });
+    maa.deleteMFAAuthenticator.mockReset().mockResolvedValue({});
+    maa.createMfaRecoveryCodes.mockReset().mockResolvedValue({ recoveryCodes: ['code1', 'code2'] });
+    maa.updateMFA.mockReset().mockResolvedValue({});
+    maa.createVerification.mockReset().mockResolvedValue({});
+    maa.createEmailToken.mockReset().mockResolvedValue({ userId: 'test-user-id' });
+    maa.createMagicURLToken.mockReset().mockResolvedValue({ userId: 'test-user-id' });
+    maa.createSession.mockReset().mockResolvedValue({ secret: 'new-session-secret' });
+
+    userRepository.emailExists.mockReset().mockResolvedValue(false);
+    userRepository.createUser.mockReset().mockImplementation(async (user) => ({
+      ...user,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    userRepository.getUserByEmail.mockReset().mockResolvedValue(null);
+    userRepository.getUserById.mockReset().mockResolvedValue(null);
+    userRepository.update.mockReset().mockResolvedValue({});
+
+    users.create.mockReset().mockResolvedValue({ $id: 'test-appwrite-user-id' });
+    users.delete.mockReset().mockResolvedValue({});
+
+    process.env.PUBLIC_URL = 'http://localhost:3000';
+    process.env.FRONTEND_URL = 'http://localhost:3000';
+  });
+
+  // L361: error.message || 'Failed to send password reset email' when message is falsy
+  it('L361: should use fallback message when requestPasswordReset error has no message', async () => {
+    const error = new Error();
+    error.message = '';
+    global.mockAppwriteAccount.createRecovery.mockRejectedValueOnce(error);
+
+    const result = await requestPasswordReset('test@example.com');
+    expect(result).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to send password reset email',
+    });
+  });
+
+  // L851: requestMagicUrl with PUBLIC_URL fallback to FRONTEND_URL
+  it('L851: should use FRONTEND_URL when PUBLIC_URL not set in requestMagicUrl', async () => {
+    delete process.env.PUBLIC_URL;
+    process.env.FRONTEND_URL = 'http://localhost:4000';
+
+    const result = await requestMagicUrl('test@example.com');
+    expect(result).toEqual({ userId: 'test-user-id' });
+    expect(global.mockAppwriteAccount.createMagicURLToken).toHaveBeenCalledWith(
+      expect.any(String),
+      'test@example.com',
+      'http://localhost:4000/auth/magic-url-callback'
+    );
+  });
+
+  // L851: requestMagicUrl with default localhost when both env vars missing
+  it('L851: should use default localhost when both URLs missing in requestMagicUrl', async () => {
+    delete process.env.PUBLIC_URL;
+    delete process.env.FRONTEND_URL;
+
+    const result = await requestMagicUrl('test@example.com');
+    expect(result).toEqual({ userId: 'test-user-id' });
+    expect(global.mockAppwriteAccount.createMagicURLToken).toHaveBeenCalledWith(
+      expect.any(String),
+      'test@example.com',
+      'http://localhost:5173/auth/magic-url-callback'
+    );
+  });
+
+  // L851: requestMagicUrl with PUBLIC_URL having trailing slashes
+  it('L851: should strip trailing slashes from PUBLIC_URL in requestMagicUrl', async () => {
+    process.env.PUBLIC_URL = 'http://localhost:3000/';
+
+    const result = await requestMagicUrl('test@example.com');
+    expect(result).toEqual({ userId: 'test-user-id' });
+    expect(global.mockAppwriteAccount.createMagicURLToken).toHaveBeenCalledWith(
+      expect.any(String),
+      'test@example.com',
+      'http://localhost:3000/auth/magic-url-callback'
+    );
+  });
+});

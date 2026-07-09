@@ -1828,3 +1828,138 @@ describe('Dispute Service - Coverage Gaps', () => {
     });
   });
 });
+
+describe('Dispute Service - Additional Branch Coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContractRepository.getContractById.mockReset();
+    mockProjectRepository.findProjectById.mockReset();
+    mockDisputeRepository.getDisputeById.mockReset();
+    mockDisputeRepository.updateDispute.mockReset();
+    mockDisputeRepository.getDisputeByMilestone.mockReset();
+    mockDisputeRepository.getAllDisputesByContract.mockReset();
+    mockDisputeRepository.getAllDisputes.mockReset();
+    mockDisputeRepository.getDisputesByUserId.mockReset();
+    mockDisputeRepository.getDisputesByInitiator.mockReset();
+    mockDisputeRepository.getDisputesByStatus.mockReset();
+    mockDisputeRepository.createDispute.mockReset();
+    mockEscrowOps.getEscrowByContractId.mockReset();
+    mockEscrowOps.releaseMilestone.mockReset();
+    mockEscrowOps.refundMilestone.mockReset();
+    mockCreateDisputeOnBlockchain.mockReset().mockResolvedValue({
+      transactionHash: '0x' + 'a'.repeat(64), blockNumber: 12345, status: 'success',
+    });
+    mockResolveDisputeOnBlockchain.mockReset().mockResolvedValue({
+      transactionHash: '0x' + 'c'.repeat(64), blockNumber: 12347, status: 'success',
+    });
+    mockDisputeAgreement.mockReset().mockResolvedValue(undefined);
+    mockUpdateDisputeEvidence.mockReset().mockResolvedValue({
+      transactionHash: '0x' + 'b'.repeat(64), blockNumber: 12346, status: 'success',
+    });
+  });
+
+  const importModule = async () => {
+    return await import('../../services/dispute-service.js');
+  };
+
+  it('L125: approved milestone status returns specific error message', async () => {
+    const { createDispute } = await importModule();
+
+    const contractId = 'contract-approved-ms';
+    const projectId = 'proj-approved-ms';
+    const milestoneId = 'ms-approved';
+
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: contractId, project_id: projectId, freelancer_id: 'fl-1', employer_id: 'emp-1',
+      status: 'active', total_amount: 1000, escrow_address: '0xabc',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: projectId,
+      milestones: [{ id: milestoneId, title: 'M1', amount: 500, status: 'approved' }],
+    });
+
+    const result = await createDispute({
+      contractId,
+      milestoneId,
+      initiatorId: 'emp-1',
+      reason: 'Quality issue',
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS');
+      expect(result.error.message).toContain('Cannot dispute an approved milestone');
+    }
+  });
+
+  it('L491: other disputed milestones detection in resolveDispute', async () => {
+    const { resolveDispute } = await importModule();
+
+    const disputeId = 'd-other-disputes';
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: disputeId, contract_id: 'c1', milestone_id: 'ms-1',
+      status: 'under_review', reason: 'Quality', initiator_id: 'fl-1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', freelancer_id: 'fl-1', employer_id: 'emp-1',
+      status: 'active', total_amount: 2000, escrow_address: '0xabc',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1',
+      milestones: [
+        { id: 'ms-1', title: 'M1', amount: 500, status: 'disputed' },
+        { id: 'ms-2', title: 'M2', amount: 500, status: 'disputed' },
+        { id: 'ms-3', title: 'M3', amount: 1000, status: 'approved' },
+      ],
+    });
+    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
+      address: '0xescrow', employerAddress: '0xemployer',
+    });
+    mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+      transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
+    });
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: disputeId, status: 'resolved', contract_id: 'c1', milestone_id: 'ms-1',
+      initiator_id: 'fl-1', reason: 'Quality', evidence: [],
+      resolution: { decision: 'freelancer_favor', reasoning: 'Work was done correctly', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+    });
+
+    const result = await resolveDispute({
+      disputeId,
+      decision: 'freelancer_favor',
+      reasoning: 'Work was done correctly',
+      resolvedBy: 'admin-1',
+      resolverRole: 'admin',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('L709: non-Error throw in catch block of getAllDisputes', async () => {
+    const { getAllDisputes } = await importModule();
+
+    mockDisputeRepository.getAllDisputes.mockRejectedValueOnce('raw string error');
+
+    const result = await getAllDisputes('admin', 'admin', {});
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('FETCH_FAILED');
+      expect(result.error.message).toBe('Failed to fetch disputes');
+    }
+  });
+
+  it('L709: Error instance throw in catch block of getAllDisputes', async () => {
+    const { getAllDisputes } = await importModule();
+
+    mockDisputeRepository.getAllDisputes.mockRejectedValueOnce(new Error('Connection timeout'));
+
+    const result = await getAllDisputes('admin', 'admin', {});
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('FETCH_FAILED');
+      expect(result.error.message).toBe('Connection timeout');
+    }
+  });
+});

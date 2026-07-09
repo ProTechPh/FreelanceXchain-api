@@ -512,3 +512,298 @@ describe('Dispute Evidence Service', () => {
     });
   });
 });
+
+describe('Dispute Evidence Service - Branch Coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDisputeRepository.getDisputeById.mockReset();
+    mockContractRepository.getContractById.mockReset();
+    mockDisputeEvidenceRepository.createEvidence.mockReset();
+    mockDisputeEvidenceRepository.findByDispute.mockReset();
+    mockDisputeEvidenceRepository.getEvidenceById.mockReset();
+    mockDisputeEvidenceRepository.updateEvidence.mockReset();
+    mockDisputeEvidenceRepository.deleteEvidence.mockReset();
+  });
+
+  const importModule = async () => {
+    return await import('../../services/dispute-evidence-service.js');
+  };
+
+  it('submitEvidence without fileUrl - file_url ?? fallback', async () => {
+    const { submitEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    mockDisputeEvidenceRepository.createEvidence.mockResolvedValueOnce({
+      ...makeEvidenceEntity({ file_url: null }),
+    });
+    const result = await submitEvidence({
+      disputeId: 'dispute-1',
+      submittedBy: 'freelancer-1',
+      evidenceType: 'document',
+      description: 'No file',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.fileUrl).toBe('');
+    }
+  });
+
+  it('getDisputeEvidence with unverified evidence - verified_by/at null', async () => {
+    const { getDisputeEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    mockDisputeEvidenceRepository.findByDispute.mockResolvedValueOnce([
+      makeEvidenceEntity({ verified_by: null, verified_at: null, file_url: null }),
+    ]);
+    const result = await getDisputeEvidence('dispute-1', 'freelancer-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data[0].verifiedBy).toBeUndefined();
+      expect(result.data[0].verifiedAt).toBeUndefined();
+      expect(result.data[0].fileUrl).toBe('');
+    }
+  });
+
+  it('submitEvidence with employer as submitter - otherPartyId is freelancer', async () => {
+    const { submitEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    mockDisputeEvidenceRepository.createEvidence.mockResolvedValueOnce(makeEvidenceEntity({ submitted_by: 'employer-1' }));
+    const result = await submitEvidence({
+      disputeId: 'dispute-1',
+      submittedBy: 'employer-1',
+      evidenceType: 'document',
+      description: 'Employer proof',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('submitEvidence non-Error throw in catch', async () => {
+    const { submitEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockRejectedValueOnce('raw string error');
+    const result = await submitEvidence({
+      disputeId: 'dispute-1',
+      submittedBy: 'freelancer-1',
+      evidenceType: 'document',
+      description: 'test',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Failed to submit evidence');
+    }
+  });
+
+  it('getDisputeEvidence non-Error throw in catch', async () => {
+    const { getDisputeEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockRejectedValueOnce(42);
+    const result = await getDisputeEvidence('dispute-1', 'user-1');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Failed to get evidence');
+    }
+  });
+
+  it('deleteEvidence non-Error throw in catch', async () => {
+    const { deleteEvidence } = await importModule();
+    mockDisputeEvidenceRepository.getEvidenceById.mockRejectedValueOnce(null);
+    const result = await deleteEvidence('ev-1', 'user-1');
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Failed to delete evidence');
+    }
+  });
+
+  it('verifyEvidence non-Error throw in catch', async () => {
+    const { verifyEvidence } = await importModule();
+    mockDisputeEvidenceRepository.getEvidenceById.mockRejectedValueOnce('timeout');
+    const result = await verifyEvidence({ evidenceId: 'ev-1', verifiedBy: 'arbiter-1' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Failed to verify evidence');
+    }
+  });
+});
+
+describe('Dispute Evidence Service - Additional Branch Coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDisputeRepository.getDisputeById.mockReset();
+    mockContractRepository.getContractById.mockReset();
+    mockDisputeEvidenceRepository.createEvidence.mockReset();
+    mockDisputeEvidenceRepository.findByDispute.mockReset();
+    mockDisputeEvidenceRepository.getEvidenceById.mockReset();
+    mockDisputeEvidenceRepository.updateEvidence.mockReset();
+    mockDisputeEvidenceRepository.deleteEvidence.mockReset();
+  });
+
+  const importModule = async () => {
+    return await import('../../services/dispute-evidence-service.js');
+  };
+
+  it('L78-79: verified_by truthy spread includes verifiedBy in getDisputeEvidence', async () => {
+    const { getDisputeEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    mockDisputeEvidenceRepository.findByDispute.mockResolvedValueOnce([
+      {
+        id: 'ev-1',
+        dispute_id: 'dispute-1',
+        submitted_by: 'freelancer-1',
+        file_url: 'https://example.com/file.pdf',
+        evidence_type: 'document',
+        description: 'Evidence doc',
+        verified_by: 'arbiter-1',
+        verified_at: '2025-01-15T10:00:00Z',
+        created_at: '2025-01-10T10:00:00Z',
+        updated_at: '2025-01-10T10:00:00Z',
+      },
+    ]);
+
+    const result = await getDisputeEvidence('dispute-1', 'freelancer-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data[0].verifiedBy).toBe('arbiter-1');
+      expect(result.data[0].verifiedAt).toBeDefined();
+    }
+  });
+
+  it('L78-79: verified_by falsy spread omits verifiedBy in getDisputeEvidence', async () => {
+    const { getDisputeEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    mockDisputeEvidenceRepository.findByDispute.mockResolvedValueOnce([
+      {
+        id: 'ev-2',
+        dispute_id: 'dispute-1',
+        submitted_by: 'freelancer-1',
+        file_url: 'https://example.com/file2.pdf',
+        evidence_type: 'document',
+        description: 'Evidence doc 2',
+        verified_by: null,
+        verified_at: null,
+        created_at: '2025-01-10T10:00:00Z',
+        updated_at: '2025-01-10T10:00:00Z',
+      },
+    ]);
+
+    const result = await getDisputeEvidence('dispute-1', 'freelancer-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data[0]).not.toHaveProperty('verifiedBy');
+      expect(result.data[0]).not.toHaveProperty('verifiedAt');
+    }
+  });
+
+  it('L185-186: verified_by truthy spread in getDisputeEvidence list', async () => {
+    const { getDisputeEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    mockDisputeEvidenceRepository.findByDispute.mockResolvedValueOnce([
+      {
+        id: 'ev-1', dispute_id: 'dispute-1', submitted_by: 'freelancer-1',
+        file_url: 'https://example.com/file.pdf', evidence_type: 'document',
+        description: 'Doc',
+        verified_by: 'arbiter-1', verified_at: '2025-01-15T10:00:00Z',
+        created_at: '2025-01-10T10:00:00Z', updated_at: '2025-01-10T10:00:00Z',
+      },
+    ]);
+
+    const result = await getDisputeEvidence('dispute-1', 'freelancer-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data[0].verifiedBy).toBe('arbiter-1');
+      expect(result.data[0].verifiedAt).toBeDefined();
+    }
+  });
+
+  it('L315-316: verified_by falsy spread in getDisputeEvidence list', async () => {
+    const { getDisputeEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity());
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    mockDisputeEvidenceRepository.findByDispute.mockResolvedValueOnce([
+      {
+        id: 'ev-1', dispute_id: 'dispute-1', submitted_by: 'freelancer-1',
+        file_url: 'https://example.com/file.pdf', evidence_type: 'document',
+        description: 'Doc',
+        verified_by: null, verified_at: null,
+        created_at: '2025-01-10T10:00:00Z', updated_at: '2025-01-10T10:00:00Z',
+      },
+    ]);
+
+    const result = await getDisputeEvidence('dispute-1', 'freelancer-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data[0]).not.toHaveProperty('verifiedBy');
+    }
+  });
+
+  it('L78-79: submitEvidence created entity with verified_by truthy spreads the field', async () => {
+    const { submitEvidence } = await importModule();
+
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+      resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
+    }));
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    // Return evidence with verified_by already set (unusual but exercises the branch)
+    mockDisputeEvidenceRepository.createEvidence.mockResolvedValueOnce(makeEvidenceEntity({
+      verified_by: 'arbiter-1',
+      verified_at: '2025-01-15T10:00:00Z',
+    }));
+
+    const result = await submitEvidence({
+      disputeId: 'dispute-1',
+      submittedBy: 'freelancer-1',
+      evidenceType: 'document',
+      fileUrl: 'https://file.com/doc.pdf',
+      description: 'Pre-verified evidence',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.verifiedBy).toBe('arbiter-1');
+      expect(result.data.verifiedAt).toBeDefined();
+    }
+  });
+
+  it('L315-316: verifyEvidence updated entity without verified_by omits the field', async () => {
+    const { verifyEvidence } = await importModule();
+
+    mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+      id: 'ev-1',
+      dispute_id: 'dispute-1',
+      submitted_by: 'freelancer-1',
+      evidence_type: 'document',
+      description: 'Proof',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+      resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
+    }));
+
+    // Return updated entity without verified_by/verified_at (exercises false branch)
+    mockDisputeEvidenceRepository.updateEvidence.mockResolvedValueOnce({
+      id: 'ev-1',
+      dispute_id: 'dispute-1',
+      submitted_by: 'freelancer-1',
+      evidence_type: 'document',
+      description: 'Proof',
+      verified_by: null,
+      verified_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const result = await verifyEvidence({
+      evidenceId: 'ev-1',
+      verifiedBy: 'arbiter-1',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('verifiedBy');
+      expect(result.data).not.toHaveProperty('verifiedAt');
+    }
+  });
+});

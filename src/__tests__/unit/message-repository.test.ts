@@ -105,6 +105,22 @@ describe('MessageRepository', () => {
       expect(result.items).toEqual([]);
       expect(result.total).toBe(0);
     });
+
+    it('should handle conversations with null/undefined last_message_at (|| fallback)', async () => {
+      const convs = [
+        { $id: 'c1', participant1_id: 'u1', participant2_id: 'u2', last_message_at: null },
+        { $id: 'c2', participant1_id: 'u3', participant2_id: 'u1', last_message_at: '2025-01-02' },
+        { $id: 'c3', participant1_id: 'u1', participant2_id: 'u4' }, // undefined last_message_at
+      ];
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [convs[0], convs[2]], total: 2 })
+        .mockResolvedValueOnce({ documents: [convs[1]], total: 1 });
+      const result = await messageRepository.getUserConversations('u1', 10, 0);
+      expect(result.items).toHaveLength(3);
+      expect(result.total).toBe(3);
+      // Conversations with null/undefined last_message_at should sort last
+      expect(result.items[0]!.id).toBe('c2');
+    });
   });
 
   describe('createMessage', () => {
@@ -293,5 +309,82 @@ describe('MessageRepository - mapMessage attachments parsing', () => {
     const result = await messageRepository.getConversationMessages('conv2', 10, 0);
     expect(result.items).toHaveLength(1);
     expect(result.items[0]!.attachments).toEqual(attachmentsArr);
+  });
+});
+
+describe('MessageRepository - Additional Branch Coverage', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('findConversation returns conversation from second query (reversed participants)', async () => {
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [{ $id: 'c-rev', participant1_id: 'u2', participant2_id: 'u1' }], total: 1 });
+    const result = await messageRepository.findConversation('u1', 'u2');
+    expect(result).not.toBeNull();
+    expect(result!.id).toBe('c-rev');
+  });
+
+  it('findConversation returns null on database error (catch branch)', async () => {
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('db down'));
+    const result = await messageRepository.findConversation('u1', 'u2');
+    expect(result).toBeNull();
+  });
+
+  it('createMessage with attachments object triggers JSON.stringify branch', async () => {
+    mockDatabases.createDocument.mockResolvedValueOnce({
+      $id: 'm-obj', $createdAt: '2025-01-01', $updatedAt: '2025-01-01',
+      conversation_id: 'c1', sender_id: 'u1', receiver_id: 'u2', content: 'hello',
+      attachments: JSON.stringify([{ url: 'file.pdf' }]),
+    });
+    const result = await messageRepository.createMessage({
+      conversation_id: 'c1',
+      sender_id: 'u1',
+      receiver_id: 'u2',
+      content: 'hello',
+      is_read: false,
+      attachments: [{ url: 'file.pdf' }],
+    } as any);
+    expect(result.id).toBe('m-obj');
+    // Verify createDocument was called with stringified attachments
+    const callAttrs = mockDatabases.createDocument.mock.calls[0][3];
+    expect(typeof callAttrs.attachments).toBe('string');
+  });
+
+  it('createMessage with undefined fields skips them', async () => {
+    mockDatabases.createDocument.mockResolvedValueOnce({
+      $id: 'm-skip', $createdAt: '2025-01-01', $updatedAt: '2025-01-01',
+      conversation_id: 'c1', sender_id: 'u1',
+    });
+    await messageRepository.createMessage({
+      conversation_id: 'c1',
+      sender_id: 'u1',
+      receiver_id: undefined as any,
+      content: undefined as any,
+      is_read: false,
+    } as any);
+    const callAttrs = mockDatabases.createDocument.mock.calls[0][3];
+    expect(callAttrs.receiver_id).toBeUndefined();
+    expect(callAttrs.content).toBeUndefined();
+  });
+
+  it('getUnreadCount with falsy unread_count values (|| 0 fallback)', async () => {
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'c1', unread_count_1: null },
+          { $id: 'c2', unread_count_1: 0 },
+          { $id: 'c3', unread_count_1: undefined },
+        ],
+        total: 3,
+      })
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'c4', unread_count_2: null },
+          { $id: 'c5', unread_count_2: 5 },
+        ],
+        total: 2,
+      });
+    const result = await messageRepository.getUnreadCount('u1');
+    expect(result).toBe(5);
   });
 });

@@ -31,6 +31,7 @@ export async function createApp(): Promise<Express> {
   app.use(express.json({
     limit: '10mb',
     verify: (req, _res, buf) => {
+      /* istanbul ignore next -- Express always sets req.path; || url fallback is dead code */
       const reqPath = (req as Request).path || (req as Request).url;
       if (WEBHOOK_PATHS.some(p => reqPath?.startsWith(p))) {
         (req as Request).rawBody = buf.toString('utf8');

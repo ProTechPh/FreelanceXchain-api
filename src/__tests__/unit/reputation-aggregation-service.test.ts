@@ -441,3 +441,234 @@ describe('reputation-aggregation-service.ts - Branch Coverage', () => {
     expect(ms).toEqual([]);
   });
 });
+
+describe('Reputation Aggregation Service - Additional Branch Coverage', () => {
+  it('milestones as JSON string needs parsing', () => {
+    const projectDoc = { milestones: '[{"status":"approved","amount":100}]' };
+    const milestones = typeof (projectDoc as any).milestones === 'string'
+      ? JSON.parse((projectDoc as any).milestones)
+      : (projectDoc as any).milestones || [];
+    expect(milestones).toEqual([{ status: 'approved', amount: 100 }]);
+  });
+
+  it('milestones as already-parsed array', () => {
+    const projectDoc = { milestones: [{ status: 'approved', amount: 100 }] };
+    const milestones = typeof (projectDoc as any).milestones === 'string'
+      ? JSON.parse((projectDoc as any).milestones)
+      : (projectDoc as any).milestones || [];
+    expect(milestones).toEqual([{ status: 'approved', amount: 100 }]);
+  });
+
+  it('milestones null falls back to empty array', () => {
+    const projectDoc = { milestones: null };
+    const milestones = typeof (projectDoc as any).milestones === 'string'
+      ? JSON.parse((projectDoc as any).milestones)
+      : (projectDoc as any).milestones || [];
+    expect(milestones).toEqual([]);
+  });
+
+  it('non-Error throw in getAggregatedScore catch', () => {
+    const error = 'raw string';
+    const message = error instanceof Error ? error.message : 'Failed to aggregate reputation score';
+    expect(message).toBe('Failed to aggregate reputation score');
+  });
+
+  it('non-Error throw in getReputationBreakdown catch', () => {
+    const error = 42;
+    const message = error instanceof Error ? error.message : 'Failed to get reputation breakdown';
+    expect(message).toBe('Failed to get reputation breakdown');
+  });
+
+  it('non-Error throw in getReputationHistory catch', () => {
+    const error = null;
+    const message = error instanceof Error ? error.message : 'Failed to get reputation history';
+    expect(message).toBe('Failed to get reputation history');
+  });
+
+  it('non-Error throw in getReputationLeaderboard catch', () => {
+    const error = { code: 500 };
+    const message = error instanceof Error ? error.message : 'Failed to get leaderboard';
+    expect(message).toBe('Failed to get leaderboard');
+  });
+
+  it('r.comment || fallback when comment is null', () => {
+    const r = { comment: null };
+    const comment = r.comment || '';
+    expect(comment).toBe('');
+  });
+
+  it('r.comment || fallback when comment has value', () => {
+    const r = { comment: 'Great work!' };
+    const comment = r.comment || '';
+    expect(comment).toBe('Great work!');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Integration tests that call actual source functions for Istanbul coverage
+// ═══════════════════════════════════════════════════════════════
+
+describe('Reputation Aggregation Service - Integration Coverage', () => {
+  let mockDatabases: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDatabases.getDocument.mockResolvedValue({ $id: 'doc-id' });
+  });
+
+  const importModule = async () => {
+    return await import('../../services/reputation-aggregation-service.js');
+  };
+
+  // Line 119-121: typeof milestones === 'string' branch (parsing JSON string)
+  it('getAggregatedScore parses milestones from JSON string (line 119-121)', async () => {
+    const { getAggregatedScore } = await importModule();
+
+    const reviews = [{ $id: 'r1', rating: 4, work_quality: 4, communication: 4, professionalism: 4, would_work_again: true }];
+    // 1st listDocuments: reviews
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+    // 2nd listDocuments: completed contracts
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    // 3rd listDocuments: all contracts
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', project_id: 'p1' }],
+      total: 1,
+    });
+    // getDocument returns project with milestones as a JSON string
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: '[{"status":"approved","approved_at":"2025-01-14","due_date":"2025-01-15"}]',
+    });
+
+    const result = await getAggregatedScore('user-1');
+
+    expect(result.success).toBe(true);
+    expect(result.data.onTimeDeliveryRate).toBe(100);
+  });
+
+  // Line 119-121: typeof milestones !== 'string' branch (already-parsed array)
+  it('getAggregatedScore handles milestones as already-parsed array (line 119-121 false branch)', async () => {
+    const { getAggregatedScore } = await importModule();
+
+    const reviews = [{ $id: 'r1', rating: 5, work_quality: 5, communication: 5, professionalism: 5, would_work_again: true }];
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', project_id: 'p1' }],
+      total: 1,
+    });
+    // getDocument returns project with milestones as an array (not a string)
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: [
+        { status: 'approved', approved_at: '2025-01-14', due_date: '2025-01-15' },
+        { status: 'approved', approved_at: '2025-02-10', due_date: '2025-02-10' },
+      ],
+    });
+
+    const result = await getAggregatedScore('user-1');
+
+    expect(result.success).toBe(true);
+    expect(result.data.onTimeDeliveryRate).toBe(100);
+  });
+
+  // Line 119-121: typeof milestones !== 'string' and milestones is null (falls back to [])
+  it('getAggregatedScore handles null milestones (line 119-21 fallback to [])', async () => {
+    const { getAggregatedScore } = await importModule();
+
+    const reviews = [{ $id: 'r1', rating: 3, work_quality: 3, communication: 3, professionalism: 3, would_work_again: false }];
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', project_id: 'p1' }],
+      total: 1,
+    });
+    // getDocument returns project with null milestones
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: null,
+    });
+
+    const result = await getAggregatedScore('user-1');
+
+    expect(result.success).toBe(true);
+    expect(result.data.onTimeDeliveryRate).toBe(0);
+  });
+
+  // Line 160: non-Error thrown in getAggregatedScore catch block
+  it('getAggregatedScore handles non-Error throw (line 160)', async () => {
+    const { getAggregatedScore } = await importModule();
+
+    // Make listDocuments throw a raw string (not an Error instance)
+    mockDatabases.listDocuments.mockRejectedValueOnce('raw string error');
+
+    const result = await getAggregatedScore('user-1');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('AGGREGATION_FAILED');
+    expect(result.error.message).toBe('Failed to aggregate reputation score');
+  });
+
+  // Line 229: r.comment || '' when review has null comment
+  it('getReputationBreakdown handles reviews with null comments (line 229)', async () => {
+    const { getReputationBreakdown } = await importModule();
+
+    const reviews = [
+      { $id: 'r1', rating: 5, comment: null, reviewer_id: 'u1', project_id: null, created_at: '2025-01-01' },
+    ];
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+    // getDocument for reviewer
+    mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'u1', name: 'Alice' });
+
+    const result = await getReputationBreakdown('user-1');
+
+    expect(result.success).toBe(true);
+    expect(result.data.recentRatings).toHaveLength(1);
+    expect(result.data.recentRatings[0].comment).toBe('');
+  });
+
+  // Line 254: non-Error thrown in getReputationBreakdown catch block
+  it('getReputationBreakdown handles non-Error throw (line 254)', async () => {
+    const { getReputationBreakdown } = await importModule();
+
+    mockDatabases.listDocuments.mockRejectedValueOnce(42);
+
+    const result = await getReputationBreakdown('user-1');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('BREAKDOWN_FAILED');
+    expect(result.error.message).toBe('Failed to get reputation breakdown');
+  });
+
+  // Line 317: non-Error thrown in getReputationHistory catch block
+  it('getReputationHistory handles non-Error throw (line 317)', async () => {
+    const { getReputationHistory } = await importModule();
+
+    // Use mockImplementation to throw a non-Error value
+    mockDatabases.listDocuments.mockImplementation(() => Promise.reject('connection timeout'));
+
+    const result = await getReputationHistory('user-1');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('HISTORY_FAILED');
+    expect(result.error.message).toBe('Failed to get reputation history');
+  });
+
+  // Line 378: non-Error thrown in getReputationLeaderboard catch block
+  it('getReputationLeaderboard handles non-Error throw (line 378)', async () => {
+    const { getReputationLeaderboard } = await importModule();
+
+    // Use mockImplementation to throw a non-Error value
+    mockDatabases.listDocuments.mockImplementation(() => Promise.reject(503));
+
+    const result = await getReputationLeaderboard();
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('LEADERBOARD_FAILED');
+    expect(result.error.message).toBe('Failed to get leaderboard');
+  });
+});

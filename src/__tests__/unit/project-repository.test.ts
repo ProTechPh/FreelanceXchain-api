@@ -72,6 +72,24 @@ describe('ProjectRepository', () => {
       const result = await repo.getProjectById('p1');
       expect(result).toBeNull();
     });
+
+    it('should handle null values for JSON fields (val === null branch)', async () => {
+      const project = {
+        id: 'p1',
+        title: 'Test',
+        required_skills: null,
+        milestones: null,
+        tags: null,
+        attachments: null,
+      };
+      mockGetDocument.mockResolvedValueOnce(toAppwriteDoc(project));
+      const result = await repo.getProjectById('p1');
+      expect(result).not.toBeNull();
+      expect(result!.required_skills).toEqual([]);
+      expect(result!.milestones).toEqual([]);
+      expect(result!.tags).toEqual([]);
+      expect(result!.attachments).toEqual([]);
+    });
   });
 
   describe('getProjectsByEmployer', () => {

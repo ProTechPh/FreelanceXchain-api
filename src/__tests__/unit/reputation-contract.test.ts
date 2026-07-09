@@ -557,3 +557,46 @@ describe('Reputation Contract - Extended Tests', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Branch coverage: reputation-contract.ts line 220
+// totalWeight === 0 when no ratings exist
+// ═══════════════════════════════════════════════════════════════
+
+describe('Reputation Contract - totalWeight zero branch (line 220)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockBlockchainRatingRepository.createRating.mockResolvedValue({} as any);
+    mockBlockchainRatingRepository.findByRatee.mockResolvedValue({ items: [], hasMore: false, total: 0 });
+    mockBlockchainRatingRepository.findByRater.mockResolvedValue({ items: [], hasMore: false, total: 0 });
+    mockBlockchainRatingRepository.getRatingById.mockResolvedValue(null);
+    mockBlockchainRatingRepository.queryAll.mockResolvedValue([]);
+    mockBlockchainRatingRepository.findByContractAndRater.mockResolvedValue(null);
+    mockBlockchainRatingRepository.delete.mockResolvedValue(true);
+  });
+
+  const importModule = async () => {
+    return await import('../../services/reputation-contract.js');
+  };
+
+  it('should return 0 from computeAggregateScore when ratings array is empty (totalWeight is 0)', async () => {
+    const { computeAggregateScore } = await importModule();
+
+    // Empty array means the for-loop never runs, totalWeight stays 0
+    const result = computeAggregateScore([]);
+    expect(result).toBe(0);
+  });
+
+  it('should return 0 from getAggregateScoreFromBlockchain when user has no ratings', async () => {
+    const { getAggregateScoreFromBlockchain } = await importModule();
+
+    mockBlockchainRatingRepository.findByRatee.mockResolvedValueOnce({
+      items: [],
+      hasMore: false,
+      total: 0,
+    });
+
+    const result = await getAggregateScoreFromBlockchain('user-with-no-ratings');
+    expect(result).toBe(0);
+  });
+});

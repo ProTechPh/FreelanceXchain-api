@@ -1305,3 +1305,157 @@ describe('didit-kyc-service - Coverage Gaps', () => {
     });
   });
 });
+
+describe('didit-kyc-service - Additional Branch Coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetUserById.mockResolvedValue({ id: 'user-1', name: 'John Doe', role: 'freelancer' });
+    mockGetKycByUserId.mockResolvedValue(null);
+    mockCreateSession.mockResolvedValue({ success: true, data: makeSession() });
+    mockCreateKyc.mockResolvedValue(makeKyc());
+    mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'pending' }));
+    mockFreelancerGetProfile.mockResolvedValue(null);
+    mockFreelancerCreateProfile.mockResolvedValue({});
+    mockFreelancerUpdateProfile.mockResolvedValue({});
+    mockEmployerGetProfile.mockResolvedValue(null);
+    mockEmployerCreateProfile.mockResolvedValue({});
+    mockEmployerUpdateProfile.mockResolvedValue({});
+    mockUpdateUserName.mockResolvedValue({});
+    mockGetKycsByStatus.mockResolvedValue([]);
+    mockGetPendingReviews.mockResolvedValue([]);
+    mockGetKycHistory.mockResolvedValue([]);
+  });
+
+  describe('L382: syncKycNameToUserAndProfiles fullName fallback', () => {
+    it('L382: should use user.name when firstName and lastName are both null', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc());
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
+      mockGetUserById.mockResolvedValue({ id: 'user-1', name: 'Existing Name', role: 'freelancer' });
+
+      const result = await processWebhook({
+        session_id: 'session-abc',
+        status: 'Approved',
+        timestamp: Date.now() / 1000,
+        decision: {
+          id_verifications: [{
+            first_name: null,
+            last_name: null,
+            nationality: 'US',
+            status: 'Approved',
+          }],
+        },
+      } as any);
+
+      expect(result.success).toBe(true);
+      // fullName = [null, null].filter(Boolean).join(' ') || 'Existing Name' || 'User'
+      expect(mockUpdateUserName).toHaveBeenCalledWith('user-1', 'Existing Name');
+    });
+
+    it('L382: should use "User" when firstName, lastName, and user.name are all falsy', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc());
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
+      mockGetUserById.mockResolvedValue({ id: 'user-1', name: null, role: 'freelancer' });
+
+      const result = await processWebhook({
+        session_id: 'session-abc',
+        status: 'Approved',
+        timestamp: Date.now() / 1000,
+        decision: {
+          id_verifications: [{
+            first_name: null,
+            last_name: null,
+            nationality: 'US',
+            status: 'Approved',
+          }],
+        },
+      } as any);
+
+      expect(result.success).toBe(true);
+    });
+
+    it('L382: should construct fullName from firstName and lastName', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc());
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
+      mockGetUserById.mockResolvedValue({ id: 'user-1', name: 'Old Name', role: 'freelancer' });
+
+      const result = await processWebhook({
+        session_id: 'session-abc',
+        status: 'Approved',
+        timestamp: Date.now() / 1000,
+        decision: {
+          id_verifications: [{
+            first_name: 'Jane',
+            last_name: 'Smith',
+            nationality: 'UK',
+            status: 'Approved',
+          }],
+        },
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateUserName).toHaveBeenCalledWith('user-1', 'Jane Smith');
+    });
+  });
+
+  describe('L616: mapDiditStatusToKycStatus switch - Cancelled/default', () => {
+    it('L634: should map Cancelled status to pending via processWebhook', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc());
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'pending' }));
+
+      const result = await processWebhook({
+        session_id: 'session-abc',
+        status: 'Cancelled',
+        timestamp: Date.now() / 1000,
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateKyc).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ status: 'pending' }),
+      );
+    });
+
+    it('L634: should map unknown status to pending (default case)', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc());
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'pending' }));
+
+      const result = await processWebhook({
+        session_id: 'session-abc',
+        status: 'SomeUnknownStatus',
+        timestamp: Date.now() / 1000,
+      } as any);
+
+      expect(result.success).toBe(true);
+      expect(mockUpdateKyc).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ status: 'pending' }),
+      );
+    });
+  });
+
+  describe('L375: syncKycNameToUserAndProfiles user not found branch', () => {
+    it('should handle processWebhook when user is not found during name sync', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc());
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
+      // getUserById returns null to trigger line 375 branch
+      mockGetUserById.mockResolvedValue(null);
+
+      const result = await processWebhook({
+        session_id: 'session-abc',
+        status: 'Approved',
+        timestamp: Date.now() / 1000,
+        decision: {
+          id_verifications: [{
+            first_name: 'Jane',
+            last_name: 'Smith',
+            nationality: 'US',
+            status: 'Approved',
+          }],
+        },
+      } as any);
+
+      // Should still succeed even if user not found during name sync
+      expect(result.success).toBe(true);
+    });
+  });
+});

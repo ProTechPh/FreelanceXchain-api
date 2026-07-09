@@ -635,3 +635,144 @@ describe('freelancer-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Additional error branch verification
+// ═══════════════════════════════════════════════════════════════
+
+describe('freelancer-routes - error branch verification', () => {
+  let app: any;
+  const mockAddSkillsToProfile = jest.fn<any>();
+  const mockGetProfileByUserId = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/freelancer-profile-service.ts'), () => ({
+      getFreelancerProfile: jest.fn(),
+      createProfile: jest.fn(),
+      updateProfile: jest.fn(),
+      addSkillsToProfile: mockAddSkillsToProfile,
+      removeSkillFromProfile: jest.fn(),
+      addExperience: jest.fn(),
+      updateExperience: jest.fn(),
+      removeExperience: jest.fn(),
+      getProfileByUserId: mockGetProfileByUserId,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/freelancer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/freelancers', router);
+    jest.clearAllMocks();
+  });
+
+  it('POST /profile/skills error response includes details when present', async () => {
+    mockAddSkillsToProfile.mockResolvedValueOnce({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid', details: [{ field: 'skills', message: 'bad' }] },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/freelancers/profile/skills').send({ skills: [{ name: 'React', yearsOfExperience: 3 }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual([{ field: 'skills', message: 'bad' }]);
+  });
+
+  it('GET /:id error returns 404 with error body', async () => {
+    mockGetProfileByUserId.mockResolvedValueOnce({ success: false, error: { code: 'DB_ERROR', message: 'Connection failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/freelancers/user-1');
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('DB_ERROR');
+    expect(res.body.error.message).toBe('Connection failed');
+  });
+});
+
+describe('freelancer-routes - ?? "" param fallback coverage', () => {
+  let app: any;
+  const mockRemoveSkill = jest.fn<any>();
+  const mockUpdateExperience = jest.fn<any>();
+  const mockRemoveExperience = jest.fn<any>();
+  const mockGetProfileByUserId = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/freelancer-profile-service.ts'), () => ({
+      getFreelancerProfile: jest.fn(),
+      createProfile: jest.fn(),
+      updateProfile: jest.fn(),
+      addSkillsToProfile: jest.fn(),
+      removeSkillFromProfile: mockRemoveSkill,
+      addExperience: jest.fn(),
+      updateExperience: mockUpdateExperience,
+      removeExperience: mockRemoveExperience,
+      getProfileByUserId: mockGetProfileByUserId,
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', role: 'freelancer' };
+        delete req.params.name;
+        delete req.params.id;
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    // For GET /:id (no auth middleware), use validateUUID mock to delete the id param
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (req: any, _res: any, next: any) => {
+        delete req.params.id;
+        next();
+      }),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/freelancer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/freelancers', router);
+    jest.clearAllMocks();
+  });
+
+  it('L458: DELETE /profile/skills/:name uses ?? "" fallback when name param is nullish', async () => {
+    // When name param is deleted, req.params['name'] ?? '' evaluates to '',
+    // which then fails the skill name validation (empty string). The ?? '' branch IS covered.
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/freelancers/profile/skills/React');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockRemoveSkill).not.toHaveBeenCalled();
+  });
+
+  it('L653: PATCH /profile/experience/:id uses ?? "" fallback', async () => {
+    mockUpdateExperience.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ title: 'Dev' });
+    expect(res.status).toBe(200);
+    expect(mockUpdateExperience).toHaveBeenCalledWith('user-1', '', { title: 'Dev', company: undefined, description: undefined, startDate: undefined, endDate: undefined });
+  });
+
+  it('L747: DELETE /profile/experience/:id uses ?? "" fallback', async () => {
+    mockRemoveExperience.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/freelancers/profile/experience/exp1');
+    expect(res.status).toBe(200);
+    expect(mockRemoveExperience).toHaveBeenCalledWith('user-1', '');
+  });
+
+  it('L806: GET /:id uses ?? "" fallback when id param is nullish', async () => {
+    mockGetProfileByUserId.mockResolvedValueOnce({ success: true, data: { experience: [] } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/freelancers/any-id');
+    expect(res.status).toBe(200);
+    expect(mockGetProfileByUserId).toHaveBeenCalledWith('');
+  });
+});

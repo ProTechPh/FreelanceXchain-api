@@ -173,6 +173,18 @@ describe('UserCustomSkillRepository', () => {
       const result = await userCustomSkillRepository.searchUserCustomSkills('user-1', 'react');
       expect(result).toEqual([]);
     });
+
+    it('should match skill when keyword is in description but not name (|| branch)', async () => {
+      const docs = [
+        { $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'TypeScript', description: 'A typed superset of JavaScript', years_of_experience: 3, is_approved: true, suggested_for_global: false },
+        { $id: 's2', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Go', description: 'A compiled language', years_of_experience: 1, is_approved: true, suggested_for_global: false },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 2 });
+      // 'javascript' is in the description of TypeScript but not in the name
+      const result = await userCustomSkillRepository.searchUserCustomSkills('user-1', 'javascript');
+      expect(result).toHaveLength(1);
+      expect(result[0]!.name).toBe('TypeScript');
+    });
   });
 });
 
