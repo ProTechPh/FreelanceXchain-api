@@ -183,3 +183,43 @@ describe('merged branch coverage', () => {
     expect(typeof result).toBe('number');
   });
 });
+
+describe('PaymentRepository - Additional Branch Coverage', () => {
+  it('getTotalSpent returns 0 on database error', async () => {
+    const mockDb = (globalThis as any).__mockDatabases || mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockRejectedValueOnce(new Error('db down'));
+    const result = await PaymentRepository.getTotalSpent('user-1');
+    expect(result).toBe(0);
+  });
+
+  it('getTotalEarnings returns 0 on database error', async () => {
+    const mockDb = (globalThis as any).__mockDatabases || mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockRejectedValueOnce(new Error('db down'));
+    const result = await PaymentRepository.getTotalEarnings('user-1');
+    expect(result).toBe(0);
+  });
+
+  it('getTotalSpent with documents containing null amounts', async () => {
+    const mockDb = (globalThis as any).__mockDatabases || mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [{ amount: null }, { amount: 100 }, { amount: undefined }],
+      total: 3,
+    });
+    const result = await PaymentRepository.getTotalSpent('user-1');
+    expect(result).toBe(100);
+  });
+
+  it('getTotalEarnings with documents containing null amounts', async () => {
+    const mockDb = (globalThis as any).__mockDatabases || mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [{ amount: 50 }, { amount: null }],
+      total: 2,
+    });
+    const result = await PaymentRepository.getTotalEarnings('user-1');
+    expect(result).toBe(50);
+  });
+});

@@ -908,3 +908,220 @@ describe('didit-client - remaining coverage', () => {
     }
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Missing Branch Coverage Tests
+// ═══════════════════════════════════════════════════════════════
+
+describe('didit-client - Missing Branch Coverage', () => {
+  const importModule = async () => {
+    return await import('../../services/didit-client.js');
+  };
+
+  describe('non-Error thrown in catch blocks', () => {
+    it('should handle non-Error throw in createVerificationSession', async () => {
+      const { createVerificationSession } = await importModule();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockRejectedValueOnce('raw string error');
+      const result = await createVerificationSession({ workflow_id: 'wf-1' });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.code).toBe('NETWORK_ERROR');
+        expect(result.error.error.message).toBe('Failed to connect to Didit API');
+      }
+      globalThis.fetch = originalFetch;
+    });
+
+    it('should handle non-Error throw in getVerificationDecision', async () => {
+      const { getVerificationDecision } = await importModule();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockRejectedValueOnce(42);
+      const result = await getVerificationDecision('session-123');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.message).toBe('Failed to connect to Didit API');
+      }
+      globalThis.fetch = originalFetch;
+    });
+
+    it('should handle non-Error throw in getVerificationSession', async () => {
+      const { getVerificationSession } = await importModule();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockRejectedValueOnce(null);
+      const result = await getVerificationSession('session-123');
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.message).toBe('Failed to connect to Didit API');
+      }
+      globalThis.fetch = originalFetch;
+    });
+
+    it('should handle non-Error throw in verifyIdDocument', async () => {
+      const { verifyIdDocument } = await importModule();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockRejectedValueOnce({ code: 500 });
+      const result = await verifyIdDocument(Buffer.from('front'));
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.message).toBe('Failed to connect to Didit API');
+      }
+      globalThis.fetch = originalFetch;
+    });
+
+    it('should handle non-Error throw in checkPassiveLiveness', async () => {
+      const { checkPassiveLiveness } = await importModule();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockRejectedValueOnce('timeout');
+      const result = await checkPassiveLiveness(Buffer.from('selfie'));
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.message).toBe('Failed to connect to Didit API');
+      }
+      globalThis.fetch = originalFetch;
+    });
+
+    it('should handle non-Error throw in matchFaces', async () => {
+      const { matchFaces } = await importModule();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockRejectedValueOnce(false);
+      const result = await matchFaces(Buffer.from('user'), Buffer.from('ref'));
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.message).toBe('Failed to connect to Didit API');
+      }
+      globalThis.fetch = originalFetch;
+    });
+
+    it('should handle non-Error throw in screenAml', async () => {
+      const { screenAml } = await importModule();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockRejectedValueOnce('network down');
+      const result = await screenAml({ full_name: 'John', entity_type: 'person' });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.error.message).toBe('Failed to connect to Didit API');
+      }
+      globalThis.fetch = originalFetch;
+    });
+  });
+
+  describe('DIDIT_API_KEY undefined', () => {
+    it('should send empty string x-api-key when DIDIT_API_KEY is undefined', async () => {
+      // DIDIT_API_KEY is captured as a module-level const, so we need jest.resetModules() to re-import
+      const originalKey = process.env.DIDIT_API_KEY;
+      delete process.env.DIDIT_API_KEY;
+      jest.resetModules();
+      const { createVerificationSession } = await import('../../services/didit-client.js');
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ session_id: 's1' }),
+      });
+      await createVerificationSession({ workflow_id: 'wf-1' });
+      const callHeaders = (globalThis.fetch as jest.Mock).mock.calls[0][1].headers;
+      expect(callHeaders['x-api-key']).toBe('');
+      globalThis.fetch = originalFetch;
+      if (originalKey) process.env.DIDIT_API_KEY = originalKey;
+    });
+  });
+
+  describe('verifyWebhookSignature insecure dev bypass', () => {
+    it('should return true when ALLOW_INSECURE=true and NODE_ENV=development', async () => {
+      const origSecret = process.env.DIDIT_WEBHOOK_SECRET;
+      const origInsecure = process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS;
+      const origEnv = process.env.NODE_ENV;
+      delete process.env.DIDIT_WEBHOOK_SECRET;
+      process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS = 'true';
+      process.env.NODE_ENV = 'development';
+      const { verifyWebhookSignature } = await importModule();
+      const result = verifyWebhookSignature('{}', 'sig', '123');
+      expect(result).toBe(true);
+      if (origSecret) process.env.DIDIT_WEBHOOK_SECRET = origSecret;
+      if (origInsecure) process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS = origInsecure;
+      if (origEnv) process.env.NODE_ENV = origEnv;
+    });
+
+    it('should return false when ALLOW_INSECURE=true but NODE_ENV is not development', async () => {
+      const origSecret = process.env.DIDIT_WEBHOOK_SECRET;
+      const origInsecure = process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS;
+      const origEnv = process.env.NODE_ENV;
+      delete process.env.DIDIT_WEBHOOK_SECRET;
+      process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS = 'true';
+      process.env.NODE_ENV = 'test';
+      const { verifyWebhookSignature } = await importModule();
+      const result = verifyWebhookSignature('{}', 'sig', '123');
+      expect(result).toBe(false);
+      if (origSecret) process.env.DIDIT_WEBHOOK_SECRET = origSecret;
+      if (origInsecure) process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS = origInsecure;
+      if (origEnv) process.env.NODE_ENV = origEnv;
+    });
+
+    it('should return false when ALLOW_INSECURE is not true', async () => {
+      const origSecret = process.env.DIDIT_WEBHOOK_SECRET;
+      const origInsecure = process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS;
+      const origEnv = process.env.NODE_ENV;
+      delete process.env.DIDIT_WEBHOOK_SECRET;
+      process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS = 'false';
+      process.env.NODE_ENV = 'development';
+      const { verifyWebhookSignature } = await importModule();
+      const result = verifyWebhookSignature('{}', 'sig', '123');
+      expect(result).toBe(false);
+      if (origSecret) process.env.DIDIT_WEBHOOK_SECRET = origSecret;
+      if (origInsecure) process.env.ALLOW_INSECURE_DIDIT_WEBHOOKS = origInsecure;
+      if (origEnv) process.env.NODE_ENV = origEnv;
+    });
+  });
+
+  describe('verifyWebhookSignature with array/object payloads', () => {
+    it('should verify signature with payload containing arrays (shortenFloats/sortKeys array branch)', async () => {
+      const crypto = await import('crypto');
+      const origSecret = process.env.DIDIT_WEBHOOK_SECRET;
+      process.env.DIDIT_WEBHOOK_SECRET = 'test-secret';
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+
+      const payload = { items: [3.0, 2.5, 1], nested: { z: 1, a: [5.0, 3.14] } };
+      const payloadStr = JSON.stringify(payload);
+
+      const { verifyWebhookSignature } = await importModule();
+      // Compute expected canonical: shortenFloats then sortKeys
+      const shortenFloats = (v: unknown): unknown => {
+        if (Array.isArray(v)) return v.map(shortenFloats);
+        if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, shortenFloats(x)]));
+        if (typeof v === 'number' && !Number.isInteger(v) && v % 1 === 0) return Math.trunc(v);
+        return v;
+      };
+      const sortKeys = (v: unknown): unknown => {
+        if (Array.isArray(v)) return v.map(sortKeys);
+        if (v && typeof v === 'object') return Object.keys(v as object).sort().reduce((acc: Record<string, unknown>, k) => { acc[k] = sortKeys((v as Record<string, unknown>)[k]); return acc; }, {});
+        return v;
+      };
+      const canonical = JSON.stringify(sortKeys(shortenFloats(payload)));
+      const expectedSig = crypto.createHmac('sha256', 'test-secret').update(canonical, 'utf8').digest('hex');
+
+      const result = verifyWebhookSignature(payloadStr, expectedSig, timestamp);
+      expect(result).toBe(true);
+      if (origSecret) process.env.DIDIT_WEBHOOK_SECRET = origSecret;
+    });
+
+    it('should verify signature with whole-number floats truncated', async () => {
+      const crypto = await import('crypto');
+      const origSecret = process.env.DIDIT_WEBHOOK_SECRET;
+      process.env.DIDIT_WEBHOOK_SECRET = 'test-secret';
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+
+      // 3.0 should become 3, 2.5 should stay 2.5
+      const payload = { amount: 3.0, rate: 2.5, count: 10 };
+      const payloadStr = JSON.stringify(payload);
+
+      const { verifyWebhookSignature } = await importModule();
+      // canonical: { amount: 3, count: 10, rate: 2.5 } (sorted keys, truncated floats)
+      const canonical = JSON.stringify({ amount: 3, count: 10, rate: 2.5 });
+      const expectedSig = crypto.createHmac('sha256', 'test-secret').update(canonical, 'utf8').digest('hex');
+
+      const result = verifyWebhookSignature(payloadStr, expectedSig, timestamp);
+      expect(result).toBe(true);
+      if (origSecret) process.env.DIDIT_WEBHOOK_SECRET = origSecret;
+    });
+  });
+});

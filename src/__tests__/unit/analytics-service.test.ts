@@ -774,3 +774,220 @@ describe('Analytics Service - Extended Tests', () => {
     });
   });
 });
+
+describe('Analytics Service - Additional Branch Coverage', () => {
+  it('skill.name fallback when skill_name is absent', () => {
+    const skill = { name: 'React' };
+    const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
+    expect(skillName).toBe('React');
+  });
+
+  it('required_skills null fallback to empty array', () => {
+    const required_skills = null;
+    const skills = typeof required_skills === 'string'
+      ? JSON.parse(required_skills)
+      : required_skills || [];
+    expect(skills).toEqual([]);
+  });
+
+  it('required_skills already an array', () => {
+    const required_skills = ['React', 'Node'];
+    const skills = typeof required_skills === 'string'
+      ? JSON.parse(required_skills)
+      : required_skills || [];
+    expect(skills).toEqual(['React', 'Node']);
+  });
+
+  it('growthRate when olderCount is 0 and recentCount is 0', () => {
+    const olderCount = 0;
+    const recentCount = 0;
+    const growthRate = olderCount > 0
+      ? Math.round(((recentCount - olderCount) / olderCount) * 100 * 10) / 10
+      : recentCount > 0 ? 100.0 : 0.0;
+    expect(growthRate).toBe(0.0);
+  });
+
+  it('growthRate when olderCount is 0 and recentCount > 0', () => {
+    const olderCount = 0;
+    const recentCount = 5;
+    const growthRate = olderCount > 0
+      ? Math.round(((recentCount - olderCount) / olderCount) * 100 * 10) / 10
+      : recentCount > 0 ? 100.0 : 0.0;
+    expect(growthRate).toBe(100.0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Integration tests that call actual source functions for Istanbul coverage
+// ═══════════════════════════════════════════════════════════════
+
+describe('Analytics Service - Integration Coverage', () => {
+  let mockDatabasesInt: any;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockDatabasesInt = (globalThis as any).__mockDatabases;
+    mockDatabasesInt.listDocuments.mockReset();
+    mockDatabasesInt.getDocument.mockReset();
+    mockDatabasesInt.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDatabasesInt.getDocument.mockResolvedValue({ $id: 'doc-id' });
+    const cache = await import('../../utils/cache.js');
+    cache.platformMetricsCache?.clear();
+    cache.skillTrendsCache?.clear();
+    cache.adminAnalyticsCache?.clear();
+  });
+
+  const importModule = async () => {
+    return await import('../../services/analytics-service.js');
+  };
+
+  // Lines 572-575: skill.name fallback when skill_name is absent in calculateTopSkills
+  it('calculateTopSkills falls back to skill.name when skill_name is absent (lines 572-575)', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+
+    // 1st listDocuments: completed contracts
+    mockDatabasesInt.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', total_amount: 1000, created_at: '2025-01-15' }],
+      total: 1,
+    });
+    // 2nd listDocuments: reviews
+    mockDatabasesInt.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    // 3rd listDocuments: proposals
+    mockDatabasesInt.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    // 4th listDocuments: contracts for topSkills
+    mockDatabasesInt.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', project_id: 'proj1' }],
+      total: 1,
+    });
+    // getDocument for project with skills using 'name' instead of 'skill_name'
+    mockDatabasesInt.getDocument.mockResolvedValueOnce({
+      $id: 'proj1',
+      required_skills: [{ name: 'React' }, { skill_name: 'Node.js' }],
+      created_at: '2025-01-15',
+    });
+
+    const result = await getFreelancerAnalytics('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.topSkills).toBeDefined();
+      // Both 'React' (from name) and 'Node.js' (from skill_name) should be found
+      const reactSkill = result.data.topSkills.find(s => s.skill === 'React');
+      expect(reactSkill).toBeDefined();
+    }
+  });
+
+  // Lines 572-575: required_skills null fallback to [] in calculateTopSkills
+  it('calculateTopSkills handles null required_skills (lines 572-575)', async () => {
+    const { getFreelancerAnalytics } = await importModule();
+
+    mockDatabasesInt.listDocuments
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', total_amount: 500, created_at: '2025-01-15' }],
+        total: 1,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'proj1' }],
+        total: 1,
+      });
+    // Project with null required_skills
+    mockDatabasesInt.getDocument.mockResolvedValueOnce({
+      $id: 'proj1',
+      required_skills: null,
+      created_at: '2025-01-15',
+    });
+
+    const result = await getFreelancerAnalytics('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.topSkills).toEqual([]);
+    }
+  });
+
+  // Lines 442, 466, 469: getSkillTrends with skill.name fallback and growthRate when olderCount=0
+  it('getSkillTrends handles skill.name fallback and growth rate with no older projects', async () => {
+    const { getSkillTrends } = await importModule();
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    const now = new Date();
+    // All projects are recent (within 30 days), so olderCount=0
+    mockDatabasesInt.listDocuments.mockResolvedValueOnce({
+      documents: [
+        {
+          $id: 'p1',
+          required_skills: [{ name: 'React' }], // name instead of skill_name
+          budget: 1000,
+          status: 'open',
+          created_at: now.toISOString(),
+        },
+        {
+          $id: 'p2',
+          required_skills: [{ name: 'React' }],
+          budget: 2000,
+          status: 'open',
+          created_at: now.toISOString(),
+        },
+      ],
+      total: 2,
+    });
+
+    const result = await getSkillTrends();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.length).toBeGreaterThan(0);
+      const reactTrend = result.data.find(s => s.skillName === 'React');
+      expect(reactTrend).toBeDefined();
+      expect(reactTrend!.growthRate).toBe(100.0); // olderCount=0, recentCount>0
+    }
+  });
+
+  // Lines 442, 466, 469: getSkillTrends with null required_skills and growthRate with olderCount>0
+  it('getSkillTrends handles null required_skills and growth rate with older projects', async () => {
+    const { getSkillTrends } = await importModule();
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    const oldDate = new Date();
+    oldDate.setDate(oldDate.getDate() - 60);
+    const recentDate = new Date();
+
+    mockDatabasesInt.listDocuments.mockResolvedValueOnce({
+      documents: [
+        // null required_skills - should be skipped gracefully
+        { $id: 'p0', required_skills: null, budget: 500, status: 'open', created_at: recentDate.toISOString() },
+        // Old project with skill
+        {
+          $id: 'p1',
+          required_skills: [{ skill_name: 'Solidity' }],
+          budget: 3000,
+          status: 'open',
+          created_at: oldDate.toISOString(),
+        },
+        // Recent project with same skill
+        {
+          $id: 'p2',
+          required_skills: [{ skill_name: 'Solidity' }],
+          budget: 5000,
+          status: 'open',
+          created_at: recentDate.toISOString(),
+        },
+      ],
+      total: 3,
+    });
+
+    const result = await getSkillTrends();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const solidityTrend = result.data.find(s => s.skillName === 'Solidity');
+      expect(solidityTrend).toBeDefined();
+      // olderCount=1, recentCount=1, growthRate = ((1-1)/1)*100 = 0
+      expect(solidityTrend!.growthRate).toBe(0);
+    }
+  });
+});

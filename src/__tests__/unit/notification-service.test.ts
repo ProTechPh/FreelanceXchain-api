@@ -498,3 +498,29 @@ describe('Notification Service - Unit Tests', () => {
     }
   });
 });
+
+describe('Notification Service - Branch Coverage', () => {
+  it('createNotification with undefined data should default to empty object', async () => {
+    const { createNotification } = await import('../../services/notification-service.js');
+    const result = await createNotification({
+      userId: 'u1',
+      type: 'message',
+      title: 'Test',
+      message: 'Test message',
+      // data is not provided - should default to {}
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('createNotification with null data should default to empty object', async () => {
+    const { createNotification } = await import('../../services/notification-service.js');
+    const result = await createNotification({
+      userId: 'u1',
+      type: 'message',
+      title: 'Test',
+      message: 'Test message',
+      data: null as any,
+    });
+    expect(result.success).toBe(true);
+  });
+});
