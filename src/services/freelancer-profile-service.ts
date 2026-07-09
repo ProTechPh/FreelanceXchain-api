@@ -243,7 +243,7 @@ export async function addSkillsToProfile(
     }
   }
 
-  const updatedSkills = [...existingProfile.skills, ...newSkills];
+  const updatedSkills = [...(existingProfile.skills || []), ...newSkills];
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {
     skills: updatedSkills,
   });

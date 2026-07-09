@@ -1391,3 +1391,138 @@ describe('AI Client - Extended Tests', () => {
     });
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Branch coverage: ai-client.ts lines 133-134, 225, 403
+// generationConfig defaults, firstPart no text, matchedSkills validation
+// ═══════════════════════════════════════════════════════════════
+
+describe('AI Client - Additional branch coverage', () => {
+  let mockFetchBranch: jest.Mock;
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+      config: {
+        llm: {
+          apiKey: 'test-api-key',
+          apiUrl: 'https://api.test.com',
+          model: 'test-model',
+        },
+      },
+    }));
+    jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
+      logger: {
+        info: jest.fn(),
+        warn: jest.fn(),
+        error: jest.fn(),
+        debug: jest.fn(),
+      },
+    }));
+    jest.clearAllMocks();
+    mockFetchBranch = jest.fn<(...args: any[]) => Promise<any>>();
+    global.fetch = mockFetchBranch as any;
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  const importModule = async () => {
+    return await import('../../services/ai-client.js');
+  };
+
+  it('should use default temperature 0.7 when generationConfig is undefined (lines 133-134)', async () => {
+    const { generateContent } = await importModule();
+
+    mockFetchBranch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'Response', role: 'assistant' }, finish_reason: 'stop' }],
+      }),
+    } as any);
+
+    // Call without generationConfig - should use defaults
+    const result = await generateContent('Test prompt without config');
+    expect(result).toBe('Response');
+
+    // Verify the request body used default temperature
+    const requestBody = JSON.parse(mockFetchBranch.mock.calls[0][1].body);
+    expect(requestBody.temperature).toBe(0.7);
+    expect(requestBody.max_tokens).toBe(2048);
+  });
+
+  it('should use custom generationConfig when provided (lines 133-134)', async () => {
+    const { generateContent } = await importModule();
+
+    mockFetchBranch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { content: 'Custom response', role: 'assistant' }, finish_reason: 'stop' }],
+      }),
+    } as any);
+
+    const result = await generateContent({
+      contents: [{ parts: [{ text: 'Test' }] }],
+      generationConfig: { temperature: 0.3, maxOutputTokens: 1024 },
+    });
+    expect(result).toBe('Custom response');
+  });
+
+  it('should return null when firstPart has no text field (line 225)', async () => {
+    const { generateContent } = await importModule();
+
+    mockFetchBranch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{ message: { role: 'assistant' }, finish_reason: 'stop' }],
+        // message.content is undefined, which means firstPart.text would be undefined
+      }),
+    } as any);
+
+    const result = await generateContent('Test prompt');
+    // When content is empty/undefined, should return AI_EMPTY_RESPONSE error
+    expect(typeof result).toBe('object');
+    if (typeof result === 'object' && result !== null) {
+      expect((result as any).code).toBe('AI_EMPTY_RESPONSE');
+    }
+  });
+
+  it('should filter matchedSkills that are not in freelancer or project skills (line 403)', async () => {
+    const { analyzeSkillMatch } = await importModule();
+
+    mockFetchBranch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        choices: [{
+          message: {
+            content: JSON.stringify({
+              matchScore: 75,
+              matchedSkills: ['JavaScript', 'FakeSkill', 'Python'],
+              missingSkills: [],
+              reasoning: 'Good match',
+            }),
+            role: 'assistant',
+          },
+          finish_reason: 'stop',
+        }],
+      }),
+    } as any);
+
+    // Skills must be in BOTH freelancer and project lists to pass validation (line 403)
+    const result = await analyzeSkillMatch({
+      freelancerSkills: [{ skillId: '1', skillName: 'JavaScript' }, { skillId: '3', skillName: 'Python' }],
+      projectRequirements: [{ skillId: '2', skillName: 'Python' }, { skillId: '4', skillName: 'JavaScript' }],
+    });
+
+    expect(typeof result).toBe('object');
+    if ('matchScore' in result) {
+      // FakeSkill should be filtered out since it's not in either list
+      expect(result.matchedSkills).toContain('JavaScript');
+      expect(result.matchedSkills).toContain('Python');
+      expect(result.matchedSkills).not.toContain('FakeSkill');
+    }
+  });
+});

@@ -1003,3 +1003,69 @@ describe('Saved Search Service - Extended Coverage', () => {
     });
   });
 });
+
+describe('Saved Search Service - Additional Branch Coverage', () => {
+  const importModule = async () => {
+    return await import('../../services/saved-search-service.js');
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockSavedSearchRepository.getById?.mockReset?.();
+    mockSavedSearchRepository.findByUser?.mockReset?.();
+    mockSavedSearchRepository.create?.mockReset?.();
+    mockSavedSearchRepository.update?.mockReset?.();
+    mockSavedSearchRepository.delete?.mockReset?.();
+  });
+
+  it('L276: s.skill_name || s.name || fallback when skill_name is falsy', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
+      filters: JSON.stringify({ skillIds: ['skill-1'] }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    // Freelancer profile with skills that have 'name' but not 'skill_name'
+    mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+      items: [{
+        user_id: 'fp-1',
+        skills: [{ name: 'JavaScript', skill_name: null, category_id: 'cat-1', years_of_experience: 3 }],
+        full_name: 'John', headline: 'Dev', bio: 'bio', hourly_rate: 50,
+        availability: 'full_time',
+      }],
+      total: 1,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.results).toBeDefined();
+    }
+  });
+
+  it('L312: s.name || fallback when name is falsy in skill mapping', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
+      filters: JSON.stringify({ skillIds: ['skill-1'] }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    // Skills with neither skill_name nor name
+    mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+      items: [{
+        user_id: 'fp-1',
+        skills: [{ skill_name: null, name: null, category_id: 'cat-1', years_of_experience: 2 }],
+        full_name: 'Jane', headline: 'Dev', bio: 'bio', hourly_rate: 40,
+        availability: 'part_time',
+      }],
+      total: 1,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+  });
+});

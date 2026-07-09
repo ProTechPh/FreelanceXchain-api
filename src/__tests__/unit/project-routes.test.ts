@@ -1212,3 +1212,66 @@ describe('project-routes - additional line coverage', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Additional error branch verification
+// ═══════════════════════════════════════════════════════════════
+
+describe('project-routes - error branch verification', () => {
+  let app: any;
+  const mockGetProjectById = jest.fn<any>();
+  const mockGetProposalsByProject = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      createProject: jest.fn(),
+      getProjectById: mockGetProjectById,
+      updateProject: jest.fn(),
+      setMilestones: jest.fn(),
+      listOpenProjects: jest.fn(),
+      searchProjects: jest.fn(),
+      listProjectsBySkills: jest.fn(),
+      listProjectsByBudgetRange: jest.fn(),
+      listProjectsByEmployer: jest.fn(),
+      listProjectsByCategory: jest.fn(),
+      listProjectsByMultipleCategories: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () => ({
+      getProposalsByProject: mockGetProposalsByProject,
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+      uploadMultipleFiles: jest.fn(),
+      cleanupUploadedFiles: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
+      uploadProjectAttachments: (_req: any, _res: any, next: any) => next(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/project-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/projects', router);
+    jest.clearAllMocks();
+  });
+
+  it('GET /:id error returns 404 with error body', async () => {
+    mockGetProjectById.mockResolvedValueOnce({ success: false, error: { code: 'DB_ERROR', message: 'Connection failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/projects/p1');
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('DB_ERROR');
+    expect(res.body.error.message).toBe('Connection failed');
+  });
+
+  it('GET /:id/proposals service failure returns 404', async () => {
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', employer_id: 'user-1' } });
+    mockGetProposalsByProject.mockResolvedValueOnce({ success: false, error: { code: 'DB_ERROR', message: 'Query failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/projects/p1/proposals');
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('DB_ERROR');
+    expect(res.body.error.message).toBe('Query failed');
+  });
+});

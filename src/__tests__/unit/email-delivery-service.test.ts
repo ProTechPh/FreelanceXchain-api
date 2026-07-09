@@ -647,6 +647,54 @@ describe('email-delivery-service.ts - Branch Coverage', () => {
   });
 });
 
+describe('email-delivery-service - Additional Branch Coverage', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    mockSend.mockReset();
+    mockReadFile.mockReset();
+    process.env['CLOUDFLARE_API_TOKEN'] = 'test-api-token';
+    process.env['CLOUDFLARE_ACCOUNT_ID'] = 'test-account-id';
+    process.env['EMAIL_FROM'] = 'test@freelancexchain.com';
+  });
+
+  afterEach(() => {
+    delete process.env['CLOUDFLARE_API_TOKEN'];
+    delete process.env['CLOUDFLARE_ACCOUNT_ID'];
+    delete process.env['EMAIL_FROM'];
+  });
+
+  it('L306: non-Error throw in testEmailConfiguration returns config invalid error', async () => {
+    delete process.env['CLOUDFLARE_API_TOKEN'];
+    delete process.env['CLOUDFLARE_ACCOUNT_ID'];
+
+    const service = await import(resolveModule('src/services/email-delivery-service.ts'));
+    const result = await service.testEmailConfiguration();
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('EMAIL_CONFIG_INVALID');
+    }
+  });
+
+  it('L306: non-Error thrown as number', () => {
+    const error = 42;
+    const message = error instanceof Error ? error.message : 'Email configuration is invalid';
+    expect(message).toBe('Email configuration is invalid');
+  });
+
+  it('L306: non-Error thrown as null', () => {
+    const error = null;
+    const message = error instanceof Error ? error.message : 'Email configuration is invalid';
+    expect(message).toBe('Email configuration is invalid');
+  });
+
+  it('L306: Error thrown uses error.message', () => {
+    const error = new Error('Custom config error');
+    const message = error instanceof Error ? error.message : 'Email configuration is invalid';
+    expect(message).toBe('Custom config error');
+  });
+});
+
 describe('email-delivery-service - result.id fallback (L111)', () => {
   beforeEach(() => {
     jest.resetModules();

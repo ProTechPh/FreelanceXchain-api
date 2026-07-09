@@ -412,3 +412,53 @@ describe('email-inbox-routes - send and reply service calls', () => {
     expect(mockReplyToEmail).toHaveBeenCalledWith('test-user-id', 'e4', 'Plain', '<p>Rich</p>');
   });
 });
+
+describe('email-inbox-routes - additional branch coverage for || operators', () => {
+  let app: express.Express;
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env = { ...originalEnv, EMAIL_WEBHOOK_SECRET: 'test-secret' };
+    app = express();
+    app.use(express.json());
+    app.use('/api/emails', emailInboxRouter);
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('POST /send with text as empty string and html provided (text || \'\' branch)', async () => {
+    mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-5' } });
+    const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Hi', text: '', html: '<p>Hi</p>' });
+    expect(res.status).toBe(201);
+    // text is '' (falsy) so text || '' => '', html is truthy so html || text || '' => '<p>Hi</p>'
+    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Hi', '', '<p>Hi</p>');
+  });
+
+  it('POST /:id/reply with text as empty string and html provided (text || \'\' branch)', async () => {
+    mockReplyToEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'reply-5' } });
+    const res = await request(app).post('/api/emails/e5/reply').send({ text: '', html: '<p>Reply</p>' });
+    expect(res.status).toBe(201);
+    // text is '' (falsy) so text || '' => '', html is truthy so html || text || '' => '<p>Reply</p>'
+    expect(mockReplyToEmail).toHaveBeenCalledWith('test-user-id', 'e5', '', '<p>Reply</p>');
+  });
+
+  it('POST /:id/reply with text as empty string and no html passes validation (html || text || \'\' branch)', async () => {
+    // text: '' is falsy, html: undefined is falsy
+    // Validation: !text && !html => true && true => true => 400
+    const res = await request(app).post('/api/emails/e5/reply').send({ text: '' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST /send with text as empty string and no html (html || text || \'\' fallback to text then \'\')', async () => {
+    mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-6' } });
+    const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Hi', text: '' });
+    expect(res.status).toBe(201);
+    // text is '' (falsy) so text || '' => ''
+    // html is undefined (falsy), text is '' (falsy), so html || text || '' => ''
+    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Hi', '', '');
+  });
+});

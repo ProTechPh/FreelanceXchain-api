@@ -1005,6 +1005,116 @@ describe('didit-client - Missing Branch Coverage', () => {
     });
   });
 
+  describe('DIDIT_API_KEY undefined for remaining endpoints', () => {
+    it('should send empty x-api-key in getVerificationDecision when DIDIT_API_KEY is undefined', async () => {
+      const originalKey = process.env.DIDIT_API_KEY;
+      delete process.env.DIDIT_API_KEY;
+      jest.resetModules();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ decision: 'approved', status: 'Completed' }),
+      });
+      const { getVerificationDecision } = await import('../../services/didit-client.js');
+      await getVerificationDecision('session-123');
+      const callHeaders = (globalThis.fetch as jest.Mock).mock.calls[0][1].headers;
+      expect(callHeaders['x-api-key']).toBe('');
+      globalThis.fetch = originalFetch;
+      if (originalKey) process.env.DIDIT_API_KEY = originalKey;
+    });
+
+    it('should send empty x-api-key in getVerificationSession when DIDIT_API_KEY is undefined', async () => {
+      const originalKey = process.env.DIDIT_API_KEY;
+      delete process.env.DIDIT_API_KEY;
+      jest.resetModules();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ id: 'session-123', status: 'Approved' }),
+      });
+      const { getVerificationSession } = await import('../../services/didit-client.js');
+      await getVerificationSession('session-123');
+      const callHeaders = (globalThis.fetch as jest.Mock).mock.calls[0][1].headers;
+      expect(callHeaders['x-api-key']).toBe('');
+      globalThis.fetch = originalFetch;
+      if (originalKey) process.env.DIDIT_API_KEY = originalKey;
+    });
+
+    it('should send empty x-api-key in verifyIdDocument when DIDIT_API_KEY is undefined', async () => {
+      const originalKey = process.env.DIDIT_API_KEY;
+      delete process.env.DIDIT_API_KEY;
+      jest.resetModules();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ request_id: 'req-1', id_verification: { status: 'Approved' } }),
+      });
+      const { verifyIdDocument } = await import('../../services/didit-client.js');
+      await verifyIdDocument(Buffer.from('front'));
+      const callHeaders = (globalThis.fetch as jest.Mock).mock.calls[0][1].headers;
+      expect(callHeaders['x-api-key']).toBe('');
+      globalThis.fetch = originalFetch;
+      if (originalKey) process.env.DIDIT_API_KEY = originalKey;
+    });
+
+    it('should send empty x-api-key in checkPassiveLiveness when DIDIT_API_KEY is undefined', async () => {
+      const originalKey = process.env.DIDIT_API_KEY;
+      delete process.env.DIDIT_API_KEY;
+      jest.resetModules();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ request_id: 'req-1', passive_liveness: { status: 'Approved', score: 0.99 } }),
+      });
+      const { checkPassiveLiveness } = await import('../../services/didit-client.js');
+      await checkPassiveLiveness(Buffer.from('selfie'));
+      const callHeaders = (globalThis.fetch as jest.Mock).mock.calls[0][1].headers;
+      expect(callHeaders['x-api-key']).toBe('');
+      globalThis.fetch = originalFetch;
+      if (originalKey) process.env.DIDIT_API_KEY = originalKey;
+    });
+
+    it('should send empty x-api-key in matchFaces when DIDIT_API_KEY is undefined', async () => {
+      const originalKey = process.env.DIDIT_API_KEY;
+      delete process.env.DIDIT_API_KEY;
+      jest.resetModules();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ request_id: 'req-1', face_match: { status: 'Approved', score: 0.95 } }),
+      });
+      const { matchFaces } = await import('../../services/didit-client.js');
+      await matchFaces(Buffer.from('user'), Buffer.from('ref'));
+      const callHeaders = (globalThis.fetch as jest.Mock).mock.calls[0][1].headers;
+      expect(callHeaders['x-api-key']).toBe('');
+      globalThis.fetch = originalFetch;
+      if (originalKey) process.env.DIDIT_API_KEY = originalKey;
+    });
+
+    it('should send empty x-api-key in screenAml when DIDIT_API_KEY is undefined', async () => {
+      const originalKey = process.env.DIDIT_API_KEY;
+      delete process.env.DIDIT_API_KEY;
+      jest.resetModules();
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ request_id: 'req-1', aml: { status: 'Approved', total_hits: 0, hits: [], entity_type: 'person' } }),
+      });
+      const { screenAml } = await import('../../services/didit-client.js');
+      await screenAml({ full_name: 'John', entity_type: 'person' });
+      const callHeaders = (globalThis.fetch as jest.Mock).mock.calls[0][1].headers;
+      expect(callHeaders['x-api-key']).toBe('');
+      globalThis.fetch = originalFetch;
+      if (originalKey) process.env.DIDIT_API_KEY = originalKey;
+    });
+  });
+
   describe('DIDIT_API_KEY undefined', () => {
     it('should send empty string x-api-key when DIDIT_API_KEY is undefined', async () => {
       // DIDIT_API_KEY is captured as a module-level const, so we need jest.resetModules() to re-import

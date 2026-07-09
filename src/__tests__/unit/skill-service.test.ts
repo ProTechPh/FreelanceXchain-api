@@ -433,6 +433,91 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════
+// Branch coverage: skill-repository.ts line 165
+// searchSkillsByKeyword: name match, description match, neither
+// ═══════════════════════════════════════════════════════════════
+
+describe('Skill Service - searchSkillsByKeyword branch coverage (line 165)', () => {
+  beforeEach(() => {
+    categoryStore.clear();
+    skillStore.clear();
+  });
+
+  it('should return skill when keyword matches name but not description', async () => {
+    const categoryResult = await createCategory({ name: 'Frontend', description: 'Frontend development tools' });
+    expect(categoryResult.success).toBe(true);
+    if (!categoryResult.success) return;
+
+    await createSkill({
+      categoryId: categoryResult.data.id,
+      name: 'ReactJavaScript',
+      description: 'A unique xyzzy framework for building UIs',
+    });
+
+    // Search for a keyword that appears in name but NOT in description
+    const results = await searchSkills('React');
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const found = results.find(r => r.name === 'ReactJavaScript');
+    expect(found).toBeDefined();
+  });
+
+  it('should return skill when keyword matches description but not name', async () => {
+    const categoryResult = await createCategory({ name: 'Backend', description: 'Backend tools' });
+    expect(categoryResult.success).toBe(true);
+    if (!categoryResult.success) return;
+
+    await createSkill({
+      categoryId: categoryResult.data.id,
+      name: 'GoLang',
+      description: 'An amazing framework for server-side applications',
+    });
+
+    // Search for 'framework' which is in description but not in name 'GoLang'
+    const results = await searchSkills('framework');
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    const found = results.find(r => r.name === 'GoLang');
+    expect(found).toBeDefined();
+  });
+
+  it('should return empty when keyword matches neither name nor description', async () => {
+    const categoryResult = await createCategory({ name: 'Mobile', description: 'Mobile development' });
+    expect(categoryResult.success).toBe(true);
+    if (!categoryResult.success) return;
+
+    await createSkill({
+      categoryId: categoryResult.data.id,
+      name: 'SwiftUI',
+      description: 'Apple UI toolkit',
+    });
+
+    // Search for a keyword that doesn't appear anywhere
+    const results = await searchSkills('zzzznonexistent');
+    expect(results.length).toBe(0);
+  });
+
+  it('should not return inactive skills even when keyword matches', async () => {
+    const categoryResult = await createCategory({ name: 'Data', description: 'Data science tools' });
+    expect(categoryResult.success).toBe(true);
+    if (!categoryResult.success) return;
+
+    const skillResult = await createSkill({
+      categoryId: categoryResult.data.id,
+      name: 'TensorFlow',
+      description: 'Machine learning framework',
+    });
+    expect(skillResult.success).toBe(true);
+    if (!skillResult.success) return;
+
+    // Deprecate the skill
+    await deprecateSkill(skillResult.data.id);
+
+    // Search should not return the deprecated skill
+    const results = await searchSkills('Tensor');
+    expect(results.length).toBe(0);
+  });
+});
+
 describe('Skill Service - Extended Coverage', () => {
   beforeEach(() => {
     jest.clearAllMocks();

@@ -392,3 +392,45 @@ describe('favorite-routes.ts - Branch Coverage', () => {
     expect(res.body.error.code).toBe('ERROR');
   });
 });
+
+describe('favorite-routes - additional branch coverage', () => {
+  let app: any;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/favorites', favoriteRouter);
+  });
+
+  it('POST / with no error property (covers ?. short-circuit)', async () => {
+    mockAddFavorite.mockResolvedValue({ success: false });
+    const res = await request(app).post('/api/favorites').send({ targetType: 'project', targetId: 'proj-1' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBeUndefined();
+    expect(res.body.error.message).toBeUndefined();
+  });
+
+  it('GET / with no error property (covers ?. short-circuit)', async () => {
+    mockGetUserFavorites.mockResolvedValue({ success: false });
+    const res = await request(app).get('/api/favorites');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBeUndefined();
+    expect(res.body.error.message).toBeUndefined();
+  });
+
+  it('DELETE /:targetType/:targetId with no error property (covers ?. short-circuit)', async () => {
+    mockRemoveFavorite.mockResolvedValue({ success: false });
+    const res = await request(app).delete('/api/favorites/project/550e8400-e29b-41d4-a716-446655440000');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBeUndefined();
+    expect(res.body.error.message).toBeUndefined();
+  });
+
+  it('GET /check/:targetType/:targetId with no error property (covers ?. short-circuit)', async () => {
+    mockIsFavorited.mockResolvedValue({ success: false });
+    const res = await request(app).get('/api/favorites/check/project/550e8400-e29b-41d4-a716-446655440000');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBeUndefined();
+    expect(res.body.error.message).toBeUndefined();
+  });
+});

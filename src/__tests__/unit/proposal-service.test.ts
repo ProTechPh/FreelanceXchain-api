@@ -1459,6 +1459,83 @@ describe('Proposal Service - Additional Branch Coverage', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
+// Branch coverage: proposal-repository.ts line 24
+// parse function branches for attachments field
+// ═══════════════════════════════════════════════════════════════
+
+describe('Proposal Service - parse function branch coverage (proposal-repository.ts:24)', () => {
+  beforeEach(() => {
+    mockProposalRepo.clear();
+    mockProjectRepo.clear();
+    mockContractRepo.clear();
+    mockUserRepo.clear();
+    mockNotificationRepo.clear();
+    mockReviewRepo.clear();
+    mockEmployerProfileRepo.clear();
+  });
+
+  it('should create proposal with attachments as valid JSON string (parse success path)', async () => {
+    const project = createTestProject({ status: 'open' });
+    projectStore.set(project.id, project);
+
+    const result = await submitProposal('freelancer-123', {
+      projectId: project.id,
+      proposedRate: 75,
+      estimatedDuration: 45,
+      attachments: [
+        { url: 'https://example.com/resume.pdf', filename: 'resume.pdf', size: 1024, mimeType: 'application/pdf' },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.proposal.attachments).toBeDefined();
+      expect(Array.isArray(result.data.proposal.attachments)).toBe(true);
+    }
+  });
+
+  it('should create proposal with empty attachments array (empty array path)', async () => {
+    const project = createTestProject({ status: 'open' });
+    projectStore.set(project.id, project);
+
+    const result = await submitProposal('freelancer-456', {
+      projectId: project.id,
+      proposedRate: 100,
+      estimatedDuration: 30,
+      attachments: [],
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.proposal.attachments).toEqual([]);
+    }
+  });
+
+  it('should create proposal with multiple attachments', async () => {
+    const project = createTestProject({ status: 'open' });
+    projectStore.set(project.id, project);
+
+    const attachments = [
+      { url: 'https://example.com/file1.pdf', filename: 'file1.pdf', size: 100, mimeType: 'application/pdf' },
+      { url: 'https://example.com/file2.png', filename: 'file2.png', size: 200, mimeType: 'image/png' },
+      { url: 'https://example.com/file3.doc', filename: 'file3.doc', size: 300, mimeType: 'application/msword' },
+    ];
+
+    const result = await submitProposal('freelancer-789', {
+      projectId: project.id,
+      proposedRate: 150,
+      estimatedDuration: 60,
+      attachments,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.proposal.attachments).toHaveLength(3);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
 // Integration tests that call actual source functions for Istanbul coverage
 // ═══════════════════════════════════════════════════════════════
 

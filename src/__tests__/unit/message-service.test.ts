@@ -473,3 +473,120 @@ describe('Message Service', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Branch coverage: message-repository.ts line 106
+// last_message_at falsy/undefined in sort comparator
+// ═══════════════════════════════════════════════════════════════
+
+describe('Message Service - Branch Coverage (last_message_at)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUserRepo.getUserById.mockReset();
+    mockFreelancerProfileRepo.getById.mockReset();
+    mockEmployerProfileRepo.getById.mockReset();
+  });
+
+  const importModule = async () => {
+    return await import('../../services/message-service.js');
+  };
+
+  it('should handle conversations where last_message_at is undefined (line 106)', async () => {
+    const { getConversations } = await importModule();
+
+    const conversations = [
+      { id: 'conv-1', participant1_id: 'user-1', participant2_id: 'user-2', last_message_at: undefined },
+      { id: 'conv-2', participant1_id: 'user-1', participant2_id: 'user-3', last_message_at: '2025-06-01' },
+      { id: 'conv-3', participant1_id: 'user-1', participant2_id: 'user-4', last_message_at: undefined },
+    ];
+    mockGetUserConversations.mockResolvedValueOnce({ items: conversations, total: 3 });
+    mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-2', name: 'Bob', email: 'bob@test.com' });
+    mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-3', name: 'Charlie', email: 'charlie@test.com' });
+    mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-4', name: 'Dave', email: 'dave@test.com' });
+
+    const result = await getConversations('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items).toHaveLength(3);
+      // Verify the conversation with last_message_at is present
+      expect(result.data.items.some((c: any) => c.id === 'conv-2')).toBe(true);
+    }
+  });
+
+  it('should handle conversations where last_message_at is null', async () => {
+    const { getConversations } = await importModule();
+
+    const conversations = [
+      { id: 'conv-1', participant1_id: 'user-1', participant2_id: 'user-2', last_message_at: null },
+      { id: 'conv-2', participant1_id: 'user-1', participant2_id: 'user-3', last_message_at: '' },
+    ];
+    mockGetUserConversations.mockResolvedValueOnce({ items: conversations, total: 2 });
+    mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-2', name: 'Bob', email: 'bob@test.com' });
+    mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-3', name: 'Charlie', email: 'charlie@test.com' });
+
+    const result = await getConversations('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items).toHaveLength(2);
+    }
+  });
+});
+
+describe('Message Service - Attachments Branch Coverage', () => {
+  const importModule = async () => {
+    return await import('../../services/message-service.js');
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockUserRepo.getUserById.mockReset();
+    mockFreelancerProfileRepo.getById.mockReset();
+    mockEmployerProfileRepo.getById.mockReset();
+  });
+
+  it('L100: sendMessage without attachments omits field via spread', async () => {
+    const { sendMessage } = await importModule();
+
+    mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
+    const conversation = { id: 'conv-1', participant1_id: 'sender-1', participant2_id: 'receiver-1', unread_count_2: 0 };
+    mockFindConversation.mockResolvedValueOnce(conversation);
+    const message = { id: 'msg-1', conversation_id: 'conv-1', sender_id: 'sender-1', receiver_id: 'receiver-1', content: 'Hello' };
+    mockCreateMessage.mockResolvedValueOnce(message);
+    mockUpdateConversation.mockResolvedValueOnce(undefined);
+
+    // Send message WITHOUT attachments property
+    const result = await sendMessage({
+      senderId: 'sender-1',
+      receiverId: 'receiver-1',
+      content: 'Hello',
+    });
+
+    expect(result.success).toBe(true);
+    const callArgs = mockCreateMessage.mock.calls[0][0];
+    expect(callArgs).not.toHaveProperty('attachments');
+  });
+
+  it('L100: sendMessage with attachments includes field via spread', async () => {
+    const { sendMessage } = await importModule();
+
+    mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
+    const conversation = { id: 'conv-2', participant1_id: 'sender-1', participant2_id: 'receiver-1', unread_count_2: 0 };
+    mockFindConversation.mockResolvedValueOnce(conversation);
+    const message = { id: 'msg-2', conversation_id: 'conv-2', sender_id: 'sender-1', receiver_id: 'receiver-1', content: 'See attached' };
+    mockCreateMessage.mockResolvedValueOnce(message);
+    mockUpdateConversation.mockResolvedValueOnce(undefined);
+
+    const result = await sendMessage({
+      senderId: 'sender-1',
+      receiverId: 'receiver-1',
+      content: 'See attached',
+      attachments: [{ url: 'https://example.com/file.pdf', name: 'file.pdf', type: 'application/pdf' }],
+    });
+
+    expect(result.success).toBe(true);
+    const callArgs = mockCreateMessage.mock.calls[0][0];
+    expect(callArgs).toHaveProperty('attachments');
+  });
+});

@@ -591,3 +591,168 @@ describe('User Custom Skill Service - Direct Branch Coverage', () => {
     expect(result.length).toBe(1);
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Branch coverage: user-custom-skill-repository.ts line 99
+// searchUserCustomSkills: name match, description match, neither
+// ═══════════════════════════════════════════════════════════════
+
+describe('User Custom Skill Service - searchUserCustomSkills branch coverage (line 99)', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    // Re-wire the mock function on the repository object in case a previous
+    // describe block replaced it with a new jest.fn()
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+    (userCustomSkillRepository as any).searchUserCustomSkills = mockSearchUserCustomSkillsRepo;
+  });
+
+  const importModule = async () => {
+    return await import('../../services/user-custom-skill-service.js');
+  };
+
+  it('should return skill when keyword matches name but not description', async () => {
+    const { searchUserCustomSkills } = await importModule();
+
+    mockSearchUserCustomSkillsRepo.mockResolvedValueOnce([
+      { id: 'cs-1', user_id: 'user-1', name: 'ReactNative', description: 'Mobile app toolkit', years_of_experience: 2, is_approved: false, suggested_for_global: false, created_at: '2025-01-01', updated_at: '2025-01-01' },
+    ]);
+
+    const result = await searchUserCustomSkills('user-1', 'React');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('ReactNative');
+  });
+
+  it('should return skill when keyword matches description but not name', async () => {
+    const { searchUserCustomSkills } = await importModule();
+
+    mockSearchUserCustomSkillsRepo.mockResolvedValueOnce([
+      { id: 'cs-2', user_id: 'user-1', name: 'GoLang', description: 'A powerful framework for backend services', years_of_experience: 3, is_approved: false, suggested_for_global: false, created_at: '2025-01-01', updated_at: '2025-01-01' },
+    ]);
+
+    const result = await searchUserCustomSkills('user-1', 'framework');
+    expect(result).toHaveLength(1);
+    expect(result[0].name).toBe('GoLang');
+  });
+
+  it('should return empty when keyword matches neither name nor description', async () => {
+    const { searchUserCustomSkills } = await importModule();
+
+    mockSearchUserCustomSkillsRepo.mockResolvedValueOnce([]);
+
+    const result = await searchUserCustomSkills('user-1', 'zzzznonexistent');
+    expect(result).toHaveLength(0);
+  });
+
+  it('should return multiple skills when keyword matches multiple names', async () => {
+    const { searchUserCustomSkills } = await importModule();
+
+    mockSearchUserCustomSkillsRepo.mockResolvedValueOnce([
+      { id: 'cs-1', user_id: 'user-1', name: 'ReactNative', description: 'Mobile toolkit', years_of_experience: 2, is_approved: false, suggested_for_global: false, created_at: '2025-01-01', updated_at: '2025-01-01' },
+      { id: 'cs-2', user_id: 'user-1', name: 'ReactVR', description: 'VR framework', years_of_experience: 1, is_approved: false, suggested_for_global: false, created_at: '2025-01-01', updated_at: '2025-01-01' },
+    ]);
+
+    const result = await searchUserCustomSkills('user-1', 'react');
+    expect(result).toHaveLength(2);
+  });
+});
+
+describe('User Custom Skill Service - Non-Error Throw Branch Coverage', () => {
+  const importModule = async () => {
+    return await import('../../services/user-custom-skill-service.js');
+  };
+
+  // Re-wire repository mock methods before each test, in case the "Direct Branch
+  // Coverage" describe block replaced them with new jest.fn() instances.
+  beforeEach(async () => {
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+    (userCustomSkillRepository as any).getUserCustomSkills = mockGetUserCustomSkills;
+    (userCustomSkillRepository as any).createUserCustomSkill = mockCreateUserCustomSkillRepo;
+  });
+
+  it('L118: error instanceof Error ? error.message : "Unknown error" when string thrown', async () => {
+    const { createUserCustomSkill } = await importModule();
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+
+    // Set up prerequisite mocks so the function reaches the repository create call
+    mockSearchSkills.mockResolvedValueOnce([]);
+    mockGetUserCustomSkills.mockResolvedValueOnce([]);
+    (userCustomSkillRepository as any).createUserCustomSkill = jest.fn().mockRejectedValueOnce('raw string error');
+
+    const result = await createUserCustomSkill('u1', 'John', {
+      name: 'Rust',
+      description: 'Systems language',
+      yearsOfExperience: 2,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // The instance check goes into details[0], message is always 'Failed to create custom skill'
+      expect(result.error.message).toBe('Failed to create custom skill');
+      expect(result.error.details[0]).toBe('Unknown error');
+    }
+  });
+
+  it('L118: error instanceof Error branch when Error is thrown', async () => {
+    const { createUserCustomSkill } = await importModule();
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+
+    mockSearchSkills.mockResolvedValueOnce([]);
+    mockGetUserCustomSkills.mockResolvedValueOnce([]);
+    (userCustomSkillRepository as any).createUserCustomSkill = jest.fn().mockRejectedValueOnce(new Error('DB connection lost'));
+
+    const result = await createUserCustomSkill('u1', 'John', {
+      name: 'Rust',
+      description: 'Systems language',
+      yearsOfExperience: 2,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Failed to create custom skill');
+      expect(result.error.details[0]).toBe('DB connection lost');
+    }
+  });
+
+  it('L118: non-Error thrown as number', async () => {
+    const { createUserCustomSkill } = await importModule();
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+
+    mockSearchSkills.mockResolvedValueOnce([]);
+    mockGetUserCustomSkills.mockResolvedValueOnce([]);
+    (userCustomSkillRepository as any).createUserCustomSkill = jest.fn().mockRejectedValueOnce(42);
+
+    const result = await createUserCustomSkill('u1', 'John', {
+      name: 'Go',
+      description: 'Backend language',
+      yearsOfExperience: 1,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Failed to create custom skill');
+      expect(result.error.details[0]).toBe('Unknown error');
+    }
+  });
+
+  it('L118: non-Error thrown as null', async () => {
+    const { createUserCustomSkill } = await importModule();
+    const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
+
+    mockSearchSkills.mockResolvedValueOnce([]);
+    mockGetUserCustomSkills.mockResolvedValueOnce([]);
+    (userCustomSkillRepository as any).createUserCustomSkill = jest.fn().mockRejectedValueOnce(null);
+
+    const result = await createUserCustomSkill('u1', 'John', {
+      name: 'Python',
+      description: 'Scripting',
+      yearsOfExperience: 5,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Failed to create custom skill');
+      expect(result.error.details[0]).toBe('Unknown error');
+    }
+  });
+});

@@ -529,3 +529,93 @@ describe('message-routes.ts - Branch Coverage', () => {
     expect(res.body.error.code).toBe('ERROR');
   });
 });
+
+describe('message-routes - additional branch coverage', () => {
+  let app: any;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/messages', messageRouter);
+  });
+
+  it('GET /conversations with no error property', async () => {
+    mockGetConversations.mockResolvedValue({ success: false });
+    const res = await request(app).get('/api/messages/conversations');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('GET /conversations with code but no message', async () => {
+    mockGetConversations.mockResolvedValue({ success: false, error: { code: 'DB_ERROR' } });
+    const res = await request(app).get('/api/messages/conversations');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DB_ERROR');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('POST /send with no error property', async () => {
+    mockSendMessage.mockResolvedValue({ success: false });
+    const res = await request(app).post('/api/messages/send').send({ receiverId: 'user-2', content: 'Hello' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('POST /send with code but no message', async () => {
+    mockSendMessage.mockResolvedValue({ success: false, error: { code: 'BLOCKED' } });
+    const res = await request(app).post('/api/messages/send').send({ receiverId: 'user-2', content: 'Hello' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('BLOCKED');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('GET /conversations/:conversationId with no error property', async () => {
+    mockGetConversationMessages.mockResolvedValue({ success: false });
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('GET /conversations/:conversationId with code but no message', async () => {
+    mockGetConversationMessages.mockResolvedValue({ success: false, error: { code: 'DB_ERROR' } });
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DB_ERROR');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('PATCH /conversations/:conversationId/read with no error property', async () => {
+    mockMarkConversationAsRead.mockResolvedValue({ success: false });
+    const res = await request(app).patch('/api/messages/conversations/c1/read');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('PATCH /conversations/:conversationId/read with code but no message', async () => {
+    mockMarkConversationAsRead.mockResolvedValue({ success: false, error: { code: 'DB_ERROR' } });
+    const res = await request(app).patch('/api/messages/conversations/c1/read');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DB_ERROR');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('GET /unread-count with no error property', async () => {
+    mockGetUnreadMessageCount.mockResolvedValue({ success: false });
+    const res = await request(app).get('/api/messages/unread-count');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNKNOWN');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+
+  it('GET /unread-count with code but no message', async () => {
+    mockGetUnreadMessageCount.mockResolvedValue({ success: false, error: { code: 'DB_ERROR' } });
+    const res = await request(app).get('/api/messages/unread-count');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DB_ERROR');
+    expect(res.body.error.message).toBe('An error occurred');
+  });
+});

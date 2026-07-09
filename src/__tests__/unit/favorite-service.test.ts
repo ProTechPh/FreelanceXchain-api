@@ -331,3 +331,42 @@ describe('Favorite Service - Direct Branch Coverage', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('Favorite Service - Additional Branch Coverage', () => {
+  const importModule = async () => {
+    return await import('../../services/favorite-service.js');
+  };
+
+  it('L141: targetMap.get returns undefined when target not found in lookup', async () => {
+    const { getUserFavorites } = await importModule();
+
+    // Create a favorite for a project that no longer exists
+    mockFavoriteRepository.findByUser.mockResolvedValueOnce([
+      { id: 'fav-1', user_id: 'user-1', target_type: 'project', target_id: 'deleted-project', created_at: '2025-01-01' },
+    ]);
+    mockProjectRepository.getById.mockResolvedValueOnce(null);
+
+    const result = await getUserFavorites('user-1', 'project');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // When target not found, the mapping should still produce a result
+      // but with limited data (targetMap.get returns undefined, ?? null fallback)
+      expect(result.data).toBeDefined();
+    }
+  });
+
+  it('L141: targetMap.get returns undefined for freelancer favorites not found', async () => {
+    const { getUserFavorites } = await importModule();
+
+    mockFavoriteRepository.findByUser.mockResolvedValueOnce([
+      { id: 'fav-1', user_id: 'user-1', target_type: 'freelancer', target_id: 'ghost-user', created_at: '2025-01-01' },
+    ]);
+    mockUserRepository.getUserById.mockResolvedValueOnce(null);
+
+    const result = await getUserFavorites('user-1', 'freelancer');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toBeDefined();
+    }
+  });
+});

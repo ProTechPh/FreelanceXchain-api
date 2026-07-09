@@ -207,3 +207,39 @@ describe('file-service.ts - Branch Coverage', () => {
     expect(r.data || []).toEqual([]);
   });
 });
+
+describe('file-service - Additional Branch Coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    const mockAppwriteStorage = (globalThis as any).mockAppwriteStorage;
+    mockAppwriteStorage.listFiles.mockReset();
+  });
+
+  it('L155: filesResult.data || [] when data is null/undefined', async () => {
+    const mockAppwriteStorage = (globalThis as any).mockAppwriteStorage;
+    // Return result with undefined files to trigger || [] fallback
+    mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: undefined });
+    mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: undefined });
+
+    const { getFileQuota } = await import(resolveModule('src/services/file-service.ts'));
+    const result = await getFileQuota('user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.used).toBe(0);
+      expect(result.data.files).toBe(0);
+    }
+  });
+
+  it('L155: filesResult.data || [] when files is null', async () => {
+    const mockAppwriteStorage = (globalThis as any).mockAppwriteStorage;
+    mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: null });
+    mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: null });
+
+    const { getFileQuota } = await import(resolveModule('src/services/file-service.ts'));
+    const result = await getFileQuota('user-2');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.used).toBe(0);
+    }
+  });
+});

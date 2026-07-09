@@ -582,3 +582,78 @@ describe('Search Service - Extended Coverage', () => {
     });
   });
 });
+
+describe('Search Service - Additional Branch Coverage', () => {
+  beforeEach(() => {
+    projectStore.clear();
+    freelancerStore.clear();
+    jest.clearAllMocks();
+  });
+
+  it('L96, L138: searchProjects with undefined minBudget and maxBudget', async () => {
+    const project = createTestProject({
+      title: 'Web3 Project',
+      description: 'Build a dApp',
+      budget: 5000,
+      status: 'open',
+      required_skills: [],
+    });
+    projectStore.set(project.id, project);
+
+    // Pass undefined budget filters to trigger ?? 0 and ?? MAX_SAFE_INTEGER defaults
+    const result = await searchProjects({
+      keyword: 'Web3',
+      minBudget: undefined,
+      maxBudget: undefined,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('L96: searchProjects with minBudget undefined defaults to 0', async () => {
+    const project = createTestProject({
+      title: 'Cheap Project',
+      description: 'Simple task',
+      budget: 100,
+      status: 'open',
+      required_skills: [],
+    });
+    projectStore.set(project.id, project);
+
+    const result = await searchProjects({
+      keyword: 'Cheap',
+      minBudget: undefined,
+      maxBudget: 200,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('L138: searchProjects with maxBudget undefined defaults to MAX_SAFE_INTEGER', async () => {
+    const project = createTestProject({
+      title: 'Expensive Project',
+      description: 'Big build',
+      budget: 999999,
+      status: 'open',
+      required_skills: [],
+    });
+    projectStore.set(project.id, project);
+
+    const result = await searchProjects({
+      keyword: 'Expensive',
+      minBudget: 0,
+      maxBudget: undefined,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+});

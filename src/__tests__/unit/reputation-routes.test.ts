@@ -587,3 +587,54 @@ describe('reputation-routes - catch blocks for 500 errors', () => {
     expect(res.body.error).toBe('Failed to get reputation history');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Additional error code branch coverage
+// ═══════════════════════════════════════════════════════════════
+
+describe('reputation-routes - additional error code branches', () => {
+  let app: any;
+  const mockGetReputation = jest.fn<any>();
+  const mockGetWorkHistory = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({
+      submitRating: jest.fn(),
+      getReputation: mockGetReputation,
+      getWorkHistory: mockGetWorkHistory,
+      canUserRate: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/reputation-aggregation-service.ts'), () => ({
+      getAggregatedScore: jest.fn(),
+      getReputationBreakdown: jest.fn(),
+      getReputationHistory: jest.fn(),
+      getReputationLeaderboard: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/reputation-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/reputation', router);
+    jest.clearAllMocks();
+  });
+
+  it('GET /:userId with UNAUTHORIZED error code returns 400', async () => {
+    mockGetReputation.mockResolvedValueOnce({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authorized' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+    expect(res.body.error.message).toBe('Not authorized');
+  });
+
+  it('GET /:userId/history with NOT_FOUND error code returns 400', async () => {
+    mockGetWorkHistory.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'User not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/history');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+    expect(res.body.error.message).toBe('User not found');
+  });
+});

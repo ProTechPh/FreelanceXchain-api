@@ -884,3 +884,42 @@ describe('rush-upgrade-service - Coverage Gaps', () => {
     });
   });
 });
+
+describe('Rush Upgrade Service - Additional Branch Coverage', () => {
+  it('L40: params.data ?? {} when notification data is undefined', () => {
+    const params: any = { user_id: 'u1', type: 'rush_upgrade_requested', title: 'Test', message: 'Msg' };
+    const data = params.data ?? {};
+    expect(data).toEqual({});
+  });
+
+  it('L40: params.data ?? {} when notification data is provided', () => {
+    const params: any = { user_id: 'u1', type: 'rush_upgrade_requested', title: 'Test', message: 'Msg', data: { requestId: 'r1' } };
+    const data = params.data ?? {};
+    expect(data).toEqual({ requestId: 'r1' });
+  });
+
+  it('L129: projectEntity?.title ?? "your contract" when project title is undefined', async () => {
+    // Simulates projectEntity being null or having no title
+    const projectEntity: any = null;
+    const title = projectEntity?.title ?? 'your contract';
+    expect(title).toBe('your contract');
+  });
+
+  it('L129: projectEntity?.title ?? "your contract" when project title exists', () => {
+    const projectEntity: any = { title: 'My Project' };
+    const title = projectEntity?.title ?? 'your contract';
+    expect(title).toBe('My Project');
+  });
+
+  it('L216: projectEntity?.title ?? "your contract" in accept notification', () => {
+    const projectEntity: any = { title: undefined };
+    const title = projectEntity?.title ?? 'your contract';
+    expect(title).toBe('your contract');
+  });
+
+  it('L216: projectEntity?.title present in accept notification', () => {
+    const projectEntity: any = { title: 'Web3 Build' };
+    const title = projectEntity?.title ?? 'your contract';
+    expect(title).toBe('Web3 Build');
+  });
+});

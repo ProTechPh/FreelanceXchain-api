@@ -606,3 +606,73 @@ describe('review-routes.ts - Branch Coverage', () => {
     expect(res.body.error.code).toBe('ERROR');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Error response structure verification
+// ═══════════════════════════════════════════════════════════════
+
+describe('review-routes - error response structure verification', () => {
+  let app: any;
+  const mockSubmitReview = jest.fn<any>();
+  const mockGetReviewById = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({
+      submitRating: mockSubmitReview,
+      getReviewById: mockGetReviewById,
+      getUserReviews: jest.fn(),
+      getProjectReviews: jest.fn(),
+      canUserRate: jest.fn(),
+      getReputation: jest.fn(),
+      getWorkHistory: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/review-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/reviews', router);
+    jest.clearAllMocks();
+  });
+
+  it('POST / error response includes code and message for NOT_FOUND', async () => {
+    mockSubmitReview.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Contract not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/reviews').send({ contractId: 'c1', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toEqual({ code: 'NOT_FOUND', message: 'Contract not found' });
+  });
+
+  it('POST / error response includes code and message for UNAUTHORIZED', async () => {
+    mockSubmitReview.mockResolvedValueOnce({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authorized' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/reviews').send({ contractId: 'c1', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(403);
+    expect(res.body.error).toEqual({ code: 'UNAUTHORIZED', message: 'Not authorized' });
+  });
+
+  it('POST / error response includes code and message for DUPLICATE_RATING', async () => {
+    mockSubmitReview.mockResolvedValueOnce({ success: false, error: { code: 'DUPLICATE_RATING', message: 'Already rated' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/reviews').send({ contractId: 'c1', rating: 5, comment: 'Great!' });
+    expect(res.status).toBe(409);
+    expect(res.body.error).toEqual({ code: 'DUPLICATE_RATING', message: 'Already rated' });
+  });
+
+  it('GET /:id error response includes code and message for NOT_FOUND', async () => {
+    mockGetReviewById.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Review not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/r1');
+    expect(res.status).toBe(404);
+    expect(res.body.error).toEqual({ code: 'NOT_FOUND', message: 'Review not found' });
+  });
+
+  it('GET /:id error response includes code and message for generic error', async () => {
+    mockGetReviewById.mockResolvedValueOnce({ success: false, error: { code: 'DB_ERROR', message: 'Database error' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/r1');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toEqual({ code: 'DB_ERROR', message: 'Database error' });
+  });
+});

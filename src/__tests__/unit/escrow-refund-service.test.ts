@@ -1070,3 +1070,116 @@ describe('Escrow Refund Service - Integration Coverage', () => {
     expect(result.success).toBe(true);
   });
 });
+
+describe('Escrow Refund Service - Additional Branch Coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContractRepository.getContractById.mockReset();
+    mockContractRepository.updateContract.mockReset();
+    mockRefundRequestRepository.findPendingByContract.mockReset();
+    mockRefundRequestRepository.findByContract.mockReset();
+    mockRefundRequestRepository.findWithContract.mockReset();
+    mockRefundRequestRepository.create.mockReset();
+    mockRefundRequestRepository.update.mockReset();
+    mockMilestoneRepository.findByContract.mockReset();
+    mockMilestoneRepository.findByContract.mockResolvedValue([]);
+  });
+
+  const importModule = async () => {
+    return await import('../../services/escrow-refund-service.js');
+  };
+
+  it('L69: contractMilestones ?? [] when findByContract returns null', async () => {
+    const { createRefundRequest } = await importModule();
+
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c-null-ms', freelancer_id: 'fl-1', employer_id: 'emp-1',
+      status: 'active', total_amount: 1000, escrow_address: '0xabc',
+    });
+    // No existing pending refund
+    mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
+    // Return null to trigger ?? [] fallback
+    mockMilestoneRepository.findByContract.mockResolvedValueOnce(null);
+    mockRefundRequestRepository.create.mockResolvedValueOnce({
+      id: 'ref-null-ms', contract_id: 'c-null-ms', requested_by: 'emp-1',
+      amount: 500, reason: 'Changed mind', status: 'pending',
+    });
+    mockCreateNotification.mockResolvedValueOnce({});
+
+    const result = await createRefundRequest({
+      contractId: 'c-null-ms',
+      requestedBy: 'emp-1',
+      amount: 500,
+      reason: 'Changed mind',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('L171: otherPartyId when employer is the requester (approveRefund)', async () => {
+    const { approveRefund } = await importModule();
+
+    mockRefundRequestRepository.findWithContract
+      .mockResolvedValueOnce({
+        id: 'ref-emp', contract_id: 'c-emp', requested_by: 'employer-1', status: 'pending',
+        contract: { freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000, escrow_address: null },
+      })
+      .mockResolvedValueOnce({ id: 'ref-emp', status: 'pending' });
+    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-emp', status: 'approved' });
+    mockMilestoneRepository.findByContract.mockResolvedValueOnce([]);
+    mockContractRepository.updateContract.mockResolvedValueOnce({});
+    mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+    // employer-1 requested, so otherPartyId should be freelancer-1
+    const result = await approveRefund({
+      refundId: 'ref-emp',
+      approvedBy: 'freelancer-1',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('L368: otherPartyId when employer is the requester (rejectRefund)', async () => {
+    const { rejectRefund } = await importModule();
+
+    mockRefundRequestRepository.findWithContract
+      .mockResolvedValueOnce({
+        id: 'ref-emp-rej', contract_id: 'c-emp-rej', requested_by: 'employer-1', status: 'pending',
+        contract: { freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000, escrow_address: null },
+      })
+      .mockResolvedValueOnce({ id: 'ref-emp-rej', status: 'pending' });
+    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-emp-rej', status: 'rejected' });
+    mockCreateNotification.mockResolvedValueOnce({});
+
+    // employer-1 requested, so otherPartyId should be freelancer-1
+    const result = await rejectRefund({
+      refundId: 'ref-emp-rej',
+      rejectedBy: 'freelancer-1',
+      reason: 'Work is satisfactory',
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it('L368: otherPartyId when freelancer is the requester (rejectRefund)', async () => {
+    const { rejectRefund } = await importModule();
+
+    mockRefundRequestRepository.findWithContract
+      .mockResolvedValueOnce({
+        id: 'ref-fl-rej', contract_id: 'c-fl-rej', requested_by: 'freelancer-1', status: 'pending',
+        contract: { freelancer_id: 'freelancer-1', employer_id: 'employer-1', total_amount: 1000, escrow_address: null },
+      })
+      .mockResolvedValueOnce({ id: 'ref-fl-rej', status: 'pending' });
+    mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-fl-rej', status: 'rejected' });
+    mockCreateNotification.mockResolvedValueOnce({});
+
+    // freelancer-1 requested, so otherPartyId should be employer-1
+    const result = await rejectRefund({
+      refundId: 'ref-fl-rej',
+      rejectedBy: 'employer-1',
+      reason: 'Need the work completed',
+    });
+
+    expect(result.success).toBe(true);
+  });
+});

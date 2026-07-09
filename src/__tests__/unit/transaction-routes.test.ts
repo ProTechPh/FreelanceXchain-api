@@ -399,3 +399,57 @@ describe('transaction-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Optional chaining short-circuit tests (?. on error property)
+// ═══════════════════════════════════════════════════════════════
+
+describe('transaction-routes - optional chaining short-circuit', () => {
+  let app: any;
+  const mockGetUserTransactions = jest.fn<any>();
+  const mockGetTransactionById = jest.fn<any>();
+  const mockGetContractTransactions = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/transaction-service.ts'), () => ({
+      getUserTransactions: mockGetUserTransactions,
+      getTransactionById: mockGetTransactionById,
+      getContractTransactions: mockGetContractTransactions,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/transaction-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/transactions', router);
+    jest.clearAllMocks();
+  });
+
+  it('GET / with { success: false } and no error property', async () => {
+    mockGetUserTransactions.mockResolvedValueOnce({ success: false });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/transactions');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBeUndefined();
+    expect(res.body.error.message).toBeUndefined();
+  });
+
+  it('GET /:id with { success: false } and no error property', async () => {
+    mockGetTransactionById.mockResolvedValueOnce({ success: false });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/transactions/t1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBeUndefined();
+    expect(res.body.error.message).toBeUndefined();
+  });
+
+  it('GET /contract/:contractId with { success: false } and no error property', async () => {
+    mockGetContractTransactions.mockResolvedValueOnce({ success: false });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/transactions/contract/c1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBeUndefined();
+    expect(res.body.error.message).toBeUndefined();
+  });
+});

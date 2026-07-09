@@ -389,3 +389,38 @@ describe('notification-routes - !userId guards and /stream endpoint', () => {
     expect(res.body.error).toBe('SSE connection failed');
   });
 });
+
+describe('notification-routes - additional branch coverage', () => {
+  let app: any;
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/notifications', router);
+  });
+
+  it('GET / with only maxItemCount (no continuationToken)', async () => {
+    mockGetNotificationsByUser.mockResolvedValue({ success: true, data: { items: [], hasMore: false } });
+    const res = await request(app).get('/api/notifications?maxItemCount=10');
+    expect(res.status).toBe(200);
+    expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', { maxItemCount: 10 });
+  });
+
+  it('GET / with only continuationToken (no maxItemCount)', async () => {
+    mockGetNotificationsByUser.mockResolvedValue({ success: true, data: { items: [], hasMore: false } });
+    const res = await request(app).get('/api/notifications?continuationToken=abc123');
+    expect(res.status).toBe(200);
+    // clampLimit(undefined) returns 20 from the mock, so maxItemCount is always present
+    expect(mockGetNotificationsByUser).toHaveBeenCalledWith('user-1', { maxItemCount: 20, continuationToken: 'abc123' });
+  });
+
+  it('PATCH /:id/read with generic error code returns 400', async () => {
+    mockMarkNotificationAsRead.mockResolvedValue({
+      success: false,
+      error: { code: 'DB_ERROR', message: 'Database error' },
+    });
+    const res = await request(app).patch('/api/notifications/n-1/read');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DB_ERROR');
+  });
+});

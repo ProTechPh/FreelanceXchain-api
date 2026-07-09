@@ -635,3 +635,55 @@ describe('freelancer-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Additional error branch verification
+// ═══════════════════════════════════════════════════════════════
+
+describe('freelancer-routes - error branch verification', () => {
+  let app: any;
+  const mockAddSkillsToProfile = jest.fn<any>();
+  const mockGetProfileByUserId = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/freelancer-profile-service.ts'), () => ({
+      getFreelancerProfile: jest.fn(),
+      createProfile: jest.fn(),
+      updateProfile: jest.fn(),
+      addSkillsToProfile: mockAddSkillsToProfile,
+      removeSkillFromProfile: jest.fn(),
+      addExperience: jest.fn(),
+      updateExperience: jest.fn(),
+      removeExperience: jest.fn(),
+      getProfileByUserId: mockGetProfileByUserId,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/freelancer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/freelancers', router);
+    jest.clearAllMocks();
+  });
+
+  it('POST /profile/skills error response includes details when present', async () => {
+    mockAddSkillsToProfile.mockResolvedValueOnce({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid', details: [{ field: 'skills', message: 'bad' }] },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/freelancers/profile/skills').send({ skills: [{ name: 'React', yearsOfExperience: 3 }] });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual([{ field: 'skills', message: 'bad' }]);
+  });
+
+  it('GET /:id error returns 404 with error body', async () => {
+    mockGetProfileByUserId.mockResolvedValueOnce({ success: false, error: { code: 'DB_ERROR', message: 'Connection failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/freelancers/user-1');
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('DB_ERROR');
+    expect(res.body.error.message).toBe('Connection failed');
+  });
+});
