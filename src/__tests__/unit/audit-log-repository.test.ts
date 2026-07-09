@@ -124,3 +124,71 @@ describe('AuditLogRepository', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from repository-coverage.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('AuditLogRepository - mapAuditLog payload parsing', () => {
+  let repo: any;
+  let mockDatabases: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo = new AuditLogRepository();
+    mockDatabases = (globalThis as any).__mockDatabases;
+  });
+
+  it('should parse payload from JSON string to object via getById', async () => {
+    const payloadStr = JSON.stringify({ action: 'login', ip: '127.0.0.1' });
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'a1',
+      $createdAt: '2025-01-01T00:00:00Z',
+      $updatedAt: '2025-01-01T00:00:00Z',
+      user_id: 'u1',
+      payload: payloadStr,
+      action: 'login',
+      status: 'success',
+    });
+
+    const result = await repo.getById('a1');
+    expect(result).not.toBeNull();
+    expect(result!.payload).toEqual({ action: 'login', ip: '127.0.0.1' });
+    expect(typeof result!.payload).toBe('object');
+  });
+
+  it('should parse payload from JSON string via getByUserId', async () => {
+    const payloadStr = JSON.stringify({ key: 'value' });
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'a2',
+        $createdAt: '2025-02-01',
+        $updatedAt: '2025-02-01',
+        user_id: 'u2',
+        payload: payloadStr,
+        action: 'update',
+        status: 'success',
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getByUserId('u2');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.payload).toEqual({ key: 'value' });
+  });
+
+  it('should leave payload as-is when it is already an object', async () => {
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'a3',
+      $createdAt: '2025-03-01',
+      $updatedAt: '2025-03-01',
+      payload: { already: 'object' },
+      action: 'test',
+      status: 'success',
+    });
+
+    const result = await repo.getById('a3');
+    expect(result).not.toBeNull();
+    expect(result!.payload).toEqual({ already: 'object' });
+  });
+});

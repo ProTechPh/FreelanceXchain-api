@@ -373,3 +373,261 @@ describe('Project Repository - Extended Coverage', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from repository-coverage.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockListDocuments.mockReset();
+    mockGetDocument.mockReset();
+    mockDeleteDocument.mockReset();
+  });
+
+  describe('deleteProject', () => {
+    it('should delete a project and return true', async () => {
+      mockDeleteDocument.mockResolvedValueOnce({});
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.deleteProject('p1');
+      expect(result).toBe(true);
+      expect(mockDeleteDocument).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return false when delete fails', async () => {
+      mockDeleteDocument.mockRejectedValueOnce(new Error('not found'));
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.deleteProject('p-nonexistent');
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('getProjectsByStatus', () => {
+    it('should return projects filtered by status', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [{
+          $id: 'p1',
+          $createdAt: '2025-01-01',
+          $updatedAt: '2025-01-01',
+          title: 'Open Project',
+          description: 'Looking for dev',
+          status: 'open',
+          employer_id: 'e1',
+          budget: 5000,
+          required_skills: '[]',
+          milestones: '[]',
+          tags: '[]',
+          attachments: '[]',
+        }],
+        total: 1,
+      });
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.getProjectsByStatus('open');
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.status).toBe('open');
+      expect(result.items[0]!.title).toBe('Open Project');
+      expect(mockListDocuments).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return empty result on database error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('db down'));
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.getProjectsByStatus('draft');
+      expect(result.items).toEqual([]);
+      expect(result.hasMore).toBe(false);
+      expect(result.total).toBe(0);
+    });
+
+    it('should respect custom limit and offset options', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [{
+          $id: 'p2',
+          $createdAt: '2025-02-01',
+          $updatedAt: '2025-02-01',
+          title: 'In Progress Project',
+          description: 'Ongoing work',
+          status: 'in_progress',
+          employer_id: 'e2',
+          budget: 10000,
+        }],
+        total: 5,
+      });
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.getProjectsByStatus('in_progress', { limit: 1, offset: 0 });
+      expect(result.items).toHaveLength(1);
+      expect(result.hasMore).toBe(true);
+      expect(result.total).toBe(5);
+    });
+  });
+
+  describe('searchProjects', () => {
+    it('should filter projects by keyword matching title', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          {
+            $id: 'p1',
+            $createdAt: '2025-01-01',
+            $updatedAt: '2025-01-01',
+            title: 'Build a React Website',
+            description: 'Need frontend developer',
+            status: 'open',
+            employer_id: 'e1',
+            budget: 3000,
+            required_skills: '[]',
+            milestones: '[]',
+            tags: '[]',
+            attachments: '[]',
+          },
+          {
+            $id: 'p2',
+            $createdAt: '2025-01-01',
+            $updatedAt: '2025-01-01',
+            title: 'Mobile App Development',
+            description: 'iOS and Android app',
+            status: 'open',
+            employer_id: 'e2',
+            budget: 8000,
+            required_skills: '[]',
+            milestones: '[]',
+            tags: '[]',
+            attachments: '[]',
+          },
+        ],
+        total: 2,
+      });
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.searchProjects('react');
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.title).toBe('Build a React Website');
+      expect(result.total).toBe(1);
+    });
+
+    it('should filter projects by keyword matching description', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          {
+            $id: 'p3',
+            $createdAt: '2025-01-01',
+            $updatedAt: '2025-01-01',
+            title: 'Web Project',
+            description: 'Python backend needed',
+            status: 'open',
+            employer_id: 'e3',
+            budget: 4000,
+            required_skills: '[]',
+            milestones: '[]',
+            tags: '[]',
+            attachments: '[]',
+          },
+          {
+            $id: 'p4',
+            $createdAt: '2025-01-01',
+            $updatedAt: '2025-01-01',
+            title: 'Design Work',
+            description: 'Logo and branding',
+            status: 'open',
+            employer_id: 'e4',
+            budget: 1000,
+            required_skills: '[]',
+            milestones: '[]',
+            tags: '[]',
+            attachments: '[]',
+          },
+        ],
+        total: 2,
+      });
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.searchProjects('python');
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.description).toBe('Python backend needed');
+    });
+
+    it('should return empty when no projects match keyword', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          {
+            $id: 'p5',
+            $createdAt: '2025-01-01',
+            $updatedAt: '2025-01-01',
+            title: 'Web Project',
+            description: 'Frontend work',
+            status: 'open',
+            employer_id: 'e5',
+            budget: 2000,
+          },
+        ],
+        total: 1,
+      });
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.searchProjects('blockchain');
+      expect(result.items).toHaveLength(0);
+      expect(result.total).toBe(0);
+    });
+
+    it('should handle case-insensitive search', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          {
+            $id: 'p6',
+            $createdAt: '2025-01-01',
+            $updatedAt: '2025-01-01',
+            title: 'REACT Native App',
+            description: 'Cross-platform mobile',
+            status: 'open',
+            employer_id: 'e6',
+            budget: 6000,
+          },
+        ],
+        total: 1,
+      });
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.searchProjects('react');
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.title).toBe('REACT Native App');
+    });
+
+    it('should respect limit and offset in search results', async () => {
+      const docs = Array.from({ length: 5 }, (_, i) => ({
+        $id: `p${i + 10}`,
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        title: `Search Result ${i + 1}`,
+        description: 'Match keyword search',
+        status: 'open',
+        employer_id: `e${i + 10}`,
+        budget: 1000 * (i + 1),
+      }));
+
+      mockListDocuments.mockResolvedValueOnce({
+        documents: docs,
+        total: 5,
+      });
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.searchProjects('search', { limit: 2, offset: 1 });
+      expect(result.items).toHaveLength(2);
+      expect(result.hasMore).toBe(true);
+      expect(result.total).toBe(5);
+    });
+
+    it('should return empty on database error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('connection lost'));
+
+      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
+      const result = await projectRepository.searchProjects('test');
+      expect(result.items).toEqual([]);
+      expect(result.hasMore).toBe(false);
+      expect(result.total).toBe(0);
+    });
+  });
+});

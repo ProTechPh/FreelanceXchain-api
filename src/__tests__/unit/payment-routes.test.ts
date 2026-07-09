@@ -322,3 +322,204 @@ describe('payment-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// UUID validation and catch block tests
+// ═══════════════════════════════════════════════════════════════
+
+describe('payment-routes - UUID validation for contractId query param', () => {
+  let app: any;
+  const mockRequestMilestoneCompletion = jest.fn<any>();
+  const mockApproveMilestone = jest.fn<any>();
+  const mockCreateDispute = jest.fn<any>();
+  const mockGetContractPaymentStatus = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      requestMilestoneCompletion: mockRequestMilestoneCompletion,
+      approveMilestone: mockApproveMilestone,
+      getContractPaymentStatus: mockGetContractPaymentStatus,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      createDispute: mockCreateDispute,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/payment-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/payments', router);
+    jest.clearAllMocks();
+  });
+
+  it('L165-168: POST complete rejects invalid contractId UUID', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=not-a-uuid');
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('valid UUID');
+  });
+
+  it('L259-262: POST approve rejects invalid contractId UUID', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=not-a-uuid');
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('valid UUID');
+  });
+
+  it('L360-363: POST dispute rejects invalid contractId UUID', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=not-a-uuid').send({ reason: 'test' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('valid UUID');
+  });
+
+  it('L186: POST complete catch block delegates to next(error)', async () => {
+    mockRequestMilestoneCompletion.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    // With default express error handler, unhandled errors return 500
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(500);
+  });
+
+  it('L280: POST approve catch block delegates to next(error)', async () => {
+    mockApproveMilestone.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(500);
+  });
+
+  it('L459: GET contract status catch block delegates to next(error)', async () => {
+    mockGetContractPaymentStatus.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/payments/contracts/c1/status');
+    expect(res.status).toBe(500);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ?? nullish coalescing fallback branch tests (lines 145, 239, 339, 438)
+// ═══════════════════════════════════════════════════════════════
+
+describe('payment-routes - ?? nullish fallback branches', () => {
+  let app: any;
+  const mockRequestMilestoneCompletion = jest.fn<any>();
+  const mockApproveMilestone = jest.fn<any>();
+  const mockCreateDispute = jest.fn<any>();
+  const mockGetContractPaymentStatus = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', role: 'employer' };
+        for (const key of Object.keys(req.params)) delete req.params[key];
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      requestMilestoneCompletion: mockRequestMilestoneCompletion,
+      approveMilestone: mockApproveMilestone,
+      getContractPaymentStatus: mockGetContractPaymentStatus,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      createDispute: mockCreateDispute,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/payment-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/payments', router);
+    jest.clearAllMocks();
+  });
+
+  it('L145: POST complete with nullish milestoneId', async () => {
+    mockRequestMilestoneCompletion.mockResolvedValueOnce({ success: true, data: { milestoneId: 'm1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/complete?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(200);
+  });
+
+  it('L239: POST approve with nullish milestoneId', async () => {
+    mockApproveMilestone.mockResolvedValueOnce({ success: true, data: { milestoneId: 'm1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(200);
+  });
+
+  it('L339: POST dispute with nullish milestoneId', async () => {
+    mockCreateDispute.mockResolvedValueOnce({ success: true, data: { id: 'd1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L438: GET status with nullish contractId', async () => {
+    mockGetContractPaymentStatus.mockResolvedValueOnce({ success: true, data: { contractId: 'c1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/payments/contracts/c1/status');
+    expect(res.status).toBe(200);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Generic error code -> 400 branch tests (lines 273, 382, 452)
+// Ternary: code === 'NOT_FOUND' ? 404 : code === 'UNAUTHORIZED' ? 403 : 400
+// These tests exercise the final : 400 branch with non-matching codes
+// ═══════════════════════════════════════════════════════════════
+
+describe('payment-routes - generic error code 400 branches', () => {
+  let app: any;
+  const mockRequestMilestoneCompletion = jest.fn<any>();
+  const mockApproveMilestone = jest.fn<any>();
+  const mockCreateDispute = jest.fn<any>();
+  const mockGetContractPaymentStatus = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'employer' }; next(); },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      requestMilestoneCompletion: mockRequestMilestoneCompletion,
+      approveMilestone: mockApproveMilestone,
+      getContractPaymentStatus: mockGetContractPaymentStatus,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      createDispute: mockCreateDispute,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/payment-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/payments', router);
+    jest.clearAllMocks();
+  });
+
+  it('L273: POST approve with generic error code returns 400', async () => {
+    mockApproveMilestone.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'Cannot approve' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/approve?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa');
+    expect(res.status).toBe(400);
+  });
+
+  it('L382: POST dispute with generic error code returns 400', async () => {
+    mockCreateDispute.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'Cannot dispute' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/payments/milestones/m1/dispute?contractId=aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa').send({ reason: 'Bad work' });
+    expect(res.status).toBe(400);
+  });
+
+  it('L452: GET status with generic error code returns 400', async () => {
+    mockGetContractPaymentStatus.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'Cannot get status' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/payments/contracts/c1/status');
+    expect(res.status).toBe(400);
+  });
+});

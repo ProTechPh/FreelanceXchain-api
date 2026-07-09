@@ -182,6 +182,12 @@ describe('Env Config', () => {
   });
 
   describe('error cases', () => {
+    it('should throw when a required env var is missing (getEnvVar line 8)', async () => {
+      setupRequiredEnv();
+      delete process.env.APPWRITE_ENDPOINT;
+      await expect(importModule()).rejects.toThrow('Environment variable APPWRITE_ENDPOINT is required but not set');
+    });
+
     it('should throw when PORT is not a number', async () => {
       setupRequiredEnv();
       process.env.PORT = 'not-a-number';

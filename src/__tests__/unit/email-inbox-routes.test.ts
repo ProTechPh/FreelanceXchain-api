@@ -349,3 +349,52 @@ describe('Email Inbox Routes', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// sendNewEmail and replyToEmail service call verification
+// ═══════════════════════════════════════════════════════════════
+
+describe('email-inbox-routes - send and reply service calls', () => {
+  let app: express.Express;
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env = { ...originalEnv, EMAIL_WEBHOOK_SECRET: 'test-secret' };
+    app = express();
+    app.use(express.json());
+    app.use('/api/emails', emailInboxRouter);
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it('L204: POST /send calls sendNewEmail with correct args when only text provided', async () => {
+    mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-2' } });
+    const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Sub', text: 'Body text' });
+    expect(res.status).toBe(201);
+    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Sub', 'Body text', 'Body text');
+  });
+
+  it('L204: POST /send calls sendNewEmail with empty text when neither text nor html provided', async () => {
+    mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-3' } });
+    const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Sub', html: '<p>Hi</p>' });
+    expect(res.status).toBe(201);
+    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Sub', '', '<p>Hi</p>');
+  });
+
+  it('L234: POST /:id/reply calls replyToEmail with correct args', async () => {
+    mockReplyToEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'reply-2' } });
+    const res = await request(app).post('/api/emails/e2/reply').send({ text: 'Reply body', html: '<p>Reply</p>' });
+    expect(res.status).toBe(201);
+    expect(mockReplyToEmail).toHaveBeenCalledWith('test-user-id', 'e2', 'Reply body', '<p>Reply</p>');
+  });
+
+  it('L234: POST /:id/reply calls replyToEmail with fallback html from text', async () => {
+    mockReplyToEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'reply-3' } });
+    const res = await request(app).post('/api/emails/e3/reply').send({ text: 'Plain reply' });
+    expect(res.status).toBe(201);
+    expect(mockReplyToEmail).toHaveBeenCalledWith('test-user-id', 'e3', 'Plain reply', 'Plain reply');
+  });
+});

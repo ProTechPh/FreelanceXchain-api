@@ -276,3 +276,72 @@ describe('employer-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Description and industry validation tests
+// ═══════════════════════════════════════════════════════════════
+
+describe('employer-routes - PATCH /profile description and industry validation', () => {
+  let app: any;
+  const mockUpdateEmployerProfile = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
+      getEmployerProfileByUserId: jest.fn(),
+      updateEmployerProfile: mockUpdateEmployerProfile,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      listProjectsByEmployer: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/employer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/employers', router);
+    jest.clearAllMocks();
+  });
+
+  it('should return 400 when description is less than 10 characters', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .patch('/api/employers/profile')
+      .send({ description: 'Short' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: 'description' })])
+    );
+  });
+
+  it('should return 400 when industry is less than 2 characters', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .patch('/api/employers/profile')
+      .send({ industry: 'X' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: 'industry' })])
+    );
+  });
+
+  it('should accept valid description (10+ chars)', async () => {
+    mockUpdateEmployerProfile.mockResolvedValueOnce({ success: true, data: { id: 'ep1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .patch('/api/employers/profile')
+      .send({ description: 'A valid description here' });
+    expect(res.status).toBe(200);
+  });
+
+  it('should accept valid industry (2+ chars)', async () => {
+    mockUpdateEmployerProfile.mockResolvedValueOnce({ success: true, data: { id: 'ep1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .patch('/api/employers/profile')
+      .send({ industry: 'Tech' });
+    expect(res.status).toBe(200);
+  });
+});

@@ -430,6 +430,110 @@ describe('Employer Profile Service', () => {
     });
   });
 
+  describe('createEmployerProfileFromKyc - branch coverage (L80,94-103)', () => {
+    it('L80: should use fallback message when KYC error has falsy message', async () => {
+      mockKycService.getProfileDataFromKyc.mockResolvedValueOnce({
+        success: false,
+        error: { code: 'KYC_NOT_APPROVED', message: '' },
+      });
+
+      const result = await createEmployerProfileFromKyc('user-falsy-msg', {
+        companyName: 'Test Co',
+        description: 'Test desc',
+        industry: 'Technology',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('KYC_NOT_APPROVED');
+        expect(result.error.message).toBe('KYC verification must be approved before creating profile');
+      }
+    });
+
+    it('L94-103: should use fallback defaults when KYC data has null name', async () => {
+      mockKycService.getProfileDataFromKyc.mockResolvedValueOnce({
+        success: true,
+        data: {
+          name: null,
+          nationality: null,
+        },
+      } as any);
+
+      const result = await createEmployerProfileFromKyc('user-null-name', {});
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        // When name is null: defaultDescription = 'Verified employer looking for talented freelancers.'
+        expect(result.data.description).toBe('Verified employer looking for talented freelancers.');
+        // company_name falls back to kycData.name ?? 'My Company' => 'My Company'
+        expect(result.data.companyName).toBe('My Company');
+        expect(result.data.name).toBeNull();
+        expect(result.data.nationality).toBeNull();
+      }
+    });
+
+    it('L86-91: should fail when KYC result has null data despite success', async () => {
+      mockKycService.getProfileDataFromKyc.mockResolvedValueOnce({
+        success: true,
+        data: null,
+      } as any);
+
+      const result = await createEmployerProfileFromKyc('user-null-data', {});
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('KYC_NOT_APPROVED');
+        expect(result.error.message).toBe('No KYC data available');
+      }
+    });
+  });
+
+  describe('createEmployerProfileFromKyc - default parameter (L62)', () => {
+    it('L62: should use default empty object when input is not provided', async () => {
+      const userId = 'user-with-kyc';
+
+      // Call without second argument to trigger default parameter
+      const result = await createEmployerProfileFromKyc(userId);
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.name).toBe('John Doe');
+        expect(result.data.companyName).toBe('John Doe'); // Uses KYC name as default
+        expect(result.data.industry).toBe('Technology');
+      }
+    });
+  });
+
+  describe('updateEmployerProfile - UPDATE_FAILED branch (L143-147)', () => {
+    it('L143-147: should return UPDATE_FAILED when repository update returns null', async () => {
+      const userId = createTestUser().id;
+
+      // Create profile first
+      await createEmployerProfile(userId, {
+        companyName: 'Tech Corp',
+        description: 'A technology company',
+        industry: 'Technology',
+      });
+
+      // Override the mock to return null for this call
+      const originalUpdate = mockProfileRepo.updateProfile;
+      mockProfileRepo.updateProfile = jest.fn(async () => null) as any;
+
+      const result = await updateEmployerProfile(userId, {
+        companyName: 'New Corp',
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('UPDATE_FAILED');
+        expect(result.error.message).toBe('Failed to update profile');
+      }
+
+      // Restore original mock
+      mockProfileRepo.updateProfile = originalUpdate;
+    });
+  });
+
   describe('Edge Cases and Error Handling', () => {
     it('should handle very long company names', async () => {
       const userId = createTestUser().id;

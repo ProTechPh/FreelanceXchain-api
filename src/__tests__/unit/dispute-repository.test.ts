@@ -286,3 +286,115 @@ describe('DisputeRepository', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from repository-coverage.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('DisputeRepository - mapDispute resolution parsing', () => {
+  let repo: any;
+  let mockDatabases: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo = new DisputeRepository();
+    mockDatabases = (globalThis as any).__mockDatabases;
+  });
+
+  it('should parse resolution from JSON string to object', async () => {
+    const resolutionObj = {
+      decision: 'freelancer_favor',
+      reasoning: 'Evidence supports freelancer',
+      resolved_by: 'admin1',
+      resolved_at: '2025-06-01T00:00:00Z',
+    };
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'd1',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        contract_id: 'c1',
+        resolution: JSON.stringify(resolutionObj),
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getDisputesByContract('c1');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.resolution).toEqual(resolutionObj);
+    expect(typeof result.items[0]!.resolution).toBe('object');
+  });
+
+  it('should leave resolution as-is when it is already an object', async () => {
+    const resolutionObj = { decision: 'split', reasoning: 'Both parties at fault', resolved_by: 'admin', resolved_at: '2025-06-01' };
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'd2',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        contract_id: 'c2',
+        resolution: resolutionObj,
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getDisputesByContract('c2');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.resolution).toEqual(resolutionObj);
+  });
+});
+
+describe('DisputeRepository - getAllDisputes with status option', () => {
+  let repo: any;
+  let mockDatabases: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo = new DisputeRepository();
+    mockDatabases = (globalThis as any).__mockDatabases;
+  });
+
+  it('should include status filter query when status option is provided', async () => {
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'd1',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        status: 'open',
+        contract_id: 'c1',
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getAllDisputes({ status: 'open' });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.status).toBe('open');
+    expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    expect(Query.equal).toHaveBeenCalledWith('status', 'open');
+  });
+
+  it('should work without status filter', async () => {
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'd2',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        status: 'resolved',
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getAllDisputes();
+    expect(result.items).toHaveLength(1);
+    expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it('should return empty result on database error', async () => {
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('db error'));
+
+    const result = await repo.getAllDisputes({ status: 'open' });
+    expect(result.items).toEqual([]);
+    expect(result.hasMore).toBe(false);
+    expect(result.total).toBe(0);
+  });
+});

@@ -72,12 +72,30 @@ describe('Blockchain Factory', () => {
       const mode = getBlockchainMode();
       expect(['simulated', 'real']).toContain(mode);
     });
+
+    it('should return real when config.blockchain.mode is "real" (line 21)', async () => {
+      const { config } = await import('../../config/env.js');
+      const originalMode = (config.blockchain as any).mode;
+      (config.blockchain as any).mode = 'real';
+      const mode = getBlockchainMode();
+      expect(mode).toBe('real');
+      (config.blockchain as any).mode = originalMode;
+    });
   });
 
   describe('createBlockchainAdapter', () => {
     it('should create a SimulatedBlockchainAdapter in simulated mode', () => {
       const adapter = createBlockchainAdapter();
       expect(adapter).toBeInstanceOf(SimulatedBlockchainAdapter);
+    });
+
+    it('should create a RealBlockchainAdapter in real mode (line 34)', async () => {
+      const { config } = await import('../../config/env.js');
+      const originalMode = (config.blockchain as any).mode;
+      (config.blockchain as any).mode = 'real';
+      const adapter = createBlockchainAdapter();
+      expect(adapter).toBeInstanceOf(RealBlockchainAdapter);
+      (config.blockchain as any).mode = originalMode;
     });
   });
 

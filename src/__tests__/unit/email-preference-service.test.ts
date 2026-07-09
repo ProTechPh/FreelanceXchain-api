@@ -379,7 +379,7 @@ describe('Email Preference Service - Direct Branch Coverage', () => {
     expect(result.success).toBe(true);
   });
 
-  it('should handle updateEmailPreferences with no matching keys', async () => {
+    it('should handle updateEmailPreferences with no matching keys', async () => {
     const { updateEmailPreferences } = await importModule();
     // proposalReceived is camelCase, but ALLOWED_COLUMNS uses snake_case
     // So updateData will be empty, falling through to getEmailPreferences
@@ -394,6 +394,64 @@ describe('Email Preference Service - Direct Branch Coverage', () => {
     const result = await updateEmailPreferences('user-1', { proposalReceived: false } as any);
     // Falls through to getEmailPreferences which returns existing prefs
     expect(result.success).toBe(true);
+  });
+
+  it('should return INTERNAL_ERROR when updateDocument throws (lines 120-121)', async () => {
+    const { updateEmailPreferences } = await importModule();
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'ep-1', user_id: 'user-1', proposal_received: true, proposal_accepted: true,
+        milestone_updates: true, payment_notifications: true, dispute_notifications: true,
+        marketing_emails: false, weekly_digest: true,
+        $createdAt: '2025-01-01T00:00:00Z', $updatedAt: '2025-01-01T00:00:00Z',
+      }],
+      total: 1,
+    });
+    mockDatabases.updateDocument.mockRejectedValueOnce(new Error('Update failed'));
+
+    const result = await updateEmailPreferences('user-1', { marketing_emails: true } as any);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INTERNAL_ERROR');
+      expect(result.error.message).toBe('An unexpected error occurred');
+    }
+    expect(mockLoggerError).toHaveBeenCalledWith(
+      'Failed to update email preferences',
+      expect.objectContaining({ userId: 'user-1' }),
+    );
+
+    // Clean up mock state so the next test in this describe block isn't affected
+    mockDatabases.updateDocument.mockReset();
+    mockDatabases.listDocuments.mockReset();
+  });
+
+  it('should update preferences successfully with snake_case keys (lines 107-118)', async () => {
+    const { updateEmailPreferences } = await importModule();
+    // Use snake_case keys that match ALLOWED_COLUMNS to exercise the update path
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'ep-1', user_id: 'user-1', proposal_received: true, proposal_accepted: true,
+        milestone_updates: true, payment_notifications: true, dispute_notifications: true,
+        marketing_emails: false, weekly_digest: true,
+        $createdAt: '2025-01-01T00:00:00Z', $updatedAt: '2025-01-01T00:00:00Z',
+      }],
+      total: 1,
+    });
+    mockDatabases.updateDocument.mockResolvedValueOnce({
+      $id: 'ep-1', user_id: 'user-1', proposal_received: true, proposal_accepted: true,
+      milestone_updates: true, payment_notifications: true, dispute_notifications: true,
+      marketing_emails: true, weekly_digest: true,
+      $createdAt: '2025-01-01T00:00:00Z', $updatedAt: '2025-01-01T00:00:00Z',
+    });
+
+    const result = await updateEmailPreferences('user-1', { marketing_emails: true } as any);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.marketingEmails).toBe(true);
+    }
+    expect(mockDatabases.updateDocument).toHaveBeenCalledTimes(1);
   });
 
   it('should handle unsubscribeAll when no preferences exist', async () => {

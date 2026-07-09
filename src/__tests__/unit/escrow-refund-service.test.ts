@@ -462,6 +462,187 @@ describe('Escrow Refund Service', () => {
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
     });
+
+    it('should execute blockchain refund for pending milestones successfully', async () => {
+      const { approveRefund } = await importModule();
+
+      const pendingRefund = {
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, escrow_address: '0xescrow',
+        },
+      };
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(pendingRefund);
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved' });
+
+      // Milestones: one pending, one approved (should be skipped), one refunded (should be skipped)
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([
+        { id: 'm1', status: 'pending' },
+        { id: 'm2', status: 'approved' },
+        { id: 'm3', status: 'refunded' },
+      ]);
+
+      mockRefundMilestone.mockResolvedValue({ success: true });
+      mockContractRepository.updateContract.mockResolvedValueOnce({});
+      mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+      const result = await approveRefund({
+        refundId: 'ref-1',
+        approvedBy: 'employer-1',
+      });
+
+      expect(result.success).toBe(true);
+      // Only the pending milestone should be refunded on-chain
+      expect(mockRefundMilestone).toHaveBeenCalledTimes(1);
+      expect(mockRefundMilestone).toHaveBeenCalledWith('0xescrow', 0);
+    });
+
+    it('should return PARTIAL_REFUND_FAILED when some milestone refunds fail', async () => {
+      const { approveRefund } = await importModule();
+
+      const pendingRefund = {
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, escrow_address: '0xescrow',
+        },
+      };
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(pendingRefund);
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved' });
+
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([
+        { id: 'm1', status: 'pending' },
+        { id: 'm2', status: 'pending' },
+      ]);
+
+      // First milestone refund succeeds, second fails
+      mockRefundMilestone
+        .mockResolvedValueOnce({ success: true })
+        .mockRejectedValueOnce(new Error('On-chain revert'));
+
+      // Rollback to pending
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+
+      const result = await approveRefund({
+        refundId: 'ref-1',
+        approvedBy: 'employer-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('PARTIAL_REFUND_FAILED');
+      expect(result.error.message).toContain('1 milestone refund(s) failed');
+    });
+
+    it('should log CRITICAL when rollback fails after blockchain error', async () => {
+      const { approveRefund } = await importModule();
+      const { logger } = await import('../../config/logger.js');
+
+      const pendingRefund = {
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, escrow_address: '0xescrow',
+        },
+      };
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(pendingRefund);
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved' });
+
+      // Milestone fetch throws — triggers outer blockchain catch
+      mockMilestoneRepository.findByContract.mockRejectedValueOnce(new Error('DB down'));
+
+      // Rollback also fails
+      mockRefundRequestRepository.update.mockRejectedValueOnce(new Error('Rollback failed'));
+
+      const result = await approveRefund({
+        refundId: 'ref-1',
+        approvedBy: 'employer-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
+      expect(logger.error).toHaveBeenCalledWith(
+        'CRITICAL: Failed to rollback refund approval after blockchain failure',
+        expect.objectContaining({ error: expect.any(Error) })
+      );
+    });
+
+    it('should log CRITICAL when rollback fails after partial blockchain failure', async () => {
+      const { approveRefund } = await importModule();
+      const { logger } = await import('../../config/logger.js');
+
+      const pendingRefund = {
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, escrow_address: '0xescrow',
+        },
+      };
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(pendingRefund);
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved' });
+
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([
+        { id: 'm1', status: 'pending' },
+      ]);
+
+      // Milestone refund fails
+      mockRefundMilestone.mockRejectedValueOnce(new Error('On-chain revert'));
+
+      // Rollback also fails
+      mockRefundRequestRepository.update.mockRejectedValueOnce(new Error('Rollback failed'));
+
+      const result = await approveRefund({
+        refundId: 'ref-1',
+        approvedBy: 'employer-1',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('PARTIAL_REFUND_FAILED');
+      expect(logger.error).toHaveBeenCalledWith(
+        'CRITICAL: Failed to rollback refund approval after partial blockchain failure',
+        expect.objectContaining({ error: expect.any(Error) })
+      );
+    });
+
+    it('should cancel other pending refund requests for the same contract after approval', async () => {
+      const { approveRefund } = await importModule();
+
+      const pendingRefund = {
+        id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+        contract: {
+          freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+          total_amount: 1000, escrow_address: null,
+        },
+      };
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce(pendingRefund);
+      mockRefundRequestRepository.findWithContract.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved' });
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([]);
+      mockContractRepository.updateContract.mockResolvedValueOnce({});
+
+      // Other pending refunds for the same contract
+      mockRefundRequestRepository.findByContract.mockResolvedValueOnce([
+        { id: 'ref-2', status: 'pending', contract_id: 'c-1' },
+        { id: 'ref-3', status: 'rejected', contract_id: 'c-1' }, // Should be skipped
+      ]);
+
+      mockRefundRequestRepository.update.mockResolvedValue({});
+
+      const result = await approveRefund({
+        refundId: 'ref-1',
+        approvedBy: 'employer-1',
+      });
+
+      expect(result.success).toBe(true);
+      // ref-2 should be cancelled, ref-3 should not (already rejected)
+      expect(mockRefundRequestRepository.update).toHaveBeenCalledWith('ref-2', expect.objectContaining({
+        status: 'cancelled',
+      }));
+    });
   });
 
   describe('rejectRefund', () => {

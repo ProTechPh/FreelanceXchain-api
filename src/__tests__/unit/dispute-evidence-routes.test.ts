@@ -277,3 +277,140 @@ describe('dispute-evidence-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// SSRF validation tests for isValidFileUrl
+// ═══════════════════════════════════════════════════════════════
+
+describe('dispute-evidence-routes - SSRF fileUrl validation', () => {
+  let app: any;
+  const mockSubmitEvidence = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/dispute-evidence-service.ts'), () => ({
+      submitEvidence: mockSubmitEvidence,
+      getDisputeEvidence: jest.fn(),
+      deleteEvidence: jest.fn(),
+      verifyEvidence: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/dispute-evidence-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/disputes', router);
+    jest.clearAllMocks();
+  });
+
+  it('should accept valid HTTPS fileUrl', async () => {
+    mockSubmitEvidence.mockResolvedValueOnce({ success: true, data: { id: 'e1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .post('/api/disputes/d1/evidence')
+      .send({ evidenceType: 'document', description: 'test', fileUrl: 'https://example.com/file.pdf' });
+    expect(res.status).toBe(200);
+  });
+
+  it('should reject HTTP fileUrl (only HTTPS allowed)', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .post('/api/disputes/d1/evidence')
+      .send({ evidenceType: 'document', description: 'test', fileUrl: 'http://example.com/file.pdf' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('HTTPS');
+  });
+
+  it('should reject malformed URL', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .post('/api/disputes/d1/evidence')
+      .send({ evidenceType: 'document', description: 'test', fileUrl: 'not-a-url' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('Invalid file URL');
+  });
+
+  it('should reject URL exceeding max length', async () => {
+    const request = (await import('supertest')).default;
+    const longUrl = 'https://example.com/' + 'a'.repeat(2100);
+    const res = await request(app)
+      .post('/api/disputes/d1/evidence')
+      .send({ evidenceType: 'document', description: 'test', fileUrl: longUrl });
+    expect(res.status).toBe(400);
+    expect(res.body.error.message).toContain('Invalid file URL');
+  });
+
+  it('should accept undefined fileUrl (optional field)', async () => {
+    mockSubmitEvidence.mockResolvedValueOnce({ success: true, data: { id: 'e1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .post('/api/disputes/d1/evidence')
+      .send({ evidenceType: 'document', description: 'test' });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ?? nullish coalescing fallback branch tests (lines 68-69, 136-137, 185-186, 234-235)
+// ═══════════════════════════════════════════════════════════════
+
+describe('dispute-evidence-routes - ?? nullish fallback branches', () => {
+  let app: any;
+  const mockSubmitEvidence = jest.fn<any>();
+  const mockGetDisputeEvidence = jest.fn<any>();
+  const mockDeleteEvidence = jest.fn<any>();
+  const mockVerifyEvidence = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { id: 'user-1', role: 'freelancer' };
+        for (const key of Object.keys(req.params)) delete req.params[key];
+        next();
+      },
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-evidence-service.ts'), () => ({
+      submitEvidence: mockSubmitEvidence,
+      getDisputeEvidence: mockGetDisputeEvidence,
+      deleteEvidence: mockDeleteEvidence,
+      verifyEvidence: mockVerifyEvidence,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/dispute-evidence-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/disputes', router);
+    jest.clearAllMocks();
+  });
+
+  it('L68-69: POST evidence with nullish disputeId and userId', async () => {
+    mockSubmitEvidence.mockResolvedValueOnce({ success: true, data: { id: 'e1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/disputes/d1/evidence').send({ evidenceType: 'doc', description: 'test' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L136-137: GET evidence with nullish disputeId and userId', async () => {
+    mockGetDisputeEvidence.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/disputes/d1/evidence');
+    expect(res.status).toBe(200);
+  });
+
+  it('L185-186: DELETE evidence with nullish disputeId, evidenceId and userId', async () => {
+    mockDeleteEvidence.mockResolvedValueOnce({ success: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/disputes/d1/evidence/e1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L234-235: POST verify with nullish disputeId, evidenceId and userId', async () => {
+    mockVerifyEvidence.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/disputes/d1/evidence/e1/verify');
+    expect(res.status).toBe(200);
+  });
+});

@@ -603,3 +603,284 @@ describe('Full rush upgrade negotiation flow', () => {
     expect(declineResult.data.status).toBe('declined');
   });
 });
+
+// ─── Additional coverage tests ─────────────────────────────────────
+describe('rush-upgrade-service - additional coverage', () => {
+  it('should return UPDATE_FAILED when accept update returns null', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    seedProject({ id: contract.project_id });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+    });
+
+    mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should return UPDATE_FAILED when decline update returns null', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+    });
+
+    mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'decline' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should return UPDATE_FAILED when counter_offer update returns null', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, status: 'pending',
+    });
+
+    mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+    const result = await respondToRushUpgrade(freelancer.id, {
+      requestId: request.id, action: 'counter_offer', counterPercentage: 20,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should gracefully handle notification failure in sendNotificationSafe', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+    seedProject({ id: contract.project_id });
+
+    mockNotificationRepo.createNotification.mockRejectedValueOnce(new Error('Notification service down'));
+
+    const result = await requestRushUpgrade(employer.id, {
+      contractId: contract.id, proposedPercentage: 25,
+    });
+    // Should still succeed despite notification failure
+    expect(result.success).toBe(true);
+  });
+
+  it('should return NOT_FOUND when acceptCounterOffer request not found', async () => {
+    const result = await acceptCounterOffer('employer-1', 'nonexistent');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return UPDATE_FAILED when acceptCounterOffer update returns null', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const contract = seedContract({ employer_id: employer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    seedProject({ id: contract.project_id });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, counter_percentage: 20, status: 'counter_offered',
+    });
+
+    mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+    const result = await acceptCounterOffer(employer.id, request.id);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should return UPDATE_FAILED when acceptCounterOffer contract update fails', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const contract = seedContract({ employer_id: employer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    seedProject({ id: contract.project_id });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, counter_percentage: 20, status: 'counter_offered',
+    });
+
+    mockContractRepo.updateContract.mockResolvedValueOnce(null);
+
+    const result = await acceptCounterOffer(employer.id, request.id);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should return NOT_FOUND when declineCounterOffer request not found', async () => {
+    const result = await declineCounterOffer('employer-1', 'nonexistent');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return UPDATE_FAILED when declineCounterOffer update returns null', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const contract = seedContract({ employer_id: employer.id });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, counter_percentage: 20, status: 'counter_offered',
+    });
+
+    mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+    const result = await declineCounterOffer(employer.id, request.id);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Coverage gap tests — each test targets a specific uncovered line
+// ═══════════════════════════════════════════════════════════════
+
+describe('rush-upgrade-service - Coverage Gaps', () => {
+  beforeEach(() => {
+    rushUpgradeStore.clear();
+    contractStore.clear();
+    projectStore.clear();
+    userStore.clear();
+    notificationStore.clear();
+    jest.clearAllMocks();
+  });
+
+  describe('sendNotificationSafe catch (L44)', () => {
+    it('L44: should catch and log notification failure', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer' });
+      const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+      seedProject({ id: contract.project_id });
+
+      mockNotificationRepo.createNotification.mockRejectedValueOnce(new Error('Notification service down'));
+
+      const result = await requestRushUpgrade(employer.id, {
+        contractId: contract.id, proposedPercentage: 25,
+      });
+      // Should still succeed despite notification failure
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('respondToRushUpgrade update failures (L183, L239, L276)', () => {
+    it('L183: should return UPDATE_FAILED when accept update returns null', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer' });
+      const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+      seedProject({ id: contract.project_id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+      });
+
+      mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+      const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+
+    it('L239: should return UPDATE_FAILED when decline update returns null', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer' });
+      const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+      });
+
+      mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+      const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'decline' });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+
+    it('L276: should return UPDATE_FAILED when counter_offer update returns null', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer' });
+      const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, status: 'pending',
+      });
+
+      mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+      const result = await respondToRushUpgrade(freelancer.id, {
+        requestId: request.id, action: 'counter_offer', counterPercentage: 20,
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+  });
+
+  describe('respondToRushUpgrade invalid action (L298)', () => {
+    it('L298: should return INVALID_ACTION for unknown action', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const freelancer = seedUser({ role: 'freelancer' });
+      const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+      });
+
+      const result = await respondToRushUpgrade(freelancer.id, {
+        requestId: request.id, action: 'invalid_action' as any,
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('INVALID_ACTION');
+    });
+  });
+
+  describe('acceptCounterOffer (L311, L348, L364-365)', () => {
+    it('L311: should return NOT_FOUND when request not found', async () => {
+      const result = await acceptCounterOffer('employer-1', 'nonexistent');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L348: should return UPDATE_FAILED when update returns null', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const contract = seedContract({ employer_id: employer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+      seedProject({ id: contract.project_id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, counter_percentage: 20, status: 'counter_offered',
+      });
+
+      mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+      const result = await acceptCounterOffer(employer.id, request.id);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+
+    it('L364-365: should return UPDATE_FAILED when contract update fails', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const contract = seedContract({ employer_id: employer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+      seedProject({ id: contract.project_id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, proposed_percentage: 30, counter_percentage: 20, status: 'counter_offered',
+      });
+
+      mockContractRepo.updateContract.mockResolvedValueOnce(null);
+
+      const result = await acceptCounterOffer(employer.id, request.id);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+  });
+
+  describe('declineCounterOffer (L401, L430)', () => {
+    it('L401: should return NOT_FOUND when request not found', async () => {
+      const result = await declineCounterOffer('employer-1', 'nonexistent');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L430: should return UPDATE_FAILED when update returns null', async () => {
+      const employer = seedUser({ role: 'employer' });
+      const contract = seedContract({ employer_id: employer.id });
+      const request = seedRushUpgradeRequest({
+        contract_id: contract.id, requested_by: employer.id, counter_percentage: 20, status: 'counter_offered',
+      });
+
+      mockRushUpgradeRepo.updateRequest.mockResolvedValueOnce(null);
+
+      const result = await declineCounterOffer(employer.id, request.id);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+  });
+});

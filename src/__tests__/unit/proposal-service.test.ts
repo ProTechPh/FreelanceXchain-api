@@ -3,13 +3,15 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
-import { 
-  createInMemoryStore, 
+import {
+  createInMemoryStore,
   createMockProposalRepository,
   createMockProjectRepository,
   createMockContractRepository,
   createMockUserRepository,
-  createMockNotificationRepository
+  createMockNotificationRepository,
+  createMockReviewRepository,
+  createMockEmployerProfileRepository
 } from '../helpers/mock-repository-factory.js';
 import { 
   createTestProposal, 
@@ -26,12 +28,16 @@ const projectStore = createInMemoryStore();
 const contractStore = createInMemoryStore();
 const userStore = createInMemoryStore();
 const notificationStore = createInMemoryStore();
+const reviewStore = createInMemoryStore();
+const employerProfileStore = createInMemoryStore();
 
 const mockProposalRepo = createMockProposalRepository(proposalStore);
 const mockProjectRepo = createMockProjectRepository(projectStore);
 const mockContractRepo = createMockContractRepository(contractStore);
 const mockUserRepo = createMockUserRepository(userStore);
 const mockNotificationRepo = createMockNotificationRepository(notificationStore);
+const mockReviewRepo = createMockReviewRepository(reviewStore);
+const mockEmployerProfileRepo = createMockEmployerProfileRepository(employerProfileStore);
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
@@ -92,6 +98,16 @@ jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   initializeDatabase: jest.fn(),
 }));
 
+// Mock review repository
+jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+  reviewRepository: mockReviewRepo,
+}));
+
+// Mock employer profile repository
+jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
+  employerProfileRepository: mockEmployerProfileRepo,
+}));
+
 // Import after mocking
 const {
   submitProposal,
@@ -101,6 +117,7 @@ const {
   acceptProposal,
   rejectProposal,
   withdrawProposal,
+  getProposalWithEmployerHistory,
 } = await import('../../services/proposal-service.js');
 
 describe('Proposal Service - Property-Based Tests', () => {
@@ -110,6 +127,8 @@ describe('Proposal Service - Property-Based Tests', () => {
     mockContractRepo.clear();
     mockUserRepo.clear();
     mockNotificationRepo.clear();
+    mockReviewRepo.clear();
+    mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
     // Mock pool.query for atomic proposal acceptance
@@ -408,6 +427,8 @@ describe('Proposal Service - Unit Tests', () => {
     mockContractRepo.clear();
     mockUserRepo.clear();
     mockNotificationRepo.clear();
+    mockReviewRepo.clear();
+    mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
     // Mock pool.query for atomic proposal acceptance
@@ -683,6 +704,720 @@ describe('Proposal Service - Unit Tests', () => {
       const updatedContractEntity = await mockContractRepo.getContractById(result.data.contract.id);
       expect(updatedContractEntity?.status).toBe('active');
       expect(updatedContractEntity?.escrow_address).toBeDefined();
+    }
+  });
+});
+
+// =============================================================================
+// Coverage Tests - Error paths and branch conditions
+// =============================================================================
+describe('Proposal Service - Coverage Tests', () => {
+  beforeEach(() => {
+    mockProposalRepo.clear();
+    mockProjectRepo.clear();
+    mockContractRepo.clear();
+    mockUserRepo.clear();
+    mockNotificationRepo.clear();
+    mockReviewRepo.clear();
+    mockEmployerProfileRepo.clear();
+    mockBlockchainService.deployEscrow.mockClear();
+
+    const mockPoolObj = (globalThis as any).mockPool;
+    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
+      if (text.includes('COUNT(*)') && text.includes('proposals')) {
+        return { rows: [{ count: '0' }], rowCount: 1 };
+      }
+      if (text.includes('accept_proposal_atomic')) {
+        const proposalId = params?.[0];
+        const employerId = params?.[1];
+        const proposal = proposalStore.get(proposalId) as any;
+        if (!proposal) {
+          return { rows: [], rowCount: 0 };
+        }
+        proposal.status = 'accepted';
+        proposalStore.set(proposalId, proposal);
+        const contractId = 'contract-' + Date.now();
+        const now = new Date().toISOString();
+        const contract = {
+          id: contractId, proposal_id: proposalId, project_id: proposal.project_id,
+          freelancer_id: proposal.freelancer_id, employer_id: employerId,
+          total_amount: proposal.proposed_rate, status: 'pending', escrow_address: null,
+          created_at: now, updated_at: now,
+        };
+        contractStore.set(contractId, contract);
+        for (const [id, p] of proposalStore.entries()) {
+          const otherProposal = p as any;
+          if (otherProposal.project_id === proposal.project_id &&
+              otherProposal.id !== proposalId &&
+              otherProposal.status === 'pending') {
+            otherProposal.status = 'rejected';
+            proposalStore.set(id, otherProposal);
+          }
+        }
+        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
+      }
+      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
+        const proposalId = params?.[0];
+        for (const [, c] of contractStore.entries()) {
+          const contract = c as any;
+          if (contract.proposal_id === proposalId) {
+            return { rows: [{ id: contract.id }], rowCount: 1 };
+          }
+        }
+        return { rows: [], rowCount: 0 };
+      }
+      return { rows: [], rowCount: 0 };
+    });
+  });
+
+  // --- submitProposal error paths ---
+
+  it('should return VALIDATION_ERROR for invalid attachments (lines 51-56)', async () => {
+    const project = createTestProject({ status: 'open' });
+    projectStore.set(project.id, project);
+
+    const tooManyAttachments = Array.from({ length: 6 }, () => ({
+      url: 'https://example.com/file.pdf',
+      filename: 'file.pdf',
+      size: 100,
+      mimeType: 'application/pdf',
+    }));
+
+    const result = await submitProposal('freelancer-123', {
+      projectId: project.id,
+      proposedRate: 75,
+      estimatedDuration: 45,
+      attachments: tooManyAttachments,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+      expect(result.error.details).toBeDefined();
+    }
+  });
+
+  it('should return NOT_FOUND when project does not exist in submitProposal (line 64)', async () => {
+    const result = await submitProposal('freelancer-123', {
+      projectId: 'non-existent-project',
+      proposedRate: 75,
+      estimatedDuration: 45,
+      attachments: [],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return FREELANCER_LIMIT_REACHED when slots full in submitProposal (line 92)', async () => {
+    const project = createTestProject({ status: 'open', freelancer_limit: 1 });
+    projectStore.set(project.id, project);
+
+    const acceptedProposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: 'other-freelancer',
+      status: 'accepted',
+    });
+    proposalStore.set(acceptedProposal.id, acceptedProposal);
+
+    const result = await submitProposal('new-freelancer', {
+      projectId: project.id,
+      proposedRate: 50,
+      estimatedDuration: 30,
+      attachments: [],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('FREELANCER_LIMIT_REACHED');
+    }
+  });
+
+  it('should continue when notification creation fails in submitProposal (line 129)', async () => {
+    const project = createTestProject({ status: 'open' });
+    projectStore.set(project.id, project);
+
+    const origCreateNotification = mockNotificationRepo.createNotification;
+    mockNotificationRepo.createNotification = jest.fn<any>().mockRejectedValue(new Error('Notification error'));
+
+    const result = await submitProposal('freelancer-123', {
+      projectId: project.id,
+      proposedRate: 75,
+      estimatedDuration: 45,
+      attachments: [],
+    });
+
+    expect(result.success).toBe(true);
+    mockNotificationRepo.createNotification = origCreateNotification;
+  });
+
+  // --- getProposalsByProject error path ---
+
+  it('should return NOT_FOUND when project does not exist in getProposalsByProject (line 229)', async () => {
+    const result = await getProposalsByProject('non-existent-project');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  // --- acceptProposal validation errors ---
+
+  it('should return NOT_FOUND when proposal not found in acceptProposal (line 277)', async () => {
+    const result = await acceptProposal('non-existent-proposal', 'employer-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return INVALID_STATUS when proposal not pending in acceptProposal (line 281)', async () => {
+    const proposal = createTestProposal({ status: 'accepted' });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, 'employer-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS');
+    }
+  });
+
+  it('should return NOT_FOUND when project not found during acceptProposal (line 286)', async () => {
+    const proposal = createTestProposal({
+      project_id: 'non-existent-project',
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, 'employer-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return UNAUTHORIZED when employer does not own project in acceptProposal (line 291)', async () => {
+    const milestones = [createTestMilestone({ amount: 1000 })];
+    const project = createTestProject({
+      employer_id: 'real-owner',
+      status: 'open',
+      milestones,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, 'wrong-employer');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UNAUTHORIZED');
+    }
+  });
+
+  it('should return NO_MILESTONES when project has no milestones (line 295)', async () => {
+    const employerId = 'employer-123';
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones: [],
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NO_MILESTONES');
+    }
+  });
+
+  it('should return INVALID_PROPOSAL_RATE when rate is zero (line 300)', async () => {
+    const employerId = 'employer-123';
+    const milestones = [createTestMilestone({ amount: 1000 })];
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      status: 'pending',
+      proposed_rate: 0,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_PROPOSAL_RATE');
+    }
+  });
+
+  it('should return AMOUNT_MISMATCH when rate does not match milestone total (line 305)', async () => {
+    const employerId = 'employer-123';
+    const milestones = [createTestMilestone({ amount: 500 })];
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('AMOUNT_MISMATCH');
+    }
+  });
+
+  it('should return FREELANCER_LIMIT_REACHED during acceptProposal validation (line 316)', async () => {
+    const employerId = 'employer-123';
+    const milestones = [createTestMilestone({ amount: 1000 })];
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 1,
+    });
+    projectStore.set(project.id, project);
+
+    const acceptedProposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: 'other-freelancer',
+      status: 'accepted',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(acceptedProposal.id, acceptedProposal);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: 'freelancer-accept',
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('FREELANCER_LIMIT_REACHED');
+    }
+  });
+
+  // --- acceptProposal internal errors ---
+
+  it('should handle errors in rejectOtherProposals and escrow gracefully (lines 335, 510)', async () => {
+    const employerId = 'employer-123';
+    const freelancerId = 'freelancer-123';
+    const milestones = [createTestMilestone({ amount: 1000 })];
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 2,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const origGetProposalsByProject = mockProposalRepo.getProposalsByProject;
+    mockProposalRepo.getProposalsByProject = jest.fn<any>().mockRejectedValue(new Error('DB error'));
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    mockProposalRepo.getProposalsByProject = origGetProposalsByProject;
+  });
+
+  it('should return UPDATE_FAILED when updateProposal returns null during acceptance (lines 364-365)', async () => {
+    const employerId = 'employer-123';
+    const freelancerId = 'freelancer-123';
+    const milestones = [createTestMilestone({ amount: 1000 })];
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 2,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const origUpdateProposal = mockProposalRepo.updateProposal;
+    mockProposalRepo.updateProposal = jest.fn<any>().mockResolvedValue(null);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UPDATE_FAILED');
+    }
+    mockProposalRepo.updateProposal = origUpdateProposal;
+  });
+
+  it('should return UPDATE_FAILED when contract creation returns null (line 382)', async () => {
+    const employerId = 'employer-123';
+    const freelancerId = 'freelancer-123';
+    const milestones = [createTestMilestone({ amount: 1000 })];
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 2,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const origCreate = mockContractRepo.create;
+    mockContractRepo.create = jest.fn<any>().mockResolvedValue(null);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UPDATE_FAILED');
+    }
+    mockContractRepo.create = origCreate;
+  });
+
+  it('should handle blockchain initialization failure gracefully (line 442)', async () => {
+    const employerId = 'employer-123';
+    const freelancerId = 'freelancer-123';
+    const milestones = [createTestMilestone({ amount: 1000 })];
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 2,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const origGetUserById = mockUserRepo.getUserById;
+    mockUserRepo.getUserById = jest.fn<any>().mockRejectedValue(new Error('DB error'));
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    mockUserRepo.getUserById = origGetUserById;
+  });
+
+  it('should continue when notification creation fails in acceptProposal (line 533)', async () => {
+    const employerId = 'employer-123';
+    const freelancerId = 'freelancer-123';
+    const milestones = [createTestMilestone({ amount: 1000 })];
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 2,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      status: 'pending',
+      proposed_rate: 1000,
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const origCreateNotification = mockNotificationRepo.createNotification;
+    mockNotificationRepo.createNotification = jest.fn<any>().mockRejectedValue(new Error('Notification error'));
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    mockNotificationRepo.createNotification = origCreateNotification;
+  });
+
+  // --- rejectProposal error paths ---
+
+  it('should return NOT_FOUND when proposal not found in rejectProposal (line 555)', async () => {
+    const result = await rejectProposal('non-existent-proposal', 'employer-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return INVALID_STATUS when proposal not pending in rejectProposal (line 563)', async () => {
+    const proposal = createTestProposal({ status: 'accepted' });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await rejectProposal(proposal.id, 'employer-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS');
+    }
+  });
+
+  it('should return NOT_FOUND when project not found in rejectProposal (line 572)', async () => {
+    const proposal = createTestProposal({
+      project_id: 'non-existent-project',
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await rejectProposal(proposal.id, 'employer-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return UNAUTHORIZED when employer does not own project in rejectProposal (line 580)', async () => {
+    const project = createTestProject({ employer_id: 'real-owner', status: 'open' });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await rejectProposal(proposal.id, 'wrong-employer');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UNAUTHORIZED');
+    }
+  });
+
+  it('should return UPDATE_FAILED when updateProposal returns null during rejection (line 592)', async () => {
+    const employerId = 'employer-123';
+    const project = createTestProject({ employer_id: employerId, status: 'open' });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const origUpdateProposal = mockProposalRepo.updateProposal;
+    mockProposalRepo.updateProposal = jest.fn<any>().mockResolvedValue(null);
+
+    const result = await rejectProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UPDATE_FAILED');
+    }
+    mockProposalRepo.updateProposal = origUpdateProposal;
+  });
+
+  it('should continue when notification creation fails in rejectProposal (line 615)', async () => {
+    const employerId = 'employer-123';
+    const project = createTestProject({ employer_id: employerId, status: 'open' });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const origCreateNotification = mockNotificationRepo.createNotification;
+    mockNotificationRepo.createNotification = jest.fn<any>().mockRejectedValue(new Error('Notification error'));
+
+    const result = await rejectProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    mockNotificationRepo.createNotification = origCreateNotification;
+  });
+
+  // --- withdrawProposal error paths ---
+
+  it('should return NOT_FOUND when proposal not found in withdrawProposal (line 634)', async () => {
+    const result = await withdrawProposal('non-existent-proposal', 'freelancer-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return INVALID_STATUS when proposal not pending in withdrawProposal (line 650)', async () => {
+    const freelancerId = 'freelancer-123';
+    const proposal = createTestProposal({
+      freelancer_id: freelancerId,
+      status: 'accepted',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await withdrawProposal(proposal.id, freelancerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS');
+    }
+  });
+
+  it('should return UPDATE_FAILED when updateProposal returns null during withdrawal (line 661)', async () => {
+    const freelancerId = 'freelancer-123';
+    const proposal = createTestProposal({
+      freelancer_id: freelancerId,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const origUpdateProposal = mockProposalRepo.updateProposal;
+    mockProposalRepo.updateProposal = jest.fn<any>().mockResolvedValue(null);
+
+    const result = await withdrawProposal(proposal.id, freelancerId);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UPDATE_FAILED');
+    }
+    mockProposalRepo.updateProposal = origUpdateProposal;
+  });
+
+  // --- getProposalWithEmployerHistory error paths ---
+
+  it('should return NOT_FOUND when proposal not found in getProposalWithEmployerHistory (line 174)', async () => {
+    const result = await getProposalWithEmployerHistory('non-existent-proposal');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return NOT_FOUND when project not found in getProposalWithEmployerHistory (line 186)', async () => {
+    const proposal = createTestProposal({
+      project_id: 'non-existent-project',
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await getProposalWithEmployerHistory(proposal.id);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return proposal with employer history on success (lines 174-206)', async () => {
+    const employerId = 'employer-history';
+    const project = createTestProject({
+      employer_id: employerId,
+      status: 'open',
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    // Add a completed contract for the employer
+    const contract = createTestContract({
+      employer_id: employerId,
+      status: 'completed',
+    });
+    contractStore.set(contract.id, contract);
+
+    // Add a review for the employer
+    mockReviewRepo.create({
+      id: 'review-1',
+      reviewee_id: employerId,
+      reviewer_id: 'reviewer-1',
+      contract_id: contract.id,
+      rating: 4,
+      comment: 'Good employer',
+      reviewer_role: 'freelancer',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    // Add employer profile (getProfileByUserId looks up by user_id key)
+    employerProfileStore.set(employerId, {
+      id: 'profile-1',
+      user_id: employerId,
+      company_name: 'Test Corp',
+      industry: 'Technology',
+      name: 'Test Employer',
+      nationality: 'US',
+      description: 'A test company',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const result = await getProposalWithEmployerHistory(proposal.id);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.proposal.id).toBe(proposal.id);
+      expect(result.data.project.id).toBe(project.id);
+      expect(result.data.employerHistory).toBeDefined();
+      expect(result.data.employerHistory.completedProjectsCount).toBe(1);
+      expect(result.data.employerHistory.reviewCount).toBe(1);
+      expect(result.data.employerHistory.companyName).toBe('Test Corp');
+      expect(result.data.employerHistory.industry).toBe('Technology');
     }
   });
 });

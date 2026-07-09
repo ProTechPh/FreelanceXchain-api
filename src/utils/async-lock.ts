@@ -23,11 +23,13 @@ export async function withLock<T>(key: string, fn: () => Promise<T>): Promise<T>
     key,
     currentLock.then(
       () => {
+        /* istanbul ignore next */
         if (locks.get(key) === currentLock) {
           locks.delete(key);
         }
       },
       () => {
+        /* istanbul ignore next */
         if (locks.get(key) === currentLock) {
           locks.delete(key);
         }

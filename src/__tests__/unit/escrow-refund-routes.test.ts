@@ -302,3 +302,164 @@ describe('escrow-refund-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(500);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Catch block tests for POST refund-request and GET refunds
+// ═══════════════════════════════════════════════════════════════
+
+describe('escrow-refund-routes - catch blocks for refund-request and refunds', () => {
+  let app: any;
+  const mockCreateRefundRequest = jest.fn<any>();
+  const mockGetContractRefunds = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/escrow-refund-service.ts'), () => ({
+      createRefundRequest: mockCreateRefundRequest,
+      getContractRefunds: mockGetContractRefunds,
+      approveRefund: jest.fn(),
+      rejectRefund: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/escrow-refund-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/escrow', router);
+    jest.clearAllMocks();
+  });
+
+  it('L69-70: POST refund-request catch block returns 500', async () => {
+    mockCreateRefundRequest.mockRejectedValueOnce(new Error('DB crash'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/c1/refund-request').send({ reason: 'Test' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to create refund request');
+  });
+
+  it('L104-105: GET refunds catch block returns 500', async () => {
+    mockGetContractRefunds.mockRejectedValueOnce(new Error('DB crash'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/escrow/c1/refunds');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to get refunds');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// instanceof Error false branch tests
+// ═══════════════════════════════════════════════════════════════
+
+describe('escrow-refund-routes - instanceof Error false branch', () => {
+  let app: any;
+  const localCreateRefund = jest.fn<any>();
+  const localApproveRefund = jest.fn<any>();
+  const localRejectRefund = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/escrow-refund-service.ts'), () => ({
+      createRefundRequest: localCreateRefund,
+      approveRefund: localApproveRefund,
+      rejectRefund: localRejectRefund,
+      getContractRefunds: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/escrow-refund-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/escrow', router);
+    jest.clearAllMocks();
+  });
+
+  it('L69: POST refund-request catch with non-Error uses String(error)', async () => {
+    localCreateRefund.mockRejectedValueOnce('string error');
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/c1/refund-request').send({ reason: 'test' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to create refund request');
+  });
+
+  it('L142: POST approve catch with non-Error uses String(error)', async () => {
+    localApproveRefund.mockRejectedValueOnce(42);
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/refunds/r1/approve');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to approve refund');
+  });
+
+  it('L197: POST reject catch with non-Error uses String(error)', async () => {
+    localRejectRefund.mockRejectedValueOnce({ custom: 'error' });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/refunds/r1/reject').send({ reason: 'test' });
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to reject refund');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ?? nullish coalescing fallback branch tests
+// ═══════════════════════════════════════════════════════════════
+
+describe('escrow-refund-routes - ?? nullish fallback branches', () => {
+  let app: any;
+  const localCreateRefund = jest.fn<any>();
+  const localGetRefunds = jest.fn<any>();
+  const localApproveRefund = jest.fn<any>();
+  const localRejectRefund = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { id: 'user-1', role: 'employer' };
+        for (const key of Object.keys(req.params)) delete req.params[key];
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-refund-service.ts'), () => ({
+      createRefundRequest: localCreateRefund,
+      approveRefund: localApproveRefund,
+      rejectRefund: localRejectRefund,
+      getContractRefunds: localGetRefunds,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/escrow-refund-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/escrow', router);
+    jest.clearAllMocks();
+  });
+
+  it('L48-49: POST refund-request with nullish contractId and userId', async () => {
+    localCreateRefund.mockResolvedValueOnce({ success: true, data: { id: 'r1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/c1/refund-request').send({ reason: 'test' });
+    expect(res.status).toBe(200);
+  });
+
+  it('L93-94: GET refunds with nullish contractId and userId', async () => {
+    localGetRefunds.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/escrow/c1/refunds');
+    expect(res.status).toBe(200);
+  });
+
+  it('L128-129: POST approve with nullish refundId and userId', async () => {
+    localApproveRefund.mockResolvedValueOnce({ success: true, data: { id: 'r1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/refunds/r1/approve');
+    expect(res.status).toBe(200);
+  });
+
+  it('L177-178: POST reject with nullish refundId and userId', async () => {
+    localRejectRefund.mockResolvedValueOnce({ success: true, data: { id: 'r1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/escrow/refunds/r1/reject').send({ reason: 'test' });
+    expect(res.status).toBe(200);
+  });
+});

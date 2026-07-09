@@ -381,4 +381,505 @@ describe('Escrow Contract - Appwrite', () => {
       expect(state).toBeNull();
     });
   });
+
+  describe('loadEscrow catch block', () => {
+    it('should return null when database throws during load', async () => {
+      // Deploy escrow first
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+
+      // Make listDocuments throw for the next call to loadEscrow
+      const originalList = mockDatabases.listDocuments.getMockImplementation();
+      mockDatabases.listDocuments.mockImplementationOnce(async () => {
+        throw new Error('DB connection lost');
+      });
+
+      // loadEscrow returns null (catch block), so getEscrowBalance throws
+      await expect(getEscrowBalance(ESCROW_ADDR)).rejects.toThrow('Escrow contract not found');
+
+      // Restore
+      mockDatabases.listDocuments.mockImplementation(originalList!);
+    });
+  });
+
+  describe('depositToEscrow error paths', () => {
+    it('should throw when escrow not found', async () => {
+      await expect(depositToEscrow('0xNonExistent', BigInt(100), EMPLOYER))
+        .rejects.toThrow('Escrow contract not found');
+    });
+
+    it('should throw when deposit confirmation fails', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+
+      mockConfirmTx.mockResolvedValueOnce(null);
+
+      await expect(depositToEscrow(ESCROW_ADDR, BigInt(100), EMPLOYER))
+        .rejects.toThrow('Failed to confirm deposit transaction');
+    });
+  });
+
+  describe('releaseMilestone error paths', () => {
+    it('should throw when escrow not found', async () => {
+      await expect(releaseMilestone('0xNonExistent', 'm-1', EMPLOYER))
+        .rejects.toThrow('Escrow contract not found');
+    });
+
+    it('should throw when approver is not employer', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', '0xWrongApprover'))
+        .rejects.toThrow('Only employer can release milestone payments');
+    });
+
+    it('should throw when milestone not found', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-nonexistent', EMPLOYER))
+        .rejects.toThrow('Milestone not found');
+    });
+
+    it('should throw when milestone already released', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+      await releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Milestone already released');
+    });
+
+    it('should throw when milestone was refunded', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+      await refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Milestone was refunded');
+    });
+
+    it('should throw when insufficient escrow balance for release', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      // Don't deposit any funds - balance is 0
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Insufficient escrow balance');
+    });
+
+    it('should throw when release transaction confirmation fails', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      mockConfirmTx.mockResolvedValueOnce(null);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Failed to confirm release transaction');
+    });
+  });
+
+  describe('refundMilestone error paths', () => {
+    it('should throw when escrow not found', async () => {
+      await expect(refundMilestone('0xNonExistent', 'm-1', EMPLOYER))
+        .rejects.toThrow('Escrow contract not found');
+    });
+
+    it('should throw when resolver is not employer', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', '0xWrongResolver'))
+        .rejects.toThrow('Only the employer or authorized resolver can refund a milestone');
+    });
+
+    it('should throw when milestone not found for refund', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-nonexistent', EMPLOYER))
+        .rejects.toThrow('Milestone not found');
+    });
+
+    it('should throw when milestone already released for refund', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+      await releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Milestone already released');
+    });
+
+    it('should throw when milestone already refunded', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+      await refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Milestone already refunded');
+    });
+
+    it('should throw when insufficient escrow balance for refund', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      // Don't deposit any funds - balance is 0
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Insufficient escrow balance');
+    });
+
+    it('should throw when refund transaction confirmation fails', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      mockConfirmTx.mockResolvedValueOnce(null);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Failed to confirm refund transaction');
+    });
+  });
+
+  describe('getEscrowBalance error paths', () => {
+    it('should throw when escrow not found', async () => {
+      await expect(getEscrowBalance('0xNonExistent'))
+        .rejects.toThrow('Escrow contract not found');
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Coverage gap tests — each test targets a specific uncovered line
+// ═══════════════════════════════════════════════════════════════
+
+describe('Escrow Contract - Coverage Gaps', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    escrowStore.clear();
+    milestoneStore.clear();
+    mockGenerateWallet.mockReturnValue(ESCROW_ADDR);
+    mockSubmitTx.mockResolvedValue(makeTx());
+    mockConfirmTx.mockResolvedValue(makeTx());
+  });
+
+  describe('loadEscrow catch block (L95)', () => {
+    it('should return null when listDocuments throws', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+
+      const originalImpl = mockDatabases.listDocuments.getMockImplementation();
+      mockDatabases.listDocuments.mockImplementation(async () => {
+        throw new Error('DB connection lost');
+      });
+
+      // getEscrowBalance calls loadEscrow internally, which should catch and return null
+      await expect(getEscrowBalance(ESCROW_ADDR)).rejects.toThrow('Escrow contract not found');
+
+      // Restore for subsequent tests
+      mockDatabases.listDocuments.mockImplementation(originalImpl!);
+    });
+  });
+
+  describe('depositToEscrow coverage (L236, L257)', () => {
+    it('L236: should throw when escrow not found', async () => {
+      await expect(depositToEscrow('0xNotFound', BigInt(100), EMPLOYER))
+        .rejects.toThrow('Escrow contract not found');
+    });
+
+    it('L257: should throw when deposit confirmation returns null', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+
+      mockConfirmTx.mockResolvedValueOnce(null);
+
+      await expect(depositToEscrow(ESCROW_ADDR, BigInt(100), EMPLOYER))
+        .rejects.toThrow('Failed to confirm deposit transaction');
+    });
+  });
+
+  describe('releaseMilestone coverage (L286, L290, L295, L299, L303, L307, L325)', () => {
+    it('L286: should throw escrow not found', async () => {
+      await expect(releaseMilestone('0xMissing', 'm-1', EMPLOYER))
+        .rejects.toThrow('Escrow contract not found');
+    });
+
+    it('L290: should throw when approver is not employer', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', '0xWrongApprover'))
+        .rejects.toThrow('Only employer can release milestone payments');
+    });
+
+    it('L295: should throw when milestone not found', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-missing', EMPLOYER))
+        .rejects.toThrow('Milestone not found');
+    });
+
+    it('L299: should throw when milestone already released', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+      await releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Milestone already released');
+    });
+
+    it('L303: should throw when milestone was refunded', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+      await refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Milestone was refunded');
+    });
+
+    it('L307: should throw when insufficient escrow balance', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      // No deposit — balance is 0
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Insufficient escrow balance');
+    });
+
+    it('L325: should throw when release confirmation returns null', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      mockConfirmTx.mockResolvedValueOnce(null);
+
+      await expect(releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Failed to confirm release transaction');
+    });
+  });
+
+  describe('refundMilestone coverage (L357, L362, L367, L371, L375, L379, L398)', () => {
+    it('L357: should throw escrow not found', async () => {
+      await expect(refundMilestone('0xMissing', 'm-1', EMPLOYER))
+        .rejects.toThrow('Escrow contract not found');
+    });
+
+    it('L362: should throw when resolver is not employer', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', '0xWrongResolver'))
+        .rejects.toThrow('Only the employer or authorized resolver can refund a milestone');
+    });
+
+    it('L367: should throw when milestone not found', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-missing', EMPLOYER))
+        .rejects.toThrow('Milestone not found');
+    });
+
+    it('L371: should throw when milestone already released', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+      await releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Milestone already released');
+    });
+
+    it('L375: should throw when milestone already refunded', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+      await refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Milestone already refunded');
+    });
+
+    it('L379: should throw when insufficient escrow balance', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      // No deposit — balance is 0
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Insufficient escrow balance');
+    });
+
+    it('L398: should throw when refund confirmation returns null', async () => {
+      await deployEscrow({
+        contractId: 'c-1',
+        employerAddress: EMPLOYER,
+        freelancerAddress: FREELANCER,
+        totalAmount: BigInt(1000),
+        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
+      });
+      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
+
+      mockConfirmTx.mockResolvedValueOnce(null);
+
+      await expect(refundMilestone(ESCROW_ADDR, 'm-1', EMPLOYER))
+        .rejects.toThrow('Failed to confirm refund transaction');
+    });
+  });
+
+  describe('getEscrowBalance coverage (L422)', () => {
+    it('L422: should throw when escrow not found', async () => {
+      await expect(getEscrowBalance('0xNonExistent'))
+        .rejects.toThrow('Escrow contract not found');
+    });
+  });
 });

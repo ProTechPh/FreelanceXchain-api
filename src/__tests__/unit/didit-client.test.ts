@@ -783,3 +783,128 @@ describe('Didit Client - Extended Coverage', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Additional coverage for remaining uncovered lines
+// ═══════════════════════════════════════════════════════════════
+
+describe('didit-client - remaining coverage', () => {
+  const mockFetchRem = jest.fn<(...args: any[]) => Promise<any>>();
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.DIDIT_API_KEY = 'test-key';
+    process.env.DIDIT_API_URL = 'https://test.didit.me';
+    global.fetch = mockFetchRem as any;
+  });
+
+  const importModule = async () => {
+    return await import('../../services/didit-client.js');
+  };
+
+  it('verifyIdDocument success with all optional params (backImage + vendorData)', async () => {
+    const { verifyIdDocument } = await importModule();
+
+    mockFetchRem.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        request_id: 'req-id-1',
+        id_verification: { status: 'Approved', document_type: 'passport' },
+      }),
+    } as any);
+
+    const result = await verifyIdDocument(
+      Buffer.from('front-image'),
+      Buffer.from('back-image'),
+      'vendor-data-123'
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.request_id).toBe('req-id-1');
+    }
+  });
+
+  it('checkPassiveLiveness with vendorData', async () => {
+    const { checkPassiveLiveness } = await importModule();
+
+    mockFetchRem.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        request_id: 'req-live-1',
+        passive_liveness: { status: 'Approved', score: 0.98 },
+      }),
+    } as any);
+
+    const result = await checkPassiveLiveness(Buffer.from('selfie'), 'vendor-data-456');
+
+    expect(result.success).toBe(true);
+  });
+
+  it('matchFaces with vendorData', async () => {
+    const { matchFaces } = await importModule();
+
+    mockFetchRem.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        request_id: 'req-face-1',
+        face_match: { status: 'Approved', score: 0.95 },
+      }),
+    } as any);
+
+    const result = await matchFaces(Buffer.from('user'), Buffer.from('ref'), 'vendor-data-789');
+
+    expect(result.success).toBe(true);
+  });
+
+  it('matchFaces API error (non-ok response)', async () => {
+    const { matchFaces } = await importModule();
+
+    mockFetchRem.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      json: async () => ({ error: { code: 'FACE_MISMATCH', message: 'Faces do not match' } }),
+    } as any);
+
+    const result = await matchFaces(Buffer.from('user'), Buffer.from('ref'));
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('FACE_MISMATCH');
+    }
+  });
+
+  it('screenAml API error (non-ok response)', async () => {
+    const { screenAml } = await importModule();
+
+    mockFetchRem.mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      json: async () => ({ error: { code: 'INVALID_REQUEST', message: 'Missing required fields' } }),
+    } as any);
+
+    const result = await screenAml({ full_name: 'John', entity_type: 'person' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('INVALID_REQUEST');
+    }
+  });
+
+  it('getVerificationSession network error (catch block)', async () => {
+    const { getVerificationSession } = await importModule();
+
+    mockFetchRem.mockRejectedValueOnce(new Error('Connection refused'));
+
+    const result = await getVerificationSession('session-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('NETWORK_ERROR');
+      expect(result.error.error.message).toContain('Connection refused');
+    }
+  });
+});

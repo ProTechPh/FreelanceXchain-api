@@ -124,3 +124,84 @@ describe('Search Routes', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// maxBudget validation and continuationToken parsing
+// ═══════════════════════════════════════════════════════════════
+
+describe('search-routes - maxBudget validation and continuationToken', () => {
+  let app: any;
+  const mockSearchProjects = jest.fn<any>();
+  const mockSearchFreelancers = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/search-service.ts'), () => ({
+      searchProjects: mockSearchProjects,
+      searchFreelancers: mockSearchFreelancers,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/search-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/search', router);
+    jest.clearAllMocks();
+  });
+
+  it('L127-132: GET /projects returns 400 for invalid maxBudget', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?maxBudget=abc');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.message).toBe('maxBudget must be a valid number');
+  });
+
+  it('L156-158: GET /projects parses continuationToken as offset', async () => {
+    mockSearchProjects.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?continuationToken=20');
+    expect(res.status).toBe(200);
+    expect(mockSearchProjects).toHaveBeenCalledWith({}, { offset: 20 });
+  });
+
+  it('L250-252: GET /freelancers parses continuationToken as offset', async () => {
+    mockSearchFreelancers.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/freelancers?continuationToken=10');
+    expect(res.status).toBe(200);
+    expect(mockSearchFreelancers).toHaveBeenCalledWith({}, { offset: 10 });
+  });
+
+  it('GET /projects with valid maxBudget', async () => {
+    mockSearchProjects.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?maxBudget=1000');
+    expect(res.status).toBe(200);
+    expect(mockSearchProjects).toHaveBeenCalledWith({ maxBudget: 1000 }, {});
+  });
+
+  it('L150: GET /projects with valid minBudget sets filters.minBudget', async () => {
+    mockSearchProjects.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?minBudget=100');
+    expect(res.status).toBe(200);
+    expect(mockSearchProjects).toHaveBeenCalledWith({ minBudget: 100 }, {});
+  });
+
+  it('L155: GET /projects with valid pageSize sets pagination.pageSize', async () => {
+    mockSearchProjects.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?pageSize=5');
+    expect(res.status).toBe(200);
+    expect(mockSearchProjects).toHaveBeenCalledWith({}, { pageSize: 5 });
+  });
+
+  it('L249: GET /freelancers with valid pageSize sets pagination.pageSize', async () => {
+    mockSearchFreelancers.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/freelancers?pageSize=10');
+    expect(res.status).toBe(200);
+    expect(mockSearchFreelancers).toHaveBeenCalledWith({}, { pageSize: 10 });
+  });
+});

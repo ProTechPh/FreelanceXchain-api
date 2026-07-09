@@ -272,6 +272,66 @@ describe('Error Handler', () => {
       expect(error.statusCode).toBe(503);
       expect(error.message).toBe('RPC timeout');
     });
+
+    it('should create forbidden error with default message (line 38)', async () => {
+      const { errors } = await importModule();
+      const error = errors.forbidden();
+      expect(error.statusCode).toBe(403);
+      expect(error.code).toBe('FORBIDDEN');
+      expect(error.message).toBe('Access denied');
+    });
+
+    it('should create forbidden error with custom message', async () => {
+      const { errors } = await importModule();
+      const error = errors.forbidden('Custom forbidden');
+      expect(error.statusCode).toBe(403);
+      expect(error.message).toBe('Custom forbidden');
+    });
+
+    it('should create badRequest error with default message (line 39)', async () => {
+      const { errors } = await importModule();
+      const error = errors.badRequest();
+      expect(error.statusCode).toBe(400);
+      expect(error.code).toBe('BAD_REQUEST');
+      expect(error.message).toBe('Bad request');
+    });
+
+    it('should create badRequest error with custom message', async () => {
+      const { errors } = await importModule();
+      const error = errors.badRequest('Invalid field');
+      expect(error.statusCode).toBe(400);
+      expect(error.message).toBe('Invalid field');
+    });
+
+    it('should create conflict error with default message (line 40)', async () => {
+      const { errors } = await importModule();
+      const error = errors.conflict();
+      expect(error.statusCode).toBe(409);
+      expect(error.code).toBe('CONFLICT');
+      expect(error.message).toBe('Resource already exists');
+    });
+
+    it('should create conflict error with custom message', async () => {
+      const { errors } = await importModule();
+      const error = errors.conflict('Duplicate entry');
+      expect(error.statusCode).toBe(409);
+      expect(error.message).toBe('Duplicate entry');
+    });
+
+    it('should create internal error with default message (line 41)', async () => {
+      const { errors } = await importModule();
+      const error = errors.internal();
+      expect(error.statusCode).toBe(500);
+      expect(error.code).toBe('INTERNAL_ERROR');
+      expect(error.message).toBe('An unexpected error occurred');
+    });
+
+    it('should create internal error with custom message', async () => {
+      const { errors } = await importModule();
+      const error = errors.internal('Database crashed');
+      expect(error.statusCode).toBe(500);
+      expect(error.message).toBe('Database crashed');
+    });
   });
 
   describe('AppError class', () => {

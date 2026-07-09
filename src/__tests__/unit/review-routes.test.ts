@@ -448,6 +448,68 @@ describe('review-routes branch coverage', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════
+// Param extraction tests
+// ═══════════════════════════════════════════════════════════════
+
+describe('review-routes - param extraction', () => {
+  let app: any;
+  const mockGetReviewById = jest.fn<any>();
+  const mockGetUserReviews = jest.fn<any>();
+  const mockGetProjectReviews = jest.fn<any>();
+  const mockCanUserRate = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({
+      submitRating: jest.fn(),
+      getReviewById: mockGetReviewById,
+      getUserReviews: mockGetUserReviews,
+      getProjectReviews: mockGetProjectReviews,
+      canUserRate: mockCanUserRate,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/review-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/reviews', router);
+    jest.clearAllMocks();
+  });
+
+  it('L69: GET /:id extracts reviewId from params', async () => {
+    mockGetReviewById.mockResolvedValueOnce({ success: true, data: { id: 'review-1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/review-1');
+    expect(res.status).toBe(200);
+    expect(mockGetReviewById).toHaveBeenCalledWith('review-1');
+  });
+
+  it('L88: GET /user/:userId extracts userId from params', async () => {
+    mockGetUserReviews.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/user/user-1');
+    expect(res.status).toBe(200);
+    expect(mockGetUserReviews).toHaveBeenCalledWith('user-1');
+  });
+
+  it('L106: GET /project/:projectId extracts projectId from params', async () => {
+    mockGetProjectReviews.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/project/proj-1');
+    expect(res.status).toBe(200);
+    expect(mockGetProjectReviews).toHaveBeenCalledWith('proj-1');
+  });
+
+  it('L125: GET /can-review/:contractId extracts contractId from params', async () => {
+    mockCanUserRate.mockResolvedValueOnce({ success: true, data: { canRate: true } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/can-review/contract-1?rateeId=user-2');
+    expect(res.status).toBe(200);
+    expect(mockCanUserRate).toHaveBeenCalledWith('user-1', 'user-2', 'contract-1');
+  });
+});
+
 describe('review-routes.ts - Branch Coverage', () => {
   let app: any;
   const mockGetReviewById = jest.fn<any>();

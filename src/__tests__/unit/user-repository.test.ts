@@ -2,6 +2,7 @@
 import { jest, describe, it, expect, beforeEach } from '@jest/globals';
 
 const { UserRepository } = await import('../../repositories/user-repository.js');
+const { Query: MockQuery } = await import('../../config/appwrite.js');
 
 describe('UserRepository', () => {
   let repo: any;
@@ -328,5 +329,131 @@ describe('User Repository - Extended Coverage', () => {
 
       await expect(userRepository.deleteUser('u-1')).resolves.not.toThrow();
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from repository-coverage.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('UserRepository - emailExists error handling', () => {
+  let repo: any;
+  let mockDatabases: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo = new UserRepository();
+    mockDatabases = (globalThis as any).__mockDatabases;
+  });
+
+  it('should return false when database throws an error', async () => {
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('Connection failed'));
+
+    const result = await repo.emailExists('test@example.com');
+    expect(result).toBe(false);
+  });
+
+  it('should return true when email exists', async () => {
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'u1', email: 'test@example.com' }],
+      total: 1,
+    });
+
+    const result = await repo.emailExists('test@example.com');
+    expect(result).toBe(true);
+  });
+
+  it('should return false when email does not exist', async () => {
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [],
+      total: 0,
+    });
+
+    const result = await repo.emailExists('nonexistent@example.com');
+    expect(result).toBe(false);
+  });
+});
+
+describe('BaseRepository - fetchAll multi-page pagination', () => {
+  let repo: any;
+  let mockDatabases: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo = new UserRepository();
+    mockDatabases = (globalThis as any).__mockDatabases;
+  });
+
+  it('should paginate with cursorAfter when first page is full (covers lines 142, 149)', async () => {
+    // Generate exactly 100 docs for the first page (pageSize = 100)
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      $id: `user-${i + 1}`,
+      $createdAt: '2025-01-01',
+      $updatedAt: '2025-01-01',
+      email: `user${i + 1}@test.com`,
+      role: 'freelancer',
+    }));
+    // Second page with fewer docs to stop pagination
+    const page2 = Array.from({ length: 10 }, (_, i) => ({
+      $id: `user-${101 + i}`,
+      $createdAt: '2025-01-01',
+      $updatedAt: '2025-01-01',
+      email: `user${101 + i}@test.com`,
+      role: 'freelancer',
+    }));
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: page1, total: 110 })
+      .mockResolvedValueOnce({ documents: page2, total: 110 });
+
+    const result = await repo.getAllUsers();
+    expect(result).toHaveLength(110);
+    expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(2);
+    // Verify cursorAfter was called with the last document ID from page 1
+    expect(MockQuery.cursorAfter).toHaveBeenCalledWith('user-100');
+  });
+
+  it('should break loop when last document has no $id (covers line 150)', async () => {
+    // Generate 100 docs where the last one has no $id property
+    const docs = Array.from({ length: 100 }, (_, i) => {
+      if (i === 99) {
+        // Last document without $id
+        return {
+          $createdAt: '2025-01-01',
+          $updatedAt: '2025-01-01',
+          name: 'no-id-doc',
+        };
+      }
+      return {
+        $id: `user-${i + 1}`,
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        email: `user${i + 1}@test.com`,
+      };
+    });
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 100 });
+
+    const result = await repo.getAllUsers();
+    // Should only have one call because last doc has no $id, breaking the loop
+    expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    expect(result.length).toBeGreaterThan(0);
+  });
+
+  it('should break loop when first page has fewer than pageSize docs', async () => {
+    const docs = Array.from({ length: 5 }, (_, i) => ({
+      $id: `user-${i + 1}`,
+      $createdAt: '2025-01-01',
+      $updatedAt: '2025-01-01',
+      email: `user${i + 1}@test.com`,
+    }));
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 5 });
+
+    const result = await repo.getAllUsers();
+    expect(result).toHaveLength(5);
+    expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    // cursorAfter should not have been called
+    expect(MockQuery.cursorAfter).not.toHaveBeenCalled();
   });
 });

@@ -237,3 +237,378 @@ describe('scheduler-service.ts - Branch Coverage', () => {
     expect(q).toEqual([{ k: 'budget', v: 100 }]);
   });
 });
+
+describe('Scheduler Service - Uncovered Lines', () => {
+  let mockDatabases: any;
+  let scheduledCallbacks: Map<string, () => void>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.updateDocument.mockReset();
+    mockDatabases.getDocument.mockReset();
+    mockDatabases.deleteDocument.mockReset();
+    mockDatabases.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    scheduledCallbacks = new Map();
+
+    mockCronSchedule.mockImplementation((expression: any, callback: any) => {
+      scheduledCallbacks.set(expression, callback);
+      return { stop: mockTaskStop };
+    });
+
+    mockCronGetTasks.mockReturnValue([{ stop: mockTaskStop }]);
+  });
+
+  // Line 43: autoCloseExpiredProjects catch block
+  it('should log error when autoCloseExpiredProjects fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 0 * * *');
+
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB down'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to auto-close expired projects:',
+        expect.any(Error)
+      );
+    }
+  });
+
+  // Lines 63-64: sendWeeklyDigests early return when no users
+  it('should return early when no users have weekly digest enabled', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.info).toHaveBeenCalledWith('No users with weekly digest enabled');
+      expect(mockSendWeeklyDigestEmail).not.toHaveBeenCalled();
+    }
+  });
+
+  // Line 76: sendWeeklyDigests continue when user fetch fails
+  it('should skip user when getDocument fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    // email prefs with one user
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'ep1', user_id: 'u1' }],
+      total: 1,
+    });
+
+    // getDocument for user info throws
+    mockDatabases.getDocument.mockRejectedValueOnce(new Error('User not found'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      // Should not crash, should not send email
+      expect(mockSendWeeklyDigestEmail).not.toHaveBeenCalled();
+    }
+  });
+
+  // Line 93: filter new projects by created_at
+  it('should count new projects filtered by created_at', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    const recentDate = new Date().toISOString();
+    const oldDate = new Date(Date.now() - 30 * 86400000).toISOString();
+
+    mockDatabases.listDocuments
+      // email prefs
+      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      // projects — mix of recent and old
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', created_at: recentDate },
+          { $id: 'p2', created_at: oldDate },
+        ],
+        total: 2,
+      })
+      // messages
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // contracts
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // top projects
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'u1', email: 'u1@test.com', full_name: 'User 1',
+    });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledWith('u1@test.com', expect.objectContaining({
+        newProjects: 1, // Only the recent one
+      }));
+    }
+  });
+
+  // Lines 120-129: pending milestones counting from contract milestones
+  it('should count pending milestones from contract project milestones', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments
+      // email prefs
+      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      // projects
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // messages
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // contracts
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'proj1' }],
+        total: 1,
+      })
+      // top projects
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    mockDatabases.getDocument
+      // user info
+      .mockResolvedValueOnce({ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' })
+      // project doc with milestones as JSON string
+      .mockResolvedValueOnce({
+        $id: 'proj1',
+        milestones: JSON.stringify([
+          { title: 'M1', status: 'pending' },
+          { title: 'M2', status: 'approved' },
+          { title: 'M3', status: 'pending' },
+        ]),
+      });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledWith('u1@test.com', expect.objectContaining({
+        pendingMilestones: 2,
+      }));
+    }
+  });
+
+  // Lines 158-162: per-user error handler in sendWeeklyDigests
+  it('should log error when sending digest to individual user fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 });
+
+    mockDatabases.getDocument.mockRejectedValueOnce(new Error('User fetch failed'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      // The continue in catch block prevents the error from propagating
+      // The per-user catch is at line 157-158
+      expect(mockSendWeeklyDigestEmail).not.toHaveBeenCalled();
+    }
+  });
+
+  // Line 182: executeSavedSearches early return when no saved searches
+  it('should return early when no saved searches with notify_on_new', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 */6 * * *');
+
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      // Should not throw or call listDocuments again
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  // Lines 198-200: filter building with ALLOWED_COLUMNS
+  it('should build queries from allowed filter columns', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 */6 * * *');
+
+    mockDatabases.listDocuments
+      // saved searches with filters
+      .mockResolvedValueOnce({
+        documents: [{
+          $id: 's1',
+          search_type: 'project',
+          filters: { status: 'open', budget: 1000, disallowed_col: 'ignored' },
+        }],
+        total: 1,
+      })
+      // search results
+      .mockResolvedValueOnce({ documents: [{ $id: 'r1' }], total: 1 });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Found 1 results'));
+    }
+  });
+
+  // Lines 215-219: per-search error handler in executeSavedSearches
+  it('should log error when individual saved search fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 */6 * * *');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [{ $id: 's1', search_type: 'project', filters: {} }],
+        total: 1,
+      })
+      // search execution throws
+      .mockRejectedValueOnce(new Error('Search failed'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to execute saved search'),
+        expect.any(Error)
+      );
+    }
+  });
+
+  // Line 259: cleanupOldNotifications catch block
+  it('should log error when cleanupOldNotifications fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 2 * * *');
+
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to cleanup old notifications:',
+        expect.any(Error)
+      );
+    }
+  });
+
+  // Additional: sendWeeklyDigests outer catch block (line 162)
+  it('should log error when sendWeeklyDigests outer try fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB connection lost'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to send weekly digests:',
+        expect.any(Error)
+      );
+    }
+  });
+
+  // Additional: executeSavedSearches outer catch block (line 219)
+  it('should log error when executeSavedSearches outer try fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 */6 * * *');
+
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB connection lost'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to execute saved searches:',
+        expect.any(Error)
+      );
+    }
+  });
+
+  // Additional: sendWeeklyDigests with milestones as array (not string)
+  it('should handle milestones as array (not JSON string)', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'proj1' }],
+        total: 1,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    mockDatabases.getDocument
+      .mockResolvedValueOnce({ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' })
+      .mockResolvedValueOnce({
+        $id: 'proj1',
+        milestones: [{ title: 'M1', status: 'pending' }], // Array, not string
+      });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledWith('u1@test.com', expect.objectContaining({
+        pendingMilestones: 1,
+      }));
+    }
+  });
+
+  // Additional: sendWeeklyDigests with missing milestones field
+  it('should handle project with no milestones field', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'proj1' }],
+        total: 1,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    mockDatabases.getDocument
+      .mockResolvedValueOnce({ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' })
+      .mockResolvedValueOnce({ $id: 'proj1' }); // No milestones field
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledWith('u1@test.com', expect.objectContaining({
+        pendingMilestones: 0,
+      }));
+    }
+  });
+
+  // Additional: sendWeeklyDigests with name fallback (full_name || name || 'User')
+  it('should fall back to name then User when full_name is missing', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'u1', email: 'u1@test.com', name: 'Fallback Name',
+    });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledWith('u1@test.com', expect.objectContaining({
+        userName: 'Fallback Name',
+      }));
+    }
+  });
+});

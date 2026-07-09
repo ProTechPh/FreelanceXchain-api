@@ -8,7 +8,19 @@ import { assertHasTimestamps, assertIsValidId } from '../helpers/test-assertions
 
 // Create stores and mocks using shared utilities
 const notificationStore = createInMemoryStore();
-const mockNotificationRepo = createMockNotificationRepository(notificationStore);
+const mockNotificationRepo = {
+  ...createMockNotificationRepository(notificationStore),
+  getUnreadCount: jest.fn(async (userId: string) => {
+    return Array.from(notificationStore.values()).filter(
+      (n: any) => n.user_id === userId && !n.is_read
+    ).length;
+  }),
+  getUnreadNotificationsByUser: jest.fn(async (userId: string) => {
+    return Array.from(notificationStore.values()).filter(
+      (n: any) => n.user_id === userId && !n.is_read
+    );
+  }),
+};
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
@@ -21,8 +33,10 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
 // Import after mocking
 const {
   createNotification,
+  createNotifications,
   getAllNotificationsByUser,
   getNotificationsByUser,
+  getUnreadNotificationsByUser,
   markNotificationAsRead,
   markAllNotificationsAsRead,
   getUnreadCount,
@@ -32,6 +46,7 @@ const {
   notifyProposalRejected,
   notifyMilestoneSubmitted,
   notifyPaymentReleased,
+  notifyRatingReceived,
 } = await import('../../services/notification-service.js');
 
 // Custom arbitraries for property-based testing
@@ -348,6 +363,138 @@ describe('Notification Service - Unit Tests', () => {
       expect(notification.title.toLowerCase()).toContain('released');
       expect(notification.data).toHaveProperty('contractId', contractId);
       expect(notification.data).toHaveProperty('amount', amount);
+    }
+  });
+
+  it('should create multiple notifications in batch', async () => {
+    const inputs = [
+      { userId: 'user-1', type: 'proposal_received' as NotificationType, title: 'First', message: 'First notification' },
+      { userId: 'user-2', type: 'milestone_submitted' as NotificationType, title: 'Second', message: 'Second notification' },
+      { userId: 'user-1', type: 'payment_released' as NotificationType, title: 'Third', message: 'Third notification' },
+    ];
+
+    const result = await createNotifications(inputs);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toHaveLength(3);
+      expect(result.data[0]!.userId).toBe('user-1');
+      expect(result.data[1]!.userId).toBe('user-2');
+      expect(result.data[2]!.userId).toBe('user-1');
+      expect(result.data[0]!.type).toBe('proposal_received');
+      expect(result.data[1]!.type).toBe('milestone_submitted');
+      expect(result.data[2]!.type).toBe('payment_released');
+    }
+  });
+
+  it('should return NOT_FOUND when notification does not exist on markAsRead', async () => {
+    const result = await markNotificationAsRead('nonexistent-id', 'user-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return UNAUTHORIZED when user does not own the notification on markAsRead', async () => {
+    const notification = createTestNotification({ user_id: 'owner-user', is_read: false });
+    notificationStore.set(notification.id, notification);
+
+    const result = await markNotificationAsRead(notification.id, 'different-user');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UNAUTHORIZED');
+    }
+  });
+
+  it('should return notification by ID for authorized user', async () => {
+    const notification = createTestNotification({ user_id: 'owner-user', is_read: false });
+    notificationStore.set(notification.id, notification);
+
+    const result = await getNotificationById(notification.id, 'owner-user');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.id).toBe(notification.id);
+      expect(result.data.userId).toBe('owner-user');
+    }
+  });
+
+  it('should return NOT_FOUND when getNotificationById has no match', async () => {
+    const result = await getNotificationById('nonexistent-id', 'user-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  it('should return UNAUTHORIZED when getNotificationById user mismatch', async () => {
+    const notification = createTestNotification({ user_id: 'owner-user', is_read: false });
+    notificationStore.set(notification.id, notification);
+
+    const result = await getNotificationById(notification.id, 'intruder');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UNAUTHORIZED');
+    }
+  });
+
+  it('should return UPDATE_FAILED when markAsRead returns null', async () => {
+    const notification = createTestNotification({ user_id: 'user-1', is_read: false });
+    notificationStore.set(notification.id, notification);
+
+    // Temporarily replace markAsRead to return null
+    const originalMarkAsRead = mockNotificationRepo.markAsRead;
+    mockNotificationRepo.markAsRead = jest.fn<any>().mockResolvedValue(null);
+
+    const result = await markNotificationAsRead(notification.id, 'user-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UPDATE_FAILED');
+    }
+
+    // Restore original
+    mockNotificationRepo.markAsRead = originalMarkAsRead;
+  });
+
+  it('should return unread count for a user', async () => {
+    const userId = 'count-user';
+    const notif1 = createTestNotification({ user_id: userId, is_read: false });
+    const notif2 = createTestNotification({ user_id: userId, is_read: false });
+    const notif3 = createTestNotification({ user_id: userId, is_read: true });
+    notificationStore.set(notif1.id, notif1);
+    notificationStore.set(notif2.id, notif2);
+    notificationStore.set(notif3.id, notif3);
+
+    const result = await getUnreadCount(userId);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toBe(2);
+    }
+  });
+
+  it('should notify rating received with correct data', async () => {
+    const userId = 'rated-user';
+    const rating = 4.5;
+    const contractId = 'contract-123';
+    const projectTitle = 'Great Project';
+
+    const result = await notifyRatingReceived(userId, rating, contractId, projectTitle);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const notification = result.data;
+      expect(notification.type).toBe('rating_received');
+      expect(notification.userId).toBe(userId);
+      expect(notification.title).toBe('New Rating Received');
+      expect(notification.data).toHaveProperty('rating', rating);
+      expect(notification.data).toHaveProperty('contractId', contractId);
+      expect(notification.data).toHaveProperty('projectTitle', projectTitle);
     }
   });
 });

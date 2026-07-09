@@ -382,3 +382,50 @@ describe('File Upload Routes', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Path traversal protection tests
+// ═══════════════════════════════════════════════════════════════
+
+describe('File Upload - path traversal protection', () => {
+  let app: express.Express;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-123', userId: 'user-123', email: 'test@test.com', role: 'freelancer' };
+      next();
+    });
+    app = express();
+    app.use(express.json());
+    app.use('/api/files', fileUploadRouter);
+  });
+
+  it('L90: DELETE should reject path with .. (path traversal)', async () => {
+    const res = await request(app)
+      .delete('/api/files/profile-images/user-123/..secret/file.txt');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid file path');
+  });
+
+  it('L91: DELETE should reject path with backslash', async () => {
+    const res = await request(app)
+      .delete('/api/files/profile-images/user-123/some%5Cpath');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid file path');
+  });
+
+  it('L128: GET signed-url should reject path with .. (path traversal)', async () => {
+    const res = await request(app)
+      .get('/api/files/signed-url/contract-documents/user-123/..secret/file.txt');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid file path');
+  });
+
+  it('L129: GET signed-url should reject path with backslash', async () => {
+    const res = await request(app)
+      .get('/api/files/signed-url/contract-documents/user-123/some%5Cpath');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe('Invalid file path');
+  });
+});

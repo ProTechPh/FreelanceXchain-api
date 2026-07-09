@@ -670,3 +670,409 @@ describe('freelancer-profile-service.ts - Branch Coverage', () => {
     expect((null as any) ?? 'Invalid date range').toBe('Invalid date range');
   });
 });
+
+describe('freelancer-profile-service - remaining coverage', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const importModule = async () => import('../../services/freelancer-profile-service.js');
+
+  it('should return PROFILE_NOT_FOUND when getProfileByUserId finds no profile', async () => {
+    const { getProfileByUserId } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+    const result = await getProfileByUserId('nonexistent-user');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('should return PROFILE_NOT_FOUND when updateProfile finds no profile', async () => {
+    const { updateProfile } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+    const result = await updateProfile('nonexistent-user', { bio: 'test' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('should return UPDATE_FAILED when updateProfile returns null', async () => {
+    const { updateProfile } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+    const result = await updateProfile('u1', { bio: 'new bio' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should return PROFILE_NOT_FOUND when addSkillsToProfile finds no profile', async () => {
+    const { addSkillsToProfile } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+    const result = await addSkillsToProfile('nonexistent-user', [{ name: 'React', yearsOfExperience: 3 }]);
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('should return PROFILE_NOT_FOUND when removeSkillFromProfile finds no profile', async () => {
+    const { removeSkillFromProfile } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+    const result = await removeSkillFromProfile('nonexistent-user', 'React');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('should return UPDATE_FAILED when removeSkillFromProfile update returns null', async () => {
+    const { removeSkillFromProfile } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }], experience: [],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+    const result = await removeSkillFromProfile('u1', 'React');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should return PROFILE_NOT_FOUND when addExperience finds no profile', async () => {
+    const { addExperience } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+    const result = await addExperience('nonexistent-user', {
+      title: 'Dev', company: 'Co', description: 'desc', startDate: '2024-01-01',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('should return INVALID_DATE_RANGE when addExperience has invalid start date format', async () => {
+    const { addExperience } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [],
+    });
+
+    const result = await addExperience('u1', {
+      title: 'Dev', company: 'Co', description: 'desc', startDate: 'not-a-date',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('INVALID_DATE_RANGE');
+  });
+
+  it('should return INVALID_DATE_RANGE when addExperience has invalid end date format', async () => {
+    const { addExperience } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [],
+    });
+
+    const result = await addExperience('u1', {
+      title: 'Dev', company: 'Co', description: 'desc', startDate: '2024-01-01', endDate: 'bad-date',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('INVALID_DATE_RANGE');
+  });
+
+  it('should return UPDATE_FAILED when addExperience update returns null', async () => {
+    const { addExperience } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+    const result = await addExperience('u1', {
+      title: 'Dev', company: 'Co', description: 'desc', startDate: '2024-01-01',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should return PROFILE_NOT_FOUND when updateExperience finds no profile', async () => {
+    const { updateExperience } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+    const result = await updateExperience('nonexistent-user', 'exp-1', { title: 'Senior Dev' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('should return EXPERIENCE_NOT_FOUND when updateExperience finds no matching entry', async () => {
+    const { updateExperience } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [{ id: 'exp-1', title: 'Dev', company: 'Co', description: 'desc', start_date: '2024-01-01', end_date: null }],
+    });
+
+    const result = await updateExperience('u1', 'exp-nonexistent', { title: 'Senior Dev' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('EXPERIENCE_NOT_FOUND');
+  });
+
+  it('should return UPDATE_FAILED when updateExperience update returns null', async () => {
+    const { updateExperience } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [], experience: [{ id: 'exp-1', title: 'Dev', company: 'Co', description: 'desc', start_date: '2024-01-01', end_date: null }],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+    const result = await updateExperience('u1', 'exp-1', { title: 'Senior Dev' });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  it('should return PROFILE_NOT_FOUND when removeExperience finds no profile', async () => {
+    const { removeExperience } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+    const result = await removeExperience('nonexistent-user', 'exp-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+  });
+
+  it('should return PROFILE_EXISTS when createProfileFromKyc finds existing profile', async () => {
+    const { createProfileFromKyc } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'existing' });
+
+    const result = await createProfileFromKyc('u1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PROFILE_EXISTS');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Coverage gap tests — each test targets a specific uncovered line
+// ═══════════════════════════════════════════════════════════════
+
+describe('freelancer-profile-service - Coverage Gaps', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const importModule = async () => import('../../services/freelancer-profile-service.js');
+
+  describe('validateDateRange (L49, L54)', () => {
+    it('L49: should return INVALID_DATE_RANGE for invalid start date via addExperience', async () => {
+      const { addExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [], experience: [],
+      });
+
+      const result = await addExperience('u1', {
+        title: 'Dev', company: 'Co', description: 'Work description',
+        startDate: 'not-a-valid-date',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    });
+
+    it('L54: should return INVALID_DATE_RANGE for invalid end date via addExperience', async () => {
+      const { addExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [], experience: [],
+      });
+
+      const result = await addExperience('u1', {
+        title: 'Dev', company: 'Co', description: 'Work description',
+        startDate: '2024-01-01', endDate: 'invalid-date',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    });
+  });
+
+  describe('createProfileFromKyc profile exists (L109)', () => {
+    it('L109: should return PROFILE_EXISTS when profile already exists', async () => {
+      const { createProfileFromKyc } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({ id: 'existing' });
+
+      const result = await createProfileFromKyc('u1');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROFILE_EXISTS');
+    });
+  });
+
+  describe('getProfileByUserId not found (L159)', () => {
+    it('L159: should return PROFILE_NOT_FOUND when no profile exists', async () => {
+      const { getProfileByUserId } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+      const result = await getProfileByUserId('nonexistent');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+    });
+  });
+
+  describe('updateProfile not found and update failed (L173, L186)', () => {
+    it('L173: should return PROFILE_NOT_FOUND when profile does not exist', async () => {
+      const { updateProfile } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+      const result = await updateProfile('u1', { bio: 'new bio' });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+    });
+
+    it('L186: should return UPDATE_FAILED when updateProfile returns null', async () => {
+      const { updateProfile } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [], experience: [],
+      });
+      mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+      const result = await updateProfile('u1', { bio: 'new bio' });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+  });
+
+  describe('addSkillsToProfile not found (L204)', () => {
+    it('L204: should return PROFILE_NOT_FOUND when profile does not exist', async () => {
+      const { addSkillsToProfile } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+      const result = await addSkillsToProfile('u1', [{ name: 'React', yearsOfExperience: 3 }]);
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+    });
+  });
+
+  describe('removeSkillFromProfile (L267, L276, L284)', () => {
+    it('L267: should return PROFILE_NOT_FOUND when profile does not exist', async () => {
+      const { removeSkillFromProfile } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+      const result = await removeSkillFromProfile('u1', 'React');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+    });
+
+    it('L276: should filter out the specified skill (case-insensitive)', async () => {
+      const { removeSkillFromProfile } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1',
+        skills: [{ name: 'React', years_of_experience: 3 }, { name: 'Vue', years_of_experience: 2 }],
+        experience: [],
+      });
+      mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [{ name: 'Vue', years_of_experience: 2 }],
+        experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+      });
+
+      const result = await removeSkillFromProfile('u1', 'react');
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.skills).toHaveLength(1);
+    });
+
+    it('L284: should return UPDATE_FAILED when removeSkillFromProfile update returns null', async () => {
+      const { removeSkillFromProfile } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }], experience: [],
+      });
+      mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+      const result = await removeSkillFromProfile('u1', 'React');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+  });
+
+  describe('addExperience (L302, L331)', () => {
+    it('L302: should return PROFILE_NOT_FOUND when profile does not exist', async () => {
+      const { addExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+      const result = await addExperience('u1', {
+        title: 'Dev', company: 'Co', description: 'Desc', startDate: '2024-01-01',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+    });
+
+    it('L331: should return UPDATE_FAILED when addExperience update returns null', async () => {
+      const { addExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [], experience: [],
+      });
+      mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+      const result = await addExperience('u1', {
+        title: 'Dev', company: 'Co', description: 'Desc', startDate: '2024-01-01',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+  });
+
+  describe('updateExperience (L347, L355, L396)', () => {
+    it('L347: should return PROFILE_NOT_FOUND when profile does not exist', async () => {
+      const { updateExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+      const result = await updateExperience('u1', 'exp-1', { title: 'Senior' });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+    });
+
+    it('L355: should return EXPERIENCE_NOT_FOUND when experience entry not found', async () => {
+      const { updateExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [],
+        experience: [{ id: 'exp-1', title: 'Dev', company: 'Co', description: 'Desc', start_date: '2024-01-01', end_date: null }],
+      });
+
+      const result = await updateExperience('u1', 'exp-nonexistent', { title: 'Senior' });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('EXPERIENCE_NOT_FOUND');
+    });
+
+    it('L396: should return UPDATE_FAILED when updateExperience update returns null', async () => {
+      const { updateExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [],
+        experience: [{ id: 'exp-1', title: 'Dev', company: 'Co', description: 'Desc', start_date: '2024-01-01', end_date: null }],
+      });
+      mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+      const result = await updateExperience('u1', 'exp-1', { title: 'Senior Dev' });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+  });
+
+  describe('removeExperience (L411, L429)', () => {
+    it('L411: should return PROFILE_NOT_FOUND when profile does not exist', async () => {
+      const { removeExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce(null);
+
+      const result = await removeExperience('u1', 'exp-1');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PROFILE_NOT_FOUND');
+    });
+
+    it('L429: should return UPDATE_FAILED when removeExperience update returns null', async () => {
+      const { removeExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [], experience: [{ id: 'exp-1' }],
+      });
+      mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce(null);
+
+      const result = await removeExperience('u1', 'exp-1');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+
+    it('L429: should return success when removeExperience update succeeds', async () => {
+      const { removeExperience } = await importModule();
+      mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [], experience: [{ id: 'exp-1', title: 'Dev', company: 'Corp' }],
+        full_name: 'John', headline: 'Dev', bio: 'bio', hourly_rate: 50,
+        availability: 'full_time', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
+      mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+        id: 'fp1', user_id: 'u1', skills: [], experience: [],
+        full_name: 'John', headline: 'Dev', bio: 'bio', hourly_rate: 50,
+        availability: 'full_time', created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
+
+      const result = await removeExperience('u1', 'exp-1');
+      expect(result.success).toBe(true);
+    });
+  });
+});

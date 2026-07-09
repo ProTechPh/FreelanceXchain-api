@@ -646,3 +646,56 @@ describe('email-delivery-service.ts - Branch Coverage', () => {
     expect(error instanceof Error ? error.message : 'Email configuration is invalid').toBe('Email configuration is invalid');
   });
 });
+
+describe('email-delivery-service - result.id fallback (L111)', () => {
+  beforeEach(() => {
+    jest.resetModules();
+    mockSend.mockReset();
+    mockReadFile.mockReset();
+    process.env['CLOUDFLARE_API_TOKEN'] = 'test-api-token';
+    process.env['CLOUDFLARE_ACCOUNT_ID'] = 'test-account-id';
+    process.env['EMAIL_FROM'] = 'test@freelancexchain.com';
+  });
+
+  afterEach(() => {
+    delete process.env['CLOUDFLARE_API_TOKEN'];
+    delete process.env['CLOUDFLARE_ACCOUNT_ID'];
+    delete process.env['EMAIL_FROM'];
+  });
+
+  it('L111: should use "unknown" when result.id is null/undefined', async () => {
+    mockReadFile.mockResolvedValue('<html>Body</html>');
+    mockSend.mockResolvedValue({ id: undefined });
+
+    const service = await import(resolveModule('src/services/email-delivery-service.ts'));
+    const result = await service.sendEmail({
+      to: 'user@test.com',
+      subject: 'Test',
+      template: 'proposal_accepted',
+      data: { name: 'test' },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.messageId).toBe('unknown');
+    }
+  });
+
+  it('L111: should use "unknown" when result.id is null', async () => {
+    mockReadFile.mockResolvedValue('<html>Body</html>');
+    mockSend.mockResolvedValue({ id: null });
+
+    const service = await import(resolveModule('src/services/email-delivery-service.ts'));
+    const result = await service.sendEmail({
+      to: 'user@test.com',
+      subject: 'Test',
+      template: 'proposal_accepted',
+      data: { name: 'test' },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.messageId).toBe('unknown');
+    }
+  });
+});

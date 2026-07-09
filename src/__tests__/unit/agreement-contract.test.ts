@@ -830,6 +830,32 @@ describe('Agreement Contract - Extended Tests', () => {
 
       await expect(completeAgreement('contract-1', '0xEmployer')).rejects.toThrow('Failed to confirm transaction');
     });
+
+    it('should throw when caller is not a party to the agreement (line 275)', async () => {
+      const { completeAgreement } = await importModule();
+
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+        id: 'agreement-id',
+        contract_id_hash: '0xhash',
+        terms_hash: '0xterms',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'signed',
+        employer_signed_at: Date.now(),
+        freelancer_signed_at: Date.now(),
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx',
+        block_number: 123,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      await expect(completeAgreement('contract-1', '0xStranger')).rejects.toThrow(
+        'Unauthorized: caller is not a party to this agreement'
+      );
+    });
   });
 
   describe('disputeAgreement - edge cases', () => {
@@ -863,6 +889,32 @@ describe('Agreement Contract - Extended Tests', () => {
       });
 
       await expect(disputeAgreement('contract-1', '0xEmployer')).rejects.toThrow('Agreement not active');
+    });
+
+    it('should throw when caller is not a party to the agreement (line 346)', async () => {
+      const { disputeAgreement } = await importModule();
+
+      mockBlockchainAgreementRepository.findByContractIdHash.mockResolvedValueOnce({
+        id: 'agreement-id',
+        contract_id_hash: '0xhash',
+        terms_hash: '0xterms',
+        employer_wallet: '0xEmployer',
+        freelancer_wallet: '0xFreelancer',
+        total_amount: 1000,
+        milestone_count: 1,
+        status: 'signed',
+        employer_signed_at: Date.now(),
+        freelancer_signed_at: Date.now(),
+        created_at_ts: Date.now(),
+        transaction_hash: '0xtx',
+        block_number: 123,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      await expect(disputeAgreement('contract-1', '0xStranger')).rejects.toThrow(
+        'Unauthorized: caller is not a party to this agreement'
+      );
     });
 
     it('should throw when transaction confirmation fails', async () => {

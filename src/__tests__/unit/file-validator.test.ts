@@ -229,6 +229,22 @@ describe('file-validator', () => {
     it('should return false for no extension', () => {
       expect(hasValidExtension('filename')).toBe(false);
     });
+
+    it('should return false for non-string input - number (line 95)', () => {
+      expect(hasValidExtension(123 as any)).toBe(false);
+    });
+
+    it('should return false for non-string input - null (line 95)', () => {
+      expect(hasValidExtension(null as any)).toBe(false);
+    });
+
+    it('should return false for non-string input - undefined (line 95)', () => {
+      expect(hasValidExtension(undefined as any)).toBe(false);
+    });
+
+    it('should return false for empty string (line 95)', () => {
+      expect(hasValidExtension('')).toBe(false);
+    });
   });
 
   describe('isAllowedMimeType', () => {
@@ -242,6 +258,22 @@ describe('file-validator', () => {
       expect(isAllowedMimeType('application/x-msdownload')).toBe(false);
       expect(isAllowedMimeType('application/x-bat')).toBe(false);
       expect(isAllowedMimeType('application/x-unknown')).toBe(false);
+    });
+
+    it('should return false for non-string input - number (line 104)', () => {
+      expect(isAllowedMimeType(42 as any)).toBe(false);
+    });
+
+    it('should return false for non-string input - null (line 104)', () => {
+      expect(isAllowedMimeType(null as any)).toBe(false);
+    });
+
+    it('should return false for non-string input - undefined (line 104)', () => {
+      expect(isAllowedMimeType(undefined as any)).toBe(false);
+    });
+
+    it('should return false for empty string (line 104)', () => {
+      expect(isAllowedMimeType('')).toBe(false);
     });
   });
 });
