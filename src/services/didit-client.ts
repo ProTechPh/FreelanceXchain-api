@@ -245,6 +245,7 @@ function shortenFloats(v: unknown): unknown {
       Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, shortenFloats(x)])
     );
   }
+  /* istanbul ignore next -- JS numbers: !Number.isInteger(v) && v%1===0 is impossible */
   if (typeof v === 'number' && !Number.isInteger(v) && v % 1 === 0) return Math.trunc(v);
   return v;
 }

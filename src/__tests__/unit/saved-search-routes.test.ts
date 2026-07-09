@@ -658,3 +658,63 @@ describe('saved-search-routes - optional chaining short-circuit', () => {
     expect(res.body.error.message).toBeUndefined();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ?? '' right-side branch coverage (param is nullish)
+// ═══════════════════════════════════════════════════════════════
+
+describe('saved-search-routes - ?? "" right-side branch coverage', () => {
+  let app: any;
+  const mockUpdateSavedSearch = jest.fn<any>();
+  const mockDeleteSavedSearch = jest.fn<any>();
+  const mockExecuteSavedSearch = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/saved-search-service.ts'), () => ({
+      createSavedSearch: jest.fn(),
+      getUserSavedSearches: jest.fn(),
+      updateSavedSearch: mockUpdateSavedSearch,
+      deleteSavedSearch: mockDeleteSavedSearch,
+      executeSavedSearch: mockExecuteSavedSearch,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/saved-search-routes.js')).default;
+
+    // Use router.param to set :id to undefined, triggering ?? '' fallback
+    router.param('id', (_req: any, _res: any, next: any) => {
+      _req.params.id = undefined;
+      next();
+    });
+
+    app = express();
+    app.use(express.json());
+    app.use('/api/saved-searches', router);
+    jest.clearAllMocks();
+  });
+
+  it('L83: PATCH /:id uses "" when param is nullish', async () => {
+    mockUpdateSavedSearch.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/saved-searches/any-id').send({ name: 'Updated' });
+    expect(res.status).toBe(404);
+    expect(mockUpdateSavedSearch).toHaveBeenCalledWith('', 'user-1', expect.any(Object));
+  });
+
+  it('L113: DELETE /:id uses "" when param is nullish', async () => {
+    mockDeleteSavedSearch.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/saved-searches/any-id');
+    expect(res.status).toBe(404);
+    expect(mockDeleteSavedSearch).toHaveBeenCalledWith('', 'user-1');
+  });
+
+  it('L142: POST /:id/execute uses "" when param is nullish', async () => {
+    mockExecuteSavedSearch.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/saved-searches/any-id/execute');
+    expect(res.status).toBe(404);
+    expect(mockExecuteSavedSearch).toHaveBeenCalledWith('', 'user-1');
+  });
+});

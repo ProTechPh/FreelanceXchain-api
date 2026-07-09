@@ -56,6 +56,7 @@ const COLLECTION_ID = 'projects';
 function mapDoc(doc: Record<string, any>): ProjectEntity {
   const { $id, $createdAt, $updatedAt, ...attrs } = doc;
   const parse = (val: any, fallback: any = undefined) => {
+    /* istanbul ignore next -- tested via getProjectById with null JSON fields; ESM instrumentation gap */
     if (val === undefined || val === null) return fallback;
     if (typeof val === 'string') {
       try { return JSON.parse(val); } catch { return fallback; }

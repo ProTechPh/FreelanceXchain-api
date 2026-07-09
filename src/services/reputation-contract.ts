@@ -217,8 +217,8 @@ export function computeAggregateScore(
     totalWeight += weight;
   }
 
+  /* istanbul ignore next -- unreachable: empty ratings returns 0 at line 200; Math.exp always > 0 */
   if (totalWeight === 0) {
-    /* istanbul ignore next */
     return 0;
   }
 

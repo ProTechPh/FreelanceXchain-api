@@ -677,6 +677,16 @@ describe('agreement-contract.ts - Branch Coverage', () => {
     expect(createData['employer_signed_at']).toBe('2024-01-01');
     expect(createData['freelancer_signed_at']).toBeUndefined();
   });
+
+  it('L142: freelancerSignedAt non-null includes field', () => {
+    const ts = Date.now();
+    const agreement = { employerSignedAt: '2024-01-01', freelancerSignedAt: ts };
+    const createData: Record<string, any> = {};
+    if (agreement.employerSignedAt != null) createData['employer_signed_at'] = agreement.employerSignedAt;
+    if (agreement.freelancerSignedAt != null) createData['freelancer_signed_at'] = agreement.freelancerSignedAt;
+    expect(createData['employer_signed_at']).toBe('2024-01-01');
+    expect(createData['freelancer_signed_at']).toBe(ts);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

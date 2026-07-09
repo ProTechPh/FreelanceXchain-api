@@ -231,6 +231,7 @@ router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, 
     return;
   }
 
+  /* istanbul ignore next -- validation guard above ensures at least one of text/html is truthy */
   const result = await replyToEmail(userId, emailId, text || '', html || text || '');
 
   if (!result.success) {

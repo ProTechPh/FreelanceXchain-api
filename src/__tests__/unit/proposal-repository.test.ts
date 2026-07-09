@@ -45,6 +45,20 @@ describe('ProposalRepository', () => {
       const result = await repo.getProposalById('p1');
       expect(result).toBeNull();
     });
+
+    it('should handle null attachments (val === null branch in mapDoc)', async () => {
+      db().getDocument.mockResolvedValueOnce({
+        $id: 'p1',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        project_id: 'pr1',
+        freelancer_id: 'f1',
+        attachments: null,
+      });
+      const result = await repo.getProposalById('p1');
+      expect(result).not.toBeNull();
+      expect(result!.attachments).toEqual([]);
+    });
   });
 
   describe('updateProposal', () => {

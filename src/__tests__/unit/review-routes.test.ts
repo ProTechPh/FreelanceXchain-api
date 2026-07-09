@@ -676,3 +676,86 @@ describe('review-routes - error response structure verification', () => {
     expect(res.body.error).toEqual({ code: 'DB_ERROR', message: 'Database error' });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ?? '' right-side branch coverage (param is nullish)
+// ═══════════════════════════════════════════════════════════════
+
+describe('review-routes - ?? "" right-side branch coverage', () => {
+  let app: any;
+  const mockGetReviewById = jest.fn<any>();
+  const mockGetUserReviews = jest.fn<any>();
+  const mockGetProjectReviews = jest.fn<any>();
+  const mockCanUserRate = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({
+      submitRating: jest.fn(),
+      getReviewById: mockGetReviewById,
+      getUserReviews: mockGetUserReviews,
+      getProjectReviews: mockGetProjectReviews,
+      canUserRate: mockCanUserRate,
+      getReputation: jest.fn(),
+      getWorkHistory: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/review-routes.js')).default;
+
+    // Use router.param to strip each param, triggering ?? '' fallback
+    router.param('id', (_req: any, _res: any, next: any) => {
+      _req.params.id = undefined;
+      next();
+    });
+    router.param('userId', (_req: any, _res: any, next: any) => {
+      _req.params.userId = undefined;
+      next();
+    });
+    router.param('projectId', (_req: any, _res: any, next: any) => {
+      _req.params.projectId = undefined;
+      next();
+    });
+    router.param('contractId', (_req: any, _res: any, next: any) => {
+      _req.params.contractId = undefined;
+      next();
+    });
+
+    app = express();
+    app.use(express.json());
+    app.use('/api/reviews', router);
+    jest.clearAllMocks();
+  });
+
+  it('L69: GET /:id uses "" when param is nullish', async () => {
+    mockGetReviewById.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/any-id');
+    expect(res.status).toBe(404);
+    expect(mockGetReviewById).toHaveBeenCalledWith('');
+  });
+
+  it('L88: GET /user/:userId uses "" when param is nullish', async () => {
+    mockGetUserReviews.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/user/any-user');
+    expect(res.status).toBe(400);
+    expect(mockGetUserReviews).toHaveBeenCalledWith('');
+  });
+
+  it('L106: GET /project/:projectId uses "" when param is nullish', async () => {
+    mockGetProjectReviews.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/project/any-project');
+    expect(res.status).toBe(400);
+    expect(mockGetProjectReviews).toHaveBeenCalledWith('');
+  });
+
+  it('L125: GET /can-review/:contractId uses "" when param is nullish', async () => {
+    mockCanUserRate.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/can-review/any-contract?rateeId=user-2');
+    expect(res.status).toBe(400);
+    expect(mockCanUserRate).toHaveBeenCalledWith('user-1', 'user-2', '');
+  });
+});

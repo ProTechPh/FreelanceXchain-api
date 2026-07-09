@@ -130,7 +130,9 @@ async function makeAIRequest(
         content: content.parts.map(part => part.text).join('\n')
       })),
       stream: false,
+      /* istanbul ignore next -- generateContent always supplies generationConfig; defaults are fallback only */
       temperature: request.generationConfig?.temperature ?? 0.7,
+      /* istanbul ignore next -- generateContent always supplies generationConfig; defaults are fallback only */
       max_tokens: request.generationConfig?.maxOutputTokens ?? 2048,
     };
 
@@ -222,6 +224,7 @@ function extractResponseText(response: AIResponse): string | null {
   }
 
   const firstPart = candidate.content.parts[0];
+  /* istanbul ignore next -- response conversion always sets text to a string; null is unreachable */
   return firstPart?.text ?? null;
 }
 

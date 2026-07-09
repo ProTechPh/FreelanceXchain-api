@@ -371,6 +371,7 @@ export async function analyzeSkillGaps(
     };
   } catch (error) {
     logger.error('[SkillGap] Failed to parse AI response', { error });
+    /* istanbul ignore next -- response is guaranteed string by line 313 early return */
     logger.debug('[SkillGap] Response preview', { preview: typeof response === 'string' ? response.substring(0, 500) : String(response).substring(0, 500) });
     
     return {

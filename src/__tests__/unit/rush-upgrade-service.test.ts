@@ -886,40 +886,99 @@ describe('rush-upgrade-service - Coverage Gaps', () => {
 });
 
 describe('Rush Upgrade Service - Additional Branch Coverage', () => {
-  it('L40: params.data ?? {} when notification data is undefined', () => {
-    const params: any = { user_id: 'u1', type: 'rush_upgrade_requested', title: 'Test', message: 'Msg' };
-    const data = params.data ?? {};
-    expect(data).toEqual({});
+  beforeEach(() => {
+    rushUpgradeStore.clear();
+    contractStore.clear();
+    projectStore.clear();
+    userStore.clear();
+    notificationStore.clear();
+    jest.clearAllMocks();
   });
 
-  it('L40: params.data ?? {} when notification data is provided', () => {
-    const params: any = { user_id: 'u1', type: 'rush_upgrade_requested', title: 'Test', message: 'Msg', data: { requestId: 'r1' } };
-    const data = params.data ?? {};
-    expect(data).toEqual({ requestId: 'r1' });
+  // Line 40: sendNotificationSafe data ?? {} — covered when requestRushUpgrade sends notification with data
+  it('L40: sendNotificationSafe executes data assignment when notification succeeds', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+    seedProject({ id: contract.project_id });
+
+    const result = await requestRushUpgrade(employer.id, {
+      contractId: contract.id, proposedPercentage: 25,
+    });
+    expect(result.success).toBe(true);
+    // The notification was sent with data defined, covering line 40 left branch
+    const notifications = Array.from(notificationStore.values()) as any[];
+    expect(notifications.length).toBe(1);
   });
 
-  it('L129: projectEntity?.title ?? "your contract" when project title is undefined', async () => {
-    // Simulates projectEntity being null or having no title
-    const projectEntity: any = null;
-    const title = projectEntity?.title ?? 'your contract';
-    expect(title).toBe('your contract');
+  // Line 129: projectEntity?.title ?? 'your contract' when project doesn't exist
+  it('L129: requestRushUpgrade uses fallback title when project not found', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+    // Do NOT seed project for contract.project_id → findProjectById returns null
+
+    const result = await requestRushUpgrade(employer.id, {
+      contractId: contract.id, proposedPercentage: 25,
+    });
+    expect(result.success).toBe(true);
+    // Notification should use 'your contract' fallback
+    const notifications = Array.from(notificationStore.values()) as any[];
+    expect(notifications.length).toBe(1);
+    expect(notifications[0].message).toContain('your contract');
   });
 
-  it('L129: projectEntity?.title ?? "your contract" when project title exists', () => {
-    const projectEntity: any = { title: 'My Project' };
-    const title = projectEntity?.title ?? 'your contract';
-    expect(title).toBe('My Project');
+  // Line 129: projectEntity?.title when project exists
+  it('L129: requestRushUpgrade uses project title when project found', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, rush_fee: 0 });
+    seedProject({ id: contract.project_id, title: 'My Web3 Project' });
+
+    const result = await requestRushUpgrade(employer.id, {
+      contractId: contract.id, proposedPercentage: 25,
+    });
+    expect(result.success).toBe(true);
+    const notifications = Array.from(notificationStore.values()) as any[];
+    expect(notifications.length).toBe(1);
+    expect(notifications[0].message).toContain('My Web3 Project');
   });
 
-  it('L216: projectEntity?.title ?? "your contract" in accept notification', () => {
-    const projectEntity: any = { title: undefined };
-    const title = projectEntity?.title ?? 'your contract';
-    expect(title).toBe('your contract');
+  // Line 216: projectEntity?.title ?? 'your contract' in accept notification when project not found
+  it('L216: respondToRushUpgrade accept uses fallback title when project not found', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    // Do NOT seed project
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+    });
+
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1250 });
+
+    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    expect(result.success).toBe(true);
+    const notifications = Array.from(notificationStore.values()) as any[];
+    expect(notifications.length).toBe(1);
+    expect(notifications[0].message).toContain('your contract');
   });
 
-  it('L216: projectEntity?.title present in accept notification', () => {
-    const projectEntity: any = { title: 'Web3 Build' };
-    const title = projectEntity?.title ?? 'your contract';
-    expect(title).toBe('Web3 Build');
+  // Line 216: projectEntity?.title in accept notification when project exists
+  it('L216: respondToRushUpgrade accept uses project title when project found', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    seedProject({ id: contract.project_id, title: 'DeFi Dashboard' });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+    });
+
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1250 });
+
+    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    expect(result.success).toBe(true);
+    const notifications = Array.from(notificationStore.values()) as any[];
+    expect(notifications.length).toBe(1);
+    expect(notifications[0].message).toContain('DeFi Dashboard');
   });
 });

@@ -1018,22 +1018,22 @@ describe('Saved Search Service - Additional Branch Coverage', () => {
     mockSavedSearchRepository.delete?.mockReset?.();
   });
 
-  it('L276: s.skill_name || s.name || fallback when skill_name is falsy', async () => {
+  it('L276: project search skill_name || s.name fallback when skill_name is falsy', async () => {
     const { executeSavedSearch } = await importModule();
 
+    // Project search with skills filter
     mockSavedSearchRepository.getById.mockResolvedValueOnce({
-      id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
-      filters: JSON.stringify({ skillIds: ['skill-1'] }),
+      id: 'ss-1', user_id: 'user-1', search_type: 'project',
+      filters: JSON.stringify({ skills: ['react'] }),
       name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
     });
 
-    // Freelancer profile with skills that have 'name' but not 'skill_name'
-    mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+    // Project with skill that has 'name' but not 'skill_name' (skill_name is falsy)
+    mockProjectRepository.getAllOpenProjects.mockResolvedValueOnce({
       items: [{
-        user_id: 'fp-1',
-        skills: [{ name: 'JavaScript', skill_name: null, category_id: 'cat-1', years_of_experience: 3 }],
-        full_name: 'John', headline: 'Dev', bio: 'bio', hourly_rate: 50,
-        availability: 'full_time',
+        id: 'p1', title: 'Web App', description: 'desc', budget: 1000,
+        required_skills: [{ name: 'React', skill_name: null }],
+        created_at: '2025-01-01',
       }],
       total: 1,
     });
@@ -1041,31 +1041,90 @@ describe('Saved Search Service - Additional Branch Coverage', () => {
     const result = await executeSavedSearch('ss-1', 'user-1');
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.results).toBeDefined();
+      // Should match because s.name='React' matches the filter
+      expect(result.data.count).toBe(1);
     }
   });
 
-  it('L312: s.name || fallback when name is falsy in skill mapping', async () => {
+  it('L276: project search skill_name || s.name || empty string when both falsy', async () => {
     const { executeSavedSearch } = await importModule();
 
     mockSavedSearchRepository.getById.mockResolvedValueOnce({
-      id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
-      filters: JSON.stringify({ skillIds: ['skill-1'] }),
+      id: 'ss-1', user_id: 'user-1', search_type: 'project',
+      filters: JSON.stringify({ skills: ['react'] }),
       name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
     });
 
-    // Skills with neither skill_name nor name
-    mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+    // Project with skill where both skill_name and name are falsy
+    mockProjectRepository.getAllOpenProjects.mockResolvedValueOnce({
       items: [{
-        user_id: 'fp-1',
-        skills: [{ skill_name: null, name: null, category_id: 'cat-1', years_of_experience: 2 }],
-        full_name: 'Jane', headline: 'Dev', bio: 'bio', hourly_rate: 40,
-        availability: 'part_time',
+        id: 'p1', title: 'Web App', description: 'desc', budget: 1000,
+        required_skills: [{ skill_name: null, name: null }],
+        created_at: '2025-01-01',
       }],
       total: 1,
     });
 
     const result = await executeSavedSearch('ss-1', 'user-1');
     expect(result.success).toBe(true);
+    if (result.success) {
+      // Should not match because '' does not equal 'react'
+      expect(result.data.count).toBe(0);
+    }
+  });
+
+  it('L312: freelancer search s.name || empty string fallback when name is falsy', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
+      filters: JSON.stringify({ skills: ['react'] }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    // Freelancer with skill where name is null (triggers '' fallback)
+    mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+      items: [{
+        user_id: 'fp-1',
+        skills: [{ name: null, category_id: 'cat-1', years_of_experience: 2 }],
+        full_name: 'Jane', headline: 'Dev', bio: 'bio', hourly_rate: 40,
+        availability: 'part_time', created_at: '2025-01-01',
+      }],
+      total: 1,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // Should not match because '' does not equal 'react'
+      expect(result.data.count).toBe(0);
+    }
+  });
+
+  it('L312: freelancer search with valid skill name matches', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
+      filters: JSON.stringify({ skills: ['react'] }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    // Freelancer with valid skill name
+    mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+      items: [{
+        user_id: 'fp-1',
+        skills: [{ name: 'React', years_of_experience: 3 }],
+        full_name: 'John', headline: 'Dev', bio: 'bio', hourly_rate: 50,
+        availability: 'full_time', created_at: '2025-01-01',
+      }],
+      total: 1,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.count).toBe(1);
+    }
   });
 });

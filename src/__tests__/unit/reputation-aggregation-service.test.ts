@@ -550,6 +550,55 @@ describe('Reputation Aggregation Service - Integration Coverage', () => {
     expect(result.data.onTimeDeliveryRate).toBe(100);
   });
 
+  // Line 119-121: typeof milestones !== 'string' branch (already-parsed array)
+  it('getAggregatedScore handles milestones as already-parsed array (line 119-121 false branch)', async () => {
+    const { getAggregatedScore } = await importModule();
+
+    const reviews = [{ $id: 'r1', rating: 5, work_quality: 5, communication: 5, professionalism: 5, would_work_again: true }];
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', project_id: 'p1' }],
+      total: 1,
+    });
+    // getDocument returns project with milestones as an array (not a string)
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: [
+        { status: 'approved', approved_at: '2025-01-14', due_date: '2025-01-15' },
+        { status: 'approved', approved_at: '2025-02-10', due_date: '2025-02-10' },
+      ],
+    });
+
+    const result = await getAggregatedScore('user-1');
+
+    expect(result.success).toBe(true);
+    expect(result.data.onTimeDeliveryRate).toBe(100);
+  });
+
+  // Line 119-121: typeof milestones !== 'string' and milestones is null (falls back to [])
+  it('getAggregatedScore handles null milestones (line 119-21 fallback to [])', async () => {
+    const { getAggregatedScore } = await importModule();
+
+    const reviews = [{ $id: 'r1', rating: 3, work_quality: 3, communication: 3, professionalism: 3, would_work_again: false }];
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', project_id: 'p1' }],
+      total: 1,
+    });
+    // getDocument returns project with null milestones
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: null,
+    });
+
+    const result = await getAggregatedScore('user-1');
+
+    expect(result.success).toBe(true);
+    expect(result.data.onTimeDeliveryRate).toBe(0);
+  });
+
   // Line 160: non-Error thrown in getAggregatedScore catch block
   it('getAggregatedScore handles non-Error throw (line 160)', async () => {
     const { getAggregatedScore } = await importModule();

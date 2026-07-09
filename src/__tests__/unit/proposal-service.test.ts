@@ -1423,38 +1423,232 @@ describe('Proposal Service - Coverage Tests', () => {
 });
 
 describe('Proposal Service - Additional Branch Coverage', () => {
-  it('rush fee calculation with isRush true', () => {
-    const isRush = true;
-    const rushFeePercentage = 30;
-    const proposalRate = 1000;
-    const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
-    expect(rushFee).toBe(300);
+  it('rush fee calculation with isRush true via acceptProposal (lines 308-310, 415-418)', async () => {
+    const employerId = 'employer-rush-true';
+    const freelancerId = 'freelancer-rush-true';
+
+    const milestones = [
+      createTestMilestone({ id: 'ms-rt-1', title: 'M1', amount: 1000, status: 'pending' }),
+    ];
+    // Use snake_case entity field names so mapProjectFromEntity reads them correctly
+    const project = createTestProject({
+      id: 'rush-true-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      is_rush: true,
+      rush_fee_percentage: 30,
+    });
+    projectStore.set(project.id, project);
+
+    const employer = createTestUser({
+      id: employerId,
+      wallet_address: '0x1111111111111111111111111111111111111111',
+    });
+    userStore.set(employer.id, employer);
+
+    const freelancer = createTestUser({
+      id: freelancerId,
+      wallet_address: '0x2222222222222222222222222222222222222222',
+    });
+    userStore.set(freelancer.id, freelancer);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      proposed_rate: 1000,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // rushFee = Math.round(1000 * 30 / 100 * 100) / 100 = 300
+      // totalAmount = 1000 + 300 = 1300
+      expect(result.data.contract).toBeDefined();
+    }
   });
 
-  it('rush fee is 0 when isRush is false', () => {
-    const isRush = false;
-    const rushFeePercentage = 30;
-    const proposalRate = 1000;
-    const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
-    expect(rushFee).toBe(0);
+  it('rush fee defaults and isRush false via acceptProposal (lines 308-310, 415-418)', async () => {
+    const employerId = 'employer-no-rush';
+    const freelancerId = 'freelancer-no-rush';
+
+    const milestones = [
+      createTestMilestone({ id: 'ms-nr-1', title: 'M1', amount: 500, status: 'pending' }),
+    ];
+    // is_rush: false (default), rush_fee_percentage: undefined (default via mapper)
+    const project = createTestProject({
+      id: 'no-rush-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      is_rush: false,
+    });
+    projectStore.set(project.id, project);
+
+    const employer = createTestUser({
+      id: employerId,
+      wallet_address: '0x3333333333333333333333333333333333333333',
+    });
+    userStore.set(employer.id, employer);
+
+    const freelancer = createTestUser({
+      id: freelancerId,
+      wallet_address: '0x4444444444444444444444444444444444444444',
+    });
+    userStore.set(freelancer.id, freelancer);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      proposed_rate: 500,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contract).toBeDefined();
+    }
   });
 
-  it('rushFeePercentage defaults to 25 when null', () => {
-    const project = { rushFeePercentage: null };
-    const rushFeePercentage = project.rushFeePercentage ?? 25;
-    expect(rushFeePercentage).toBe(25);
+  it('rushFeePercentage defaults to 25 when entity has undefined rush_fee_percentage (lines 308-309)', async () => {
+    const employerId = 'employer-rush-default-pct';
+    const freelancerId = 'freelancer-rush-default-pct';
+
+    const milestones = [
+      createTestMilestone({ id: 'ms-rdp-1', title: 'M1', amount: 1000, status: 'pending' }),
+    ];
+    // is_rush: true but rush_fee_percentage: undefined => mapper defaults to 25
+    const project = createTestProject({
+      id: 'rush-default-pct-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      is_rush: true,
+      rush_fee_percentage: undefined as any,
+    });
+    projectStore.set(project.id, project);
+
+    const employer = createTestUser({
+      id: employerId,
+      wallet_address: '0x5555555555555555555555555555555555555555',
+    });
+    userStore.set(employer.id, employer);
+
+    const freelancer = createTestUser({
+      id: freelancerId,
+      wallet_address: '0x6666666666666666666666666666666666666666',
+    });
+    userStore.set(freelancer.id, freelancer);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      proposed_rate: 1000,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.contract).toBeDefined();
+    }
   });
 
-  it('freelancerLimit defaults to 1 when undefined', () => {
-    const project = { freelancerLimit: undefined };
-    const maxFreelancers = project.freelancerLimit ?? 1;
-    expect(maxFreelancers).toBe(1);
+  it('freelancerLimit defaults to 1 and limitReached is false when limit > accepted count (lines 448, 455)', async () => {
+    const employerId = 'employer-limit-not-reached';
+    const freelancerId = 'freelancer-limit-not-reached';
+
+    const milestones = [
+      createTestMilestone({ id: 'ms-lnr-1', title: 'M1', amount: 800, status: 'pending' }),
+    ];
+    // freelancer_limit: 2, so limit is not reached with just 1 acceptance
+    const project = createTestProject({
+      id: 'limit-not-reached-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 2,
+    });
+    projectStore.set(project.id, project);
+
+    const employer = createTestUser({
+      id: employerId,
+      wallet_address: '0x7777777777777777777777777777777777777777',
+    });
+    userStore.set(employer.id, employer);
+
+    const freelancer = createTestUser({
+      id: freelancerId,
+      wallet_address: '0x8888888888888888888888888888888888888888',
+    });
+    userStore.set(freelancer.id, freelancer);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      proposed_rate: 800,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    // With limit=2 and only 1 accepted, limitReached=false, project stays 'open'
+    const updatedProject = projectStore.get(project.id) as any;
+    expect(updatedProject?.status).toBe('open');
   });
 
-  it('isRush defaults to false when undefined', () => {
-    const project = { isRush: undefined };
-    const isRush = project.isRush ?? false;
-    expect(isRush).toBe(false);
+  it('freelancerLimit defaults to 1 when entity freelancer_limit is undefined (line 448)', async () => {
+    const employerId = 'employer-fl-default';
+    const freelancerId = 'freelancer-fl-default';
+
+    const milestones = [
+      createTestMilestone({ id: 'ms-fld-1', title: 'M1', amount: 600, status: 'pending' }),
+    ];
+    const project = createTestProject({
+      id: 'fl-default-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: undefined as any,
+    });
+    projectStore.set(project.id, project);
+
+    const employer = createTestUser({
+      id: employerId,
+      wallet_address: '0x9999999999999999999999999999999999999999',
+    });
+    userStore.set(employer.id, employer);
+
+    const freelancer = createTestUser({
+      id: freelancerId,
+      wallet_address: '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0',
+    });
+    userStore.set(freelancer.id, freelancer);
+
+    const proposal = createTestProposal({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      proposed_rate: 600,
+      status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    // freelancer_limit defaults to 1 via mapper, limit reached with 1 acceptance
+    const updatedProject = projectStore.get(project.id) as any;
+    expect(updatedProject?.status).toBe('in_progress');
   });
 });
 
@@ -1598,12 +1792,12 @@ describe('Proposal Service - Integration Coverage', () => {
     });
   });
 
-  // Lines 308-310: rush fee calculation with isRush: true and rushFeePercentage ?? 25
-  it('acceptProposal calculates rush fee when project has isRush: true (lines 308-310)', async () => {
+  // Lines 308-310: rush fee calculation with is_rush: true and rush_fee_percentage
+  it('acceptProposal calculates rush fee when project has is_rush: true (lines 308-310)', async () => {
     const employerId = 'employer-123';
     const freelancerId = 'freelancer-123';
 
-    // Project with isRush: true and rushFeePercentage: 30
+    // Project with is_rush: true and rush_fee_percentage: 30 (snake_case entity fields)
     const milestones = [
       createTestMilestone({ id: 'ms-1', title: 'M1', amount: 1000, status: 'pending' }),
     ];
@@ -1612,8 +1806,8 @@ describe('Proposal Service - Integration Coverage', () => {
       employer_id: employerId,
       status: 'open',
       milestones,
-      isRush: true,
-      rushFeePercentage: 30,
+      is_rush: true,
+      rush_fee_percentage: 30,
     });
     projectStore.set(project.id, project);
 
@@ -1647,12 +1841,12 @@ describe('Proposal Service - Integration Coverage', () => {
     }
   });
 
-  // Lines 308-309: rushFeePercentage ?? 25 default and isRush ?? false default
-  it('acceptProposal with default rushFeePercentage and isRush when undefined (lines 308-309)', async () => {
+  // Lines 308-309: is_rush and rush_fee_percentage defaults via mapper
+  it('acceptProposal with default rush_fee_percentage and is_rush when not set (lines 308-309)', async () => {
     const employerId = 'employer-123';
     const freelancerId = 'freelancer-123';
 
-    // Project with isRush and rushFeePercentage undefined (defaults)
+    // Project with is_rush and rush_fee_percentage not explicitly set (defaults via mapper)
     const milestones = [
       createTestMilestone({ id: 'ms-1', title: 'M1', amount: 500, status: 'pending' }),
     ];
@@ -1661,7 +1855,7 @@ describe('Proposal Service - Integration Coverage', () => {
       employer_id: employerId,
       status: 'open',
       milestones,
-      // isRush and rushFeePercentage not set - should default to false and 25
+      // is_rush and rush_fee_percentage use defaults from createTestProject
     });
     projectStore.set(project.id, project);
 
@@ -1694,8 +1888,8 @@ describe('Proposal Service - Integration Coverage', () => {
     }
   });
 
-  // Line 448: freelancerLimit ?? 1 default in initializeEscrowForContract
-  it('acceptProposal uses default freelancerLimit of 1 when not set (line 448)', async () => {
+  // Line 448: freelancer_limit ?? 1 default via mapper → freelancerLimit ?? 1
+  it('acceptProposal uses default freelancerLimit of 1 when freelancer_limit not set (line 448)', async () => {
     const employerId = 'employer-123';
     const freelancerId = 'freelancer-123';
 
@@ -1707,7 +1901,7 @@ describe('Proposal Service - Integration Coverage', () => {
       employer_id: employerId,
       status: 'open',
       milestones,
-      // freelancer_limit not set
+      freelancer_limit: 1,
     });
     projectStore.set(project.id, project);
 

@@ -215,14 +215,42 @@ describe('file-service - Additional Branch Coverage', () => {
     mockAppwriteStorage.listFiles.mockReset();
   });
 
-  it('L155: filesResult.data || [] when data is null/undefined', async () => {
+  it('L155: getFileQuota with files returns data array (left branch of ||)', async () => {
     const mockAppwriteStorage = (globalThis as any).mockAppwriteStorage;
-    // Return result with undefined files to trigger || [] fallback
-    mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: undefined });
-    mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: undefined });
+    const userId = 'user-quota-test';
+    const file1 = {
+      $id: 'fq1', name: 'image.png', sizeOriginal: 5 * 1024 * 1024,
+      $createdAt: '2025-01-01', $updatedAt: '2025-01-01',
+      $permissions: ['read("any")', `write("user:${userId}")`],
+    };
+    const file2 = {
+      $id: 'fq2', name: 'doc.pdf', sizeOriginal: 3 * 1024 * 1024,
+      $createdAt: '2025-01-01', $updatedAt: '2025-01-01',
+      $permissions: ['read("any")', `write("user:${userId}")`],
+    };
+
+    mockAppwriteStorage.listFiles
+      .mockResolvedValueOnce({ files: [file1] })
+      .mockResolvedValueOnce({ files: [file2] });
 
     const { getFileQuota } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await getFileQuota('user-1');
+    const result = await getFileQuota(userId);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.used).toBe(8 * 1024 * 1024);
+      expect(result.data.files).toBe(2);
+      expect(result.data.limit).toBe(100 * 1024 * 1024);
+    }
+  });
+
+  it('L155: getFileQuota with empty file list returns zero usage', async () => {
+    const mockAppwriteStorage = (globalThis as any).mockAppwriteStorage;
+    mockAppwriteStorage.listFiles
+      .mockResolvedValueOnce({ files: [] })
+      .mockResolvedValueOnce({ files: [] });
+
+    const { getFileQuota } = await import(resolveModule('src/services/file-service.ts'));
+    const result = await getFileQuota('user-empty');
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.used).toBe(0);
@@ -230,16 +258,20 @@ describe('file-service - Additional Branch Coverage', () => {
     }
   });
 
-  it('L155: filesResult.data || [] when files is null', async () => {
+  it('L155: getFileQuota with undefined files in bucket result', async () => {
     const mockAppwriteStorage = (globalThis as any).mockAppwriteStorage;
-    mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: null });
-    mockAppwriteStorage.listFiles.mockResolvedValueOnce({ files: null });
+    // When files is undefined, getUserFiles skips the bucket (if (result.files) is false)
+    // and returns empty array, so data is always []
+    mockAppwriteStorage.listFiles
+      .mockResolvedValueOnce({ files: undefined })
+      .mockResolvedValueOnce({ files: undefined });
 
     const { getFileQuota } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await getFileQuota('user-2');
+    const result = await getFileQuota('user-undef');
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.used).toBe(0);
+      expect(result.data.files).toBe(0);
     }
   });
 });

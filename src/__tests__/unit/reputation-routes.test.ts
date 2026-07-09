@@ -638,3 +638,82 @@ describe('reputation-routes - additional error code branches', () => {
     expect(res.body.error.message).toBe('User not found');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ?? '' right-side branch coverage (param is nullish)
+// ═══════════════════════════════════════════════════════════════
+
+describe('reputation-routes - ?? "" right-side branch coverage', () => {
+  let app: any;
+  const mockGetReputation = jest.fn<any>();
+  const mockGetWorkHistory = jest.fn<any>();
+  const mockGetAggregatedScore = jest.fn<any>();
+  const mockGetReputationBreakdown = jest.fn<any>();
+  const mockGetReputationHistory = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({
+      submitRating: jest.fn(),
+      getReputation: mockGetReputation,
+      getWorkHistory: mockGetWorkHistory,
+      canUserRate: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/reputation-aggregation-service.ts'), () => ({
+      getAggregatedScore: mockGetAggregatedScore,
+      getReputationBreakdown: mockGetReputationBreakdown,
+      getReputationHistory: mockGetReputationHistory,
+      getReputationLeaderboard: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/reputation-routes.js')).default;
+
+    // Use router.param to set :userId to undefined, triggering ?? '' fallback
+    router.param('userId', (_req: any, _res: any, next: any) => {
+      _req.params.userId = undefined;
+      next();
+    });
+
+    app = express();
+    app.use(express.json());
+    app.use('/api/reputation', router);
+    jest.clearAllMocks();
+  });
+
+  it('L389: GET /:userId uses "" when param is nullish (triggers !userId guard)', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/any-user');
+    expect(res.status).toBe(400);
+  });
+
+  it('L447: GET /:userId/history uses "" when param is nullish (triggers !userId guard)', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/any-user/history');
+    expect(res.status).toBe(400);
+  });
+
+  it('L493: GET /:userId/score uses "" when param is nullish', async () => {
+    mockGetAggregatedScore.mockResolvedValueOnce({ success: false, error: { message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/any-user/score');
+    expect(res.status).toBe(400);
+    expect(mockGetAggregatedScore).toHaveBeenCalledWith('');
+  });
+
+  it('L527: GET /:userId/breakdown uses "" when param is nullish', async () => {
+    mockGetReputationBreakdown.mockResolvedValueOnce({ success: false, error: { message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/any-user/breakdown');
+    expect(res.status).toBe(400);
+    expect(mockGetReputationBreakdown).toHaveBeenCalledWith('');
+  });
+
+  it('L566: GET /:userId/reputation-history uses "" when param is nullish', async () => {
+    mockGetReputationHistory.mockResolvedValueOnce({ success: false, error: { message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/any-user/reputation-history');
+    expect(res.status).toBe(400);
+    expect(mockGetReputationHistory).toHaveBeenCalledWith('', 12);
+  });
+});

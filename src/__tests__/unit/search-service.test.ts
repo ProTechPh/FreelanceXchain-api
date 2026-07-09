@@ -656,4 +656,76 @@ describe('Search Service - Additional Branch Coverage', () => {
       expect(result.data.items.length).toBeGreaterThanOrEqual(1);
     }
   });
+
+  it('L96: searchProjects with budget range only (no keyword, no skills) hits hasBudgetRange branch', async () => {
+    const project = createTestProject({
+      title: 'Budget Only Project',
+      description: 'Search by budget only',
+      budget: 1000,
+      status: 'open',
+      required_skills: [],
+    });
+    projectStore.set(project.id, project);
+
+    // No keyword, no skills - only budget range to hit the hasBudgetRange && !hasKeyword && !hasSkills branch
+    const result = await searchProjects({
+      keyword: undefined,
+      skillIds: undefined,
+      minBudget: 500,
+      maxBudget: 2000,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('L96: searchProjects with only maxBudget (no keyword, no skills) triggers minBudget ?? 0', async () => {
+    const project = createTestProject({
+      title: 'Budget Max Only Project',
+      description: 'Only maxBudget set',
+      budget: 500,
+      status: 'open',
+      required_skills: [],
+    });
+    projectStore.set(project.id, project);
+
+    // Only maxBudget defined, no keyword, no skills
+    // This enters hasBudgetRange && !hasKeyword && !hasSkills branch
+    // and triggers minBudget ?? 0 fallback
+    const result = await searchProjects({
+      minBudget: undefined,
+      maxBudget: 1000,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  it('L96: searchProjects with only minBudget (no keyword, no skills) triggers maxBudget ?? MAX_SAFE_INTEGER', async () => {
+    const project = createTestProject({
+      title: 'Budget Min Only Project',
+      description: 'Only minBudget set',
+      budget: 999999,
+      status: 'open',
+      required_skills: [],
+    });
+    projectStore.set(project.id, project);
+
+    // Only minBudget defined, no keyword, no skills
+    // This enters hasBudgetRange && !hasKeyword && !hasSkills branch
+    // and triggers maxBudget ?? Number.MAX_SAFE_INTEGER fallback
+    const result = await searchProjects({
+      minBudget: 100,
+      maxBudget: undefined,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items.length).toBeGreaterThanOrEqual(1);
+    }
+  });
 });

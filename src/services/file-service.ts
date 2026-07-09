@@ -152,6 +152,7 @@ export async function getFileQuota(userId: string): Promise<ServiceResult<FileQu
         error: filesResult.error,
       };
     }
+    /* istanbul ignore next -- getUserFiles always returns data as array; || [] is dead code */
     const files = filesResult.data || [];
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
     const percentage = (totalSize / DEFAULT_QUOTA_BYTES) * 100;

@@ -443,31 +443,93 @@ describe('freelancer-profile-service – branch coverage', () => {
     expect(result).toBeDefined();
   });
 
-  it('L312: addExperience with null endDate', async () => {
+  it('L312: addExperience with invalid startDate triggers INVALID_DATE_RANGE', async () => {
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
       id: 'fp1', user_id: 'u1', skills: [], experience: [],
       availability: 'available', bio: '', hourly_rate: 50,
     });
-    mockFreelancerProfileRepository.updateProfile.mockResolvedValue({ id: 'fp1' });
+
+    const { addExperience } = await import(resolveModule('src/services/freelancer-profile-service.ts'));
+    const result = await addExperience('u1', {
+      title: 'Dev', company: 'Co', description: 'desc',
+      startDate: 'not-a-date', endDate: null,
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    }
+  });
+
+  it('L312: addExperience with startDate after endDate triggers INVALID_DATE_RANGE', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [], experience: [],
+      availability: 'available', bio: '', hourly_rate: 50,
+    });
+
+    const { addExperience } = await import(resolveModule('src/services/freelancer-profile-service.ts'));
+    const result = await addExperience('u1', {
+      title: 'Dev', company: 'Co', description: 'desc',
+      startDate: '2025-01-01', endDate: '2024-01-01',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+      expect(result.error.message).toBeDefined();
+    }
+  });
+
+  it('L312: addExperience with null endDate succeeds', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [], experience: [],
+      availability: 'available', bio: '', hourly_rate: 50,
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [], experience: [
+        { id: 'exp1', title: 'Dev', company: 'Co', description: 'desc', start_date: '2024-01-01', end_date: null },
+      ],
+      availability: 'available', bio: '', hourly_rate: 50,
+      created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
 
     const { addExperience } = await import(resolveModule('src/services/freelancer-profile-service.ts'));
     const result = await addExperience('u1', {
       title: 'Dev', company: 'Co', description: 'desc',
       startDate: '2024-01-01', endDate: null,
     });
-    expect(result).toBeDefined();
+    expect(result.success).toBe(true);
   });
 
-  it('L377,L384: updateExperience with partial fields', async () => {
+  it('L377: updateExperience with invalid date range triggers INVALID_DATE_RANGE', async () => {
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
       id: 'fp1', user_id: 'u1', skills: [], availability: 'available', bio: '', hourly_rate: 50,
       experience: [{ id: 'exp1', title: 'Dev', company: 'Co', description: 'desc', start_date: '2024-01-01', end_date: '2025-01-01' }],
     });
-    mockFreelancerProfileRepository.updateProfile.mockResolvedValue({ id: 'fp1' });
+
+    const { updateExperience } = await import(resolveModule('src/services/freelancer-profile-service.ts'));
+    // Set start_date after end_date
+    const result = await updateExperience('u1', 'exp1', { startDate: '2026-01-01' });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    }
+  });
+
+  it('L377,L384: updateExperience with partial fields succeeds', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [], availability: 'available', bio: '', hourly_rate: 50,
+      experience: [{ id: 'exp1', title: 'Dev', company: 'Co', description: 'desc', start_date: '2024-01-01', end_date: '2025-01-01' }],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [], experience: [
+        { id: 'exp1', title: 'Senior Dev', company: 'Co', description: 'desc', start_date: '2024-01-01', end_date: '2025-01-01' },
+      ],
+      availability: 'available', bio: '', hourly_rate: 50,
+      created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
 
     const { updateExperience } = await import(resolveModule('src/services/freelancer-profile-service.ts'));
     const result = await updateExperience('u1', 'exp1', { title: 'Senior Dev' });
-    expect(result).toBeDefined();
+    expect(result.success).toBe(true);
   });
 });
 

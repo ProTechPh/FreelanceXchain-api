@@ -619,3 +619,61 @@ describe('message-routes - additional branch coverage', () => {
     expect(res.body.error.message).toBe('An error occurred');
   });
 });
+
+describe('message-routes - ?? "" param fallback coverage', () => {
+  let app: any;
+  const mockGetConversationMessages = jest.fn<any>();
+  const mockMarkConversationAsRead = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/message-service.ts'), () => ({
+      sendMessage: jest.fn(),
+      getConversations: jest.fn(),
+      getConversationMessages: mockGetConversationMessages,
+      markConversationAsRead: mockMarkConversationAsRead,
+      getUnreadMessageCount: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', id: 'user-1', email: 'test@test.com', role: 'freelancer' };
+        delete req.params.conversationId;
+        next();
+      },
+      requireRole: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      requireVerifiedKyc: jest.fn((_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/message-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/messages', router);
+    jest.clearAllMocks();
+  });
+
+  it('L113: GET /conversations/:conversationId uses ?? "" fallback when conversationId is nullish', async () => {
+    mockGetConversationMessages.mockResolvedValueOnce({ success: true, data: { messages: [], total: 0 } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/messages/conversations/any-id');
+    expect(res.status).toBe(200);
+    expect(mockGetConversationMessages).toHaveBeenCalledWith('', 'user-1', expect.any(Object));
+  });
+
+  it('L153: PATCH /conversations/:conversationId/read uses ?? "" fallback', async () => {
+    mockMarkConversationAsRead.mockResolvedValueOnce({ success: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/messages/conversations/any-id/read');
+    expect(res.status).toBe(200);
+    expect(mockMarkConversationAsRead).toHaveBeenCalledWith('', 'user-1');
+  });
+});

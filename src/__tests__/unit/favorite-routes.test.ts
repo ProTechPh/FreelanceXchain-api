@@ -434,3 +434,60 @@ describe('favorite-routes - additional branch coverage', () => {
     expect(res.body.error.message).toBeUndefined();
   });
 });
+
+describe('favorite-routes - ?? "" param fallback coverage', () => {
+  let app: any;
+  const mockRemoveFavorite = jest.fn<any>();
+  const mockIsFavorited = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/favorite-service.ts'), () => ({
+      addFavorite: jest.fn(),
+      removeFavorite: mockRemoveFavorite,
+      isFavorited: mockIsFavorited,
+      getUserFavorites: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', id: 'user-1', email: 'test@test.com', role: 'freelancer' };
+        delete req.params.targetId;
+        next();
+      },
+      requireRole: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      requireVerifiedKyc: jest.fn((_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/favorite-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/favorites', router);
+    jest.clearAllMocks();
+  });
+
+  it('L122: DELETE /:targetType/:targetId uses ?? "" fallback when targetId is nullish', async () => {
+    mockRemoveFavorite.mockResolvedValueOnce({ success: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/favorites/project/any-id');
+    expect(res.status).toBe(200);
+    expect(mockRemoveFavorite).toHaveBeenCalledWith('user-1', 'project', '');
+  });
+
+  it('L159: GET /check/:targetType/:targetId uses ?? "" fallback', async () => {
+    mockIsFavorited.mockResolvedValueOnce({ success: true, data: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/favorites/check/project/any-id');
+    expect(res.status).toBe(200);
+    expect(mockIsFavorited).toHaveBeenCalledWith('user-1', 'project', '');
+  });
+});

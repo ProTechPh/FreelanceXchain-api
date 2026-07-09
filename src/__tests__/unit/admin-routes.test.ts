@@ -821,3 +821,86 @@ describe('admin-routes - additional branch coverage', () => {
     expect(res.body.error.message).toBe('An error occurred');
   });
 });
+
+describe('admin-routes - ?? "" param fallback coverage', () => {
+  let app: any;
+  const mockUpdateUser = jest.fn<any>();
+  const mockSuspendUser = jest.fn<any>();
+  const mockUnsuspendUser = jest.fn<any>();
+  const mockVerifyUser = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => ({
+      getPlatformStats: jest.fn(),
+      getUserManagement: jest.fn(),
+      suspendUser: mockSuspendUser,
+      unsuspendUser: mockUnsuspendUser,
+      verifyUser: mockVerifyUser,
+      updateUser: mockUpdateUser,
+      getDisputeManagement: jest.fn(),
+      getSystemHealth: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
+      getAdminAnalytics: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+      ReviewRepository: {},
+      reviewRepository: { getAllReviews: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'admin-1', role: 'admin' };
+        delete req.params.userId;
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+
+    const express = (await import('express')).default;
+    const adminRouter = (await import('../../routes/admin-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/admin', adminRouter);
+    jest.clearAllMocks();
+  });
+
+  it('L130: PATCH /users/:userId uses ?? "" fallback when userId param is nullish', async () => {
+    mockUpdateUser.mockResolvedValueOnce({ success: true, data: { id: '', email: '', role: 'freelancer', name: '', created_at: '2025-01-01', is_suspended: false } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/admin/users/any-id').send({ name: 'Test' });
+    expect(res.status).toBe(200);
+    expect(mockUpdateUser).toHaveBeenCalledWith('', { name: 'Test', role: undefined, isActive: undefined });
+  });
+
+  it('L179: POST /users/:userId/suspend uses ?? "" fallback', async () => {
+    mockSuspendUser.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/any-id/suspend').send({ reason: 'test' });
+    expect(res.status).toBe(200);
+    expect(mockSuspendUser).toHaveBeenCalledWith('', 'test');
+  });
+
+  it('L207: POST /users/:userId/unsuspend uses ?? "" fallback', async () => {
+    mockUnsuspendUser.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/any-id/unsuspend');
+    expect(res.status).toBe(200);
+    expect(mockUnsuspendUser).toHaveBeenCalledWith('');
+  });
+
+  it('L234: POST /users/:userId/verify uses ?? "" fallback', async () => {
+    mockVerifyUser.mockResolvedValueOnce({ success: true, data: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/any-id/verify');
+    expect(res.status).toBe(200);
+    expect(mockVerifyUser).toHaveBeenCalledWith('');
+  });
+});

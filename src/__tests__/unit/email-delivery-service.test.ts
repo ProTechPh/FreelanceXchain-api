@@ -746,4 +746,23 @@ describe('email-delivery-service - result.id fallback (L111)', () => {
       expect(result.data.messageId).toBe('unknown');
     }
   });
+
+  it('L306: testEmailConfiguration with non-Error throw uses fallback message', async () => {
+    // Set config so the if-check passes, then make logger.info throw a non-Error
+    process.env['CLOUDFLARE_API_TOKEN'] = 'test-api-token';
+    process.env['CLOUDFLARE_ACCOUNT_ID'] = 'test-account-id';
+
+    const service = await import(resolveModule('src/services/email-delivery-service.ts'));
+
+    // Access the mocked logger to make info throw a non-Error value
+    const { logger } = await import(resolveModule('src/config/logger.ts'));
+    (logger.info as jest.Mock).mockImplementationOnce(() => { throw 'non-error string'; });
+
+    const result = await service.testEmailConfiguration();
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message).toBe('Email configuration is invalid');
+    }
+  });
 });

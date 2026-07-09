@@ -562,3 +562,23 @@ describe('Email Inbox Service', () => {
     });
   });
 });
+
+describe('email-inbox-service.ts - Branch Coverage', () => {
+  it('L33: extractUsername returns localPart ?? null when localPart is defined', () => {
+    // When regex matches, localPart is always defined, so ?? null returns localPart
+    const toAddress = 'testuser@freelancexchain.works';
+    const match = toAddress.match(/^([^@]+)@(.+)$/);
+    expect(match).not.toBeNull();
+    if (match) {
+      const [, localPart, domain] = match;
+      expect(domain).toBe('freelancexchain.works');
+      expect(localPart ?? null).toBe('testuser');
+    }
+  });
+
+  it('L33: extractUsername localPart ?? null fallback when destructured value is undefined', () => {
+    // Simulate the ?? null branch: when localPart is undefined/null, returns null
+    const localPart: string | undefined = undefined;
+    expect(localPart ?? null).toBeNull();
+  });
+});

@@ -1275,3 +1275,91 @@ describe('project-routes - error branch verification', () => {
     expect(res.body.error.message).toBe('Query failed');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ?? '' right-side branch coverage (param is nullish)
+// ═══════════════════════════════════════════════════════════════
+
+describe('project-routes - ?? "" right-side branch coverage', () => {
+  let app: any;
+  const mockGetProjectById = jest.fn<any>();
+  const mockUpdateProject = jest.fn<any>();
+  const mockSetMilestones = jest.fn<any>();
+  const mockGetProposalsByProject = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      createProject: jest.fn(),
+      getProjectById: mockGetProjectById,
+      updateProject: mockUpdateProject,
+      setMilestones: mockSetMilestones,
+      listOpenProjects: jest.fn(),
+      searchProjects: jest.fn(),
+      listProjectsBySkills: jest.fn(),
+      listProjectsByBudgetRange: jest.fn(),
+      listProjectsByEmployer: jest.fn(),
+      listProjectsByCategory: jest.fn(),
+      listProjectsByMultipleCategories: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () => ({
+      getProposalsByProject: mockGetProposalsByProject,
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+      uploadMultipleFiles: jest.fn(),
+      cleanupUploadedFiles: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
+      uploadProjectAttachments: (_req: any, _res: any, next: any) => next(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/project-routes.js')).default;
+
+    // Use router.param to set :id to undefined, triggering ?? '' fallback
+    router.param('id', (_req: any, _res: any, next: any) => {
+      _req.params.id = undefined;
+      next();
+    });
+
+    app = express();
+    app.use(express.json());
+    app.use('/api/projects', router);
+    jest.clearAllMocks();
+  });
+
+  it('L398: GET /:id uses "" when param is nullish', async () => {
+    mockGetProjectById.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/projects/any-id');
+    expect(res.status).toBe(404);
+    expect(mockGetProjectById).toHaveBeenCalledWith('');
+  });
+
+  it('L836: PATCH /:id uses "" when param is nullish', async () => {
+    mockUpdateProject.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/projects/any-id').send({ title: 'New Title That Is Long' });
+    expect(res.status).toBe(404);
+    expect(mockUpdateProject).toHaveBeenCalledWith('', 'user-1', expect.any(Object));
+  });
+
+  it('L958: POST /:id/milestones uses "" when param is nullish', async () => {
+    mockSetMilestones.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/projects/any-id/milestones').send({
+      milestones: [{ title: 'M1', description: 'Desc', amount: 100, dueDate: '2026-12-31' }],
+    });
+    expect(res.status).toBe(404);
+    expect(mockSetMilestones).toHaveBeenCalledWith('', 'user-1', expect.any(Array));
+  });
+
+  it('L1075: GET /:id/proposals uses "" when param is nullish', async () => {
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { employer_id: 'user-1' } });
+    mockGetProposalsByProject.mockResolvedValueOnce({ success: true, data: { items: [] } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/projects/any-id/proposals');
+    expect(res.status).toBe(200);
+    expect(mockGetProjectById).toHaveBeenCalledWith('');
+  });
+});

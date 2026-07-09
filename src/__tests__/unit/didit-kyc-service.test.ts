@@ -1432,4 +1432,30 @@ describe('didit-kyc-service - Additional Branch Coverage', () => {
       );
     });
   });
+
+  describe('L375: syncKycNameToUserAndProfiles user not found branch', () => {
+    it('should handle processWebhook when user is not found during name sync', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc());
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
+      // getUserById returns null to trigger line 375 branch
+      mockGetUserById.mockResolvedValue(null);
+
+      const result = await processWebhook({
+        session_id: 'session-abc',
+        status: 'Approved',
+        timestamp: Date.now() / 1000,
+        decision: {
+          id_verifications: [{
+            first_name: 'Jane',
+            last_name: 'Smith',
+            nationality: 'US',
+            status: 'Approved',
+          }],
+        },
+      } as any);
+
+      // Should still succeed even if user not found during name sync
+      expect(result.success).toBe(true);
+    });
+  });
 });

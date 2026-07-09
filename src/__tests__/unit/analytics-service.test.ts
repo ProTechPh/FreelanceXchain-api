@@ -433,6 +433,75 @@ describe('analytics-service.ts - Branch Coverage', () => {
     expect(reviews.reduce((s: number, r: any) => s + (r.rating || 0), 0)).toBe(4);
   });
 
+  it('L105: reviews with falsy ratings through getFreelancerAnalytics', async () => {
+    const { getFreelancerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({
+        documents: [{ rating: 0 }, { rating: null }, { rating: undefined }, { rating: 5 }],
+        total: 4,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getFreelancerAnalytics('user-falsy');
+    expect(result).toBeDefined();
+  });
+
+  it('L177: getEmployerAnalytics with zero projects exercises averageProjectBudget=0 branch', async () => {
+    const { getEmployerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getEmployerAnalytics('employer-empty');
+    expect(result).toBeDefined();
+  });
+
+  it('L199: getEmployerAnalytics contracts with falsy total_amount', async () => {
+    const { getEmployerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [{ $id: 'p1', budget: 100, created_at: '2025-01-01' }], total: 1 })
+      .mockResolvedValueOnce({
+        documents: [
+          { total_amount: null, created_at: '2025-01-01' },
+          { total_amount: undefined, created_at: '2025-01-01' },
+          { total_amount: 500, created_at: '2025-01-01' },
+        ],
+        total: 3,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getEmployerAnalytics('employer-falsy');
+    expect(result).toBeDefined();
+  });
+
+  it('L346: getPlatformMetrics completed contracts with falsy total_amount', async () => {
+    const { getPlatformMetrics } = await import(resolveModule('src/services/analytics-service.ts'));
+    const { platformMetricsCache } = await import('../../utils/cache.js');
+    platformMetricsCache.delete('platform_metrics');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({
+        documents: [
+          { total_amount: null },
+          { total_amount: undefined },
+          { total_amount: 0 },
+          { total_amount: 1000 },
+        ],
+        total: 4,
+      })
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getPlatformMetrics();
+    expect(result).toBeDefined();
+  });
+
   it('L273: completedDocs reduce null total_amount', () => {
     expect([{ total_amount: null }, { total_amount: '100' }].reduce((s: number, c: any) => s + Number(c.total_amount || 0), 0)).toBe(100);
   });
@@ -814,6 +883,190 @@ describe('Analytics Service - Additional Branch Coverage', () => {
       ? Math.round(((recentCount - olderCount) / olderCount) * 100 * 10) / 10
       : recentCount > 0 ? 100.0 : 0.0;
     expect(growthRate).toBe(100.0);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Targeted branch coverage tests for specific uncovered lines
+// ═══════════════════════════════════════════════════════════════
+
+describe('Analytics Service - Targeted Branch Coverage', () => {
+  let mockDb: any;
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    mockDb = (globalThis as any).__mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.getDocument.mockReset();
+    mockDb.listDocuments.mockResolvedValue({ documents: [], total: 0 });
+    mockDb.getDocument.mockResolvedValue({ $id: 'doc-id' });
+    const cache = await import('../../utils/cache.js');
+    cache.platformMetricsCache?.clear();
+    cache.skillTrendsCache?.clear();
+    cache.adminAnalyticsCache?.clear();
+  });
+
+  // Line 177: averageProjectBudget when projectsPosted === 0
+  it('L177: getEmployerAnalytics with zero projects returns averageProjectBudget=0', async () => {
+    const { getEmployerAnalytics } = await import('../../services/analytics-service.js');
+
+    // 1st listDocuments: projects → empty
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    // 2nd listDocuments: contracts → empty
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    // 3rd listDocuments: calculateTopSkills contracts → empty
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getEmployerAnalytics('employer-zero');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.projectsPosted).toBe(0);
+      expect(result.data.averageProjectBudget).toBe(0);
+    }
+  });
+
+  // Line 177: averageProjectBudget when projectsPosted > 0
+  it('L177: getEmployerAnalytics with projects returns calculated averageProjectBudget', async () => {
+    const { getEmployerAnalytics } = await import('../../services/analytics-service.js');
+
+    // 1st listDocuments: projects → 2 projects
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { $id: 'p1', budget: 500, created_at: '2025-01-01' },
+        { $id: 'p2', budget: 1500, created_at: '2025-01-01' },
+      ],
+      total: 2,
+    });
+    // 2nd listDocuments: contracts → empty
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    // 3rd listDocuments: calculateTopSkills contracts → empty
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getEmployerAnalytics('employer-with-projects');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.projectsPosted).toBe(2);
+      expect(result.data.averageProjectBudget).toBe(1000);
+    }
+  });
+
+  // Line 346: totalRevenue with falsy total_amount (|| 0 fallback)
+  it('L346: getAdminAnalytics revenue with null/undefined total_amount', async () => {
+    const { getAdminAnalytics } = await import('../../services/analytics-service.js');
+
+    // 1st: users
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 5 });
+    // 2nd: projects
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 3 });
+    // 3rd: completed contracts with falsy total_amount
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { total_amount: null },
+        { total_amount: undefined },
+        { total_amount: 0 },
+        { total_amount: 2000 },
+      ],
+      total: 4,
+    });
+    // 4th: active contracts
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 1 });
+    // 5th: all users (growth)
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    // 6th: all projects (growth)
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getAdminAnalytics();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // totalRevenue = (0 + 0 + 0 + 2000) * 0.05 = 100
+      expect(result.data.totalRevenue).toBe(100);
+    }
+  });
+
+  // Line 346: totalRevenue when all contracts have valid total_amount
+  it('L346: getAdminAnalytics revenue with valid total_amount values', async () => {
+    const { getAdminAnalytics } = await import('../../services/analytics-service.js');
+
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 5 });
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 3 });
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { total_amount: 1000 },
+        { total_amount: 500 },
+      ],
+      total: 2,
+    });
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 1 });
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    mockDb.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const result = await getAdminAnalytics();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // totalRevenue = (1000 + 500) * 0.05 = 75
+      expect(result.data.totalRevenue).toBe(75);
+    }
+  });
+
+  // Lines 466, 469: getSkillTrends growth rate with olderCount=0, recentCount>0
+  it('L466,469: getSkillTrends growthRate 100% when all projects are recent', async () => {
+    const { getSkillTrends } = await import('../../services/analytics-service.js');
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    const recentDate = new Date();
+    recentDate.setDate(recentDate.getDate() - 5); // 5 days ago = recent
+
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { $id: 'p1', required_skills: [{ skill_name: 'Solidity' }], budget: 3000, status: 'open', created_at: recentDate.toISOString() },
+        { $id: 'p2', required_skills: [{ skill_name: 'Solidity' }], budget: 5000, status: 'open', created_at: recentDate.toISOString() },
+      ],
+      total: 2,
+    });
+
+    const result = await getSkillTrends();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const solidityTrend = result.data.find((s: any) => s.skillName === 'Solidity');
+      expect(solidityTrend).toBeDefined();
+      // olderCount=0, recentCount=2 → growthRate = 100.0
+      expect(solidityTrend!.growthRate).toBe(100.0);
+      // projectCount=2, totalBudget=8000 → avgBudget=4000
+      expect(solidityTrend!.averageBudget).toBe(4000);
+    }
+  });
+
+  // Lines 466, 469: getSkillTrends growth rate with olderCount>0
+  it('L466,469: getSkillTrends growthRate calculated when olderCount > 0', async () => {
+    const { getSkillTrends } = await import('../../services/analytics-service.js');
+    const { skillTrendsCache } = await import('../../utils/cache.js');
+    skillTrendsCache.delete('skill_trends');
+
+    const oldDate = new Date();
+    oldDate.setDate(oldDate.getDate() - 60); // 60 days ago = older
+    const recentDate = new Date();
+    recentDate.setDate(recentDate.getDate() - 5);
+
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { $id: 'p1', required_skills: [{ skill_name: 'Rust' }], budget: 2000, status: 'open', created_at: oldDate.toISOString() },
+        { $id: 'p2', required_skills: [{ skill_name: 'Rust' }], budget: 4000, status: 'open', created_at: oldDate.toISOString() },
+        { $id: 'p3', required_skills: [{ skill_name: 'Rust' }], budget: 6000, status: 'open', created_at: recentDate.toISOString() },
+      ],
+      total: 3,
+    });
+
+    const result = await getSkillTrends();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      const rustTrend = result.data.find((s: any) => s.skillName === 'Rust');
+      expect(rustTrend).toBeDefined();
+      // olderCount=2, recentCount=1 → growthRate = ((1-2)/2)*100 = -50
+      expect(rustTrend!.growthRate).toBe(-50);
+      // projectCount=3, totalBudget=12000 → avgBudget=4000
+      expect(rustTrend!.averageBudget).toBe(4000);
+    }
   });
 });
 

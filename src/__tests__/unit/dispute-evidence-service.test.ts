@@ -736,4 +736,74 @@ describe('Dispute Evidence Service - Additional Branch Coverage', () => {
       expect(result.data[0]).not.toHaveProperty('verifiedBy');
     }
   });
+
+  it('L78-79: submitEvidence created entity with verified_by truthy spreads the field', async () => {
+    const { submitEvidence } = await importModule();
+
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+      resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
+    }));
+    mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
+    // Return evidence with verified_by already set (unusual but exercises the branch)
+    mockDisputeEvidenceRepository.createEvidence.mockResolvedValueOnce(makeEvidenceEntity({
+      verified_by: 'arbiter-1',
+      verified_at: '2025-01-15T10:00:00Z',
+    }));
+
+    const result = await submitEvidence({
+      disputeId: 'dispute-1',
+      submittedBy: 'freelancer-1',
+      evidenceType: 'document',
+      fileUrl: 'https://file.com/doc.pdf',
+      description: 'Pre-verified evidence',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.verifiedBy).toBe('arbiter-1');
+      expect(result.data.verifiedAt).toBeDefined();
+    }
+  });
+
+  it('L315-316: verifyEvidence updated entity without verified_by omits the field', async () => {
+    const { verifyEvidence } = await importModule();
+
+    mockDisputeEvidenceRepository.getEvidenceById.mockResolvedValueOnce({
+      id: 'ev-1',
+      dispute_id: 'dispute-1',
+      submitted_by: 'freelancer-1',
+      evidence_type: 'document',
+      description: 'Proof',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce(makeDisputeEntity({
+      resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
+    }));
+
+    // Return updated entity without verified_by/verified_at (exercises false branch)
+    mockDisputeEvidenceRepository.updateEvidence.mockResolvedValueOnce({
+      id: 'ev-1',
+      dispute_id: 'dispute-1',
+      submitted_by: 'freelancer-1',
+      evidence_type: 'document',
+      description: 'Proof',
+      verified_by: null,
+      verified_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const result = await verifyEvidence({
+      evidenceId: 'ev-1',
+      verifiedBy: 'arbiter-1',
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).not.toHaveProperty('verifiedBy');
+      expect(result.data).not.toHaveProperty('verifiedAt');
+    }
+  });
 });

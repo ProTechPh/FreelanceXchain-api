@@ -105,6 +105,22 @@ describe('MessageRepository', () => {
       expect(result.items).toEqual([]);
       expect(result.total).toBe(0);
     });
+
+    it('should handle conversations with null/undefined last_message_at (|| fallback)', async () => {
+      const convs = [
+        { $id: 'c1', participant1_id: 'u1', participant2_id: 'u2', last_message_at: null },
+        { $id: 'c2', participant1_id: 'u3', participant2_id: 'u1', last_message_at: '2025-01-02' },
+        { $id: 'c3', participant1_id: 'u1', participant2_id: 'u4' }, // undefined last_message_at
+      ];
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: [convs[0], convs[2]], total: 2 })
+        .mockResolvedValueOnce({ documents: [convs[1]], total: 1 });
+      const result = await messageRepository.getUserConversations('u1', 10, 0);
+      expect(result.items).toHaveLength(3);
+      expect(result.total).toBe(3);
+      // Conversations with null/undefined last_message_at should sort last
+      expect(result.items[0]!.id).toBe('c2');
+    });
   });
 
   describe('createMessage', () => {
