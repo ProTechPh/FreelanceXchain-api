@@ -131,6 +131,13 @@ describe('SimulatedBlockchainAdapter', () => {
       mockGetEscrowState.mockResolvedValue(makeEscrowState());
       await expect(adapter.approveMilestone(ESCROW_ADDR, 99)).rejects.toThrow('Milestone index out of bounds');
     });
+
+    it('should throw when milestone at index is falsy (line 118)', async () => {
+      mockGetEscrowState.mockResolvedValue(
+        makeEscrowState({ milestones: [null, { id: 'ms-1', amount: BigInt(500), status: 'pending' }] })
+      );
+      await expect(adapter.approveMilestone(ESCROW_ADDR, 0)).rejects.toThrow('Milestone not found');
+    });
   });
 
   describe('disputeMilestone', () => {
@@ -168,6 +175,13 @@ describe('SimulatedBlockchainAdapter', () => {
     it('should throw when milestone index out of bounds', async () => {
       mockGetEscrowState.mockResolvedValue(makeEscrowState());
       await expect(adapter.resolveDispute(ESCROW_ADDR, 99, true)).rejects.toThrow('Milestone index out of bounds');
+    });
+
+    it('should throw when milestone at index is falsy (line 159)', async () => {
+      mockGetEscrowState.mockResolvedValue(
+        makeEscrowState({ milestones: [null, { id: 'ms-1', amount: BigInt(500), status: 'pending' }] })
+      );
+      await expect(adapter.resolveDispute(ESCROW_ADDR, 0, true)).rejects.toThrow('Milestone not found');
     });
   });
 
@@ -214,6 +228,13 @@ describe('SimulatedBlockchainAdapter', () => {
     it('should throw when milestone index out of bounds', async () => {
       mockGetEscrowState.mockResolvedValue(makeEscrowState());
       await expect(adapter.getMilestone(ESCROW_ADDR, 99)).rejects.toThrow('Milestone index out of bounds');
+    });
+
+    it('should throw when milestone at index is falsy (line 211)', async () => {
+      mockGetEscrowState.mockResolvedValue(
+        makeEscrowState({ milestones: [null, { id: 'ms-1', amount: BigInt(500), status: 'pending' }] })
+      );
+      await expect(adapter.getMilestone(ESCROW_ADDR, 0)).rejects.toThrow('Milestone not found');
     });
   });
 

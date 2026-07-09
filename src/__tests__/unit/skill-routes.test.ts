@@ -604,3 +604,106 @@ describe('skill-routes branch coverage', () => {
     expect(res.status).toBe(400);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// userName extraction, status code logic, update validation, update data building
+// ═══════════════════════════════════════════════════════════════
+
+describe('skill-routes - custom skill edge cases', () => {
+  let app: any;
+  const mockCreateUserCustomSkill = jest.fn<any>();
+  const mockUpdateUserCustomSkill = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({
+      createCategory: jest.fn(),
+      createSkill: jest.fn(),
+      deprecateSkill: jest.fn(),
+      getFullTaxonomy: jest.fn(),
+      searchSkills: jest.fn(),
+      getActiveSkillsByCategory: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/user-custom-skill-service.ts'), () => ({
+      createUserCustomSkill: mockCreateUserCustomSkill,
+      getUserCustomSkills: jest.fn(),
+      getUserCustomSkillById: jest.fn(),
+      updateUserCustomSkill: mockUpdateUserCustomSkill,
+      deleteUserCustomSkill: jest.fn(),
+      searchUserCustomSkills: jest.fn(),
+      getPendingSkillSuggestions: jest.fn(),
+      updateSkillSuggestionStatus: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/models/skill.ts'), () => ({}));
+    jest.unstable_mockModule(resolveModule('src/models/user-custom-skill.ts'), () => ({}));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/skill-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/skills', router);
+    jest.clearAllMocks();
+  });
+
+  it('L583: POST /custom passes userName from req.user.email', async () => {
+    mockCreateUserCustomSkill.mockResolvedValueOnce({ success: true, data: { id: 'cs1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/skills/custom').send({
+      name: 'My Skill', description: 'A valid description here', yearsOfExperience: 3,
+    });
+    expect(res.status).toBe(201);
+    expect(mockCreateUserCustomSkill).toHaveBeenCalledWith(
+      'user-1',
+      'admin@test.com',
+      expect.objectContaining({ name: 'My Skill' }),
+    );
+  });
+
+  it('L631: POST /custom SKILL_EXISTS_GLOBALLY returns 409', async () => {
+    mockCreateUserCustomSkill.mockResolvedValueOnce({
+      success: false, error: { code: 'SKILL_EXISTS_GLOBALLY', message: 'Exists' },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/skills/custom').send({
+      name: 'My Skill', description: 'A valid description here', yearsOfExperience: 3,
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it('L631: POST /custom DUPLICATE_USER_SKILL returns 409', async () => {
+    mockCreateUserCustomSkill.mockResolvedValueOnce({
+      success: false, error: { code: 'DUPLICATE_USER_SKILL', message: 'Exists' },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/skills/custom').send({
+      name: 'My Skill', description: 'A valid description here', yearsOfExperience: 3,
+    });
+    expect(res.status).toBe(409);
+  });
+
+  it('L856-858: PUT /custom/:id description validation (too short)', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).put('/api/skills/custom/cs1').send({ description: 'short' });
+    expect(res.status).toBe(400);
+  });
+
+  it('L859: PUT /custom/:id yearsOfExperience validation (negative)', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app).put('/api/skills/custom/cs1').send({ yearsOfExperience: -1 });
+    expect(res.status).toBe(400);
+  });
+
+  it('L888-890: PUT /custom/:id builds updateData with all optional fields', async () => {
+    mockUpdateUserCustomSkill.mockResolvedValueOnce({ success: true, data: { id: 'cs1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).put('/api/skills/custom/cs1').send({
+      description: 'A valid updated description', yearsOfExperience: 5, categoryName: 'Web Dev',
+    });
+    expect(res.status).toBe(200);
+    expect(mockUpdateUserCustomSkill).toHaveBeenCalledWith('cs1', 'user-1', {
+      description: 'A valid updated description',
+      yearsOfExperience: 5,
+      categoryName: 'Web Dev',
+    });
+  });
+});

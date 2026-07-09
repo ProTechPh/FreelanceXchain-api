@@ -464,6 +464,69 @@ describe('freelancer-routes branch coverage', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════
+// PATCH /profile hourlyRate validation branch
+// ═══════════════════════════════════════════════════════════════
+
+describe('freelancer-routes - PATCH /profile hourlyRate validation', () => {
+  let app: any;
+  const mockUpdateProfile = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/freelancer-profile-service.ts'), () => ({
+      getFreelancerProfile: jest.fn(),
+      createProfile: jest.fn(),
+      updateProfile: mockUpdateProfile,
+      addSkillsToProfile: jest.fn(),
+      removeSkillFromProfile: jest.fn(),
+      addExperience: jest.fn(),
+      updateExperience: jest.fn(),
+      removeExperience: jest.fn(),
+      getProfileByUserId: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/freelancer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/freelancers', router);
+    jest.clearAllMocks();
+  });
+
+  it('L282: PATCH /profile rejects hourlyRate < 1', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .patch('/api/freelancers/profile')
+      .send({ hourlyRate: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: 'hourlyRate' })])
+    );
+  });
+
+  it('L282: PATCH /profile rejects non-number hourlyRate', async () => {
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .patch('/api/freelancers/profile')
+      .send({ hourlyRate: 'abc' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: 'hourlyRate' })])
+    );
+  });
+
+  it('L282: PATCH /profile accepts valid hourlyRate', async () => {
+    mockUpdateProfile.mockResolvedValueOnce({ success: true, data: { id: 'fp1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app)
+      .patch('/api/freelancers/profile')
+      .send({ hourlyRate: 50 });
+    expect(res.status).toBe(200);
+  });
+});
+
 describe('freelancer-routes.ts - Branch Coverage', () => {
   let app: any;
   const mockRemoveSkill = jest.fn<any>();

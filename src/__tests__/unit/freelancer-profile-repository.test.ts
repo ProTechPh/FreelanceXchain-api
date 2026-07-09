@@ -204,3 +204,85 @@ describe('FreelancerProfileRepository', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from repository-coverage.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('FreelancerProfileRepository - mapProfile experience parsing', () => {
+  let repo: any;
+  let mockDatabases: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo = new FreelancerProfileRepository();
+    mockDatabases = (globalThis as any).__mockDatabases;
+  });
+
+  it('should parse experience from JSON string to array', async () => {
+    const experienceArr = [
+      { id: 'e1', title: 'Senior Dev', company: 'ACME', description: 'Work', start_date: '2020-01-01', end_date: null },
+    ];
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'fp1',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        user_id: 'u1',
+        bio: 'Test bio',
+        skills: '[]',
+        experience: JSON.stringify(experienceArr),
+        availability: 'available',
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getAvailableProfiles();
+    expect(result).toHaveLength(1);
+    expect(result[0]!.experience).toEqual(experienceArr);
+    expect(Array.isArray(result[0]!.experience)).toBe(true);
+  });
+
+  it('should parse experience from JSON string via searchBySkills', async () => {
+    const experienceArr = [
+      { id: 'e2', title: 'Dev', company: 'XYZ', description: 'Code', start_date: '2021-01-01', end_date: '2023-01-01' },
+    ];
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'fp2',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        user_id: 'u2',
+        bio: 'Developer',
+        skills: JSON.stringify([{ name: 'TypeScript', years_of_experience: 3 }]),
+        experience: JSON.stringify(experienceArr),
+        availability: 'available',
+      }],
+      total: 1,
+    });
+
+    const result = await repo.searchBySkills(['TypeScript']);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.experience).toEqual(experienceArr);
+  });
+
+  it('should leave experience as-is when it is already an array', async () => {
+    const experienceArr = [{ id: 'e3', title: 'Lead', company: 'ABC', description: 'Lead dev', start_date: '2019-01-01', end_date: null }];
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'fp3',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        user_id: 'u3',
+        bio: 'Lead dev',
+        experience: experienceArr,
+        availability: 'available',
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getAvailableProfiles();
+    expect(result).toHaveLength(1);
+    expect(result[0]!.experience).toEqual(experienceArr);
+  });
+});

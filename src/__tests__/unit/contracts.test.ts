@@ -223,4 +223,92 @@ describe('Contracts Config', () => {
       expect(getContractAddress('escrow')).toBe('0xMainnetEscrow');
     });
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  // Merged from contracts-config-env-coverage.test.ts
+  // ═══════════════════════════════════════════════════════════════
+
+  describe('env var branch coverage (per-address)', () => {
+    const mockEnvForNetwork = (rpcUrl: string) => {
+      jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+        config: {
+          blockchain: { rpcUrl, privateKey: '0x' + 'a'.repeat(64), mode: 'simulated' },
+          server: { port: 3000, nodeEnv: 'test', baseUrl: 'http://localhost:3000', enableApiDocs: false },
+          appwrite: { url: 'http://localhost', anonKey: 'test', serviceRoleKey: 'test', storage: { proposalAttachmentsBucket: 'test' } },
+          jwt: { secret: 'test', refreshSecret: 'test', expiresIn: '1h', refreshExpiresIn: '7d' },
+          llm: { apiKey: 'test', apiUrl: 'http://localhost', model: 'test' },
+        },
+      }));
+    };
+
+    it('L42: should load sepolia escrow address from env', async () => {
+      process.env.SEPOLIA_ESCROW_ADDRESS = '0xSepoliaEscrow';
+      mockEnvForNetwork('https://sepolia.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('escrow')).toBe('0xSepoliaEscrow');
+    });
+
+    it('L44: should load sepolia dispute address from env', async () => {
+      process.env.SEPOLIA_DISPUTE_ADDRESS = '0xSepoliaDispute';
+      mockEnvForNetwork('https://sepolia.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('disputeResolution')).toBe('0xSepoliaDispute');
+    });
+
+    it('L45: should load sepolia milestone address from env', async () => {
+      process.env.SEPOLIA_MILESTONE_ADDRESS = '0xSepoliaMilestone';
+      mockEnvForNetwork('https://sepolia.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('milestoneRegistry')).toBe('0xSepoliaMilestone');
+    });
+
+    it('L46: should load polygon reputation address from env', async () => {
+      process.env.POLYGON_REPUTATION_ADDRESS = '0xPolygonRep';
+      mockEnvForNetwork('https://polygon-mainnet.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('reputation')).toBe('0xPolygonRep');
+    });
+
+    it('L47: should load polygon escrow address from env', async () => {
+      process.env.POLYGON_ESCROW_ADDRESS = '0xPolygonEscrow';
+      mockEnvForNetwork('https://polygon-mainnet.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('escrow')).toBe('0xPolygonEscrow');
+    });
+
+    it('L48: should load polygon agreement address from env', async () => {
+      process.env.POLYGON_AGREEMENT_ADDRESS = '0xPolygonAgreement';
+      mockEnvForNetwork('https://polygon-mainnet.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('agreement')).toBe('0xPolygonAgreement');
+    });
+
+    it('L49: should load polygon dispute address from env', async () => {
+      process.env.POLYGON_DISPUTE_ADDRESS = '0xPolygonDispute';
+      mockEnvForNetwork('https://polygon-mainnet.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('disputeResolution')).toBe('0xPolygonDispute');
+    });
+
+    it('L61: should load mainnet agreement address from env', async () => {
+      process.env.MAINNET_AGREEMENT_ADDRESS = '0xMainnetAgreement';
+      mockEnvForNetwork('https://mainnet.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('agreement')).toBe('0xMainnetAgreement');
+    });
+
+    it('L62: should load mainnet dispute address from env', async () => {
+      process.env.MAINNET_DISPUTE_ADDRESS = '0xMainnetDispute';
+      mockEnvForNetwork('https://mainnet.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('disputeResolution')).toBe('0xMainnetDispute');
+    });
+
+    it('L63: should load mainnet milestone address from env', async () => {
+      process.env.MAINNET_MILESTONE_ADDRESS = '0xMainnetMilestone';
+      mockEnvForNetwork('https://mainnet.infura.io');
+      const { getContractAddress } = await importModule();
+      expect(getContractAddress('milestoneRegistry')).toBe('0xMainnetMilestone');
+    });
+  });
 });

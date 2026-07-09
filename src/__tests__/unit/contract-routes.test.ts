@@ -516,3 +516,479 @@ describe('contract-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Fund endpoint error branches and fund-info edge cases
+// ═══════════════════════════════════════════════════════════════
+
+describe('contract-routes - fund endpoint error branches and fund-info', () => {
+  let app: any;
+  const mockGetContractById = jest.fn<any>();
+  const mockUpdateContractStatus = jest.fn<any>();
+  const mockGetProjectById = jest.fn<any>();
+  const mockGetContractWalletAddresses = jest.fn<any>();
+  const mockInitializeContractEscrow = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'employer' }; next(); },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: mockUpdateContractStatus,
+      cancelPendingContract: jest.fn(),
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      getProjectById: mockGetProjectById,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      initializeContractEscrow: mockInitializeContractEscrow,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      getDisputesByContract: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { updateContract: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
+      mapProjectFromEntity: (e: any) => e,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: () => ({ address: '0xWALLET' }),
+    }));
+    jest.unstable_mockModule('ethers', () => ({
+      ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+    }));
+
+    const express = (await import('express')).default;
+    const contractRouter = (await import('../../routes/contract-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/contracts', contractRouter);
+    jest.clearAllMocks();
+  });
+
+  it('L282-287: POST /:id/fund returns 400 when project not found', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', status: 'pending', totalAmount: 100 },
+    });
+    mockGetProjectById.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('PROJECT_NOT_FOUND');
+  });
+
+  it('L292-297: POST /:id/fund returns 400 when wallet addresses fail', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', status: 'pending', totalAmount: 100 },
+    });
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', milestones: [] } });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: false, error: { code: 'WALLET_ERROR', message: 'Wallet error' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WALLET_ERROR');
+  });
+
+  it('L312-318: POST /:id/fund returns 500 when escrow init fails (non-AMOUNT_MISMATCH)', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', status: 'pending', totalAmount: 100 },
+    });
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', milestones: [] } });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { employerWallet: '0xE', freelancerWallet: '0xF' } });
+    mockInitializeContractEscrow.mockResolvedValueOnce({ success: false, error: { code: 'ESCROW_FAILED', message: 'Escrow init failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('ESCROW_FAILED');
+  });
+
+  it('L312: POST /:id/fund returns 400 when escrow init fails with AMOUNT_MISMATCH', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', status: 'pending', totalAmount: 100 },
+    });
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', milestones: [] } });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { employerWallet: '0xE', freelancerWallet: '0xF' } });
+    mockInitializeContractEscrow.mockResolvedValueOnce({ success: false, error: { code: 'AMOUNT_MISMATCH', message: 'Amount mismatch' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(400);
+  });
+
+  it('L331-348: POST /:id/fund returns 500 when contract activation fails', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', status: 'pending', totalAmount: 100 },
+    });
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', milestones: [] } });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { employerWallet: '0xE', freelancerWallet: '0xF' } });
+    mockInitializeContractEscrow.mockResolvedValueOnce({ success: true, data: { escrowAddress: '0xESC' } });
+    mockUpdateContractStatus.mockResolvedValueOnce({ success: false, error: { code: 'ACTIVATION_FAILED', message: 'Activation failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('ACTIVATION_FAILED');
+  });
+
+  it('L364-365: GET /:id/fund-info returns 401 when userId is undefined', async () => {
+    jest.resetModules();
+    // Auth middleware that does NOT set userId
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { role: 'employer' }; next(); },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: jest.fn(),
+      cancelPendingContract: jest.fn(),
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      getProjectById: mockGetProjectById,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      initializeContractEscrow: mockInitializeContractEscrow,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      getDisputesByContract: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { updateContract: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
+      mapProjectFromEntity: (e: any) => e,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: () => ({ address: '0xWALLET' }),
+    }));
+    jest.unstable_mockModule('ethers', () => ({
+      ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+    }));
+
+    const express2 = (await import('express')).default;
+    const router2 = (await import('../../routes/contract-routes.js')).default;
+    const app2 = express2();
+    app2.use(express2.json());
+    app2.use('/api/contracts', router2);
+    const request = (await import('supertest')).default;
+    const res = await request(app2).get('/api/contracts/c1/fund-info');
+    expect(res.status).toBe(401);
+  });
+
+  it('L370-371: GET /:id/fund-info returns 404 when contract not found', async () => {
+    mockGetContractById.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/fund-info');
+    expect(res.status).toBe(404);
+  });
+
+  it('L376-377: GET /:id/fund-info returns 403 when user is not employer', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'other-user', projectId: 'p1', totalAmount: 100 },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/fund-info');
+    expect(res.status).toBe(403);
+  });
+
+  it('L382-383: GET /:id/fund-info returns 400 when wallet addresses fail', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', totalAmount: 100 },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: false, error: { code: 'WALLET_ERROR', message: 'Wallet error' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/fund-info');
+    expect(res.status).toBe(400);
+  });
+
+  it('L332-339: POST /:id/fund returns 200 when INVALID_STATUS_TRANSITION and contract already active on re-fetch', async () => {
+    // First call: initial getContractById returns pending contract
+    mockGetContractById
+      .mockResolvedValueOnce({
+        success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', status: 'pending', totalAmount: 100, escrowAddress: null },
+      })
+      // Second call: re-fetch after INVALID_STATUS_TRANSITION returns active contract with escrow
+      .mockResolvedValueOnce({
+        success: true, data: { id: 'c1', employerId: 'user-1', status: 'active', escrowAddress: '0xESC' },
+      });
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', milestones: [] } });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { employerWallet: '0xE', freelancerWallet: '0xF' } });
+    mockInitializeContractEscrow.mockResolvedValueOnce({ success: true, data: { escrowAddress: '0xESC' } });
+    mockUpdateContractStatus.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS_TRANSITION', message: 'Invalid transition' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Contract already funded and active');
+    expect(res.body.escrowAddress).toBe('0xESC');
+    expect(res.body.contractStatus).toBe('active');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// ?? nullish coalescing fallback branch tests
+// Lines: 158, 219, 360, 443, 504
+// ═══════════════════════════════════════════════════════════════
+
+describe('contract-routes - ?? nullish fallback branches', () => {
+  let app: any;
+  const mockGetContractById = jest.fn<any>();
+  const mockUpdateContractStatus = jest.fn<any>();
+  const mockGetProjectById = jest.fn<any>();
+  const mockGetContractWalletAddresses = jest.fn<any>();
+  const mockInitializeContractEscrow = jest.fn<any>();
+  const mockCancelPendingContract = jest.fn<any>();
+  const mockGetDisputesByContract = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', role: 'employer' };
+        for (const key of Object.keys(req.params)) delete req.params[key];
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
+      clampLimit: (v: any) => v || 20,
+      clampOffset: (v: any) => v || 0,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: mockUpdateContractStatus,
+      cancelPendingContract: mockCancelPendingContract,
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      getProjectById: mockGetProjectById,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      initializeContractEscrow: mockInitializeContractEscrow,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      getDisputesByContract: mockGetDisputesByContract,
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { updateContract: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
+      mapProjectFromEntity: (e: any) => e,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: () => ({ address: '0xWALLET' }),
+    }));
+    jest.unstable_mockModule('ethers', () => ({
+      ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/contract-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/contracts', router);
+    jest.clearAllMocks();
+  });
+
+  it('L158: GET /:id with nullish id param', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', freelancerId: 'user-1', employerId: 'user-1', status: 'active' },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1');
+    expect(res.status).toBe(200);
+  });
+
+  it('L219: POST /:id/fund with nullish id param', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', status: 'active', escrowAddress: '0xESC' },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(200);
+  });
+
+  it('L360: GET /:id/fund-info with nullish id param', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', totalAmount: 100 },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { freelancerWallet: '0xF' } });
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', milestones: [{ id: 'm1', amount: 1, title: 'M1' }] } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/fund-info');
+    expect(res.status).toBe(200);
+  });
+
+  it('L443: POST /:id/cancel with nullish id param', async () => {
+    mockCancelPendingContract.mockResolvedValueOnce({ success: true });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/cancel');
+    expect(res.status).toBe(200);
+  });
+
+  it('L504: GET /:contractId/disputes with nullish contractId param', async () => {
+    mockGetDisputesByContract.mockResolvedValueOnce({ success: true, data: [] });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/disputes');
+    expect(res.status).toBe(200);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Remaining branch coverage: cancel || fallbacks, falsy title, disputes generic error
+// Lines: 314, 399, 463, 521
+// ═══════════════════════════════════════════════════════════════
+
+describe('contract-routes - remaining branch coverage', () => {
+  let app: any;
+  const mockGetContractById = jest.fn<any>();
+  const mockUpdateContractStatus = jest.fn<any>();
+  const mockGetProjectById = jest.fn<any>();
+  const mockGetContractWalletAddresses = jest.fn<any>();
+  const mockInitializeContractEscrow = jest.fn<any>();
+  const mockCancelPendingContract = jest.fn<any>();
+  const mockGetDisputesByContract = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', role: 'employer' };
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
+      clampLimit: (v: any) => v || 20,
+      clampOffset: (v: any) => v || 0,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: mockUpdateContractStatus,
+      cancelPendingContract: mockCancelPendingContract,
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      getProjectById: mockGetProjectById,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      initializeContractEscrow: mockInitializeContractEscrow,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      getDisputesByContract: mockGetDisputesByContract,
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { updateContract: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
+      mapProjectFromEntity: (e: any) => e,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: () => ({ address: '0xWALLET' }),
+    }));
+    jest.unstable_mockModule('ethers', () => ({
+      ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/contract-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/contracts', router);
+    jest.clearAllMocks();
+  });
+
+  it('L399: GET /:id/fund-info with falsy milestone title falls back to template', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', totalAmount: 100 },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { freelancerWallet: '0xF' } });
+    mockGetProjectById.mockResolvedValueOnce({
+      success: true,
+      data: { id: 'p1', milestones: [{ id: 'm1', amount: 1, title: '' }, { id: 'm2', amount: 2, title: 'Real Title' }] },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/fund-info');
+    expect(res.status).toBe(200);
+    // m1 has falsy title so should use `Milestone m1` fallback
+    expect(res.body.milestoneDescriptions[0]).toBe('Milestone m1');
+    expect(res.body.milestoneDescriptions[1]).toBe('Real Title');
+  });
+
+  it('L463: POST /:id/cancel error with undefined code/message uses fallbacks', async () => {
+    mockCancelPendingContract.mockResolvedValueOnce({ success: false, error: { code: undefined, message: undefined } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/cancel');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('CANCEL_FAILED');
+    expect(res.body.error.message).toBe('Failed to cancel contract');
+  });
+
+  it('L461: POST /:id/cancel generic error code returns 400', async () => {
+    mockCancelPendingContract.mockResolvedValueOnce({ success: false, error: { code: 'INVALID_STATUS', message: 'Cannot cancel' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/cancel');
+    expect(res.status).toBe(400);
+  });
+
+  it('L521: GET /:contractId/disputes generic error code returns 400', async () => {
+    mockGetDisputesByContract.mockResolvedValueOnce({ success: false, error: { code: 'DB_ERROR', message: 'DB failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/disputes');
+    expect(res.status).toBe(400);
+  });
+});

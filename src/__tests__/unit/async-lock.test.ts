@@ -76,4 +76,33 @@ describe('async-lock', () => {
     const result = await withLock('r-key5', async () => 'recovered');
     expect(result).toBe('recovered');
   });
+
+  it('should not delete a newer lock during cleanup (guard on lines 26-27)', async () => {
+    // Start first lock — it completes immediately but its .then() cleanup is queued.
+    // Chain a second lock on the same key before the cleanup microtask fires.
+    // The cleanup handler should see that locks.get(key) !== currentLock and skip the delete.
+    const p1 = withLock('g-key6', async () => 'first');
+    const p2 = p1.then(() => withLock('g-key6', async () => 'second'));
+
+    const result = await p2;
+    expect(result).toBe('second');
+
+    // Verify the lock is eventually cleaned up after the second lock completes
+    await new Promise(r => setTimeout(r, 10));
+    const p3 = await withLock('g-key6', async () => 'third');
+    expect(p3).toBe('third');
+  });
+
+  it('should not delete a newer lock during error cleanup (guard on lines 31-32)', async () => {
+    // Start first lock that rejects — its .then(fn, fn) still runs, and the
+    // error cleanup .then() is queued. Chain a second lock before cleanup fires.
+    const p1 = withLock('g-key7', async () => {
+      throw new Error('first fails');
+    }).catch(() => 'caught');
+
+    const p2 = p1.then(() => withLock('g-key7', async () => 'after error'));
+
+    const result = await p2;
+    expect(result).toBe('after error');
+  });
 });

@@ -238,3 +238,60 @@ describe('merged branch coverage', () => {
     expect(result).toBeDefined();
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from repository-coverage.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('MessageRepository - mapMessage attachments parsing', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('should parse attachments from JSON string to array', async () => {
+    const attachmentsArr = [
+      { url: 'https://example.com/file.pdf', filename: 'file.pdf', size: 1024, mimeType: 'application/pdf' },
+    ];
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'm1',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        conversation_id: 'conv1',
+        sender_id: 'u1',
+        receiver_id: 'u2',
+        content: 'See attached file',
+        attachments: JSON.stringify(attachmentsArr),
+      }],
+      total: 1,
+    });
+
+    const { messageRepository } = await import(resolveModule('src/repositories/message-repository.ts'));
+    const result = await messageRepository.getConversationMessages('conv1', 10, 0);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.attachments).toEqual(attachmentsArr);
+    expect(Array.isArray(result.items[0]!.attachments)).toBe(true);
+  });
+
+  it('should leave attachments as-is when already an array', async () => {
+    const attachmentsArr = [
+      { url: 'https://example.com/img.png', filename: 'img.png', size: 512, mimeType: 'image/png' },
+    ];
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'm2',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        conversation_id: 'conv2',
+        sender_id: 'u3',
+        receiver_id: 'u4',
+        content: 'Hello',
+        attachments: attachmentsArr,
+      }],
+      total: 1,
+    });
+
+    const { messageRepository } = await import(resolveModule('src/repositories/message-repository.ts'));
+    const result = await messageRepository.getConversationMessages('conv2', 10, 0);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.attachments).toEqual(attachmentsArr);
+  });
+});

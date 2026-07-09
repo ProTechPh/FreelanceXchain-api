@@ -270,3 +270,115 @@ describe('notification-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+
+// ═══════════════════════════════════════════════════════════════
+// Coverage for !userId guards and /stream endpoint
+// Uncovered: lines 92-97, 153-158, 214-219, 270-275, 313-323
+// ═══════════════════════════════════════════════════════════════
+
+describe('notification-routes - !userId guards and /stream endpoint', () => {
+  let app: any;
+  const mockAuthNoUser = jest.fn();
+  const mockSSEConnection = jest.fn();
+
+  beforeEach(async () => {
+    jest.resetModules();
+
+    jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), () => ({
+      getNotificationsByUser: jest.fn(),
+      markNotificationAsRead: jest.fn(),
+      markAllNotificationsAsRead: jest.fn(),
+      getUnreadCount: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
+      initializeSSEConnection: mockSSEConnection,
+      getSSEStats: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: mockAuthNoUser,
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
+      clampLimit: (v: any) => v ?? 20,
+      clampOffset: (v: any) => v ?? 0,
+      safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/notification-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/notifications', router);
+    jest.clearAllMocks();
+  });
+
+  it('GET / returns 401 when userId is not set (lines 92-97)', async () => {
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = {}; next(); });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/notifications');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
+  });
+
+  it('GET /unread-count returns 401 when userId is not set (lines 153-158)', async () => {
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = {}; next(); });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/notifications/unread-count');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
+  });
+
+  it('PATCH /:id/read returns 401 when userId is not set (lines 214-219)', async () => {
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = {}; next(); });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/notifications/n1/read');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
+  });
+
+  it('PATCH /read-all returns 401 when userId is not set (lines 270-275)', async () => {
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = {}; next(); });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/notifications/read-all');
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
+  });
+
+  it('GET /stream returns 401 when user id is not set (lines 313-317)', async () => {
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = {}; next(); });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/notifications/stream');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /stream initializes SSE connection on success (lines 313, 320)', async () => {
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    mockSSEConnection.mockImplementation((_userId: any, res: any) => { res.status(200).end(); return { success: true }; });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/notifications/stream');
+    expect(res.status).toBe(200);
+    expect(mockSSEConnection).toHaveBeenCalledWith('user-1', expect.anything());
+  });
+
+  it('GET /stream returns 500 when SSE connection fails (lines 322-323)', async () => {
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    mockSSEConnection.mockReturnValue({ success: false, error: { message: 'SSE connection failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/notifications/stream');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('SSE connection failed');
+  });
+});

@@ -65,6 +65,10 @@ const {
   extractFilePathFromUrl,
   extractFileIdFromUrl,
   cleanupUploadedFiles,
+  uploadFile,
+  deleteFile,
+  getSignedUrl,
+  listUserFiles,
 } = await import('../../utils/storage-uploader.js');
 
 const { logger } = await import('../../config/logger.js');
@@ -530,5 +534,118 @@ describe('Storage Uploader - Extended Coverage', () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain('File not found');
     });
+  });
+});
+
+describe('Storage Uploader - Compatibility Wrappers', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCreateFile.mockReset();
+    mockDeleteFile.mockReset();
+    mockListFiles.mockReset();
+    process.env['APPWRITE_ENDPOINT'] = APPWRITE_ENDPOINT;
+    process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
+  });
+
+  describe('uploadFile (compatibility wrapper)', () => {
+    it('should upload file and return url and path', async () => {
+      mockCreateFile.mockResolvedValue({ $id: 'file-123' });
+
+      const result = await uploadFile({
+        bucket: 'proposal-attachments',
+        userId: 'user-1',
+        file: Buffer.from('test content'),
+        filename: 'test.pdf',
+        mimetype: 'application/pdf',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.url).toContain('file-123');
+      expect(result.path).toBe('file-123');
+    });
+
+    it('should return error when upload fails', async () => {
+      mockCreateFile.mockRejectedValue(new Error('Upload failed'));
+
+      const result = await uploadFile({
+        bucket: 'proposal-attachments',
+        userId: 'user-1',
+        file: Buffer.from('test'),
+        filename: 'bad.pdf',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Upload failed');
+    });
+  });
+
+  describe('deleteFile (compatibility wrapper)', () => {
+    it('should delegate to deleteFileFromStorage', async () => {
+      mockDeleteFile.mockResolvedValue({});
+
+      const result = await deleteFile('proposal-attachments', 'file-id');
+
+      expect(result.success).toBe(true);
+      expect(mockDeleteFile).toHaveBeenCalledWith('proposal-attachments', 'file-id');
+    });
+  });
+
+  describe('getSignedUrl', () => {
+    it('should return a constructed view URL', async () => {
+      const result = await getSignedUrl('proposal-attachments', 'file-id-abc');
+
+      expect(result.success).toBe(true);
+      expect(result.url).toContain('proposal-attachments');
+      expect(result.url).toContain('file-id-abc');
+      expect(result.url).toContain('/view');
+    });
+  });
+
+  describe('listUserFiles', () => {
+    it('should return files filtered by userId', async () => {
+      mockListFiles.mockResolvedValue({
+        files: [
+          { name: 'user-1_file1.pdf', $id: 'f1' },
+          { name: 'user-2_file2.pdf', $id: 'f2' },
+          { name: 'user-1_file3.pdf', $id: 'f3' },
+        ],
+      });
+
+      const result = await listUserFiles('proposal-attachments', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.files).toHaveLength(2);
+      expect(result.files[0].name).toContain('user-1');
+      expect(result.files[1].name).toContain('user-1');
+    });
+
+    it('should return error when listFiles fails', async () => {
+      mockListFiles.mockRejectedValue(new Error('Permission denied'));
+
+      const result = await listUserFiles('proposal-attachments', 'user-1');
+
+      expect(result.success).toBe(false);
+      expect(result.files).toEqual([]);
+      expect(result.error).toBe('Permission denied');
+    });
+  });
+});
+
+describe('Storage Uploader - generateUniqueFilename edge case', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCreateFile.mockReset();
+    process.env['APPWRITE_ENDPOINT'] = APPWRITE_ENDPOINT;
+    process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
+  });
+
+  it('should handle filename without extension', async () => {
+    mockCreateFile.mockResolvedValue({ $id: 'file-noext' });
+
+    // sanitizeFilename mock returns the input for simple names
+    const result = await uploadFileToStorage(Buffer.from('data'), 'README', 'text/plain');
+
+    expect(result.success).toBe(true);
+    expect(result.metadata?.filename).toBe('README');
   });
 });

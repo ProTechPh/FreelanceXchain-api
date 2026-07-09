@@ -215,3 +215,105 @@ describe('NotificationRepository', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from repository-coverage.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('NotificationRepository - mapNotification data parsing', () => {
+  let repo: any;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    repo = new NotificationRepository();
+  });
+
+  it('should parse data from JSON string to object', async () => {
+    const dataObj = { projectId: 'p1', milestoneId: 'm1' };
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'n1',
+        $createdAt: '2025-01-01',
+        $updatedAt: '2025-01-01',
+        user_id: 'u1',
+        type: 'project_update',
+        title: 'Update',
+        message: 'Milestone updated',
+        data: JSON.stringify(dataObj),
+        is_read: false,
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getNotificationsByUser('u1');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.data).toEqual(dataObj);
+    expect(typeof result.items[0]!.data).toBe('object');
+  });
+
+  it('should parse data from JSON string via getAllNotificationsByUser', async () => {
+    const dataObj = { contractId: 'c1' };
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'n2',
+        $createdAt: '2025-02-01',
+        $updatedAt: '2025-02-01',
+        user_id: 'u2',
+        type: 'payment',
+        title: 'Payment received',
+        message: 'You got paid',
+        data: JSON.stringify(dataObj),
+        is_read: false,
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getAllNotificationsByUser('u2');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.data).toEqual(dataObj);
+  });
+
+  it('should parse data from JSON string via getUnreadNotificationsByUser', async () => {
+    const dataObj = { key: 'val' };
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'n3',
+        $createdAt: '2025-03-01',
+        $updatedAt: '2025-03-01',
+        user_id: 'u3',
+        type: 'system',
+        title: 'Alert',
+        message: 'System alert',
+        data: JSON.stringify(dataObj),
+        is_read: false,
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getUnreadNotificationsByUser('u3');
+    expect(result).toHaveLength(1);
+    expect(result[0]!.data).toEqual(dataObj);
+  });
+
+  it('should leave data as-is when it is already an object', async () => {
+    const dataObj = { already: 'object' };
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{
+        $id: 'n4',
+        $createdAt: '2025-04-01',
+        $updatedAt: '2025-04-01',
+        user_id: 'u4',
+        type: 'system',
+        title: 'T',
+        message: 'M',
+        data: dataObj,
+        is_read: true,
+      }],
+      total: 1,
+    });
+
+    const result = await repo.getNotificationsByUser('u4');
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.data).toEqual(dataObj);
+  });
+});

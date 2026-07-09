@@ -108,6 +108,13 @@ describe('App Integration Tests', () => {
       const response = await request(app).get('/');
       expect(response.status).toBe(200);
     });
+
+    it('should allow requests from a valid CORS origin (line 57)', async () => {
+      const response = await request(app)
+        .get('/')
+        .set('Origin', 'http://localhost:3000');
+      expect(response.status).toBe(200);
+    });
   });
 
   describe('Webhook rawBody', () => {

@@ -282,3 +282,99 @@ describe('SkillSuggestionRepository', () => {
     });
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Merged from repository-coverage.test.ts
+// ═══════════════════════════════════════════════════════════════
+
+describe('UserCustomSkillRepository - error handling (branch coverage)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should throw in getUserCustomSkills when listWithQueries fails (line 53)', async () => {
+    jest.spyOn(userCustomSkillRepository as any, 'listWithQueries')
+      .mockRejectedValueOnce(new Error('db connection lost'));
+
+    await expect(userCustomSkillRepository.getUserCustomSkills('u1'))
+      .rejects.toThrow('Failed to get user custom skills: db connection lost');
+  });
+
+  it('should throw in getUserCustomSkillById when getById fails (line 63)', async () => {
+    jest.spyOn(userCustomSkillRepository, 'getById' as any)
+      .mockRejectedValueOnce(new Error('query timeout'));
+
+    await expect(userCustomSkillRepository.getUserCustomSkillById('s1', 'u1'))
+      .rejects.toThrow('Failed to get user custom skill: query timeout');
+  });
+
+  it('should throw in updateUserCustomSkill when getById fails (line 77)', async () => {
+    jest.spyOn(userCustomSkillRepository, 'getById' as any)
+      .mockRejectedValueOnce(new Error('network error'));
+
+    await expect(userCustomSkillRepository.updateUserCustomSkill('s1', 'u1', { name: 'Updated' }))
+      .rejects.toThrow('Failed to update user custom skill: network error');
+  });
+
+  it('should throw in deleteUserCustomSkill when getById fails (line 87)', async () => {
+    jest.spyOn(userCustomSkillRepository, 'getById' as any)
+      .mockRejectedValueOnce(new Error('permission denied'));
+
+    await expect(userCustomSkillRepository.deleteUserCustomSkill('s1', 'u1'))
+      .rejects.toThrow('Failed to delete user custom skill: permission denied');
+  });
+
+  it('should throw in searchUserCustomSkills when listWithQueries fails (line 103)', async () => {
+    jest.spyOn(userCustomSkillRepository as any, 'listWithQueries')
+      .mockRejectedValueOnce(new Error('index error'));
+
+    await expect(userCustomSkillRepository.searchUserCustomSkills('u1', 'react'))
+      .rejects.toThrow('Failed to search user custom skills: index error');
+  });
+});
+
+describe('SkillSuggestionRepository - error handling (branch coverage)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should throw in getSkillSuggestionByName when findOne fails (line 125)', async () => {
+    jest.spyOn(skillSuggestionRepository, 'findOne' as any)
+      .mockRejectedValueOnce(new Error('db error'));
+
+    await expect(skillSuggestionRepository.getSkillSuggestionByName('TypeScript'))
+      .rejects.toThrow('Failed to get skill suggestion: db error');
+  });
+
+  it('should throw in incrementSkillSuggestionCount when getById fails (line 135)', async () => {
+    jest.spyOn(skillSuggestionRepository, 'getById' as any)
+      .mockRejectedValueOnce(new Error('record not found'));
+
+    await expect(skillSuggestionRepository.incrementSkillSuggestionCount('ss1'))
+      .rejects.toThrow('Failed to increment skill suggestion count: record not found');
+  });
+
+  it('should throw in getPendingSkillSuggestions when listWithQueries fails (line 146)', async () => {
+    jest.spyOn(skillSuggestionRepository as any, 'listWithQueries')
+      .mockRejectedValueOnce(new Error('table locked'));
+
+    await expect(skillSuggestionRepository.getPendingSkillSuggestions())
+      .rejects.toThrow('Failed to get pending skill suggestions: table locked');
+  });
+
+  it('should throw in updateSkillSuggestionStatus when update fails (line 157)', async () => {
+    jest.spyOn(skillSuggestionRepository, 'update' as any)
+      .mockRejectedValueOnce(new Error('write conflict'));
+
+    await expect(skillSuggestionRepository.updateSkillSuggestionStatus('ss1', 'approved'))
+      .rejects.toThrow('Failed to update skill suggestion status: write conflict');
+  });
+
+  it('should throw in updateSkillSuggestionStatus with rejected status', async () => {
+    jest.spyOn(skillSuggestionRepository, 'update' as any)
+      .mockRejectedValueOnce(new Error('constraint violation'));
+
+    await expect(skillSuggestionRepository.updateSkillSuggestionStatus('ss2', 'rejected'))
+      .rejects.toThrow('Failed to update skill suggestion status: constraint violation');
+  });
+});

@@ -10,12 +10,41 @@ import { assertHasTimestamps, assertIsValidId } from '../helpers/test-assertions
 const contractStore = createInMemoryStore();
 const mockContractRepo = createMockContractRepository(contractStore);
 
+// Dispute store and mock
+const disputeStore = createInMemoryStore();
+const mockDisputeRepo = {
+  getDisputesByContract: jest.fn(async (contractId: string) => {
+    const items = Array.from(disputeStore.values()).filter((d: any) => d.contract_id === contractId);
+    return { items, hasMore: false, total: items.length };
+  }),
+};
+
+// User store and mock
+const userStore = createInMemoryStore();
+const mockUserRepo = {
+  getUserById: jest.fn(async (id: string) => {
+    return userStore.get(id) ?? null;
+  }),
+};
+
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
 // Mock the contract repository
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepo,
   ContractRepository: jest.fn(),
+}));
+
+// Mock the dispute repository
+jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
+  disputeRepository: mockDisputeRepo,
+  DisputeRepository: jest.fn(),
+}));
+
+// Mock the user repository
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: mockUserRepo,
+  UserRepository: jest.fn(),
 }));
 
 // Import after mocking
@@ -27,6 +56,12 @@ const {
   getContractsByProject,
   updateContractStatus,
   setEscrowAddress,
+} = await import('../../services/contract-service.js');
+
+const {
+  getContractByProposalId,
+  cancelPendingContract,
+  getContractWalletAddresses,
 } = await import('../../services/contract-service.js');
 
 describe('Contract Service - Property-Based Tests', () => {
@@ -305,6 +340,352 @@ describe('Contract Service - Unit Tests', () => {
       const page1Ids = page1.data.items.map(c => c.id);
       const page2Ids = page2.data.items.map(c => c.id);
       expect(page1Ids.some(id => page2Ids.includes(id))).toBe(false);
+    }
+  });
+});
+
+describe('Contract Service - Coverage Tests', () => {
+  beforeEach(() => {
+    mockContractRepo.clear();
+    disputeStore.clear();
+    userStore.clear();
+  });
+
+  // --- updateContractStatus: UNAUTHORIZED (line 77) ---
+  it('should return UNAUTHORIZED when userId is not a contract party', async () => {
+    const contract = createTestContract({
+      status: 'pending',
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    const result = await updateContractStatus(contract.id, 'active', 'random-user');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UNAUTHORIZED');
+    }
+  });
+
+  // --- updateContractStatus: INVALID_STATUS_TRANSITION (line 93) ---
+  it('should return INVALID_STATUS_TRANSITION for invalid transition', async () => {
+    const contract = createTestContract({ status: 'completed' });
+    contractStore.set(contract.id, contract);
+
+    const result = await updateContractStatus(contract.id, 'active');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS_TRANSITION');
+    }
+  });
+
+  // --- updateContractStatus: OPEN_DISPUTES_EXIST (lines 103-106) ---
+  it('should return OPEN_DISPUTES_EXIST when resolving contract with open disputes', async () => {
+    const contract = createTestContract({ status: 'disputed' });
+    contractStore.set(contract.id, contract);
+
+    disputeStore.set('dispute-1', {
+      id: 'dispute-1',
+      contract_id: contract.id,
+      milestone_id: 'ms-1',
+      initiator_id: 'user-1',
+      reason: 'test',
+      evidence: [],
+      status: 'open',
+      resolution: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const result = await updateContractStatus(contract.id, 'resolved');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('OPEN_DISPUTES_EXIST');
+    }
+  });
+
+  it('should return OPEN_DISPUTES_EXIST when resolving contract with under_review disputes', async () => {
+    const contract = createTestContract({ status: 'disputed' });
+    contractStore.set(contract.id, contract);
+
+    disputeStore.set('dispute-2', {
+      id: 'dispute-2',
+      contract_id: contract.id,
+      milestone_id: 'ms-1',
+      initiator_id: 'user-1',
+      reason: 'test',
+      evidence: [],
+      status: 'under_review',
+      resolution: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    const result = await updateContractStatus(contract.id, 'resolved');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('OPEN_DISPUTES_EXIST');
+    }
+  });
+
+  // --- updateContractStatus: UPDATE_FAILED (line 118) ---
+  it('should return UPDATE_FAILED when contract status update returns null', async () => {
+    const contract = createTestContract({ status: 'pending' });
+    contractStore.set(contract.id, contract);
+
+    mockContractRepo.updateContract.mockReturnValueOnce(Promise.resolve(null));
+
+    const result = await updateContractStatus(contract.id, 'active');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UPDATE_FAILED');
+    }
+  });
+
+  // --- setEscrowAddress: NOT_FOUND (line 134) ---
+  it('should return NOT_FOUND when setting escrow on non-existent contract', async () => {
+    const result = await setEscrowAddress('non-existent', '0x1234');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  // --- setEscrowAddress: INVALID_STATUS (line 142) ---
+  it('should return INVALID_STATUS when setting escrow on non-pending contract', async () => {
+    const contract = createTestContract({ status: 'active' });
+    contractStore.set(contract.id, contract);
+
+    const result = await setEscrowAddress(contract.id, '0x1234');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_STATUS');
+    }
+  });
+
+  // --- setEscrowAddress: UNAUTHORIZED (line 149) ---
+  it('should return UNAUTHORIZED when setting escrow with unauthorized userId', async () => {
+    const contract = createTestContract({
+      status: 'pending',
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    const result = await setEscrowAddress(contract.id, '0x1234', 'random-user');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UNAUTHORIZED');
+    }
+  });
+
+  // --- setEscrowAddress: UPDATE_FAILED (line 157) ---
+  it('should return UPDATE_FAILED when escrow update returns null', async () => {
+    const contract = createTestContract({ status: 'pending' });
+    contractStore.set(contract.id, contract);
+
+    mockContractRepo.updateContract.mockReturnValueOnce(Promise.resolve(null));
+
+    const result = await setEscrowAddress(contract.id, '0x1234');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UPDATE_FAILED');
+    }
+  });
+
+  // --- getContractByProposalId: success (lines 169-176) ---
+  it('should get contract by proposal ID', async () => {
+    const contract = createTestContract({ proposal_id: 'prop-123' });
+    contractStore.set(contract.id, contract);
+
+    const result = await getContractByProposalId('prop-123');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.id).toBe(contract.id);
+    }
+  });
+
+  // --- getContractByProposalId: NOT_FOUND (lines 169-174) ---
+  it('should return NOT_FOUND when no contract exists for proposal ID', async () => {
+    const result = await getContractByProposalId('non-existent-prop');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  // --- cancelPendingContract: success (lines 183-218) ---
+  it('should cancel a pending contract successfully', async () => {
+    const contract = createTestContract({
+      status: 'pending',
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    const result = await cancelPendingContract(contract.id, 'emp-1');
+
+    expect(result.success).toBe(true);
+  });
+
+  it('should allow freelancer to cancel a pending contract', async () => {
+    const contract = createTestContract({
+      status: 'pending',
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    const result = await cancelPendingContract(contract.id, 'fl-1');
+
+    expect(result.success).toBe(true);
+  });
+
+  // --- cancelPendingContract: NOT_FOUND ---
+  it('should return NOT_FOUND when cancelling non-existent contract', async () => {
+    const result = await cancelPendingContract('non-existent', 'user-1');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  // --- cancelPendingContract: INVALID_STATUS ---
+  it('should return INVALID_STATUS when cancelling non-pending contract', async () => {
+    const contract = createTestContract({ status: 'active', employer_id: 'emp-1' });
+    contractStore.set(contract.id, contract);
+
+    const result = await cancelPendingContract(contract.id, 'emp-1');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('INVALID_STATUS');
+  });
+
+  // --- cancelPendingContract: UNAUTHORIZED ---
+  it('should return UNAUTHORIZED when cancelling contract by unauthorized user', async () => {
+    const contract = createTestContract({
+      status: 'pending',
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    const result = await cancelPendingContract(contract.id, 'random-user');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('UNAUTHORIZED');
+  });
+
+  // --- cancelPendingContract: UPDATE_FAILED ---
+  it('should return UPDATE_FAILED when cancel update returns null', async () => {
+    const contract = createTestContract({
+      status: 'pending',
+      employer_id: 'emp-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    mockContractRepo.updateContract.mockReturnValueOnce(Promise.resolve(null));
+
+    const result = await cancelPendingContract(contract.id, 'emp-1');
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+
+  // --- getContractWalletAddresses: success (lines 225-255) ---
+  it('should return wallet addresses for contract parties', async () => {
+    const contract = createTestContract({
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    userStore.set('emp-1', { id: 'emp-1', wallet_address: '0xEmployerWallet' });
+    userStore.set('fl-1', { id: 'fl-1', wallet_address: '0xFreelancerWallet' });
+
+    const result = await getContractWalletAddresses(contract.id);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.employerWallet).toBe('0xEmployerWallet');
+      expect(result.data.freelancerWallet).toBe('0xFreelancerWallet');
+    }
+  });
+
+  // --- getContractWalletAddresses: NOT_FOUND (lines 229-233) ---
+  it('should return NOT_FOUND for wallet addresses of non-existent contract', async () => {
+    const result = await getContractWalletAddresses('non-existent');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('NOT_FOUND');
+    }
+  });
+
+  // --- getContractWalletAddresses: MISSING_WALLET employer (lines 239-246) ---
+  it('should return MISSING_WALLET when employer has no wallet address', async () => {
+    const contract = createTestContract({
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    userStore.set('emp-1', { id: 'emp-1', wallet_address: '' });
+    userStore.set('fl-1', { id: 'fl-1', wallet_address: '0xFreelancerWallet' });
+
+    const result = await getContractWalletAddresses(contract.id);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('MISSING_WALLET');
+    }
+  });
+
+  // --- getContractWalletAddresses: MISSING_WALLET freelancer (lines 239-246) ---
+  it('should return MISSING_WALLET when freelancer has no wallet address', async () => {
+    const contract = createTestContract({
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    userStore.set('emp-1', { id: 'emp-1', wallet_address: '0xEmployerWallet' });
+    userStore.set('fl-1', { id: 'fl-1', wallet_address: '' });
+
+    const result = await getContractWalletAddresses(contract.id);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('MISSING_WALLET');
+    }
+  });
+
+  // --- getContractWalletAddresses: MISSING_WALLET both null (lines 239-246) ---
+  it('should return MISSING_WALLET when employer user not found', async () => {
+    const contract = createTestContract({
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    // Only set freelancer, employer not in store -> getUserById returns null
+    userStore.set('fl-1', { id: 'fl-1', wallet_address: '0xFreelancerWallet' });
+
+    const result = await getContractWalletAddresses(contract.id);
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('MISSING_WALLET');
     }
   });
 });

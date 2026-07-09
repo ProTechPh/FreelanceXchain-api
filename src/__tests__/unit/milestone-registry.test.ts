@@ -396,3 +396,87 @@ describe('milestone-registry.ts - Branch Coverage', () => {
     expect(sorted[0].completed_at).toBe(1000);
   });
 });
+
+describe('milestone-registry - approve/reject confirm failure (L198,253)', () => {
+  const importMod = async () => {
+    return await import(resolveModule('src/services/milestone-registry.ts'));
+  };
+
+  function makeRegistryRowLocal(overrides: Record<string, any> = {}) {
+    return {
+      id: 'hash-1',
+      milestone_id_hash: 'hash-1',
+      contract_id_hash: 'hash-c1',
+      work_hash: 'hash-w1',
+      freelancer_wallet: FL_WALLET,
+      employer_wallet: EM_WALLET,
+      amount: 500,
+      status: 'submitted',
+      submitted_at: Date.now(),
+      completed_at: null,
+      title: 'Phase 1',
+      transaction_hash: '0xabc123',
+      block_number: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      ...overrides,
+    };
+  }
+
+  it('L198: should throw when confirmTransaction returns null for approve', async () => {
+    const { approveMilestoneOnRegistry, generateMilestoneIdHash } = await importMod();
+
+    mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRowLocal({ status: 'submitted' }));
+    mockConfirmTx.mockResolvedValueOnce(null);
+
+    await expect(approveMilestoneOnRegistry(MILESTONE_ID, EM_WALLET)).rejects.toThrow('Failed to confirm transaction');
+  });
+
+  it('L253: should throw when confirmTransaction returns null for reject', async () => {
+    const { rejectMilestoneOnRegistry } = await importMod();
+
+    mockBlockchainMilestoneRecordRepository.findByMilestoneIdHash.mockResolvedValueOnce(makeRegistryRowLocal({ status: 'submitted' }));
+    mockConfirmTx.mockResolvedValueOnce(null);
+
+    await expect(rejectMilestoneOnRegistry(MILESTONE_ID, EM_WALLET, 'bad work')).rejects.toThrow('Failed to confirm transaction');
+  });
+
+  it('L316: should sort portfolio with mixed null and non-null completed_at values', async () => {
+    const { getFreelancerPortfolio } = await importMod();
+
+    mockBlockchainMilestoneRecordRepository.findByWallet.mockResolvedValueOnce([
+      makeRegistryRowLocal({ status: 'approved', completed_at: null }),
+      makeRegistryRowLocal({ status: 'approved', completed_at: 2000 }),
+      makeRegistryRowLocal({ status: 'approved', completed_at: 1000 }),
+    ]);
+
+    const portfolio = await getFreelancerPortfolio(FL_WALLET);
+    expect(portfolio).toHaveLength(3);
+    // Most recent completed first, nulls last
+    expect(portfolio[0]?.completedAt).toBe(2000);
+    expect(portfolio[1]?.completedAt).toBe(1000);
+    expect(portfolio[2]?.completedAt).toBeNull();
+  });
+
+  it('L316: should sort portfolio where b.completed_at is null (null as b in comparison)', async () => {
+    const { getFreelancerPortfolio } = await importMod();
+
+    // Use many null values to increase chance of null being on the b side of comparison
+    mockBlockchainMilestoneRecordRepository.findByWallet.mockResolvedValueOnce([
+      makeRegistryRowLocal({ id: 'a1', status: 'approved', completed_at: 5000 }),
+      makeRegistryRowLocal({ id: 'a2', status: 'approved', completed_at: null }),
+      makeRegistryRowLocal({ id: 'a3', status: 'approved', completed_at: null }),
+      makeRegistryRowLocal({ id: 'a4', status: 'approved', completed_at: 3000 }),
+      makeRegistryRowLocal({ id: 'a5', status: 'approved', completed_at: null }),
+    ]);
+
+    const portfolio = await getFreelancerPortfolio(FL_WALLET);
+    expect(portfolio).toHaveLength(5);
+    expect(portfolio[0]?.completedAt).toBe(5000);
+    expect(portfolio[1]?.completedAt).toBe(3000);
+    // Remaining should be null
+    expect(portfolio[2]?.completedAt).toBeNull();
+    expect(portfolio[3]?.completedAt).toBeNull();
+    expect(portfolio[4]?.completedAt).toBeNull();
+  });
+});

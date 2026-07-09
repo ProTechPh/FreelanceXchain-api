@@ -152,6 +152,28 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () =>
   refundMilestone: mockEscrowOps.refundMilestone,
 }));
 
+// Mock dispute-registry (blockchain recording)
+const mockCreateDisputeOnBlockchain = jest.fn<any>().mockResolvedValue({
+  transactionHash: '0x' + 'a'.repeat(64), blockNumber: 12345, status: 'success',
+});
+const mockUpdateDisputeEvidence = jest.fn<any>().mockResolvedValue({
+  transactionHash: '0x' + 'b'.repeat(64), blockNumber: 12346, status: 'success',
+});
+const mockResolveDisputeOnBlockchain = jest.fn<any>().mockResolvedValue({
+  transactionHash: '0x' + 'c'.repeat(64), blockNumber: 12347, status: 'success',
+});
+jest.unstable_mockModule(resolveModule('src/services/dispute-registry.ts'), () => ({
+  createDisputeOnBlockchain: mockCreateDisputeOnBlockchain,
+  updateDisputeEvidence: mockUpdateDisputeEvidence,
+  resolveDisputeOnBlockchain: mockResolveDisputeOnBlockchain,
+}));
+
+// Mock agreement-contract
+const mockDisputeAgreement = jest.fn<any>().mockResolvedValue(undefined);
+jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), () => ({
+  disputeAgreement: mockDisputeAgreement,
+}));
+
 const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   pool: mockPoolObj,
@@ -992,5 +1014,817 @@ describe('dispute-service.ts - Branch Coverage', () => {
   it('L644: error message fallback', () => {
     const error = 'string error';
     expect(error instanceof Error ? error.message : 'Failed to fetch disputes').toBe('Failed to fetch disputes');
+  });
+});
+
+describe('Dispute Service - Additional Coverage', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContractRepository.getContractById.mockReset();
+    mockProjectRepository.findProjectById.mockReset();
+    mockDisputeRepository.getDisputeById.mockReset();
+    mockDisputeRepository.updateDispute.mockReset();
+    mockDisputeRepository.getDisputeByMilestone.mockReset();
+    mockDisputeRepository.getAllDisputesByContract.mockReset();
+    mockDisputeRepository.getAllDisputes.mockReset();
+    mockDisputeRepository.getDisputesByUserId.mockReset();
+    mockDisputeRepository.getDisputesByInitiator.mockReset();
+    mockDisputeRepository.getDisputesByStatus.mockReset();
+    mockDisputeRepository.createDispute.mockReset();
+    mockEscrowOps.getEscrowByContractId.mockReset();
+    mockEscrowOps.releaseMilestone.mockReset();
+    mockEscrowOps.refundMilestone.mockReset();
+  });
+
+  const importModule = async () => import('../../services/dispute-service.js');
+
+  it('should return NOT_FOUND when contract not found in createDispute', async () => {
+    const { createDispute } = await importModule();
+    mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+    const result = await createDispute({
+      contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return NOT_FOUND when milestone not found in createDispute', async () => {
+    const { createDispute } = await importModule();
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', employer_id: 'e1', freelancer_id: 'f1', project_id: 'p1', status: 'active',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm-other', title: 'Other', status: 'submitted', amount: 100 }],
+    });
+
+    const result = await createDispute({
+      contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return NOT_FOUND when contract not found in submitEvidence', async () => {
+    const { submitEvidence } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [],
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+    const result = await submitEvidence({
+      disputeId: 'd1', submitterId: 'f1', type: 'text', content: 'evidence',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return NOT_FOUND when contract not found in resolveDispute', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return NOT_FOUND when project not found in resolveDispute', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce(null);
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return NOT_FOUND when milestone not found in resolveDispute', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm-other', title: 'Other', status: 'submitted', amount: 100 }],
+    });
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should bypass escrow when escrow not found and resolve with freelancer_favor', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: 'd1', status: 'resolved',
+    });
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('should bypass escrow when escrow not found and resolve with employer_favor', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: 'd1', status: 'resolved',
+    });
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'employer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('should return PAYMENT_FAILED when escrow release throws', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
+      address: '0xescrow', employerAddress: '0xemployer',
+    });
+    mockEscrowOps.releaseMilestone.mockRejectedValueOnce(new Error('Payment failed'));
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('PAYMENT_FAILED');
+  });
+
+  it('should return NOT_FOUND when contract not found in getDisputesByContract', async () => {
+    const { getDisputesByContract } = await importModule();
+    mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+    const result = await getDisputesByContract('c1', 'user-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return UPDATE_FAILED when dispute update returns null in resolveDispute', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
+      address: '0xescrow', employerAddress: '0xemployer',
+    });
+    mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+      transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
+    });
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce(null);
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Coverage gap tests — each test targets a specific uncovered line
+// ═══════════════════════════════════════════════════════════════
+
+describe('Dispute Service - Coverage Gaps', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContractRepository.getContractById.mockReset();
+    mockProjectRepository.findProjectById.mockReset();
+    mockDisputeRepository.getDisputeById.mockReset();
+    mockDisputeRepository.updateDispute.mockReset();
+    mockDisputeRepository.getDisputeByMilestone.mockReset();
+    mockDisputeRepository.getAllDisputesByContract.mockReset();
+    mockDisputeRepository.getAllDisputes.mockReset();
+    mockDisputeRepository.getDisputesByUserId.mockReset();
+    mockDisputeRepository.getDisputesByInitiator.mockReset();
+    mockDisputeRepository.getDisputesByStatus.mockReset();
+    mockDisputeRepository.createDispute.mockReset();
+    mockEscrowOps.getEscrowByContractId.mockReset();
+    mockEscrowOps.releaseMilestone.mockReset();
+    mockEscrowOps.refundMilestone.mockReset();
+    mockCreateDisputeOnBlockchain.mockReset().mockResolvedValue({
+      transactionHash: '0x' + 'a'.repeat(64), blockNumber: 12345, status: 'success',
+    });
+    mockResolveDisputeOnBlockchain.mockReset().mockResolvedValue({
+      transactionHash: '0x' + 'c'.repeat(64), blockNumber: 12347, status: 'success',
+    });
+    mockDisputeAgreement.mockReset().mockResolvedValue(undefined);
+    mockUpdateDisputeEvidence.mockReset().mockResolvedValue({
+      transactionHash: '0x' + 'b'.repeat(64), blockNumber: 12346, status: 'success',
+    });
+  });
+
+  const importModule = async () => import('../../services/dispute-service.js');
+
+  describe('createDispute (L70, L109, L181, L233)', () => {
+    it('L70: should return NOT_FOUND when contract not found', async () => {
+      const { createDispute } = await importModule();
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+      const result = await createDispute({
+        contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L109: should return NOT_FOUND when milestone not found', async () => {
+      const { createDispute } = await importModule();
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', employer_id: 'e1', freelancer_id: 'f1', project_id: 'p1', status: 'active',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm-other', title: 'Other', status: 'submitted', amount: 100 }],
+      });
+
+      const result = await createDispute({
+        contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L181: should catch blockchain recording errors gracefully', async () => {
+      const { createDispute } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', employer_id: 'e1', freelancer_id: 'f1', project_id: 'p1', status: 'active',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockDisputeRepository.getDisputeByMilestone.mockResolvedValueOnce(null);
+      mockDisputeRepository.createDispute.mockResolvedValueOnce({
+        id: 'd1', contract_id: 'c1', milestone_id: 'm1', initiator_id: 'e1',
+        reason: 'test', evidence: [], status: 'open', resolution: null,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
+
+      // Mock global Appwrite to return users with wallet_address for getUserById calls
+      const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.getDocument
+        .mockResolvedValueOnce({ $id: 'e1', wallet_address: '0x' + 'e'.repeat(40), name: 'Employer', role: 'employer' })
+        .mockResolvedValueOnce({ $id: 'f1', wallet_address: '0x' + 'f'.repeat(40), name: 'Freelancer', role: 'freelancer' })
+        .mockResolvedValueOnce({ $id: 'e1', wallet_address: '0x' + 'e'.repeat(40), name: 'Employer', role: 'employer' });
+
+      // Make createDisputeOnBlockchain throw to trigger L181 catch
+      mockCreateDisputeOnBlockchain.mockRejectedValueOnce(new Error('blockchain error'));
+
+      const result = await createDispute({
+        contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+      });
+      // Should still succeed despite blockchain error
+      expect(result.success).toBe(true);
+    });
+
+    it('L233: should catch admin notification errors gracefully', async () => {
+      const { createDispute } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', employer_id: 'e1', freelancer_id: 'f1', project_id: 'p1', status: 'active',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockDisputeRepository.getDisputeByMilestone.mockResolvedValueOnce(null);
+      mockDisputeRepository.createDispute.mockResolvedValueOnce({
+        id: 'd1', contract_id: 'c1', milestone_id: 'm1', initiator_id: 'e1',
+        reason: 'test', evidence: [], status: 'open', resolution: null,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
+
+      // Make Appwrite listDocuments throw for getUsersByRole call
+      const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.listDocuments.mockRejectedValueOnce(new Error('admin lookup failed'));
+
+      const result = await createDispute({
+        contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('L178: should call disputeAgreement when users have wallet addresses', async () => {
+      const { createDispute } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', employer_id: 'e1', freelancer_id: 'f1', project_id: 'p1', status: 'active',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockDisputeRepository.getDisputeByMilestone.mockResolvedValueOnce(null);
+      mockDisputeRepository.createDispute.mockResolvedValueOnce({
+        id: 'd1', contract_id: 'c1', milestone_id: 'm1', initiator_id: 'e1',
+        reason: 'test', evidence: [], status: 'open', resolution: null,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
+
+      // Mock global Appwrite to return users with wallet_address
+      const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.getDocument
+        .mockResolvedValueOnce({ $id: 'e1', wallet_address: '0x' + 'e'.repeat(40), name: 'Employer', role: 'employer' })
+        .mockResolvedValueOnce({ $id: 'f1', wallet_address: '0x' + 'f'.repeat(40), name: 'Freelancer', role: 'freelancer' })
+        .mockResolvedValueOnce({ $id: 'e1', wallet_address: '0x' + 'e'.repeat(40), name: 'Employer', role: 'employer' });
+
+      const result = await createDispute({
+        contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+      });
+      expect(result.success).toBe(true);
+      // Verify L178 was reached: disputeAgreement was called
+      expect(mockDisputeAgreement).toHaveBeenCalledWith('c1', '0x' + 'e'.repeat(40));
+    });
+
+    it('L221: should notify admin users when getUsersByRole returns admins', async () => {
+      const { createDispute } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', employer_id: 'e1', freelancer_id: 'f1', project_id: 'p1', status: 'active',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockDisputeRepository.getDisputeByMilestone.mockResolvedValueOnce(null);
+      mockDisputeRepository.createDispute.mockResolvedValueOnce({
+        id: 'd1', contract_id: 'c1', milestone_id: 'm1', initiator_id: 'e1',
+        reason: 'test', evidence: [], status: 'open', resolution: null,
+        created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+      });
+
+      // Mock global Appwrite: listDocuments returns admin users for getUsersByRole
+      const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'admin-1', name: 'Admin', role: 'admin' }],
+        total: 1,
+      });
+
+      const result = await createDispute({
+        contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('submitEvidence (L253, L270, L308)', () => {
+    it('L253: should return NOT_FOUND when dispute not found', async () => {
+      const { submitEvidence } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(null);
+
+      const result = await submitEvidence({
+        disputeId: 'd1', submitterId: 'f1', type: 'text', content: 'evidence',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L270: should return NOT_FOUND when contract not found for evidence', async () => {
+      const { submitEvidence } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+        initiator_id: 'i1', reason: 'r', evidence: [],
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+      const result = await submitEvidence({
+        disputeId: 'd1', submitterId: 'f1', type: 'text', content: 'evidence',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L308: should return UPDATE_FAILED when updated dispute not found after evidence append', async () => {
+      const { submitEvidence } = await importModule();
+      mockDisputeRepository.getDisputeById
+        .mockResolvedValueOnce({
+          id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+          initiator_id: 'i1', reason: 'r', evidence: [],
+        })
+        .mockResolvedValueOnce(null); // Second call returns null
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        employer_id: 'e1', freelancer_id: 'f1',
+      });
+
+      const result = await submitEvidence({
+        disputeId: 'd1', submitterId: 'f1', type: 'text', content: 'evidence',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+
+    it('L318-322: should record evidence on blockchain when submitter has wallet address', async () => {
+      const { submitEvidence } = await importModule();
+      mockDisputeRepository.getDisputeById
+        .mockResolvedValueOnce({
+          id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+          initiator_id: 'i1', reason: 'r', evidence: [],
+        })
+        .mockResolvedValueOnce({
+          id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+          initiator_id: 'i1', reason: 'r', evidence: [{ id: 'ev1', type: 'text', content: 'evidence' }],
+        });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+        id: 'd1', evidence: [{ id: 'ev1', type: 'text', content: 'evidence' }],
+      });
+
+      // Mock global Appwrite to return user with wallet_address
+      const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.getDocument.mockResolvedValueOnce({
+        $id: 'f1', wallet_address: '0x' + 'f'.repeat(40), name: 'Freelancer', role: 'freelancer',
+      });
+
+      const result = await submitEvidence({
+        disputeId: 'd1', submitterId: 'f1', type: 'text', content: 'evidence',
+      });
+      expect(result.success).toBe(true);
+      // Verify L319 was reached: updateDisputeEvidence was called
+      expect(mockUpdateDisputeEvidence).toHaveBeenCalled();
+    });
+
+    it('L322: should catch blockchain evidence update errors gracefully', async () => {
+      const { submitEvidence } = await importModule();
+      mockDisputeRepository.getDisputeById
+        .mockResolvedValueOnce({
+          id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+          initiator_id: 'i1', reason: 'r', evidence: [],
+        })
+        .mockResolvedValueOnce({
+          id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+          initiator_id: 'i1', reason: 'r', evidence: [{ id: 'ev1', type: 'text', content: 'evidence' }],
+        });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+        id: 'd1', evidence: [{ id: 'ev1', type: 'text', content: 'evidence' }],
+      });
+
+      // Mock global Appwrite to return user with wallet_address
+      const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.getDocument.mockResolvedValueOnce({
+        $id: 'f1', wallet_address: '0x' + 'f'.repeat(40), name: 'Freelancer', role: 'freelancer',
+      });
+
+      // Make updateDisputeEvidence throw to trigger L322 catch
+      mockUpdateDisputeEvidence.mockRejectedValueOnce(new Error('blockchain error'));
+
+      const result = await submitEvidence({
+        disputeId: 'd1', submitterId: 'f1', type: 'text', content: 'evidence',
+      });
+      // Should still succeed despite blockchain error
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('validateDisputeResolution (L360, L371, L378, L384)', () => {
+    it('L360: should return NOT_FOUND when dispute not found in resolve', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce(null);
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L371: should return NOT_FOUND when contract not found in resolve', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L378: should return NOT_FOUND when project not found in resolve', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(null);
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('L384: should return NOT_FOUND when milestone not found in resolve', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm-other', title: 'Other', status: 'submitted', amount: 100 }],
+      });
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('processDisputeEscrowPayment (L420-428, L445-451)', () => {
+    it('L420-428: should bypass escrow and approve when escrow not found + freelancer_favor', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
+      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+        id: 'd1', status: 'resolved',
+      });
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('L420-428: should bypass escrow and refund when escrow not found + employer_favor', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
+      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+        id: 'd1', status: 'resolved',
+      });
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'employer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('L445-451: should return PAYMENT_FAILED when escrow operation throws', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
+        address: '0xescrow', employerAddress: '0xemployer',
+      });
+      mockEscrowOps.releaseMilestone.mockRejectedValueOnce(new Error('Payment failed'));
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PAYMENT_FAILED');
+    });
+  });
+
+  describe('updateDisputeStatuses (L501, L514)', () => {
+    it('L501: should set contract to active when not all milestones done', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [
+          { id: 'm1', title: 'M1', status: 'submitted', amount: 100 },
+          { id: 'm2', title: 'M2', status: 'pending', amount: 200 },
+        ],
+      });
+      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
+        address: '0xescrow', employerAddress: '0xemployer',
+      });
+      mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+        transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
+      });
+      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+        id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+        initiator_id: 'i1', reason: 'r', evidence: [],
+        resolution: { decision: 'freelancer_favor', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+      });
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(true);
+      // Verify L501 was reached: updateContract called with status 'active'
+      expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c1', { status: 'active' });
+    });
+
+    it('L514: should return UPDATE_FAILED when updateDispute returns null', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
+        address: '0xescrow', employerAddress: '0xemployer',
+      });
+      mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+        transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
+      });
+      mockDisputeRepository.updateDispute.mockResolvedValueOnce(null);
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UPDATE_FAILED');
+    });
+
+    it('L525-533: should record resolution on blockchain when resolver has wallet address', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
+        address: '0xescrow', employerAddress: '0xemployer',
+      });
+      mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+        transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
+      });
+      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+        id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+        initiator_id: 'i1', reason: 'r', evidence: [],
+        resolution: { decision: 'freelancer_favor', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+      });
+
+      // Mock global Appwrite to return resolver with wallet_address
+      const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.getDocument.mockResolvedValueOnce({
+        $id: 'admin-1', wallet_address: '0x' + 'a'.repeat(40), name: 'Admin', role: 'admin',
+      });
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(true);
+      // Verify L525 was reached: resolveDisputeOnBlockchain was called
+      expect(mockResolveDisputeOnBlockchain).toHaveBeenCalled();
+    });
+
+    it('L533: should catch blockchain resolution recording errors gracefully', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
+        address: '0xescrow', employerAddress: '0xemployer',
+      });
+      mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+        transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
+      });
+      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+        id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+        initiator_id: 'i1', reason: 'r', evidence: [],
+        resolution: { decision: 'freelancer_favor', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+      });
+
+      // Mock global Appwrite to return resolver with wallet_address
+      const mockDbs = (globalThis as any).__mockDatabases;
+      mockDbs.getDocument.mockResolvedValueOnce({
+        $id: 'admin-1', wallet_address: '0x' + 'a'.repeat(40), name: 'Admin', role: 'admin',
+      });
+
+      // Make resolveDisputeOnBlockchain throw to trigger L533 catch
+      mockResolveDisputeOnBlockchain.mockRejectedValueOnce(new Error('blockchain error'));
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      // Should still succeed despite blockchain error
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('getDisputesByContract (L630)', () => {
+    it('L630: should return NOT_FOUND when contract not found', async () => {
+      const { getDisputesByContract } = await importModule();
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+      const result = await getDisputesByContract('c1', 'user-1');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
   });
 });

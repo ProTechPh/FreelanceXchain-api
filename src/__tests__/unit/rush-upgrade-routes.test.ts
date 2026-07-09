@@ -418,3 +418,147 @@ describe('rush-upgrade-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Catch blocks and auth/not-found checks
+// ═══════════════════════════════════════════════════════════════
+
+describe('rush-upgrade-routes - catch blocks and contract access checks', () => {
+  let app: any;
+  const mockRequestRushUpgrade = jest.fn<any>();
+  const mockRespondToRushUpgrade = jest.fn<any>();
+  const mockAcceptCounterOffer = jest.fn<any>();
+  const mockDeclineCounterOffer = jest.fn<any>();
+  const mockGetRushUpgradeRequestsByContract = jest.fn<any>();
+  const mockRepoGetContractById = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'employer' }; next(); },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { getContractById: mockRepoGetContractById },
+    }));
+    mockRepoGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'freelancer-1' });
+    jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), () => ({
+      requestRushUpgrade: mockRequestRushUpgrade,
+      respondToRushUpgrade: mockRespondToRushUpgrade,
+      acceptCounterOffer: mockAcceptCounterOffer,
+      declineCounterOffer: mockDeclineCounterOffer,
+      getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/rush-upgrade-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api', router);
+    jest.clearAllMocks();
+  });
+
+  it('L108: POST rush-upgrade catch block returns 500', async () => {
+    mockRequestRushUpgrade.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/rush-upgrade').send({ proposedPercentage: 25 });
+    expect(res.status).toBe(500);
+  });
+
+  it('L223: POST respond catch block returns 500', async () => {
+    mockRespondToRushUpgrade.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/respond').send({ action: 'accept' });
+    expect(res.status).toBe(500);
+  });
+
+  it('L291: POST accept-counter catch block returns 500', async () => {
+    mockAcceptCounterOffer.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/accept-counter');
+    expect(res.status).toBe(500);
+  });
+
+  it('L359: POST decline-counter catch block returns 500', async () => {
+    mockDeclineCounterOffer.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/rush-upgrade-requests/r1/decline-counter');
+    expect(res.status).toBe(500);
+  });
+
+  it('L397: GET rush-upgrade-requests returns 401 when userId is undefined', async () => {
+    jest.resetModules();
+    // Auth middleware that does NOT set userId
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { role: 'employer' }; next(); },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { getContractById: mockRepoGetContractById },
+    }));
+    mockRepoGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'user-1', freelancer_id: 'freelancer-1' });
+    jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), () => ({
+      requestRushUpgrade: mockRequestRushUpgrade,
+      respondToRushUpgrade: mockRespondToRushUpgrade,
+      acceptCounterOffer: mockAcceptCounterOffer,
+      declineCounterOffer: mockDeclineCounterOffer,
+      getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
+    }));
+
+    const express2 = (await import('express')).default;
+    const router2 = (await import('../../routes/rush-upgrade-routes.js')).default;
+    const app2 = express2();
+    app2.use(express2.json());
+    app2.use('/api', router2);
+    const request = (await import('supertest')).default;
+    const res = await request(app2).get('/api/contracts/c1/rush-upgrade-requests');
+    expect(res.status).toBe(401);
+  });
+
+  it('L406: GET rush-upgrade-requests returns 404 when contract not found', async () => {
+    mockRepoGetContractById.mockResolvedValue(null);
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/rush-upgrade-requests');
+    expect(res.status).toBe(404);
+  });
+
+  it('L414: GET rush-upgrade-requests returns 403 when user is not a party', async () => {
+    mockRepoGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'other-user', freelancer_id: 'other-freelancer' });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/rush-upgrade-requests');
+    expect(res.status).toBe(403);
+  });
+
+  it('L435: GET rush-upgrade-requests catch block returns 500', async () => {
+    mockGetRushUpgradeRequestsByContract.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/rush-upgrade-requests');
+    expect(res.status).toBe(500);
+  });
+});

@@ -590,3 +590,566 @@ describe('project-routes.ts - Branch Coverage', () => {
     expect([200, 400, 403]).toContain(res.status);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Additional line coverage tests
+// ═══════════════════════════════════════════════════════════════
+
+describe('project-routes - additional line coverage', () => {
+
+  // ── GET /stats/categories (lines 319-361) ────────────────────
+  describe('GET /stats/categories', () => {
+    let app: express.Express;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      app = makeApp('/api/projects', projectRouter);
+    });
+
+    it('returns categories with aggregated stats', async () => {
+      mockListOpenProjects.mockResolvedValue(ok({
+        items: [
+          {
+            required_skills: [
+              { category_id: 'cat-js', skill_name: 'JavaScript' },
+              { category_id: 'cat-py', skill_name: 'Python' },
+            ],
+            budget: 1000,
+          },
+          {
+            required_skills: [
+              { category_id: 'cat-js', skill_name: 'JavaScript' },
+            ],
+            budget: 2000,
+          },
+        ],
+      }));
+      const res = await request(app).get('/api/projects/stats/categories');
+      expect(res.status).toBe(200);
+      expect(res.body.categories).toHaveLength(2);
+      const catJs = res.body.categories.find((c: any) => c.categoryId === 'cat-js');
+      expect(catJs.projectCount).toBe(2);
+      expect(catJs.totalBudget).toBe(3000);
+      const catPy = res.body.categories.find((c: any) => c.categoryId === 'cat-py');
+      expect(catPy.projectCount).toBe(1);
+      expect(catPy.totalBudget).toBe(1000);
+    });
+
+    it('falls back to category_id when skill_name is empty', async () => {
+      mockListOpenProjects.mockResolvedValue(ok({
+        items: [{ required_skills: [{ category_id: 'cat-x', skill_name: '' }], budget: 500 }],
+      }));
+      const res = await request(app).get('/api/projects/stats/categories');
+      expect(res.status).toBe(200);
+      expect(res.body.categories[0].categoryName).toBe('cat-x');
+    });
+
+    it('returns empty categories when no items', async () => {
+      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      const res = await request(app).get('/api/projects/stats/categories');
+      expect(res.status).toBe(200);
+      expect(res.body.categories).toEqual([]);
+    });
+
+    it('returns 500 when listOpenProjects fails', async () => {
+      mockListOpenProjects.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+      const res = await request(app).get('/api/projects/stats/categories');
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    });
+
+    it('returns 500 when listOpenProjects throws', async () => {
+      mockListOpenProjects.mockRejectedValue(new Error('DB connection lost'));
+      const res = await request(app).get('/api/projects/stats/categories');
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    });
+
+    it('uses custom limit from query param', async () => {
+      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      await request(app).get('/api/projects/stats/categories?limit=500');
+      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 500, offset: 0 });
+    });
+
+    it('clamps limit to max 10000', async () => {
+      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      await request(app).get('/api/projects/stats/categories?limit=50000');
+      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 10000, offset: 0 });
+    });
+
+    it('defaults limit to 100 for non-numeric input', async () => {
+      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      await request(app).get('/api/projects/stats/categories?limit=abc');
+      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 100, offset: 0 });
+    });
+
+    it('defaults limit to 100 for zero', async () => {
+      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      await request(app).get('/api/projects/stats/categories?limit=0');
+      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 100, offset: 0 });
+    });
+
+    it('defaults limit to 100 when not provided', async () => {
+      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      await request(app).get('/api/projects/stats/categories');
+      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 100, offset: 0 });
+    });
+  });
+
+  // ── POST / deadline validation (line 510) ────────────────────
+  describe('POST / - deadline validation', () => {
+    let app: express.Express;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      app = makeApp('/api/projects', projectRouter);
+    });
+
+    it('returns 400 when deadline is missing', async () => {
+      const res = await request(app).post('/api/projects').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: [{ skillId: '00000000-0000-0000-0000-000000000001' }],
+        budget: 100,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'deadline' })])
+      );
+    });
+
+    it('returns 400 when deadline is not a string', async () => {
+      const res = await request(app).post('/api/projects').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: [{ skillId: '00000000-0000-0000-0000-000000000001' }],
+        budget: 100,
+        deadline: 12345,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'deadline' })])
+      );
+    });
+  });
+
+  // ── PATCH /:id description & budget (lines 857, 860) ─────────
+  describe('PATCH /:id - description and budget validation', () => {
+    let app: express.Express;
+    beforeEach(() => {
+      jest.clearAllMocks();
+      app = makeApp('/api/projects', projectRouter);
+    });
+
+    it('returns 400 when description is shorter than 20 chars', async () => {
+      const res = await request(app).patch('/api/projects/p1').send({ description: 'Short' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'description' })])
+      );
+    });
+
+    it('returns 400 when budget is zero', async () => {
+      const res = await request(app).patch('/api/projects/p1').send({ budget: 0 });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'budget' })])
+      );
+    });
+
+    it('returns 400 when budget is negative', async () => {
+      const res = await request(app).patch('/api/projects/p1').send({ budget: -50 });
+      expect(res.status).toBe(400);
+    });
+
+    it('returns 400 when budget is not a number', async () => {
+      const res = await request(app).patch('/api/projects/p1').send({ budget: 'abc' });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── POST /with-attachments (lines 650-771) ───────────────────
+  describe('POST /with-attachments', () => {
+    let app: any;
+    let mockCreateProjectWA: jest.Mock;
+    let mockUploadMultipleFiles: jest.Mock;
+    let mockCleanupUploadedFiles: jest.Mock;
+    let injectedFiles: any;
+
+    beforeEach(async () => {
+      jest.resetModules();
+      injectedFiles = undefined;
+
+      mockCreateProjectWA = jest.fn();
+      mockUploadMultipleFiles = jest.fn();
+      mockCleanupUploadedFiles = jest.fn();
+
+      jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+        createProject: mockCreateProjectWA,
+        getProjectById: jest.fn(),
+        updateProject: jest.fn(),
+        setMilestones: jest.fn(),
+        listOpenProjects: jest.fn(),
+        searchProjects: jest.fn(),
+        listProjectsBySkills: jest.fn(),
+        listProjectsByBudgetRange: jest.fn(),
+        listProjectsByEmployer: jest.fn(),
+        listProjectsByCategory: jest.fn(),
+        listProjectsByMultipleCategories: jest.fn(),
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () => ({
+        getProposalsByProject: jest.fn(),
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+        authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'employer' }; next(); },
+        requireRole: () => (_req: any, _res: any, next: any) => next(),
+        requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+        apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+        fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+        mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+        isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
+        uploadProjectAttachments: (req: any, _res: any, next: any) => {
+          if (injectedFiles !== undefined) {
+            req.files = injectedFiles;
+          }
+          next();
+        },
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+        getRequestId: () => 'test-request-id',
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
+        clampLimit: (v: any) => v ?? 20,
+        clampOffset: (v: any) => v ?? 0,
+        safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+        uploadMultipleFiles: mockUploadMultipleFiles,
+        cleanupUploadedFiles: mockCleanupUploadedFiles,
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+        DATABASE_ID: 'freelancexchain',
+        BUCKETS: { PROJECT_ATTACHMENTS: 'project-attachments' },
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
+        generateId: () => 'generated-id',
+      }));
+
+      jest.unstable_mockModule(resolveModule('src/utils/entity-mapper.ts'), () => ({
+        mapProjectFromEntity: (entity: any) => entity,
+      }));
+
+      const expressMod = (await import('express')).default;
+      const routerMod = (await import('../../routes/project-routes.js')).default;
+      app = expressMod();
+      app.use(expressMod.json());
+      app.use('/api/projects', routerMod);
+      jest.clearAllMocks();
+    });
+
+    // title/description/budget/deadline validation (lines 640, 643, 666, 669)
+    it('returns 400 when title is too short', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Hi',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'title' })])
+      );
+    });
+
+    it('returns 400 when description is too short', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'Short',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'description' })])
+      );
+    });
+
+    it('returns 400 when budget is invalid', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 0,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'budget' })])
+      );
+    });
+
+    it('returns 400 when deadline is missing', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'deadline' })])
+      );
+    });
+
+    // requiredSkills validation (lines 650-657)
+    it('returns 400 when requiredSkills is empty array', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'requiredSkills' })])
+      );
+    });
+
+    it('returns 400 when requiredSkills has invalid UUID', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: 'not-a-uuid' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'requiredSkills[0].skillId' })])
+      );
+    });
+
+    it('returns 400 when requiredSkills is invalid JSON', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: 'not-json[',
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'requiredSkills', message: 'requiredSkills must be a valid JSON array' })])
+      );
+    });
+
+    it('returns 400 when requiredSkills parses to non-array', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify('just-a-string'),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+    });
+
+    // tags validation (lines 675-685)
+    it('returns 400 when tags is not an array', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+        tags: JSON.stringify('not-an-array'),
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'tags', message: 'Tags must be an array' })])
+      );
+    });
+
+    it('returns 400 when tags contains non-strings', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+        tags: JSON.stringify([123, 456]),
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'tags', message: 'All tags must be strings' })])
+      );
+    });
+
+    it('returns 400 when tags has more than 10 elements', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+        tags: JSON.stringify(Array(11).fill('tag')),
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'tags', message: 'Maximum 10 tags allowed' })])
+      );
+    });
+
+    it('returns 400 when tags is invalid JSON', async () => {
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+        tags: 'not-json[',
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'tags', message: 'Tags must be a valid JSON array' })])
+      );
+    });
+
+    // file upload and project creation (lines 698-771)
+    it('creates project without files', async () => {
+      mockCreateProjectWA.mockResolvedValue({ success: true, data: { id: 'p-1' } });
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.id).toBe('p-1');
+    });
+
+    it('creates project with processed tags', async () => {
+      mockCreateProjectWA.mockResolvedValue({ success: true, data: { id: 'p-1' } });
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+        tags: JSON.stringify([' tag1 ', ' tag2 ']),
+      });
+      expect(res.status).toBe(201);
+    });
+
+    it('creates project with files', async () => {
+      injectedFiles = [
+        { originalname: 'test.pdf', buffer: Buffer.from('test'), size: 100 },
+      ];
+      mockUploadMultipleFiles.mockResolvedValue([
+        { success: true, metadata: { fileId: 'f1', name: 'test.pdf' } },
+      ]);
+      mockCreateProjectWA.mockResolvedValue({ success: true, data: { id: 'p-1' } });
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(201);
+      expect(mockUploadMultipleFiles).toHaveBeenCalled();
+    });
+
+    it('returns 500 when file upload has failures', async () => {
+      injectedFiles = [
+        { originalname: 'test.pdf', buffer: Buffer.from('test'), size: 100 },
+      ];
+      mockUploadMultipleFiles.mockResolvedValue([
+        { success: false, error: 'Upload timeout' },
+      ]);
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('FILE_UPLOAD_ERROR');
+    });
+
+    it('returns 500 when uploadMultipleFiles throws', async () => {
+      injectedFiles = [
+        { originalname: 'test.pdf', buffer: Buffer.from('test'), size: 100 },
+      ];
+      mockUploadMultipleFiles.mockRejectedValue(new Error('Network error'));
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(500);
+    });
+
+    it('cleans up files on createProject failure', async () => {
+      injectedFiles = [
+        { originalname: 'test.pdf', buffer: Buffer.from('test'), size: 100 },
+      ];
+      mockUploadMultipleFiles.mockResolvedValue([
+        { success: true, metadata: { fileId: 'f1', name: 'test.pdf' } },
+      ]);
+      mockCreateProjectWA.mockResolvedValue({
+        success: false,
+        error: { code: 'DB_ERROR', message: 'Failed', details: null },
+      });
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+      expect(mockCleanupUploadedFiles).toHaveBeenCalledWith(
+        [{ fileId: 'f1', name: 'test.pdf' }],
+        'project-attachments'
+      );
+    });
+
+    it('returns 400 when createProject fails without attachments', async () => {
+      mockCreateProjectWA.mockResolvedValue({
+        success: false,
+        error: { code: 'DB_ERROR', message: 'Failed' },
+      });
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+});

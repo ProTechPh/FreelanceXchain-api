@@ -482,3 +482,70 @@ describe('reputation-routes.ts - Branch Coverage', () => {
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Catch block tests for 500 error responses
+// ═══════════════════════════════════════════════════════════════
+
+describe('reputation-routes - catch blocks for 500 errors', () => {
+  let app: any;
+  const mockGetReputationLeaderboard = jest.fn<any>();
+  const mockGetAggregatedScore = jest.fn<any>();
+  const mockGetReputationBreakdown = jest.fn<any>();
+  const mockGetReputationHistory = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/reputation-service.ts'), () => ({
+      submitRating: jest.fn(),
+      getReputation: jest.fn(),
+      getWorkHistory: jest.fn(),
+      canUserRate: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/reputation-aggregation-service.ts'), () => ({
+      getAggregatedScore: mockGetAggregatedScore,
+      getReputationBreakdown: mockGetReputationBreakdown,
+      getReputationHistory: mockGetReputationHistory,
+      getReputationLeaderboard: mockGetReputationLeaderboard,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/reputation-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/reputation', router);
+    jest.clearAllMocks();
+  });
+
+  it('L349-351: GET /leaderboard catch block returns 500', async () => {
+    mockGetReputationLeaderboard.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/leaderboard');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to get leaderboard');
+  });
+
+  it('L502-504: GET /:userId/score catch block returns 500', async () => {
+    mockGetAggregatedScore.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/score');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to get reputation score');
+  });
+
+  it('L536-538: GET /:userId/breakdown catch block returns 500', async () => {
+    mockGetReputationBreakdown.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/breakdown');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to get reputation breakdown');
+  });
+
+  it('L576-578: GET /:userId/reputation-history catch block returns 500', async () => {
+    mockGetReputationHistory.mockRejectedValueOnce(new Error('Unexpected'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/reputation-history');
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe('Failed to get reputation history');
+  });
+});

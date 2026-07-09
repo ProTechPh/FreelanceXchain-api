@@ -599,3 +599,348 @@ describe('auth-routes.ts - Branch Coverage', () => {
     expect([200, 201, 401, 404]).toContain(res.status);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// Additional coverage: lines 54-59, 222, 565-620, 843, 1149,
+//   1380-1411, 1451-1482, 1779-1780
+// ═══════════════════════════════════════════════════════════════
+
+describe('auth-routes.ts - Additional Coverage (top-level mocks)', () => {
+  let app: express.Express;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    app = express();
+    app.use(express.json());
+    app.use('/api/auth', authRouter);
+    mockValidatePasswordStrength.mockReturnValue({ valid: true, errors: [] });
+  });
+
+  // Lines 54-59: extractBearerToken missing token
+  describe('extractBearerToken - missing Authorization header', () => {
+    it('POST /mfa/challenge should return 401 AUTH_MISSING_TOKEN when no Authorization header', async () => {
+      const res = await request(app).post('/api/auth/mfa/challenge').send({ factorId: 'factor-1' });
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_MISSING_TOKEN');
+    });
+
+    it('POST /mfa/verify should return 401 AUTH_MISSING_TOKEN when no Authorization header', async () => {
+      const res = await request(app).post('/api/auth/mfa/verify').send({ factorId: 'f1', challengeId: 'c1', code: '123456' });
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_MISSING_TOKEN');
+    });
+  });
+
+  // Line 222: missing password in register
+  describe('POST /register - missing password field', () => {
+    it('should return 400 when password is not provided', async () => {
+      const res = await request(app).post('/api/auth/register').send({ email: 'test@test.com', role: 'freelancer' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'password', message: 'Password is required' })
+      ]));
+    });
+  });
+
+  // Lines 565-620: GET /callback OAuth PKCE flow
+  describe('GET /callback - OAuth PKCE flow', () => {
+    it('should return 400 when error query param is present', async () => {
+      const res = await request(app).get('/api/auth/callback').query({ error: 'access_denied', error_description: 'User denied access' });
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('OAUTH_ERROR');
+      expect(res.body.error.message).toBe('User denied access');
+    });
+
+    it('should return 400 with error name when error_description is absent', async () => {
+      const res = await request(app).get('/api/auth/callback').query({ error: 'access_denied' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toBe('access_denied');
+    });
+
+    it('should return 401 when code exchange fails', async () => {
+      mockExchangeCodeForSession.mockResolvedValue({ code: 'EXCHANGE_FAILED', message: 'Code exchange failed' });
+      const res = await request(app).get('/api/auth/callback').query({ code: 'auth-code-123' });
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('AUTH_EXCHANGE_FAILED');
+    });
+
+    it('should return 202 when loginWithAppwrite returns AUTH_REQUIRE_REGISTRATION', async () => {
+      mockExchangeCodeForSession.mockResolvedValue({ accessToken: 'session-token' });
+      mockLoginWithAppwrite.mockResolvedValue({ code: 'AUTH_REQUIRE_REGISTRATION', message: 'Registration required' });
+      const res = await request(app).get('/api/auth/callback').query({ code: 'auth-code-123' });
+      expect(res.status).toBe(202);
+      expect(res.body.success).toBe(true);
+      expect(res.body.status).toBe('registration_required');
+      expect(res.body.access_token).toBe('session-token');
+    });
+
+    it('should return 401 when loginWithAppwrite returns other auth error', async () => {
+      mockExchangeCodeForSession.mockResolvedValue({ accessToken: 'session-token' });
+      mockLoginWithAppwrite.mockResolvedValue({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid token' });
+      const res = await request(app).get('/api/auth/callback').query({ code: 'auth-code-123' });
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('AUTH_INVALID_TOKEN');
+    });
+
+    it('should return 200 on successful PKCE flow', async () => {
+      mockExchangeCodeForSession.mockResolvedValue({ accessToken: 'session-token' });
+      mockLoginWithAppwrite.mockResolvedValue({ accessToken: 'app-token', refreshToken: 'app-refresh', user: { id: 'u-1', email: 'test@test.com' } });
+      const res = await request(app).get('/api/auth/callback').query({ code: 'auth-code-123' });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.access_token).toBe('app-token');
+      expect(res.body.refresh_token).toBe('app-refresh');
+      expect(res.body.user).toBeDefined();
+    });
+  });
+
+  // Line 843: GET /oauth/:provider catch block
+  describe('GET /oauth/:provider - catch error', () => {
+    it('should return 500 when getOAuthUrl throws', async () => {
+      mockGetOAuthUrl.mockRejectedValue(new Error('OAuth service down'));
+      const res = await request(app).get('/api/auth/oauth/google');
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_ERROR');
+      expect(res.body.error.message).toBe('Failed to initiate OAuth flow');
+    });
+  });
+
+  // Line 1149: missing password in reset-password
+  describe('POST /reset-password - missing password field', () => {
+    it('should return 400 when password is not provided', async () => {
+      const res = await request(app).post('/api/auth/reset-password').send({ accessToken: 'reset-token' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details).toEqual(expect.arrayContaining([
+        expect.objectContaining({ field: 'password', message: 'Password is required' })
+      ]));
+    });
+  });
+
+  // Lines 1380-1411: POST /mfa/challenge
+  describe('POST /mfa/challenge - additional coverage', () => {
+    it('should return 200 with challengeId on success', async () => {
+      mockChallengeMFA.mockResolvedValue({ challengeId: 'challenge-1' });
+      const res = await request(app).post('/api/auth/mfa/challenge').set('Authorization', 'Bearer test-token').send({ factorId: 'factor-1' });
+      expect(res.status).toBe(200);
+      expect(res.body.challengeId).toBe('challenge-1');
+    });
+
+    it('should return 400 when factorId is missing', async () => {
+      const res = await request(app).post('/api/auth/mfa/challenge').set('Authorization', 'Bearer test-token').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('factorId is required');
+    });
+
+    it('should return 400 when challengeMFA returns an auth error', async () => {
+      mockChallengeMFA.mockResolvedValue({ code: 'MFA_CHALLENGE_FAILED', message: 'Challenge failed' });
+      const res = await request(app).post('/api/auth/mfa/challenge').set('Authorization', 'Bearer test-token').send({ factorId: 'factor-1' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('MFA_CHALLENGE_FAILED');
+    });
+  });
+
+  // Lines 1451-1482: POST /mfa/verify
+  describe('POST /mfa/verify - additional coverage', () => {
+    it('should return 200 on successful verification', async () => {
+      mockVerifyMFAChallenge.mockResolvedValue({ success: true });
+      const res = await request(app).post('/api/auth/mfa/verify').set('Authorization', 'Bearer test-token').send({ factorId: 'f1', challengeId: 'c1', code: '123456' });
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('MFA verified successfully');
+    });
+
+    it('should return 400 when required fields are missing', async () => {
+      const res = await request(app).post('/api/auth/mfa/verify').set('Authorization', 'Bearer test-token').send({ factorId: 'f1' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('factorId, challengeId, and code are required');
+    });
+
+    it('should return 400 when verifyMFAChallenge returns an auth error', async () => {
+      mockVerifyMFAChallenge.mockResolvedValue({ code: 'INVALID_CODE', message: 'Invalid code' });
+      const res = await request(app).post('/api/auth/mfa/verify').set('Authorization', 'Bearer test-token').send({ factorId: 'f1', challengeId: 'c1', code: '000000' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_CODE');
+    });
+  });
+
+  // Lines 1779-1780: PATCH /wallet catch block
+  describe('PATCH /wallet - catch error', () => {
+    it('should return 500 when updateUser throws', async () => {
+      mockUpdateUser.mockRejectedValue(new Error('Database error'));
+      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('UPDATE_FAILED');
+      expect(res.body.error.message).toBe('Failed to update wallet address');
+    });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Additional coverage: lines 708-718, 729-739, 750-770
+// (email-otp, magic-url, verify-token need fresh module mocks)
+// ═══════════════════════════════════════════════════════════════
+
+describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
+  let app: any;
+  const mockRequestEmailOtp = jest.fn<any>();
+  const mockRequestMagicUrl = jest.fn<any>();
+  const mockVerifyAuthToken = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
+      register: jest.fn(),
+      login: jest.fn(),
+      refreshTokens: jest.fn(),
+      isAuthError: (result: any) => result && typeof result === 'object' && 'code' in result && 'message' in result && !('user' in result) && !('success' in result),
+      validatePasswordStrength: jest.fn(),
+      loginWithAppwrite: jest.fn(),
+      registerWithAppwrite: jest.fn(),
+      getOAuthUrl: jest.fn(),
+      exchangeCodeForSession: jest.fn(),
+      resendConfirmationEmail: jest.fn(),
+      requestPasswordReset: jest.fn(),
+      updatePassword: jest.fn(),
+      getCurrentUserWithKyc: jest.fn(),
+      logout: jest.fn(),
+      enrollMFA: jest.fn(),
+      verifyMFAEnrollment: jest.fn(),
+      challengeMFA: jest.fn(),
+      verifyMFAChallenge: jest.fn(),
+      getMFAFactors: jest.fn(),
+      disableMFA: jest.fn(),
+      validateTokenAndGetUser: jest.fn(),
+      requestEmailOtp: mockRequestEmailOtp,
+      requestMagicUrl: mockRequestMagicUrl,
+      verifyAuthToken: mockVerifyAuthToken,
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+      userRepository: { getUserById: jest.fn(), updateUser: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/csrf-middleware.ts'), () => ({
+      generateCsrfToken: jest.fn(() => 'test-csrf-token'),
+      doubleCsrfProtection: (_req: any, _res: any, next: any) => next(),
+    }));
+
+    const express = (await import('express')).default;
+    const authRouter = (await import('../../routes/auth-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/auth', authRouter);
+    jest.clearAllMocks();
+  });
+
+  // Lines 708-718: POST /login/email-otp
+  describe('POST /login/email-otp', () => {
+    it('should return 200 on success', async () => {
+      mockRequestEmailOtp.mockResolvedValue({ success: true });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/email-otp').send({ email: 'test@test.com' });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('should return 400 when email is missing', async () => {
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/email-otp').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 when email is invalid', async () => {
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/email-otp').send({ email: 'bad' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 when service returns auth error', async () => {
+      mockRequestEmailOtp.mockResolvedValue({ code: 'EMAIL_OTP_FAILED', message: 'Failed to send OTP' });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/email-otp').send({ email: 'test@test.com' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('EMAIL_OTP_FAILED');
+    });
+  });
+
+  // Lines 729-739: POST /login/magic-url
+  describe('POST /login/magic-url', () => {
+    it('should return 200 on success', async () => {
+      mockRequestMagicUrl.mockResolvedValue({ success: true });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/magic-url').send({ email: 'test@test.com' });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+    });
+
+    it('should return 400 when email is missing', async () => {
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/magic-url').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 when email is invalid', async () => {
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/magic-url').send({ email: 'bad' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 when service returns auth error', async () => {
+      mockRequestMagicUrl.mockResolvedValue({ code: 'MAGIC_URL_FAILED', message: 'Failed to send magic URL' });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/magic-url').send({ email: 'test@test.com' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('MAGIC_URL_FAILED');
+    });
+  });
+
+  // Lines 750-770: POST /login/verify-token
+  describe('POST /login/verify-token', () => {
+    it('should return 200 on success', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ accessToken: 'token', refreshToken: 'refresh', user: { id: 'u-1' } });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/verify-token').send({ userId: 'user-1', secret: 'otp-code' });
+      expect(res.status).toBe(200);
+      expect(res.body.accessToken).toBe('token');
+    });
+
+    it('should return 400 when userId is missing', async () => {
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/verify-token').send({ secret: 'otp-code' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 when secret is missing', async () => {
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/verify-token').send({ userId: 'user-1' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 202 when AUTH_REQUIRE_REGISTRATION', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ code: 'AUTH_REQUIRE_REGISTRATION', message: 'Registration required' });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/verify-token').send({ userId: 'user-1', secret: 'otp-code' });
+      expect(res.status).toBe(202);
+      expect(res.body.success).toBe(true);
+      expect(res.body.status).toBe('registration_required');
+    });
+
+    it('should return 400 on other auth error', async () => {
+      mockVerifyAuthToken.mockResolvedValue({ code: 'AUTH_INVALID_TOKEN', message: 'Invalid token' });
+      const request = (await import('supertest')).default;
+      const res = await request(app).post('/api/auth/login/verify-token').send({ userId: 'user-1', secret: 'otp-code' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('AUTH_INVALID_TOKEN');
+    });
+  });
+});
