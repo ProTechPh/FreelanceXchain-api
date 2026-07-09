@@ -178,4 +178,19 @@ describe('utils/cache.ts - Branch Coverage', () => {
     const intervalMs: number | undefined = undefined;
     expect(intervalMs ?? defaultInterval).toBe(60_000);
   });
+
+  it('L12: should use default maxSize and defaultTtlMs when constructed with no arguments', () => {
+    const defaultCache = new LRUCache<string>();
+    defaultCache.set('key', 'value');
+    expect(defaultCache.get('key')).toBe('value');
+    expect(defaultCache.size).toBe(1);
+    defaultCache.stopCleanup();
+  });
+
+  it('L12: should use default defaultTtlMs when only maxSize is provided', () => {
+    const partialCache = new LRUCache<string>(5);
+    partialCache.set('key', 'value');
+    expect(partialCache.get('key')).toBe('value');
+    partialCache.stopCleanup();
+  });
 });

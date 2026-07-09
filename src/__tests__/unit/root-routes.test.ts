@@ -70,4 +70,30 @@ describe('Root Routes', () => {
       expect(res.status).toBe(307);
     });
   });
+
+  describe('GET / - version fallback (line 12)', () => {
+    it('should return default version 1.0.0 when npm_package_version is not set', async () => {
+      const originalVersion = process.env['npm_package_version'];
+      delete process.env['npm_package_version'];
+      const res = await request(app).get('/');
+      expect(res.status).toBe(200);
+      expect(res.body.version).toBe('1.0.0');
+      if (originalVersion !== undefined) {
+        process.env['npm_package_version'] = originalVersion;
+      }
+    });
+
+    it('should use npm_package_version when set', async () => {
+      const originalVersion = process.env['npm_package_version'];
+      process.env['npm_package_version'] = '2.5.0';
+      const res = await request(app).get('/');
+      expect(res.status).toBe(200);
+      expect(res.body.version).toBe('2.5.0');
+      if (originalVersion !== undefined) {
+        process.env['npm_package_version'] = originalVersion;
+      } else {
+        delete process.env['npm_package_version'];
+      }
+    });
+  });
 });

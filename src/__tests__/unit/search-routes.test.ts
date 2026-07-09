@@ -204,4 +204,36 @@ describe('search-routes - maxBudget validation and continuationToken', () => {
     expect(res.status).toBe(200);
     expect(mockSearchFreelancers).toHaveBeenCalledWith({}, { pageSize: 10 });
   });
+
+  it('L157: GET /projects continuationToken=0 uses || 0 fallback', async () => {
+    mockSearchProjects.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?continuationToken=0');
+    expect(res.status).toBe(200);
+    expect(mockSearchProjects).toHaveBeenCalledWith({}, { offset: 0 });
+  });
+
+  it('L157: GET /projects continuationToken=abc uses || 0 fallback for NaN', async () => {
+    mockSearchProjects.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/projects?continuationToken=abc');
+    expect(res.status).toBe(200);
+    expect(mockSearchProjects).toHaveBeenCalledWith({}, { offset: 0 });
+  });
+
+  it('L251: GET /freelancers continuationToken=0 uses || 0 fallback', async () => {
+    mockSearchFreelancers.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/freelancers?continuationToken=0');
+    expect(res.status).toBe(200);
+    expect(mockSearchFreelancers).toHaveBeenCalledWith({}, { offset: 0 });
+  });
+
+  it('L251: GET /freelancers continuationToken=abc uses || 0 fallback for NaN', async () => {
+    mockSearchFreelancers.mockResolvedValueOnce({ success: true, data: { items: [], metadata: {} } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/search/freelancers?continuationToken=abc');
+    expect(res.status).toBe(200);
+    expect(mockSearchFreelancers).toHaveBeenCalledWith({}, { offset: 0 });
+  });
 });

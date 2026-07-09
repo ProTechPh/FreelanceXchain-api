@@ -397,4 +397,18 @@ describe('email-inbox-routes - send and reply service calls', () => {
     expect(res.status).toBe(201);
     expect(mockReplyToEmail).toHaveBeenCalledWith('test-user-id', 'e3', 'Plain reply', 'Plain reply');
   });
+
+  it('L204: POST /send with neither text nor html uses empty strings', async () => {
+    mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-4' } });
+    const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Sub' });
+    expect(res.status).toBe(201);
+    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Sub', '', '');
+  });
+
+  it('L234: POST /:id/reply with both text and html passes both directly', async () => {
+    mockReplyToEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'reply-4' } });
+    const res = await request(app).post('/api/emails/e4/reply').send({ text: 'Plain', html: '<p>Rich</p>' });
+    expect(res.status).toBe(201);
+    expect(mockReplyToEmail).toHaveBeenCalledWith('test-user-id', 'e4', 'Plain', '<p>Rich</p>');
+  });
 });

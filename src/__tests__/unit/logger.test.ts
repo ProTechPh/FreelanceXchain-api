@@ -264,4 +264,15 @@ describe('Logger', () => {
       expect(consoleOutput.some(o => o.level === 'error')).toBe(true);
     });
   });
+
+  describe('error level branch coverage (line 105)', () => {
+    it('should not log error when LOG_LEVEL is set to an invalid value', async () => {
+      // Setting LOG_LEVEL to a value not in the LogLevel enum makes shouldLog
+      // return false for all levels because the priority lookup returns undefined
+      process.env.LOG_LEVEL = 'none';
+      const { logger } = await importModule();
+      logger.error('should not appear');
+      expect(consoleOutput).toHaveLength(0);
+    });
+  });
 });

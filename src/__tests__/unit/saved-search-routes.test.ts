@@ -487,6 +487,27 @@ describe('saved-search-routes branch coverage', () => {
     const res = await request(app).post('/api/saved-searches/s1/execute');
     expect(res.status).toBe(400);
   });
+
+  it('PATCH /:id success with result data', async () => {
+    mockSavedSearchService.updateSavedSearch.mockResolvedValue(ok({ id: 's1', name: 'Updated' }));
+    const res = await request(app).patch('/api/saved-searches/s1').send({ name: 'Updated' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Updated');
+  });
+
+  it('DELETE /:id success', async () => {
+    mockSavedSearchService.deleteSavedSearch.mockResolvedValue(ok(undefined));
+    const res = await request(app).delete('/api/saved-searches/s1');
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Saved search deleted');
+  });
+
+  it('POST /:id/execute success with result data', async () => {
+    mockSavedSearchService.executeSavedSearch.mockResolvedValue(ok({ items: [{ id: 'r1' }] }));
+    const res = await request(app).post('/api/saved-searches/s1/execute');
+    expect(res.status).toBe(200);
+    expect(res.body.items).toHaveLength(1);
+  });
 });
 
 describe('saved-search-routes.ts - Branch Coverage', () => {

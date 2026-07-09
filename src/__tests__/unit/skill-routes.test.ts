@@ -519,6 +519,12 @@ describe('skill-routes branch coverage', () => {
     expect(res.status).toBe(409);
   });
 
+  it('POST /custom other error returns 400', async () => {
+    mockUserCustomSkillService.createUserCustomSkill.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/skills/custom').send({ name: 'My Skill', description: 'A long description for testing', yearsOfExperience: 3 });
+    expect(res.status).toBe(400);
+  });
+
   // GET /custom/search — keyword validation
   it('GET /custom/search missing keyword', async () => {
     const res = await request(app).get('/api/skills/custom/search');
@@ -705,5 +711,76 @@ describe('skill-routes - custom skill edge cases', () => {
       yearsOfExperience: 5,
       categoryName: 'Web Dev',
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// userName fallback when req.user.email is undefined
+// ═══════════════════════════════════════════════════════════════
+
+describe('skill-routes - userName fallback (line 583)', () => {
+  let app: any;
+  const mockCreateUserCustomSkill = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({
+      createCategory: jest.fn(),
+      createSkill: jest.fn(),
+      deprecateSkill: jest.fn(),
+      getFullTaxonomy: jest.fn(),
+      searchSkills: jest.fn(),
+      getActiveSkillsByCategory: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/user-custom-skill-service.ts'), () => ({
+      createUserCustomSkill: mockCreateUserCustomSkill,
+      getUserCustomSkills: jest.fn(),
+      getUserCustomSkillById: jest.fn(),
+      updateUserCustomSkill: jest.fn(),
+      deleteUserCustomSkill: jest.fn(),
+      searchUserCustomSkills: jest.fn(),
+      getPendingSkillSuggestions: jest.fn(),
+      updateSkillSuggestionStatus: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/models/skill.ts'), () => ({}));
+    jest.unstable_mockModule(resolveModule('src/models/user-custom-skill.ts'), () => ({}));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'user-1', role: 'freelancer' }; next(); },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      isValidUUID: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/skill-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/skills', router);
+    jest.clearAllMocks();
+  });
+
+  it('L583: POST /custom uses "Unknown User" when email is undefined', async () => {
+    mockCreateUserCustomSkill.mockResolvedValueOnce({ success: true, data: { id: 'cs1' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/skills/custom').send({
+      name: 'My Skill', description: 'A valid description here', yearsOfExperience: 3,
+    });
+    expect(res.status).toBe(201);
+    expect(mockCreateUserCustomSkill).toHaveBeenCalledWith(
+      'user-1',
+      'Unknown User',
+      expect.objectContaining({ name: 'My Skill' }),
+    );
   });
 });

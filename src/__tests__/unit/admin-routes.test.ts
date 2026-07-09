@@ -379,21 +379,26 @@ describe('admin-routes.ts - Branch Coverage', () => {
   const mockSuspendUser = jest.fn<any>();
   const mockUnsuspendUser = jest.fn<any>();
   const mockVerifyUser = jest.fn<any>();
+  const mockGetPlatformStats2 = jest.fn<any>();
+  const mockGetUserManagement2 = jest.fn<any>();
+  const mockGetDisputeManagement2 = jest.fn<any>();
+  const mockGetSystemHealth2 = jest.fn<any>();
+  const mockGetAdminAnalytics2 = jest.fn<any>();
 
   beforeEach(async () => {
     jest.resetModules();
     jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => ({
-      getPlatformStats: jest.fn(),
-      getUserManagement: jest.fn(),
+      getPlatformStats: mockGetPlatformStats2,
+      getUserManagement: mockGetUserManagement2,
       suspendUser: mockSuspendUser,
       unsuspendUser: mockUnsuspendUser,
       verifyUser: mockVerifyUser,
       updateUser: mockUpdateUser,
-      getDisputeManagement: jest.fn(),
-      getSystemHealth: jest.fn(),
+      getDisputeManagement: mockGetDisputeManagement2,
+      getSystemHealth: mockGetSystemHealth2,
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
-      getAdminAnalytics: jest.fn(),
+      getAdminAnalytics: mockGetAdminAnalytics2,
     }));
 
     const express = (await import('express')).default;
@@ -433,5 +438,86 @@ describe('admin-routes.ts - Branch Coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/admin/users/user-1/verify');
     expect(res.status).toBe(200);
+  });
+
+  // Error branch tests
+  it('L38: GET /stats returns 400 on failure', async () => {
+    mockGetPlatformStats2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/admin/stats');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L64: GET /analytics returns 400 on failure', async () => {
+    mockGetAdminAnalytics2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/admin/analytics');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L95: GET /users returns 400 on failure', async () => {
+    mockGetUserManagement2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/admin/users');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L148: PATCH /users/:userId returns 400 on failure', async () => {
+    mockUpdateUser.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/admin/users/user-1').send({ name: 'Test' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L187: POST /users/:userId/suspend returns 400 on failure', async () => {
+    mockSuspendUser.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/user-1/suspend').send({ reason: 'test' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L214: POST /users/:userId/unsuspend returns 400 on failure', async () => {
+    mockUnsuspendUser.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/user-1/unsuspend');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L241: POST /users/:userId/verify returns 400 on failure', async () => {
+    mockVerifyUser.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/admin/users/user-1/verify');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L270: GET /disputes returns 400 on failure', async () => {
+    mockGetDisputeManagement2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/admin/disputes');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L296: GET /system/health returns 400 on failure', async () => {
+    mockGetSystemHealth2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/admin/system/health');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L321: GET /platform-stats returns 400 on failure', async () => {
+    mockGetPlatformStats2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/admin/platform-stats');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
   });
 });

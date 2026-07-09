@@ -348,6 +348,20 @@ describe('transaction-routes branch coverage', () => {
     const res = await request(app).get('/api/transactions/contract/c1');
     expect(res.status).toBe(400);
   });
+
+  it('GET /:id success passes transactionId and userId to service', async () => {
+    mockTransactionService.getTransactionById.mockResolvedValue(ok({ id: 't1', amount: 100 }));
+    const res = await request(app).get('/api/transactions/t1');
+    expect(res.status).toBe(200);
+    expect(mockTransactionService.getTransactionById).toHaveBeenCalledWith('t1', 'user-1');
+  });
+
+  it('GET /contract/:contractId success passes contractId and userId to service', async () => {
+    mockTransactionService.getContractTransactions.mockResolvedValue(ok([{ id: 'tx1' }]));
+    const res = await request(app).get('/api/transactions/contract/c1');
+    expect(res.status).toBe(200);
+    expect(mockTransactionService.getContractTransactions).toHaveBeenCalledWith('c1', 'user-1');
+  });
 });
 
 describe('transaction-routes.ts - Branch Coverage', () => {

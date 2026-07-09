@@ -345,3 +345,53 @@ describe('employer-routes - PATCH /profile description and industry validation',
     expect(res.status).toBe(200);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ?? nullish coalescing fallback branch
+// Line: 289
+// ═══════════════════════════════════════════════════════════════
+
+describe('employer-routes - GET /:id ?? fallback branch', () => {
+  let app: any;
+  const mockGetEmployerProfileByUserId = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (req: any, _res: any, next: any) => {
+        for (const key of Object.keys(req.params)) delete req.params[key];
+        next();
+      },
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/employer-profile-service.ts'), () => ({
+      getEmployerProfileByUserId: mockGetEmployerProfileByUserId,
+      updateEmployerProfile: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      listProjectsByEmployer: jest.fn(),
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/employer-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/employers', router);
+    jest.clearAllMocks();
+  });
+
+  it('L289: GET /:id uses ?? fallback when id param is undefined', async () => {
+    mockGetEmployerProfileByUserId.mockResolvedValueOnce({ success: true, data: { id: 'ep1', companyName: 'Corp' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/employers/user-1');
+    expect(res.status).toBe(200);
+    expect(res.body.companyName).toBe('Corp');
+  });
+});

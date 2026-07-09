@@ -481,6 +481,44 @@ describe('reputation-routes.ts - Branch Coverage', () => {
     const res = await request(app).get('/api/reputation/user-1/reputation-history');
     expect(res.status).toBe(200);
   });
+
+  // Error branch tests for all 5 endpoints
+  it('L389: GET /:userId returns 400 on failure', async () => {
+    mockGetReputation.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L447: GET /:userId/history returns 400 on failure', async () => {
+    mockGetWorkHistory.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/history');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L493: GET /:userId/score returns 400 on failure', async () => {
+    mockGetAggregatedScore.mockResolvedValueOnce({ success: false, error: { message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/score');
+    expect(res.status).toBe(400);
+  });
+
+  it('L527: GET /:userId/breakdown returns 400 on failure', async () => {
+    mockGetReputationBreakdown.mockResolvedValueOnce({ success: false, error: { message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/breakdown');
+    expect(res.status).toBe(400);
+  });
+
+  it('L566: GET /:userId/reputation-history returns 400 on failure', async () => {
+    mockGetReputationHistory.mockResolvedValueOnce({ success: false, error: { message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reputation/user-1/reputation-history');
+    expect(res.status).toBe(400);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

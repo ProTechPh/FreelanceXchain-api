@@ -436,15 +436,18 @@ describe('message-routes.ts - Branch Coverage', () => {
   let app: any;
   const mockGetConversationMessages = jest.fn<any>();
   const mockMarkConversationAsRead = jest.fn<any>();
+  const mockSendMessage2 = jest.fn<any>();
+  const mockGetConversations2 = jest.fn<any>();
+  const mockGetUnreadMessageCount2 = jest.fn<any>();
 
   beforeEach(async () => {
     jest.resetModules();
     jest.unstable_mockModule(resolveModule('src/services/message-service.ts'), () => ({
-      sendMessage: jest.fn(),
-      getConversations: jest.fn(),
+      sendMessage: mockSendMessage2,
+      getConversations: mockGetConversations2,
       getConversationMessages: mockGetConversationMessages,
       markConversationAsRead: mockMarkConversationAsRead,
-      getUnreadMessageCount: jest.fn(),
+      getUnreadMessageCount: mockGetUnreadMessageCount2,
     }));
 
     const express = (await import('express')).default;
@@ -467,5 +470,62 @@ describe('message-routes.ts - Branch Coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).patch('/api/messages/conversations/c1/read');
     expect(res.status).toBe(200);
+  });
+
+  // Error branch tests
+  it('L45: GET /conversations returns 400 on failure', async () => {
+    mockGetConversations2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/messages/conversations');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L92: POST /send returns 400 on failure', async () => {
+    mockSendMessage2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/messages/send').send({ receiverId: 'u2', content: 'Hello' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L132: GET /conversations/:id NOT_FOUND returns 404', async () => {
+    mockGetConversationMessages.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('L132: GET /conversations/:id UNAUTHORIZED returns 403', async () => {
+    mockGetConversationMessages.mockResolvedValueOnce({ success: false, error: { code: 'UNAUTHORIZED', message: 'Not authorized' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(403);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('L132: GET /conversations/:id generic error returns 400', async () => {
+    mockGetConversationMessages.mockResolvedValueOnce({ success: false, error: { code: 'DB_ERROR', message: 'Database error' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/messages/conversations/c1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DB_ERROR');
+  });
+
+  it('L169: PATCH /conversations/:id/read returns 400 on failure', async () => {
+    mockMarkConversationAsRead.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).patch('/api/messages/conversations/c1/read');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L205: GET /unread-count returns 400 on failure', async () => {
+    mockGetUnreadMessageCount2.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/messages/unread-count');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
   });
 });

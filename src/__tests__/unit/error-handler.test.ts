@@ -454,6 +454,22 @@ describe('Error Handler - Extended Tests', () => {
       expect(error.statusCode).toBe(503);
     });
 
+    it('should create blockchainError with default message when called with no argument (line 43)', async () => {
+      const { errors } = await importModule();
+      const error = errors.blockchainError();
+      expect(error.statusCode).toBe(503);
+      expect(error.code).toBe('BLOCKCHAIN_ERROR');
+      expect(error.message).toBe('Blockchain operation failed');
+    });
+
+    it('should create notFound with default resource name when called with no argument (line 36)', async () => {
+      const { errors } = await importModule();
+      const error = errors.notFound();
+      expect(error.statusCode).toBe(404);
+      expect(error.code).toBe('NOT_FOUND');
+      expect(error.message).toBe('Resource not found');
+    });
+
     it('should create validationError with empty details', async () => {
       const { errors } = await importModule();
       const error = errors.validationError([]);
