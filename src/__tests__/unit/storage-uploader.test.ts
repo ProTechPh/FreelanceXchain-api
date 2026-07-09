@@ -193,6 +193,46 @@ describe('storage-uploader', () => {
       );
     });
 
+    it('uses user-scoped permissions for sensitive buckets with userId (line 77)', async () => {
+      mockCreateFile.mockResolvedValue({ $id: 'file-id' });
+
+      await uploadFileToStorage(
+        mockBuffer,
+        'evidence.pdf',
+        'application/pdf',
+        'dispute-evidence',
+        undefined,
+        'user-123'
+      );
+
+      expect(mockCreateFile).toHaveBeenCalledWith(
+        'dispute-evidence',
+        expect.any(String),
+        expect.anything(),
+        ['read("user:user-123")', 'write("user:user-123")']
+      );
+    });
+
+    it('uses user-scoped permissions for milestone-deliverables bucket with userId', async () => {
+      mockCreateFile.mockResolvedValue({ $id: 'file-id' });
+
+      await uploadFileToStorage(
+        mockBuffer,
+        'deliverable.pdf',
+        'application/pdf',
+        'milestone-deliverables',
+        undefined,
+        'user-456'
+      );
+
+      expect(mockCreateFile).toHaveBeenCalledWith(
+        'milestone-deliverables',
+        expect.any(String),
+        expect.anything(),
+        ['read("user:user-456")', 'write("user:user-456")']
+      );
+    });
+
     it('generates unique filename with uuid prefix', async () => {
       mockCreateFile.mockResolvedValue({ $id: 'file-id' });
 

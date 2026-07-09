@@ -429,3 +429,57 @@ describe('File Upload - path traversal protection', () => {
     expect(res.body.error).toBe('Invalid file path');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════
+// ?? and || fallback branch tests
+// Lines: 83, 102, 121, 140
+// ═══════════════════════════════════════════════════════════════
+
+describe('File Upload - ?? and || fallback branches', () => {
+  let app: express.Express;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
+      req.user = { id: 'user-123', userId: 'user-123', email: 'test@test.com', role: 'freelancer' };
+      // Only delete the wildcard param (0) to trigger ?? fallback, keep named params like 'bucket'
+      if ('0' in req.params) delete req.params['0'];
+      next();
+    });
+    app = express();
+    app.use(express.json());
+    app.use('/api/files', fileUploadRouter);
+  });
+
+  it('L83: DELETE should use ?? fallback when filePath param is undefined', async () => {
+    mockDeleteFile.mockResolvedValue({ success: true });
+    const res = await request(app)
+      .delete('/api/files/profile-images/user-123/photo.png');
+    expect(res.status).toBe(200);
+    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123');
+  });
+
+  it('L102: DELETE should use filePath || userId fallback when filePath is empty', async () => {
+    mockDeleteFile.mockResolvedValue({ success: true });
+    const res = await request(app)
+      .delete('/api/files/profile-images/user-123/photo.png');
+    expect(res.status).toBe(200);
+    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123');
+  });
+
+  it('L121: GET signed-url should use ?? fallback when filePath param is undefined', async () => {
+    mockGetSignedUrl.mockResolvedValue({ success: true, url: 'https://signed.example.com/file' });
+    const res = await request(app)
+      .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
+    expect(res.status).toBe(200);
+    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123');
+  });
+
+  it('L140: GET signed-url should use filePath || userId fallback when filePath is empty', async () => {
+    mockGetSignedUrl.mockResolvedValue({ success: true, url: 'https://signed.example.com/file' });
+    const res = await request(app)
+      .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
+    expect(res.status).toBe(200);
+    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123');
+  });
+});

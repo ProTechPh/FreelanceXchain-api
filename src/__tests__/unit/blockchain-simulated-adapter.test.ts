@@ -236,6 +236,41 @@ describe('SimulatedBlockchainAdapter', () => {
       );
       await expect(adapter.getMilestone(ESCROW_ADDR, 0)).rejects.toThrow('Milestone not found');
     });
+
+    it('should default to Pending for unknown milestone status (line 223)', async () => {
+      mockGetEscrowState.mockResolvedValue(
+        makeEscrowState({
+          milestones: [{ id: 'ms-0', amount: BigInt(500), status: 'disputed' }],
+        })
+      );
+
+      const ms = await adapter.getMilestone(ESCROW_ADDR, 0);
+      expect(ms.status).toBe('Pending');
+      expect(ms.amount).toBe(BigInt(500));
+      expect(ms.description).toBe('Milestone 1');
+    });
+
+    it('should return Approved for released milestone status', async () => {
+      mockGetEscrowState.mockResolvedValue(
+        makeEscrowState({
+          milestones: [{ id: 'ms-0', amount: BigInt(500), status: 'released' }],
+        })
+      );
+
+      const ms = await adapter.getMilestone(ESCROW_ADDR, 0);
+      expect(ms.status).toBe('Approved');
+    });
+
+    it('should return Refunded for refunded milestone status', async () => {
+      mockGetEscrowState.mockResolvedValue(
+        makeEscrowState({
+          milestones: [{ id: 'ms-0', amount: BigInt(500), status: 'refunded' }],
+        })
+      );
+
+      const ms = await adapter.getMilestone(ESCROW_ADDR, 0);
+      expect(ms.status).toBe('Refunded');
+    });
   });
 
   describe('getEscrowBalance', () => {

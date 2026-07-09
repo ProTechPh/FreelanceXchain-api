@@ -526,6 +526,59 @@ describe('Auth Routes', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  describe('POST /register - non-string email (line 156)', () => {
+    it('should return 400 when email is a number', async () => {
+      const res = await request(app).post('/api/auth/register').send({ email: 123, password: 'StrongPass1!', role: 'freelancer' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+  });
+
+  describe('POST /register - non-DUPLICATE_EMAIL error (line 254)', () => {
+    it('should use result.message for non-DUPLICATE_EMAIL errors', async () => {
+      mockRegister.mockResolvedValue({ code: 'RATE_LIMITED', message: 'Too many attempts' });
+      const res = await request(app).post('/api/auth/register').send({ email: 'test@test.com', password: 'StrongPass1!', role: 'freelancer' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('REGISTRATION_FAILED');
+      expect(res.body.error.message).toBe('Too many attempts');
+    });
+  });
+
+  describe('POST /refresh - non-TOKEN_EXPIRED error (lines 520-523)', () => {
+    it('should return 400 for non-TOKEN_EXPIRED errors', async () => {
+      mockRefreshTokens.mockResolvedValue({ code: 'INVALID_TOKEN', message: 'Invalid token' });
+      const res = await request(app).post('/api/auth/refresh').send({ refreshToken: 'bad-refresh' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('AUTH_INVALID_TOKEN');
+    });
+  });
+
+  describe('MFA endpoints without Authorization header (lines 1258,1314,1513,1567)', () => {
+    it('POST /mfa/enroll should return 401 when no Authorization header', async () => {
+      const res = await request(app).post('/api/auth/mfa/enroll');
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_MISSING_TOKEN');
+    });
+
+    it('POST /mfa/verify-enrollment should return 401 when no Authorization header', async () => {
+      const res = await request(app).post('/api/auth/mfa/verify-enrollment').send({ factorId: 'factor-1', code: '123456' });
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_MISSING_TOKEN');
+    });
+
+    it('GET /mfa/factors should return 401 when no Authorization header', async () => {
+      const res = await request(app).get('/api/auth/mfa/factors');
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_MISSING_TOKEN');
+    });
+
+    it('POST /mfa/disable should return 401 when no Authorization header', async () => {
+      const res = await request(app).post('/api/auth/mfa/disable').send({ factorId: 'factor-1', otpCode: '123456' });
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_MISSING_TOKEN');
+    });
+  });
 });
 
 
@@ -777,6 +830,43 @@ describe('auth-routes.ts - Additional Coverage (top-level mocks)', () => {
       expect(res.status).toBe(500);
       expect(res.body.error.code).toBe('UPDATE_FAILED');
       expect(res.body.error.message).toBe('Failed to update wallet address');
+    });
+  });
+
+  // Line 688: oauth/register non-AUTH_INVALID_TOKEN error returns 400
+  describe('POST /oauth/register - non-AUTH_INVALID_TOKEN error (line 688)', () => {
+    it('should return 400 for non-AUTH_INVALID_TOKEN errors', async () => {
+      mockRegisterWithAppwrite.mockResolvedValue({ code: 'REGISTRATION_FAILED', message: 'Registration failed' });
+      const res = await request(app).post('/api/auth/oauth/register').send({ accessToken: 'tok', role: 'freelancer' });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // Line 942: oauth/callback with empty message fallback
+  describe('POST /oauth/callback - empty message fallback (line 942)', () => {
+    it('should use fallback message when result.message is empty', async () => {
+      mockLoginWithAppwrite.mockResolvedValue({ code: 'AUTH_INVALID_TOKEN', message: '' });
+      const res = await request(app).post('/api/auth/oauth/callback').send({ access_token: 'bad-token' });
+      expect(res.status).toBe(401);
+      expect(res.body.error.message).toBe('Invalid token');
+    });
+  });
+
+  // Lines 1164-1211: reset-password non-INVALID_TOKEN returns 500, logout non-Bearer header
+  describe('POST /reset-password - non-INVALID_TOKEN error (line 1164)', () => {
+    it('should return 500 for non-INVALID_TOKEN errors', async () => {
+      mockUpdatePassword.mockResolvedValue({ code: 'UPDATE_FAILED', message: 'Failed to update' });
+      const res = await request(app).post('/api/auth/reset-password').send({ accessToken: 'reset-token', password: 'NewStrong1!' });
+      expect(res.status).toBe(500);
+    });
+  });
+
+  describe('POST /logout - non-Bearer Authorization header (lines 1210-1211)', () => {
+    it('should pass undefined token when Authorization is not Bearer', async () => {
+      mockLogout.mockResolvedValue({ success: true });
+      const res = await request(app).post('/api/auth/logout').set('Authorization', 'Token abc123');
+      expect(res.status).toBe(200);
+      expect(mockLogout).toHaveBeenCalledWith(undefined);
     });
   });
 });

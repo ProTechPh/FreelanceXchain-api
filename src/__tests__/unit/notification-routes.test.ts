@@ -211,6 +211,13 @@ describe('notification-routes branch coverage', () => {
     expect(res.status).toBe(400);
   });
 
+  it('PATCH /:id/read success returns notification data', async () => {
+    mockNotificationService.markNotificationAsRead.mockResolvedValue(ok({ id: 'n1', isRead: true, title: 'Test' }));
+    const res = await request(app).patch('/api/notifications/n1/read');
+    expect(res.status).toBe(200);
+    expect(res.body.isRead).toBe(true);
+  });
+
   it('PATCH /read-all success', async () => {
     mockNotificationService.markAllNotificationsAsRead.mockResolvedValue(ok({ count: 3 }));
     const res = await request(app).patch('/api/notifications/read-all');

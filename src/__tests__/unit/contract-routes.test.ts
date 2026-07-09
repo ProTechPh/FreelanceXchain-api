@@ -991,4 +991,30 @@ describe('contract-routes - remaining branch coverage', () => {
     const res = await request(app).get('/api/contracts/c1/disputes');
     expect(res.status).toBe(400);
   });
+
+  it('L314: POST /:id/fund escrow init fails with empty message uses fallback', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', status: 'pending', totalAmount: 100 },
+    });
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', milestones: [] } });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { employerWallet: '0xE', freelancerWallet: '0xF' } });
+    mockInitializeContractEscrow.mockResolvedValueOnce({ success: false, error: { code: 'ESCROW_FAILED', message: '' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(500);
+    expect(res.body.error.message).toBe('Failed to initialize escrow');
+  });
+
+  it('L314: POST /:id/fund escrow init fails with undefined message uses fallback', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', projectId: 'p1', status: 'pending', totalAmount: 100 },
+    });
+    mockGetProjectById.mockResolvedValueOnce({ success: true, data: { id: 'p1', milestones: [] } });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { employerWallet: '0xE', freelancerWallet: '0xF' } });
+    mockInitializeContractEscrow.mockResolvedValueOnce({ success: false, error: { code: 'ESCROW_FAILED' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/fund');
+    expect(res.status).toBe(500);
+    expect(res.body.error.message).toBe('Failed to initialize escrow');
+  });
 });

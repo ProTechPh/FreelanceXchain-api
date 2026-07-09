@@ -411,6 +411,15 @@ describe('project-routes branch coverage', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST / with isRush and rushFeePercentage', async () => {
+    mockProjectService.createProject.mockResolvedValue(ok({ id: 'p1' }));
+    const res = await request(app).post('/api/projects').send({
+      title: 'Valid Title Here', description: 'A valid description here that is long enough', requiredSkills: [{ skillId: '00000000-0000-0000-0000-000000000001' }], budget: 100, deadline: '2026-12-31', isRush: true, rushFeePercentage: 25,
+    });
+    expect(res.status).toBe(201);
+    expect(mockProjectService.createProject).toHaveBeenCalledWith('user-1', expect.objectContaining({ isRush: true, rushFeePercentage: 25 }));
+  });
+
   // PATCH /:id — status ternary branches
   it('PATCH /:id NOT_FOUND returns 404', async () => {
     mockProjectService.updateProject.mockResolvedValue(fail('NOT_FOUND', 'No'));
@@ -426,6 +435,19 @@ describe('project-routes branch coverage', () => {
 
   it('PATCH /:id validation error', async () => {
     const res = await request(app).patch('/api/projects/p1').send({ title: 'ab' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /:id with isRush and rushFeePercentage', async () => {
+    mockProjectService.updateProject.mockResolvedValue(ok({ id: 'p1' }));
+    const res = await request(app).patch('/api/projects/p1').send({ isRush: true, rushFeePercentage: 20 });
+    expect(res.status).toBe(200);
+    expect(mockProjectService.updateProject).toHaveBeenCalledWith('p1', 'user-1', expect.objectContaining({ isRush: true, rushFeePercentage: 20 }));
+  });
+
+  it('PATCH /:id generic error returns 400', async () => {
+    mockProjectService.updateProject.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).patch('/api/projects/p1').send({ title: 'New Title That Is Long' });
     expect(res.status).toBe(400);
   });
 
@@ -463,6 +485,14 @@ describe('project-routes branch coverage', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /:id/milestones generic error returns 400', async () => {
+    mockProjectService.setMilestones.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/projects/p1/milestones').send({
+      milestones: [{ title: 'M1', description: 'Desc', amount: 100, dueDate: '2026-12-31' }],
+    });
+    expect(res.status).toBe(400);
+  });
+
   // GET /:id/proposals — project not found and forbidden branches
   it('GET /:id/proposals project not found', async () => {
     mockProjectService.getProjectById.mockResolvedValue(fail('NOT_FOUND', 'No'));
@@ -495,6 +525,20 @@ describe('project-routes branch coverage', () => {
     mockProposalService.getProposalsByProject.mockResolvedValue(ok({ items: [] }));
     const res = await request(app).get('/api/projects/p1/proposals?limit=5&offset=10');
     expect(res.status).toBe(200);
+  });
+
+  it('GET /my-projects with explicit limit and offset', async () => {
+    mockProjectService.listProjectsByEmployer.mockResolvedValue(ok({ items: [], hasMore: false }));
+    const res = await request(app).get('/api/projects/my-projects?limit=5&offset=10');
+    expect(res.status).toBe(200);
+    expect(mockProjectService.listProjectsByEmployer).toHaveBeenCalledWith('user-1', expect.objectContaining({ limit: 5, offset: 10 }));
+  });
+
+  it('GET /:id/proposals generic error returns 404', async () => {
+    mockProjectService.getProjectById.mockResolvedValue(ok({ employer_id: 'user-1' }));
+    mockProposalService.getProposalsByProject.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).get('/api/projects/p1/proposals');
+    expect(res.status).toBe(404);
   });
 });
 
@@ -1058,6 +1102,21 @@ describe('project-routes - additional line coverage', () => {
         tags: JSON.stringify([' tag1 ', ' tag2 ']),
       });
       expect(res.status).toBe(201);
+    });
+
+    it('creates project with isRush and rushFeePercentage', async () => {
+      mockCreateProjectWA.mockResolvedValue({ success: true, data: { id: 'p-1' } });
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: 100,
+        deadline: '2026-12-31',
+        isRush: true,
+        rushFeePercentage: 15,
+      });
+      expect(res.status).toBe(201);
+      expect(mockCreateProjectWA).toHaveBeenCalledWith('user-1', expect.objectContaining({ isRush: true, rushFeePercentage: 15 }));
     });
 
     it('creates project with files', async () => {

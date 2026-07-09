@@ -374,4 +374,21 @@ describe('favorite-routes.ts - Branch Coverage', () => {
     const res = await request(app).get('/api/favorites/check/project/t1');
     expect(res.status).toBe(200);
   });
+
+  // Error branch tests
+  it('L122: DELETE /:targetType/:targetId returns 400 on failure', async () => {
+    mockRemoveFavorite.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).delete('/api/favorites/project/t1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L159: GET /check/:targetType/:targetId returns 400 on failure', async () => {
+    mockIsFavorited.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/favorites/check/project/t1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
 });

@@ -371,6 +371,13 @@ describe('freelancer-routes branch coverage', () => {
     expect(res.status).toBe(400);
   });
 
+  it('DELETE /profile/skills/:name with encoded URI skill name', async () => {
+    mockFreelancerProfileService.removeSkillFromProfile.mockResolvedValue(ok({ skills: [] }));
+    const res = await request(app).delete('/api/freelancers/profile/skills/C%2B%2B');
+    expect(res.status).toBe(200);
+    expect(mockFreelancerProfileService.removeSkillFromProfile).toHaveBeenCalledWith('user-1', 'C++');
+  });
+
   // POST /profile/experience
   it('POST /profile/experience success', async () => {
     mockFreelancerProfileService.addExperience.mockResolvedValue(ok({ id: 'exp1' }));
@@ -389,6 +396,12 @@ describe('freelancer-routes branch coverage', () => {
     expect(res.status).toBe(404);
   });
 
+  it('POST /profile/experience other error returns 400', async () => {
+    mockFreelancerProfileService.addExperience.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    const res = await request(app).post('/api/freelancers/profile/experience').send({ title: 'Dev', company: 'Co', description: 'A valid desc that is long', startDate: '2025-01-01' });
+    expect(res.status).toBe(400);
+  });
+
   // PATCH /profile/experience/:id
   it('PATCH /profile/experience/:id no fields', async () => {
     const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({});
@@ -398,6 +411,30 @@ describe('freelancer-routes branch coverage', () => {
   it('PATCH /profile/experience/:id validation error', async () => {
     const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ title: 'a', company: 'b', description: 'short' });
     expect(res.status).toBe(400);
+  });
+
+  it('PATCH /profile/experience/:id title-only validation error', async () => {
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ title: 'a' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: 'title' })])
+    );
+  });
+
+  it('PATCH /profile/experience/:id company-only validation error', async () => {
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ company: 'b' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: 'company' })])
+    );
+  });
+
+  it('PATCH /profile/experience/:id description-only validation error', async () => {
+    const res = await request(app).patch('/api/freelancers/profile/experience/exp1').send({ description: 'short' });
+    expect(res.status).toBe(400);
+    expect(res.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ field: 'description' })])
+    );
   });
 
   it('PATCH /profile/experience/:id PROFILE_NOT_FOUND returns 404', async () => {
@@ -459,6 +496,20 @@ describe('freelancer-routes branch coverage', () => {
 
   it('GET /:id profile with null experience', async () => {
     mockFreelancerProfileService.getProfileByUserId.mockResolvedValue(ok({ id: 'fp1', createdAt: '2025-01-01', experience: null }));
+    const res = await request(app).get('/api/freelancers/u1');
+    expect(res.status).toBe(200);
+  });
+
+  it('GET /:id profile with missing createdAt defaults to now', async () => {
+    mockFreelancerProfileService.getProfileByUserId.mockResolvedValue(ok({ id: 'fp1', experience: [{ startDate: '2025-01-01', endDate: '2025-06-01' }] }));
+    const res = await request(app).get('/api/freelancers/u1');
+    expect(res.status).toBe(200);
+    expect(res.body.createdAt).toBeDefined();
+    expect(res.body.experience[0].endDate).toBe('2025-06-01');
+  });
+
+  it('GET /:id profile with undefined profile data', async () => {
+    mockFreelancerProfileService.getProfileByUserId.mockResolvedValue(ok(undefined));
     const res = await request(app).get('/api/freelancers/u1');
     expect(res.status).toBe(200);
   });

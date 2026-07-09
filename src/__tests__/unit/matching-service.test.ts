@@ -2,7 +2,6 @@
 import { jest, describe, it, expect } from '@jest/globals';
 import path from 'node:path';
 import fc from 'fast-check';
-import { sortRecommendationsByScore, sortFreelancerRecommendationsByCombinedScore, calculateMatchScore } from '../../services/matching-service.js';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 const mockFreelancerProfileRepository = { getProfileByUserId: jest.fn<any>(), getAvailableProfiles: jest.fn<any>() };
@@ -39,6 +38,9 @@ jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   queryOne: jest.fn(),
   initializeDatabase: jest.fn(),
 }));
+// Load real ai-client first to capture pure functions before mocking
+const realAiClient = await import(resolveModule('src/services/ai-client.ts'));
+
 const mockGenerateContentFn = jest.fn<any>().mockResolvedValue({ text: '{}' });
 jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
   isAIAvailable: mockIsAIAvailable,
@@ -47,9 +49,27 @@ jest.unstable_mockModule(resolveModule('src/services/ai-client.ts'), () => ({
   isAIError: mockIsAIError,
   analyzeSkillMatch: mockAnalyzeSkillMatch,
   extractSkills: mockExtractSkillsFn,
+  keywordMatchSkills: realAiClient.keywordMatchSkills,
+  keywordExtractSkills: realAiClient.keywordExtractSkills,
+  SKILL_MATCH_PROMPT: '',
+  SKILL_EXTRACTION_PROMPT: '',
+  SKILL_GAP_PROMPT: '',
+  serializeAIRequest: jest.fn(),
+  deserializeAIRequest: jest.fn(),
+  serializeAIResponse: jest.fn(),
+  deserializeAIResponse: jest.fn(),
 }));
 
 import { SkillInfo, ProjectRecommendation, FreelancerRecommendation } from '../../services/ai-types.js';
+
+// Dynamic import — loads matching-service.ts AFTER all mocks are registered.
+// No static import because ESM hoists static imports before jest.unstable_mockModule,
+// causing ai-client.ts to load with real implementations instead of mocks.
+const {
+  sortRecommendationsByScore,
+  sortFreelancerRecommendationsByCombinedScore,
+  calculateMatchScore,
+} = await import(resolveModule('src/services/matching-service.ts'));
 
 // Custom arbitraries for property-based testing
 const skillInfoArbitrary = () =>
@@ -333,84 +353,176 @@ describe('Matching Service - Skill Match Calculation', () => {
 
 
 // ═══════════════════════════════════════════════════════════════
-// Merged from coverage files
+// Branch coverage for matching-service.ts
 // ═══════════════════════════════════════════════════════════════
 
 describe('matching-service – branch coverage', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('L51: freelancerSkillToInfo with null name', async () => {
+  it('L51: freelancerSkillToInfo with null name falls back to empty string', async () => {
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
       id: 'fp1', user_id: 'u1', skills: [{ name: null, years_of_experience: 3 }],
     });
-    mockProjectRepository.getAllOpenProjects.mockResolvedValue({ items: [], total: 0 });
+    mockProjectRepository.getAllOpenProjects.mockResolvedValue({
+      items: [{
+        id: 'p1',
+        required_skills: [{ skill_id: 's1', skill_name: 'React', category_id: 'c1', years_of_experience: 2 }],
+      }],
+      total: 1,
+    });
+    mockIsAIAvailable.mockReturnValue(false);
 
     const { getProjectRecommendations } = await import(resolveModule('src/services/matching-service.ts'));
     const result = await getProjectRecommendations('u1');
-    expect(result).toBeDefined();
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.length).toBe(1);
+    }
   });
 
-  it('L63: projectSkillToInfo with null skill_name', async () => {
+  it('L63,L65: projectSkillToInfo with null skill_name and missing years_of_experience', async () => {
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
       id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }],
     });
-
-    const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
-    const result = await analyzeSkillGaps('u1', {
-      currentSkills: [{ skillId: '', skillName: 'React', categoryId: '', yearsOfExperience: 3 }],
-      projectRequirements: [{ skillId: '', skillName: null as any, categoryId: '', yearsOfExperience: 2 }],
+    mockProjectRepository.getAllOpenProjects.mockResolvedValue({
+      items: [{
+        id: 'p1',
+        required_skills: [{ skill_id: 's1', skill_name: null, category_id: 'c1' }],
+      }],
+      total: 1,
     });
-    expect(result).toBeDefined();
+    mockIsAIAvailable.mockReturnValue(false);
+
+    const { getProjectRecommendations } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await getProjectRecommendations('u1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.length).toBe(1);
+    }
   });
 
-  it('L337,L358,L359: marketDemand with invalid items filtered out', async () => {
+  it('L337: analyzeSkillGaps with null marketDemand defaults to empty array', async () => {
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
       id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }],
     });
+    mockIsAIAvailable.mockReturnValue(true);
+    mockGenerateContentFn.mockResolvedValue('{}');
+    mockParseJsonResponse.mockReturnValue({
+      currentSkills: ['React'],
+      recommendedSkills: ['Node'],
+      marketDemand: null,
+      reasoning: 'test',
+    });
 
     const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
-    const result = await analyzeSkillGaps('u1', {
-      currentSkills: [{ skillId: '', skillName: 'React', categoryId: '', yearsOfExperience: 3 }],
-      projectRequirements: [{ skillId: '', skillName: 'Node', categoryId: '', yearsOfExperience: 2 }],
-    });
-    expect(result).toBeDefined();
+    const result = await analyzeSkillGaps('u1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.marketDemand).toEqual([]);
+    }
   });
 
-  it('L366,L367: falls back to currentSkills and defaults when parseJsonResponse returns empty', async () => {
+  it('L337,L358-L374: analyzeSkillGaps filters invalid marketDemand items and applies defaults', async () => {
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
       id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }],
     });
+    mockIsAIAvailable.mockReturnValue(true);
+    mockGenerateContentFn.mockResolvedValue('response');
+    mockParseJsonResponse.mockReturnValue({
+      currentSkills: null,
+      recommendedSkills: null,
+      marketDemand: [
+        { skillName: 'Node', demandLevel: 'high' },
+        null,
+        { skillName: '', demandLevel: 'invalid' },
+        { skillName: 'Python' },
+      ],
+      reasoning: null,
+    });
 
     const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
-    const result = await analyzeSkillGaps('u1', {
-      currentSkills: [{ skillId: '', skillName: 'React', categoryId: '', yearsOfExperience: 3 }],
-      projectRequirements: [{ skillId: '', skillName: 'Node', categoryId: '', yearsOfExperience: 2 }],
-    });
-    expect(result).toBeDefined();
+    const result = await analyzeSkillGaps('u1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.currentSkills).toEqual(['React']);
+      expect(result.data.recommendedSkills).toEqual([]);
+      expect(result.data.marketDemand).toEqual([
+        { skillName: 'Node', demandLevel: 'high' },
+        { skillName: 'Python', demandLevel: 'medium' },
+      ]);
+      expect(result.data.reasoning).toBe('Analysis completed.');
+    }
   });
 
-  it('L374: catch block returns fallback data when AI throws', async () => {
+  it('analyzeSkillGaps with valid AI response fields uses them directly', async () => {
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
       id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }],
     });
-
-    // The catch block is triggered when parseJsonResponse returns null (which is the default mock)
-    const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
-    const result = await analyzeSkillGaps('u1', {
-      currentSkills: [{ skillId: '', skillName: 'React', categoryId: '', yearsOfExperience: 3 }],
-      projectRequirements: [{ skillId: '', skillName: 'Node', categoryId: '', yearsOfExperience: 2 }],
+    mockIsAIAvailable.mockReturnValue(true);
+    mockGenerateContentFn.mockResolvedValue('{}');
+    mockParseJsonResponse.mockReturnValue({
+      currentSkills: ['React', 'Node'],
+      recommendedSkills: ['Python'],
+      marketDemand: [{ skillName: 'Go', demandLevel: 'high' }],
+      reasoning: 'Custom reasoning',
     });
-    expect(result).toBeDefined();
+
+    const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await analyzeSkillGaps('u1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.currentSkills).toEqual(['React', 'Node']);
+      expect(result.data.recommendedSkills).toEqual(['Python']);
+      expect(result.data.marketDemand).toEqual([{ skillName: 'Go', demandLevel: 'high' }]);
+      expect(result.data.reasoning).toBe('Custom reasoning');
+    }
+  });
+
+  it('L374: analyzeSkillGaps catch block when parseJsonResponse returns null', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }],
+    });
+    mockIsAIAvailable.mockReturnValue(true);
+    mockGenerateContentFn.mockResolvedValue('bad response');
+    mockParseJsonResponse.mockReturnValue(null);
+
+    const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await analyzeSkillGaps('u1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.currentSkills).toEqual(['React']);
+      expect(result.data.recommendedSkills).toEqual([]);
+      expect(result.data.marketDemand).toEqual([]);
+      expect(result.data.reasoning).toContain('Failed to parse');
+    }
+  });
+
+  it('analyzeSkillGaps with AI returning non-string response', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValue({
+      id: 'fp1', user_id: 'u1', skills: [{ name: 'React', years_of_experience: 3 }],
+    });
+    mockIsAIAvailable.mockReturnValue(true);
+    mockGenerateContentFn.mockResolvedValue({ text: '{}' });
+
+    const { analyzeSkillGaps } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await analyzeSkillGaps('u1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.currentSkills).toEqual(['React']);
+      expect(result.data.reasoning).toContain('AI analysis failed');
+    }
   });
 });
 
-// Note: 'Direct Branch Coverage' tests were removed as they were duplicates
-// of tests already covered in the primary test suite above.
+describe('matching-service - extractSkillsFromText', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGetActiveSkills.mockResolvedValue([{ id: 's1', name: 'React', categoryId: 'c1' }]);
+    mockGetReputation.mockResolvedValue({ success: true, data: { score: 50 } });
+    mockGenerateContent.mockResolvedValue({ text: '{}' });
+  });
 
-describe('matching-service - extractSkillsFromText AI success path', () => {
-  beforeEach(() => jest.clearAllMocks());
-
-  it('should use AI result when isAIAvailable returns true and extractSkills succeeds (line 262)', async () => {
+  it('AI success path: assigns aiResult (line 262)', async () => {
     mockIsAIAvailable.mockReturnValue(true);
     mockExtractSkillsFn.mockResolvedValue([
       { skillId: 's1', skillName: 'React', confidence: 0.95 },
@@ -418,38 +530,55 @@ describe('matching-service - extractSkillsFromText AI success path', () => {
     mockIsAIError.mockReturnValue(false);
 
     const { extractSkillsFromText } = await import(resolveModule('src/services/matching-service.ts'));
-    const result = await extractSkillsFromText('I know React');
+    const result = await extractSkillsFromText('I am a React developer');
 
     expect(result.success).toBe(true);
+    expect(mockIsAIAvailable).toHaveBeenCalled();
+    expect(mockExtractSkillsFn).toHaveBeenCalledWith({
+      text: 'I am a React developer',
+      availableSkills: [{ skillId: 's1', skillName: 'React', categoryId: 'c1' }],
+    });
     if (result.success) {
-      expect(result.data.length).toBeGreaterThanOrEqual(0);
+      expect(result.data).toEqual([{ skillId: 's1', skillName: 'React', confidence: 0.95 }]);
     }
   });
 
-});
-
-// ═══════════════════════════════════════════════════════════════
-// Isolated test for extractSkillsFromText AI success path (line 262)
-// Fresh module import with explicit mock setup to cover line 262.
-// Cannot use the parent describe block because its beforeEach
-// calls jest.clearAllMocks() which clears mock implementations.
-// ═══════════════════════════════════════════════════════════════
-
-describe('matching-service - extractSkillsFromText AI success (line 262)', () => {
-  it('should use AI result and not fall back to keyword extraction', async () => {
-    mockGetActiveSkills.mockResolvedValue([{ id: 's1', name: 'React', categoryId: 'c1' }]);
+  it('AI error path: falls back to keyword extraction', async () => {
     mockIsAIAvailable.mockReturnValue(true);
-    mockExtractSkillsFn.mockResolvedValue([
-      { skillId: 's1', skillName: 'React', confidence: 0.95 },
-    ]);
-    mockIsAIError.mockReturnValue(false);
+    mockExtractSkillsFn.mockResolvedValue({ error: 'AI service unavailable' });
+    mockIsAIError.mockReturnValue(true);
 
-    const svc = await import(resolveModule('src/services/matching-service.ts'));
-    const result = await svc.extractSkillsFromText('I am a React developer');
+    const { extractSkillsFromText } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await extractSkillsFromText('I am a React developer');
+
+    expect(result.success).toBe(true);
+  });
+
+  it('AI unavailable path: uses keyword extraction', async () => {
+    mockIsAIAvailable.mockReturnValue(false);
+
+    const { extractSkillsFromText } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await extractSkillsFromText('I am a React developer');
+
+    expect(result.success).toBe(true);
+  });
+
+  it('empty text returns INVALID_INPUT', async () => {
+    const { extractSkillsFromText } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await extractSkillsFromText('');
+
+    expect(result.success).toBe(false);
+    expect(result.error?.code).toBe('INVALID_INPUT');
+  });
+
+  it('no available skills returns empty data', async () => {
+    mockGetActiveSkills.mockResolvedValue([]);
+    const { extractSkillsFromText } = await import(resolveModule('src/services/matching-service.ts'));
+    const result = await extractSkillsFromText('React developer');
 
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.length).toBeGreaterThanOrEqual(0);
+      expect(result.data).toEqual([]);
     }
   });
 });

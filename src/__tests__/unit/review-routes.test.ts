@@ -564,4 +564,45 @@ describe('review-routes.ts - Branch Coverage', () => {
     const res = await request(app).get('/api/reviews/can-review/c1?rateeId=u2');
     expect(res.status).toBe(200);
   });
+
+  // Error branch tests
+  it('L69: GET /:id NOT_FOUND returns 404', async () => {
+    mockGetReviewById.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Review not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/r1');
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('L69: GET /:id generic error returns 400', async () => {
+    mockGetReviewById.mockResolvedValueOnce({ success: false, error: { code: 'DB_ERROR', message: 'Database error' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/r1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('DB_ERROR');
+  });
+
+  it('L88: GET /user/:userId returns 400 on failure', async () => {
+    mockGetUserReviews.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/user/user-1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L106: GET /project/:projectId returns 400 on failure', async () => {
+    mockGetProjectReviews.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/project/p1');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
+
+  it('L125: GET /can-review/:contractId returns 400 on failure', async () => {
+    mockCanUserRate.mockResolvedValueOnce({ success: false, error: { code: 'ERROR', message: 'Failed' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/reviews/can-review/c1?rateeId=u2');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ERROR');
+  });
 });
