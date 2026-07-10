@@ -1298,4 +1298,24 @@ describe('Analytics Service - Additional Branch Coverage', () => {
     expect(growth1).toBeCloseTo(66.67, 1);
     expect(growth2).toBe(100);
   });
+
+  it('L177: getEmployerAnalytics with falsy project budget exercises || 0 branch', async () => {
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'p1', budget: 500, created_at: '2025-01-01' },
+          { $id: 'p2', budget: null, created_at: '2025-02-01' },
+          { $id: 'p3', budget: undefined, created_at: '2025-03-01' },
+        ],
+        total: 3,
+      })
+      .mockResolvedValue({ documents: [], total: 0 });
+
+    const { getEmployerAnalytics } = await import(resolveModule('src/services/analytics-service.ts'));
+    const result = await getEmployerAnalytics('user1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.projectsPosted).toBe(3);
+    }
+  });
 });

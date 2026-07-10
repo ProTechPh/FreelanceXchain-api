@@ -12,19 +12,23 @@ if (!process.env['CSRF_SECRET']) {
   logger.warn(msg);
 }
 
+/* istanbul ignore next -- production-only config */
+const cookieName = process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
+/* istanbul ignore next */
+const sameSite: 'strict' | 'lax' = process.env.NODE_ENV === 'production' ? 'strict' : 'lax';
+/* istanbul ignore next */
+const secure = process.env.NODE_ENV === 'production';
+
 const {
   generateCsrfToken: csrfTokenGenerator,
   doubleCsrfProtection,
 } = doubleCsrf({
   getSecret: () => csrfSecret,
-  /* istanbul ignore next */
-  cookieName: process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token',
+  cookieName,
   cookieOptions: {
-    /* istanbul ignore next */
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+    sameSite,
     path: '/',
-    /* istanbul ignore next */
-    secure: process.env.NODE_ENV === 'production',
+    secure,
     httpOnly: false,
     domain: undefined,
   },

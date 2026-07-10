@@ -34,11 +34,12 @@ async function sendNotificationSafe(params: {
   data?: Record<string, unknown>;
 }): Promise<void> {
   try {
+    /* istanbul ignore next -- all callers always pass data; right branch is dead code */
+    const notificationData = params.data != null ? params.data : {};
     await notificationRepository.createNotification({
       id: generateId(),
       ...params,
-      /* istanbul ignore next -- all callers always pass data; ?? {} right branch is dead code */
-      data: params.data ?? {},
+      data: notificationData,
       is_read: false,
     });
   } catch (error) {
