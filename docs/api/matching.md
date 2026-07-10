@@ -34,6 +34,7 @@ graph LR
 ## Authentication
 
 All endpoints require a Bearer token in the Authorization header:
+
 ```
 Authorization: Bearer <jwt_token>
 ```
@@ -52,11 +53,13 @@ The auth middleware validates the token and attaches user context (userId, email
 Retrieve AI-powered project recommendations for the authenticated freelancer.
 
 **Query Parameters:**
+
 | Parameter | Type | Default | Range | Description |
 |-----------|------|---------|-------|-------------|
 | limit | integer | 10 | 1-50 | Maximum recommendations to return |
 
 **Response:** `200 OK` - Array of ProjectRecommendation objects
+
 ```json
 [
   {
@@ -70,6 +73,7 @@ Retrieve AI-powered project recommendations for the authenticated freelancer.
 ```
 
 **Errors:**
+
 - `401 Unauthorized` - Invalid or missing token
 - `404 Not Found` - Freelancer profile not found
 - `400 Bad Request` - Invalid limit parameter
@@ -81,16 +85,19 @@ Retrieve AI-powered project recommendations for the authenticated freelancer.
 Retrieve AI-powered freelancer recommendations for a project.
 
 **Path Parameters:**
+
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | projectId | string (UUID) | Project identifier |
 
 **Query Parameters:**
+
 | Parameter | Type | Default | Range | Description |
 |-----------|------|---------|-------|-------------|
 | limit | integer | 10 | 1-50 | Maximum recommendations to return |
 
 **Response:** `200 OK` - Array of FreelancerRecommendation objects
+
 ```json
 [
   {
@@ -107,6 +114,7 @@ Retrieve AI-powered freelancer recommendations for a project.
 **Scoring:** `combinedScore = floor(matchScore × 0.7 + reputationScore × 0.3)`
 
 **Errors:**
+
 - `400 Bad Request` - Invalid UUID or limit
 - `401 Unauthorized` - Invalid or missing token
 - `404 Not Found` - Project not found
@@ -118,6 +126,7 @@ Retrieve AI-powered freelancer recommendations for a project.
 Extract skills from text and map them to the platform taxonomy.
 
 **Request Body:**
+
 ```json
 {
   "text": "Looking for a developer with React, Node.js, and PostgreSQL experience"
@@ -125,6 +134,7 @@ Extract skills from text and map them to the platform taxonomy.
 ```
 
 **Response:** `200 OK` - Array of ExtractedSkill objects
+
 ```json
 [
   { "skillId": "<uuid>", "skillName": "React", "confidence": 0.92 },
@@ -133,6 +143,7 @@ Extract skills from text and map them to the platform taxonomy.
 ```
 
 **Errors:**
+
 - `400 Bad Request` - Missing or invalid text
 - `401 Unauthorized` - Invalid or missing token
 
@@ -143,6 +154,7 @@ Extract skills from text and map them to the platform taxonomy.
 Analyze freelancer skills and suggest improvements based on market demand.
 
 **Response:** `200 OK` - SkillGapAnalysis object
+
 ```json
 {
   "currentSkills": ["React", "TypeScript", "Node.js"],
@@ -156,12 +168,14 @@ Analyze freelancer skills and suggest improvements based on market demand.
 ```
 
 **Errors:**
+
 - `401 Unauthorized` - Invalid or missing token
 - `404 Not Found` - Freelancer profile not found
 
 ## Schemas
 
 ### ProjectRecommendation
+
 | Field | Type | Description |
 |-------|------|-------------|
 | projectId | string | Project identifier |
@@ -171,6 +185,7 @@ Analyze freelancer skills and suggest improvements based on market demand.
 | reasoning | string | AI explanation of the score |
 
 ### FreelancerRecommendation
+
 | Field | Type | Description |
 |-------|------|-------------|
 | freelancerId | string | Freelancer identifier |
@@ -181,6 +196,7 @@ Analyze freelancer skills and suggest improvements based on market demand.
 | reasoning | string | AI explanation of the score |
 
 ### ExtractedSkill
+
 | Field | Type | Description |
 |-------|------|-------------|
 | skillId | string | Skill identifier from taxonomy |
@@ -188,14 +204,16 @@ Analyze freelancer skills and suggest improvements based on market demand.
 | confidence | number (0-1) | Extraction confidence level |
 
 ### SkillGapAnalysis
+
 | Field | Type | Description |
 |-------|------|-------------|
 | currentSkills | string[] | Freelancer's current skills |
 | recommendedSkills | string[] | Skills to learn |
-| marketDemand | array | `{ skillName: string, demandLevel: "high" | "medium" | "low" }` |
+| marketDemand | array | `{ skillName: string, demandLevel: "high" \| "medium" \| "low" }` |
 | reasoning | string | AI explanation of recommendations |
 
 ### SkillInfo (AI Input)
+
 | Field | Type | Description |
 |-------|------|-------------|
 | skillId | string | Skill identifier |
@@ -226,6 +244,7 @@ Analyze freelancer skills and suggest improvements based on market demand.
 ## Fallback Behavior
 
 When AI is unavailable or fails:
+
 - **Project/Freelancer recommendations:** Uses keyword-based skill matching
 - **Skill extraction:** Uses keyword-based extraction against active skills
 - **Skill gap analysis:** Returns basic analysis with empty recommendations

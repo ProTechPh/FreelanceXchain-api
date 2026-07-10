@@ -110,12 +110,14 @@ Approve or reject a completed verification.
 
 - **Path Params:** `verificationId` (UUID)
 - **Request Body:**
+
   ```json
   {
     "decision": "approved | rejected",
     "notes": "optional admin notes"
   }
   ```
+
 - **Response:** `200` - Updated KycVerification
 - **Errors:**
   - `400` - Invalid decision
@@ -227,6 +229,7 @@ Didit sends two webhook types:
 Possible webhook statuses: `Not Started`, `In Progress`, `Awaiting User`, `In Review`, `Approved`, `Declined`, `Resubmitted`, `Abandoned`, `Expired`, `Kyc Expired`.
 
 Webhook payloads include a `decision` object (when status is `Approved`/`Declined`/`In Review`) containing:
+
 - Document verification results (type, number, name, DOB, nationality)
 - Liveness check results (method, score, age estimation)
 - Face match results (score, source/target images)
