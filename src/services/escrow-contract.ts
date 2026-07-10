@@ -231,43 +231,46 @@ export async function depositToEscrow(
   amount: bigint,
   fromAddress: string
 ): Promise<TransactionReceipt> {
-  const escrow = await loadEscrow(escrowAddress);
-  if (!escrow) {
-    throw new Error('Escrow contract not found');
-  }
+  // BLF-1.1: Serialize deposits to prevent balance desync on concurrent deposits
+  return withLock(`escrow:${escrowAddress}`, async () => {
+    const escrow = await loadEscrow(escrowAddress);
+    if (!escrow) {
+      throw new Error('Escrow contract not found');
+    }
 
-  if (fromAddress !== escrow.employerAddress) {
-    throw new Error('Only employer can deposit to escrow');
-  }
+    if (fromAddress !== escrow.employerAddress) {
+      throw new Error('Only employer can deposit to escrow');
+    }
 
-  // Submit deposit transaction
-  const tx = await submitTransaction({
-    type: 'escrow_deposit',
-    from: fromAddress,
-    to: escrowAddress,
-    amount,
-    data: {
-      contractId: escrow.contractId,
-    },
+    // Submit deposit transaction
+    const tx = await submitTransaction({
+      type: 'escrow_deposit',
+      from: fromAddress,
+      to: escrowAddress,
+      amount,
+      data: {
+        contractId: escrow.contractId,
+      },
+    });
+
+    // Confirm the transaction
+    const confirmed = await confirmTransaction(tx.id);
+    if (!confirmed) {
+      throw new Error('Failed to confirm deposit transaction');
+    }
+
+    // Update escrow balance in Appwrite
+    escrow.balance += amount;
+    await saveEscrow(escrow);
+
+    return {
+      transactionHash: confirmed.hash!,
+      blockNumber: confirmed.blockNumber!,
+      status: 'success',
+      gasUsed: confirmed.gasUsed!,
+      timestamp: Date.now(),
+    };
   });
-
-  // Confirm the transaction
-  const confirmed = await confirmTransaction(tx.id);
-  if (!confirmed) {
-    throw new Error('Failed to confirm deposit transaction');
-  }
-
-  // Update escrow balance in Appwrite
-  escrow.balance += amount;
-  await saveEscrow(escrow);
-
-  return {
-    transactionHash: confirmed.hash!,
-    blockNumber: confirmed.blockNumber!,
-    status: 'success',
-    gasUsed: confirmed.gasUsed!,
-    timestamp: Date.now(),
-  };
 }
 
 /**

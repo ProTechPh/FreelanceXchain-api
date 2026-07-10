@@ -259,6 +259,7 @@ export async function getProposalsByFreelancer(
 async function validateProposalAcceptance(
   proposalId: string,
   employerId: string,
+  proposalEntity: ProposalEntity,
 ): Promise<
   | { error: ServiceResult<AcceptProposalResult> }
   | {
@@ -272,10 +273,9 @@ async function validateProposalAcceptance(
       rushFeePercentage: number;
     }
 > {
-  const proposalEntity = await proposalRepository.findProposalById(proposalId);
-  if (!proposalEntity) {
-    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Proposal not found' } } };
-  }
+  // NOTE: Caller (acceptProposal) is responsible for verifying proposal existence
+  // and passing a valid proposalEntity. The NOT_FOUND check was removed to avoid
+  // a redundant findProposalById call.
 
   if (proposalEntity.status !== 'pending') {
     return { error: { success: false, error: { code: 'INVALID_STATUS', message: `Cannot accept proposal with status "${proposalEntity.status}"` } } };
@@ -492,15 +492,20 @@ export async function acceptProposal(
   proposalId: string,
   employerId: string
 ): Promise<ServiceResult<AcceptProposalResult>> {
-  // H10: Lock per proposal to prevent concurrent accepts from exceeding freelancer limit
-  return withLock(`proposal-accept:${proposalId}`, async () => {
-    const validated = await validateProposalAcceptance(proposalId, employerId);
+  // BLF-6.1: Lock per PROJECT (not per proposal) to prevent concurrent accepts
+  // of different proposals on the same project from exceeding the freelancer limit
+  const proposalEntity = await proposalRepository.findProposalById(proposalId);
+  if (!proposalEntity) {
+    return { success: false, error: { code: 'NOT_FOUND', message: 'Proposal not found' } };
+  }
+  return withLock(`proposal-accept:project:${proposalEntity.project_id}`, async () => {
+    const validated = await validateProposalAcceptance(proposalId, employerId, proposalEntity);
     if ('error' in validated) return validated.error;
 
-    const { proposalEntity, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
+    const { proposalEntity: validatedProposal, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
 
     const created = await createContractFromProposal(
-      proposalId, proposalEntity, project, employerId, proposalRate, rushFee, totalAmount,
+      proposalId, validatedProposal, project, employerId, proposalRate, rushFee, totalAmount,
     );
     if ('error' in created) return created.error;
 
@@ -512,7 +517,7 @@ export async function acceptProposal(
     // H12: Log non-critical failures but don't silently swallow them
     try {
       await initializeEscrowForContract(
-        createdContract, project, proposalEntity, totalAmount, rushFee, isRush, rushFeePercentage,
+        createdContract, project, validatedProposal, totalAmount, rushFee, isRush, rushFeePercentage,
       );
     } catch (escrowError) {
       logger.error('Escrow initialization failed after contract creation — contract remains pending', {
@@ -525,7 +530,7 @@ export async function acceptProposal(
     try {
       await notificationRepository.createNotification({
         id: generateId(),
-        user_id: proposalEntity.freelancer_id,
+        user_id: validatedProposal.freelancer_id,
         type: 'proposal_accepted',
         title: 'Proposal Accepted',
         message: `Your proposal for "${project.title}" has been accepted!`,

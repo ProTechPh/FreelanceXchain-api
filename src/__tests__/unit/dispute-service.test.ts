@@ -1144,16 +1144,17 @@ describe('Dispute Service - Additional Coverage', () => {
     mockProjectRepository.findProjectById.mockResolvedValueOnce({
       id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
     });
-    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
-    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
-      id: 'd1', status: 'resolved',
-    });
+      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
 
-    const result = await resolveDispute({
-      disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
-      resolvedBy: 'admin-1', resolverRole: 'admin',
-    });
-    expect(result.success).toBe(true);
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('ESCROW_NOT_FOUND');
+        expect(result.error.message).toContain('Escrow record not found');
+      }
   });
 
   it('should bypass escrow when escrow not found and resolve with employer_favor', async () => {
@@ -1168,15 +1169,16 @@ describe('Dispute Service - Additional Coverage', () => {
       id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
     });
     mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
-    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
-      id: 'd1', status: 'resolved',
-    });
 
     const result = await resolveDispute({
       disputeId: 'd1', decision: 'employer_favor', reasoning: 'test',
       resolvedBy: 'admin-1', resolverRole: 'admin',
     });
-    expect(result.success).toBe(true);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('ESCROW_NOT_FOUND');
+      expect(result.error.message).toContain('Escrow record not found');
+    }
   });
 
   it('should return PAYMENT_FAILED when escrow release throws', async () => {
@@ -1616,15 +1618,16 @@ describe('Dispute Service - Coverage Gaps', () => {
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
       mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
-      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
-        id: 'd1', status: 'resolved',
-      });
 
       const result = await resolveDispute({
         disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
         resolvedBy: 'admin-1', resolverRole: 'admin',
       });
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('ESCROW_NOT_FOUND');
+        expect(result.error.message).toContain('Escrow record not found');
+      }
     });
 
     it('L420-428: should bypass escrow and refund when escrow not found + employer_favor', async () => {
@@ -1639,15 +1642,16 @@ describe('Dispute Service - Coverage Gaps', () => {
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
       mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
-      mockDisputeRepository.updateDispute.mockResolvedValueOnce({
-        id: 'd1', status: 'resolved',
-      });
 
       const result = await resolveDispute({
         disputeId: 'd1', decision: 'employer_favor', reasoning: 'test',
         resolvedBy: 'admin-1', resolverRole: 'admin',
       });
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('ESCROW_NOT_FOUND');
+        expect(result.error.message).toContain('Escrow record not found');
+      }
     });
 
     it('L445-451: should return PAYMENT_FAILED when escrow operation throws', async () => {

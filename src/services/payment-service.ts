@@ -68,7 +68,7 @@ async function createPaymentRecord(params: {
   // Validate amount to prevent negative/zero/NaN payments
   if (typeof params.amount !== 'number' || !isFinite(params.amount) || params.amount <= 0) {
     logger.error('Invalid payment amount rejected', { amount: params.amount, contractId: params.contractId });
-    return;
+    throw new Error(`Invalid payment amount: ${params.amount}`);
   }
   try {
     await paymentRepository.create({
@@ -85,6 +85,7 @@ async function createPaymentRecord(params: {
     });
   } catch (error) {
     logger.error('Failed to create payment record', { error });
+    throw error;
   }
 }
 
@@ -135,6 +136,8 @@ export async function requestMilestoneCompletion(
   milestoneId: string,
   freelancerId: string
 ): Promise<ServiceResult<MilestoneCompletionResult>> {
+  // BLF-2.2: Serialize concurrent submissions to prevent double blockchain registry entry
+  return withLock(`milestone-submit:${milestoneId}`, async () => {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -259,6 +262,7 @@ export async function requestMilestoneCompletion(
       notificationSent: true,
     },
   };
+  }); // BLF-2.2: end withLock
 }
 
 
@@ -407,9 +411,17 @@ async function releaseEscrowPaymentWithSaga(
         await projectRepository.updateProject(project.id, { milestones: rollbackMilestones });
       }
     } catch (rollbackError) {
-      logger.error('CRITICAL: Failed to rollback milestone status after payment failure', {
+      // BLF-2.4: CRITICAL — milestone is now stuck in 'releasing' with no automated recovery.
+      // A periodic recovery job should detect milestones in 'releasing' status for >N minutes
+      // and either retry the release or roll back to 'submitted' with admin notification.
+      logger.error('CRITICAL: Failed to rollback milestone status after payment failure. ' +
+        'Milestone may be stuck in "releasing" status. Manual intervention required.', {
         milestoneId,
+        contractId,
+        projectId: contract.projectId,
+        milestoneIndex,
         error: rollbackError instanceof Error ? rollbackError.message : String(rollbackError),
+        actionRequired: 'Check milestone status in DB. If stuck in "releasing", manually revert to "submitted" or retry escrow release.',
       });
     }
     return {
@@ -534,6 +546,9 @@ export async function disputeMilestone(
   initiatorId: string,
   reason: string
 ): Promise<ServiceResult<MilestoneDisputeResult>> {
+  // BLF-2.1: Serialize concurrent dispute+approve attempts using the same lock key
+  // as approveMilestone to prevent the race where both succeed simultaneously
+  return withLock(`milestone-approve:${milestoneId}`, async () => {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -653,6 +668,7 @@ export async function disputeMilestone(
       disputeCreated: true,
     },
   };
+  }); // BLF-2.1: end withLock
 }
 
 

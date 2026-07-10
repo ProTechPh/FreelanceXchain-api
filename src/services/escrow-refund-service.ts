@@ -19,6 +19,8 @@ import { withLock } from '../utils/async-lock.js';
 export async function createRefundRequest(
   input: CreateRefundRequestInput
 ): Promise<ServiceResult<RefundRequest>> {
+  // BLF-3.1: Serialize refund creation per contract to prevent duplicate pending requests
+  return withLock(`refund-create:${input.contractId}`, async () => {
   try {
     // Get contract details
     const contract = await contractRepository.getContractById(input.contractId);
@@ -144,6 +146,7 @@ export async function createRefundRequest(
       },
     };
   }
+  }); // BLF-3.1: end withLock
 }
 
 /**
@@ -351,6 +354,8 @@ export async function approveRefund(
 export async function rejectRefund(
   input: RejectRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
+  // BLF-3.2: Serialize with approveRefund using same lock key to prevent concurrent approve+reject
+  return withLock(`refund-approve:${input.refundId}`, async () => {
   try {
     // Get refund request with contract data
     const refundData = await refundRequestRepository.findWithContract(input.refundId);
@@ -438,6 +443,7 @@ export async function rejectRefund(
       },
     };
   }
+  }); // BLF-3.2: end withLock
 }
 
 /**

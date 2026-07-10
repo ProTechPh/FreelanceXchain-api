@@ -418,6 +418,65 @@ describe('Milestone Service', () => {
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('DATABASE_ERROR');
     });
+
+    // BLF-8.1: userId verification in getContractMilestones
+    it('should return NOT_FOUND when contract does not exist for userId check', async () => {
+      const { getContractMilestones } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce(null);
+
+      const result = await getContractMilestones('contract-1', 'user-1');
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('should return UNAUTHORIZED when user is not a contract party', async () => {
+      const { getContractMilestones } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'contract-1',
+        employer_id: 'emp-1',
+        freelancer_id: 'fl-1',
+      });
+
+      const result = await getContractMilestones('contract-1', 'random-user');
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('should return milestones when user is employer party', async () => {
+      const { getContractMilestones } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'contract-1',
+        employer_id: 'emp-1',
+        freelancer_id: 'fl-1',
+      });
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([{ id: 'ms-1' }]);
+
+      const result = await getContractMilestones('contract-1', 'emp-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toHaveLength(1);
+    });
+
+    it('should return milestones when user is freelancer party', async () => {
+      const { getContractMilestones } = await importModule();
+
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'contract-1',
+        employer_id: 'emp-1',
+        freelancer_id: 'fl-1',
+      });
+      mockMilestoneRepository.findByContract.mockResolvedValueOnce([{ id: 'ms-1' }]);
+
+      const result = await getContractMilestones('contract-1', 'fl-1');
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data).toHaveLength(1);
+    });
   });
 });
 

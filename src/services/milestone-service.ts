@@ -27,10 +27,11 @@ export async function getMilestoneById(milestoneId: string, userId?: string): Pr
       };
     }
 
-    // M15: Verify user is a party to the contract before returning milestone details
+    // BLF-8.2: Verify user is a party to the contract before returning milestone details
+    // Deny access when contract is null (prevents bypass via deleted contract)
     if (userId) {
       const contract = await contractRepository.getContractById(milestone.contract_id);
-      if (contract && contract.employer_id !== userId && contract.freelancer_id !== userId) {
+      if (!contract || (contract.employer_id !== userId && contract.freelancer_id !== userId)) {
         return {
           success: false,
           error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this milestone' },
@@ -270,8 +271,25 @@ export async function rejectMilestone(
 /**
  * Get milestones for contract
  */
-export async function getContractMilestones(contractId: string): Promise<ServiceResult<Milestone[]>> {
+export async function getContractMilestones(contractId: string, userId?: string): Promise<ServiceResult<Milestone[]>> {
   try {
+    // BLF-8.1: Verify user is a party to the contract before returning milestones
+    if (userId) {
+      const contract = await contractRepository.getContractById(contractId);
+      if (!contract) {
+        return {
+          success: false,
+          error: { code: 'NOT_FOUND', message: 'Contract not found' },
+        };
+      }
+      if (contract.employer_id !== userId && contract.freelancer_id !== userId) {
+        return {
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view these milestones' },
+        };
+      }
+    }
+
     const milestones = await milestoneRepository.findByContract(contractId);
 
     return { success: true, data: milestones as unknown as Milestone[] };

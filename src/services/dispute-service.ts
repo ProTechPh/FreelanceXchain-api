@@ -417,16 +417,21 @@ async function processDisputeEscrowPayment(
   try {
     const escrow = await getEscrowByContractId(disputeEntity.contract_id);
     if (!escrow) {
-      logger.warn('Escrow record not found in blockchain_escrows. Bypassing smart contract payment and aggressively marking dispute resolved in DB.', {
+      // BLF-10.1: Do NOT bypass payment when escrow is missing — return an error instead.
+      // Bypassing would mark the dispute resolved without moving funds, causing financial loss.
+      logger.error('Escrow record not found in blockchain_escrows. Cannot process dispute payment.', {
         disputeId,
         contractId: disputeEntity.contract_id,
       });
-      // Bypass the payment by proceeding directly to updating the milestone status below
-      if (decision === 'freelancer_favor') {
-        milestoneEntity.status = 'approved';
-      } else if (decision === 'employer_favor') {
-        milestoneEntity.status = 'refunded';
-      }
+      return {
+        error: {
+          success: false,
+          error: {
+            code: 'ESCROW_NOT_FOUND',
+            message: 'Escrow record not found. Cannot process dispute payment. Please ensure the contract has been funded.',
+          },
+        },
+      };
     } else {
       // Use the employer's address stored in the escrow for authorization
       const employerAddress = escrow.employerAddress;

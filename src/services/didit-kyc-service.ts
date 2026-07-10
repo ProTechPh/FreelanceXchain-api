@@ -526,6 +526,17 @@ export async function adminReviewVerification(
     };
   }
 
+  // BLF-7.1: Prevent admin from approving their own KYC to maintain audit integrity
+  if (verification.user_id === adminUserId) {
+    return {
+      success: false,
+      error: {
+        code: 'SELF_REVIEW_FORBIDDEN',
+        message: 'Admins cannot review their own KYC verification',
+      },
+    };
+  }
+
   const updates: Partial<KycVerification> = {
     status: decision,
     reviewed_by: adminUserId,

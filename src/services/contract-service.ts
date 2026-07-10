@@ -5,6 +5,7 @@ import { disputeRepository } from '../repositories/dispute-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import { withLock } from '../utils/async-lock.js';
 
 export type ContractServiceResult<T> = ServiceResult<T>;
 export type ContractServiceError = ServiceError;
@@ -62,7 +63,8 @@ export async function getContractsByProject(
 export async function updateContractStatus(
   contractId: string,
   status: ContractStatus,
-  userId?: string,
+  userId: string,
+  userRole?: string,
 ): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.getContractById(contractId);
   if (!entity) {
@@ -72,24 +74,44 @@ export async function updateContractStatus(
     };
   }
 
-  // H2: Verify the caller is a contract party (unless called internally without userId)
-  if (userId && entity.employer_id !== userId && entity.freelancer_id !== userId) {
+  // BLF-5.1: Always enforce authorization — userId is now required
+  if (entity.employer_id !== userId && entity.freelancer_id !== userId && userRole !== 'admin') {
     return {
       success: false,
       error: { code: 'UNAUTHORIZED', message: 'Only contract parties can update contract status' },
     };
   }
 
-  const validTransitions: Record<ContractStatus, ContractStatus[]> = {
-    pending: ['active', 'cancelled'],
-    active: ['completed', 'disputed', 'cancelled'],
-    disputed: ['resolved', 'cancelled'],  // must go through 'resolved' before returning to 'active'
+  // BLF-5.3: Role-based transition restrictions
+  const isEmployer = entity.employer_id === userId;
+  const isFreelancer = entity.freelancer_id === userId;
+
+  const validTransitions: Record<ContractStatus, { status: ContractStatus; allowedRoles: ('employer' | 'freelancer' | 'admin')[] }[]> = {
+    pending: [
+      { status: 'active', allowedRoles: ['employer'] },
+      { status: 'cancelled', allowedRoles: ['employer', 'freelancer'] },
+    ],
+    active: [
+      { status: 'completed', allowedRoles: ['employer'] },
+      { status: 'disputed', allowedRoles: ['employer', 'freelancer'] },
+      { status: 'cancelled', allowedRoles: ['employer'] },
+    ],
+    disputed: [
+      { status: 'resolved', allowedRoles: ['admin'] },
+      { status: 'cancelled', allowedRoles: ['admin'] },
+    ],
     completed: [],
     cancelled: [],
-    resolved: ['active', 'completed', 'cancelled'],
+    resolved: [
+      { status: 'active', allowedRoles: ['admin'] },
+      { status: 'completed', allowedRoles: ['employer'] },
+      { status: 'cancelled', allowedRoles: ['admin'] },
+    ],
   };
 
-  if (!validTransitions[entity.status].includes(status)) {
+  const allowed = validTransitions[entity.status];
+  const transition = allowed.find(t => t.status === status);
+  if (!transition) {
     return {
       success: false,
       error: {
@@ -99,6 +121,18 @@ export async function updateContractStatus(
     };
   }
 
+  const callerRole = isEmployer ? 'employer' : isFreelancer ? 'freelancer' : userRole;
+  if (!transition.allowedRoles.includes(callerRole as 'employer' | 'freelancer' | 'admin')) {
+    return {
+      success: false,
+      error: {
+        code: 'UNAUTHORIZED',
+        message: `Only ${transition.allowedRoles.join(' or ')} can perform this transition`,
+      },
+    };
+  }
+
+  // Extra check: disputed→resolved requires no open disputes
   if (entity.status === 'disputed' && status === 'resolved') {
     const openDisputes = await disputeRepository.getDisputesByContract(contractId);
     const hasOpenDisputes = openDisputes.items.some(d => d.status === 'open' || d.status === 'under_review');
@@ -127,7 +161,7 @@ export async function updateContractStatus(
 export async function setEscrowAddress(
   contractId: string,
   escrowAddress: string,
-  userId?: string,
+  userId: string,
 ): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.getContractById(contractId);
   if (!entity) {
@@ -145,7 +179,8 @@ export async function setEscrowAddress(
     };
   }
 
-  if (userId && entity.employer_id !== userId && entity.freelancer_id !== userId) {
+  // BLF-5.2: Always enforce authorization — userId is now required
+  if (entity.employer_id !== userId && entity.freelancer_id !== userId) {
     return {
       success: false,
       error: { code: 'UNAUTHORIZED', message: 'Only contract parties can set escrow address' },
@@ -181,6 +216,8 @@ export async function getContractByProposalId(
  * Only allowed for contracts that haven't been funded yet (status = 'pending')
  */
 export async function cancelPendingContract(contractId: string, userId: string): Promise<{ success: boolean; error?: any }> {
+  // BLF-5.4: Serialize concurrent cancel requests to prevent duplicate side effects
+  return withLock(`contract-cancel:${contractId}`, async () => {
   const contract = await contractRepository.getContractById(contractId);
   
   if (!contract) {
@@ -216,6 +253,7 @@ export async function cancelPendingContract(contractId: string, userId: string):
   }
 
   return { success: true };
+  }); // BLF-5.4: end withLock
 }
 
 /**
