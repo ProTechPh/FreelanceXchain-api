@@ -930,6 +930,29 @@ describe('auth-service comprehensive coverage', () => {
         message: 'Failed to update password',
       });
     });
+
+    // BLF-4.2: deleteSessions failure should not prevent password update
+    it('should still succeed when deleteSessions throws a non-Error value', async () => {
+      global.mockAppwriteAccount.deleteSessions = jest.fn().mockRejectedValueOnce('string-error');
+
+      const result = await updatePassword('token', 'NewPass1!');
+      expect(result).toEqual({ success: true });
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Failed to invalidate sessions after password change',
+        expect.objectContaining({ error: 'string-error' }),
+      );
+    });
+
+    it('should still succeed when deleteSessions throws an Error instance', async () => {
+      global.mockAppwriteAccount.deleteSessions = jest.fn().mockRejectedValueOnce(new Error('session failure'));
+
+      const result = await updatePassword('token', 'NewPass1!');
+      expect(result).toEqual({ success: true });
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Failed to invalidate sessions after password change',
+        expect.objectContaining({ error: 'session failure' }),
+      );
+    });
   });
 
   // ----------------------------------------------------------

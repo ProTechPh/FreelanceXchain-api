@@ -325,8 +325,10 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
   const { contractRepository } = await import('../repositories/contract-repository.js');
   await contractRepository.updateContract(contractId, { escrow_address: escrowAddress });
 
-  // Activate the contract
-  const statusResult = await updateContractStatus(contractId, 'active');
+  // BLF-12.1: Pass userId and role to enforce authorization
+  // Non-null assertions are safe here: authMiddleware guarantees req.user is populated,
+  // and the guard at line 223 already returned 401 if userId was missing.
+  const statusResult = await updateContractStatus(contractId, 'active', req.user!.userId, req.user!.role);
   if (!statusResult.success) {
     if (statusResult.error.code === 'INVALID_STATUS_TRANSITION') {
       const latestContractResult = await getContractById(contractId);

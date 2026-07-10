@@ -57,7 +57,16 @@ router.post(
         filename: file.originalname,
         mimetype: file.mimetype,
       };
-      if (folder) uploadOptions.folder = folder;
+      // BLF-11.1: Sanitize folder parameter to prevent path traversal
+      if (folder) {
+        const sanitizedFolder = folder
+          .replace(/\.\./g, '')           // Remove traversal sequences
+          .replace(/[^a-zA-Z0-9/_-]/g, '') // Only allow safe characters
+          .replace(/^\/+|\/+$/g, '');       // Trim leading/trailing slashes
+        if (sanitizedFolder) {
+          uploadOptions.folder = sanitizedFolder;
+        }
+      }
       const result = await uploadFile(uploadOptions);
 
       if (!result.success) {

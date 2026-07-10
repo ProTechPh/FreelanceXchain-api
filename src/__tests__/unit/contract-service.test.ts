@@ -146,10 +146,10 @@ describe('Contract Service - Property-Based Tests', () => {
    * Updating a contract's status shall persist the new status.
    */
   it('Property 42: Contract status update', async () => {
-    const contract = createTestContract({ status: 'pending' });
+    const contract = createTestContract({ status: 'pending', employer_id: 'employer-1' });
     contractStore.set(contract.id, contract);
 
-    const updated = await updateContractStatus(contract.id, 'active');
+    const updated = await updateContractStatus(contract.id, 'active', 'employer-1');
 
     expect(updated.success).toBe(true);
     if (updated.success) {
@@ -171,11 +171,11 @@ describe('Contract Service - Property-Based Tests', () => {
    * Setting an escrow address for a contract shall persist the address.
    */
   it('Property 43: Escrow address assignment', async () => {
-    const contract = createTestContract({ escrow_address: '', status: 'pending' });
+    const contract = createTestContract({ escrow_address: '', status: 'pending', employer_id: 'employer-1' });
     contractStore.set(contract.id, contract);
     const escrowAddress = '0x1234567890123456789012345678901234567890';
 
-    const updated = await setEscrowAddress(contract.id, escrowAddress);
+    const updated = await setEscrowAddress(contract.id, escrowAddress, 'employer-1');
 
     expect(updated.success).toBe(true);
     if (updated.success) {
@@ -276,10 +276,10 @@ describe('Contract Service - Unit Tests', () => {
   });
 
   it('should update contract status', async () => {
-    const contract = createTestContract({ status: 'pending' });
+    const contract = createTestContract({ status: 'pending', employer_id: 'employer-1' });
     contractStore.set(contract.id, contract);
 
-    const updated = await updateContractStatus(contract.id, 'active');
+    const updated = await updateContractStatus(contract.id, 'active', 'employer-1');
 
     expect(updated.success).toBe(true);
     if (updated.success) {
@@ -289,7 +289,7 @@ describe('Contract Service - Unit Tests', () => {
   });
 
   it('should return error when updating non-existent contract', async () => {
-    const result = await updateContractStatus('non-existent-id', 'active');
+    const result = await updateContractStatus('non-existent-id', 'active', 'employer-1');
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.code).toBe('NOT_FOUND');
@@ -297,11 +297,11 @@ describe('Contract Service - Unit Tests', () => {
   });
 
   it('should set escrow address', async () => {
-    const contract = createTestContract({ escrow_address: '', status: 'pending' });
+    const contract = createTestContract({ escrow_address: '', status: 'pending', employer_id: 'employer-1' });
     contractStore.set(contract.id, contract);
     const escrowAddress = '0xABCDEF1234567890123456789012345678901234';
 
-    const updated = await setEscrowAddress(contract.id, escrowAddress);
+    const updated = await setEscrowAddress(contract.id, escrowAddress, 'employer-1');
 
     expect(updated.success).toBe(true);
     if (updated.success) {
@@ -351,6 +351,24 @@ describe('Contract Service - Coverage Tests', () => {
     userStore.clear();
   });
 
+  // --- updateContractStatus: role-based UNAUTHORIZED (line 126) ---
+  it('should return UNAUTHORIZED when party attempts transition they are not allowed for', async () => {
+    const contract = createTestContract({
+      status: 'pending',
+      employer_id: 'emp-1',
+      freelancer_id: 'fl-1',
+    });
+    contractStore.set(contract.id, contract);
+
+    // Freelancer is a valid party, but pending→active is employer-only
+    const result = await updateContractStatus(contract.id, 'active', 'fl-1', 'freelancer');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('UNAUTHORIZED');
+    }
+  });
+
   // --- updateContractStatus: UNAUTHORIZED (line 77) ---
   it('should return UNAUTHORIZED when userId is not a contract party', async () => {
     const contract = createTestContract({
@@ -370,10 +388,10 @@ describe('Contract Service - Coverage Tests', () => {
 
   // --- updateContractStatus: INVALID_STATUS_TRANSITION (line 93) ---
   it('should return INVALID_STATUS_TRANSITION for invalid transition', async () => {
-    const contract = createTestContract({ status: 'completed' });
+    const contract = createTestContract({ status: 'completed', employer_id: 'employer-1' });
     contractStore.set(contract.id, contract);
 
-    const result = await updateContractStatus(contract.id, 'active');
+    const result = await updateContractStatus(contract.id, 'active', 'employer-1');
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -383,7 +401,7 @@ describe('Contract Service - Coverage Tests', () => {
 
   // --- updateContractStatus: OPEN_DISPUTES_EXIST (lines 103-106) ---
   it('should return OPEN_DISPUTES_EXIST when resolving contract with open disputes', async () => {
-    const contract = createTestContract({ status: 'disputed' });
+    const contract = createTestContract({ status: 'disputed', employer_id: 'emp-1' });
     contractStore.set(contract.id, contract);
 
     disputeStore.set('dispute-1', {
@@ -399,7 +417,7 @@ describe('Contract Service - Coverage Tests', () => {
       updated_at: new Date().toISOString(),
     });
 
-    const result = await updateContractStatus(contract.id, 'resolved');
+    const result = await updateContractStatus(contract.id, 'resolved', 'admin-1', 'admin');
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -408,7 +426,7 @@ describe('Contract Service - Coverage Tests', () => {
   });
 
   it('should return OPEN_DISPUTES_EXIST when resolving contract with under_review disputes', async () => {
-    const contract = createTestContract({ status: 'disputed' });
+    const contract = createTestContract({ status: 'disputed', employer_id: 'emp-1' });
     contractStore.set(contract.id, contract);
 
     disputeStore.set('dispute-2', {
@@ -424,7 +442,7 @@ describe('Contract Service - Coverage Tests', () => {
       updated_at: new Date().toISOString(),
     });
 
-    const result = await updateContractStatus(contract.id, 'resolved');
+    const result = await updateContractStatus(contract.id, 'resolved', 'admin-1', 'admin');
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -434,12 +452,12 @@ describe('Contract Service - Coverage Tests', () => {
 
   // --- updateContractStatus: UPDATE_FAILED (line 118) ---
   it('should return UPDATE_FAILED when contract status update returns null', async () => {
-    const contract = createTestContract({ status: 'pending' });
+    const contract = createTestContract({ status: 'pending', employer_id: 'employer-1' });
     contractStore.set(contract.id, contract);
 
     mockContractRepo.updateContract.mockReturnValueOnce(Promise.resolve(null));
 
-    const result = await updateContractStatus(contract.id, 'active');
+    const result = await updateContractStatus(contract.id, 'active', 'employer-1');
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -449,7 +467,7 @@ describe('Contract Service - Coverage Tests', () => {
 
   // --- setEscrowAddress: NOT_FOUND (line 134) ---
   it('should return NOT_FOUND when setting escrow on non-existent contract', async () => {
-    const result = await setEscrowAddress('non-existent', '0x1234');
+    const result = await setEscrowAddress('non-existent', '0x1234', 'employer-1');
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -459,10 +477,10 @@ describe('Contract Service - Coverage Tests', () => {
 
   // --- setEscrowAddress: INVALID_STATUS (line 142) ---
   it('should return INVALID_STATUS when setting escrow on non-pending contract', async () => {
-    const contract = createTestContract({ status: 'active' });
+    const contract = createTestContract({ status: 'active', employer_id: 'employer-1' });
     contractStore.set(contract.id, contract);
 
-    const result = await setEscrowAddress(contract.id, '0x1234');
+    const result = await setEscrowAddress(contract.id, '0x1234', 'employer-1');
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -489,12 +507,12 @@ describe('Contract Service - Coverage Tests', () => {
 
   // --- setEscrowAddress: UPDATE_FAILED (line 157) ---
   it('should return UPDATE_FAILED when escrow update returns null', async () => {
-    const contract = createTestContract({ status: 'pending' });
+    const contract = createTestContract({ status: 'pending', employer_id: 'employer-1' });
     contractStore.set(contract.id, contract);
 
     mockContractRepo.updateContract.mockReturnValueOnce(Promise.resolve(null));
 
-    const result = await setEscrowAddress(contract.id, '0x1234');
+    const result = await setEscrowAddress(contract.id, '0x1234', 'employer-1');
 
     expect(result.success).toBe(false);
     if (!result.success) {

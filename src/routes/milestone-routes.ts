@@ -234,7 +234,8 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: R
 router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const contractId = req.params['contractId'] ?? '';
-    const result = await getContractMilestones(contractId);
+    // BLF-9.1: Pass userId to enforce ownership check
+    const result = await getContractMilestones(contractId, req.user?.userId);
 
     if (!result.success) {
       const message = 'error' in result ? result.error.message : 'Failed to get milestones';

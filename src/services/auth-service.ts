@@ -137,8 +137,13 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
         walletAddress: publicUser.wallet_address,
         createdAt: publicUser.created_at,
       },
-      accessToken: session.secret, // Appwrite session secret as access token
-      refreshToken: session.secret, // Same for now, can be enhanced
+      // BLF-4.1: KNOWN LIMITATION — accessToken and refreshToken are the same Appwrite session secret.
+      // This means: (1) every access-token leak also leaks the refresh token, (2) no token rotation
+      // on refresh. A proper fix requires issuing short-lived JWTs as access tokens and keeping
+      // the Appwrite session secret solely as the refresh token. This is a known trade-off for
+      // using Appwrite-managed sessions without a custom JWT layer.
+      accessToken: session.secret,
+      refreshToken: session.secret,
     };
   } catch (error: any) {
     // Compensate: if Appwrite user was created but session failed, delete the Appwrite user
@@ -355,10 +360,10 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
     return { success: true };
   } catch (error: any) {
     logger.error('Password reset request failed', { error: error.message, email });
-    
+    // BLF-4.3: Return generic message to prevent user enumeration via error message differences
     return {
       code: 'INTERNAL_ERROR',
-      message: error.message || 'Failed to send password reset email',
+      message: 'Failed to send password reset email',
     };
   }
 }
@@ -376,10 +381,21 @@ export async function updatePassword(accessToken: string, newPassword: string): 
       password: newPassword
     });
 
+    // BLF-4.2: Invalidate all other sessions after password change to prevent
+    // stolen session tokens from remaining valid after a password reset.
+    try {
+      await account.deleteSessions();
+    } catch (sessionError) {
+      // Non-critical: password was already changed. Log but don't fail the operation.
+      logger.warn('Failed to invalidate sessions after password change', {
+        error: sessionError instanceof Error ? sessionError.message : String(sessionError),
+      });
+    }
+
     return { success: true };
   } catch (error: any) {
     logger.error('Password update failed', { error: error.message });
-    
+
     return {
       code: 'INTERNAL_ERROR',
       message: 'Failed to update password',

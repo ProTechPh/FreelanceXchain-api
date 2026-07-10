@@ -416,6 +416,14 @@ describe('didit-kyc-service', () => {
       if (!result.success) expect(result.error.code).toBe('INVALID_STATUS');
     });
 
+    // BLF-7.1: Prevent admin self-review
+    it('should return SELF_REVIEW_FORBIDDEN when admin reviews own KYC', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed', user_id: 'admin-1' }));
+      const result = await adminReviewVerification('kyc-1', 'admin-1', 'approved');
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('SELF_REVIEW_FORBIDDEN');
+    });
+
     it('should return UPDATE_FAILED when update returns null', async () => {
       mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed' }));
       mockUpdateKyc.mockResolvedValue(null);
