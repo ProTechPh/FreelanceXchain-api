@@ -6,7 +6,6 @@
 import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
 import type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
-import { RepositoryError } from './types.js';
 
 export type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
 export { RepositoryError } from './types.js';
@@ -135,7 +134,6 @@ export class BaseRepository<T extends BaseEntity> {
     const allDocs: Record<string, any>[] = [];
     let lastId: string | undefined;
 
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const queries = [...baseQueries, Query.limit(pageSize)];
       if (lastId) {

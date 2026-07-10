@@ -621,9 +621,7 @@ describe('Scheduler Service - Additional Branch Coverage', () => {
     const originalExecuteSearches = mockSavedSearchService.executeSavedSearchNotifications;
 
     // Just test the filter parsing logic directly
-    const filters = typeof '{"skills":["React"]}' === 'string'
-      ? JSON.parse('{"skills":["React"]}')
-      : '{"skills":["React"]}';
+    const filters = JSON.parse('{"skills":["React"]}');
     expect(filters.skills).toEqual(['React']);
 
     const searchType = 'freelancer';
