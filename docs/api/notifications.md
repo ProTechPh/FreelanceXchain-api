@@ -31,7 +31,7 @@ Retrieve notifications for the authenticated user, sorted newest first.
 **Query Parameters:**
 
 | Parameter | Type | Required | Description |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | maxItemCount | integer (1-100) | No | Number of items per page. |
 | continuationToken | string | No | Pagination token from a previous response. |
 
@@ -121,7 +121,7 @@ Mark all unread notifications for the authenticated user as read in a single bul
 ### Notification Object
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | id | string (UUID) | Unique notification ID. |
 | userId | string (UUID) | Owner user ID. |
 | type | enum | Notification type (see below). |
@@ -134,7 +134,7 @@ Mark all unread notifications for the authenticated user as read in a single bul
 ### Notification Types
 
 | Type | Trigger |
-|---|---|
+| --- | --- |
 | proposal_received | Freelancer submits a proposal. |
 | proposal_accepted | Employer accepts a proposal. |
 | proposal_rejected | Employer rejects a proposal. |

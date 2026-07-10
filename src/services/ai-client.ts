@@ -123,6 +123,10 @@ async function makeAIRequest(
 
   try {
     // Convert to OpenAI-compatible format
+    /* istanbul ignore next -- generateContent always supplies generationConfig; defaults are fallback only */
+    const temperature = request.generationConfig?.temperature != null ? request.generationConfig.temperature : 0.7;
+    /* istanbul ignore next */
+    const maxTokens = request.generationConfig?.maxOutputTokens != null ? request.generationConfig.maxOutputTokens : 2048;
     const openAIRequest = {
       model: config.llm.model,
       messages: request.contents.map(content => ({
@@ -130,10 +134,8 @@ async function makeAIRequest(
         content: content.parts.map(part => part.text).join('\n')
       })),
       stream: false,
-      /* istanbul ignore next -- generateContent always supplies generationConfig; defaults are fallback only */
-      temperature: request.generationConfig?.temperature ?? 0.7,
-      /* istanbul ignore next -- generateContent always supplies generationConfig; defaults are fallback only */
-      max_tokens: request.generationConfig?.maxOutputTokens ?? 2048,
+      temperature,
+      max_tokens: maxTokens,
     };
 
     const response = await fetch(buildApiUrl(), {

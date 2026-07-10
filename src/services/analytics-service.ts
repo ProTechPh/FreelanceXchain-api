@@ -175,7 +175,7 @@ export async function getEmployerAnalytics(
 
     const projectsPosted = projectsPostedData.length;
     const totalBudget = projectsPostedData.reduce((sum: number, p: any) => sum + Number(p.budget || 0), 0);
-    /* istanbul ignore next -- tested via getEmployerAnalytics with zero projects; coverage may not instrument ternary false branch */
+    /* istanbul ignore next -- tested via getEmployerAnalytics with zero projects */
     const averageProjectBudget = projectsPosted > 0 ? totalBudget / projectsPosted : 0;
 
     // Completed contracts (spending)

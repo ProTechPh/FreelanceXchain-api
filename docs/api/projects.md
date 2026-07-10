@@ -26,7 +26,7 @@ List projects with optional filters and pagination.
 **Query Parameters:**
 
 | Parameter | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | keyword | string | Search in title/description |
 | skills | string | Comma-separated skill IDs |
 | minBudget | number | Minimum budget filter |
@@ -74,7 +74,7 @@ Create a new project.
 **Request Body:**
 
 | Field | Type | Required | Constraints |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | title | string | yes | Min length 5 |
 | description | string | yes | Min length 20 |
 | requiredSkills | array | yes | Min 1 item; each has `skillId` (UUID) |
@@ -115,7 +115,7 @@ Update an existing project.
 **Request Body** (all fields optional):
 
 | Field | Type | Constraints |
-|---|---|---|
+| --- | --- | --- |
 | title | string | Min length 5 |
 | description | string | Min length 20 |
 | requiredSkills | array | Each item has `skillId` (UUID) |
@@ -180,7 +180,7 @@ List proposals submitted for a specific project.
 **Query Parameters:**
 
 | Parameter | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | limit | integer | Page size (default 20, max 100) |
 | continuationToken | string | Pagination token |
 
@@ -201,7 +201,7 @@ List proposals submitted for a specific project.
 ### Project
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | id | UUID | Unique project ID |
 | employerId | UUID | Owner's user ID |
 | title | string | Project title |
@@ -217,7 +217,7 @@ List proposals submitted for a specific project.
 ### Milestone
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | id | UUID | Unique milestone ID |
 | title | string | Milestone title |
 | description | string | Milestone description |
@@ -228,7 +228,7 @@ List proposals submitted for a specific project.
 ### SkillReference
 
 | Field | Type | Description |
-|---|---|---|
+| --- | --- | --- |
 | skillId | UUID | Skill identifier |
 | skillName | string | Display name |
 | categoryId | UUID | Skill category |
@@ -266,7 +266,7 @@ stateDiagram-v2
 ## Error Responses
 
 | Code | Meaning | Common Cause |
-|---|---|---|
+| --- | --- | --- |
 | 400 | Validation error | Missing/invalid fields, min length violations, `MILESTONE_SUM_MISMATCH`, `INVALID_SKILL` |
 | 401 | Unauthorized | Missing, expired, or invalid Bearer token |
 | 403 | Forbidden | Non-employer accessing employer-only endpoint |

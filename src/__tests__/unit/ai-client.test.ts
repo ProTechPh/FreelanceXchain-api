@@ -714,6 +714,47 @@ describe('AI Client - Extended Tests', () => {
       jest.useRealTimers();
     });
 
+    it('should trigger setTimeout abort when fetch hangs beyond timeout (line 122)', async () => {
+      const { generateContent } = await importModule();
+      jest.useFakeTimers();
+
+      // Make fetch hang until the AbortController signal fires
+      mockFetchExtended.mockImplementation((_url: string, opts: any) => {
+        return new Promise((_resolve, reject) => {
+          if (opts?.signal) {
+            opts.signal.addEventListener('abort', () => {
+              const err = new Error('The operation was aborted.');
+              err.name = 'AbortError';
+              reject(err);
+            });
+          }
+          // Never resolves otherwise — simulating a hung connection
+        });
+      });
+
+      const resultPromise = generateContent('Test prompt');
+
+      // Each makeAIRequest sets setTimeout(abort, 300000).
+      // After abort → retry → new setTimeout(abort, 300000) + sleep(N).
+      // Need to advance through 4 calls: 300s+1s + 300s+2s + 300s+4s + 300s = ~1207s
+      // Advance in steps to keep processing manageable.
+      for (let i = 0; i < 5; i++) {
+        await jest.advanceTimersByTimeAsync(300000);
+        await Promise.resolve(); // flush microtasks between steps
+      }
+
+      const result = await resultPromise;
+
+      // The timeout fires controller.abort(), fetch throws AbortError, which is retryable
+      // After MAX_RETRIES (3) retries all aborting, returns AI_NETWORK_ERROR
+      expect(mockFetchExtended).toHaveBeenCalledTimes(4);
+      expect(typeof result).toBe('object');
+      if (typeof result === 'object' && result !== null) {
+        expect((result as any).code).toBe('AI_NETWORK_ERROR');
+      }
+      jest.useRealTimers();
+    }, 120000);
+
     it('should return AI error on empty response', async () => {
       const { generateContent } = await importModule();
 
@@ -1171,6 +1212,15 @@ describe('AI Client - Extended Tests', () => {
       // Repair trims the garbage and adds closing brace.
       const result = parseJsonResponse('{"name": "John"trailing_garbage', 'Test');
       expect(result).toEqual({ name: 'John' });
+    });
+
+    it('should repair truncated JSON with unclosed brackets (line 321)', async () => {
+      const { parseJsonResponse } = await importModule();
+      // Input: array JSON starting with [ with balanced braces but missing closing ].
+      // Starts with '[' so object-extraction heuristic is skipped (line 283).
+      // Direct parse fails → repair runs: openBrackets=1, closeBrackets=0 → appends ']'.
+      const result = parseJsonResponse('[{ "key": "value" }', 'Test');
+      expect(result).toEqual([{ key: 'value' }]);
     });
   });
 

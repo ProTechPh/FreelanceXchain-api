@@ -186,7 +186,7 @@ describe('merged branch coverage', () => {
 
 describe('PaymentRepository - Additional Branch Coverage', () => {
   it('getTotalSpent returns 0 on database error', async () => {
-    const mockDb = (globalThis as any).__mockDatabases || mockDatabases;
+    const mockDb = (globalThis as any).__mockDatabases;
     mockDb.listDocuments.mockReset();
     mockDb.listDocuments.mockRejectedValueOnce(new Error('db down'));
     const result = await PaymentRepository.getTotalSpent('user-1');
@@ -194,7 +194,7 @@ describe('PaymentRepository - Additional Branch Coverage', () => {
   });
 
   it('getTotalEarnings returns 0 on database error', async () => {
-    const mockDb = (globalThis as any).__mockDatabases || mockDatabases;
+    const mockDb = (globalThis as any).__mockDatabases;
     mockDb.listDocuments.mockReset();
     mockDb.listDocuments.mockRejectedValueOnce(new Error('db down'));
     const result = await PaymentRepository.getTotalEarnings('user-1');
@@ -202,7 +202,7 @@ describe('PaymentRepository - Additional Branch Coverage', () => {
   });
 
   it('getTotalSpent with documents containing null amounts', async () => {
-    const mockDb = (globalThis as any).__mockDatabases || mockDatabases;
+    const mockDb = (globalThis as any).__mockDatabases;
     mockDb.listDocuments.mockReset();
     mockDb.listDocuments.mockResolvedValueOnce({
       documents: [{ amount: null }, { amount: 100 }, { amount: undefined }],
@@ -213,7 +213,7 @@ describe('PaymentRepository - Additional Branch Coverage', () => {
   });
 
   it('getTotalEarnings with documents containing null amounts', async () => {
-    const mockDb = (globalThis as any).__mockDatabases || mockDatabases;
+    const mockDb = (globalThis as any).__mockDatabases;
     mockDb.listDocuments.mockReset();
     mockDb.listDocuments.mockResolvedValueOnce({
       documents: [{ amount: 50 }, { amount: null }],

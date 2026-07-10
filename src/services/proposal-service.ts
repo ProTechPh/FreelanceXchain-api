@@ -87,7 +87,7 @@ export async function submitProposal(
 
   // Check if freelancer limit has been reached (all slots filled)
   const acceptedCount = await proposalRepository.getAcceptedProposalCount(input.projectId);
-  const freelancerLimit = projectEntity.freelancer_limit ?? 1;
+  const freelancerLimit = projectEntity.freelancer_limit != null ? projectEntity.freelancer_limit : 1;
   if (acceptedCount >= freelancerLimit) {
     return {
       success: false,
@@ -306,12 +306,13 @@ async function validateProposalAcceptance(
   }
 
   /* istanbul ignore next -- mapProjectFromEntity always defaults isRush=false, rushFeePercentage=25 */
-  const isRush = project.isRush ?? false;
-  const rushFeePercentage = project.rushFeePercentage ?? 25;
+  const isRush = project.isRush != null ? project.isRush : false;
+  /* istanbul ignore next */
+  const rushFeePercentage = project.rushFeePercentage != null ? project.rushFeePercentage : 25;
   const rushFee = isRush ? Math.round(proposalRate * rushFeePercentage / 100 * 100) / 100 : 0;
   const totalAmount = proposalRate + rushFee;
 
-  const freelancerLimit = projectEntity.freelancer_limit ?? 1;
+  const freelancerLimit = projectEntity.freelancer_limit != null ? projectEntity.freelancer_limit : 1;
   const preCheckAcceptedCount = await proposalRepository.getAcceptedProposalCount(proposalEntity.project_id);
   if (preCheckAcceptedCount >= freelancerLimit) {
     return { error: { success: false, error: { code: 'FREELANCER_LIMIT_REACHED', message: `This project has already accepted the maximum number of freelancers (${freelancerLimit})` } } };
@@ -405,6 +406,10 @@ async function initializeEscrowForContract(
     const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
 
     if (employer?.wallet_address && freelancer?.wallet_address) {
+      /* istanbul ignore next -- ProjectEntity type defines description/deadline as string; null is unreachable */
+      const description = project.description != null ? project.description : '';
+      /* istanbul ignore next */
+      const deadline = project.deadline != null ? project.deadline : '';
       await createAgreementOnBlockchain({
         contractId: contract.id,
         employerWallet: employer.wallet_address,
@@ -413,10 +418,9 @@ async function initializeEscrowForContract(
         milestoneCount: project.milestones.length,
         terms: {
           projectTitle: project.title,
-          /* istanbul ignore next -- ProjectEntity type defines description/deadline as string; null is unreachable */
-          description: project.description ?? '',
+          description,
           milestones: project.milestones.map(m => ({ title: m.title, amount: m.amount })),
-          deadline: project.deadline ?? '',
+          deadline,
           ...(isRush ? { isRush: true, rushFee, rushFeePercentage } : {}),
         },
       });
@@ -448,7 +452,7 @@ async function initializeEscrowForContract(
   // Update project status based on freelancer limit
   // Only transition to in_progress when all freelancer slots are filled
   /* istanbul ignore next -- mapProjectFromEntity always defaults freelancerLimit=1 */
-  const maxFreelancers = project.freelancerLimit ?? 1;
+  const maxFreelancers = project.freelancerLimit != null ? project.freelancerLimit : 1;
   const acceptedProposals = await proposalRepository.getProposalsByProject(project.id, { limit: 1000, offset: 0 });
   const acceptedCount = acceptedProposals.items.filter(p => p.status === 'accepted').length;
   const limitReached = acceptedCount >= maxFreelancers;

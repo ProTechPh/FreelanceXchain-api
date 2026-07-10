@@ -10,7 +10,6 @@ import {
   EscrowInfo,
   TransactionResult,
   BlockchainMilestoneStatus,
-  fromBlockchainMilestoneStatus,
 } from './adapter.js';
 import {
   deployEscrow,

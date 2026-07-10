@@ -26,6 +26,7 @@ Retrieve a user's reputation score and all blockchain-stored ratings.
 - **Path params:**
   - `userId` — UUID, required
 - **Success response (200):**
+
   ```json
   {
     "userId": "uuid",
@@ -35,6 +36,7 @@ Retrieve a user's reputation score and all blockchain-stored ratings.
     "ratings": [ ... ]
   }
   ```
+
   - `score`: weighted average with time decay (lambda = 0.01)
   - `averageRating`: simple arithmetic mean
 - **Errors:** 400 invalid UUID, 404 user not found
@@ -109,13 +111,17 @@ Check if the authenticated user can rate another user for a specific contract.
   - `contractId` — UUID, required
   - `rateeId` — UUID, required
 - **Success response (200):**
+
   ```json
   { "canRate": true }
   ```
+
   or
+
   ```json
   { "canRate": false, "reason": "Already rated" }
   ```
+
 - **Errors:** 400 missing params, 401 unauthorized
 
 ---
@@ -126,6 +132,7 @@ Submit a rating for another user after contract completion. Rating must be an in
 
 - **Auth:** JWT Bearer token required
 - **Request body:**
+
   ```json
   {
     "contractId": "uuid",
@@ -134,6 +141,7 @@ Submit a rating for another user after contract completion. Rating must be an in
     "comment": "Great work"
   }
   ```
+
 - **Validations:**
   - `contractId`, `rateeId`, `rating` are required
   - `contractId` and `rateeId` must be valid UUIDs
@@ -142,12 +150,14 @@ Submit a rating for another user after contract completion. Rating must be an in
   - Cannot rate yourself
   - One rating per rater/ratee/contract combination
 - **Success response (201):**
+
   ```json
   {
     "rating": { ... },
     "transactionHash": "0x..."
   }
   ```
+
 - **Errors:**
   - 400: missing fields, invalid UUID, or invalid rating
   - 401: missing or invalid JWT

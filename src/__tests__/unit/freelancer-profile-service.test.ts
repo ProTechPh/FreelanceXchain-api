@@ -1208,4 +1208,94 @@ describe('Freelancer Profile Service - Additional Branch Coverage', () => {
     const result = await updateExperience('u1', 'exp-1', {} as any);
     expect(result.success).toBe(true);
   });
+
+  it('L314: addExperience returns INVALID_DATE_RANGE for invalid start date', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'fp1', user_id: 'u1', skills: [], experience: [],
+    });
+
+    const result = await addExperience('u1', {
+      title: 'Dev',
+      company: 'Corp',
+      description: 'desc',
+      startDate: 'not-a-date',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    }
+  });
+
+  it('L314: addExperience returns INVALID_DATE_RANGE when start > end', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'fp1', user_id: 'u1', skills: [], experience: [],
+    });
+
+    const result = await addExperience('u1', {
+      title: 'Dev',
+      company: 'Corp',
+      description: 'desc',
+      startDate: '2025-12-31',
+      endDate: '2025-01-01',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    }
+  });
+
+  it('L314: addExperience returns INVALID_DATE_RANGE for invalid end date', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'fp1', user_id: 'u1', skills: [], experience: [],
+    });
+
+    const result = await addExperience('u1', {
+      title: 'Dev',
+      company: 'Corp',
+      description: 'desc',
+      startDate: '2025-01-01',
+      endDate: 'bad-date',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    }
+  });
+
+  it('L381: updateExperience returns INVALID_DATE_RANGE for invalid start date', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'fp1', user_id: 'u1', skills: [],
+      experience: [{
+        id: 'exp-1', title: 'Dev', company: 'Corp', description: 'desc',
+        start_date: '2020-01-01', end_date: '2021-01-01',
+      }],
+    });
+
+    const result = await updateExperience('u1', 'exp-1', {
+      startDate: 'not-a-date',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    }
+  });
+
+  it('L381: updateExperience returns INVALID_DATE_RANGE when start > end', async () => {
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'fp1', user_id: 'u1', skills: [],
+      experience: [{
+        id: 'exp-1', title: 'Dev', company: 'Corp', description: 'desc',
+        start_date: '2020-01-01', end_date: '2021-01-01',
+      }],
+    });
+
+    const result = await updateExperience('u1', 'exp-1', {
+      startDate: '2025-12-31',
+      endDate: '2025-01-01',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INVALID_DATE_RANGE');
+    }
+  });
 });

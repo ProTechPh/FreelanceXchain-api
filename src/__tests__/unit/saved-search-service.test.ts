@@ -1127,4 +1127,123 @@ describe('Saved Search Service - Additional Branch Coverage', () => {
       expect(result.data.count).toBe(1);
     }
   });
+
+  it('should execute project search with only minBudget filter', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'project',
+      filters: JSON.stringify({ minBudget: 500 }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+    mockProjectRepository.getAllOpenProjects.mockResolvedValueOnce({
+      items: [
+        { id: 'p1', title: 'High Budget A', description: 'desc', budget: 1000, required_skills: [], created_at: '2025-01-01' },
+        { id: 'p2', title: 'High Budget B', description: 'desc', budget: 800, required_skills: [], created_at: '2025-03-01' },
+        { id: 'p3', title: 'Low Budget', description: 'desc', budget: 200, required_skills: [], created_at: '2025-02-01' },
+      ],
+      total: 3,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.count).toBe(2);
+    }
+  });
+
+  it('should execute project search with only maxBudget filter', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'project',
+      filters: JSON.stringify({ maxBudget: 500 }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+    mockProjectRepository.getAllOpenProjects.mockResolvedValueOnce({
+      items: [
+        { id: 'p1', title: 'Low Budget A', description: 'desc', budget: 200, required_skills: [], created_at: '2025-01-01' },
+        { id: 'p2', title: 'Low Budget B', description: 'desc', budget: 400, required_skills: [], created_at: '2025-03-01' },
+        { id: 'p3', title: 'High Budget', description: 'desc', budget: 1000, required_skills: [], created_at: '2025-02-01' },
+      ],
+      total: 3,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.count).toBe(2);
+    }
+  });
+
+  it('should execute project search with only keyword filter', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'project',
+      filters: JSON.stringify({ keyword: 'React' }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+    mockProjectRepository.getAllOpenProjects.mockResolvedValueOnce({
+      items: [
+        { id: 'p1', title: 'React App', description: 'Build a React app', budget: 1000, required_skills: [], created_at: '2025-01-01' },
+        { id: 'p2', title: 'Vue App', description: 'Build a Vue app', budget: 1000, required_skills: [], created_at: '2025-01-01' },
+      ],
+      total: 2,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.count).toBe(1);
+    }
+  });
+
+  it('should execute freelancer search with only minHourlyRate filter', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
+      filters: JSON.stringify({ minHourlyRate: 50 }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+    mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+      items: [
+        { user_id: 'fp-1', skills: [], full_name: 'High Rate A', headline: 'Dev', bio: 'bio', hourly_rate: 100, availability: 'available', created_at: '2025-01-01' },
+        { user_id: 'fp-2', skills: [], full_name: 'High Rate B', headline: 'Dev', bio: 'bio', hourly_rate: 75, availability: 'available', created_at: '2025-03-01' },
+        { user_id: 'fp-3', skills: [], full_name: 'Low Rate', headline: 'Dev', bio: 'bio', hourly_rate: 25, availability: 'available', created_at: '2025-02-01' },
+      ],
+      total: 3,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.count).toBe(2);
+    }
+  });
+
+  it('should execute freelancer search with only maxHourlyRate filter', async () => {
+    const { executeSavedSearch } = await importModule();
+
+    mockSavedSearchRepository.getById.mockResolvedValueOnce({
+      id: 'ss-1', user_id: 'user-1', search_type: 'freelancer',
+      filters: JSON.stringify({ maxHourlyRate: 50 }),
+      name: 'S', notify_on_new: false, created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+    mockFreelancerProfileRepository.getAllProfilesPaginated.mockResolvedValueOnce({
+      items: [
+        { user_id: 'fp-1', skills: [], full_name: 'Low Rate A', headline: 'Dev', bio: 'bio', hourly_rate: 25, availability: 'available', created_at: '2025-01-01' },
+        { user_id: 'fp-2', skills: [], full_name: 'Low Rate B', headline: 'Dev', bio: 'bio', hourly_rate: 40, availability: 'available', created_at: '2025-03-01' },
+        { user_id: 'fp-3', skills: [], full_name: 'High Rate', headline: 'Dev', bio: 'bio', hourly_rate: 100, availability: 'available', created_at: '2025-02-01' },
+      ],
+      total: 3,
+    });
+
+    const result = await executeSavedSearch('ss-1', 'user-1');
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.count).toBe(2);
+    }
+  });
 });

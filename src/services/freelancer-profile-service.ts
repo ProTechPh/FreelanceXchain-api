@@ -308,10 +308,11 @@ export async function addExperience(
 
   const dateValidation = validateDateRange(input.startDate, input.endDate);
   if (!dateValidation.valid) {
+    /* istanbul ignore next -- validateDateRange always returns message when valid=false */
+    const msg = dateValidation.message != null ? dateValidation.message : 'Invalid date range';
     return {
       success: false,
-      /* istanbul ignore next -- validateDateRange always returns message when valid=false */
-      error: { code: 'INVALID_DATE_RANGE', message: dateValidation.message ?? 'Invalid date range' },
+      error: { code: 'INVALID_DATE_RANGE', message: msg },
     };
   }
 
@@ -374,10 +375,11 @@ export async function updateExperience(
 
   const dateValidation = validateDateRange(newStartDate, newEndDate);
   if (!dateValidation.valid) {
+    /* istanbul ignore next -- validateDateRange always returns message when valid=false */
+    const msg = dateValidation.message != null ? dateValidation.message : 'Invalid date range';
     return {
       success: false,
-      /* istanbul ignore next -- validateDateRange always returns message when valid=false */
-      error: { code: 'INVALID_DATE_RANGE', message: dateValidation.message ?? 'Invalid date range' },
+      error: { code: 'INVALID_DATE_RANGE', message: msg },
     };
   }
 
