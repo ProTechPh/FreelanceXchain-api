@@ -8,6 +8,9 @@ RUN corepack enable && corepack prepare pnpm@10.28.1 --activate
 
 WORKDIR /app
 
+# Ensure artifacts directory exists
+RUN mkdir -p /app/artifacts
+
 # Copy package files
 COPY package.json pnpm-lock.yaml ./
 
