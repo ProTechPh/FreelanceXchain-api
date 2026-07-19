@@ -77,8 +77,8 @@ importers:
         specifier: ^2.2.0
         version: 2.2.0
       node-appwrite:
-        specifier: ^26.2.0
-        version: 26.2.0
+        specifier: ^27.0.0
+        version: 27.0.0
       node-cron:
         specifier: ^4.6.0
         version: 4.6.0
@@ -2304,8 +2304,8 @@ packages:
     resolution: {integrity: sha512-c5Ko1fZJIJmzhFIkhRN76WTq+fC6tWnGy9CXA0fA+XygsWZmEwG8vmbkNqxMyoaa0Tin4djul49NzdVcJJcjeA==}
     engines: {node: ^18 || ^20 || >= 21}
 
-  node-appwrite@26.2.0:
-    resolution: {integrity: sha512-rRToHOuG05F5Q3BGRoJNNIcO69zrYul/V9HOTxfcMSqhdw3TwInAl7pnSnMRW7D0MOQcvaLb8iZIwE1P8TP9Cw==}
+  node-appwrite@27.0.0:
+    resolution: {integrity: sha512-RLjwWPbTMiaAwjBpaFRe0AjY2Fug/oL8xhvX2eDAcR3IsbERleUJCEOtrTRwZGwig4+d9gDfP9P7LHX17kXSMA==}
 
   node-cron@4.6.0:
     resolution: {integrity: sha512-Si/bzYiKRHOB8/a99T2+SDGN582ONDMSTlJr5oCkT6GtnqPjZ2s10eoQRYkW9ZHwjVxONL+W8Fb+qR0AHMQsdg==}
@@ -2816,13 +2816,13 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@6.23.0:
-    resolution: {integrity: sha512-VfQPToRA5FZs/qJxLIinmU59u0r7LXqoJkCzinq3ckNJp3vKEh7jTWN589YQ5+aoAC/TGRLyJLCPKcLQbM8r9g==}
+  undici@6.27.0:
+    resolution: {integrity: sha512-YmfV3YnEDzXRC5lZ2jWtWWHKGUm1zIt8AhesR1tens+HTNv+YZlN/dp6G727LOvMJ8xjP9Be7Y2Sdr96LDm+pg==}
     engines: {node: '>=18.17'}
 
-  undici@6.26.0:
-    resolution: {integrity: sha512-4yqz8a3n5HmGTlsbADNtr/dJlhkh/55Rq798G6ibiULcXbDtaLpTl1pvdqcbFfeoj3iSi52lePFM7h9H21cw/A==}
-    engines: {node: '>=18.17'}
+  undici@8.7.0:
+    resolution: {integrity: sha512-N7iQtfyLhIMOFgQubvmLV26svHpO0bqKnAiWotTQCVKCmWrcGbBotPuW1x+xwYZ2VHdSTVUfPQQnlEt1/LouTQ==}
+    engines: {node: '>=22.19.0'}
 
   unpipe@1.0.0:
     resolution: {integrity: sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==}
@@ -3639,7 +3639,7 @@ snapshots:
       fast-equals: 5.4.0
       json-stream-stringify: 3.1.7
       rfdc: 1.4.1
-      undici: 6.23.0
+      undici: 8.7.0
 
   '@nomicfoundation/hardhat-vendored@3.0.4': {}
 
@@ -5514,10 +5514,10 @@ snapshots:
 
   node-addon-api@8.8.0: {}
 
-  node-appwrite@26.2.0:
+  node-appwrite@27.0.0:
     dependencies:
       json-bigint: 1.0.0
-      undici: 6.26.0
+      undici: 6.27.0
 
   node-cron@4.6.0: {}
 
@@ -5993,9 +5993,9 @@ snapshots:
 
   undici-types@8.3.0: {}
 
-  undici@6.23.0: {}
+  undici@6.27.0: {}
 
-  undici@6.26.0: {}
+  undici@8.7.0: {}
 
   unpipe@1.0.0: {}
 
