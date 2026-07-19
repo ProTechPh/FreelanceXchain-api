@@ -39,7 +39,8 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Compile smart contracts
-        run: pnpm run compile
+        run: |
+          pnpm run compile || (sleep 10 && pnpm run compile)
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

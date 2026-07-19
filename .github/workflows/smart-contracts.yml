@@ -38,8 +38,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Compile contracts
-        run: pnpm run compile
+      - name: Compile smart contracts
+        run: |
+          pnpm run compile || (sleep 10 && pnpm run compile)
 
   slither:
     runs-on: ubuntu-latest
