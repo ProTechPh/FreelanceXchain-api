@@ -14,14 +14,15 @@ COPY package.json pnpm-lock.yaml ./
 # Install all dependencies (including dev for build)
 RUN pnpm install --frozen-lockfile
 
-# Copy source code
+# Copy source code and pre-compiled contract artifacts if present
 COPY tsconfig.json ./
 COPY src ./src
 COPY contracts ./contracts
 COPY hardhat.config.cjs ./
+COPY artifacts* ./artifacts/
 
-# Compile smart contracts and build TypeScript
-RUN pnpm run compile && pnpm run build
+# Compile smart contracts (if network/solc is available) and build TypeScript
+RUN (pnpm run compile || true) && pnpm run build
 
 # Production stage
 FROM node:22-alpine AS production
@@ -39,8 +40,9 @@ COPY package.json pnpm-lock.yaml ./
 # Install production dependencies only
 RUN pnpm install --frozen-lockfile --prod
 
-# Copy built files from builder
+# Copy built files and contract artifacts from builder
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/artifacts ./artifacts
 
 # Set environment
 ENV NODE_ENV=production

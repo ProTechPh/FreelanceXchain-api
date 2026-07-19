@@ -39,9 +39,10 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
-# Smart contracts (needed for compilation)
+# Smart contracts (needed for compilation/runtime)
 !contracts
 !hardhat.config.cjs
+!artifacts
 
 # Infrastructure/Cloud configs
 infra
