@@ -17,6 +17,28 @@ function mapDocument<T extends BaseEntity>(doc: Record<string, any>): T {
     id: $id,
     ...attrs,
   };
+
+  // BUG-7: create()/update() serialize object-typed values with JSON.stringify, so
+  // Appwrite returns them as strings. Reverse that on read for any value that looks
+  // like serialized JSON (objects/arrays), so consumers get properly-typed entities.
+  for (const key of Object.keys(result)) {
+    const value = result[key];
+    if (typeof value === 'string') {
+      const trimmed = value.trimStart();
+      if (
+        (trimmed.startsWith('{') || trimmed.startsWith('[')) &&
+        // Only attempt to parse if the string is plausibly JSON to avoid false positives.
+        (trimmed.includes('"') || trimmed.startsWith('['))
+      ) {
+        try {
+          result[key] = JSON.parse(value);
+        } catch {
+          // Leave as string if it isn't actually JSON.
+        }
+      }
+    }
+  }
+
   const created = attrs.created_at ?? $createdAt;
   const updated = attrs.updated_at ?? $updatedAt;
   if (created !== undefined) result.created_at = created;

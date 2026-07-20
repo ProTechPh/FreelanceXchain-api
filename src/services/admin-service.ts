@@ -176,6 +176,8 @@ export async function suspendUser(userId: string, reason: string): Promise<Servi
       suspension_reason: reason,
     } as Partial<UserEntity>);
 
+    logger.info('ADMIN ACTION: user suspended', { actor: 'admin', userId, reason });
+
     return {
       success: true,
       data: updated as UserEntity,
@@ -211,6 +213,8 @@ export async function unsuspendUser(userId: string): Promise<ServiceResult<UserE
       suspension_reason: null,
     } as Partial<UserEntity>);
 
+    logger.info('ADMIN ACTION: user unsuspended', { actor: 'admin', userId });
+
     return {
       success: true,
       data: updated as UserEntity,
@@ -244,6 +248,8 @@ export async function verifyUser(userId: string): Promise<ServiceResult<UserEnti
     const updated = await userRepository.updateUser(userId, {
       is_verified: true,
     } as Partial<UserEntity>);
+
+    logger.info('ADMIN ACTION: user manually verified', { actor: 'admin', userId });
 
     return {
       success: true,
@@ -296,6 +302,13 @@ export async function updateUser(
     }
 
     const updated = await userRepository.updateUser(userId, updatesObj);
+
+    // BUG-6: audit admin-initiated privilege/status changes for traceability.
+    logger.info('ADMIN ACTION: user updated', {
+      actor: 'admin',
+      userId,
+      changes: updatesObj,
+    });
 
     return {
       success: true,

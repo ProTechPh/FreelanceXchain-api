@@ -238,7 +238,11 @@ function cleanupProcessedEvents(): void {
  * Process webhook from Didit
  */
 export async function processWebhook(payload: DiditWebhookPayload): Promise<ServiceResult<KycVerification>> {
-  // L4: Deduplicate webhook events — Didit uses at-least-once delivery
+  // L4: Deduplicate webhook events — Didit uses at-least-once delivery.
+  // NOTE: processedWebhookEvents is per-process (single-instance safe). Multi-instance
+  // deployments should back this with a shared store (e.g. Redis). The status updates
+  // and autoCreateProfile below are themselves idempotent (overwrite / existence-check),
+  // so cross-instance re-delivery cannot corrupt KYC state, only re-emit notifications.
   if (payload.event_id) {
     if (processedWebhookEvents.has(payload.event_id)) {
       logger.info('Duplicate webhook event ignored', { eventId: payload.event_id, sessionId: payload.session_id });

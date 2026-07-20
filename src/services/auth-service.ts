@@ -735,6 +735,13 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
 
 /**
  * Resend confirmation email
+ *
+ * SECURITY (BUG-2): This endpoint is reachable without authentication (a logged-out
+ * user may request a fresh verification link). Unauthenticated email bombing of
+ * arbitrary known accounts is mitigated at the route layer via passwordResetRateLimiter
+ * (5 attempts / 15 minutes, fail-closed). Here we simply avoid triggering unnecessary
+ * verification emails for already-handled cases and never reveal whether the address
+ * exists (anti-enumeration).
  */
 export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
   try {
