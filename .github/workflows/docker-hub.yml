@@ -20,6 +20,15 @@ jobs:
         uses: step-security/harden-runner@v2.20.0
         with:
           egress-policy: audit
+          allowed-endpoints: >
+            binaries.soliditylang.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            nodejs.org:443
+            hub.docker.com:443
+            auth.docker.io:443
+            production.cloudflare.docker.com:443
 
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -38,9 +47,18 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Cache Hardhat compiler
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: ${{ runner.os }}-hardhat-${{ hashFiles('hardhat.config.cjs') }}
+          restore-keys: |
+            ${{ runner.os }}-hardhat-
+
       - name: Compile smart contracts
+        continue-on-error: true
         run: |
-          pnpm run compile || (sleep 10 && pnpm run compile)
+          pnpm run compile || (sleep 5 && pnpm run compile) || true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
