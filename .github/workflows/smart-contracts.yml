@@ -23,6 +23,12 @@ jobs:
         uses: step-security/harden-runner@v2.20.0
         with:
           egress-policy: audit
+          allowed-endpoints: >
+            binaries.soliditylang.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            nodejs.org:443
 
       - uses: actions/checkout@v7
 
@@ -38,9 +44,16 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Cache Hardhat compiler
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/hardhat-nodejs
+          key: ${{ runner.os }}-hardhat-${{ hashFiles('hardhat.config.cjs') }}
+          restore-keys: |
+            ${{ runner.os }}-hardhat-
+
       - name: Compile smart contracts
-        run: |
-          pnpm run compile || (sleep 10 && pnpm run compile)
+        run: pnpm run compile
 
   slither:
     runs-on: ubuntu-latest
@@ -49,6 +62,11 @@ jobs:
         uses: step-security/harden-runner@v2.20.0
         with:
           egress-policy: audit
+          allowed-endpoints: >
+            github.com:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            nodejs.org:443
 
       - uses: actions/checkout@v7
 
