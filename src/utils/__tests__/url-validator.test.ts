@@ -7,6 +7,7 @@ import {
   validateUrl,
   validateSessionId,
   sanitizeSessionId,
+  isHostnameSsrfAllowed,
 } from '../url-validator.js';
 
 describe('URL Validator - OWASP A10 SSRF Protection', () => {
@@ -106,6 +107,40 @@ describe('URL Validator - OWASP A10 SSRF Protection', () => {
       it('should block metadata.google.internal', () => {
         const result = validateUrl('http://metadata.google.internal/computeMetadata/v1/');
         expect(result.valid).toBe(false);
+      });
+    });
+
+    describe('Invalid URLs - IPv6 (SSRF)', () => {
+      it('should block IPv6 loopback (::1)', () => {
+        const result = validateUrl('http://[::1]:8080/admin');
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('not allowed');
+      });
+
+      it('should block IPv6 link-local range (fe80::)', () => {
+        const result = validateUrl('http://[fe80::1]/admin');
+        expect(result.valid).toBe(false);
+        expect(result.error).toContain('not allowed');
+      });
+
+      it('should block the upper bound of IPv6 link-local (febf:ffff:...)', () => {
+        const result = validateUrl('http://[febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff]/admin');
+        expect(result.valid).toBe(false);
+      });
+
+      it('should allow public IPv6 addresses not in blocked ranges', () => {
+        const result = validateUrl('http://[2606:4700:4700::1111]/dns');
+        expect(result.valid).toBe(true);
+        expect(result.sanitizedUrl).toBe('http://[2606:4700:4700::1111]/dns');
+      });
+
+      it('should block malformed IPv6 literals (fail-closed)', () => {
+        expect(validateUrl('http://[1:2:3:4:5:6:7:8::9]/admin').valid).toBe(false);
+        expect(validateUrl('http://[gggg::1]/admin').valid).toBe(false);
+      });
+
+      it('should block IPv4 addresses with out-of-range octets (fail-closed)', () => {
+        expect(validateUrl('http://999.1.1.1/admin').valid).toBe(false);
       });
     });
 
@@ -214,6 +249,31 @@ describe('URL Validator - OWASP A10 SSRF Protection', () => {
 
     it('should throw on invalid sanitized result', () => {
       expect(() => sanitizeSessionId('abc')).toThrow('format is invalid');
+    });
+  });
+
+  describe('isHostnameSsrfAllowed', () => {
+    it('should reject blocked hostnames', () => {
+      expect(isHostnameSsrfAllowed('localhost')).toBe(false);
+      expect(isHostnameSsrfAllowed('127.0.0.1')).toBe(false);
+      expect(isHostnameSsrfAllowed('[::1]')).toBe(false);
+    });
+
+    it('should allow whitelisted hostnames', () => {
+      expect(isHostnameSsrfAllowed('api.didit.me')).toBe(true);
+      expect(isHostnameSsrfAllowed('evil.com')).toBe(false);
+    });
+
+    it('should fail-closed on malformed IP literals (SSRF hardening)', () => {
+      // IPv6 with `::` but more than 8 groups (hits the `missing < 0` guard).
+      expect(isHostnameSsrfAllowed('1:2:3:4:5:6:7:8::9')).toBe(false);
+      // IPv6 with non-hex groups (hits the NaN/range guard).
+      expect(isHostnameSsrfAllowed('gggg::1')).toBe(false);
+      expect(isHostnameSsrfAllowed('gggg:1:1:1:1:1:1:1:1')).toBe(false);
+      // IPv4 with an out-of-range octet (hits the octet range guard).
+      expect(isHostnameSsrfAllowed('999.1.1.1')).toBe(false);
+      // IPv4 with the wrong number of octets.
+      expect(isHostnameSsrfAllowed('1.2.3')).toBe(false);
     });
   });
 

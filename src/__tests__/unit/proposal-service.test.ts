@@ -1677,7 +1677,7 @@ describe('Proposal Service - parse function branch coverage (proposal-repository
       proposedRate: 75,
       estimatedDuration: 45,
       attachments: [
-        { url: 'https://example.com/resume.pdf', filename: 'resume.pdf', size: 1024, mimeType: 'application/pdf' },
+        { url: 'https://appwrite.io/resume.pdf', filename: 'resume.pdf', size: 1024, mimeType: 'application/pdf' },
       ],
     });
 
@@ -1710,9 +1710,9 @@ describe('Proposal Service - parse function branch coverage (proposal-repository
     projectStore.set(project.id, project);
 
     const attachments = [
-      { url: 'https://example.com/file1.pdf', filename: 'file1.pdf', size: 100, mimeType: 'application/pdf' },
-      { url: 'https://example.com/file2.png', filename: 'file2.png', size: 200, mimeType: 'image/png' },
-      { url: 'https://example.com/file3.doc', filename: 'file3.doc', size: 300, mimeType: 'application/msword' },
+      { url: 'https://appwrite.io/file1.pdf', filename: 'file1.pdf', size: 100, mimeType: 'application/pdf' },
+      { url: 'https://appwrite.io/file2.png', filename: 'file2.png', size: 200, mimeType: 'image/png' },
+      { url: 'https://appwrite.io/file3.doc', filename: 'file3.doc', size: 300, mimeType: 'application/msword' },
     ];
 
     const result = await submitProposal('freelancer-789', {

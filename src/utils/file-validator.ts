@@ -4,6 +4,7 @@
  */
 
 import type { FileAttachment } from '../models/milestone.js';
+import { isHostnameSsrfAllowed } from './url-validator.js';
 export type { FileAttachment } from '../models/milestone.js';
 
 export type FileValidationError = {
@@ -269,13 +270,19 @@ function validateFileUrl(url: string): string[] {
   // Check if URL is valid
   try {
     const parsedUrl = new URL(url);
-    
+
     // Check if URL is HTTP/HTTPS
     if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
       errors.push('File URL must use HTTP or HTTPS protocol');
     }
 
-    // Removed specific domain checks to support Appwrite
+    // SSRF guard (BUG-3): do not allow file URLs to point at internal/metadata
+    // addresses or non-allowlisted hosts. Appwrite storage URLs resolve to
+    // appwrite.io / appwrite.co which are on the allowlist, so legitimate
+    // stored-file URLs still pass.
+    if (!isHostnameSsrfAllowed(parsedUrl.hostname)) {
+      errors.push(`File URL host '${parsedUrl.hostname}' is not allowed`);
+    }
   } catch {
     errors.push('Invalid URL format');
   }

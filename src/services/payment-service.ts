@@ -399,16 +399,28 @@ async function releaseEscrowPaymentWithSaga(
       status: 'completed',
     });
   } catch (error) {
-    // SAGA rollback
+    // SAGA rollback — recover the milestone out of the transient 'releasing' state.
     try {
       const latestProject = await projectRepository.findProjectById(contract.projectId);
       if (!latestProject) {
         logger.error('CRITICAL: Cannot rollback — project fetch returned null. Milestone may be stuck in releasing.', { milestoneId, contractId });
       } else {
-        const rollbackMilestones = latestProject.milestones.map((m, i) =>
-          i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
-        );
-        await projectRepository.updateProject(project.id, { milestones: rollbackMilestones });
+        // Only roll back if the milestone is still 'releasing' (it may have been
+        // finalized by a concurrent retry). Re-read the fresh status to decide.
+        const latestStatus = latestProject.milestones[milestoneIndex]?.status;
+        if (latestStatus === 'releasing') {
+          const rollbackMilestones = latestProject.milestones.map((m, i) =>
+            i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
+          );
+          await projectRepository.updateProject(project.id, { milestones: rollbackMilestones });
+          logger.warn('Recovered milestone from "releasing" back to "submitted" after payment failure.', {
+            milestoneId, contractId, projectId: contract.projectId, milestoneIndex,
+          });
+        } else {
+          logger.info('Milestone no longer in "releasing" during rollback — leaving as-is (likely finalized concurrently).', {
+            milestoneId, contractId, currentStatus: latestStatus,
+          });
+        }
       }
     } catch (rollbackError) {
       // BLF-2.4: CRITICAL — milestone is now stuck in 'releasing' with no automated recovery.

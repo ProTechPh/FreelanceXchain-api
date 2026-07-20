@@ -261,8 +261,68 @@ async function cleanupOldNotifications(): Promise<void> {
 }
 
 /**
- * Initialize all scheduled jobs
+ * Recover milestones stuck in the transient 'releasing' state (BUG-5).
+ *
+ * A milestone enters 'releasing' during the milestone-approval SAGA. If the on-chain
+ * release fails AND the rollback also fails, the milestone can remain 'releasing'
+ * forever (approveMilestone rejects any non-'submitted' status). This job re-reads
+ * each active contract's project and, for any milestone stuck in 'releasing' beyond a
+ * grace period, resets it back to 'submitted' so it can be retried.
  */
+const RELEASING_STUCK_GRACE_MS = 15 * 60 * 1000; // 15 minutes
+
+async function recoverStuckReleasingMilestones(): Promise<void> {
+  try {
+    const now = Date.now();
+    const contractsResponse = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTIONS.CONTRACTS,
+      [Query.equal('status', 'active'), Query.limit(1000)]
+    );
+
+    for (const contract of contractsResponse.documents) {
+      try {
+        const projectId = (contract as any).project_id;
+        if (!projectId) continue;
+
+        const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId) as any;
+        const milestones = typeof projectDoc.milestones === 'string'
+          ? JSON.parse(projectDoc.milestones)
+          : (projectDoc.milestones || []);
+
+        const stuckIndexes = milestones
+          .map((m: any, i: number) => ({ m, i }))
+          .filter(({ m }: { m: any }) => m.status === 'releasing')
+          .filter(({ m }: { m: any }) => {
+            const updated = m.updated_at ? new Date(m.updated_at).getTime() : 0;
+            return updated > 0 && now - updated > RELEASING_STUCK_GRACE_MS;
+          })
+          .map(({ i }: { i: number }) => i);
+
+        if (stuckIndexes.length === 0) continue;
+
+        const recovered = milestones.map((m: any, i: number) =>
+          stuckIndexes.includes(i) ? { ...m, status: 'submitted' } : m
+        );
+
+        await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId, {
+          milestones: JSON.stringify(recovered),
+          updated_at: new Date().toISOString(),
+        });
+
+        logger.warn('Recovered stuck "releasing" milestones back to "submitted"', {
+          contractId: contract.$id,
+          recoveredMilestoneIndexes: stuckIndexes,
+        });
+      } catch (err) {
+        logger.error('Failed to recover stuck releasing milestone for a contract', { contractId: (contract as any).$id, error: err });
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to run recoverStuckReleasingMilestones job', error);
+  }
+}
+
 export function initializeScheduler(): void {
   logger.info('Initializing scheduler service...');
 
@@ -288,6 +348,12 @@ export function initializeScheduler(): void {
   cron.schedule('0 2 * * *', () => {
     logger.info('Running scheduled job: Cleanup old notifications');
     cleanupOldNotifications();
+  });
+
+  // Recover milestones stuck in 'releasing' - Every 10 minutes
+  cron.schedule('*/10 * * * *', () => {
+    logger.info('Running scheduled job: Recover stuck releasing milestones');
+    recoverStuckReleasingMilestones();
   });
 
   logger.info('Scheduler service initialized successfully');
