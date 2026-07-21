@@ -477,5 +477,57 @@ describe('Transaction Service', () => {
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('INTERNAL_ERROR');
     });
+
+    it('should reject invalid amount (NaN)', async () => {
+      const { createTransaction } = await importModule();
+
+      const result = await createTransaction({
+        amount: NaN,
+        type: 'payment',
+        status: 'pending',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should reject invalid amount (Infinity)', async () => {
+      const { createTransaction } = await importModule();
+
+      const result = await createTransaction({
+        amount: Infinity,
+        type: 'payment',
+        status: 'pending',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should reject invalid amount (zero)', async () => {
+      const { createTransaction } = await importModule();
+
+      const result = await createTransaction({
+        amount: 0,
+        type: 'payment',
+        status: 'pending',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should reject invalid amount (negative)', async () => {
+      const { createTransaction } = await importModule();
+
+      const result = await createTransaction({
+        amount: -50,
+        type: 'payment',
+        status: 'pending',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    });
   });
 });

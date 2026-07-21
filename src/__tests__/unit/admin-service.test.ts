@@ -284,6 +284,20 @@ describe('Admin Service', () => {
   });
 
   describe('updateUser', () => {
+    it('should reject invalid role', async () => {
+      const { updateUser } = await importModule();
+
+      const mockUser = { id: 'user-1' };
+      mockUserRepo.getUserById.mockResolvedValueOnce(mockUser);
+
+      const result = await updateUser('user-1', { role: 'invalid_role' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_ROLE');
+      }
+    });
+
     it('should update user name', async () => {
       const { updateUser } = await importModule();
 

@@ -311,7 +311,7 @@ router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimite
  *     tags: [Admin]
  *     description: Used on the landing page and admin dashboard to show aggregate platform statistics. Open to public.
  */
-router.get('/platform-stats', apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   const result = await getPlatformStats();

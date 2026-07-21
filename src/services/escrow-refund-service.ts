@@ -74,7 +74,7 @@ export async function createRefundRequest(
     } catch {
       // Non-critical — proceed with full contract amount as ceiling
     }
-    const remainingEscrow = contract.total_amount - releasedAmount;
+    const remainingEscrow = Math.max(0, contract.total_amount - releasedAmount);
 
     // Validate requested amount: must be positive and cannot exceed remaining escrow
     if (input.amount !== undefined) {

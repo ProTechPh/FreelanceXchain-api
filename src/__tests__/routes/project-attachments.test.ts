@@ -303,6 +303,10 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
   },
 }));
 
+// Track submitted deliverables/notes so findProjectById can return them
+let lastSubmittedDeliverables: any[] = [];
+let lastSubmittedNotes: string | undefined;
+
 // Mock project repository
 const mockProjectRepository = {
   findProjectById: jest.fn(async (projectId: string) => {
@@ -318,8 +322,9 @@ const mockProjectRepository = {
         description: 'Test milestone description',
         amount: 1000,
         due_date: new Date('2026-12-31').toISOString(),
-        status: 'pending',
-        deliverable_files: [],
+        status: 'submitted',
+        deliverable_files: lastSubmittedDeliverables,
+        notes: lastSubmittedNotes,
         revision_count: 0,
       }],
       created_at: new Date().toISOString(),
@@ -342,13 +347,17 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
 
 // Mock payment service
 jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
-  requestMilestoneCompletion: jest.fn(async (contractId: string, milestoneId: string, freelancerId: string) => ({
-    success: true,
-    data: {
-      id: milestoneId,
-      status: 'submitted',
-    },
-  })),
+  requestMilestoneCompletion: jest.fn(async (contractId: string, milestoneId: string, freelancerId: string, metadata?: any) => {
+    lastSubmittedDeliverables = metadata?.deliverables ?? [];
+    lastSubmittedNotes = metadata?.notes;
+    return {
+      success: true,
+      data: {
+        id: milestoneId,
+        status: 'submitted',
+      },
+    };
+  }),
   approveMilestone: jest.fn(async () => ({ success: true })),
   disputeMilestone: jest.fn(async () => ({ success: true })),
   getContractPaymentStatus: jest.fn(async () => ({ success: true, data: {} })),

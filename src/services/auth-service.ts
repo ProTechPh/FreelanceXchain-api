@@ -279,7 +279,6 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Get user from Appwrite
     const appwriteUser = await account.get();
 
     // Get user from database

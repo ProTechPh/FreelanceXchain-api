@@ -115,6 +115,8 @@ function compareIpv6(a: number[], b: number[]): number {
   return 0;
 }
 
+export { compareIpv6 };
+
 /**
  * Parse a dotted-quad IPv4 address into a 32-bit unsigned number.
  */

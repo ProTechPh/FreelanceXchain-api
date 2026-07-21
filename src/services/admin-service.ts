@@ -281,6 +281,13 @@ export async function updateUser(
       updatesObj.name = updates.name;
     }
     if (updates.role !== undefined) {
+      const validRoles = ['freelancer', 'employer', 'admin'] as const;
+      if (!validRoles.includes(updates.role as any)) {
+        return {
+          success: false,
+          error: { code: 'INVALID_ROLE', message: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
+        };
+      }
       updatesObj.role = updates.role as any;
     }
     if (updates.isActive !== undefined) {
