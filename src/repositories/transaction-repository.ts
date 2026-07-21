@@ -1,5 +1,6 @@
 import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { logger } from '../config/logger.js';
 
 export type TransactionEntity = {
   id: string;
@@ -37,31 +38,30 @@ export class TransactionRepository extends BaseRepository<TransactionEntity> {
     userId: string,
     options?: QueryOptions
   ): Promise<PaginatedResult<TransactionEntity>> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
+    try {
+      const limit = options?.limit ?? 20;
+      const offset = options?.offset ?? 0;
 
-    const [fromTx, toTx] = await Promise.all([
-      this.listWithQueries<TransactionEntity>(
-        [Query.equal('from_user_id', userId), Query.orderDesc('created_at')],
-        mapDoc
-      ),
-      this.listWithQueries<TransactionEntity>(
-        [Query.equal('to_user_id', userId), Query.orderDesc('created_at')],
-        mapDoc
-      ),
-    ]);
+      const [fromTx, toTx] = await Promise.all([
+        this.fetchAll([Query.equal('from_user_id', userId), Query.orderDesc('created_at')]),
+        this.fetchAll([Query.equal('to_user_id', userId), Query.orderDesc('created_at')]),
+      ]);
 
-    const all = [...fromTx, ...toTx]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const all = [...fromTx, ...toTx]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    const total = all.length;
-    const items = all.slice(offset, offset + limit);
+      const total = all.length;
+      const items = all.slice(offset, offset + limit);
 
-    return {
-      items,
-      hasMore: offset + limit < total,
-      total,
-    };
+      return {
+        items,
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch (error) {
+      logger.error(`Repository error in ${this.collectionId}.findByUser`, { userId, error });
+      return { items: [], hasMore: false, total: 0 };
+    }
   }
 
   async findByContract(contractId: string): Promise<TransactionEntity[]> {

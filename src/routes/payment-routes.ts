@@ -8,8 +8,8 @@ import {
   requestMilestoneCompletion,
   approveMilestone,
   getContractPaymentStatus,
+  disputeMilestone,
 } from '../services/payment-service.js';
-import { createDispute } from '../services/dispute-service.js';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
@@ -370,12 +370,12 @@ router.post(
         return;
       }
 
-      const result = await createDispute({
+      const result = await disputeMilestone(
         contractId,
         milestoneId,
-        initiatorId: userId,
+        userId,
         reason
-      });
+      );
 
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
@@ -386,7 +386,7 @@ router.post(
 
       res.json({
         status: 'disputed',
-        disputeId: result.data.id,
+        disputeId: result.data.disputeId,
       });
     } catch (error) {
       /* istanbul ignore next */

@@ -982,3 +982,83 @@ describe('Rush Upgrade Service - Additional Branch Coverage', () => {
     expect(notifications[0].message).toContain('DeFi Dashboard');
   });
 });
+
+describe('rush-upgrade-service - applyRushFeeToMilestones coverage', () => {
+  beforeEach(() => {
+    rushUpgradeStore.clear();
+    contractStore.clear();
+    projectStore.clear();
+    userStore.clear();
+    notificationStore.clear();
+    jest.clearAllMocks();
+  });
+
+  it('should distribute rush fee across project milestones when accepting', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    seedProject({
+      id: contract.project_id,
+      milestones: [
+        { id: 'm1', amount: 500 },
+        { id: 'm2', amount: 500 },
+      ],
+    });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+    });
+
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1250 });
+
+    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    expect(result.success).toBe(true);
+
+    const updatedProject = projectStore.get(contract.project_id) as any;
+    expect(updatedProject).toBeDefined();
+    expect(updatedProject.milestones).toHaveLength(2);
+  });
+
+  it('should handle single milestone project when applying rush fee', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    seedProject({
+      id: contract.project_id,
+      milestones: [
+        { id: 'm1', amount: 1000 },
+      ],
+    });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+    });
+
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1250 });
+
+    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    expect(result.success).toBe(true);
+
+    const updatedProject = projectStore.get(contract.project_id) as any;
+    expect(updatedProject.milestones[0].amount).toBeCloseTo(1250, 1);
+  });
+
+  it('should handle milestone with null amount when applying rush fee', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
+    seedProject({
+      id: contract.project_id,
+      milestones: [
+        { id: 'm1', amount: null as any },
+        { id: 'm2', amount: 500 },
+      ],
+    });
+    const request = seedRushUpgradeRequest({
+      contract_id: contract.id, requested_by: employer.id, proposed_percentage: 25, status: 'pending',
+    });
+
+    mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 250, total_amount: 1250 });
+
+    const result = await respondToRushUpgrade(freelancer.id, { requestId: request.id, action: 'accept' });
+    expect(result.success).toBe(true);
+  });
+});

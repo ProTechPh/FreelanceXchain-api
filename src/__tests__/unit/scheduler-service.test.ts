@@ -737,3 +737,219 @@ describe('Scheduler Service - Integration Coverage', () => {
     }
   });
 });
+
+describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
+  let mockDatabases: any;
+  let scheduledCallbacks: Map<string, () => void>;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockDatabases = (globalThis as any).__mockDatabases;
+    mockDatabases.listDocuments.mockReset();
+    mockDatabases.updateDocument.mockReset();
+    mockDatabases.getDocument.mockReset();
+    scheduledCallbacks = new Map();
+
+    mockCronSchedule.mockImplementation((expression: any, callback: any) => {
+      scheduledCallbacks.set(expression, callback);
+      return { stop: mockTaskStop };
+    });
+  });
+
+  it('should recover stuck releasing milestones back to submitted', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    const oldTimestamp = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    mockDatabases.listDocuments
+      // active contracts
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'p1' }],
+        total: 1,
+      });
+
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: JSON.stringify([
+        { id: 'm1', status: 'releasing', updated_at: oldTimestamp },
+        { id: 'm2', status: 'pending', updated_at: oldTimestamp },
+      ]),
+    });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockDatabases.updateDocument).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({
+          milestones: expect.stringContaining('"status":"submitted"'),
+        })
+      );
+    }
+  });
+
+  it('should handle milestones as object (not JSON string)', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    const oldTimestamp = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'p1' }],
+        total: 1,
+      });
+
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: [
+        { id: 'm1', status: 'releasing', updated_at: oldTimestamp },
+      ],
+    });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockDatabases.updateDocument).toHaveBeenCalled();
+    }
+  });
+
+  it('should handle project with no milestones field', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    const oldTimestamp = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'p1' }],
+        total: 1,
+      });
+
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+    });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockDatabases.updateDocument).not.toHaveBeenCalled();
+    }
+  });
+
+  it('should skip milestones without updated_at', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    const oldTimestamp = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'p1' }],
+        total: 1,
+      });
+
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: JSON.stringify([
+        { id: 'm1', status: 'releasing' },
+        { id: 'm2', status: 'releasing', updated_at: oldTimestamp },
+      ]),
+    });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockDatabases.updateDocument).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({
+          milestones: expect.stringContaining('"id":"m2"'),
+        })
+      );
+    }
+  });
+
+  it('should not recover milestones that are not stuck (within grace period)', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    const recentTimestamp = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'p1' }],
+        total: 1,
+      });
+
+    mockDatabases.getDocument.mockResolvedValueOnce({
+      $id: 'p1',
+      milestones: JSON.stringify([
+        { id: 'm1', status: 'releasing', updated_at: recentTimestamp },
+      ]),
+    });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockDatabases.updateDocument).not.toHaveBeenCalled();
+    }
+  });
+
+  it('should skip contracts without project_id', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1' }],
+        total: 1,
+      });
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockDatabases.getDocument).not.toHaveBeenCalled();
+    }
+  });
+
+  it('should log error when recoverStuckReleasingMilestones fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB down'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to run recoverStuckReleasingMilestones job',
+        expect.any(Error)
+      );
+    }
+  });
+
+  it('should log error when individual contract recovery fails', async () => {
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('*/10 * * * *');
+
+    const oldTimestamp = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    mockDatabases.listDocuments
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'p1' }],
+        total: 1,
+      });
+
+    mockDatabases.getDocument.mockRejectedValueOnce(new Error('Project not found'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to recover stuck releasing milestone for a contract',
+        expect.objectContaining({
+          contractId: 'c1',
+        })
+      );
+    }
+  });
+});

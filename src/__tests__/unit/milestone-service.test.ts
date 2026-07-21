@@ -74,16 +74,19 @@ describe('Milestone Service', () => {
   };
 
   describe('getMilestoneById', () => {
-    it('should return milestone when found', async () => {
+    it('should return milestone with contract when found', async () => {
       const { getMilestoneById } = await importModule();
 
       const milestone = { id: 'ms-1', title: 'Design Phase', status: 'pending', contractId: 'c-1' };
+      const contract = { id: 'c-1', freelancer_id: 'user-1', employer_id: 'e1' };
       mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+      mockContractRepository.getContractById.mockResolvedValueOnce(contract);
 
-      const result = await getMilestoneById('ms-1');
+      const result = await getMilestoneById('ms-1', 'user-1');
 
       expect(result.success).toBe(true);
-      expect(result.data).toEqual(milestone);
+      expect(result.data.milestone).toEqual(milestone);
+      expect(result.data.contract).toEqual(contract);
     });
 
     it('should return NOT_FOUND when milestone does not exist', async () => {
@@ -91,7 +94,7 @@ describe('Milestone Service', () => {
 
       mockMilestoneRepository.getById.mockResolvedValueOnce(null);
 
-      const result = await getMilestoneById('nonexistent');
+      const result = await getMilestoneById('nonexistent', 'user-1');
 
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('NOT_FOUND');
@@ -102,10 +105,34 @@ describe('Milestone Service', () => {
 
       mockMilestoneRepository.getById.mockRejectedValueOnce(new Error('DB error'));
 
-      const result = await getMilestoneById('ms-1');
+      const result = await getMilestoneById('ms-1', 'user-1');
 
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('DATABASE_ERROR');
+    });
+
+    it('should return UNAUTHORIZED when no userId provided', async () => {
+      const { getMilestoneById } = await importModule();
+
+      const milestone = { id: 'ms-1', title: 'Design Phase', status: 'pending', contractId: 'c-1' };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+
+      const result = await getMilestoneById('ms-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('UNAUTHORIZED');
+    });
+
+    it('should return NOT_FOUND when milestone has no contractId', async () => {
+      const { getMilestoneById } = await importModule();
+
+      const milestone = { id: 'ms-1', title: 'Design Phase', status: 'pending' };
+      mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
+
+      const result = await getMilestoneById('ms-1', 'user-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('NOT_FOUND');
     });
   });
 
@@ -113,12 +140,9 @@ describe('Milestone Service', () => {
     it('should submit milestone successfully', async () => {
       const { submitMilestone } = await importModule();
 
-      // getMilestoneById
       const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
       mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
-      // Get contract
       mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'freelancer-1', employer_id: 'employer-1', project_id: 'p-1', status: 'active' });
-      // Update milestone
       const updated = { ...milestone, status: 'submitted', submitted_at: '2025-01-01' };
       mockMilestoneRepository.update.mockResolvedValueOnce(updated);
 
@@ -178,7 +202,7 @@ describe('Milestone Service', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error.code).toBe('CONTRACT_NOT_FOUND');
+      expect(result.error.code).toBe('UNAUTHORIZED');
     });
 
     it('should fail when user is not the freelancer', async () => {
@@ -186,7 +210,7 @@ describe('Milestone Service', () => {
 
       const milestone = { id: 'ms-1', title: 'Design', status: 'pending', contract_id: 'c-1', revision_count: 0 };
       mockMilestoneRepository.getById.mockResolvedValueOnce(milestone);
-      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'other-user', employer_id: 'employer-1', project_id: 'p-1' });
+      mockContractRepository.getContractById.mockResolvedValueOnce({ freelancer_id: 'other-user', employer_id: 'employer-1', project_id: 'p-1', status: 'active' });
 
       const result = await submitMilestone({
         milestoneId: 'ms-1',
@@ -322,7 +346,7 @@ describe('Milestone Service', () => {
       });
 
       expect(result.success).toBe(false);
-      expect(result.error.code).toBe('CONTRACT_NOT_FOUND');
+      expect(result.error.code).toBe('UNAUTHORIZED');
     });
 
     it('should fail when user is not the employer', async () => {
@@ -492,7 +516,7 @@ describe('milestone-service – error paths', () => {
     mockMilestoneRepository.getById.mockRejectedValue(new Error('db error'));
 
     const { getMilestoneById } = await import(resolveModule('src/services/milestone-service.ts'));
-    const result = await getMilestoneById('m1');
+    const result = await getMilestoneById('m1', 'employer-1');
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.code).toBe('DATABASE_ERROR');
@@ -556,7 +580,7 @@ describe('Milestone Service - Direct Branch Coverage', () => {
     const { getMilestoneById } = await importModule();
     mockMilestoneRepository.getById.mockResolvedValueOnce(null);
 
-    const result = await getMilestoneById('ms-1');
+    const result = await getMilestoneById('ms-1', 'freelancer-1');
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
   });
@@ -565,7 +589,7 @@ describe('Milestone Service - Direct Branch Coverage', () => {
     const { getMilestoneById } = await importModule();
     mockMilestoneRepository.getById.mockRejectedValueOnce(new Error('DB error'));
 
-    const result = await getMilestoneById('ms-1');
+    const result = await getMilestoneById('ms-1', 'freelancer-1');
     expect(result.success).toBe(false);
   });
 
@@ -586,7 +610,7 @@ describe('Milestone Service - Direct Branch Coverage', () => {
 
     const result = await submitMilestone({ milestoneId: 'ms-1', freelancerId: 'f1', deliverables: [] });
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.code).toBe('CONTRACT_NOT_FOUND');
+    if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
   });
 
   it('should return error when freelancer not authorized', async () => {
@@ -785,7 +809,7 @@ describe('Milestone Service - Integration Coverage', () => {
     // Throw a non-Error value (string instead of Error)
     mockMilestoneRepository.getById.mockRejectedValueOnce('raw string error');
 
-    const result = await getMilestoneById('ms-1');
+    const result = await getMilestoneById('ms-1', 'freelancer-1');
 
     expect(result.success).toBe(false);
     expect(result.error.code).toBe('DATABASE_ERROR');

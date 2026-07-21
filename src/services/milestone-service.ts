@@ -14,9 +14,14 @@ import { disputeRepository } from '../repositories/dispute-repository.js';
 import { generateId } from '../utils/id.js';
 
 /**
- * Get milestone by ID
+ * Get milestone by ID with contract authorization
  */
-export async function getMilestoneById(milestoneId: string, userId?: string): Promise<ServiceResult<Milestone>> {
+export type MilestoneWithContract = {
+  milestone: Milestone;
+  contract: any;
+};
+
+export async function getMilestoneById(milestoneId: string, userId?: string): Promise<ServiceResult<MilestoneWithContract>> {
   try {
     const milestone = await milestoneRepository.getById(milestoneId);
 
@@ -27,19 +32,30 @@ export async function getMilestoneById(milestoneId: string, userId?: string): Pr
       };
     }
 
-    // BLF-8.2: Verify user is a party to the contract before returning milestone details
-    // Deny access when contract is null (prevents bypass via deleted contract)
-    if (userId) {
-      const contract = await contractRepository.getContractById(milestone.contract_id);
-      if (!contract || (contract.employer_id !== userId && contract.freelancer_id !== userId)) {
-        return {
-          success: false,
-          error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this milestone' },
-        };
-      }
+    if (!userId) {
+      return {
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this milestone' },
+      };
     }
 
-    return { success: true, data: milestone as unknown as Milestone };
+    const contractId = (milestone as any).contract_id ?? (milestone as any).contractId;
+    if (!contractId) {
+      return {
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Milestone not found' },
+      };
+    }
+
+    const contract = await contractRepository.getContractById(contractId);
+    if (!contract || (contract.employer_id !== userId && contract.freelancer_id !== userId)) {
+      return {
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this milestone' },
+      };
+    }
+
+    return { success: true, data: { milestone: milestone as any, contract } };
   } catch (error) {
     logger.error('Failed to get milestone:', error);
     return {
@@ -60,29 +76,12 @@ export async function submitMilestone(
 ): Promise<ServiceResult<Milestone>> {
   try {
     // Get milestone and verify ownership
-    const milestoneResult = await getMilestoneById(input.milestoneId);
+    const milestoneResult = await getMilestoneById(input.milestoneId, input.freelancerId);
     if (!milestoneResult.success) {
       return milestoneResult;
     }
 
-    const milestone: any = milestoneResult.data;
-
-    // Get contract to verify freelancer
-    const contract = await contractRepository.getContractById(milestone.contract_id);
-
-    if (!contract) {
-      return {
-        success: false,
-        error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
-      };
-    }
-
-    if (contract.freelancer_id !== input.freelancerId) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to submit this milestone' },
-      };
-    }
+    const { milestone, contract } = milestoneResult.data;
 
     // H4: Verify contract is active before allowing milestone submission
     if (contract.status !== 'active') {
@@ -111,7 +110,7 @@ export async function submitMilestone(
       status: 'submitted',
       submitted_at: new Date().toISOString(),
       deliverable_files: JSON.stringify(input.deliverables),
-      revision_count: milestone.status === 'rejected' ? milestone.revision_count + 1 : milestone.revision_count,
+      revision_count: (milestone as any).status === 'rejected' ? (milestone as any).revision_count + 1 : (milestone as any).revision_count,
       updated_at: new Date().toISOString(),
     });
 
@@ -158,29 +157,12 @@ export async function rejectMilestone(
 ): Promise<ServiceResult<Milestone>> {
   try {
     // Get milestone
-    const milestoneResult = await getMilestoneById(input.milestoneId);
+    const milestoneResult = await getMilestoneById(input.milestoneId, input.employerId);
     if (!milestoneResult.success) {
       return milestoneResult;
     }
 
-    const milestone: any = milestoneResult.data;
-
-    // Get contract to verify employer
-    const contract = await contractRepository.getContractById(milestone.contract_id);
-
-    if (!contract) {
-      return {
-        success: false,
-        error: { code: 'CONTRACT_NOT_FOUND', message: 'Contract not found' },
-      };
-    }
-
-    if (contract.employer_id !== input.employerId) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to reject this milestone' },
-      };
-    }
+    const { milestone, contract } = milestoneResult.data;
 
     // Check if milestone can be rejected
     if (milestone.status !== 'submitted') {
@@ -195,7 +177,7 @@ export async function rejectMilestone(
 
     // L2: Enforce revision count cap to prevent infinite rejection loop
     const MAX_REVISIONS = 5;
-    if (input.requestRevision && milestone.revision_count >= MAX_REVISIONS) {
+    if (input.requestRevision && (milestone as any).revision_count >= MAX_REVISIONS) {
       return {
         success: false,
         error: {
@@ -224,7 +206,7 @@ export async function rejectMilestone(
       const disputeId = generateId();
       await disputeRepository.createDispute({
         id: disputeId,
-        contract_id: milestone.contract_id,
+        contract_id: (milestone as any).contract_id,
         milestone_id: input.milestoneId,
         initiator_id: input.employerId,
         reason: input.reason || 'Milestone rejected without revision',

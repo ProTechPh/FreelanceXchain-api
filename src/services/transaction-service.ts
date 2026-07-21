@@ -52,7 +52,7 @@ export async function getUserTransactions(
     const limit = options.limit || 20;
     const offset = (page - 1) * limit;
 
-    const pagedResult = await transactionRepository.findByUser(userId, { limit: 1000, offset: 0 });
+    const pagedResult = await transactionRepository.findByUser(userId, { limit: 200, offset: 0 });
     let filtered = pagedResult.items;
 
     // Apply filters in-memory (Appwrite doesn't support complex WHERE)
@@ -195,6 +195,16 @@ export async function createTransaction(
   input: TransactionInput
 ): Promise<ServiceResult<Transaction>> {
   try {
+    if (typeof input.amount !== 'number' || !isFinite(input.amount) || input.amount <= 0) {
+      return {
+        success: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: `Invalid transaction amount: ${input.amount}`,
+        },
+      };
+    }
+
     const created = await transactionRepository.create({
       contract_id: input.contract_id,
       milestone_id: input.milestone_id,

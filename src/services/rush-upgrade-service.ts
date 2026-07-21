@@ -47,6 +47,34 @@ async function sendNotificationSafe(params: {
   }
 }
 
+async function applyRushFeeToMilestones(projectId: string, baseAmount: number, rushFee: number): Promise<void> {
+  const project = await projectRepository.findProjectById(projectId);
+  if (!project || !project.milestones || project.milestones.length === 0) return;
+
+  const newTotal = baseAmount + rushFee;
+  const milestones = [...project.milestones];
+
+  let allocated = 0;
+  for (let i = 0; i < milestones.length - 1; i++) {
+    const current = milestones[i] as any;
+    const newAmount = Math.round((current.amount ?? 0) * newTotal / baseAmount * 100) / 100;
+    milestones[i] = {
+      ...current,
+      amount: newAmount,
+    } as any;
+    allocated += newAmount;
+  }
+
+  const lastIndex = milestones.length - 1;
+  const last = milestones[lastIndex] as any;
+  milestones[lastIndex] = {
+    ...last,
+    amount: Math.round((newTotal - allocated) * 100) / 100,
+  } as any;
+
+  await projectRepository.updateProject(projectId, { milestones });
+}
+
 // Employer requests a rush upgrade on an active contract
 export async function requestRushUpgrade(
   employerId: string,
@@ -94,12 +122,10 @@ export async function requestRushUpgrade(
   }
 
   // Check for existing pending/counter_offered request.
-  // NOTE: This check and the subsequent insert are not atomic. Two concurrent requests
-  // can both pass this guard before either inserts. A unique DB constraint on
-  // (contract_id, status IN ('pending','counter_offered')) is required to fully prevent
-  // duplicate rush upgrade requests. The application-level check below catches the
-  // common case; DB errors from a constraint violation should be caught and returned
-  // as PENDING_REQUEST_EXISTS.
+  // withLock serializes concurrent requests for the same contract, making the
+  // check-then-insert atomic for single-instance deployments. Multi-instance
+  // deployments should add a DB unique constraint on (contract_id, status) to
+  // prevent duplicates across instances.
   const existingRequest = await rushUpgradeRequestRepository.getPendingRequestByContract(input.contractId);
   if (existingRequest) {
     return {
@@ -205,6 +231,8 @@ export async function respondToRushUpgrade(
         error: { code: 'UPDATE_FAILED', message: 'Failed to apply rush upgrade to contract' },
       };
     }
+
+    await applyRushFeeToMilestones(contractEntity.project_id, contractEntity.base_amount, newRushFee);
 
     const updatedContract = mapContractFromEntity(updatedContractEntity);
     const updatedRequest = mapRushUpgradeRequestFromEntity(updatedEntity);
@@ -369,6 +397,8 @@ export async function acceptCounterOffer(
       error: { code: 'UPDATE_FAILED', message: 'Failed to apply rush upgrade to contract' },
     };
   }
+
+  await applyRushFeeToMilestones(contractEntity.project_id, contractEntity.base_amount, newRushFee);
 
   const updatedContract = mapContractFromEntity(updatedContractEntity);
   const updatedRequest = mapRushUpgradeRequestFromEntity(updatedEntity);

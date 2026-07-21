@@ -8,6 +8,7 @@ import {
   validateSessionId,
   sanitizeSessionId,
   isHostnameSsrfAllowed,
+  compareIpv6,
 } from '../url-validator.js';
 
 describe('URL Validator - OWASP A10 SSRF Protection', () => {
@@ -274,6 +275,26 @@ describe('URL Validator - OWASP A10 SSRF Protection', () => {
       expect(isHostnameSsrfAllowed('999.1.1.1')).toBe(false);
       // IPv4 with the wrong number of octets.
       expect(isHostnameSsrfAllowed('1.2.3')).toBe(false);
+    });
+  });
+
+  describe('compareIpv6', () => {
+    it('should compare IPv6 groups correctly', () => {
+      expect(compareIpv6([0, 0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 2])).toBe(-1);
+      expect(compareIpv6([0, 0, 0, 0, 0, 0, 0, 2], [0, 0, 0, 0, 0, 0, 0, 1])).toBe(1);
+      expect(compareIpv6([0, 0, 0, 0, 0, 0, 0, 1], [0, 0, 0, 0, 0, 0, 0, 1])).toBe(0);
+    });
+
+    it('should handle sparse arrays with nullish coalescing', () => {
+      const sparseA = [0, 0, 0, 0, 0, 0, 0] as any;
+      sparseA[7] = undefined;
+      const sparseB = [0, 0, 0, 0, 0, 0, 0] as any;
+      sparseB[7] = undefined;
+      expect(compareIpv6(sparseA, sparseB)).toBe(0);
+
+      const sparseC = [0, 0, 0, 0, 0, 0, 0] as any;
+      sparseC[7] = 1;
+      expect(compareIpv6(sparseA, sparseC)).toBe(-1);
     });
   });
 

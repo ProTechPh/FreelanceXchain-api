@@ -105,7 +105,10 @@ async function submitMilestoneFromProjectContext(
     };
   }
 
-  const completion = await requestMilestoneCompletion(context.contractId, milestoneId, freelancerId);
+  const completion = await requestMilestoneCompletion(context.contractId, milestoneId, freelancerId, {
+    deliverables,
+    ...(notes !== undefined ? { notes } : {}),
+  });
   if (!completion.success) {
     const completionError = 'error' in completion
       ? completion.error
@@ -113,15 +116,15 @@ async function submitMilestoneFromProjectContext(
     return { success: false, error: completionError };
   }
 
-  const reloadedProject = await projectRepository.findProjectById(context.project.id);
-  if (!reloadedProject) {
+  const updatedProject = await projectRepository.findProjectById(context.project.id);
+  if (!updatedProject) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
 
-  const milestoneIndex = (reloadedProject.milestones || []).findIndex((m) => m.id === milestoneId);
+  const milestoneIndex = (updatedProject.milestones || []).findIndex((m) => m.id === milestoneId);
   if (milestoneIndex === -1) {
     return {
       success: false,
@@ -129,8 +132,8 @@ async function submitMilestoneFromProjectContext(
     };
   }
 
-  const existing = reloadedProject.milestones[milestoneIndex];
-  if (!existing) {
+  const updatedMilestone = updatedProject.milestones[milestoneIndex];
+  if (!updatedMilestone) {
     return {
       success: false,
       error: { code: 'NOT_FOUND', message: 'Milestone not found' },
@@ -138,37 +141,6 @@ async function submitMilestoneFromProjectContext(
   }
 
   const now = new Date().toISOString();
-  const currentRevisionCount = Number((existing as any).revisionCount ?? (existing as any).revision_count ?? 0);
-  const existingStatus = String((existing as any).status ?? '');
-  const nextRevisionCount = existingStatus === 'rejected' ? currentRevisionCount + 1 : currentRevisionCount;
-
-  const updatedMilestone: MilestoneEntity = {
-    ...existing,
-    status: 'submitted',
-    submitted_at: now,
-    submittedAt: now,
-    deliverable_files: deliverables,
-    deliverableFiles: deliverables,
-    notes: notes ?? (existing as any).notes,
-    revision_count: nextRevisionCount,
-    revisionCount: nextRevisionCount,
-    rejection_reason: null,
-    rejectionReason: null,
-  } as any;
-
-  const updatedMilestones = [...reloadedProject.milestones];
-  updatedMilestones[milestoneIndex] = updatedMilestone;
-
-  const updatedProject = await projectRepository.updateProject(reloadedProject.id, {
-    milestones: updatedMilestones,
-  });
-
-  if (!updatedProject) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update milestone submission data' },
-    };
-  }
 
   return {
     success: true,
@@ -207,7 +179,7 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: R
       return res.status(404).json({ error: message });
     }
 
-    return res.json(result.data);
+    return res.json(result.data.milestone);
   } catch (error) {
     console.error('Error getting milestone:', error);
     return res.status(500).json({ error: 'Failed to get milestone' });

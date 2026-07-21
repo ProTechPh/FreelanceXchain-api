@@ -134,7 +134,11 @@ export type ContractPaymentStatus = {
 export async function requestMilestoneCompletion(
   contractId: string,
   milestoneId: string,
-  freelancerId: string
+  freelancerId: string,
+  metadata?: {
+    deliverables?: Array<{ filename: string; url: string; size: number; mimeType: string }>;
+    notes?: string;
+  }
 ): Promise<ServiceResult<MilestoneCompletionResult>> {
   // BLF-2.2: Serialize concurrent submissions to prevent double blockchain registry entry
   return withLock(`milestone-submit:${milestoneId}`, async () => {
@@ -235,9 +239,26 @@ export async function requestMilestoneCompletion(
   }
 
   // Update milestone status to submitted (immutable pattern)
-  const updatedMilestones = projectEntity.milestones.map((m, i) =>
-    i === milestoneIndex ? { ...m, status: 'submitted' as const } : m
-  );
+  const now = new Date().toISOString();
+  const updatedMilestones = projectEntity.milestones.map((m, i) => {
+    if (i !== milestoneIndex) return m;
+    const currentRevisionCount = Number((m as any).revisionCount ?? (m as any).revision_count ?? 0);
+    const existingStatus = String((m as any).status ?? '');
+    const nextRevisionCount = existingStatus === 'rejected' ? currentRevisionCount + 1 : currentRevisionCount;
+    return {
+      ...m,
+      status: 'submitted' as const,
+      submitted_at: now,
+      submittedAt: now,
+      deliverable_files: metadata?.deliverables ?? (m as any).deliverable_files ?? (m as any).deliverableFiles ?? [],
+      deliverableFiles: metadata?.deliverables ?? (m as any).deliverableFiles ?? (m as any).deliverable_files ?? [],
+      notes: metadata?.notes ?? (m as any).notes,
+      revision_count: nextRevisionCount,
+      revisionCount: nextRevisionCount,
+      rejection_reason: null,
+      rejectionReason: null,
+    } as any;
+  });
 
   // Update project in database
   await projectRepository.updateProject(project.id, {
@@ -388,12 +409,25 @@ async function releaseEscrowPaymentWithSaga(
       }
     }
 
+    let recordedAmount = milestoneAmount;
+    try {
+      const escrow = await escrowOps.getEscrowByContractId(contractId);
+      if (escrow) {
+        const escrowMilestone = escrow.milestones.find(m => m.id === milestoneId);
+        if (escrowMilestone) {
+          recordedAmount = Number(escrowMilestone.amount);
+        }
+      }
+    } catch {
+      // Non-critical: fall back to milestoneAmount if escrow read fails
+    }
+
     await createPaymentRecord({
       contractId,
       milestoneId,
       payerId: employerId,
       payeeId: contract.freelancerId,
-      amount: milestoneAmount,
+      amount: recordedAmount,
       paymentType: 'milestone_release',
       txHash: transactionHash || null,
       status: 'completed',
