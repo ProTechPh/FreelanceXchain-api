@@ -41,6 +41,7 @@ contract FreelanceEscrow {
     error RefundFailed();
     error CannotCancelSubmittedOrDisputed();
     error InvalidResolutionBps();
+    error NothingToWithdraw();
 
     address public immutable employer;
     address public immutable freelancer;
@@ -279,7 +280,7 @@ contract FreelanceEscrow {
      */
     function withdraw() external nonReentrant {
         uint256 amount = pendingWithdrawals[msg.sender];
-        require(amount > 0, "Nothing to withdraw");
+        if (amount == 0) revert NothingToWithdraw();
         pendingWithdrawals[msg.sender] = 0;
         (bool ok, ) = msg.sender.call{value: amount}("");
         if (!ok) revert TransferFailed();
