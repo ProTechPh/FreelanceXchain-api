@@ -27,6 +27,7 @@ contract MilestoneRegistry {
     error InvalidStatus();
     error OnlyEmployerOrOwner();
     error IndexOutOfBounds();
+    error MilestoneNotDisputed();
 
     address public immutable owner;
 
@@ -58,6 +59,7 @@ contract MilestoneRegistry {
     event MilestoneSubmitted(bytes32 indexed milestoneIdHash, bytes32 indexed contractId, address indexed freelancer, bytes32 workHash);
     event MilestoneApproved(bytes32 indexed milestoneIdHash, address indexed freelancer, uint256 amount, uint256 timestamp);
     event MilestoneRejected(bytes32 indexed milestoneIdHash, string reason);
+    event MilestoneDisputeResolved(bytes32 indexed milestoneIdHash, address indexed freelancer, uint256 amount, uint256 timestamp);
 
     constructor() {
         owner = msg.sender;
@@ -153,7 +155,30 @@ contract MilestoneRegistry {
         }
         totalEarned[fl] += amt;
 
-        emit MilestoneApproved(milestoneIdHash, fl, amt, block.timestamp);
+        emit MilestoneDisputeResolved(milestoneIdHash, fl, amt, block.timestamp);
+    }
+
+    /**
+     * @dev Reject a disputed milestone — transitions Disputed -> Rejected.
+     * Only callable by owner (the backend relayer) after DisputeResolution records an
+     * employer-favorable outcome.
+     *
+     * Without this function, a milestone moved to Disputed via disputeMilestone() can never
+     * reach Rejected status because rejectMilestone() only accepts Submitted milestones.
+     * This would permanently leave the milestone in Disputed limbo, inflating totalMilestones
+     * without proper categorization.
+     *
+     * @param milestoneIdHash The milestone to reject
+     * @param reason Rejection reason
+     */
+    function rejectDisputedMilestone(bytes32 milestoneIdHash, string calldata reason) external {
+        if (msg.sender != owner) revert OnlyOwner();
+        MilestoneRecord storage m = milestones[milestoneIdHash];
+        if (m.submittedAt == 0) revert MilestoneNotFound();
+        if (m.status != MilestoneStatus.Disputed) revert MilestoneNotDisputed();
+
+        m.status = MilestoneStatus.Rejected;
+        emit MilestoneRejected(milestoneIdHash, reason);
     }
 
     /**

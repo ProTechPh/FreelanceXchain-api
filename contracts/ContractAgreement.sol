@@ -25,8 +25,10 @@ contract ContractAgreement {
     error AlreadySigned();
     error NotSigned();
     error NotActive();
+    error NotDisputed();
     error CannotCancel();
     error Unauthorized();
+    error InvalidDisputeResolution();
     error IndexOutOfBounds();
     error MilestoneCountTooLarge();
 
@@ -58,6 +60,7 @@ contract ContractAgreement {
     event AgreementCompleted(bytes32 indexed contractIdHash, uint256 timestamp);
     event AgreementDisputed(bytes32 indexed contractIdHash, uint256 timestamp);
     event AgreementCancelled(bytes32 indexed contractIdHash, uint256 timestamp);
+    event AgreementDisputeResolved(bytes32 indexed contractIdHash, AgreementStatus newStatus, uint256 timestamp);
 
     constructor() {
         owner = msg.sender;
@@ -131,6 +134,12 @@ contract ContractAgreement {
      * Allowing the employer to call this directly would let them unilaterally mark
      * the agreement complete before work is done, bypassing the freelancer's consent
      * and enabling premature reputation ratings.
+     *
+     * @notice IMPORTANT: This contract is intentionally loosely coupled from FreelanceEscrow.
+     * The backend MUST verify that all escrow milestones are settled (isActive == false)
+     * before calling this function. Premature completion allows FreelanceReputation ratings
+     * before work is actually paid, violating the implied invariant that completion means
+     * all payments are settled.
      */
     function completeAgreement(bytes32 contractIdHash) external {
         Agreement storage a = agreements[contractIdHash];
@@ -153,6 +162,34 @@ contract ContractAgreement {
 
         a.status = AgreementStatus.Disputed;
         emit AgreementDisputed(contractIdHash, block.timestamp);
+    }
+
+    /**
+     * @dev Resolve a disputed agreement — transitions Disputed -> Completed or Disputed -> Cancelled.
+     * Only callable by owner (the backend relayer) after DisputeResolution records the outcome.
+     *
+     * Without this function, a dispute agreement is a dead end: disputeAgreement() sets Disputed
+     * status but there is no transition out, permanently blocking FreelanceReputation ratings
+     * for the affected contract.
+     *
+     * @param contractIdHash The agreement to resolve
+     * @param resolved Whether the dispute is resolved in favor of completion (true) or cancellation (false)
+     */
+    function resolveDisputeAgreement(bytes32 contractIdHash, bool resolved) external {
+        Agreement storage a = agreements[contractIdHash];
+        if (a.createdAt == 0) revert AgreementNotFound();
+        if (a.status != AgreementStatus.Disputed) revert NotDisputed();
+        if (msg.sender != owner) revert OnlyOwner();
+
+        if (resolved) {
+            a.status = AgreementStatus.Completed;
+            emit AgreementCompleted(contractIdHash, block.timestamp);
+        } else {
+            a.status = AgreementStatus.Cancelled;
+            emit AgreementCancelled(contractIdHash, block.timestamp);
+        }
+
+        emit AgreementDisputeResolved(contractIdHash, a.status, block.timestamp);
     }
 
     /**

@@ -47,6 +47,7 @@ contract FreelanceReputation {
     error ContractNotCompleted();
     error NotPartyToContract();
     error InvalidRatee();
+    error InvalidContractAgreementAddress();
 
     IContractAgreement public immutable contractAgreement;
 
@@ -86,6 +87,7 @@ contract FreelanceReputation {
     );
 
     constructor(address _contractAgreement) {
+        if (_contractAgreement == address(0)) revert InvalidContractAgreementAddress();
         contractAgreement = IContractAgreement(_contractAgreement);
     }
 
