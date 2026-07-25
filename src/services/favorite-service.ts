@@ -110,8 +110,12 @@ export async function getUserFavorites(
     const favorites = await favoriteRepository.findByUser(userId, targetType);
 
     // Batch-fetch target details instead of N+1 queries
-    const projectIds = favorites.filter(f => f.target_type === 'project').map(f => f.target_id);
-    const userIds = favorites.filter(f => f.target_type !== 'project').map(f => f.target_id);
+    const projectIds: string[] = [];
+    const userIds: string[] = [];
+    for (const f of favorites) {
+      if (f.target_type === 'project') projectIds.push(f.target_id);
+      else userIds.push(f.target_id);
+    }
 
     const [projectMap, userMap] = await Promise.all([
       projectIds.length > 0

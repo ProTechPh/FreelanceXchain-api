@@ -530,8 +530,8 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
     return;
   }
 
-  const processedTags: string[] | undefined = tags 
-    ? Array.from(new Set(tags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0))) as string[]
+  const processedTags: string[] | undefined = tags
+    ? Array.from(new Set((tags as string[]).reduce<string[]>((acc, tag) => { const t = tag.trim(); if (t.length > 0) acc.push(t); return acc; }, []))) as string[]
     : undefined;
   
   const result = await createProject(userId, { 
@@ -713,9 +713,10 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
         throw new Error(`Upload failed: ${errors}`);
       }
 
-      attachments = uploadResults
-        .filter(result => result.success && result.metadata)
-        .map(result => result.metadata!);
+      attachments = uploadResults.reduce<typeof attachments>((acc, result) => {
+        if (result.success && result.metadata) acc.push(result.metadata!);
+        return acc;
+      }, []);
     } catch (uploadError: any) {
       // Clean up any partially uploaded files
       /* istanbul ignore next */
@@ -739,7 +740,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
   }
 
   const processedTags: string[] | undefined = parsedTags 
-    ? Array.from(new Set(parsedTags.map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0))) as string[]
+    ? Array.from(new Set((parsedTags as string[]).reduce<string[]>((acc, tag) => { const t = tag.trim(); if (t.length > 0) acc.push(t); return acc; }, []))) as string[]
     : undefined;
   
   const result = await createProject(userId, { 

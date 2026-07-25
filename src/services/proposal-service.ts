@@ -195,13 +195,15 @@ export async function getProposalWithEmployerHistory(proposalId: string): Promis
   const { items: allContracts } = await contractRepository.getContractsByEmployer(project.employerId);
   const completedContracts = allContracts.filter(c => c.status === 'completed');
 
-  // Get employer's average rating and review count
-  const { reviewRepository } = await import('../repositories/review-repository.js');
-  const { average: averageRating, count: reviewCount } = await reviewRepository.getAverageRating(project.employerId);
-
-  // Get employer profile
-  const { employerProfileRepository } = await import('../repositories/employer-profile-repository.js');
-  const employerProfile = await employerProfileRepository.getProfileByUserId(project.employerId);
+  // Get employer's average rating and review count + employer profile in parallel
+  const [{ reviewRepository }, { employerProfileRepository }] = await Promise.all([
+    import('../repositories/review-repository.js'),
+    import('../repositories/employer-profile-repository.js'),
+  ]);
+  const [{ average: averageRating, count: reviewCount }, employerProfile] = await Promise.all([
+    reviewRepository.getAverageRating(project.employerId),
+    employerProfileRepository.getProfileByUserId(project.employerId),
+  ]);
 
   return {
     success: true,
@@ -328,11 +330,8 @@ async function validateProposalAcceptance(
 async function rejectOtherProposals(projectId: string, acceptedProposalId: string): Promise<void> {
   try {
     const otherProposals = await proposalRepository.getProposalsByProject(projectId, { limit: 1000, offset: 0 });
-    for (const otherProposal of otherProposals.items) {
-      if (otherProposal.id !== acceptedProposalId && otherProposal.status === 'pending') {
-        await proposalRepository.updateProposal(otherProposal.id, { status: 'rejected' });
-      }
-    }
+    const toReject = otherProposals.items.filter(p => p.id !== acceptedProposalId && p.status === 'pending');
+    await Promise.all(toReject.map(p => proposalRepository.updateProposal(p.id, { status: 'rejected' })));
   } catch (error) {
     logger.error('Failed to reject other pending proposals', { error });
     // Continue - this is non-critical

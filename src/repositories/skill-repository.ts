@@ -151,20 +151,20 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
         ]
       );
       const lowerKeyword = keyword.toLowerCase();
-      return response.documents
-        .map((doc: any) => {
-          const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-          return {
-            id: $id,
-            ...attrs,
-            created_at: attrs.created_at ?? $createdAt,
-            updated_at: attrs.updated_at ?? $updatedAt,
-          } as SkillEntity;
-        })
-        .filter(skill =>
-          skill.name.toLowerCase().includes(lowerKeyword) ||
-          skill.description.toLowerCase().includes(lowerKeyword)
-        );
+      return response.documents.reduce<SkillEntity[]>((acc, doc: any) => {
+        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+        const skill = {
+          id: $id,
+          ...attrs,
+          created_at: attrs.created_at ?? $createdAt,
+          updated_at: attrs.updated_at ?? $updatedAt,
+        } as SkillEntity;
+        if (skill.name.toLowerCase().includes(lowerKeyword) ||
+          skill.description.toLowerCase().includes(lowerKeyword)) {
+          acc.push(skill);
+        }
+        return acc;
+      }, []);
     } catch {
       return [];
     }

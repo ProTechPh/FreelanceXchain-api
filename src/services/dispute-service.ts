@@ -159,9 +159,11 @@ export async function createDispute(
 
   // Record dispute on blockchain
   try {
-    const initiator = await userRepository.getUserById(initiatorId);
-    const freelancer = await userRepository.getUserById(contract.freelancerId);
-    const employer = await userRepository.getUserById(contract.employerId);
+    const [initiator, freelancer, employer] = await Promise.all([
+      userRepository.getUserById(initiatorId),
+      userRepository.getUserById(contract.freelancerId),
+      userRepository.getUserById(contract.employerId),
+    ]);
 
     if (initiator?.wallet_address && freelancer?.wallet_address && employer?.wallet_address) {
       await createDisputeOnBlockchain({
@@ -653,8 +655,10 @@ export async function getDisputesByContract(
  * Get all open disputes (for admin) — includes both 'open' and 'under_review' status
  */
 export async function getOpenDisputes(): Promise<DisputeServiceResult<Dispute[]>> {
-  const openResult = await disputeRepository.getDisputesByStatus('open');
-  const reviewResult = await disputeRepository.getDisputesByStatus('under_review');
+  const [openResult, reviewResult] = await Promise.all([
+    disputeRepository.getDisputesByStatus('open'),
+    disputeRepository.getDisputesByStatus('under_review'),
+  ]);
   const allActive = [
     ...openResult.items.map(mapDisputeFromEntity),
     ...reviewResult.items.map(mapDisputeFromEntity),

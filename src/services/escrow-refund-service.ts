@@ -222,28 +222,29 @@ export async function approveRefund(
           // Get all milestones for this contract to determine correct indices
           const milestones = await milestoneRepository.findByContract(refund.contract_id);
 
-          const pendingMilestones = milestones
-            .map((m: any, index: number) => ({ ...m, index }))
-            .filter((m: any) => m.status !== 'approved' && m.status !== 'refunded');
+          const pendingMilestones = milestones.reduce<Array<Record<string, unknown> & { index: number }>>((acc, m, index) => {
+            if (m.status !== 'approved' && m.status !== 'refunded') acc.push({ ...m, index });
+            return acc;
+          }, []);
 
-          for (const milestone of pendingMilestones) {
+          await Promise.all(pendingMilestones.map(async (milestone) => {
             try {
               await refundMilestone(contract.escrow_address, milestone.index);
               logger.info('Blockchain refund executed for milestone', {
                 refundId: input.refundId,
                 milestoneIndex: milestone.index,
-                milestoneId: milestone.id,
+                milestoneId: milestone.id as string,
                 escrowAddress: contract.escrow_address,
               });
             } catch (milestoneRefundError) {
               logger.error('Failed to refund individual milestone on-chain', {
                 error: milestoneRefundError,
                 milestoneIndex: milestone.index,
-                milestoneId: milestone.id,
+                milestoneId: milestone.id as string,
               });
-              failedMilestones.push({ index: milestone.index, id: milestone.id, error: milestoneRefundError });
+              failedMilestones.push({ index: milestone.index, id: milestone.id as string, error: milestoneRefundError });
             }
-          }
+          }));
         } else {
           /* istanbul ignore next */
           logger.warn('Contract has no escrow address, skipping blockchain refund', {
@@ -307,14 +308,13 @@ export async function approveRefund(
 
       // Cancel any other pending refund requests for this contract
       const otherRefunds = await refundRequestRepository.findByContract(refund.contract_id);
-      for (const r of otherRefunds) {
-        if (r.status === 'pending' && r.id !== input.refundId) {
-          await refundRequestRepository.update(r.id, {
-            status: 'cancelled',
-            updated_at: new Date().toISOString(),
-          });
-        }
-      }
+      const toCancel = otherRefunds.filter(r => r.status === 'pending' && r.id !== input.refundId);
+      await Promise.all(toCancel.map(r =>
+        refundRequestRepository.update(r.id, {
+          status: 'cancelled',
+          updated_at: new Date().toISOString(),
+        })
+      ));
 
       // Notify requester
       const notificationResult = await createNotification({

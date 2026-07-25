@@ -230,8 +230,9 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
       0,
       mapDoc
     );
+    const categoryIdSet = new Set(categoryIds);
     const filtered = all.items.filter(p =>
-      p.required_skills?.some(s => categoryIds.includes(s.category_id))
+      p.required_skills?.some(s => categoryIdSet.has(s.category_id))
     );
     return {
       items: filtered.slice(offset, offset + limit),

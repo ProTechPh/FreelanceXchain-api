@@ -59,30 +59,32 @@ function validateMilestoneBudget(milestones: MilestoneEntity[], totalBudget: num
 }
 
 async function validateSkills(skillIds: string[]): Promise<{ valid: boolean; invalidIds: string[] }> {
-  const invalidIds: string[] = [];
-  for (const skillId of skillIds) {
-    const skill = await skillRepository.findSkillById(skillId);
-    if (!skill || !skill.is_active) {
-      invalidIds.push(skillId);
-    }
-  }
+  const results = await Promise.all(
+    skillIds.map(async (skillId) => {
+      const skill = await skillRepository.findSkillById(skillId);
+      return { skillId, valid: !!skill && skill.is_active };
+    })
+  );
+  const invalidIds = results.reduce<string[]>((acc, r) => { if (!r.valid) acc.push(r.skillId); return acc; }, []);
   return { valid: invalidIds.length === 0, invalidIds };
 }
 
 async function buildSkillReferences(skillIds: string[]): Promise<SkillRef[]> {
-  const skillRefs: SkillRef[] = [];
-  for (const skillId of skillIds) {
-    const skill = await skillRepository.findSkillById(skillId);
-    if (skill && skill.is_active) {
-      skillRefs.push({
-        skill_id: skill.id,
-        skill_name: skill.name,
-        category_id: skill.category_id,
-        years_of_experience: 0,
-      });
-    }
-  }
-  return skillRefs;
+  const results = await Promise.all(
+    skillIds.map(async (skillId) => {
+      const skill = await skillRepository.findSkillById(skillId);
+      if (skill && skill.is_active) {
+        return {
+          skill_id: skill.id,
+          skill_name: skill.name,
+          category_id: skill.category_id,
+          years_of_experience: 0,
+        } as SkillRef;
+      }
+      return null;
+    })
+  );
+  return results.filter((r): r is SkillRef => r !== null);
 }
 
 export async function createProject(

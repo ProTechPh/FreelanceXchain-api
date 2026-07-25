@@ -225,8 +225,10 @@ export async function getActiveSkillsByCategory(categoryId: string): Promise<Ski
 }
 
 export async function searchSkills(keyword: string): Promise<SkillWithCategory[]> {
-  const skillEntities = await skillRepository.searchSkillsByKeyword(keyword);
-  const categoryEntities = await skillCategoryRepository.getAllCategories();
+  const [skillEntities, categoryEntities] = await Promise.all([
+    skillRepository.searchSkillsByKeyword(keyword),
+    skillCategoryRepository.getAllCategories(),
+  ]);
   const categoryMap = new Map(categoryEntities.map(c => [c.id, c.name]));
 
   return skillEntities.map(entity => {
@@ -241,8 +243,10 @@ export async function searchSkills(keyword: string): Promise<SkillWithCategory[]
 // Taxonomy Operations
 
 export async function getFullTaxonomy(): Promise<SkillTaxonomy> {
-  const categoryEntities = await skillCategoryRepository.getActiveCategories();
-  const allSkillEntities = await skillRepository.getActiveSkills();
+  const [categoryEntities, allSkillEntities] = await Promise.all([
+    skillCategoryRepository.getActiveCategories(),
+    skillRepository.getActiveSkills(),
+  ]);
 
   const skillsByCategory = new Map<string, Skill[]>();
   for (const entity of allSkillEntities) {
@@ -264,17 +268,15 @@ export async function getFullTaxonomy(): Promise<SkillTaxonomy> {
 }
 
 export async function validateSkillIds(skillIds: string[]): Promise<{ valid: string[]; invalid: string[] }> {
-  const valid: string[] = [];
-  const invalid: string[] = [];
+  const results = await Promise.all(
+    skillIds.map(async (id) => {
+      const skillEntity = await skillRepository.findSkillById(id);
+      return { id, isValid: !!(skillEntity && skillEntity.is_active) };
+    })
+  );
 
-  for (const id of skillIds) {
-    const skillEntity = await skillRepository.findSkillById(id);
-    if (skillEntity && skillEntity.is_active) {
-      valid.push(id);
-    } else {
-      invalid.push(id);
-    }
-  }
-
-  return { valid, invalid };
+  return {
+    valid: results.reduce<string[]>((acc, r) => { if (r.isValid) acc.push(r.id); return acc; }, []),
+    invalid: results.reduce<string[]>((acc, r) => { if (!r.isValid) acc.push(r.id); return acc; }, []),
+  };
 }

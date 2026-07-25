@@ -25,17 +25,19 @@ async function autoCloseExpiredProjects(): Promise<void> {
     );
 
     if (expiredProjects.length > 0) {
-      for (const project of expiredProjects) {
-        await databases.updateDocument(
-          DATABASE_ID,
-          COLLECTIONS.PROJECTS,
-          project.$id,
-          {
-            status: 'closed',
-            updated_at: new Date().toISOString(),
-          }
-        );
-      }
+      await Promise.all(
+        expiredProjects.map((project) =>
+          databases.updateDocument(
+            DATABASE_ID,
+            COLLECTIONS.PROJECTS,
+            project.$id,
+            {
+              status: 'closed',
+              updated_at: new Date().toISOString(),
+            }
+          )
+        )
+      );
 
       logger.info(`Auto-closed ${expiredProjects.length} expired projects`);
     }
@@ -115,20 +117,24 @@ async function sendWeeklyDigests(): Promise<void> {
           ]
         );
 
-        let pendingMilestonesCount = 0;
-        for (const contract of contractsResponse.documents) {
-          try {
-            const projectDoc = await databases.getDocument(
-              DATABASE_ID,
-              COLLECTIONS.PROJECTS,
-              (contract as any).project_id
-            );
-            const milestones = typeof (projectDoc as any).milestones === 'string'
-              ? JSON.parse((projectDoc as any).milestones)
-              : (projectDoc as any).milestones || [];
-            pendingMilestonesCount += milestones.filter((m: any) => m.status === 'pending').length;
-          } catch { /* skip */ }
-        }
+        const milestoneCounts = await Promise.all(
+          contractsResponse.documents.map(async (contract) => {
+            try {
+              const projectDoc = await databases.getDocument(
+                DATABASE_ID,
+                COLLECTIONS.PROJECTS,
+                (contract as any).project_id
+              );
+              const milestones = typeof (projectDoc as any).milestones === 'string'
+                ? JSON.parse((projectDoc as any).milestones)
+                : (projectDoc as any).milestones || [];
+              return milestones.filter((m: any) => m.status === 'pending').length;
+            } catch {
+              return 0;
+            }
+          })
+        );
+        const pendingMilestonesCount = milestoneCounts.reduce((sum, n) => sum + n, 0);
 
         // Get top projects
         const topProjectsResponse = await databases.listDocuments(
@@ -242,17 +248,21 @@ async function cleanupOldNotifications(): Promise<void> {
       (n: any) => new Date(n.created_at) < thirtyDaysAgo
     );
 
-    let deletedTotal = 0;
-    for (const notification of oldNotifications) {
-      try {
-        await databases.deleteDocument(
-          DATABASE_ID,
-          COLLECTIONS.NOTIFICATIONS,
-          notification.$id
-        );
-        deletedTotal++;
-      } catch { /* skip individual failures */ }
-    }
+    const deleteResults = await Promise.all(
+      oldNotifications.map(async (notification) => {
+        try {
+          await databases.deleteDocument(
+            DATABASE_ID,
+            COLLECTIONS.NOTIFICATIONS,
+            notification.$id
+          );
+          return 1;
+        } catch {
+          return 0;
+        }
+      })
+    );
+    const deletedTotal = deleteResults.reduce<number>((sum, n) => sum + n, 0);
 
     logger.info('Cleaned up old notifications', { deletedTotal });
   } catch (error) {
@@ -280,44 +290,46 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
       [Query.equal('status', 'active'), Query.limit(1000)]
     );
 
-    for (const contract of contractsResponse.documents) {
-      try {
-        const projectId = (contract as any).project_id;
-        if (!projectId) continue;
+    await Promise.all(
+      contractsResponse.documents.map(async (contract) => {
+        try {
+          const projectId = (contract as any).project_id;
+          if (!projectId) return;
 
-        const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId) as any;
-        const milestones = typeof projectDoc.milestones === 'string'
-          ? JSON.parse(projectDoc.milestones)
-          : (projectDoc.milestones || []);
+          const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId) as any;
+          const milestones = typeof projectDoc.milestones === 'string'
+            ? JSON.parse(projectDoc.milestones)
+            : (projectDoc.milestones || []);
 
-        const stuckIndexes = milestones
-          .map((m: any, i: number) => ({ m, i }))
-          .filter(({ m }: { m: any }) => m.status === 'releasing')
-          .filter(({ m }: { m: any }) => {
-            const updated = m.updated_at ? new Date(m.updated_at).getTime() : 0;
-            return updated > 0 && now - updated > RELEASING_STUCK_GRACE_MS;
-          })
-          .map(({ i }: { i: number }) => i);
+          const stuckIndexes = (milestones as Array<{ status?: string; updated_at?: string }>).reduce<number[]>((acc, m, i) => {
+            if (m.status === 'releasing') {
+              const updated = m.updated_at ? new Date(m.updated_at).getTime() : 0;
+              if (updated > 0 && now - updated > RELEASING_STUCK_GRACE_MS) acc.push(i);
+            }
+            return acc;
+          }, []);
 
-        if (stuckIndexes.length === 0) continue;
+          if (stuckIndexes.length === 0) return;
 
-        const recovered = milestones.map((m: any, i: number) =>
-          stuckIndexes.includes(i) ? { ...m, status: 'submitted' } : m
-        );
+          const stuckIndexSet = new Set(stuckIndexes);
+          const recovered = milestones.map((m: any, i: number) =>
+            stuckIndexSet.has(i) ? { ...m, status: 'submitted' } : m
+          );
 
-        await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId, {
-          milestones: JSON.stringify(recovered),
-          updated_at: new Date().toISOString(),
-        });
+          await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId, {
+            milestones: JSON.stringify(recovered),
+            updated_at: new Date().toISOString(),
+          });
 
-        logger.warn('Recovered stuck "releasing" milestones back to "submitted"', {
-          contractId: contract.$id,
-          recoveredMilestoneIndexes: stuckIndexes,
-        });
-      } catch (err) {
-        logger.error('Failed to recover stuck releasing milestone for a contract', { contractId: (contract as any).$id, error: err });
-      }
-    }
+          logger.warn('Recovered stuck "releasing" milestones back to "submitted"', {
+            contractId: contract.$id,
+            recoveredMilestoneIndexes: stuckIndexes,
+          });
+        } catch (err) {
+          logger.error('Failed to recover stuck releasing milestone for a contract', { contractId: (contract as any).$id, error: err });
+        }
+      })
+    );
   } catch (error) {
     logger.error('Failed to run recoverStuckReleasingMilestones job', error);
   }

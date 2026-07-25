@@ -82,9 +82,10 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
           Query.limit(1000),
         ]
       );
+      const lowerSkillNameSet = new Set(lowerSkillNames);
       const allProfiles = response.documents.map(mapProfile);
       const filtered = allProfiles.filter(profile =>
-        profile.skills.some(skill => lowerSkillNames.includes(skill.name.toLowerCase()))
+        profile.skills.some(skill => lowerSkillNameSet.has(skill.name.toLowerCase()))
       );
       const total = filtered.length;
       const items = filtered.slice(offset, offset + limit);

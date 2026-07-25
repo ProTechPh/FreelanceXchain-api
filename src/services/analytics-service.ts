@@ -277,12 +277,12 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
     // Count active users (those with audit log entries in last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const activeUserIds = new Set(
-      auditLogsResponse.documents
-        .filter((log: any) => new Date(log.created_at) >= thirtyDaysAgo)
-        .map((log: any) => log.user_id)
-        .filter(Boolean)
-    );
+    const activeUserIds = new Set<string>();
+    for (const log of auditLogsResponse.documents) {
+      if (new Date(log.created_at) >= thirtyDaysAgo && log.user_id) {
+        activeUserIds.add(log.user_id);
+      }
+    }
     const activeUsers = activeUserIds.size;
 
     const completionRate = totalContracts > 0 ? (completedContracts / totalContracts) * 100 : 0;
@@ -567,21 +567,27 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
     const skillMap = new Map<string, number>();
 
     // Fetch each project (Appwrite doesn't support IN queries)
-    for (const projectId of projectIds) {
-      try {
-        const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId);
-        const skills = typeof (projectDoc as any).required_skills === 'string'
-          ? JSON.parse((projectDoc as any).required_skills)
-          : (projectDoc as any).required_skills || [];
+    const projectSkillSets = await Promise.all(
+      projectIds.map(async (projectId: string) => {
+        try {
+          const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId);
+          const skills = typeof (projectDoc as any).required_skills === 'string'
+            ? JSON.parse((projectDoc as any).required_skills)
+            : (projectDoc as any).required_skills || [];
 
-        for (const skill of skills) {
-          const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
-          if (skillName) {
-            skillMap.set(skillName, (skillMap.get(skillName) || 0) + 1);
-          }
+          return skills as Array<string | { skill_name?: string; name?: string }>;
+        } catch {
+          return [] as Array<string | { skill_name?: string; name?: string }>;
         }
-      } catch {
-        // Skip projects that can't be fetched
+      })
+    );
+
+    for (const skills of projectSkillSets) {
+      for (const skill of skills) {
+        const skillName = typeof skill === 'string' ? skill : (skill.skill_name || skill.name);
+        if (skillName) {
+          skillMap.set(skillName, (skillMap.get(skillName) || 0) + 1);
+        }
       }
     }
 

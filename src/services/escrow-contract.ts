@@ -135,7 +135,7 @@ async function saveEscrow(escrow: EscrowState): Promise<void> {
   }
 
   // Save milestones
-  for (const m of escrow.milestones) {
+  await Promise.all(escrow.milestones.map(async (m) => {
     const existingMilestone = await databases.listDocuments(
       DATABASE_ID,
       MILESTONE_COLLECTION,
@@ -167,7 +167,7 @@ async function saveEscrow(escrow: EscrowState): Promise<void> {
         milestoneData
       );
     }
-  }
+  }));
 }
 
 /**
@@ -464,13 +464,9 @@ export async function areAllMilestonesReleased(escrowAddress: string): Promise<b
  */
 export async function clearEscrows(): Promise<void> {
   const escrows = await databases.listDocuments(DATABASE_ID, ESCROW_COLLECTION);
-  for (const doc of escrows.documents) {
-    await databases.deleteDocument(DATABASE_ID, ESCROW_COLLECTION, doc.$id);
-  }
+  await Promise.all(escrows.documents.map(doc => databases.deleteDocument(DATABASE_ID, ESCROW_COLLECTION, doc.$id)));
   const milestones = await databases.listDocuments(DATABASE_ID, MILESTONE_COLLECTION);
-  for (const doc of milestones.documents) {
-    await databases.deleteDocument(DATABASE_ID, MILESTONE_COLLECTION, doc.$id);
-  }
+  await Promise.all(milestones.documents.map(doc => databases.deleteDocument(DATABASE_ID, MILESTONE_COLLECTION, doc.$id)));
 }
 
 /**

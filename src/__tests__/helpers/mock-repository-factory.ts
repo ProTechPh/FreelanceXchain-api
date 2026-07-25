@@ -353,7 +353,7 @@ export function createMockNotificationRepository(store: Map<string, any>) {
   };
 }
 
-export function createMockPaymentRepository(store: Map<string, any>) {
+function createMockPaymentRepository(store: Map<string, any>) {
   const base = createMockRepository(store);
 
   return {

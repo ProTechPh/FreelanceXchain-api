@@ -114,9 +114,11 @@ export class AuditLogRepository {
       );
       const start = startDate.toISOString();
       const end = endDate.toISOString();
-      return response.documents
-        .map(mapAuditLog)
-        .filter(entry => entry.created_at >= start && entry.created_at <= end);
+      return response.documents.reduce<AuditLogEntry[]>((acc, doc) => {
+        const entry = mapAuditLog(doc);
+        if (entry.created_at >= start && entry.created_at <= end) acc.push(entry);
+        return acc;
+      }, []);
     } catch {
       return [];
     }

@@ -25,12 +25,12 @@ const MilestoneRegistryArtifact = tryLoadArtifact('MilestoneRegistry.sol/Milesto
 
 export const FreelanceReputationABI = FreelanceReputationArtifact?.abi ?? null;
 export const FreelanceEscrowABI = FreelanceEscrowArtifact?.abi ?? null;
-export const ContractAgreementABI = ContractAgreementArtifact?.abi ?? null;
-export const DisputeResolutionABI = DisputeResolutionArtifact?.abi ?? null;
-export const MilestoneRegistryABI = MilestoneRegistryArtifact?.abi ?? null;
+const ContractAgreementABI = ContractAgreementArtifact?.abi ?? null;
+const DisputeResolutionABI = DisputeResolutionArtifact?.abi ?? null;
+const MilestoneRegistryABI = MilestoneRegistryArtifact?.abi ?? null;
 
-export const FreelanceReputationBytecode = FreelanceReputationArtifact?.bytecode ?? '';
+const FreelanceReputationBytecode = FreelanceReputationArtifact?.bytecode ?? '';
 export const FreelanceEscrowBytecode = FreelanceEscrowArtifact?.bytecode ?? '';
-export const ContractAgreementBytecode = ContractAgreementArtifact?.bytecode ?? '';
-export const DisputeResolutionBytecode = DisputeResolutionArtifact?.bytecode ?? '';
-export const MilestoneRegistryBytecode = MilestoneRegistryArtifact?.bytecode ?? '';
+const ContractAgreementBytecode = ContractAgreementArtifact?.bytecode ?? '';
+const DisputeResolutionBytecode = DisputeResolutionArtifact?.bytecode ?? '';
+const MilestoneRegistryBytecode = MilestoneRegistryArtifact?.bytecode ?? '';

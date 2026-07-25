@@ -136,7 +136,7 @@ export function createTestSkill(overrides: Partial<SkillEntity> = {}): SkillEnti
 /**
  * Create a test skill category entity
  */
-export function createTestSkillCategory(overrides: Partial<SkillCategoryEntity> = {}): SkillCategoryEntity {
+function createTestSkillCategory(overrides: Partial<SkillCategoryEntity> = {}): SkillCategoryEntity {
   return {
     id: generateId(),
     name: 'Test Category',
@@ -240,7 +240,7 @@ export function createTestEmployerProfile(overrides: Partial<EmployerProfileEnti
 /**
  * Create a test payment entity
  */
-export function createTestPayment(overrides: Partial<any> = {}): any {
+function createTestPayment(overrides: Partial<any> = {}): any {
   return {
     id: generateId(),
     contract_id: generateId(),
@@ -261,7 +261,7 @@ export function createTestPayment(overrides: Partial<any> = {}): any {
 /**
  * Create a test review entity
  */
-export function createTestReview(overrides: Partial<any> = {}): any {
+function createTestReview(overrides: Partial<any> = {}): any {
   return {
     id: generateId(),
     contract_id: generateId(),
