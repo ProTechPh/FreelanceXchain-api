@@ -464,9 +464,7 @@ export async function getUserAgreements(walletAddress: string): Promise<Blockcha
 export async function clearBlockchainAgreements(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
   const all = await blockchainAgreementRepository.queryAll('created_at_ts');
-  for (const agreement of all) {
-    await blockchainAgreementRepository.delete(agreement.id);
-  }
+  await Promise.all(all.map(agreement => blockchainAgreementRepository.delete(agreement.id)));
 }
 
 export function getAgreementContractAddress(): string {

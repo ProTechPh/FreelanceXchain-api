@@ -336,9 +336,7 @@ export async function getUserDisputes(walletAddress: string): Promise<Blockchain
 export async function clearDisputeRegistry(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
   const all = await blockchainDisputeRecordRepository.queryAll('created_at_ts');
-  for (const record of all) {
-    await blockchainDisputeRecordRepository.delete(record.id);
-  }
+  await Promise.all(all.map(record => blockchainDisputeRecordRepository.delete(record.id)));
 }
 
 export function getDisputeRegistryAddress(): string {

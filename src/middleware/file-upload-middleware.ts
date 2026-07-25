@@ -431,7 +431,7 @@ export async function scanFileForViruses(buffer: Buffer, filename: string): Prom
   }
 
   for (const signature of MALICIOUS_MAGIC_NUMBERS) {
-    const matches = signature.bytes.every((value, index) => sample[index] === value);
+    const matches = sample.length >= signature.bytes.length && signature.bytes.every((value, index) => sample[index] === value);
     if (matches) {
       return { clean: false, threat: `${signature.label} signature detected` };
     }

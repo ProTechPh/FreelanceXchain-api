@@ -1,0 +1,10 @@
+name = "freelancexchain-email-worker"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+API_WEBHOOK_URL = "https://api.freelancexchain.works/api/inbox/webhook"
+
+# Secrets (set via `wrangler secret put`):
+# - WEBHOOK_SECRET: HMAC shared secret for authenticating webhook calls

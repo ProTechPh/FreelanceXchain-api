@@ -334,9 +334,7 @@ export async function verifyMilestoneWork(milestoneId: string, deliverables: str
 export async function clearMilestoneRegistry(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
   const all = await blockchainMilestoneRecordRepository.queryAll('submitted_at');
-  for (const record of all) {
-    await blockchainMilestoneRecordRepository.delete(record.id);
-  }
+  await Promise.all(all.map(record => blockchainMilestoneRecordRepository.delete(record.id)));
 }
 
 export function getMilestoneRegistryAddress(): string {

@@ -34,21 +34,21 @@ export async function createNotification(
 export async function createNotifications(
   inputs: CreateNotificationInput[]
 ): Promise<ServiceResult<Notification[]>> {
-  const notifications: Notification[] = [];
-
-  for (const input of inputs) {
-    const notificationEntity: Omit<NotificationEntity, 'created_at' | 'updated_at'> = {
-      id: generateId(),
-      user_id: input.userId,
-      type: input.type,
-      title: input.title,
-      message: input.message,
-      data: input.data ?? {},
-      is_read: false,
-    };
-    const createdEntity = await notificationRepository.createNotification(notificationEntity);
-    notifications.push(mapNotificationFromEntity(createdEntity));
-  }
+  const createdEntities = await Promise.all(
+    inputs.map(async (input) => {
+      const notificationEntity: Omit<NotificationEntity, 'created_at' | 'updated_at'> = {
+        id: generateId(),
+        user_id: input.userId,
+        type: input.type,
+        title: input.title,
+        message: input.message,
+        data: input.data ?? {},
+        is_read: false,
+      };
+      return notificationRepository.createNotification(notificationEntity);
+    })
+  );
+  const notifications = createdEntities.map(mapNotificationFromEntity);
 
   return { success: true, data: notifications };
 }

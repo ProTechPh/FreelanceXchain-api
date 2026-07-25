@@ -292,14 +292,9 @@ export async function getMilestoneCount(escrowAddress: string): Promise<number> 
  */
 export async function getAllMilestones(escrowAddress: string): Promise<EscrowMilestone[]> {
   const count = await getMilestoneCount(escrowAddress);
-  const milestones: EscrowMilestone[] = [];
-
-  for (let i = 0; i < count; i++) {
-    const milestone = await getMilestone(escrowAddress, i);
-    milestones.push(milestone);
-  }
-
-  return milestones;
+  return Promise.all(
+    Array.from({ length: count }, (_, i) => getMilestone(escrowAddress, i))
+  );
 }
 
 /**

@@ -271,8 +271,10 @@ export async function getContractWalletAddresses(
     };
   }
 
-  const employer = await userRepository.getUserById(entity.employer_id);
-  const freelancer = await userRepository.getUserById(entity.freelancer_id);
+  const [employer, freelancer] = await Promise.all([
+    userRepository.getUserById(entity.employer_id),
+    userRepository.getUserById(entity.freelancer_id),
+  ]);
 
   if (!employer?.wallet_address || !freelancer?.wallet_address) {
     return {

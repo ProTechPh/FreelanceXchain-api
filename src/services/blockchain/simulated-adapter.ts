@@ -177,13 +177,10 @@ export class SimulatedBlockchainAdapter implements IBlockchainAdapter {
     }
 
     // Refund all pending milestones
-    const receipts = [];
-    for (const milestone of state.milestones) {
-      if (milestone.status === 'pending') {
-        const receipt = await refundMilestone(escrowAddress, milestone.id, state.employerAddress);
-        receipts.push(receipt);
-      }
-    }
+    const pendingMilestones = state.milestones.filter(m => m.status === 'pending');
+    const receipts = await Promise.all(
+      pendingMilestones.map(milestone => refundMilestone(escrowAddress, milestone.id, state.employerAddress))
+    );
 
     const lastReceipt = receipts[receipts.length - 1];
     return {

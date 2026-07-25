@@ -178,9 +178,10 @@ export async function getRatingsByContract(contractId: string): Promise<Blockcha
   try {
     // queryAll and filter since there's no dedicated findByContract method
     const all = await blockchainRatingRepository.queryAll('timestamp');
-    return all
-      .filter(r => r.contract_id === contractId)
-      .map(entityToRating);
+    return all.reduce<BlockchainRating[]>((acc, r) => {
+      if (r.contract_id === contractId) acc.push(entityToRating(r));
+      return acc;
+    }, []);
   } catch {
     return [];
   }
@@ -255,9 +256,7 @@ export async function hasUserRatedForContract(
 export async function clearBlockchainRatings(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
   const all = await blockchainRatingRepository.queryAll('timestamp');
-  for (const rating of all) {
-    await blockchainRatingRepository.delete(rating.id);
-  }
+  await Promise.all(all.map(rating => blockchainRatingRepository.delete(rating.id)));
 }
 
 /**

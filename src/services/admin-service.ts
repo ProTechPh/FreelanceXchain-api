@@ -71,7 +71,10 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
     const totalProjects = allProjects.length;
     const activeProjects = allProjects.filter(p => p.status === 'open' || p.status === 'in_progress').length;
     const completedProjects = allProjects.filter(p => p.status === 'completed').length;
-    const budgets = allProjects.map(p => p.budget).filter(b => typeof b === 'number');
+    const budgets = allProjects.reduce<number[]>((acc, p) => {
+      if (typeof p.budget === 'number') acc.push(p.budget);
+      return acc;
+    }, []);
     const averageProjectBudget = budgets.length > 0
       ? Math.round((budgets.reduce((sum, b) => sum + b, 0) / budgets.length) * 100) / 100
       : 0;

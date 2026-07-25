@@ -320,9 +320,7 @@ export async function failTransaction(txId: string): Promise<Transaction | null>
 export async function clearTransactions(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
   const all = await blockchainTransactionRepository.queryAll('timestamp');
-  for (const tx of all) {
-    await blockchainTransactionRepository.delete(tx.id);
-  }
+  await Promise.all(all.map(tx => blockchainTransactionRepository.delete(tx.id)));
 }
 
 /**

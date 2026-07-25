@@ -8,7 +8,7 @@ import { expect } from '@jest/globals';
 /**
  * Assert that an object has the expected shape (checks for presence of keys)
  */
-export function assertHasShape<T extends Record<string, any>>(
+function assertHasShape<T extends Record<string, any>>(
   obj: any,
   expectedKeys: (keyof T)[]
 ): void {
@@ -62,7 +62,7 @@ export function assertHasTimestamps(entity: any): void {
 /**
  * Assert that an error matches expected error structure
  */
-export function assertIsAuthError(error: any, expectedCode?: string): void {
+function assertIsAuthError(error: any, expectedCode?: string): void {
   expect(error).toBeDefined();
   expect(error).toHaveProperty('code');
   expect(error).toHaveProperty('message');
@@ -84,7 +84,7 @@ export function assertIsValidId(id: string): void {
 /**
  * Assert that a wallet address is valid format
  */
-export function assertIsValidWalletAddress(address: string): void {
+function assertIsValidWalletAddress(address: string): void {
   expect(address).toBeDefined();
   expect(typeof address).toBe('string');
   expect(address).toMatch(/^0x[a-fA-F0-9]{40}$/);
@@ -93,7 +93,7 @@ export function assertIsValidWalletAddress(address: string): void {
 /**
  * Assert that an array contains items matching a predicate
  */
-export function assertArrayContains<T>(
+function assertArrayContains<T>(
   array: T[],
   predicate: (item: T) => boolean,
   message?: string
@@ -108,7 +108,7 @@ export function assertArrayContains<T>(
 /**
  * Assert that all items in an array match a predicate
  */
-export function assertAllMatch<T>(
+function assertAllMatch<T>(
   array: T[],
   predicate: (item: T) => boolean,
   message?: string

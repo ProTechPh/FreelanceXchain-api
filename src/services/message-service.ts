@@ -166,40 +166,40 @@ export async function getConversations(
     const { items, total: _total } = await messageRepository.getUserConversations(userId, limit, offset);
 
     // Enrich with other user details and filter out conversations with missing participants
-    const enrichedConversations: ConversationWithDetails[] = [];
-    
-    for (const conv of items) {
-      const otherUserId = conv.participant1_id === userId ? conv.participant2_id : conv.participant1_id;
-      
-      try {
-        const otherUser = await userRepository.getUserById(otherUserId);
+    const enrichedResults = await Promise.all(
+      items.map(async (conv) => {
+        const otherUserId = conv.participant1_id === userId ? conv.participant2_id : conv.participant1_id;
 
-        // If the other user doesn't exist, this conversation has inconsistent data
-        if (!otherUser) {
-          logger.warn('Conversation has missing participant, skipping from results', { 
-            conversationId: conv.id, 
-            missingUserId: otherUserId
+        try {
+          const otherUser = await userRepository.getUserById(otherUserId);
+
+          if (!otherUser) {
+            logger.warn('Conversation has missing participant, skipping from results', {
+              conversationId: conv.id,
+              missingUserId: otherUserId
+            });
+            return null;
+          }
+
+          return {
+            ...conv,
+            otherUser: {
+              id: otherUser.id,
+              name: otherUser.name,
+              email: otherUser.email,
+            },
+          } as ConversationWithDetails;
+        } catch (error) {
+          logger.error('Error fetching user details for conversation', {
+            conversationId: conv.id,
+            otherUserId,
+            error
           });
-          continue;
+          return null;
         }
-
-        enrichedConversations.push({
-          ...conv,
-          otherUser: {
-            id: otherUser.id,
-            name: otherUser.name,
-            email: otherUser.email,
-          },
-        } as ConversationWithDetails);
-      } catch (error) {
-        logger.error('Error fetching user details for conversation', { 
-          conversationId: conv.id, 
-          otherUserId, 
-          error 
-        });
-        continue;
-      }
-    }
+      })
+    );
+    const enrichedConversations: ConversationWithDetails[] = enrichedResults.filter((c): c is ConversationWithDetails => c !== null);
 
     return {
       success: true,
@@ -383,22 +383,33 @@ export async function validateConversationParticipants(userId: string): Promise<
     const validConversations: ConversationEntity[] = [];
     const orphanedConversations: ConversationEntity[] = [];
 
-    for (const conv of conversations) {
-      const participant1 = await userRepository.getUserById(conv.participant1_id);
-      const participant2 = await userRepository.getUserById(conv.participant2_id);
+    const validationResults = await Promise.all(
+      conversations.map(async (conv) => {
+        const [participant1, participant2] = await Promise.all([
+          userRepository.getUserById(conv.participant1_id),
+          userRepository.getUserById(conv.participant2_id),
+        ]);
 
-      const participant1Exists = !!participant1;
-      const participant2Exists = !!participant2;
+        const participant1Exists = !!participant1;
+        const participant2Exists = !!participant2;
 
-      if (!participant1Exists || !participant2Exists) {
+        if (!participant1Exists || !participant2Exists) {
+          logger.warn('Found orphaned conversation', {
+            conversationId: conv.id,
+            participant1Id: conv.participant1_id,
+            participant2Id: conv.participant2_id,
+            participant1Exists,
+            participant2Exists,
+          });
+          return { conv, orphaned: true };
+        }
+        return { conv, orphaned: false };
+      })
+    );
+
+    for (const { conv, orphaned } of validationResults) {
+      if (orphaned) {
         orphanedConversations.push(conv);
-        logger.warn('Found orphaned conversation', {
-          conversationId: conv.id,
-          participant1Id: conv.participant1_id,
-          participant2Id: conv.participant2_id,
-          participant1Exists,
-          participant2Exists,
-        });
       } else {
         validConversations.push(conv);
       }

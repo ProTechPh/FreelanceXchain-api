@@ -216,16 +216,18 @@ export async function deletePortfolioItem(
         images = raw;
       }
 
-      for (const imageUrl of images) {
-        try {
-          const fileId = extractFileIdFromUrl(imageUrl);
-          if (fileId) {
-            await storage.deleteFile(BUCKETS.PORTFOLIO_IMAGES, fileId);
+      await Promise.all(
+        images.map(async (imageUrl) => {
+          try {
+            const fileId = extractFileIdFromUrl(imageUrl);
+            if (fileId) {
+              await storage.deleteFile(BUCKETS.PORTFOLIO_IMAGES, fileId);
+            }
+          } catch (cleanupError) {
+            logger.warn('Failed to cleanup portfolio image', { error: cleanupError, imageUrl });
           }
-        } catch (cleanupError) {
-          logger.warn('Failed to cleanup portfolio image', { error: cleanupError, imageUrl });
-        }
-      }
+        })
+      );
     }
 
     return {

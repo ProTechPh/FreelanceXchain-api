@@ -4,7 +4,8 @@ import { resolve } from 'node:path';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
-import { errorHandler, requestLogger } from './middleware/index.js';
+import { errorHandler } from './middleware/error-handler.js';
+import { requestLogger } from './middleware/request-logger.js';
 import {
   securityHeaders,
   requestIdMiddleware,

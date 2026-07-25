@@ -294,10 +294,16 @@ export function validate(schema: Schema | RequestSchema): RequestHandler {
         if (!result.valid) { valid = false; allErrors.push(...result.errors); }
       }
     } else {
-      const result = validateRequest(
-        { ...req.body, ...req.query, ...req.params },
-        schema as Schema
-      );
+      // Pick only schema-defined fields from each source to prevent mass assignment
+      const schemaObj = schema as Schema;
+      const allowedKeys = schemaObj.properties ? Object.keys(schemaObj.properties) : [];
+      const merged: Record<string, unknown> = {};
+      for (const key of allowedKeys) {
+        if (req.body[key] !== undefined) merged[key] = req.body[key];
+        else if (req.query[key] !== undefined) merged[key] = req.query[key];
+        else if (req.params[key] !== undefined) merged[key] = req.params[key];
+      }
+      const result = validateRequest(merged, schema as Schema);
       if (!result.valid) { valid = false; allErrors.push(...result.errors); }
     }
 

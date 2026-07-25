@@ -386,29 +386,31 @@ export async function getWorkHistory(
       ]
     );
 
-    const workHistory: WorkHistoryEntry[] = [];
+    const reviewsByContractId = new Map(reviewsResponse.documents.map((r: any) => [r.contract_id, r]));
 
-    for (const contractEntity of completedContracts) {
-      const contract = mapContractFromEntity(contractEntity);
+    const workHistory: WorkHistoryEntry[] = await Promise.all(
+      completedContracts.map(async (contractEntity) => {
+        const contract = mapContractFromEntity(contractEntity);
 
-      const role: 'freelancer' | 'employer' =
-        contract.freelancerId === userId ? 'freelancer' : 'employer';
+        const role: 'freelancer' | 'employer' =
+          contract.freelancerId === userId ? 'freelancer' : 'employer';
 
-      const projectEntity = await projectRepository.getProjectById(contract.projectId);
-      const projectTitle = projectEntity?.title ?? 'Unknown Project';
+        const projectEntity = await projectRepository.getProjectById(contract.projectId);
+        const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
-      const receivedRating = reviewsResponse.documents.find((r: any) => r.contract_id === contract.id);
+        const receivedRating = reviewsByContractId.get(contract.id);
 
-      workHistory.push({
-        contractId: contract.id,
-        projectId: contract.projectId,
-        projectTitle,
-        role,
-        completedAt: contract.updatedAt,
-        rating: receivedRating?.rating,
-        ratingComment: receivedRating?.comment,
-      });
-    }
+        return {
+          contractId: contract.id,
+          projectId: contract.projectId,
+          projectTitle,
+          role,
+          completedAt: contract.updatedAt,
+          rating: receivedRating?.rating,
+          ratingComment: receivedRating?.comment,
+        };
+      })
+    );
 
     workHistory.sort((a, b) =>
       new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()

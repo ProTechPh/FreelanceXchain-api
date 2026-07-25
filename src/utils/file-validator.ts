@@ -73,7 +73,7 @@ export const MIN_FILE_COUNT = 0;
 export const MAX_FILE_COUNT = 5;
 
 // Project-specific limits
-export const MAX_PROJECT_FILES = 10;
+const MAX_PROJECT_FILES = 10;
 
 /**
  * Check if an object is a valid FileAttachment

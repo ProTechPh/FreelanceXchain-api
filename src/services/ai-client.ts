@@ -399,8 +399,14 @@ export async function analyzeSkillMatch(
   }
 
   // Validate and normalize the result
-  const freelancerSkillNames = request.freelancerSkills.filter(s => s.skillName).map(s => s.skillName.toLowerCase());
-  const requiredSkillNames = request.projectRequirements.filter(s => s.skillName).map(s => s.skillName.toLowerCase());
+  const freelancerSkillNames = request.freelancerSkills.reduce<string[]>((acc, s) => {
+    if (s.skillName) acc.push(s.skillName.toLowerCase());
+    return acc;
+  }, []);
+  const requiredSkillNames = request.projectRequirements.reduce<string[]>((acc, s) => {
+    if (s.skillName) acc.push(s.skillName.toLowerCase());
+    return acc;
+  }, []);
 
   // Validate AI matchedSkills against actual data - must exist in both lists
   const validatedMatchedSkills = (result.matchedSkills ?? []).filter(skill =>
@@ -409,11 +415,12 @@ export async function analyzeSkillMatch(
   );
 
   // Compute missingSkills server-side: required skills the freelancer doesn't have
-  const computedMissingSkills = request.projectRequirements
-    .filter(req => !freelancerSkillNames.some(f =>
+  const computedMissingSkills = request.projectRequirements.reduce<string[]>((acc, req) => {
+    if (!freelancerSkillNames.some(f =>
       f.includes(req.skillName.toLowerCase()) || req.skillName.toLowerCase().includes(f)
-    ))
-    .map(req => req.skillName);
+    )) acc.push(req.skillName);
+    return acc;
+  }, []);
 
   // Recalculate score from validated data
   const calculatedScore = requiredSkillNames.length > 0
@@ -459,13 +466,16 @@ export async function extractSkills(
   }
 
   // Validate and normalize results
-  return result
-    .filter(skill => skill.skillId && skill.skillName)
-    .map(skill => ({
-      skillId: skill.skillId,
-      skillName: skill.skillName,
-      confidence: Math.max(0, Math.min(1, skill.confidence ?? 0)),
-    }));
+  return result.reduce<ExtractedSkill[]>((acc, skill) => {
+    if (skill.skillId && skill.skillName) {
+      acc.push({
+        skillId: skill.skillId,
+        skillName: skill.skillName,
+        confidence: Math.max(0, Math.min(1, skill.confidence ?? 0)),
+      });
+    }
+    return acc;
+  }, []);
 }
 
 /**

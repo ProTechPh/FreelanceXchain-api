@@ -43,34 +43,35 @@ export async function getUserFiles(
 ): Promise<ServiceResult<FileInfo[]>> {
   try {
     const buckets = bucket ? [bucket] : [BUCKETS.PORTFOLIO_IMAGES, BUCKETS.PROPOSAL_ATTACHMENTS];
-    const allFiles: FileInfo[] = [];
 
-    for (const bucketName of buckets) {
-      try {
-        // List files in bucket
-        const result = await storage.listFiles(bucketName);
+    const bucketResults = await Promise.all(
+      buckets.map(async (bucketName) => {
+        try {
+          const result = await storage.listFiles(bucketName);
 
-        if (result.files) {
-          // Filter files that belong to the user by checking owner write permission
-          const files = result.files
-            .filter(file => isFileOwnedByUser(file, userId))
-            .map(file => ({
-              name: file.name,
-              bucket: bucketName,
-              path: file.$id,
-              size: file.sizeOriginal || 0,
-              createdAt: file.$createdAt || '',
-              updatedAt: file.$updatedAt || '',
-              publicUrl: `${config.appwrite.endpoint}/storage/buckets/${bucketName}/files/${file.$id}/view?project=${config.appwrite.projectId}`,
-            }));
-
-          allFiles.push(...files);
+          if (result.files) {
+            return result.files.reduce<FileInfo[]>((acc, file) => {
+              if (isFileOwnedByUser(file, userId)) {
+                acc.push({
+                  name: file.name,
+                  bucket: bucketName,
+                  path: file.$id,
+                  size: file.sizeOriginal || 0,
+                  createdAt: file.$createdAt || '',
+                  updatedAt: file.$updatedAt || '',
+                  publicUrl: `${config.appwrite.endpoint}/storage/buckets/${bucketName}/files/${file.$id}/view?project=${config.appwrite.projectId}`,
+                });
+              }
+              return acc;
+            }, []);
+          }
+        } catch (error) {
+          logger.error('Failed to list files', { error, userId, bucket: bucketName });
         }
-      } catch (error) {
-        logger.error('Failed to list files', { error, userId, bucket: bucketName });
-        continue; // Skip this bucket and continue with others
-      }
-    }
+        return [];
+      })
+    );
+    const allFiles: FileInfo[] = bucketResults.flat();
 
     return {
       success: true,

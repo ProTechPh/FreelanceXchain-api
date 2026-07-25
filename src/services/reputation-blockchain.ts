@@ -120,19 +120,18 @@ export async function getRatingsFromBlockchain(userAddress: string): Promise<Blo
   const indices = await (contract as any).getUserRatingIndices(userAddress, 0, 100);
 
   // Fetch all ratings
-  const ratings: BlockchainRating[] = [];
-  for (const index of indices) {
-    const rating = await (contract as any).getRating(index);
-    ratings.push({
-      rater: rating[0],
-      ratee: rating[1],
-      score: Number(rating[2]),
-      comment: rating[3],
-      contractId: rating[4],
-      timestamp: Number(rating[5]),
-      isEmployerRating: rating[6],
-    });
-  }
+  const rawRatings = await Promise.all(
+    indices.map((index: bigint) => (contract as any).getRating(index))
+  );
+  const ratings: BlockchainRating[] = rawRatings.map((rating: any) => ({
+    rater: rating[0],
+    ratee: rating[1],
+    score: Number(rating[2]),
+    comment: rating[3],
+    contractId: rating[4],
+    timestamp: Number(rating[5]),
+    isEmployerRating: rating[6],
+  }));
 
   return ratings;
 }
@@ -151,19 +150,18 @@ export async function getRatingsGivenByUser(userAddress: string): Promise<Blockc
   const indices = await (contract as any).getGivenRatingIndices(userAddress, 0, 100);
 
   // Fetch all ratings
-  const ratings: BlockchainRating[] = [];
-  for (const index of indices) {
-    const rating = await (contract as any).getRating(index);
-    ratings.push({
-      rater: rating[0],
-      ratee: rating[1],
-      score: Number(rating[2]),
-      comment: rating[3],
-      contractId: rating[4],
-      timestamp: Number(rating[5]),
-      isEmployerRating: rating[6],
-    });
-  }
+  const rawRatings = await Promise.all(
+    indices.map((index: bigint) => (contract as any).getRating(index))
+  );
+  const ratings: BlockchainRating[] = rawRatings.map((rating: any) => ({
+    rater: rating[0],
+    ratee: rating[1],
+    score: Number(rating[2]),
+    comment: rating[3],
+    contractId: rating[4],
+    timestamp: Number(rating[5]),
+    isEmployerRating: rating[6],
+  }));
 
   return ratings;
 }

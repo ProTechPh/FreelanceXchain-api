@@ -95,39 +95,37 @@ export async function getProjectRecommendations(
   const freelancerSkills = profileEntity.skills.map(freelancerSkillToInfo);
 
   // Calculate match scores for each project
-  const recommendations: ProjectRecommendation[] = [];
+  const recommendations: ProjectRecommendation[] = await Promise.all(
+    projectEntities.map(async (projectEntity) => {
+      const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
 
-  for (const projectEntity of projectEntities) {
-    const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
-    
-    let matchResult: SkillMatchResult;
-    
-    if (isAIAvailable()) {
-      const aiResult = await analyzeSkillMatch({
-        freelancerSkills,
-        projectRequirements,
-        reputationScore: 0, // Project recommendations don't weight reputation
-      });
-      
-      if (isAIError(aiResult)) {
-        // Fall back to keyword matching
-        matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
+      let matchResult: SkillMatchResult;
+
+      if (isAIAvailable()) {
+        const aiResult = await analyzeSkillMatch({
+          freelancerSkills,
+          projectRequirements,
+          reputationScore: 0,
+        });
+
+        if (isAIError(aiResult)) {
+          matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
+        } else {
+          matchResult = aiResult;
+        }
       } else {
-        matchResult = aiResult;
+        matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
       }
-    } else {
-      // Use keyword matching fallback
-      matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
-    }
 
-    recommendations.push({
-      projectId: projectEntity.id,
-      matchScore: matchResult.matchScore,
-      matchedSkills: matchResult.matchedSkills,
-      missingSkills: matchResult.missingSkills,
-      reasoning: matchResult.reasoning,
-    });
-  }
+      return {
+        projectId: projectEntity.id,
+        matchScore: matchResult.matchScore,
+        matchedSkills: matchResult.matchedSkills,
+        missingSkills: matchResult.missingSkills,
+        reasoning: matchResult.reasoning,
+      };
+    })
+  );
 
   // Sort by match score descending
   recommendations.sort((a, b) => b.matchScore - a.matchScore);

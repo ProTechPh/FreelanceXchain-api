@@ -109,7 +109,7 @@ export async function getAggregatedScore(userId: string): Promise<ServiceResult<
       ]
     );
 
-    for (const contract of allContractsResponse.documents) {
+    const contractResults = await Promise.all(allContractsResponse.documents.map(async (contract) => {
       try {
         const projectDoc = await databases.getDocument(
           DATABASE_ID,
@@ -120,17 +120,25 @@ export async function getAggregatedScore(userId: string): Promise<ServiceResult<
           ? JSON.parse((projectDoc as any).milestones)
           : (projectDoc as any).milestones || [];
 
+        let approved = 0;
+        let onTime = 0;
         for (const m of milestones) {
           if (m.status === 'approved') {
-            totalApproved++;
+            approved++;
             if (m.approved_at && m.due_date && new Date(m.approved_at) <= new Date(m.due_date)) {
-              onTimeCount++;
+              onTime++;
             }
           }
         }
+        return { approved, onTime };
       } catch {
-        // Skip projects that can't be fetched
+        return { approved: 0, onTime: 0 };
       }
+    }));
+
+    for (const result of contractResults) {
+      totalApproved += result.approved;
+      onTimeCount += result.onTime;
     }
 
     const onTimeDeliveryRate = totalApproved > 0
@@ -346,13 +354,16 @@ export async function getReputationLeaderboard(
     }
 
     // Filter users with >= 3 ratings, compute average
-    const candidates = Array.from(userStats.entries())
-      .filter(([, stats]) => stats.count >= 3)
-      .map(([userId, stats]) => ({
-        userId,
-        averageRating: Math.round((stats.sum / stats.count) * 10) / 10,
-        totalRatings: stats.count,
-      }))
+    const candidates = Array.from(userStats.entries()).reduce<Array<{ userId: string; averageRating: number; totalRatings: number }>>((acc, [userId, stats]) => {
+      if (stats.count >= 3) {
+        acc.push({
+          userId,
+          averageRating: Math.round((stats.sum / stats.count) * 10) / 10,
+          totalRatings: stats.count,
+        });
+      }
+      return acc;
+    }, [])
       .sort((a, b) => b.averageRating - a.averageRating || b.totalRatings - a.totalRatings)
       .slice(0, limit);
 

@@ -49,6 +49,12 @@ export async function createVerificationSession(
       body: JSON.stringify(request),
     });
 
+    if (!response.ok) {
+      let errorData: DiditApiError;
+      try { errorData = await response.json(); } catch { errorData = { error: { code: 'HTTP_ERROR', message: `Session creation failed with status ${response.status}` } }; }
+      return { success: false, error: errorData };
+    }
+
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const responseText = await response.text();
@@ -69,13 +75,6 @@ export async function createVerificationSession(
     }
 
     const data = await response.json();
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: data as DiditApiError,
-      };
-    }
 
     return {
       success: true,
@@ -111,6 +110,16 @@ export async function getVerificationDecision(
       },
     });
 
+    if (!response.ok) {
+      let errorData: DiditApiError;
+      try { errorData = await response.json(); } catch { errorData = { error: { code: 'HTTP_ERROR', message: `Verification decision failed with status ${response.status}` } }; }
+      logger.warn('Didit API returned error for verification decision', {
+        sessionId: sanitizedSessionId,
+        status: response.status,
+      });
+      return { success: false, error: errorData };
+    }
+
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const responseText = await response.text();
@@ -132,18 +141,6 @@ export async function getVerificationDecision(
     }
 
     const data = await response.json();
-
-    if (!response.ok) {
-      logger.warn('Didit API returned error for verification decision', {
-        sessionId: sanitizedSessionId,
-        status: response.status,
-      });
-      
-      return {
-        success: false,
-        error: data as DiditApiError,
-      };
-    }
 
     return {
       success: true,
@@ -178,6 +175,16 @@ export async function getVerificationSession(sessionId: string): Promise<DiditCl
       },
     });
 
+    if (!response.ok) {
+      let errorData: DiditApiError;
+      try { errorData = await response.json(); } catch { errorData = { error: { code: 'HTTP_ERROR', message: `Session details failed with status ${response.status}` } }; }
+      logger.warn('Didit API returned error for session details', {
+        sessionId: sanitizedSessionId,
+        status: response.status,
+      });
+      return { success: false, error: errorData };
+    }
+
     // Check if response is JSON
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
@@ -187,7 +194,6 @@ export async function getVerificationSession(sessionId: string): Promise<DiditCl
         contentType,
         responsePreview: responseText.substring(0, 200),
       });
-      
       return {
         success: false,
         error: {
@@ -200,18 +206,6 @@ export async function getVerificationSession(sessionId: string): Promise<DiditCl
     }
 
     const data = await response.json();
-
-    if (!response.ok) {
-      logger.warn('Didit API returned error for session details', {
-        sessionId: sanitizedSessionId,
-        status: response.status,
-      });
-      
-      return {
-        success: false,
-        error: data as DiditApiError,
-      };
-    }
 
     return {
       success: true,
@@ -404,15 +398,14 @@ export async function verifyIdDocument(
       body: form as any,
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      logger.error('Didit ID verification failed', undefined, { status: response.status, data });
-      return {
-        success: false,
-        error: data as DiditApiError,
-      };
+      let errorData: DiditApiError;
+      try { errorData = await response.json(); } catch { errorData = { error: { code: 'HTTP_ERROR', message: `ID verification failed with status ${response.status}` } }; }
+      logger.error('Didit ID verification failed', undefined, { status: response.status, data: errorData });
+      return { success: false, error: errorData };
     }
+
+    const data = await response.json();
 
     return { success: true, data };
   } catch (error) {
@@ -462,15 +455,14 @@ export async function checkPassiveLiveness(
       body: form as any,
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      logger.error('Didit liveness check failed', undefined, { status: response.status, data });
-      return {
-        success: false,
-        error: data as DiditApiError,
-      };
+      let errorData: DiditApiError;
+      try { errorData = await response.json(); } catch { errorData = { error: { code: 'HTTP_ERROR', message: `Liveness check failed with status ${response.status}` } }; }
+      logger.error('Didit liveness check failed', undefined, { status: response.status, data: errorData });
+      return { success: false, error: errorData };
     }
+
+    const data = await response.json();
 
     return { success: true, data };
   } catch (error) {
@@ -522,15 +514,14 @@ export async function matchFaces(
       body: form as any,
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      logger.error('Didit face match failed', undefined, { status: response.status, data });
-      return {
-        success: false,
-        error: data as DiditApiError,
-      };
+      let errorData: DiditApiError;
+      try { errorData = await response.json(); } catch { errorData = { error: { code: 'HTTP_ERROR', message: `Face match failed with status ${response.status}` } }; }
+      logger.error('Didit face match failed', undefined, { status: response.status, data: errorData });
+      return { success: false, error: errorData };
     }
+
+    const data = await response.json();
 
     return { success: true, data };
   } catch (error) {
@@ -588,15 +579,14 @@ export async function screenAml(params: {
       }),
     });
 
-    const data = await response.json();
-
     if (!response.ok) {
-      logger.error('Didit AML screening failed', undefined, { status: response.status, data });
-      return {
-        success: false,
-        error: data as DiditApiError,
-      };
+      let errorData: DiditApiError;
+      try { errorData = await response.json(); } catch { errorData = { error: { code: 'HTTP_ERROR', message: `AML screening failed with status ${response.status}` } }; }
+      logger.error('Didit AML screening failed', undefined, { status: response.status, data: errorData });
+      return { success: false, error: errorData };
     }
+
+    const data = await response.json();
 
     return { success: true, data };
   } catch (error) {
