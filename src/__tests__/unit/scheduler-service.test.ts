@@ -30,7 +30,7 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendWeeklyDigestEmail: mockSendWeeklyDigestEmail,
 }));
 
-const { initializeScheduler, stopScheduler } = await import('../../services/scheduler-service.js');
+const importScheduler = async () => import('../../services/scheduler-service.js');
 
 describe('Scheduler Service', () => {
   let mockDatabases: any;
@@ -55,7 +55,8 @@ describe('Scheduler Service', () => {
   });
 
   describe('initializeScheduler', () => {
-    it('should schedule cron jobs', () => {
+    it('should schedule cron jobs', async () => {
+      const { initializeScheduler } = await importScheduler();
       initializeScheduler();
       expect(mockCronSchedule).toHaveBeenCalled();
       expect(mockLogger.info).toHaveBeenCalledWith('Scheduler service initialized successfully');
@@ -63,7 +64,8 @@ describe('Scheduler Service', () => {
   });
 
   describe('stopScheduler', () => {
-    it('should stop cron tasks', () => {
+    it('should stop cron tasks', async () => {
+      const { stopScheduler } = await importScheduler();
       stopScheduler();
       expect(mockTaskStop).toHaveBeenCalled();
       expect(mockLogger.info).toHaveBeenCalledWith('Scheduler service stopped');
@@ -72,6 +74,7 @@ describe('Scheduler Service', () => {
 
   describe('autoCloseExpiredProjects', () => {
     it('should close expired projects', async () => {
+      const { initializeScheduler } = await importScheduler();
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 0 * * *');
 
@@ -96,6 +99,7 @@ describe('Scheduler Service', () => {
 
   describe('sendWeeklyDigests', () => {
     it('should send digest emails', async () => {
+      const { initializeScheduler } = await importScheduler();
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -137,6 +141,7 @@ describe('Scheduler Service', () => {
 
   describe('executeSavedSearches', () => {
     it('should execute searches and log results', async () => {
+      const { initializeScheduler } = await importScheduler();
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 */6 * * *');
 
@@ -162,6 +167,7 @@ describe('Scheduler Service', () => {
 
   describe('cleanupOldNotifications', () => {
     it('should delete old notifications', async () => {
+      const { initializeScheduler } = await importScheduler();
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 2 * * *');
 
@@ -262,6 +268,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Line 43: autoCloseExpiredProjects catch block
   it('should log error when autoCloseExpiredProjects fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 0 * * *');
 
@@ -279,6 +286,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Lines 63-64: sendWeeklyDigests early return when no users
   it('should return early when no users have weekly digest enabled', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -294,6 +302,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Line 76: sendWeeklyDigests continue when user fetch fails
   it('should skip user when getDocument fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -316,6 +325,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Line 93: filter new projects by created_at
   it('should count new projects filtered by created_at', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -355,6 +365,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Lines 120-129: pending milestones counting from contract milestones
   it('should count pending milestones from contract project milestones', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -397,6 +408,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Lines 158-162: per-user error handler in sendWeeklyDigests
   it('should log error when sending digest to individual user fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -416,6 +428,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Line 182: executeSavedSearches early return when no saved searches
   it('should return early when no saved searches with notify_on_new', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
@@ -431,6 +444,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Lines 198-200: filter building with ALLOWED_COLUMNS
   it('should build queries from allowed filter columns', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
@@ -456,6 +470,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Lines 215-219: per-search error handler in executeSavedSearches
   it('should log error when individual saved search fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
@@ -479,6 +494,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Line 259: cleanupOldNotifications catch block
   it('should log error when cleanupOldNotifications fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 2 * * *');
 
@@ -496,6 +512,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Additional: sendWeeklyDigests outer catch block (line 162)
   it('should log error when sendWeeklyDigests outer try fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -513,6 +530,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Additional: executeSavedSearches outer catch block (line 219)
   it('should log error when executeSavedSearches outer try fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
@@ -530,6 +548,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Additional: sendWeeklyDigests with milestones as array (not string)
   it('should handle milestones as array (not JSON string)', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -561,6 +580,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
   // Additional: sendWeeklyDigests with missing milestones field
   it('should handle project with no milestones field', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -587,8 +607,79 @@ describe('Scheduler Service - Uncovered Lines', () => {
     }
   });
 
+  // Line 133: milestone count catch returns 0 when the project fetch fails
+  it('should count 0 pending milestones when the contract project fetch fails', async () => {
+    const { initializeScheduler } = await importScheduler();
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments
+      // email prefs
+      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      // projects
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // messages
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // contracts — two contracts, one project fetch succeeds, one fails
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'c1', project_id: 'proj1' },
+          { $id: 'c2', project_id: 'missing' },
+        ],
+        total: 2,
+      })
+      // top projects
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    mockDatabases.getDocument
+      // user info
+      .mockResolvedValueOnce({ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' })
+      // proj1 — one pending milestone
+      .mockResolvedValueOnce({
+        $id: 'proj1',
+        milestones: JSON.stringify([{ title: 'M1', status: 'pending' }]),
+      })
+      // missing project — throws, contributes 0
+      .mockRejectedValueOnce(new Error('Project not found'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledWith('u1@test.com', expect.objectContaining({
+        pendingMilestones: 1,
+      }));
+    }
+  });
+
+  // Line 261: cleanupOldNotifications delete failure contributes 0 to the total
+  it('should not count notifications whose deletion fails', async () => {
+    const { initializeScheduler } = await importScheduler();
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 2 * * *');
+
+    const oldDate = new Date(Date.now() - 60 * 86400000).toISOString();
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { $id: 'n1', created_at: oldDate },
+        { $id: 'n2', created_at: oldDate },
+      ],
+      total: 2,
+    });
+    mockDatabases.deleteDocument
+      .mockResolvedValueOnce({})
+      .mockRejectedValueOnce(new Error('Delete failed'));
+
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 100));
+      expect(mockDatabases.deleteDocument).toHaveBeenCalledTimes(2);
+      expect(mockLogger.info).toHaveBeenCalledWith('Cleaned up old notifications', { deletedTotal: 1 });
+    }
+  });
+
   // Additional: sendWeeklyDigests with name fallback (full_name || name || 'User')
   it('should fall back to name then User when full_name is missing', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -658,6 +749,7 @@ describe('Scheduler Service - Integration Coverage', () => {
 
   // Lines 187-191: search_type !== 'project' and typeof filters === 'string'
   it('executeSavedSearches with search_type freelancer and string filters', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
@@ -686,6 +778,7 @@ describe('Scheduler Service - Integration Coverage', () => {
 
   // Lines 187-189: filters as string with null fallback
   it('executeSavedSearches with null filters falls back to empty object', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
@@ -713,6 +806,7 @@ describe('Scheduler Service - Integration Coverage', () => {
 
   // Line 80: full_name || name || 'User' fallback chain
   it('sendWeeklyDigests falls back to name then User when full_name missing', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
@@ -757,6 +851,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
   });
 
   it('should recover stuck releasing milestones back to submitted', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('*/10 * * * *');
 
@@ -791,6 +886,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
   });
 
   it('should handle milestones as object (not JSON string)', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('*/10 * * * *');
 
@@ -816,6 +912,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
   });
 
   it('should handle project with no milestones field', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('*/10 * * * *');
 
@@ -838,6 +935,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
   });
 
   it('should skip milestones without updated_at', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('*/10 * * * *');
 
@@ -871,6 +969,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
   });
 
   it('should not recover milestones that are not stuck (within grace period)', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('*/10 * * * *');
 
@@ -896,6 +995,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
   });
 
   it('should skip contracts without project_id', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('*/10 * * * *');
 
@@ -913,6 +1013,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
   });
 
   it('should log error when recoverStuckReleasingMilestones fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('*/10 * * * *');
 
@@ -929,6 +1030,7 @@ describe('Scheduler Service - Recover Stuck Releasing Milestones', () => {
   });
 
   it('should log error when individual contract recovery fails', async () => {
+    const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('*/10 * * * *');
 

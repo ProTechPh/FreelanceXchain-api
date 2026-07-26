@@ -599,6 +599,30 @@ describe('Reputation Aggregation Service - Integration Coverage', () => {
     expect(result.data.onTimeDeliveryRate).toBe(0);
   });
 
+  // Line 134-135: inner catch in Promise.all returns { approved: 0, onTime: 0 } when getDocument fails
+  it('getAggregatedScore handles getDocument failure for project (line 135)', async () => {
+    const { getAggregatedScore } = await importModule();
+
+    const reviews = [{ $id: 'r1', rating: 4, work_quality: 4, communication: 4, professionalism: 4, would_work_again: true }];
+    // 1st listDocuments: reviews
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 1 });
+    // 2nd listDocuments: completed contracts
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+    // 3rd listDocuments: all contracts (returns a contract with a project_id)
+    mockDatabases.listDocuments.mockResolvedValueOnce({
+      documents: [{ $id: 'c1', project_id: 'p-broken' }],
+      total: 1,
+    });
+    // getDocument throws when fetching the project — triggers inner catch at line 134-135
+    mockDatabases.getDocument.mockRejectedValueOnce(new Error('Project not found'));
+
+    const result = await getAggregatedScore('user-1');
+
+    // The function should still succeed; the failed project just contributes 0 approved/0 onTime
+    expect(result.success).toBe(true);
+    expect(result.data.onTimeDeliveryRate).toBe(0);
+  });
+
   // Line 160: non-Error thrown in getAggregatedScore catch block
   it('getAggregatedScore handles non-Error throw (line 160)', async () => {
     const { getAggregatedScore } = await importModule();

@@ -330,6 +330,33 @@ describe('Validation Middleware', () => {
       middleware(req as Request, res as Response, next);
       expect(next).toHaveBeenCalled();
     });
+
+    it('should pick value from query when not present in body for plain schema (line 303)', async () => {
+      const { validate } = await importModule();
+      const schema = {
+        type: 'object',
+        properties: {
+          id: { type: 'string' },
+        },
+      };
+      req.body = {};
+      req.query = { id: 'query-value' } as any;
+      req.params = {};
+      const middleware = validate(schema);
+      middleware(req as Request, res as Response, next);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should handle plain schema without properties (line 299)', async () => {
+      const { validate } = await importModule();
+      const schema = {
+        type: 'object',
+      };
+      req.body = { anything: 'value' };
+      const middleware = validate(schema);
+      middleware(req as Request, res as Response, next);
+      expect(next).toHaveBeenCalled();
+    });
   });
 
   describe('validate middleware - params validation', () => {
