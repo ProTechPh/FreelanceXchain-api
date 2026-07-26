@@ -25,6 +25,38 @@ export type InboundEmailPayload = {
 
 const PLATFORM_DOMAIN = 'freelancexchain.works';
 
+type CloudflareSendResponse = { success: boolean; errors?: Array<{ message: string }> };
+
+/**
+ * Interprets a Cloudflare email-send response.
+ *
+ * `fetch` resolves rather than rejects on HTTP 4xx/5xx, so the status is checked
+ * before the body is read as a send result. On an error status Cloudflare may
+ * return a non-JSON body (auth, gateway or rate-limit pages), so it is read as
+ * text and only then parsed opportunistically.
+ *
+ * Returns an error message, or null when the send succeeded.
+ */
+async function readCloudflareSendError(response: Response): Promise<string | null> {
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    let apiMessage: string | undefined;
+    try {
+      apiMessage = (JSON.parse(body) as CloudflareSendResponse).errors?.[0]?.message;
+    } catch {
+      apiMessage = undefined;
+    }
+    return apiMessage || `Cloudflare email send failed with HTTP ${response.status}`;
+  }
+
+  const result = (await response.json()) as CloudflareSendResponse;
+  if (!result.success) {
+    return result.errors?.[0]?.message || 'Cloudflare email send failed';
+  }
+
+  return null;
+}
+
 function extractUsername(toAddress: string): string | null {
   const match = toAddress.match(/^([^@]+)@(.+)$/);
   if (!match) return null;
@@ -248,12 +280,11 @@ export async function sendNewEmail(
       }
     );
 
-    const result = await response.json() as { success: boolean; errors?: Array<{ message: string }> };
-    if (!result.success) {
-      const errMsg = result.errors?.[0]?.message || 'Cloudflare email send failed';
+    const sendError = await readCloudflareSendError(response);
+    if (sendError) {
       return {
         success: false,
-        error: { code: 'EMAIL_SEND_FAILED', message: errMsg },
+        error: { code: 'EMAIL_SEND_FAILED', message: sendError },
       };
     }
 
@@ -349,12 +380,11 @@ export async function replyToEmail(
       }
     );
 
-    const result = await response.json() as { success: boolean; errors?: Array<{ message: string }> };
-    if (!result.success) {
-      const errMsg = result.errors?.[0]?.message || 'Cloudflare email send failed';
+    const sendError = await readCloudflareSendError(response);
+    if (sendError) {
       return {
         success: false,
-        error: { code: 'EMAIL_SEND_FAILED', message: errMsg },
+        error: { code: 'EMAIL_SEND_FAILED', message: sendError },
       };
     }
 
