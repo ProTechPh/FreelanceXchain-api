@@ -7,6 +7,8 @@ export default {
     '^@/(.*)$': '<rootDir>/src/$1',
     '^file-type$': '<rootDir>/src/__mocks__/file-type.js',
     '^swagger-ui-express$': '<rootDir>/src/__mocks__/swagger-ui-express.cjs',
+    '^@opencoredev/email-sdk/cloudflare$': '<rootDir>/src/__mocks__/email-sdk-cloudflare.cjs',
+    '^@opencoredev/email-sdk$': '<rootDir>/src/__mocks__/email-sdk.cjs',
     '^(\\.{1,2}/.*)\\.js$': '$1',
   },
   transform: {

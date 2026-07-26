@@ -1115,6 +1115,33 @@ describe('didit-client - Missing Branch Coverage', () => {
     });
   });
 
+  describe('DIDIT_API_URL default fallback', () => {
+    it('should use default URL when DIDIT_API_URL is not set (line 17 ?? branch)', async () => {
+      const originalUrl = process.env.DIDIT_API_URL;
+      const originalKey = process.env.DIDIT_API_KEY;
+      delete process.env.DIDIT_API_URL;
+      process.env.DIDIT_API_KEY = 'test-key';
+      jest.resetModules();
+
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = jest.fn().mockResolvedValueOnce({
+        ok: true,
+        headers: { get: () => 'application/json' },
+        json: async () => ({ session_id: 's1', status: 'Not Started', url: 'https://verify.didit.me/s1' }),
+      });
+
+      const { createVerificationSession } = await import('../../services/didit-client.js');
+      await createVerificationSession({ workflow_id: 'wf-1' });
+
+      const callUrl = (globalThis.fetch as jest.Mock).mock.calls[0][0];
+      expect(callUrl).toContain('https://verification.didit.me');
+
+      globalThis.fetch = originalFetch;
+      if (originalUrl) process.env.DIDIT_API_URL = originalUrl;
+      if (originalKey) process.env.DIDIT_API_KEY = originalKey;
+    });
+  });
+
   describe('DIDIT_API_KEY undefined', () => {
     it('should send empty string x-api-key when DIDIT_API_KEY is undefined', async () => {
       // DIDIT_API_KEY is captured as a module-level const, so we need jest.resetModules() to re-import
@@ -1233,5 +1260,125 @@ describe('didit-client - Missing Branch Coverage', () => {
       expect(result).toBe(true);
       if (origSecret) process.env.DIDIT_WEBHOOK_SECRET = origSecret;
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Error responses whose body is not valid JSON — the HTTP_ERROR fallback
+// ═══════════════════════════════════════════════════════════════
+
+describe('didit-client - unparseable error bodies fall back to HTTP_ERROR', () => {
+  const importModule = async () => import('../../services/didit-client.js');
+
+  // Error response with a body that cannot be parsed as JSON (e.g. an HTML gateway page)
+  const unparseableErrorResponse = (status: number) => ({
+    ok: false,
+    status,
+    headers: { get: () => 'application/json' },
+    json: async () => {
+      throw new SyntaxError('Unexpected token < in JSON at position 0');
+    },
+    text: async () => '<html>Bad Gateway</html>',
+  });
+
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('createVerificationSession falls back to HTTP_ERROR', async () => {
+    const { createVerificationSession } = await importModule();
+    globalThis.fetch = jest.fn().mockResolvedValueOnce(unparseableErrorResponse(502)) as any;
+
+    const result = await createVerificationSession({ workflow_id: 'wf-1' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('HTTP_ERROR');
+      expect(result.error.error.message).toBe('Session creation failed with status 502');
+    }
+  });
+
+  it('getVerificationDecision falls back to HTTP_ERROR', async () => {
+    const { getVerificationDecision } = await importModule();
+    globalThis.fetch = jest.fn().mockResolvedValueOnce(unparseableErrorResponse(503)) as any;
+
+    const result = await getVerificationDecision('session-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('HTTP_ERROR');
+      expect(result.error.error.message).toBe('Verification decision failed with status 503');
+    }
+  });
+
+  it('getVerificationSession falls back to HTTP_ERROR', async () => {
+    const { getVerificationSession } = await importModule();
+    globalThis.fetch = jest.fn().mockResolvedValueOnce(unparseableErrorResponse(500)) as any;
+
+    const result = await getVerificationSession('session-123');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('HTTP_ERROR');
+      expect(result.error.error.message).toBe('Session details failed with status 500');
+    }
+  });
+
+  it('verifyIdDocument falls back to HTTP_ERROR', async () => {
+    const { verifyIdDocument } = await importModule();
+    globalThis.fetch = jest.fn().mockResolvedValueOnce(unparseableErrorResponse(413)) as any;
+
+    const result = await verifyIdDocument(Buffer.from('front'), Buffer.from('back'), 'vendor-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('HTTP_ERROR');
+      expect(result.error.error.message).toBe('ID verification failed with status 413');
+    }
+  });
+
+  it('checkPassiveLiveness falls back to HTTP_ERROR', async () => {
+    const { checkPassiveLiveness } = await importModule();
+    globalThis.fetch = jest.fn().mockResolvedValueOnce(unparseableErrorResponse(429)) as any;
+
+    const result = await checkPassiveLiveness(Buffer.from('selfie'), 'vendor-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('HTTP_ERROR');
+      expect(result.error.error.message).toBe('Liveness check failed with status 429');
+    }
+  });
+
+  it('matchFaces falls back to HTTP_ERROR', async () => {
+    const { matchFaces } = await importModule();
+    globalThis.fetch = jest.fn().mockResolvedValueOnce(unparseableErrorResponse(400)) as any;
+
+    const result = await matchFaces(Buffer.from('user'), Buffer.from('ref'), 'vendor-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('HTTP_ERROR');
+      expect(result.error.error.message).toBe('Face match failed with status 400');
+    }
+  });
+
+  it('screenAml falls back to HTTP_ERROR', async () => {
+    const { screenAml } = await importModule();
+    globalThis.fetch = jest.fn().mockResolvedValueOnce(unparseableErrorResponse(504)) as any;
+
+    const result = await screenAml({ full_name: 'John Doe', entity_type: 'person' });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.error.code).toBe('HTTP_ERROR');
+      expect(result.error.error.message).toBe('AML screening failed with status 504');
+    }
   });
 });
