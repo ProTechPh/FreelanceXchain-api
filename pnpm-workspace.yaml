@@ -1,5 +1,6 @@
 packages:
   - '.'
+  - 'freelancexchain-email-worker'
 
 onlyBuiltDependencies:
   - bcrypt
