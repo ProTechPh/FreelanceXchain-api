@@ -336,6 +336,8 @@ describe('Email Inbox Service', () => {
     it('should send email successfully', async () => {
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: true }),
       });
       mockEmailInboxRepository.create.mockResolvedValueOnce({ id: 'sent-1' });
@@ -364,6 +366,8 @@ describe('Email Inbox Service', () => {
     it('should return EMAIL_SEND_FAILED on Cloudflare API failure', async () => {
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: false, errors: [{ message: 'Rate limited' }] }),
       });
 
@@ -376,12 +380,55 @@ describe('Email Inbox Service', () => {
     it('should use default error message on Cloudflare failure without errors array', async () => {
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: false }),
       });
 
       const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
       expect(result.success).toBe(false);
       expect(result.error.message).toBe('Cloudflare email send failed');
+    });
+
+    it('should surface the API error message on an HTTP error status', async () => {
+      mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
+      global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        text: () => Promise.resolve(JSON.stringify({ success: false, errors: [{ message: 'Invalid token' }] })),
+      });
+
+      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('EMAIL_SEND_FAILED');
+      expect(result.error.message).toBe('Invalid token');
+    });
+
+    it('should report the HTTP status when the error body is not JSON', async () => {
+      mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
+      global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: false,
+        status: 502,
+        text: () => Promise.resolve('<html>Bad Gateway</html>'),
+      });
+
+      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      expect(result.success).toBe(false);
+      expect(result.error.message).toBe('Cloudflare email send failed with HTTP 502');
+      expect(mockEmailInboxRepository.create).not.toHaveBeenCalled();
+    });
+
+    it('should report the HTTP status when the error body cannot be read', async () => {
+      mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
+      global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: () => Promise.reject(new Error('stream closed')),
+      });
+
+      const result = await sendNewEmail('u1', 'to@example.com', 'Subject', 'text', '<p>text</p>');
+      expect(result.success).toBe(false);
+      expect(result.error.message).toBe('Cloudflare email send failed with HTTP 500');
     });
 
     it('should handle errors', async () => {
@@ -419,6 +466,8 @@ describe('Email Inbox Service', () => {
       mockEmailInboxRepository.getFullEmail.mockResolvedValueOnce(originalEmail);
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: true }),
       });
       mockEmailInboxRepository.create.mockResolvedValueOnce({ id: 'reply-1' });
@@ -432,6 +481,8 @@ describe('Email Inbox Service', () => {
       mockEmailInboxRepository.getFullEmail.mockResolvedValueOnce(originalEmail);
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: true }),
       });
       mockEmailInboxRepository.create.mockResolvedValueOnce({ id: 'reply-1' });
@@ -446,6 +497,8 @@ describe('Email Inbox Service', () => {
       mockEmailInboxRepository.getFullEmail.mockResolvedValueOnce(emailWithRe);
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: true }),
       });
       mockEmailInboxRepository.create.mockResolvedValueOnce({ id: 'reply-1' });
@@ -460,6 +513,8 @@ describe('Email Inbox Service', () => {
       mockEmailInboxRepository.getFullEmail.mockResolvedValueOnce(emailWithRefs);
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: true }),
       });
       mockEmailInboxRepository.create.mockResolvedValueOnce({ id: 'reply-1' });
@@ -498,6 +553,8 @@ describe('Email Inbox Service', () => {
       mockEmailInboxRepository.getFullEmail.mockResolvedValueOnce(originalEmail);
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: false, errors: [{ message: 'Blocked' }] }),
       });
       const result = await replyToEmail('u1', 'orig-1', 'Reply', '<p>Reply</p>');
@@ -510,11 +567,29 @@ describe('Email Inbox Service', () => {
       mockEmailInboxRepository.getFullEmail.mockResolvedValueOnce(originalEmail);
       mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
       global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: true,
+        status: 200,
         json: () => Promise.resolve({ success: false }),
       });
       const result = await replyToEmail('u1', 'orig-1', 'Reply', '<p>Reply</p>');
       expect(result.success).toBe(false);
       expect(result.error.message).toBe('Cloudflare email send failed');
+    });
+
+    it('should not record the reply when Cloudflare returns an HTTP error status', async () => {
+      mockEmailInboxRepository.getFullEmail.mockResolvedValueOnce(originalEmail);
+      mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'u1', name: 'testuser' });
+      global.fetch = jest.fn<any>().mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        text: () => Promise.resolve(JSON.stringify({ success: false, errors: [{ message: 'Too many requests' }] })),
+      });
+
+      const result = await replyToEmail('u1', 'orig-1', 'Reply', '<p>Reply</p>');
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('EMAIL_SEND_FAILED');
+      expect(result.error.message).toBe('Too many requests');
+      expect(mockEmailInboxRepository.create).not.toHaveBeenCalled();
     });
 
     it('should handle errors', async () => {
