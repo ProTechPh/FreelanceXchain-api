@@ -1,25 +1,12 @@
-/**
- * Request Validation Middleware
- * Provides UUID validation for API request parameters
- */
-
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ValidationError } from './error-handler.js';
 
-// UUID pattern (v4)
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/**
- * Validates that a string is a valid UUID
- */
 export function isValidUUID(value: string): boolean {
   return UUID_PATTERN.test(value);
 }
 
-/**
- * Middleware to validate UUID parameters
- * @param paramNames - Array of parameter names to validate as UUIDs (defaults to ['id'])
- */
 export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
     const requestId = (req.headers['x-request-id'] as string) ?? 'unknown';
@@ -81,9 +68,6 @@ type ValidationResult = {
   errors: { field: string; message: string }[];
 };
 
-/**
- * Validate a request body against a JSON schema
- */
 export function validateRequest(data: any, schema: Schema): ValidationResult {
   const errors: { field: string; message: string }[] = [];
 
@@ -91,7 +75,6 @@ export function validateRequest(data: any, schema: Schema): ValidationResult {
     return { valid: true, errors: [] };
   }
 
-  // Check schema-level required array
   if (schema.required) {
     for (const field of schema.required) {
       if (data?.[field] === undefined || data?.[field] === null) {
@@ -110,7 +93,6 @@ export function validateRequest(data: any, schema: Schema): ValidationResult {
 
     if (value === undefined || value === null) continue;
 
-    // Type validation
     if (prop.type) {
       if (prop.type === 'string' && typeof value !== 'string') {
         errors.push({ field: key, message: `"${key}" must be of type string` });
@@ -177,7 +159,6 @@ export function validateRequest(data: any, schema: Schema): ValidationResult {
       errors.push({ field: key, message: `"${key}" must be one of: ${prop.enum.join(', ')}` });
     }
 
-    // Array items validation
     if (prop.items && Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
         const item = value[i];
@@ -190,7 +171,6 @@ export function validateRequest(data: any, schema: Schema): ValidationResult {
       }
     }
 
-    // Nested object validation
     if (prop.type === 'object' && prop.properties && typeof value === 'object' && !Array.isArray(value)) {
       for (const [nestedKey, nestedProp] of Object.entries(prop.properties)) {
         const nestedValue = value[nestedKey];
@@ -247,9 +227,6 @@ export function validateRequest(data: any, schema: Schema): ValidationResult {
   return { valid: errors.length === 0, errors };
 }
 
-/**
- * Create validation middleware from a schema (supports body, query, params)
- */
 export function validate(schema: Schema | RequestSchema): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
     let valid = true;

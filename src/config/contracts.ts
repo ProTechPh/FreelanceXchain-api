@@ -1,8 +1,3 @@
-/**
- * Smart Contract Address Configuration
- * Manages deployed contract addresses for different networks
- */
-
 import { config } from './env.js';
 
 export type NetworkName = 'hardhat' | 'ganache' | 'sepolia' | 'polygon' | 'amoy' | 'mainnet';
@@ -15,7 +10,6 @@ export type ContractAddresses = {
   milestoneRegistry?: string;
 };
 
-// Contract addresses by network
 const contractAddresses: Record<NetworkName, ContractAddresses> = {
   hardhat: {},
   ganache: {},
@@ -25,7 +19,6 @@ const contractAddresses: Record<NetworkName, ContractAddresses> = {
   mainnet: {},
 };
 
-// Load addresses from environment variables
 if (process.env.HARDHAT_REPUTATION_ADDRESS) contractAddresses.hardhat.reputation = process.env.HARDHAT_REPUTATION_ADDRESS;
 if (process.env.HARDHAT_ESCROW_ADDRESS) contractAddresses.hardhat.escrow = process.env.HARDHAT_ESCROW_ADDRESS;
 if (process.env.HARDHAT_AGREEMENT_ADDRESS) contractAddresses.hardhat.agreement = process.env.HARDHAT_AGREEMENT_ADDRESS;
@@ -62,9 +55,6 @@ if (process.env.MAINNET_AGREEMENT_ADDRESS) contractAddresses.mainnet.agreement =
 if (process.env.MAINNET_DISPUTE_ADDRESS) contractAddresses.mainnet.disputeResolution = process.env.MAINNET_DISPUTE_ADDRESS;
 if (process.env.MAINNET_MILESTONE_ADDRESS) contractAddresses.mainnet.milestoneRegistry = process.env.MAINNET_MILESTONE_ADDRESS;
 
-/**
- * Get current network name from RPC URL
- */
 export function getCurrentNetwork(): NetworkName {
   const rpcUrl = config.blockchain.rpcUrl?.toLowerCase() || '';
 
@@ -75,13 +65,9 @@ export function getCurrentNetwork(): NetworkName {
   if (rpcUrl.includes('127.0.0.1:8545') || rpcUrl.includes('localhost:8545')) return 'hardhat';
   if (rpcUrl.includes('mainnet')) return 'mainnet';
 
-  // Default to ganache for local development
   return 'ganache';
 }
 
-/**
- * Get specific contract address
- */
 export function getContractAddress(contractName: keyof ContractAddresses): string | undefined {
   const network = getCurrentNetwork();
   return contractAddresses[network][contractName];

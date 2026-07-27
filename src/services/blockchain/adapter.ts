@@ -1,16 +1,8 @@
-/**
- * Blockchain Adapter Interface
- * Provides a unified interface for both real and simulated blockchain implementations
- */
-
 import { TransactionReceipt } from '../blockchain-types.js';
 import type { MilestoneStatus } from '../../models/milestone.js';
 
-/**
- * PascalCase status values returned by smart contracts.
- * Use `fromBlockchainMilestoneStatus` / `toBlockchainMilestoneStatus` to convert
- * to/from the domain `MilestoneStatus`.
- */
+// PascalCase status values from smart contracts.
+// Use fromBlockchainMilestoneStatus / toBlockchainMilestoneStatus to convert.
 export type BlockchainMilestoneStatus = 'Pending' | 'Submitted' | 'Approved' | 'Disputed' | 'Refunded';
 
 const BLOCKCHAIN_TO_DOMAIN: Record<BlockchainMilestoneStatus, MilestoneStatus> = {
@@ -72,66 +64,23 @@ export type TransactionResult = {
   receipt?: TransactionReceipt | any;
 };
 
-/**
- * Blockchain Adapter Interface
- * Abstracts blockchain operations to support both real and simulated implementations
- */
 export interface IBlockchainAdapter {
-  /**
-   * Check if blockchain is available/configured
-   */
   isAvailable(): boolean;
-
-  /**
-   * Deploy a new escrow contract
-   */
   deployEscrowContract(params: EscrowDeploymentParams): Promise<EscrowDeploymentResult>;
-
-  /**
-   * Get escrow contract information
-   */
   getEscrowInfo(escrowAddress: string): Promise<EscrowInfo>;
-
-  /**
-   * Submit milestone for approval (freelancer)
-   */
   submitMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult>;
-
-  /**
-   * Approve milestone and release payment (employer)
-   */
   approveMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult>;
-
-  /**
-   * Dispute a milestone
-   */
   disputeMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult>;
-
-  /**
-   * Resolve dispute (arbiter only)
-   */
   resolveDispute(
     escrowAddress: string,
     milestoneIndex: number,
     inFavorOfFreelancer: boolean
   ): Promise<TransactionResult>;
-
-  /**
-   * Refund escrow to employer
-   */
   refundEscrow(escrowAddress: string): Promise<TransactionResult>;
-
-  /**
-   * Get milestone information
-   */
   getMilestone(escrowAddress: string, milestoneIndex: number): Promise<{
     amount: bigint;
     status: BlockchainMilestoneStatus;
     description: string;
   }>;
-
-  /**
-   * Get escrow balance
-   */
   getEscrowBalance(escrowAddress: string): Promise<bigint>;
 }

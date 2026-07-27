@@ -1,8 +1,3 @@
-/**
- * Dispute Routes
- * API endpoints for dispute creation, evidence submission, and resolution
- */
-
 import { Router, Request, Response, NextFunction } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';

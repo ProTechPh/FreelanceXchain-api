@@ -1,10 +1,3 @@
-/**
- * Didit KYC Repository
- * Database operations for KYC verifications using Appwrite SDK
- *
- * Note: We only store session info and decision - Didit handles all verification data.
- */
-
 import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
 import { KycVerification, UpdateKycVerificationInput } from '../models/didit-kyc.js';
 import { logger } from '../config/logger.js';
@@ -31,9 +24,6 @@ function mapKyc(doc: Record<string, any>): KycVerification {
   return result as KycVerification;
 }
 
-/**
- * Create a new KYC verification record
- */
 export async function createKycVerification(
   verification: Omit<KycVerification, 'created_at' | 'updated_at'>
 ): Promise<KycVerification | null> {

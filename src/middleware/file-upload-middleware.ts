@@ -1,9 +1,3 @@
-/**
- * File Upload Middleware
- * Handles multipart/form-data file uploads with security validation
- * Requirements: IAS Checklist - File upload validation (type + size)
- */
-
 import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { fileTypeFromBuffer } from 'file-type';
@@ -20,17 +14,12 @@ const MALICIOUS_MAGIC_NUMBERS: Array<{ label: string; bytes: number[] }> = [
   { label: 'Mach-O executable', bytes: [0xce, 0xfa, 0xed, 0xfe] },
 ];
 
-// File size limits
 export const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB per file
 export const MAX_TOTAL_SIZE = 25 * 1024 * 1024; // 25MB total
-
-// File count limits
 export const MIN_FILE_COUNT = 1;
-export const MAX_FILE_COUNT = 10; // Increased for milestone deliverables
+export const MAX_FILE_COUNT = 10;
 
-// Allowed MIME types with their magic number signatures
 export const ALLOWED_MIME_TYPES = {
-  // Documents
   'application/pdf': true,
   'application/msword': true,
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': true,
@@ -38,65 +27,38 @@ export const ALLOWED_MIME_TYPES = {
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': true,
   'text/plain': true,
   'text/csv': true,
-  // Images
   'image/png': true,
   'image/jpeg': true,
   'image/jpg': true,
   'image/gif': true,
   'image/webp': true,
-  // Archives
   'application/zip': true,
   'application/x-rar-compressed': true,
   'application/x-7z-compressed': true,
-  // Video (for demos/presentations)
   'video/mp4': true,
   'video/webm': true,
   'video/quicktime': true,
 } as const;
 
-// Allowed file extensions
 const ALLOWED_EXTENSIONS = [
-  '.pdf',
-  '.doc',
-  '.docx',
-  '.xlsx',
-  '.pptx',
-  '.txt',
-  '.csv',
-  '.png',
-  '.jpg',
-  '.jpeg',
-  '.gif',
-  '.webp',
-  '.zip',
-  '.rar',
-  '.7z',
-  '.mp4',
-  '.webm',
-  '.mov',
+  '.pdf', '.doc', '.docx', '.xlsx', '.pptx', '.txt', '.csv',
+  '.png', '.jpg', '.jpeg', '.gif', '.webp',
+  '.zip', '.rar', '.7z',
+  '.mp4', '.webm', '.mov',
 ];
 
-/**
- * Sanitize filename to prevent path traversal and special character issues
- */
 export function sanitizeFilename(filename: string): string {
-  // Remove path components
   const basename = filename.replace(/^.*[\\/]/, '');
-  
-  // Remove or replace dangerous characters
-  // Keep alphanumeric, dots, hyphens, underscores
+
   const sanitized = basename
     .replace(/[^a-zA-Z0-9._-]/g, '_')
-    .replace(/\.{2,}/g, '.') // Replace multiple dots with single dot
-    .replace(/^\.+/, '') // Remove leading dots
-    .substring(0, 255); // Limit length
-  
+    .replace(/\.{2,}/g, '.')
+    .replace(/^\.+/, '')
+    .substring(0, 255);
+
   return sanitized || 'unnamed_file';
 }
 
-/**
- * Validate file extension
- */
 function hasValidExtension(filename: string): boolean {
   const lowerFilename = filename.toLowerCase();
   return ALLOWED_EXTENSIONS.some(ext => lowerFilename.endsWith(ext));
@@ -142,16 +104,9 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
   }
 }
 
-/**
- * Configure multer for memory storage
- */
 const storage = multer.memoryStorage();
 
-/**
- * Multer file filter - first line of defense (extension-based)
- */
 const fileFilter: multer.Options['fileFilter'] = (req, file, cb) => {
-  // Check file extension
   if (!hasValidExtension(file.originalname)) {
     const error = new Error(`File type not allowed. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}`);
     (error as any).code = 'INVALID_FILE_TYPE';
@@ -161,9 +116,6 @@ const fileFilter: multer.Options['fileFilter'] = (req, file, cb) => {
   cb(null, true);
 };
 
-/**
- * Create multer upload instance
- */
 const upload = multer({
   storage,
   fileFilter,
@@ -173,11 +125,6 @@ const upload = multer({
   },
 });
 
-/**
- * Middleware to handle file uploads with validation
- * @param fieldName - The name of the form field containing files
- * @param options - Upload options
- */
 export function createFileUploadMiddleware(
   fieldName: string = 'files',
   options: {
@@ -193,7 +140,6 @@ export function createFileUploadMiddleware(
   } = options;
 
   return [
-    // First, use multer to parse multipart/form-data, catching multer errors
     (req: Request, res: Response, next: NextFunction): void => {
       upload.array(fieldName, maxFiles)(req, res, (err: any) => {
         if (!err) return next();
@@ -232,7 +178,6 @@ export function createFileUploadMiddleware(
       });
     },
 
-    // Then, perform additional validation
     async (req: Request, res: Response, next: NextFunction): Promise<void> => {
       try {
         // Sanitize and validate the type of req.files

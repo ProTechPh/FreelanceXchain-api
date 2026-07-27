@@ -1,7 +1,3 @@
-/**
- * Shared repository types — used by both Appwrite and (legacy) PostgreSQL repositories.
- */
-
 export type QueryOptions = {
   limit?: number;
   offset?: number;
@@ -21,10 +17,7 @@ export type BaseEntity = {
   updated_at: string;
 };
 
-/**
- * Error thrown by repository operations when the underlying data store fails.
- * Distinguishes "not found" (null return) from actual errors.
- */
+// Distinguishes "not found" (null return) from actual data store errors
 export class RepositoryError extends Error {
   constructor(
     message: string,

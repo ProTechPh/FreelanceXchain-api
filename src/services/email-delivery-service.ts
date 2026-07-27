@@ -52,9 +52,6 @@ function getEmailClient() {
   return emailClient;
 }
 
-/**
- * HTML-escape a string to prevent injection in email templates
- */
 function escapeHtml(str: string): string {
   return String(str)
     .replace(/&/g, '&amp;')
@@ -64,15 +61,12 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#039;');
 }
 
-/**
- * Render email template with data
- */
 async function renderTemplate(template: EmailTemplate, data: Record<string, any>): Promise<string> {
   try {
     const templatePath = path.join(process.cwd(), 'docs/email-templates', `${template}.html`);
     let html = await fs.readFile(templatePath, 'utf-8');
 
-    // Template variable replacement with HTML escaping to prevent injection
+    // HTML-escape all template variables to prevent injection
     Object.keys(data).forEach(key => {
       const regex = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
       html = html.replace(regex, escapeHtml(String(data[key])));
@@ -81,15 +75,11 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
     return html;
   } catch (error) {
     logger.error('Failed to render email template:', error);
-    // Fallback to escaped plain text
     const escaped = escapeHtml(JSON.stringify(data, null, 2));
     return `<html><body><pre>${escaped}</pre></body></html>`;
   }
 }
 
-/**
- * Send email
- */
 export async function sendEmail(emailData: EmailData): Promise<ServiceResult<{ messageId: string }>> {
   try {
     const client = getEmailClient();
@@ -122,9 +112,6 @@ export async function sendEmail(emailData: EmailData): Promise<ServiceResult<{ m
   }
 }
 
-/**
- * Send proposal accepted email
- */
 export async function sendProposalAcceptedEmail(
   to: string,
   data: { freelancerName: string; projectTitle: string; projectUrl: string }
@@ -137,9 +124,6 @@ export async function sendProposalAcceptedEmail(
   });
 }
 
-/**
- * Send milestone approved email
- */
 export async function sendMilestoneApprovedEmail(
   to: string,
   data: { freelancerName: string; milestoneTitle: string; amount: string; contractUrl: string }
@@ -152,9 +136,6 @@ export async function sendMilestoneApprovedEmail(
   });
 }
 
-/**
- * Send payment released email
- */
 export async function sendPaymentReleasedEmail(
   to: string,
   data: { recipientName: string; amount: string; contractTitle: string; transactionHash: string }
@@ -167,9 +148,6 @@ export async function sendPaymentReleasedEmail(
   });
 }
 
-/**
- * Send dispute created email
- */
 export async function sendDisputeCreatedEmail(
   to: string,
   data: { arbiterName: string; contractTitle: string; disputeReason: string; disputeUrl: string }
@@ -182,9 +160,6 @@ export async function sendDisputeCreatedEmail(
   });
 }
 
-/**
- * Send contract created email
- */
 export async function sendContractCreatedEmail(
   to: string,
   data: { recipientName: string; projectTitle: string; contractUrl: string }
@@ -197,9 +172,6 @@ export async function sendContractCreatedEmail(
   });
 }
 
-/**
- * Send message received email
- */
 export async function sendMessageReceivedEmail(
   to: string,
   data: { recipientName: string; senderName: string; messagePreview: string; conversationUrl: string }
@@ -212,9 +184,6 @@ export async function sendMessageReceivedEmail(
   });
 }
 
-/**
- * Send review received email
- */
 export async function sendReviewReceivedEmail(
   to: string,
   data: { recipientName: string; reviewerName: string; rating: number; projectTitle: string; reviewUrl: string }
@@ -227,9 +196,6 @@ export async function sendReviewReceivedEmail(
   });
 }
 
-/**
- * Send KYC approved email
- */
 export async function sendKycApprovedEmail(
   to: string,
   data: { userName: string; tier: string }
@@ -242,9 +208,6 @@ export async function sendKycApprovedEmail(
   });
 }
 
-/**
- * Send KYC rejected email
- */
 export async function sendKycRejectedEmail(
   to: string,
   data: { userName: string; reason: string }
@@ -257,9 +220,6 @@ export async function sendKycRejectedEmail(
   });
 }
 
-/**
- * Send weekly digest email
- */
 export async function sendWeeklyDigestEmail(
   to: string,
   data: {
@@ -279,9 +239,6 @@ export async function sendWeeklyDigestEmail(
   });
 }
 
-/**
- * Test email configuration by checking env vars are present
- */
 export async function testEmailConfiguration(): Promise<ServiceResult<{ verified: boolean }>> {
   try {
     const apiToken = process.env['CLOUDFLARE_API_TOKEN'];

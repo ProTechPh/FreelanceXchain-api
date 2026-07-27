@@ -1,22 +1,11 @@
-/**
- * Security Middleware
- * Provides security headers, request ID generation, and HTTPS enforcement
- */
-
 import { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 
 // Workaround for TypeScript/Helmet import issue in NodeNext
- 
 const helmetMiddleware = (helmet as any).default || helmet;
 import { v4 as uuidv4 } from 'uuid';
 
-/**
- * Helmet middleware for security headers
- * Configures various HTTP headers to protect against common vulnerabilities
- */
 export const securityHeaders = helmetMiddleware({
-    // Content Security Policy
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
@@ -34,29 +23,20 @@ export const securityHeaders = helmetMiddleware({
             upgradeInsecureRequests: [],
         },
     },
-    // Prevent clickjacking
     frameguard: { action: 'deny' },
-    // Hide X-Powered-By header
     hidePoweredBy: true,
-    // Prevent MIME type sniffing
     noSniff: true,
-    // Enable XSS filter
     xssFilter: true,
-    // HSTS - enforce HTTPS (1 year), force on all connections including HTTP
+    // HSTS — 1 year, forced on all connections including HTTP
     hsts: {
         maxAge: 31536000,
         includeSubDomains: true,
         preload: true,
         force: true,
     },
-    // Referrer policy
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 });
 
-/**
- * Request ID middleware
- * Generates a unique request ID if not provided in headers
- */
 export function requestIdMiddleware(req: Request, _res: Response, next: NextFunction): void {
     const existingId = req.headers['x-request-id'];
     if (!existingId || typeof existingId !== 'string') {
@@ -65,18 +45,12 @@ export function requestIdMiddleware(req: Request, _res: Response, next: NextFunc
     next();
 }
 
-/**
- * HTTPS enforcement middleware for production
- * Redirects HTTP requests to HTTPS
- */
 export function httpsEnforcement(req: Request, res: Response, next: NextFunction): void {
-    // Check if running in production
     if (process.env['NODE_ENV'] !== 'production') {
         next();
         return;
     }
 
-    // Check X-Forwarded-Proto header (for reverse proxies)
     const forwardedProto = req.headers['x-forwarded-proto'];
     const isSecure = req.secure || forwardedProto === 'https';
 
@@ -89,10 +63,6 @@ export function httpsEnforcement(req: Request, res: Response, next: NextFunction
     next();
 }
 
-/**
- * Validate CORS origin
- * Returns true if origin is allowed, false otherwise
- */
 export function validateCorsOrigin(origin: string | undefined, allowedOrigins: string[]): boolean {
     if (!origin) return false;
 
@@ -112,12 +82,11 @@ export function validateCorsOrigin(origin: string | undefined, allowedOrigins: s
     for (const allowed of allowedOrigins) {
         const trimmedAllowed = allowed.trim().toLowerCase();
 
-        // Support wildcard subdomains like *.example.com
+        // Wildcard subdomains: *.example.com matches foo.example.com but not evil-example.com
         if (trimmedAllowed.startsWith('*.')) {
             const domain = trimmedAllowed.slice(2);
             const host = parsedOrigin.hostname.toLowerCase();
 
-            // Must be a real subdomain boundary: foo.example.com matches, evil-example.com does not
             if (host !== domain && host.endsWith(`.${domain}`)) {
                 return true;
             }
@@ -130,21 +99,17 @@ export function validateCorsOrigin(origin: string | undefined, allowedOrigins: s
                 return true;
             }
         } catch {
-            // Ignore malformed entries in CORS_ORIGIN and continue checking others
+            // Ignore malformed CORS_ORIGIN entries
         }
     }
 
     return false;
 }
 
-/**
- * Get allowed CORS origins from environment
- */
 export function getAllowedOrigins(): string[] {
     const corsOrigin = process.env['CORS_ORIGIN'];
 
     if (!corsOrigin) {
-        // In development, allow localhost by default
         if (process.env['NODE_ENV'] !== 'production') {
             return [
                 'http://localhost:3000',

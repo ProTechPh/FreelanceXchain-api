@@ -1,4 +1,3 @@
-// Rush upgrade request domain types
 export type RushUpgradeRequestStatus = 'pending' | 'accepted' | 'declined' | 'counter_offered' | 'expired';
 
 export type RushUpgradeRequest = {
