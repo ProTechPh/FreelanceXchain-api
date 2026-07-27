@@ -35,15 +35,12 @@ function getEnvVarBoolean(key: string, defaultValue: boolean): boolean {
 }
 
 function getBaseUrl(): string {
-  // Check for explicit BASE_URL first
   const explicitUrl = getEnvVarOptional('BASE_URL');
   if (explicitUrl) return explicitUrl;
 
-  // HuggingFace Spaces
   const hfSpaceId = getEnvVarOptional('SPACE_ID');
   if (hfSpaceId) return `https://${hfSpaceId.replace('/', '-').toLowerCase()}.hf.space`;
 
-  // Default to localhost
   const port = getEnvVarNumber('PORT', 3000);
   return `http://localhost:${port}`;
 }

@@ -1,10 +1,3 @@
-/**
- * Didit KYC Routes
- * API endpoints for KYC verification using Didit
- * 
- * Note: Didit handles all verification data. We only track session and decision.
- */
-
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';

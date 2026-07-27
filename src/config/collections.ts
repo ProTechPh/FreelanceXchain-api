@@ -1,8 +1,3 @@
-/**
- * Appwrite Collection IDs
- * Central registry of all collection identifiers used across the application.
- */
-
 export const COLLECTIONS = {
   USERS: 'users',
   PROJECTS: 'projects',

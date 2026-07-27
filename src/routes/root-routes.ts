@@ -4,7 +4,6 @@ import { resolve } from 'node:path';
 
 const router = Router();
 
-// Health check endpoint
 router.get('/', (_req, res) => {
   res.status(200).json({
     status: 'success',
@@ -13,7 +12,6 @@ router.get('/', (_req, res) => {
   });
 });
 
-// Robots.txt endpoint
 router.get('/robots.txt', async (_req, res) => {
   try {
     const robotsPath = resolve(process.cwd(), 'robots.txt');
@@ -25,7 +23,6 @@ router.get('/robots.txt', async (_req, res) => {
   }
 });
 
-// Sitemap.xml endpoint
 router.get('/sitemap.xml', async (_req, res) => {
   try {
     const sitemapPath = resolve(process.cwd(), 'sitemap.xml');
@@ -37,8 +34,7 @@ router.get('/sitemap.xml', async (_req, res) => {
   }
 });
 
-// Backward-compatible alias for clients posting to /reset-password directly.
-// The canonical endpoint remains POST /api/auth/reset-password.
+// Backward-compatible alias — canonical endpoint is POST /api/auth/reset-password
 router.post('/reset-password', (_req, res) => {
   res.redirect(307, '/api/auth/reset-password');
 });
