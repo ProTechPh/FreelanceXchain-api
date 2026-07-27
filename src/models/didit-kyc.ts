@@ -1,12 +1,6 @@
-/**
- * Didit KYC API Types
- * Based on Didit API documentation: https://docs.didit.me/reference/
- * 
- * Note: Didit handles all verification data (documents, liveness, face match, IP analysis).
- * We only store session info and final decision locally.
- */
+// Didit KYC API types — https://docs.didit.me/reference/
+// Didit handles verification data; we store session info and final decision locally.
 
-// Session Management Types (v3)
 export type DiditSessionStatus = 
   | 'Not Started'
   | 'In Progress'
@@ -42,7 +36,6 @@ export type DiditCreateSessionResponse = {
   url: string;
 };
 
-// Decision endpoint response
 export type DiditVerificationDecisionResponse = {
   session_id: string;
   decision: DiditVerificationDecision;
@@ -51,7 +44,6 @@ export type DiditVerificationDecisionResponse = {
   metadata?: Record<string, string | number | boolean>;
 };
 
-// Webhook Types
 export type DiditWebhookType = 'status.updated' | 'data.updated';
 
 export type DiditWebhookStatus = 
@@ -82,7 +74,7 @@ export type DiditWebhookPayload = {
   decision?: DiditDecisionData;
 };
 
-// Decision data included when status is Approved/Declined/In Review
+// Included when status is Approved/Declined/In Review
 export type DiditDecisionData = {
   session_id: string;
   session_number: number;
@@ -159,7 +151,6 @@ export type DiditWarning = {
   log_type?: string;
 };
 
-// Error Types
 export type DiditApiError = {
   error: {
     code: string;
@@ -168,62 +159,52 @@ export type DiditApiError = {
   };
 };
 
-// Local Database Types (Appwrite)
 export type KycStatus = 'pending' | 'in_progress' | 'completed' | 'approved' | 'rejected' | 'expired';
 
 export type KycVerification = {
   id: string;
   user_id: string;
   status: KycStatus;
-  
-  // Didit session info
+
   didit_session_id: string;
   didit_session_token: string | null;
   didit_session_url: string | null;
   didit_workflow_id: string;
-  
-  // Verification decision from Didit
+
   decision?: DiditVerificationDecision | null;
   decline_reasons?: string[] | null;
   review_reasons?: string[] | null;
-  
-  // Document info (from Didit)
+
   document_type?: string | null;
   document_number?: string | null;
   issuing_country?: string | null;
-  
-  // Personal info (from Didit)
+
   first_name?: string | null;
   last_name?: string | null;
   date_of_birth?: string | null;
   nationality?: string | null;
-  
-  // Verification results
+
   document_verified?: boolean | null;
   liveness_passed?: boolean | null;
   liveness_confidence_score?: string | null;
   spoofing_detected?: boolean | null;
   face_matched?: boolean | null;
   face_similarity_score?: string | null;
-  
-  // IP analysis
+
   ip_address?: string | null;
   ip_country_code?: string | null;
   ip_risk_score?: string | null;
   is_vpn?: boolean | null;
   is_proxy?: boolean | null;
   threat_level?: string | null;
-  
-  // Additional data
+
   vendor_data?: string | null;
   metadata?: Record<string, unknown> | null;
-  
-  // Admin review
+
   reviewed_by?: string | null;
   reviewed_at?: string | null;
   admin_notes?: string | null;
-  
-  // Timestamps
+
   created_at: string;
   updated_at: string;
   completed_at?: string | null;

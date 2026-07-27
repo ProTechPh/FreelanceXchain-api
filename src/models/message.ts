@@ -1,8 +1,3 @@
-/**
- * Message Model
- * Direct messaging between users
- */
-
 export type Message = {
   id: string;
   conversationId: string;

@@ -4,9 +4,6 @@ import crypto from 'crypto';
 
 const router = Router();
 
-/**
- * Verify blockchain webhook signature (HMAC-SHA256)
- */
 function verifyBlockchainSignature(payload: string, signature: string): boolean {
   const secret = process.env['BLOCKCHAIN_WEBHOOK_SECRET'];
   if (!secret) {
@@ -70,20 +67,16 @@ router.post('/blockchain', async (req: Request, res: Response) => {
 
     logger.info('Received blockchain webhook:', { event, data });
 
-    // Handle different blockchain events
     switch (event) {
       case 'payment.released':
-        // TODO: Update milestone status
         logger.info('Payment released:', data);
         break;
 
       case 'dispute.resolved':
-        // TODO: Update dispute status
         logger.info('Dispute resolved:', data);
         break;
 
       case 'escrow.refunded':
-        // TODO: Update refund status
         logger.info('Escrow refunded:', data);
         break;
 

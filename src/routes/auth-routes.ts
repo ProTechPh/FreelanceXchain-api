@@ -203,14 +203,12 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
   const { email, password, role } = req.body;
   const requestId = getRequestId(req);
 
-  // Validate input
   const errors: { field: string; message: string }[] = [];
 
   if (!validateEmail(email)) {
     errors.push({ field: 'email', message: 'Valid email is required' });
   }
 
-  // Password strength validation
   if (typeof password === 'string') {
     const passwordValidation = validatePasswordStrength(password);
     if (!passwordValidation.valid) {
@@ -307,7 +305,6 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
   const { email, password } = req.body;
   const requestId = getRequestId(req);
 
-  // Validate input
   const errors: { field: string; message: string }[] = [];
 
   if (!validateEmail(email)) {
@@ -334,7 +331,6 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
   const result = await login(input);
 
   if (isAuthError(result)) {
-    // Check if MFA is required
     if (result.code === 'MFA_REQUIRED') {
       const mfaResult = result as MfaRequiredResult;
       res.status(200).json({
@@ -398,7 +394,6 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
  */
 router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { mfaSessionToken, factorId, code } = req.body;
-  // Backward compatibility: also accept accessToken for MFA session token
   const sessionToken = mfaSessionToken || req.body.accessToken;
   const requestId = getRequestId(req);
 
@@ -414,9 +409,8 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
     return;
   }
 
-  // Create challenge using the MFA session token
   const challengeResult = await challengeMFA(sessionToken, factorId);
-  
+
   if (isAuthError(challengeResult)) {
     res.status(400).json({
       error: {
@@ -429,7 +423,6 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
     return;
   }
 
-  // Verify the code
   const verifyResult = await verifyMFAChallenge(sessionToken, factorId, challengeResult.challengeId, code);
 
   if (isAuthError(verifyResult)) {
@@ -444,7 +437,6 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
     return;
   }
 
-  // MFA verified - get user and return full auth result
   const authResult = await validateTokenAndGetUser(sessionToken);
   
   if (isAuthError(authResult)) {
@@ -575,7 +567,6 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
     return;
   }
 
-  // PKCE flow: code in query params
   if (code && typeof code === 'string') {
     const sessionResult = await exchangeCodeForSession(code);
 
@@ -620,8 +611,8 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
     return;
   }
 
-  // Implicit flow: tokens in URL fragment - serve minimal HTML to extract and POST to callback
-  // Uses textContent instead of document.write to prevent XSS via untrusted URL fragment data
+  // Implicit flow: serve HTML to extract tokens from URL fragment and POST to callback
+  // Uses textContent (not document.write) to prevent XSS via untrusted fragment data
   /* istanbul ignore next */
   res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>
 <pre id="result">Processing OAuth callback...</pre>
@@ -823,7 +814,6 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
   const requestId = getRequestId(req);
 
   try {
-    // Valid provider check
     if (!['google', 'github'].includes(provider)) {
       res.status(400).json({
         error: {
@@ -836,7 +826,7 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
       return;
     }
 
-    // Note: We no longer accept role here. Role selection happens AFTER callback.
+    // Role selection happens after callback, not here
     const url = await getOAuthUrl(provider);
     res.redirect(url);
   } catch {
@@ -910,8 +900,7 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
       requestId,
       errorCode: result.code,
     });
-    
-    // Check if MFA is required
+
     if (result.code === 'MFA_REQUIRED') {
       logger.info('OAuth user requires MFA', { requestId });
       const mfaResult = result as MfaRequiredResult;
@@ -952,7 +941,6 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
     userId: result.user.id,
   });
 
-  // Return the full auth result with user and tokens
   res.status(200).json(result);
 }));
 
@@ -1049,15 +1037,13 @@ router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (re
     return;
   }
 
-  // This prevents account enumeration via timing/error differences
+  // Prevent account enumeration: always return success regardless of whether email exists
   try {
     await requestPasswordReset(email);
   } catch {
-    // Swallow errors intentionally - don't reveal if the email exists
     logger.info('Password reset request processed (email may not exist)', { requestId });
   }
 
-  // Always return success message regardless of whether email exists
   res.status(200).json({
     message: 'If this email is registered, a password reset link has been sent',
     timestamp: new Date().toISOString(),
@@ -1205,8 +1191,6 @@ router.post('/logout', authMiddleware, authRateLimiter, asyncHandler(async (req:
 
   logger.info('User logout initiated', { userId, requestId });
 
-  // Previously logout() was called with no arguments, signing out the server-side session
-  // instead of the user's actual session
   const authHeader = req.headers.authorization;
   const accessToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined;
 
@@ -1737,7 +1721,6 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
     return;
   }
 
-  // Validate wallet address format
   if (!walletAddress || typeof walletAddress !== 'string' || walletAddress.trim() === '') {
     res.status(400).json({
       error: { code: 'VALIDATION_ERROR', message: 'Wallet address is required' },
@@ -1757,7 +1740,6 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
   }
 
   try {
-    // Update wallet address in database
     const updatedUser = await userRepository.updateUser(userId, { wallet_address: walletAddress });
     
     if (!updatedUser) {

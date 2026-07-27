@@ -6,7 +6,7 @@ import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
 
 type ValidatedUser = {
-  /** @deprecated Use `userId` instead. Kept for backward compatibility only — both fields hold the same value. */
+  /** @deprecated Use `userId` instead. */
   id: string;
   userId: string;
   email: string;
@@ -17,7 +17,6 @@ function isTokenError(result: ValidatedUser | AuthError): result is AuthError {
   return 'code' in result;
 }
 
-// Extend Express Request to include user info
 declare global {
   namespace Express {
     interface Request {
@@ -72,10 +71,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 
   const token = parts[1] as string;
 
-  // C4: Check if this is an MFA-pending session token by attempting Appwrite validation.
-  // Appwrite's account.get() will throw 'user_more_factors_required' for MFA-pending sessions.
-  // The validateToken function already calls account.get() internally, so MFA-pending tokens
-  // will fail validation and be rejected here.
+  // MFA-pending sessions fail here: Appwrite's account.get() throws
+  // 'user_more_factors_required', which validateToken already handles internally.
   const result = await validateToken(token);
 
   if (isTokenError(result)) {
@@ -108,16 +105,11 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
 }
 
 /**
- * Middleware that enforces authentication for sensitive operations.
- * Must be used AFTER authMiddleware.
+ * Enforces authentication for sensitive operations. Must be used AFTER authMiddleware.
  *
- * NOTE: This middleware enforces authentication only (valid JWT required).
  * MFA is verified at Appwrite session-creation time (login flow), not per-request.
- * Any JWT issued after a successful Appwrite MFA challenge is implicitly MFA-verified,
- * but this middleware does NOT re-verify that claim.
- *
- * TODO: If per-endpoint MFA re-challenge is required, verify the Appwrite session
- * MFA scope via the Appwrite SDK before calling next().
+ * Any JWT issued after a successful MFA challenge is implicitly MFA-verified.
+ * TODO: If per-endpoint MFA re-challenge is required, verify Appwrite session MFA scope.
  */
 export async function requireAuthentication(req: Request, res: Response, next: NextFunction): Promise<void> {
   const requestId = req.headers['x-request-id'] ?? 'unknown';
@@ -199,7 +191,6 @@ export async function requireVerifiedKyc(req: Request, res: Response, next: Next
     return;
   }
 
-  // Exempt admins from KYC requirement since they manage the platform
   if (req.user.role === 'admin') {
     next();
     return;
