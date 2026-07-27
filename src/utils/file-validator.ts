@@ -72,9 +72,6 @@ export const MAX_TOTAL_SIZE = 25 * 1024 * 1024; // 25MB total per proposal
 export const MIN_FILE_COUNT = 0;
 export const MAX_FILE_COUNT = 5;
 
-// Project-specific limits
-const MAX_PROJECT_FILES = 10;
-
 /**
  * Check if an object is a valid FileAttachment
  */
