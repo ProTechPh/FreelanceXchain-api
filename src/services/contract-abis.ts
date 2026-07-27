@@ -19,18 +19,8 @@ function tryLoadArtifact(contractPath: string): { abi: any; bytecode: string } |
 
 const FreelanceReputationArtifact = tryLoadArtifact('FreelanceReputation.sol/FreelanceReputation.json');
 const FreelanceEscrowArtifact = tryLoadArtifact('FreelanceEscrow.sol/FreelanceEscrow.json');
-const ContractAgreementArtifact = tryLoadArtifact('ContractAgreement.sol/ContractAgreement.json');
-const DisputeResolutionArtifact = tryLoadArtifact('DisputeResolution.sol/DisputeResolution.json');
-const MilestoneRegistryArtifact = tryLoadArtifact('MilestoneRegistry.sol/MilestoneRegistry.json');
 
 export const FreelanceReputationABI = FreelanceReputationArtifact?.abi ?? null;
 export const FreelanceEscrowABI = FreelanceEscrowArtifact?.abi ?? null;
-const ContractAgreementABI = ContractAgreementArtifact?.abi ?? null;
-const DisputeResolutionABI = DisputeResolutionArtifact?.abi ?? null;
-const MilestoneRegistryABI = MilestoneRegistryArtifact?.abi ?? null;
 
-const FreelanceReputationBytecode = FreelanceReputationArtifact?.bytecode ?? '';
 export const FreelanceEscrowBytecode = FreelanceEscrowArtifact?.bytecode ?? '';
-const ContractAgreementBytecode = ContractAgreementArtifact?.bytecode ?? '';
-const DisputeResolutionBytecode = DisputeResolutionArtifact?.bytecode ?? '';
-const MilestoneRegistryBytecode = MilestoneRegistryArtifact?.bytecode ?? '';

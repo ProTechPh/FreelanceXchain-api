@@ -25,9 +25,6 @@ jest.unstable_mockModule(path.resolve(process.cwd(), 'src/services/contract-abis
   FreelanceEscrowABI: [],
   FreelanceEscrowBytecode: '0x',
   FreelanceReputationABI: [],
-  ContractAgreementABI: [],
-  DisputeRegistryABI: [],
-  MilestoneRegistryABI: [],
 }));
 
 describe('Escrow Blockchain Integration - Refactored', () => {
