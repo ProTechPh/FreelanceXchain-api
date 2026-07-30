@@ -25,9 +25,10 @@ export const BUCKETS = {
 
 export type BucketId = typeof BUCKETS[keyof typeof BUCKETS];
 
-export function createUserClient(jwt: string): Client {
-  return new Client()
+export function createUserClient(session?: string): Client {
+  const userClient = new Client()
     .setEndpoint(config.appwrite.endpoint)
-    .setProject(config.appwrite.projectId)
-    .setJWT(jwt);
+    .setProject(config.appwrite.projectId);
+
+  return session ? userClient.setSession(session) : userClient;
 }
