@@ -5,6 +5,7 @@ export default {
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^supertest$': '<rootDir>/src/__tests__/helpers/stable-supertest.ts',
     '^file-type$': '<rootDir>/src/__mocks__/file-type.js',
     '^swagger-ui-express$': '<rootDir>/src/__mocks__/swagger-ui-express.cjs',
     '^@opencoredev/email-sdk/cloudflare$': '<rootDir>/src/__mocks__/email-sdk-cloudflare.cjs',

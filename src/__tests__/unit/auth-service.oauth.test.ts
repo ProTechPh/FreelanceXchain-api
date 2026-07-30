@@ -68,7 +68,6 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     setProject: jest.fn().mockReturnThis(),
     setJWT: jest.fn().mockReturnThis(),
   })),
-  account: {},
   users: {},
   storage: {},
 }));

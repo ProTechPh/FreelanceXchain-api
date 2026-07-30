@@ -2,14 +2,21 @@
 // Jest setup file
 // Load environment variables for tests
 import dotenv from 'dotenv';
-import { jest } from '@jest/globals';
+import { afterAll, beforeAll, jest } from '@jest/globals';
 import path from 'node:path';
+import {
+  startStableSupertestServer,
+  stopStableSupertestServer,
+} from './src/__tests__/helpers/stable-supertest.js';
 
 // Load test environment variables
 dotenv.config({ path: '.env.test' });
 
 // Ensure test environment is set
 process.env.NODE_ENV = 'test';
+
+beforeAll(startStableSupertestServer);
+afterAll(stopStableSupertestServer);
 
 // Add BigInt serialization support
 BigInt.prototype.toJSON = function() {
