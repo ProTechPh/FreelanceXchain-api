@@ -49,6 +49,7 @@ jest.unstable_mockModule('jsonwebtoken', () => {
 });
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+  account: {},
   databases: {
     getDocument: jest.fn(),
     listDocuments: jest.fn(),
@@ -67,7 +68,6 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     setProject: jest.fn().mockReturnThis(),
     setJWT: jest.fn().mockReturnThis(),
   })),
-  account: {},
   users: {},
   storage: {},
 }));

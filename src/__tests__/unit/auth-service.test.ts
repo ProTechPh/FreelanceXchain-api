@@ -32,6 +32,15 @@ const BCRYPT_TEST_ROUNDS = 4;
 
 // --- Module Mocks ---
 
+const mockAdminAccount = {
+  createEmailPasswordSession: jest.fn((params: { email: string; password: string }) =>
+    global.mockAppwriteAccount.createEmailPasswordSession(params.email, params.password)
+  ),
+  createSession: jest.fn((params: { userId: string; secret: string }) =>
+    global.mockAppwriteAccount.createSession(params.userId, params.secret)
+  ),
+};
+
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: {
     error: jest.fn(),
@@ -65,6 +74,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+  account: mockAdminAccount,
   createUserClient: jest.fn(() => ({})),
   users: {
     create: jest.fn().mockResolvedValue({ $id: 'test-appwrite-user-id' }),
@@ -106,7 +116,7 @@ const {
 const { userRepository } = await import('../../repositories/user-repository.js');
 const { getKycVerificationByUserId } = await import('../../repositories/didit-kyc-repository.js');
 const { logger } = await import('../../config/logger.js');
-const { users } = await import('../../config/appwrite.js');
+const { account: adminAccount, createUserClient, users } = await import('../../config/appwrite.js');
 
 // Add missing methods to the global mockAppwriteAccount from jest.setup.ts
 global.mockAppwriteAccount.createMfaRecoveryCodes = jest.fn().mockResolvedValue({ recoveryCodes: ['code1', 'code2'] });
@@ -690,6 +700,10 @@ describe('auth-service comprehensive coverage', () => {
 
       const result = await register(validInput);
       expect(isAuthError(result)).toBe(false);
+      expect(adminAccount.createEmailPasswordSession).toHaveBeenCalledWith({
+        email: validInput.email.toLowerCase(),
+        password: validInput.password,
+      });
       if (!isAuthError(result)) {
         expect(result.user.email).toBe('test@example.com');
         expect(result.user.id).toBe('new-appwrite-uid');
@@ -704,6 +718,31 @@ describe('auth-service comprehensive coverage', () => {
   // ----------------------------------------------------------
   describe('login', () => {
     const validLogin = { email: 'test@example.com', password: 'Password1!' };
+
+    it('should bind the created session before checking the authenticated account', async () => {
+      userRepository.getUserByEmail.mockResolvedValueOnce(defaultUser);
+
+      const result = await login(validLogin);
+
+      expect(isAuthError(result)).toBe(false);
+      expect(adminAccount.createEmailPasswordSession).toHaveBeenCalledWith({
+        email: validLogin.email,
+        password: validLogin.password,
+      });
+      expect(createUserClient).toHaveBeenCalledWith('test-session-secret');
+    });
+
+    it('should reject a session response without an authentication secret', async () => {
+      global.mockAppwriteAccount.createEmailPasswordSession.mockResolvedValueOnce({ secret: '' });
+
+      const result = await login(validLogin);
+
+      expect(result).toEqual({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid email or password',
+      });
+      expect(createUserClient).not.toHaveBeenCalled();
+    });
 
     it('should return MFA_REQUIRED when account.get throws user_more_factors_required', async () => {
       global.mockAppwriteAccount.get.mockRejectedValueOnce({
@@ -1481,6 +1520,10 @@ describe('auth-service comprehensive coverage', () => {
       const result = await verifyAuthToken('user-id', 'otp-code');
       expect(result).toHaveProperty('user');
       expect(result).toHaveProperty('accessToken', 'verified-session-secret');
+      expect(adminAccount.createSession).toHaveBeenCalledWith({
+        userId: 'user-id',
+        secret: 'otp-code',
+      });
       expect(global.mockAppwriteAccount.createSession).toHaveBeenCalledWith('user-id', 'otp-code');
     });
 

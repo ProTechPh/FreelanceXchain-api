@@ -5,7 +5,7 @@
 
 import { ID, Account, OAuthProvider, AuthenticatorType } from 'node-appwrite';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
-import { createUserClient, users } from '../config/appwrite.js';
+import { account as adminAccount, createUserClient, users } from '../config/appwrite.js';
 import { UserRole } from '../models/user.js';
 import { logger } from '../config/logger.js';
 import {
@@ -18,6 +18,14 @@ import {
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
+
+function requireSessionSecret(session: { secret?: string }): string {
+  if (!session.secret) {
+    throw new Error('Appwrite session response did not include a secret');
+  }
+
+  return session.secret;
+}
 
 export type PasswordValidationResult = {
   valid: boolean;
@@ -123,11 +131,11 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
     });
 
     // Create session for the user
-    const userClient = createUserClient(''); // Will be set after login
-    const account = new Account(userClient);
-    
-    // Create email session
-    const session = await account.createEmailPasswordSession(normalizedEmail, input.password);
+    const session = await adminAccount.createEmailPasswordSession({
+      email: normalizedEmail,
+      password: input.password,
+    });
+    const sessionSecret = requireSessionSecret(session);
 
     return {
       user: {
@@ -142,8 +150,8 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       // on refresh. A proper fix requires issuing short-lived JWTs as access tokens and keeping
       // the Appwrite session secret solely as the refresh token. This is a known trade-off for
       // using Appwrite-managed sessions without a custom JWT layer.
-      accessToken: session.secret,
-      refreshToken: session.secret,
+      accessToken: sessionSecret,
+      refreshToken: sessionSecret,
     };
   } catch (error: any) {
     // Compensate: if Appwrite user was created but session failed, delete the Appwrite user
@@ -186,17 +194,17 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
   const normalizedEmail = input.email.toLowerCase().trim();
 
   try {
-    // Create a temporary client for login
-    const userClient = createUserClient('');
-    const account = new Account(userClient);
-
-    // Create email session
-    const session = await account.createEmailPasswordSession(normalizedEmail, input.password);
+    const session = await adminAccount.createEmailPasswordSession({
+      email: normalizedEmail,
+      password: input.password,
+    });
+    const sessionSecret = requireSessionSecret(session);
+    const authenticatedAccount = new Account(createUserClient(sessionSecret));
 
     // Check if MFA is required by calling account.get()
     // Appwrite throws user_more_factors_required if MFA is enabled
     try {
-      await account.get();
+      await authenticatedAccount.get();
     } catch (mfaError: any) {
       if (mfaError.type === 'user_more_factors_required') {
         // SECURITY NOTE: The session.secret returned here is a partially-authenticated
@@ -209,7 +217,7 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
           code: 'MFA_REQUIRED',
           message: 'Multi-factor authentication required',
           mfaRequired: true,
-          mfaSessionToken: session.secret,
+          mfaSessionToken: sessionSecret,
         };
       }
       // Other error — rethrow
@@ -226,7 +234,7 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       };
     }
 
-    return await createAuthResult(publicUser, session.secret, session.secret);
+    return await createAuthResult(publicUser, sessionSecret, sessionSecret);
   } catch (error: any) {
     logger.error('Login failed', { error: error.message, email: normalizedEmail });
     
@@ -886,14 +894,10 @@ export async function requestMagicUrl(email: string): Promise<{ userId: string }
  */
 export async function verifyAuthToken(userId: string, secret: string): Promise<AuthResult | AuthError> {
   try {
-    const userClient = createUserClient('');
-    const account = new Account(userClient);
-    
-    // Verify the secret and create a session
-    const session = await account.createSession(userId, secret);
-    
-    // Now that session is created, log in using the session secret
-    return await loginWithAppwrite(session.secret);
+    const session = await adminAccount.createSession({ userId, secret });
+    const sessionSecret = requireSessionSecret(session);
+
+    return await loginWithAppwrite(sessionSecret);
   } catch (error: any) {
     logger.error('Token verification failed', { error: error.message });
     return { code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid or expired code/token' };
