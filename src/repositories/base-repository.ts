@@ -149,7 +149,7 @@ export class BaseRepository<T extends BaseEntity> {
       const response = await databases.listDocuments(
         DATABASE_ID,
         this.collectionId,
-        [Query.equal(column, value as string & number & boolean), Query.limit(1)]
+        [Query.equal(column, value as string | number | boolean), Query.limit(1)]
       );
       return response.documents.length > 0 ? mapDocument<T>(response.documents[0]!) : null;
     } catch (error) {

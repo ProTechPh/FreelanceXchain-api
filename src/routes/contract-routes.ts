@@ -315,33 +315,34 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
 router.get('/:id/fund-info', authMiddleware, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
+  const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated');
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   const contractResult = await getContractById(contractId);
   if (!contractResult.success) {
-    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found');
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
     return;
   }
 
   const contract = contractResult.data;
   if (contract.employerId !== userId) {
-    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can view fund info');
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can view fund info', requestId);
     return;
   }
 
   const walletResult = await getContractWalletAddresses(contractId);
   if (!walletResult.success) {
-    sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message);
+    sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, requestId);
     return;
   }
 
   const projectResult = await getProjectById(contract.projectId);
   if (!projectResult.success) {
-    sendErrorResponse(res, 400, 'PROJECT_NOT_FOUND', 'Associated project not found');
+    sendErrorResponse(res, 400, 'PROJECT_NOT_FOUND', 'Associated project not found', requestId);
     return;
   }
 

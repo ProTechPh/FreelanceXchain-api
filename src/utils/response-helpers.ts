@@ -1,5 +1,4 @@
 import { Response } from 'express';
-import { getRequestId } from './route-helpers.js';
 
 type ValidationFieldError = { field: string; message: string };
 
