@@ -14,7 +14,10 @@ import {
   AuthResult,
   AuthError,
   AuthResponse,
+  isAuthError,
 } from './auth-types.js';
+
+export { isAuthError };
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
@@ -408,10 +411,6 @@ export async function updatePassword(accessToken: string, newPassword: string): 
       message: 'Failed to update password',
     };
   }
-}
-
-export function isAuthError(result: any): result is AuthError {
-  return result && typeof result === 'object' && 'code' in result && 'message' in result && !('user' in result) && !('success' in result);
 }
 
 /**

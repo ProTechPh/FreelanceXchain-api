@@ -83,3 +83,17 @@ export type MfaRequiredResult = {
 };
 
 export type AuthResponse = AuthResult | AuthError | MfaRequiredResult;
+
+/**
+ * Type guard: returns true if the result is an AuthError (has code/message, no user/success).
+ */
+export function isAuthError(result: unknown): result is AuthError {
+  return (
+    result !== null &&
+    typeof result === 'object' &&
+    'code' in result &&
+    'message' in result &&
+    !('user' in result) &&
+    !('success' in result)
+  );
+}

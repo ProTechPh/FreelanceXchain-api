@@ -170,4 +170,26 @@ describe('BaseRepository - fetchAll', () => {
     const hasCursorAfter = queries.some((q: any) => q.type === 'cursorAfter');
     expect(hasCursorAfter).toBe(true);
   });
+
+  it('should leave string values as-is when JSON parse fails (catch fallback)', async () => {
+    // A string that looks like JSON (starts with { and contains ") but is not valid JSON
+    const doc = toAppwriteDoc({ id: 'd1', name: 'not-json' });
+    doc.badJson = '{invalid json content';
+    mockListDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+    const result = await repo.testFetchAll();
+    expect(result).toHaveLength(1);
+    // The value should remain as the original string since JSON.parse throws
+    expect(result[0]!.badJson).toBe('{invalid json content');
+  });
+
+  it('should leave string values as-is when they look like arrays but are invalid JSON', async () => {
+    const doc = toAppwriteDoc({ id: 'd1', name: 'not-json-array' });
+    doc.badArray = '[1, 2, 3'; // starts with [ but invalid JSON
+    mockListDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+    const result = await repo.testFetchAll();
+    expect(result).toHaveLength(1);
+    expect(result[0]!.badArray).toBe('[1, 2, 3');
+  });
 });

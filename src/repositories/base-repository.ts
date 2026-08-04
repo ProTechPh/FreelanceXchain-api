@@ -10,43 +10,62 @@ import type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
 export type { QueryOptions, PaginatedResult, BaseEntity } from './types.js';
 export { RepositoryError } from './types.js';
 
-// Map Appwrite document to entity (remove $ prefixed fields)
-function mapDocument<T extends BaseEntity>(doc: Record<string, any>): T {
+// ── Serialization helpers ──────────────────────────────────────
+
+/**
+ * Attempt to deserialize a value that was JSON.stringify'd before storage.
+ * Returns the original string if parsing fails or isn't plausible JSON.
+ */
+function deserializeIfNeeded(value: string): string | unknown {
+  const trimmed = value.trimStart();
+  const looksLikeJson =
+    (trimmed.startsWith('{') || trimmed.startsWith('[')) &&
+    (trimmed.includes('"') || trimmed.startsWith('['));
+  if (!looksLikeJson) return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * Serialize an attribute value for Appwrite storage.
+ * Objects/arrays are JSON.stringify'd; primitives pass through.
+ */
+function serializeAttributeValue(value: unknown): unknown {
+  return typeof value === 'object' ? JSON.stringify(value) : value;
+}
+
+// ── Document mapping ───────────────────────────────────────────
+
+/**
+ * Map an Appwrite document to a domain entity.
+ * Strips Appwrite-internal fields ($id, $collectionId, etc.) and
+ * reverses JSON serialization done by create()/update().
+ */
+function mapDocument<T extends BaseEntity>(doc: Record<string, unknown>): T {
   const { $id, $collectionId: _cid, $databaseId: _did, $createdAt, $updatedAt, ...attrs } = doc;
-  const result: Record<string, any> = {
+  const result: Record<string, unknown> = {
     id: $id,
     ...attrs,
   };
 
-  // BUG-7: create()/update() serialize object-typed values with JSON.stringify, so
-  // Appwrite returns them as strings. Reverse that on read for any value that looks
-  // like serialized JSON (objects/arrays), so consumers get properly-typed entities.
   for (const key of Object.keys(result)) {
     const value = result[key];
     if (typeof value === 'string') {
-      const trimmed = value.trimStart();
-      if (
-        (trimmed.startsWith('{') || trimmed.startsWith('[')) &&
-        // Only attempt to parse if the string is plausibly JSON to avoid false positives.
-        (trimmed.includes('"') || trimmed.startsWith('['))
-      ) {
-        try {
-          result[key] = JSON.parse(value);
-        } catch {
-          // Leave as string if it isn't actually JSON.
-        }
-      }
+      result[key] = deserializeIfNeeded(value);
     }
   }
 
-  const created = attrs.created_at ?? $createdAt;
-  const updated = attrs.updated_at ?? $updatedAt;
+  const created = (attrs as Record<string, unknown>).created_at ?? $createdAt;
+  const updated = (attrs as Record<string, unknown>).updated_at ?? $updatedAt;
   if (created !== undefined) result.created_at = created;
   if (updated !== undefined) result.updated_at = updated;
   return result as T;
 }
 
-function mapDocuments<T extends BaseEntity>(docs: Record<string, any>[]): T[] {
+function mapDocuments<T extends BaseEntity>(docs: Record<string, unknown>[]): T[] {
   return docs.map(doc => mapDocument<T>(doc));
 }
 
@@ -57,16 +76,16 @@ export class BaseRepository<T extends BaseEntity> {
     this.collectionId = collectionId;
   }
 
-  protected mapDoc(doc: Record<string, any>): T {
+  protected mapDoc(doc: Record<string, unknown>): T {
     return mapDocument<T>(doc);
   }
 
   async create(item: Omit<T, 'created_at' | 'updated_at'>): Promise<T> {
-    const { id, ...data } = item as any;
-    const attrs: Record<string, any> = {};
+    const { id, ...data } = item as Record<string, unknown>;
+    const attrs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data)) {
       if (value !== undefined) {
-        attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
+        attrs[key] = serializeAttributeValue(value);
       }
     }
     attrs.created_at = new Date().toISOString();
@@ -75,7 +94,7 @@ export class BaseRepository<T extends BaseEntity> {
     const doc = await databases.createDocument(
       DATABASE_ID,
       this.collectionId,
-      id || ID.unique(),
+      (id as string) || ID.unique(),
       attrs
     );
     return mapDocument<T>(doc);
@@ -93,11 +112,11 @@ export class BaseRepository<T extends BaseEntity> {
 
   async update(id: string, updates: Partial<T>): Promise<T | null> {
     try {
-      const attrs: Record<string, any> = {};
-      for (const [key, value] of Object.entries(updates)) {
+      const attrs: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
         if (key === 'id' || key === 'created_at') continue;
         if (value !== undefined) {
-          attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
+          attrs[key] = serializeAttributeValue(value);
         }
       }
       attrs.updated_at = new Date().toISOString();
@@ -130,7 +149,7 @@ export class BaseRepository<T extends BaseEntity> {
       const response = await databases.listDocuments(
         DATABASE_ID,
         this.collectionId,
-        [Query.equal(column, value as any), Query.limit(1)]
+        [Query.equal(column, value as string | number | boolean), Query.limit(1)]
       );
       return response.documents.length > 0 ? mapDocument<T>(response.documents[0]!) : null;
     } catch (error) {
@@ -152,8 +171,8 @@ export class BaseRepository<T extends BaseEntity> {
    * Fetch ALL documents matching the given queries, using cursor-based pagination.
    * Replaces the `Query.limit(1000)` pattern that silently loses data past 1000 records.
    */
-  protected async fetchAll(baseQueries: any[] = [], pageSize = 100): Promise<T[]> {
-    const allDocs: Record<string, any>[] = [];
+  protected async fetchAll(baseQueries: string[] = [], pageSize = 100): Promise<T[]> {
+    const allDocs: Record<string, unknown>[] = [];
     let lastId: string | undefined;
 
     while (true) {
@@ -207,8 +226,8 @@ export class BaseRepository<T extends BaseEntity> {
   // ─── Query helpers ──────────────────────────────────────────
 
   protected async listWithQueries<U = T>(
-    queries: any[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings
-    mapper?: (doc: Record<string, any>) => U
+    queries: string[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings
+    mapper?: (doc: Record<string, unknown>) => U
   ): Promise<U[]> {
     try {
       const response = await databases.listDocuments(
@@ -225,7 +244,7 @@ export class BaseRepository<T extends BaseEntity> {
     }
   }
 
-  protected async countWithQueries(queries: any[]): Promise<number> {
+  protected async countWithQueries(queries: string[]): Promise<number> {
     try {
       const response = await databases.listDocuments(
         DATABASE_ID,
@@ -240,10 +259,10 @@ export class BaseRepository<T extends BaseEntity> {
   }
 
   protected async paginatedWithQueries<U = T>(
-    queries: any[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings
+    queries: string[], // Query[] at runtime — Appwrite SDK types Query as non-string but methods return strings
     limit: number,
     offset: number,
-    mapper?: (doc: Record<string, any>) => U
+    mapper?: (doc: Record<string, unknown>) => U
   ): Promise<PaginatedResult<U>> {
     try {
       const response = await databases.listDocuments(

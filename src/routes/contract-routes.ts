@@ -4,6 +4,8 @@ import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
+import { asyncHandler } from '../utils/async-handler.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import {
   getContractById,
   getUserContracts,
@@ -90,18 +92,14 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
   const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -110,16 +108,12 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const result = await getUserContracts(userId, options);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -154,7 +148,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
  *       404:
  *         description: Contract not found
  */
-router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = getRequestId(req);
   const userId = req.user?.userId;
@@ -162,11 +156,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
   const result = await getContractById(id);
 
   if (!result.success) {
-    res.status(404).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -174,17 +164,13 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
   if (userId && contract.freelancerId !== userId && contract.employerId !== userId) {
     // Check if user is admin (admins can view all contracts)
     if (req.user?.role !== 'admin') {
-      res.status(403).json({
-        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this contract' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', requestId);
       return;
     }
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -215,28 +201,20 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   // Get contract
   const contractResult = await getContractById(contractId);
   if (!contractResult.success) {
-    res.status(404).json({
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
     return;
   }
 
@@ -244,11 +222,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
 
   // Only employer can fund
   if (contract.employerId !== userId) {
-    res.status(403).json({
-      error: { code: 'FORBIDDEN', message: 'Only the employer can fund the escrow' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can fund the escrow', requestId);
     return;
   }
 
@@ -263,11 +237,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
   }
 
   if (contract.status !== 'pending') {
-    res.status(400).json({
-      error: { code: 'INVALID_STATUS', message: `Contract is already '${contract.status}', cannot fund` },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'INVALID_STATUS', `Contract is already '${contract.status}', cannot fund`, requestId);
     return;
   }
 
@@ -279,21 +249,13 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     // No escrow yet — deploy server-side
     const projectResult = await getProjectById(contract.projectId);
     if (!projectResult.success) {
-      res.status(400).json({
-        error: { code: 'PROJECT_NOT_FOUND', message: 'Associated project not found' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 400, 'PROJECT_NOT_FOUND', 'Associated project not found', requestId);
       return;
     }
 
     const walletResult = await getContractWalletAddresses(contractId);
     if (!walletResult.success) {
-      res.status(400).json({
-        error: { code: walletResult.error.code, message: walletResult.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, requestId);
       return;
     }
 
@@ -310,11 +272,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
 
     if (!escrowResult.success) {
       const statusCode = escrowResult.error?.code === 'AMOUNT_MISMATCH' ? 400 : 500;
-      res.status(statusCode).json({
-        error: { code: 'ESCROW_FAILED', message: escrowResult.error?.message || 'Failed to initialize escrow' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, statusCode, 'ESCROW_FAILED', escrowResult.error?.message || 'Failed to initialize escrow', requestId);
       return;
     }
 
@@ -342,11 +300,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
       }
     }
 
-    res.status(500).json({
-      error: { code: 'ACTIVATION_FAILED', message: 'Escrow funded but contract activation failed' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 500, 'ACTIVATION_FAILED', 'Escrow funded but contract activation failed', requestId);
     return;
   }
 
@@ -355,39 +309,40 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     escrowAddress,
     contractStatus: 'active',
   });
-});
+}));
 
 // Get contract funding info (for frontend MetaMask deployment)
-router.get('/:id/fund-info', authMiddleware, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id/fund-info', authMiddleware, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
+  const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({ error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' } });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   const contractResult = await getContractById(contractId);
   if (!contractResult.success) {
-    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Contract not found' } });
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
     return;
   }
 
   const contract = contractResult.data;
   if (contract.employerId !== userId) {
-    res.status(403).json({ error: { code: 'FORBIDDEN', message: 'Only the employer can view fund info' } });
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can view fund info', requestId);
     return;
   }
 
   const walletResult = await getContractWalletAddresses(contractId);
   if (!walletResult.success) {
-    res.status(400).json({ error: { code: walletResult.error.code, message: walletResult.error.message } });
+    sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, requestId);
     return;
   }
 
   const projectResult = await getProjectById(contract.projectId);
   if (!projectResult.success) {
-    res.status(400).json({ error: { code: 'PROJECT_NOT_FOUND', message: 'Associated project not found' } });
+    sendErrorResponse(res, 400, 'PROJECT_NOT_FOUND', 'Associated project not found', requestId);
     return;
   }
 
@@ -412,7 +367,7 @@ router.get('/:id/fund-info', authMiddleware, validateUUID(), async (req: Request
     milestoneDescriptions,
     totalAmount,
   });
-});
+}));
 
 /**
  * @swagger
@@ -441,17 +396,13 @@ router.get('/:id/fund-info', authMiddleware, validateUUID(), async (req: Request
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -461,18 +412,14 @@ router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, v
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404
       : result.error?.code === 'UNAUTHORIZED' ? 403
       : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code || 'CANCEL_FAILED', message: result.error?.message || 'Failed to cancel contract' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error?.code || 'CANCEL_FAILED', result.error?.message || 'Failed to cancel contract', requestId);
     return;
   }
 
   res.status(200).json({
     message: 'Contract cancelled successfully',
   });
-});
+}));
 
 /**
  * @swagger
@@ -501,17 +448,13 @@ router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, v
  *       404:
  *         description: Contract not found
  */
-router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID(['contractId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -521,23 +464,15 @@ router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID
     if (!result.success) {
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                         result.error.code === 'UNAUTHORIZED' ? 403 : 400;
-      res.status(statusCode).json({
-        error: { code: result.error.code, message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
       return;
     }
 
     res.json(result.data);
   } catch (error) {
     console.error('Error fetching contract disputes:', error);
-    res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to fetch disputes' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch disputes', requestId);
   }
-});
+}));
 
 export default router;
