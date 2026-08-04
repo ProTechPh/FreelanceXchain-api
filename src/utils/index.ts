@@ -2,6 +2,8 @@
 // This file will export all utility functions as they are created
 
 export { generateId } from './id.js';
+export { asyncHandler } from './async-handler.js';
+export { sendValidationError, sendErrorResponse } from './response-helpers.js';
 
 /**
  * Safely parse a JSON string, or return the value as-is if it's already an object.
