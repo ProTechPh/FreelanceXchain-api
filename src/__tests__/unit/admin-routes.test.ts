@@ -97,11 +97,12 @@ describe('Admin Routes', () => {
 
   describe('GET /users', () => {
     it('should return user management data', async () => {
-      mockGetUserManagement.mockResolvedValue({ success: true, data: { users: [{ id: 'u-1', email: 'test@test.com', role: 'freelancer', created_at: '2025-01-01', is_suspended: false }], total: 1 } });
+      mockGetUserManagement.mockResolvedValue({ success: true, data: { users: [{ id: 'u-1', email: 'test@test.com', role: 'freelancer', created_at: '2025-01-01', is_suspended: false, kyc_verified: true }], total: 1 } });
       const res = await request(app).get('/api/admin/users');
       expect(res.status).toBe(200);
       expect(res.body.users).toHaveLength(1);
       expect(res.body.users[0].isActive).toBe(true);
+      expect(res.body.users[0].kycVerified).toBe(true);
     });
 
     it('should pass filters', async () => {
@@ -183,6 +184,31 @@ describe('Admin Routes', () => {
       mockVerifyUser.mockResolvedValue({ success: false, error: { code: 'ERROR', message: 'Failed' } });
       const res = await request(app).post('/api/admin/users/u-1/verify');
       expect(res.status).toBe(400);
+    });
+
+    it('should pass the authenticated administrator and audit reason to the service', async () => {
+      mockVerifyUser.mockResolvedValue({ success: true, data: { id: 'kyc-1', status: 'approved' } });
+
+      const res = await request(app)
+        .post('/api/admin/users/u-1/verify')
+        .send({ reason: 'Government ID reviewed by support' });
+
+      expect(res.status).toBe(200);
+      expect(mockVerifyUser).toHaveBeenCalledWith(
+        'u-1',
+        'admin-1',
+        'Government ID reviewed by support'
+      );
+    });
+
+    it('should reject an invalid audit reason', async () => {
+      const res = await request(app)
+        .post('/api/admin/users/u-1/verify')
+        .send({ reason: 'x' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_REASON');
+      expect(mockVerifyUser).not.toHaveBeenCalled();
     });
   });
 
@@ -901,6 +927,10 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/admin/users/any-id/verify');
     expect(res.status).toBe(200);
-    expect(mockVerifyUser).toHaveBeenCalledWith('');
+    expect(mockVerifyUser).toHaveBeenCalledWith(
+      '',
+      'admin-1',
+      'Manual verification approved by administrator'
+    );
   });
 });

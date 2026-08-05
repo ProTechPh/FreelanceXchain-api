@@ -107,7 +107,7 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
     walletAddress: user.wallet_address || '',
     createdAt: user.created_at,
     name: user.name || '',
-    kycVerified: false, // TODO: Join with KYC table
+    kycVerified: user.kyc_verified,
     isActive: !user.is_suspended, // Active means NOT suspended
   }));
 
@@ -229,15 +229,61 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 500
+ *                 description: Audit reason for the manual KYC approval
  */
 router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
+  const adminUserId = req.user?.userId;
+  const submittedReason = req.body?.reason;
 
-  const result = await verifyUser(userId);
+  if (!adminUserId) {
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  if (
+    submittedReason !== undefined &&
+    (typeof submittedReason !== 'string' || submittedReason.trim().length < 10 || submittedReason.trim().length > 500)
+  ) {
+    res.status(400).json({
+      error: { code: 'INVALID_REASON', message: 'Reason must be between 10 and 500 characters' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
+
+  const reason = typeof submittedReason === 'string'
+    ? submittedReason.trim()
+    : 'Manual verification approved by administrator';
+
+  const result = await verifyUser(userId, adminUserId, reason);
 
   if (!result.success) {
-    res.status(400).json({
+    const statusCode = result.error?.code === 'NOT_FOUND'
+      ? 404
+      : result.error?.code === 'SELF_REVIEW_FORBIDDEN'
+        ? 403
+        : ['DATABASE_ERROR', 'INTERNAL_ERROR'].includes(result.error?.code ?? '')
+          ? 500
+          : 400;
+    res.status(statusCode).json({
       error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
       timestamp: new Date().toISOString(),
       requestId,

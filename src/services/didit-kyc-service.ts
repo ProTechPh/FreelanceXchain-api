@@ -161,8 +161,19 @@ export async function initiateKycVerification(
  * Get KYC verification status for a user
  */
 export async function getKycStatus(userId: string): Promise<ServiceResult<KycVerification | null>> {
-  const verification = await getKycVerificationByUserId(userId);
-  return { success: true, data: verification };
+  try {
+    const verification = await getKycVerificationByUserId(userId);
+    return { success: true, data: verification };
+  } catch (error) {
+    logger.error('Failed to load KYC verification status', error as Error, { userId });
+    return {
+      success: false,
+      error: {
+        code: 'DATABASE_ERROR',
+        message: 'Unable to load KYC verification status',
+      },
+    };
+  }
 }
 
 /**
@@ -851,4 +862,3 @@ export async function manualKycVerification(params: {
     };
   }
 }
-

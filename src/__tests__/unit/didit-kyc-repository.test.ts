@@ -87,6 +87,11 @@ describe('DiditKycRepository', () => {
       const result = await getKycVerificationByUserId('u1');
       expect(result).not.toBeNull();
       expect(result!.id).toBe('k1');
+      expect(mockDatabases.listDocuments).toHaveBeenCalledWith(
+        expect.any(String),
+        'kyc_verifications',
+        expect.arrayContaining([Query.orderDesc('$createdAt')])
+      );
     });
 
     it('should return null when not found', async () => {
@@ -95,10 +100,9 @@ describe('DiditKycRepository', () => {
       expect(result).toBeNull();
     });
 
-    it('should return null on database error', async () => {
+    it('should propagate database errors', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
-      const result = await getKycVerificationByUserId('u1');
-      expect(result).toBeNull();
+      await expect(getKycVerificationByUserId('u1')).rejects.toThrow('select failed');
     });
   });
 
@@ -155,6 +159,11 @@ describe('DiditKycRepository', () => {
       const result = await getKycVerificationsByStatus('approved');
       expect(result).toHaveLength(1);
       expect(result[0]!.id).toBe('k1');
+      expect(mockDatabases.listDocuments).toHaveBeenCalledWith(
+        expect.any(String),
+        'kyc_verifications',
+        expect.arrayContaining([Query.orderDesc('$createdAt')])
+      );
     });
 
     it('should return empty array on error', async () => {
@@ -171,6 +180,11 @@ describe('DiditKycRepository', () => {
       const result = await getPendingReviews();
       expect(result).toHaveLength(1);
       expect(result[0]!.id).toBe('k1');
+      expect(mockDatabases.listDocuments).toHaveBeenCalledWith(
+        expect.any(String),
+        'kyc_verifications',
+        expect.arrayContaining([Query.orderAsc('$createdAt')])
+      );
     });
 
     it('should return empty array on error', async () => {
@@ -202,6 +216,11 @@ describe('DiditKycRepository', () => {
       expect(result).toHaveLength(2);
       expect(result[0]!.id).toBe('k1');
       expect(result[1]!.id).toBe('k2');
+      expect(mockDatabases.listDocuments).toHaveBeenCalledWith(
+        expect.any(String),
+        'kyc_verifications',
+        expect.arrayContaining([Query.orderDesc('$createdAt')])
+      );
     });
 
     it('should return empty array on error', async () => {

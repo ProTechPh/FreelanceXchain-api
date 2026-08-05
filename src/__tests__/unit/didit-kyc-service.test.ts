@@ -208,6 +208,18 @@ describe('didit-kyc-service', () => {
       expect(result.success).toBe(true);
       if (result.success) expect(result.data?.status).toBe('approved');
     });
+
+    it('should return a database error when the lookup fails', async () => {
+      mockGetKycByUserId.mockRejectedValueOnce(new Error('select failed'));
+      const result = await getKycStatus('user-1');
+      expect(result).toEqual({
+        success: false,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: 'Unable to load KYC verification status',
+        },
+      });
+    });
   });
 
   describe('getKycById', () => {

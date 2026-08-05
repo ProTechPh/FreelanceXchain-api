@@ -41,6 +41,12 @@ const mockTransactionRepo = {
   queryAll: jest.fn<any>(),
 };
 
+const mockKycRepo = {
+  getKycVerificationByUserId: jest.fn<any>(),
+  createKycVerification: jest.fn<any>(),
+  updateKycVerification: jest.fn<any>(),
+};
+
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: mockUserRepo,
 }));
@@ -61,6 +67,8 @@ jest.unstable_mockModule(resolveModule('src/repositories/transaction-repository.
   transactionRepository: mockTransactionRepo,
 }));
 
+jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts'), () => mockKycRepo);
+
 describe('Admin Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -72,6 +80,19 @@ describe('Admin Service', () => {
     mockDisputeRepo.queryAll.mockReset();
     mockDisputeRepo.getAllDisputes.mockReset();
     mockTransactionRepo.queryAll.mockReset();
+    mockKycRepo.getKycVerificationByUserId.mockReset().mockResolvedValue(null);
+    mockKycRepo.createKycVerification.mockReset().mockImplementation(async (verification) => ({
+      ...verification,
+      created_at: '2026-08-05T00:00:00.000Z',
+      updated_at: '2026-08-05T00:00:00.000Z',
+    }));
+    mockKycRepo.updateKycVerification.mockReset().mockImplementation(async (id, updates) => ({
+      id,
+      user_id: 'user-1',
+      ...updates,
+      created_at: '2026-08-05T00:00:00.000Z',
+      updated_at: '2026-08-05T00:00:00.000Z',
+    }));
   });
 
   const importModule = async () => {
@@ -164,9 +185,31 @@ describe('Admin Service', () => {
       const result = await getUserManagement();
 
       expect(result.success).toBe(true);
+      expect(mockUserRepo.queryAll).toHaveBeenCalledWith('$createdAt');
       if (result.success) {
         expect(result.data.users).toHaveLength(2);
         expect(result.data.total).toBe(2);
+        expect(result.data.users.every((user) => !user.kyc_verified)).toBe(true);
+      }
+    });
+
+    it('uses the latest canonical KYC status for the verified flag', async () => {
+      const { getUserManagement } = await importModule();
+      mockUserRepo.queryAll.mockResolvedValueOnce([
+        { id: 'user-1', email: 'verified@test.com', name: 'Verified', role: 'freelancer', created_at: '2025-01-01' },
+      ]);
+      mockKycRepo.getKycVerificationByUserId.mockResolvedValueOnce({
+        id: 'kyc-1',
+        user_id: 'user-1',
+        status: 'approved',
+      });
+
+      const result = await getUserManagement();
+
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.users[0]?.kyc_verified).toBe(true);
+        expect(result.data.users[0]?.kyc_status).toBe('approved');
       }
     });
 
@@ -266,20 +309,59 @@ describe('Admin Service', () => {
   });
 
   describe('verifyUser', () => {
-    it('should verify a user successfully', async () => {
+    it('should create an audited approved KYC record when none exists', async () => {
       const { verifyUser } = await importModule();
 
       const mockUser = { id: 'user-1' };
-      const mockUpdatedUser = { id: 'user-1', is_verified: true };
       mockUserRepo.getUserById.mockResolvedValueOnce(mockUser);
-      mockUserRepo.updateUser.mockResolvedValueOnce(mockUpdatedUser);
 
-      const result = await verifyUser('user-1');
+      const result = await verifyUser('user-1', 'admin-1', 'Government ID reviewed by support');
 
       expect(result.success).toBe(true);
       if (result.success) {
-        expect((result.data as any).is_verified).toBe(true);
+        expect(result.data.status).toBe('approved');
       }
+      expect(mockKycRepo.createKycVerification).toHaveBeenCalledWith(expect.objectContaining({
+        user_id: 'user-1',
+        status: 'approved',
+        decision: 'approved',
+        reviewed_by: 'admin-1',
+        admin_notes: 'Government ID reviewed by support',
+      }));
+      expect(mockUserRepo.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('should update the canonical KYC record when one already exists', async () => {
+      const { verifyUser } = await importModule();
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1' });
+      mockKycRepo.getKycVerificationByUserId.mockResolvedValueOnce({
+        id: 'kyc-1',
+        user_id: 'user-1',
+        status: 'completed',
+        created_at: '2026-08-01T00:00:00.000Z',
+        updated_at: '2026-08-01T00:00:00.000Z',
+      });
+
+      const result = await verifyUser('user-1', 'admin-1', 'Manual review completed');
+
+      expect(result.success).toBe(true);
+      expect(mockKycRepo.updateKycVerification).toHaveBeenCalledWith('kyc-1', expect.objectContaining({
+        status: 'approved',
+        reviewed_by: 'admin-1',
+        admin_notes: 'Manual review completed',
+      }));
+      expect(mockKycRepo.createKycVerification).not.toHaveBeenCalled();
+    });
+
+    it('should prevent administrators from verifying themselves', async () => {
+      const { verifyUser } = await importModule();
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'admin-1', role: 'admin' });
+
+      const result = await verifyUser('admin-1', 'admin-1', 'Self approval');
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('SELF_REVIEW_FORBIDDEN');
+      expect(mockKycRepo.createKycVerification).not.toHaveBeenCalled();
     });
   });
 
@@ -513,13 +595,16 @@ describe('Admin Service - Extended Tests', () => {
       const { getUserManagement } = await importModule();
 
       const mockUsers = [
-        { id: 'user-1', email: 'user1@test.com', name: 'User One', role: 'freelancer', kyc_status: 'verified', created_at: '2025-01-01' },
-        { id: 'user-2', email: 'user2@test.com', name: 'User Two', role: 'freelancer', kyc_status: 'pending', created_at: '2025-01-02' },
+        { id: 'user-1', email: 'user1@test.com', name: 'User One', role: 'freelancer', created_at: '2025-01-01' },
+        { id: 'user-2', email: 'user2@test.com', name: 'User Two', role: 'freelancer', created_at: '2025-01-02' },
       ];
 
       mockUserRepo.queryAll.mockResolvedValueOnce(mockUsers);
+      mockKycRepo.getKycVerificationByUserId
+        .mockResolvedValueOnce({ id: 'kyc-1', user_id: 'user-1', status: 'approved' })
+        .mockResolvedValueOnce({ id: 'kyc-2', user_id: 'user-2', status: 'pending' });
 
-      const result = await getUserManagement({ kycStatus: 'verified' });
+      const result = await getUserManagement({ kycStatus: 'approved' });
 
       expect(result.success).toBe(true);
       if (result.success) {
