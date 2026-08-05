@@ -41,9 +41,21 @@ const mockProposalRepo = {
     let count = 0;
     for (const proposal of proposalStore.values()) {
       const p = proposal as ProposalEntity;
-      if (p.project_id === projectId) count++;
+      if (p.project_id === projectId && p.status !== 'withdrawn') count++;
     }
     return count;
+  }),
+  getProposalCountsByProjects: jest.fn<any>(async (projectIds: string[]) => {
+    const counts = new Map<string, number>();
+    for (const projectId of projectIds) {
+      let count = 0;
+      for (const proposal of proposalStore.values()) {
+        const p = proposal as ProposalEntity;
+        if (p.project_id === projectId && p.status !== 'withdrawn') count++;
+      }
+      counts.set(projectId, count);
+    }
+    return counts;
   }),
 };
 
@@ -70,7 +82,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), 
 }));
 
 // Import after mocking
-const { createProject, getProjectById, updateProject, setMilestones, listProjectsBySkills, listProjectsByBudgetRange } = await import('../../services/project-service.js');
+const { createProject, getProjectById, updateProject, setMilestones, listOpenProjects, listProjectsBySkills, listProjectsByBudgetRange } = await import('../../services/project-service.js');
 
 // Helper to add accepted proposal
 function addAcceptedProposal(projectId: string, freelancerId: string): ProposalEntity {
@@ -409,6 +421,7 @@ describe('Project Service - Unit Tests', () => {
   it('should retrieve project by ID', async () => {
     const project = createTestProject({ status: 'open' });
     projectStore.set(project.id, project);
+    addAcceptedProposal(project.id, generateId());
 
     const result = await getProjectById(project.id);
 
@@ -416,6 +429,20 @@ describe('Project Service - Unit Tests', () => {
     if (result.success) {
       expect(result.data.id).toBe(project.id);
       expect(result.data.title).toBe(project.title);
+      expect(result.data.proposalCount).toBe(1);
+    }
+  });
+
+  it('should include proposal counts when listing open projects', async () => {
+    const project = createTestProject({ status: 'open' });
+    projectStore.set(project.id, project);
+    addAcceptedProposal(project.id, generateId());
+
+    const result = await listOpenProjects();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.items[0]?.proposalCount).toBe(1);
     }
   });
 

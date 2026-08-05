@@ -76,6 +76,10 @@ const router = Router();
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/Milestone'
+ *         proposalCount:
+ *           type: integer
+ *           minimum: 0
+ *           description: Number of non-withdrawn proposals submitted for the project
  *         createdAt:
  *           type: string
  *           format: date-time

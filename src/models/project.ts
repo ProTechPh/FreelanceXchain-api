@@ -38,6 +38,7 @@ export type Project = {
   freelancerLimit: number;
   tags: string[];
   attachments: FileAttachment[];
+  proposalCount?: number;
   createdAt: string;
   updatedAt: string;
 };
