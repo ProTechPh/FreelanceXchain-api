@@ -1159,6 +1159,18 @@ describe('Validation Middleware - Extended Coverage', () => {
   });
 
   describe('validateAppwriteDocumentId', () => {
+    it('should validate the id parameter by default', () => {
+      const middleware = validateAppwriteDocumentId();
+      const req = { params: { id: '6892f3d4a1b2c3d4e5f6' }, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
     it('should pass for an ID.unique-style conversation ID', () => {
       const middleware = validateAppwriteDocumentId(['conversationId']);
       const req = { params: { conversationId: '6892f3d4a1b2c3d4e5f6' }, headers: {} } as any;
