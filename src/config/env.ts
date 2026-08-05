@@ -1,6 +1,4 @@
-import dotenv from 'dotenv';
-
-dotenv.config();
+import './load-env.js';
 
 function getEnvVar(key: string, defaultValue?: string): string {
   const value = process.env[key] ?? defaultValue;

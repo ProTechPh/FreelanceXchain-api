@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { randomBytes } from 'crypto';
 import { doubleCsrf } from 'csrf-csrf';
+import '../config/load-env.js';
 import { logger } from '../config/logger.js';
 
 const csrfSecret = process.env['CSRF_SECRET'] ?? randomBytes(32).toString('hex');

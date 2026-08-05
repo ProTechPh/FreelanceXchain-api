@@ -411,6 +411,14 @@ describe('project-routes branch coverage', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST / returns 500 when project creation throws', async () => {
+    mockProjectService.createProject.mockRejectedValue(new Error('Appwrite unavailable'));
+    const res = await request(app).post('/api/projects').send({
+      title: 'Valid Title Here', description: 'A valid description here that is long enough', requiredSkills: [{ skillId: '00000000-0000-0000-0000-000000000001' }], budget: 100, deadline: '2026-12-31',
+    });
+    expect(res.status).toBe(500);
+  });
+
   it('POST / with isRush and rushFeePercentage', async () => {
     mockProjectService.createProject.mockResolvedValue(ok({ id: 'p1' }));
     const res = await request(app).post('/api/projects').send({
