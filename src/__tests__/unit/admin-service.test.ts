@@ -363,6 +363,31 @@ describe('Admin Service', () => {
       if (!result.success) expect(result.error.code).toBe('SELF_REVIEW_FORBIDDEN');
       expect(mockKycRepo.createKycVerification).not.toHaveBeenCalled();
     });
+
+    it('uses the default audit reason when the supplied reason is whitespace', async () => {
+      const { verifyUser } = await importModule();
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1' });
+
+      const result = await verifyUser('user-1', 'admin-1', '   ');
+
+      expect(result.success).toBe(true);
+      expect(mockKycRepo.createKycVerification).toHaveBeenCalledWith(expect.objectContaining({
+        admin_notes: 'Manual verification approved by administrator',
+      }));
+    });
+
+    it('returns DATABASE_ERROR when the approved KYC record cannot be persisted', async () => {
+      const { verifyUser } = await importModule();
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1' });
+      mockKycRepo.createKycVerification.mockResolvedValueOnce(null);
+
+      const result = await verifyUser('user-1', 'admin-1', 'Government ID reviewed by support');
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('DATABASE_ERROR');
+      }
+    });
   });
 
   describe('updateUser', () => {

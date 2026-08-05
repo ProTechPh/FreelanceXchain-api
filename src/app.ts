@@ -1,3 +1,4 @@
+import './config/load-env.js';
 import express, { Express, Request, Response, NextFunction } from 'express';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';

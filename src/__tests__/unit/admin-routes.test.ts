@@ -210,6 +210,22 @@ describe('Admin Routes', () => {
       expect(res.body.error.code).toBe('INVALID_REASON');
       expect(mockVerifyUser).not.toHaveBeenCalled();
     });
+
+    it.each([
+      ['NOT_FOUND', 404],
+      ['SELF_REVIEW_FORBIDDEN', 403],
+      ['DATABASE_ERROR', 500],
+    ])('should map %s verification failures to HTTP %i', async (code, status) => {
+      mockVerifyUser.mockResolvedValue({
+        success: false,
+        error: { code, message: 'Verification failed' },
+      });
+
+      const res = await request(app).post('/api/admin/users/u-1/verify');
+
+      expect(res.status).toBe(status);
+      expect(res.body.error.code).toBe(code);
+    });
   });
 
   describe('GET /disputes', () => {
@@ -932,5 +948,51 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
       'admin-1',
       'Manual verification approved by administrator'
     );
+  });
+});
+
+describe('admin verification authentication coverage', () => {
+  it('returns 401 when authentication middleware provides no administrator', async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => ({
+      getPlatformStats: jest.fn(),
+      getUserManagement: jest.fn(),
+      suspendUser: jest.fn(),
+      unsuspendUser: jest.fn(),
+      verifyUser: mockVerifyUser,
+      updateUser: jest.fn(),
+      getDisputeManagement: jest.fn(),
+      getSystemHealth: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
+      getAdminAnalytics: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+      ReviewRepository: {},
+      reviewRepository: { getAllReviews: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (_req: any, _res: any, next: any) => next(),
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+
+    const express = (await import('express')).default;
+    const freshAdminRouter = (await import('../../routes/admin-routes.js')).default;
+    const unauthenticatedApp = express();
+    unauthenticatedApp.use(express.json());
+    unauthenticatedApp.use('/api/admin', freshAdminRouter);
+
+    const res = await request(unauthenticatedApp).post('/api/admin/users/u-1/verify');
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHORIZED');
+    expect(mockVerifyUser).not.toHaveBeenCalled();
   });
 });
