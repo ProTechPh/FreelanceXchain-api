@@ -41,8 +41,6 @@ export const messageRepository = {
         last_message_at: now,
         unread_count_1: 0,
         unread_count_2: 0,
-        created_at: now,
-        updated_at: now,
       }
     );
     return mapConversation(doc);
@@ -113,16 +111,12 @@ export const messageRepository = {
   },
 
   async createMessage(messageData: Omit<MessageEntity, 'id' | 'created_at' | 'updated_at'>): Promise<MessageEntity> {
-    const now = new Date().toISOString();
     const attrs: Record<string, any> = {};
     for (const [key, value] of Object.entries(messageData)) {
       if (value !== undefined) {
         attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
       }
     }
-    attrs.created_at = now;
-    attrs.updated_at = now;
-
     const doc = await databases.createDocument(
       DATABASE_ID,
       MESSAGES_COLLECTION,
@@ -139,7 +133,7 @@ export const messageRepository = {
         MESSAGES_COLLECTION,
         [
           Query.equal('conversation_id', conversationId),
-          Query.orderDesc('created_at'),
+          Query.orderDesc('$createdAt'),
           Query.limit(limit),
           Query.offset(offset),
         ]
@@ -177,7 +171,7 @@ export const messageRepository = {
 
   async updateConversation(conversationId: string, updates: Partial<ConversationEntity>): Promise<void> {
     const ALLOWED_COLUMNS = new Set([
-      'last_message_at', 'unread_count_1', 'unread_count_2',
+      'last_message_at', 'last_message_preview', 'unread_count_1', 'unread_count_2',
     ]);
     const attrs: Record<string, any> = {};
     for (const [key, value] of Object.entries(updates)) {
@@ -185,8 +179,6 @@ export const messageRepository = {
         attrs[key] = value;
       }
     }
-    attrs.updated_at = new Date().toISOString();
-
     try {
       await databases.updateDocument(
         DATABASE_ID,

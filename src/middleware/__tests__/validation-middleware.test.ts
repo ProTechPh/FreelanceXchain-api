@@ -22,6 +22,8 @@ import {
   createFreelancerProfileSchema,
   validateUUID,
   isValidUUID,
+  validateAppwriteDocumentId,
+  isValidAppwriteDocumentId,
   RequestSchema,
 } from '../validation-middleware.js';
 // Helper to extract body schema with proper typing
@@ -1153,6 +1155,53 @@ describe('Validation Middleware - Extended Coverage', () => {
 
     it('should return false for empty string', () => {
       expect(isValidUUID('')).toBe(false);
+    });
+  });
+
+  describe('validateAppwriteDocumentId', () => {
+    it('should pass for an ID.unique-style conversation ID', () => {
+      const middleware = validateAppwriteDocumentId(['conversationId']);
+      const req = { params: { conversationId: '6892f3d4a1b2c3d4e5f6' }, headers: {} } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+
+      expect(next).toHaveBeenCalledTimes(1);
+      expect(res.status).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['an ID starting with a special character', '-conversation-id'],
+      ['an ID containing unsupported characters', 'conversation$id'],
+      ['an ID longer than 36 characters', 'a'.repeat(37)],
+    ])('should reject %s', (_description, conversationId) => {
+      const middleware = validateAppwriteDocumentId(['conversationId']);
+      const req = { params: { conversationId }, headers: { 'x-request-id': 'request-1' } } as any;
+      const res = { status: jest.fn().mockReturnThis(), json: jest.fn() } as any;
+      const next = jest.fn();
+
+      middleware(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        error: expect.objectContaining({
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid Appwrite document ID format',
+        }),
+        requestId: 'request-1',
+      }));
+    });
+  });
+
+  describe('isValidAppwriteDocumentId', () => {
+    it('should accept all supported Appwrite document ID characters', () => {
+      expect(isValidAppwriteDocumentId('Conversation_1.test-id')).toBe(true);
+    });
+
+    it('should reject an empty ID', () => {
+      expect(isValidAppwriteDocumentId('')).toBe(false);
     });
   });
 });

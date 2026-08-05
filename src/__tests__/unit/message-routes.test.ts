@@ -11,6 +11,8 @@ const mockGetConversations = jest.fn() as any;
 const mockGetConversationMessages = jest.fn() as any;
 const mockMarkConversationAsRead = jest.fn() as any;
 const mockGetUnreadMessageCount = jest.fn() as any;
+const mockValidateUUIDMiddleware = jest.fn((_req: any, _res: any, next: any) => next());
+const mockValidateAppwriteDocumentIdMiddleware = jest.fn((_req: any, _res: any, next: any) => next());
 
 jest.unstable_mockModule(resolveModule('src/services/message-service.ts'), () => ({
   sendMessage: mockSendMessage,
@@ -38,7 +40,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateUUID: jest.fn(() => mockValidateUUIDMiddleware),
+  validateAppwriteDocumentId: jest.fn(() => mockValidateAppwriteDocumentIdMiddleware),
   validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
@@ -198,7 +201,7 @@ describe('Message Routes', () => {
   });
 
   describe('GET /conversations/:conversationId - Get Conversation Messages', () => {
-    const convId = '550e8400-e29b-41d4-a716-446655440000';
+    const convId = '6892f3d4a1b2c3d4e5f6';
 
     it('should return conversation messages', async () => {
       mockGetConversationMessages.mockResolvedValue({
@@ -210,6 +213,8 @@ describe('Message Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
+      expect(mockValidateAppwriteDocumentIdMiddleware).toHaveBeenCalled();
+      expect(mockValidateUUIDMiddleware).not.toHaveBeenCalled();
       expect(mockGetConversationMessages).toHaveBeenCalledWith(convId, 'user-1', { page: 1, limit: expect.any(Number) });
     });
 
@@ -271,7 +276,7 @@ describe('Message Routes', () => {
   });
 
   describe('PATCH /conversations/:conversationId/read - Mark Conversation as Read', () => {
-    const convId = '550e8400-e29b-41d4-a716-446655440000';
+    const convId = '6892f3d4a1b2c3d4e5f6';
 
     it('should mark conversation as read', async () => {
       mockMarkConversationAsRead.mockResolvedValue({ success: true });
@@ -280,6 +285,8 @@ describe('Message Routes', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('Conversation marked as read');
+      expect(mockValidateAppwriteDocumentIdMiddleware).toHaveBeenCalled();
+      expect(mockValidateUUIDMiddleware).not.toHaveBeenCalled();
       expect(mockMarkConversationAsRead).toHaveBeenCalledWith(convId, 'user-1');
     });
 
@@ -650,6 +657,7 @@ describe('message-routes - ?? "" param fallback coverage', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
       validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
 

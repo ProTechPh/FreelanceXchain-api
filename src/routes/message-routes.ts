@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit } from '../utils/index.js';
@@ -108,7 +108,7 @@ router.post('/send', authMiddleware, apiRateLimiter, async (req: Request, res: R
  *     security:
  *       - bearerAuth: []
  */
-router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, validateUUID(['conversationId']), async (req: Request, res: Response) => {
+router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['conversationId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const conversationId = req.params['conversationId'] ?? '';
   const requestId = getRequestId(req);
@@ -148,7 +148,7 @@ router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, val
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimiter, validateUUID(['conversationId']), async (req: Request, res: Response) => {
+router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['conversationId']), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const conversationId = req.params['conversationId'] ?? '';
   const requestId = getRequestId(req);

@@ -11,6 +11,7 @@ const mockDatabases = {
   getDocument: jest.fn(),
   deleteDocument: jest.fn(),
 };
+const mockOrderDesc = jest.fn().mockImplementation((field: string) => ({ type: 'orderDesc', field }));
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   databases: mockDatabases,
@@ -19,7 +20,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     equal: jest.fn().mockImplementation((field: string, value: any) => ({ type: 'equal', field, value })),
     limit: jest.fn().mockImplementation((n: number) => ({ type: 'limit', value: n })),
     offset: jest.fn().mockImplementation((n: number) => ({ type: 'offset', value: n })),
-    orderDesc: jest.fn().mockImplementation((field: string) => ({ type: 'orderDesc', field })),
+    orderDesc: mockOrderDesc,
   },
   ID: { unique: jest.fn(() => 'mock-unique-id') },
 }));
@@ -41,6 +42,9 @@ describe('MessageRepository', () => {
       expect(result.id).toBe('c1');
       expect(result.participant1_id).toBe('u1');
       expect(result.participant2_id).toBe('u2');
+      const attrs = mockDatabases.createDocument.mock.calls[0][3];
+      expect(attrs).not.toHaveProperty('created_at');
+      expect(attrs).not.toHaveProperty('updated_at');
     });
 
     it('should throw on database error', async () => {
@@ -132,6 +136,9 @@ describe('MessageRepository', () => {
       const result = await messageRepository.createMessage({ conversation_id: 'c1', sender_id: 'u1', receiver_id: 'u2', content: 'hello', is_read: false } as any);
       expect(result.id).toBe('m1');
       expect(result.content).toBe('hello');
+      const attrs = mockDatabases.createDocument.mock.calls[0][3];
+      expect(attrs).not.toHaveProperty('created_at');
+      expect(attrs).not.toHaveProperty('updated_at');
     });
 
     it('should throw on database error', async () => {
@@ -150,6 +157,7 @@ describe('MessageRepository', () => {
       const result = await messageRepository.getConversationMessages('c1', 10, 0);
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
+      expect(mockOrderDesc).toHaveBeenCalledWith('$createdAt');
     });
 
     it('should return empty on database errors', async () => {
@@ -176,7 +184,13 @@ describe('MessageRepository', () => {
   describe('updateConversation', () => {
     it('should update conversation successfully', async () => {
       mockDatabases.updateDocument.mockResolvedValueOnce({ $id: 'c1' });
-      await expect(messageRepository.updateConversation('c1', { last_message_at: new Date().toISOString() })).resolves.toBeUndefined();
+      await expect(messageRepository.updateConversation('c1', {
+        last_message_at: new Date().toISOString(),
+        last_message_preview: 'hello',
+      })).resolves.toBeUndefined();
+      const attrs = mockDatabases.updateDocument.mock.calls[0][3];
+      expect(attrs).toMatchObject({ last_message_preview: 'hello' });
+      expect(attrs).not.toHaveProperty('updated_at');
     });
 
     it('should not throw on database errors', async () => {
