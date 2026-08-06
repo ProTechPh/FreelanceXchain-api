@@ -49,6 +49,31 @@ describe('FreelancerProfileRepository', () => {
       expect(result!.id).toBe('fp1');
     });
 
+    it('should normalize persisted skill shapes before returning a profile', async () => {
+      const doc = toAppwriteDoc({
+        id: 'fp1',
+        user_id: 'u1',
+        bio: 'Developer',
+        skills: [
+          { name: 'React', yearsOfExperience: 4 },
+          { skillName: 'TypeScript', yearsOfExperience: 3 },
+          { skill_name: 'Node.js', years_of_experience: 2 },
+          'Rust',
+          { years_of_experience: 8 },
+        ],
+      });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+      const result = await repo.getProfileByUserId('u1');
+
+      expect(result!.skills).toEqual([
+        { name: 'React', years_of_experience: 4 },
+        { name: 'TypeScript', years_of_experience: 3 },
+        { name: 'Node.js', years_of_experience: 2 },
+        { name: 'Rust', years_of_experience: 0 },
+      ]);
+    });
+
     it('should return null when not found', async () => {
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       const result = await repo.getProfileByUserId('u1');
@@ -102,6 +127,16 @@ describe('FreelancerProfileRepository', () => {
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
       expect(result.hasMore).toBe(false);
+    });
+
+    it('should match a legacy persisted skill after normalization', async () => {
+      const docs = [toAppwriteDoc({ id: 'fp1', skills: [{ skill_name: 'React', years_of_experience: 2 }] })];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: docs, total: 1 });
+
+      const result = await repo.searchBySkills(['React']);
+
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0]!.skills).toEqual([{ name: 'React', years_of_experience: 2 }]);
     });
 
     it('should handle custom options and hasMore=true', async () => {
