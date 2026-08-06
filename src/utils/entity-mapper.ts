@@ -181,7 +181,7 @@ export function mapMilestoneFromEntity(entity: MilestoneEntity): Milestone {
   };
 }
 
-export function mapProjectFromEntity(entity: ProjectEntity): Project {
+export function mapProjectFromEntity(entity: ProjectEntity & { proposalCount?: number }): Project {
   if (!entity) {
     throw new Error('Cannot map null or undefined ProjectEntity');
   }
@@ -200,6 +200,7 @@ export function mapProjectFromEntity(entity: ProjectEntity): Project {
     freelancerLimit: entity.freelancer_limit ?? 1,
     tags: entity.tags || [],
     attachments: entity.attachments || [],
+    ...(entity.proposalCount !== undefined ? { proposalCount: entity.proposalCount } : {}),
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };

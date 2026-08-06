@@ -44,6 +44,22 @@ export type ProjectWithProposalCount = ProjectEntity & {
   proposalCount: number;
 };
 
+async function addProposalCounts(
+  result: PaginatedResult<ProjectEntity>
+): Promise<PaginatedResult<ProjectWithProposalCount>> {
+  const projectIds = result.items.map(project => project.id);
+  const proposalCounts = projectIds.length > 0
+    ? await proposalRepository.getProposalCountsByProjects(projectIds)
+    : new Map<string, number>();
+
+  return {
+    ...result,
+    items: result.items.map(project => ({
+      ...project,
+      proposalCount: proposalCounts.get(project.id) ?? 0,
+    })),
+  };
+}
 
 type SkillRef = { skill_id: string; skill_name: string; category_id: string; years_of_experience: number };
 
@@ -161,7 +177,7 @@ export async function createProject(
   return { success: true, data: created };
 }
 
-export async function getProjectById(projectId: string): Promise<ServiceResult<ProjectEntity>> {
+export async function getProjectById(projectId: string): Promise<ServiceResult<ProjectWithProposalCount>> {
   const project = await projectRepository.findProjectById(projectId);
   if (!project) {
     return {
@@ -169,7 +185,8 @@ export async function getProjectById(projectId: string): Promise<ServiceResult<P
       error: { code: 'NOT_FOUND', message: 'Project not found' },
     };
   }
-  return { success: true, data: project };
+  const proposalCount = await proposalRepository.getProposalCountByProject(projectId);
+  return { success: true, data: { ...project, proposalCount } };
 }
 
 export async function updateProject(
@@ -400,81 +417,63 @@ export async function listProjectsByEmployer(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByEmployer(employerId, options);
-  
-  const projectIds = result.items.map(p => p.id);
-  const proposalCounts = projectIds.length > 0
-    ? await proposalRepository.getProposalCountsByProjects(projectIds)
-    : new Map<string, number>();
-
-  const projectsWithCounts: ProjectWithProposalCount[] = result.items.map((project) => ({
-    ...project,
-    proposalCount: proposalCounts.get(project.id) ?? 0,
-  }));
-
-  return { 
-    success: true, 
-    data: {
-      items: projectsWithCounts,
-      hasMore: result.hasMore,
-      total: result.total,
-    }
-  };
+  return { success: true, data: await addProposalCounts(result) };
 }
 
 export async function listOpenProjects(
   options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getAllOpenProjects(options);
-  return { success: true, data: result };
+  return { success: true, data: await addProposalCounts(result) };
 }
 
 export async function listProjectsByStatus(
   status: ProjectStatus,
   options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByStatus(status, options);
-  return { success: true, data: result };
+  return { success: true, data: await addProposalCounts(result) };
 }
 
 export async function searchProjects(
   keyword: string,
   options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.searchProjects(keyword, options);
-  return { success: true, data: result };
+  return { success: true, data: await addProposalCounts(result) };
 }
 
 export async function listProjectsBySkills(
   skillIds: string[],
   options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsBySkills(skillIds, options);
-  return { success: true, data: result };
+  return { success: true, data: await addProposalCounts(result) };
 }
 
 export async function listProjectsByBudgetRange(
   minBudget: number,
   maxBudget: number,
   options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, options);
-  return { success: true, data: result };
+  return { success: true, data: await addProposalCounts(result) };
 }
 
 export async function listProjectsByCategory(
   categoryId: string,
   options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByCategory(categoryId, options);
-  return { success: true, data: result };
+  return { success: true, data: await addProposalCounts(result) };
 }
 
 export async function listProjectsByMultipleCategories(
   categoryIds: string[],
   options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
+): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByMultipleCategories(categoryIds, options);
-  return { success: true, data: result };
+  return { success: true, data: await addProposalCounts(result) };
 }
 
 export async function deleteProject(

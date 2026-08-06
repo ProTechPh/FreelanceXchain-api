@@ -84,12 +84,10 @@ export class BaseRepository<T extends BaseEntity> {
     const { id, ...data } = item as Record<string, unknown>;
     const attrs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data)) {
-      if (value !== undefined) {
+      if (key !== 'created_at' && key !== 'updated_at' && value !== undefined) {
         attrs[key] = serializeAttributeValue(value);
       }
     }
-    attrs.created_at = new Date().toISOString();
-    attrs.updated_at = new Date().toISOString();
 
     const doc = await databases.createDocument(
       DATABASE_ID,
@@ -114,12 +112,11 @@ export class BaseRepository<T extends BaseEntity> {
     try {
       const attrs: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(updates as Record<string, unknown>)) {
-        if (key === 'id' || key === 'created_at') continue;
+        if (key === 'id' || key === 'created_at' || key === 'updated_at') continue;
         if (value !== undefined) {
           attrs[key] = serializeAttributeValue(value);
         }
       }
-      attrs.updated_at = new Date().toISOString();
 
       const doc = await databases.updateDocument(
         DATABASE_ID,
@@ -158,7 +155,7 @@ export class BaseRepository<T extends BaseEntity> {
     }
   }
 
-  async queryAll(orderBy: string = 'created_at', ascending: boolean = false): Promise<T[]> {
+  async queryAll(orderBy: string = '$createdAt', ascending: boolean = false): Promise<T[]> {
     try {
       return await this.fetchAll([ascending ? Query.orderAsc(orderBy) : Query.orderDesc(orderBy)]);
     } catch (error) {
@@ -194,7 +191,7 @@ export class BaseRepository<T extends BaseEntity> {
 
   async queryPaginated(
     options: QueryOptions = {},
-    orderBy: string = 'created_at',
+    orderBy: string = '$createdAt',
     ascending: boolean = false
   ): Promise<PaginatedResult<T>> {
     const { limit = 20, offset = 0 } = options;

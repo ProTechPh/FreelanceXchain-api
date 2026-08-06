@@ -162,6 +162,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
 // Mock validation middleware
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: () => (req: any, res: any, next: any) => next(),
+  validateAppwriteDocumentId: () => (req: any, res: any, next: any) => next(),
   validate: () => (req: any, res: any, next: any) => next(),
   validateRequest: jest.fn((req: any, res: any, next: any) => next()),
   isValidUUID: jest.fn((value: string) => true),

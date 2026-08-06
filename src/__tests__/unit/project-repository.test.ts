@@ -56,6 +56,9 @@ describe('ProjectRepository', () => {
       mockCreateDocument.mockResolvedValueOnce(toAppwriteDoc(project));
       const result = await repo.createProject(project as any);
       expect(result).toMatchObject({ id: 'p1', title: 'Test Project' });
+      const createAttributes = mockCreateDocument.mock.calls[0][3];
+      expect(createAttributes).not.toHaveProperty('created_at');
+      expect(createAttributes).not.toHaveProperty('updated_at');
     });
   });
 
@@ -128,6 +131,9 @@ describe('ProjectRepository', () => {
           attachments: JSON.stringify([{ url: 'file.pdf' }]),
         })
       );
+      const updateAttributes = mockUpdateDocument.mock.calls[0][3];
+      expect(updateAttributes).not.toHaveProperty('created_at');
+      expect(updateAttributes).not.toHaveProperty('updated_at');
     });
 
     it('should handle updates without JSON fields', async () => {

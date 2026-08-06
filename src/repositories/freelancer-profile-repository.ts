@@ -17,6 +17,91 @@ export type FreelancerProfileEntity = {
 
 const COLLECTION_ID = 'freelancer_profiles';
 
+function normalizeSkills(value: unknown): FreelancerProfileEntity['skills'] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap((candidate) => {
+    if (typeof candidate === 'string') {
+      const name = candidate.trim();
+      return name ? [{ name, years_of_experience: 0 }] : [];
+    }
+    if (!candidate || typeof candidate !== 'object') return [];
+
+    const skill = candidate as Record<string, unknown>;
+    const nameValue = [skill.name, skill.skillName, skill.skill_name]
+      .find(item => typeof item === 'string' && item.trim());
+    if (typeof nameValue !== 'string') return [];
+
+    const yearsValue = skill.years_of_experience ?? skill.yearsOfExperience;
+    const years = typeof yearsValue === 'number' && Number.isFinite(yearsValue) && yearsValue >= 0
+      ? yearsValue
+      : 0;
+    return [{ name: nameValue.trim(), years_of_experience: years }];
+  });
+}
+
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function nullableStringValue(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string') return value;
+    if (value === null) return null;
+  }
+  return null;
+}
+
+function uniqueExperienceId(
+  experience: Record<string, unknown>,
+  index: number,
+  usedIds: Set<string>,
+): string {
+  const persistedId = [experience.id, experience.experienceId, experience.experience_id]
+    .find(value => typeof value === 'string' && value.trim());
+  let id = typeof persistedId === 'string' ? persistedId.trim() : '';
+
+  if (!id || usedIds.has(id)) {
+    const baseId = `legacy-experience-${index}`;
+    id = baseId;
+    let suffix = 1;
+    while (usedIds.has(id)) {
+      id = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+  }
+
+  usedIds.add(id);
+  return id;
+}
+
+function normalizeExperience(value: unknown): FreelancerProfileEntity['experience'] {
+  if (!Array.isArray(value)) return [];
+
+  const usedIds = new Set<string>();
+  return value.flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object') return [];
+    const experience = candidate as Record<string, unknown>;
+
+    return [{
+      id: uniqueExperienceId(experience, index, usedIds),
+      title: stringValue(experience.title),
+      company: stringValue(experience.company),
+      description: stringValue(experience.description),
+      start_date: stringValue(experience.start_date ?? experience.startDate),
+      end_date: nullableStringValue(experience.end_date, experience.endDate),
+    }];
+  });
+}
+
+function normalizeProfileEntity(entity: FreelancerProfileEntity): FreelancerProfileEntity {
+  return {
+    ...entity,
+    skills: normalizeSkills(entity.skills),
+    experience: normalizeExperience(entity.experience),
+  };
+}
+
 function mapProfile(doc: Record<string, any>): FreelancerProfileEntity {
   const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
   const result: Record<string, any> = {
@@ -31,7 +116,7 @@ function mapProfile(doc: Record<string, any>): FreelancerProfileEntity {
   if (typeof result.experience === 'string') {
     result.experience = JSON.parse(result.experience);
   }
-  return result as FreelancerProfileEntity;
+  return normalizeProfileEntity(result as FreelancerProfileEntity);
 }
 
 export class FreelancerProfileRepository extends BaseRepository<FreelancerProfileEntity> {
@@ -40,15 +125,17 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   }
 
   async createProfile(profile: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'>): Promise<FreelancerProfileEntity> {
-    return this.create(profile);
+    return normalizeProfileEntity(await this.create(profile));
   }
 
   async getProfileByUserId(userId: string): Promise<FreelancerProfileEntity | null> {
-    return this.findOne('user_id', userId);
+    const profile = await this.findOne('user_id', userId);
+    return profile ? normalizeProfileEntity(profile) : null;
   }
 
   async updateProfile(id: string, updates: Partial<FreelancerProfileEntity>): Promise<FreelancerProfileEntity | null> {
-    return this.update(id, updates);
+    const profile = await this.update(id, updates);
+    return profile ? normalizeProfileEntity(profile) : null;
   }
 
   async getAvailableProfiles(): Promise<FreelancerProfileEntity[]> {
@@ -130,7 +217,8 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   }
 
   async getAllProfilesPaginated(options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
-    return this.queryPaginated(options, 'created_at', false);
+    const result = await this.queryPaginated(options, 'created_at', false);
+    return { ...result, items: result.items.map(normalizeProfileEntity) };
   }
 }
 

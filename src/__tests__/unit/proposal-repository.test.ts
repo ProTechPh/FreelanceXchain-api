@@ -5,6 +5,7 @@ import path from 'node:path';
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
 const { ProposalRepository } = await import('../../repositories/proposal-repository.js');
+const { Query } = await import('../../config/appwrite.js');
 
 const db = () => (globalThis as any).__mockDatabases;
 
@@ -97,6 +98,7 @@ describe('ProposalRepository', () => {
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
       expect(result.hasMore).toBe(false);
+      expect(Query.orderDesc).toHaveBeenCalledWith('$createdAt');
     });
 
     it('should handle custom options and hasMore=true', async () => {
@@ -139,6 +141,7 @@ describe('ProposalRepository', () => {
       const result = await repo.getProposalsByFreelancer('f1');
       expect(result).toHaveLength(1);
       expect(result[0].id).toBe('p1');
+      expect(Query.orderDesc).toHaveBeenCalledWith('$createdAt');
     });
 
     it('should handle database error gracefully', async () => {
