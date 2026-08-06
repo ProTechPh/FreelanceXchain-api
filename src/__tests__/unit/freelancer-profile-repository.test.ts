@@ -74,6 +74,30 @@ describe('FreelancerProfileRepository', () => {
       ]);
     });
 
+    it('should normalize legacy experience fields and assign stable unique ids', async () => {
+      const doc = toAppwriteDoc({
+        id: 'fp1',
+        user_id: 'u1',
+        bio: 'Developer',
+        experience: [
+          { id: 'experience-1', title: 'Engineer', company: 'Current Co', description: 'Current contract', start_date: '2024-01-01', end_date: null },
+          { id: 'experience-1', title: 'Developer', company: 'Duplicate Co', description: 'Duplicate persisted id', startDate: '2022-01-01', endDate: '2023-12-31' },
+          { experience_id: 'experience-3', title: 'Consultant', company: 'Legacy Co', description: 'Legacy identifier', start_date: '2020-01-01', end_date: null },
+          { title: 'Intern', company: 'Old Co', description: 'Missing persisted id', startDate: '2019-01-01', endDate: '2019-12-31' },
+        ],
+      });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+      const result = await repo.getProfileByUserId('u1');
+
+      expect(result!.experience).toEqual([
+        { id: 'experience-1', title: 'Engineer', company: 'Current Co', description: 'Current contract', start_date: '2024-01-01', end_date: null },
+        { id: 'legacy-experience-1', title: 'Developer', company: 'Duplicate Co', description: 'Duplicate persisted id', start_date: '2022-01-01', end_date: '2023-12-31' },
+        { id: 'experience-3', title: 'Consultant', company: 'Legacy Co', description: 'Legacy identifier', start_date: '2020-01-01', end_date: null },
+        { id: 'legacy-experience-3', title: 'Intern', company: 'Old Co', description: 'Missing persisted id', start_date: '2019-01-01', end_date: '2019-12-31' },
+      ]);
+    });
+
     it('should return null when not found', async () => {
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       const result = await repo.getProfileByUserId('u1');

@@ -40,8 +40,66 @@ function normalizeSkills(value: unknown): FreelancerProfileEntity['skills'] {
   });
 }
 
+function stringValue(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function nullableStringValue(...values: unknown[]): string | null {
+  for (const value of values) {
+    if (typeof value === 'string') return value;
+    if (value === null) return null;
+  }
+  return null;
+}
+
+function uniqueExperienceId(
+  experience: Record<string, unknown>,
+  index: number,
+  usedIds: Set<string>,
+): string {
+  const persistedId = [experience.id, experience.experienceId, experience.experience_id]
+    .find(value => typeof value === 'string' && value.trim());
+  let id = typeof persistedId === 'string' ? persistedId.trim() : '';
+
+  if (!id || usedIds.has(id)) {
+    const baseId = `legacy-experience-${index}`;
+    id = baseId;
+    let suffix = 1;
+    while (usedIds.has(id)) {
+      id = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+  }
+
+  usedIds.add(id);
+  return id;
+}
+
+function normalizeExperience(value: unknown): FreelancerProfileEntity['experience'] {
+  if (!Array.isArray(value)) return [];
+
+  const usedIds = new Set<string>();
+  return value.flatMap((candidate, index) => {
+    if (!candidate || typeof candidate !== 'object') return [];
+    const experience = candidate as Record<string, unknown>;
+
+    return [{
+      id: uniqueExperienceId(experience, index, usedIds),
+      title: stringValue(experience.title),
+      company: stringValue(experience.company),
+      description: stringValue(experience.description),
+      start_date: stringValue(experience.start_date ?? experience.startDate),
+      end_date: nullableStringValue(experience.end_date, experience.endDate),
+    }];
+  });
+}
+
 function normalizeProfileEntity(entity: FreelancerProfileEntity): FreelancerProfileEntity {
-  return { ...entity, skills: normalizeSkills(entity.skills) };
+  return {
+    ...entity,
+    skills: normalizeSkills(entity.skills),
+    experience: normalizeExperience(entity.experience),
+  };
 }
 
 function mapProfile(doc: Record<string, any>): FreelancerProfileEntity {
