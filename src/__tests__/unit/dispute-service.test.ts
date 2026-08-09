@@ -1098,6 +1098,28 @@ describe('Dispute Service - Additional Coverage', () => {
     if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
   });
 
+  it('L203: should catch disputeMilestone throw and still succeed', async () => {
+    const { createDispute } = await importModule();
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', employer_id: 'e1', freelancer_id: 'f1', project_id: 'p1', status: 'active', escrow_address: '0xescrow',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockDisputeRepository.getDisputeByMilestone.mockResolvedValueOnce(null);
+    mockDisputeRepository.createDispute.mockResolvedValueOnce({
+      id: 'd1', contract_id: 'c1', milestone_id: 'm1', initiator_id: 'e1',
+      reason: 'test', evidence: [], status: 'open', resolution: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    mockBlockchainAdapter.disputeMilestone.mockRejectedValueOnce(new Error('chain error'));
+
+    const result = await createDispute({
+      contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+    });
+    expect(result.success).toBe(true);
+  });
+
   it('should return NOT_FOUND when milestone not found in createDispute', async () => {
     const { createDispute } = await importModule();
     mockContractRepository.getContractById.mockResolvedValueOnce({
@@ -1705,6 +1727,27 @@ describe('Dispute Service - Coverage Gaps', () => {
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
       mockBlockchainAdapter.resolveDispute.mockRejectedValueOnce(new Error('Payment failed'));
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
+      });
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PAYMENT_FAILED');
+    });
+
+    it('L456-460: should return PAYMENT_FAILED when blockchain adapter is unavailable', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockBlockchainAdapter.isAvailable.mockReturnValueOnce(false);
 
       const result = await resolveDispute({
         disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',

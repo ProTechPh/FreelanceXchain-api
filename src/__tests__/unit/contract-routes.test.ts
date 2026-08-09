@@ -819,6 +819,14 @@ describe('contract-routes - ?? nullish fallback branches', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
       getWallet: () => ({ address: '0xWALLET' }),
+      isWeb3Available: () => true,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: () => 'real',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+      getPendingWithdrawals: jest.fn(),
+      withdrawFromEscrow: jest.fn(),
     }));
     jest.unstable_mockModule('ethers', () => ({
       ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
@@ -872,6 +880,31 @@ describe('contract-routes - ?? nullish fallback branches', () => {
     mockGetDisputesByContract.mockResolvedValueOnce({ success: true, data: [] });
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/contracts/c1/disputes');
+    expect(res.status).toBe(200);
+  });
+
+  it('L400: GET /:id/escrow/withdrawable with nullish id param', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { freelancerWallet: '0xFREELANCER' } });
+    const mockGetPendingWithdrawals = (await import('../../services/escrow-blockchain.js')).getPendingWithdrawals as jest.Mock;
+    mockGetPendingWithdrawals
+      .mockResolvedValueOnce(BigInt('1000000000000000000'))
+      .mockResolvedValueOnce(BigInt('2000000000000000000'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(200);
+  });
+
+  it('L500: POST /:id/escrow/withdraw with nullish id param', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    const mockWithdrawFromEscrow = (await import('../../services/escrow-blockchain.js')).withdrawFromEscrow as jest.Mock;
+    mockWithdrawFromEscrow.mockResolvedValueOnce({ transactionHash: '0xTX', receipt: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
     expect(res.status).toBe(200);
   });
 });
