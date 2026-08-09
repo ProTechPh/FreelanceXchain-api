@@ -781,6 +781,11 @@ jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
 
 jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
   getBlockchainMode: jest.fn(() => 'simulated'), // Default to simulated mode
+  getBlockchainAdapter: jest.fn(() => ({
+    isAvailable: () => true,
+    resolveDispute: jest.fn(async () => ({ transactionHash: '0x' + 'a'.repeat(64) })),
+    disputeMilestone: jest.fn(async () => ({ transactionHash: '0x' + 'b'.repeat(64) })),
+  })),
 }));
 
 // Mock blockchain services

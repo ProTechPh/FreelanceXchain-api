@@ -30,6 +30,7 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () =>
   depositToEscrow: jest.fn(),
   releaseMilestone: jest.fn(),
   refundMilestone: jest.fn(),
+  resolveDisputeSplit: jest.fn(),
   getEscrowBalance: jest.fn(),
   getEscrowState: jest.fn(),
 }));

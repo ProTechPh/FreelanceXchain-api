@@ -52,6 +52,10 @@ export const mockWeb3Client = {
   deployContract: jest.fn(),
   getContract: jest.fn(),
   getContractWithSigner: jest.fn(),
+  getArbiterWallet: jest.fn(() => ({
+    address: '0x1234567890123456789012345678901234567890',
+  })),
+  getContractWithArbiterSigner: jest.fn(),
 };
 
 // Mock Blockchain Config

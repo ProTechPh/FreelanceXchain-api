@@ -81,9 +81,9 @@ export class RealBlockchainAdapter implements IBlockchainAdapter {
   async resolveDispute(
     escrowAddress: string,
     milestoneIndex: number,
-    inFavorOfFreelancer: boolean
+    freelancerBps: number
   ): Promise<TransactionResult> {
-    const result = await realResolveDispute(escrowAddress, milestoneIndex, inFavorOfFreelancer);
+    const result = await realResolveDispute(escrowAddress, milestoneIndex, freelancerBps);
     return {
       transactionHash: result.transactionHash,
       receipt: result.receipt,

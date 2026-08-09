@@ -16,15 +16,11 @@ import {
   notifyDisputeResolved,
 } from './notification-service.js';
 import {
-  releaseMilestone as releaseEscrowMilestone,
-  refundMilestone as refundEscrowMilestone,
-  getEscrowByContractId,
-} from './escrow-contract.js';
-import {
   createDisputeOnBlockchain,
   updateDisputeEvidence,
   resolveDisputeOnBlockchain,
 } from './dispute-registry.js';
+import { getBlockchainAdapter } from './blockchain/factory.js';
 import { disputeAgreement } from './agreement-contract.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
@@ -53,6 +49,11 @@ export type ResolveDisputeInput = {
   reasoning: string;
   resolvedBy: string;
   resolverRole: 'admin'; // Only admins can resolve disputes
+  /**
+   * Portion of the milestone awarded to the freelancer in basis points (0-10000).
+   * Only meaningful for 'split' decisions; defaults to 5000 (50/50).
+   */
+  freelancerBps?: number;
 };
 
 
@@ -183,6 +184,26 @@ export async function createDispute(
     logger.error('Failed to record dispute on blockchain', error as Error, {
       disputeId: createdDispute.id,
       contractId: createdDispute.contractId,
+    });
+  }
+
+  // Real-mode: mark the milestone Disputed on the escrow contract so the arbiter
+  // can later resolve it on-chain (FreelanceEscrow.resolveDispute requires the
+  // milestone to be Disputed). The server wallet acts as the on-chain employer.
+  // Best-effort — the simulated adapter treats this as a no-op.
+  try {
+    const escrowAddress = contractEntity.escrow_address;
+    if (escrowAddress) {
+      const milestoneIndex = projectEntity.milestones.findIndex((m: any) => m.id === milestoneId);
+      if (milestoneIndex !== -1) {
+        await getBlockchainAdapter().disputeMilestone(escrowAddress, milestoneIndex);
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to mark milestone disputed on blockchain escrow', error as Error, {
+      disputeId: createdDispute.id,
+      contractId,
+      milestoneId,
     });
   }
 
@@ -347,6 +368,7 @@ async function validateDisputeResolution(
       projectEntity: any;
       milestone: NonNullable<Project['milestones'][number]>;
       milestoneEntity: any;
+      milestoneIndex: number;
     }
 > {
   const { disputeId, resolverRole } = input;
@@ -386,12 +408,15 @@ async function validateDisputeResolution(
     return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Milestone not found' } } };
   }
   const milestone = mapMilestoneFromEntity(milestoneEntity);
+  const milestoneIndex = projectEntity.milestones.findIndex((m: any) => m.id === disputeEntity.milestone_id);
 
-  return { disputeEntity, contract, contractEntity, project, projectEntity, milestone, milestoneEntity };
+  return { disputeEntity, contract, contractEntity, project, projectEntity, milestone, milestoneEntity, milestoneIndex };
 }
 
 /**
  * Process escrow payment for dispute resolution (release or refund).
+ * Routes through the blockchain adapter so real mode resolves the on-chain
+ * escrow (arbiter-signed) while simulated mode updates the Appwrite ledger.
  * Updates the milestoneEntity status in-place.
  * Returns success or a ServiceResult error.
  */
@@ -400,28 +425,35 @@ async function processDisputeEscrowPayment(
   disputeEntity: DisputeEntity,
   decision: 'freelancer_favor' | 'employer_favor' | 'split',
   milestoneEntity: any,
+  escrowAddress: string,
+  milestoneIndex: number,
+  freelancerBps?: number,
 ): Promise<
   | { error: DisputeServiceResult<Dispute> }
   | { success: true }
 > {
-  if (decision === 'split') {
+  // BLF-10.1: Do NOT bypass payment when the escrow address is missing — return an error
+  // instead. Bypassing would mark the dispute resolved without moving funds, causing financial loss.
+  if (!escrowAddress) {
+    logger.error('Escrow address missing on contract. Cannot process dispute payment.', {
+      disputeId,
+      contractId: disputeEntity.contract_id,
+    });
     return {
       error: {
         success: false,
         error: {
-          code: 'UNSUPPORTED_DECISION',
-          message: 'Split decisions are not supported until partial escrow settlements are implemented.',
+          code: 'ESCROW_NOT_FOUND',
+          message: 'Escrow record not found. Cannot process dispute payment. Please ensure the contract has been funded.',
         },
       },
     };
   }
 
   try {
-    const escrow = await getEscrowByContractId(disputeEntity.contract_id);
-    if (!escrow) {
-      // BLF-10.1: Do NOT bypass payment when escrow is missing — return an error instead.
-      // Bypassing would mark the dispute resolved without moving funds, causing financial loss.
-      logger.error('Escrow record not found in blockchain_escrows. Cannot process dispute payment.', {
+    const adapter = getBlockchainAdapter();
+    if (!adapter.isAvailable()) {
+      logger.error('Blockchain adapter unavailable. Cannot process dispute payment.', {
         disputeId,
         contractId: disputeEntity.contract_id,
       });
@@ -429,25 +461,39 @@ async function processDisputeEscrowPayment(
         error: {
           success: false,
           error: {
-            code: 'ESCROW_NOT_FOUND',
-            message: 'Escrow record not found. Cannot process dispute payment. Please ensure the contract has been funded.',
+            code: 'PAYMENT_FAILED',
+            message: 'Blockchain adapter unavailable. Cannot process dispute payment. Please retry.',
           },
         },
       };
-    } else {
-      // Use the employer's address stored in the escrow for authorization
-      const employerAddress = escrow.employerAddress;
-
-      if (decision === 'freelancer_favor') {
-        // Release full funds to freelancer
-        await releaseEscrowMilestone(escrow.address, disputeEntity.milestone_id, employerAddress);
-        milestoneEntity.status = 'approved';
-      } else if (decision === 'employer_favor') {
-        // Refund full funds to employer
-        await refundEscrowMilestone(escrow.address, disputeEntity.milestone_id, employerAddress);
-        milestoneEntity.status = 'refunded';
-      }
     }
+
+    // Basis-points mapping:
+    //   freelancer_favor -> 10000 (full to freelancer / release)
+    //   employer_favor   -> 0     (full to employer / refund)
+    //   split            -> freelancerBps ?? 5000 (default 50/50)
+    const resolvedBps =
+      decision === 'freelancer_favor' ? 10000
+      : decision === 'employer_favor' ? 0
+      : freelancerBps ?? 5000;
+
+    if (decision === 'split' && (resolvedBps <= 0 || resolvedBps >= 10000)) {
+      return {
+        error: {
+          success: false,
+          error: {
+            code: 'INVALID_SPLIT_BPS',
+            message: 'freelancerBps must be between 1 and 9999 for a split decision.',
+          },
+        },
+      };
+    }
+
+    await adapter.resolveDispute(escrowAddress, milestoneIndex, resolvedBps);
+
+    // On-chain, a split-resolved milestone is marked Approved (partial credit via
+    // pull-payment to each party), so map both freelancer_favor and split to 'approved'.
+    milestoneEntity.status = decision === 'employer_favor' ? 'refunded' : 'approved';
   } catch (error) {
     logger.error('Failed to process payment for dispute resolution', error as Error, {
       disputeId,
@@ -582,7 +628,7 @@ export async function resolveDispute(
     const validated = await validateDisputeResolution(input);
     if ('error' in validated) return validated.error;
 
-    const { disputeEntity, contract, project, projectEntity, milestone, milestoneEntity } = validated;
+    const { disputeEntity, contractEntity, contract, project, projectEntity, milestone, milestoneEntity, milestoneIndex } = validated;
 
     // Create resolution entity
     const resolutionEntity: DisputeResolutionEntity = {
@@ -593,7 +639,7 @@ export async function resolveDispute(
     };
 
     const paymentResult = await processDisputeEscrowPayment(
-      disputeId, disputeEntity, decision, milestoneEntity,
+      disputeId, disputeEntity, decision, milestoneEntity, contractEntity.escrow_address, milestoneIndex, input.freelancerBps,
     );
     if ('error' in paymentResult) return paymentResult.error;
 

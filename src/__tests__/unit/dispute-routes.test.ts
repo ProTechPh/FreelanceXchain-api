@@ -33,8 +33,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
   fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
-    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
-  }));
+  mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+}));
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
@@ -51,7 +51,7 @@ jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => (
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
-    DATABASE_ID: 'freelancexchain',
+  DATABASE_ID: 'freelancexchain',
   BUCKETS: { DISPUTE_EVIDENCE: 'dispute-evidence' },
 }));
 
@@ -242,5 +242,145 @@ describe('Dispute Routes', () => {
       });
       expect(res.status).toBeGreaterThanOrEqual(400);
     });
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Resolve validation with admin role (route is admin-only)
+// ═══════════════════════════════════════════════════════════════
+
+describe('Dispute Routes - Resolve validation (admin)', () => {
+  let app: express.Express;
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      createDispute: mockCreateDispute,
+      submitEvidence: mockSubmitEvidence,
+      resolveDispute: mockResolveDispute,
+      getDisputeById: mockGetDisputeById,
+      getAllDisputes: mockGetAllDisputes,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { userId: 'admin-1', role: 'admin' }; next(); },
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      isValidUUID: jest.fn(() => true),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
+      uploadDisputeEvidence: [],
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+      uploadFileToStorage: jest.fn().mockResolvedValue('https://storage.com/file.pdf'),
+      cleanupUploadedFiles: jest.fn().mockResolvedValue(undefined),
+    }));
+    jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
+      DATABASE_ID: 'freelancexchain',
+      BUCKETS: { DISPUTE_EVIDENCE: 'dispute-evidence' },
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
+      clampLimit: (v: any) => v || 20,
+      safeJsonParse: (v: any) => typeof v === 'string' ? JSON.parse(v) : v,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/dispute-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/disputes', router);
+    jest.clearAllMocks();
+  });
+
+  it('should resolve a split dispute with default 5000 bps', async () => {
+    mockResolveDispute.mockResolvedValue({ success: true, data: { id: 'd-1', status: 'resolved', resolution: { decision: 'split' } } });
+    const res = await request(app).post('/api/disputes/d-1/resolve').send({
+      decision: 'split',
+      reasoning: 'Split 50/50',
+    });
+    expect(res.status).toBe(200);
+    expect(mockResolveDispute).toHaveBeenCalledWith(expect.objectContaining({ decision: 'split' }));
+  });
+
+  it('should resolve a split dispute with explicit freelancerBps', async () => {
+    mockResolveDispute.mockResolvedValue({ success: true, data: { id: 'd-1', status: 'resolved' } });
+    const res = await request(app).post('/api/disputes/d-1/resolve').send({
+      decision: 'split',
+      reasoning: 'Split 75/25',
+      freelancerBps: 7500,
+    });
+    expect(res.status).toBe(200);
+    expect(mockResolveDispute).toHaveBeenCalledWith(expect.objectContaining({ decision: 'split', freelancerBps: 7500 }));
+  });
+
+  it('should resolve freelancer_favor without freelancerBps', async () => {
+    mockResolveDispute.mockResolvedValue({ success: true, data: { id: 'd-1', status: 'resolved' } });
+    const res = await request(app).post('/api/disputes/d-1/resolve').send({
+      decision: 'freelancer_favor',
+      reasoning: 'Reason',
+    });
+    expect(res.status).toBe(200);
+    expect(mockResolveDispute).toHaveBeenCalledWith(expect.objectContaining({ decision: 'freelancer_favor' }));
+    // No freelancerBps key should be present for non-split decisions
+    expect(mockResolveDispute.mock.calls[0]?.[0]).not.toHaveProperty('freelancerBps');
+  });
+
+  it('should return 400 when freelancerBps is out of range', async () => {
+    const res = await request(app).post('/api/disputes/d-1/resolve').send({
+      decision: 'split',
+      reasoning: 'Invalid',
+      freelancerBps: 10001,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(mockResolveDispute).not.toHaveBeenCalled();
+  });
+
+  it('should return 400 when freelancerBps is not an integer', async () => {
+    const res = await request(app).post('/api/disputes/d-1/resolve').send({
+      decision: 'split',
+      reasoning: 'Invalid',
+      freelancerBps: 5000.5,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 400 when freelancerBps is provided for a non-split decision', async () => {
+    const res = await request(app).post('/api/disputes/d-1/resolve').send({
+      decision: 'freelancer_favor',
+      reasoning: 'Invalid',
+      freelancerBps: 5000,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 400 when split decision has bps of 0 or 10000', async () => {
+    const res = await request(app).post('/api/disputes/d-1/resolve').send({
+      decision: 'split',
+      reasoning: 'Invalid',
+      freelancerBps: 0,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('should return 400 when decision is invalid', async () => {
+    const res = await request(app).post('/api/disputes/d-1/resolve').send({
+      decision: 'not_a_decision',
+      reasoning: 'Invalid',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 });

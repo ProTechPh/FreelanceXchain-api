@@ -237,6 +237,8 @@ jest.unstable_mockModule('./src/services/web3-client.js', () => ({
   deployContract: jest.fn().mockResolvedValue({ address: '0xmock', transactionHash: '0xmock' }),
   getContract: jest.fn().mockReturnValue(null),
   getContractWithSigner: jest.fn().mockReturnValue(null),
+  getArbiterWallet: jest.fn().mockReturnValue(null),
+  getContractWithArbiterSigner: jest.fn().mockReturnValue(null),
 }));
 
 jest.unstable_mockModule('node-appwrite', () => ({

@@ -4,7 +4,7 @@
  */
 
 import { Contract, TransactionReceipt } from 'ethers';
-import { getContractWithSigner, getContract, isWeb3Available, getWallet } from './web3-client.js';
+import { getContractWithSigner, getContractWithArbiterSigner, getContract, isWeb3Available, getWallet } from './web3-client.js';
 import { FreelanceEscrowABI, FreelanceEscrowBytecode } from './contract-abis.js';
 import { ContractFactory } from 'ethers';
 import type { BlockchainMilestoneStatus } from './blockchain/adapter.js';
@@ -191,18 +191,68 @@ export async function disputeMilestone(
 
 /**
  * Resolve dispute (arbiter only)
+ *
+ * The on-chain FreelanceEscrow contract restricts resolveDispute() to the arbiter
+ * (onlyArbiter) and expresses the award as basis points: 10000 = full to the
+ * freelancer, 0 = full to the employer, 5000 = 50/50 split.
+ * Funds are credited to each party's pendingWithdrawals (pull-payment pattern)
+ * and must be claimed via withdraw() by the party's own wallet.
+ *
+ * @param freelancerBps Portion of the milestone awarded to the freelancer (0-10000)
  */
 export async function resolveDispute(
   escrowAddress: string,
   milestoneIndex: number,
-  inFavorOfFreelancer: boolean
+  freelancerBps: number
+): Promise<{ transactionHash: string; receipt: TransactionReceipt }> {
+  if (!isWeb3Available()) {
+    throw new Error('Web3 is not configured');
+  }
+  if (freelancerBps < 0 || freelancerBps > 10000) {
+    throw new Error('freelancerBps must be between 0 and 10000');
+  }
+
+  // Requires PLATFORM_ARBITER_PRIVATE_KEY — throws a clear error if missing
+  const contract = getContractWithArbiterSigner(escrowAddress, FreelanceEscrowABI);
+  const tx = await (contract as any).resolveDispute(milestoneIndex, freelancerBps);
+  const receipt = await tx.wait();
+
+  return {
+    transactionHash: receipt.hash,
+    receipt,
+  };
+}
+
+/**
+ * Get the amount a party can currently withdraw from the escrow (pull-payment).
+ * After a dispute resolution, each party's allocation is credited to their
+ * pendingWithdrawals and claimed via the contract's withdraw().
+ */
+export async function getPendingWithdrawals(escrowAddress: string, party: string): Promise<bigint> {
+  if (!isWeb3Available()) {
+    throw new Error('Web3 is not configured');
+  }
+
+  const contract = getEscrowContract(escrowAddress);
+  return await (contract as any).pendingWithdrawals(party);
+}
+
+/**
+ * Withdraw the server wallet's pending allocation from the escrow.
+ *
+ * The server wallet is the on-chain employer/platform, so this claims the
+ * employer's share after dispute resolution. Freelancer allocations must be
+ * claimed by the freelancer's own wallet (msg.sender) via the escrow's withdraw().
+ */
+export async function withdrawFromEscrow(
+  escrowAddress: string
 ): Promise<{ transactionHash: string; receipt: TransactionReceipt }> {
   if (!isWeb3Available()) {
     throw new Error('Web3 is not configured');
   }
 
   const contract = getEscrowContractWithSigner(escrowAddress);
-  const tx = await (contract as any).resolveDispute(milestoneIndex, inFavorOfFreelancer);
+  const tx = await (contract as any).withdraw();
   const receipt = await tx.wait();
 
   return {

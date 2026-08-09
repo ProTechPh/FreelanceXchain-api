@@ -122,11 +122,11 @@ describe('RealBlockchainAdapter', () => {
   });
 
   describe('resolveDispute', () => {
-    it('should delegate to realResolveDispute', async () => {
+    it('should delegate to realResolveDispute with freelancerBps', async () => {
       mockRealResolveDispute.mockResolvedValue(makeTxReceipt('resolve-tx'));
-      const result = await adapter.resolveDispute(ESCROW_ADDR, 0, true);
+      const result = await adapter.resolveDispute(ESCROW_ADDR, 0, 10000);
       expect(result.transactionHash).toBe('resolve-tx');
-      expect(mockRealResolveDispute).toHaveBeenCalledWith(ESCROW_ADDR, 0, true);
+      expect(mockRealResolveDispute).toHaveBeenCalledWith(ESCROW_ADDR, 0, 10000);
     });
   });
 
