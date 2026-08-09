@@ -371,6 +371,180 @@ router.get('/:id/fund-info', authMiddleware, validateUUID(), asyncHandler(async 
 
 /**
  * @swagger
+ * /api/contracts/{id}/escrow/withdrawable:
+ *   get:
+ *     summary: Get pending escrow withdrawals (real blockchain mode)
+ *     description: Returns the amounts credited to each party's pendingWithdrawals after a dispute resolution (pull-payment). Only meaningful when BLOCKCHAIN_MODE=real.
+ *     tags:
+ *       - Contracts
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Pending withdrawal amounts
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: User not authorized to view this contract
+ *       422:
+ *         description: Only available in real blockchain mode
+ */
+router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+  const contractId = req.params['id'] ?? '';
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    return;
+  }
+
+  const contractResult = await getContractById(contractId);
+  if (!contractResult.success) {
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
+    return;
+  }
+
+  const contract = contractResult.data;
+  if (contract.freelancerId !== userId && contract.employerId !== userId && req.user?.role !== 'admin') {
+    sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', requestId);
+    return;
+  }
+
+  const { getBlockchainMode } = await import('../services/blockchain/factory.js');
+  const { isWeb3Available } = await import('../services/web3-client.js');
+  if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
+    sendErrorResponse(res, 422, 'ESCROW_WITHDRAW_UNAVAILABLE', 'Escrow withdrawals are only available in real blockchain mode', requestId);
+    return;
+  }
+
+  if (!contract.escrowAddress) {
+    sendErrorResponse(res, 400, 'ESCROW_NOT_FOUND', 'Contract has no escrow address', requestId);
+    return;
+  }
+
+  try {
+    const { getWallet } = await import('../services/web3-client.js');
+    const { getPendingWithdrawals } = await import('../services/escrow-blockchain.js');
+
+    // On-chain employer is the platform/server wallet; the freelancer allocation
+    // is keyed to the freelancer's own wallet address.
+    const platformWallet = getWallet().address;
+    const walletResult = await getContractWalletAddresses(contractId);
+    if (!walletResult.success) {
+      sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, requestId);
+      return;
+    }
+
+    if (!walletResult.data.freelancerWallet) {
+      sendErrorResponse(res, 400, 'WALLET_NOT_FOUND', 'Freelancer has no wallet address on file', requestId);
+      return;
+    }
+
+    const [platformAmount, freelancerAmount] = await Promise.all([
+      getPendingWithdrawals(contract.escrowAddress, platformWallet),
+      getPendingWithdrawals(contract.escrowAddress, walletResult.data.freelancerWallet),
+    ]);
+
+    res.status(200).json({
+      contractId,
+      escrowAddress: contract.escrowAddress,
+      pendingWithdrawals: {
+        platformWallet,
+        platformAmount: platformAmount.toString(),
+        freelancerWallet: walletResult.data.freelancerWallet,
+        freelancerAmount: freelancerAmount.toString(),
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching pending escrow withdrawals:', error);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch pending escrow withdrawals', requestId);
+  }
+}));
+
+/**
+ * @swagger
+ * /api/contracts/{id}/escrow/withdraw:
+ *   post:
+ *     summary: Withdraw the employer's pending escrow allocation (real blockchain mode)
+ *     description: The server wallet is the on-chain employer/platform, so this claims its allocation credited by a dispute resolution. Freelancers must claim their own allocation from their wallet via the escrow contract's withdraw().
+ *     tags:
+ *       - Contracts
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: uuid
+ *     responses:
+ *       200:
+ *         description: Withdrawal processed
+ *       401:
+ *         description: Unauthorized
+ *       403:
+ *         description: Only the employer or an admin can trigger the platform withdrawal
+ *       422:
+ *         description: Only available in real blockchain mode
+ */
+router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+  const contractId = req.params['id'] ?? '';
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    return;
+  }
+
+  const contractResult = await getContractById(contractId);
+  if (!contractResult.success) {
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
+    return;
+  }
+
+  const contract = contractResult.data;
+  if (contract.employerId !== userId && req.user?.role !== 'admin') {
+    sendErrorResponse(res, 403, 'UNAUTHORIZED', 'Only the employer (or an admin) can trigger the platform withdrawal. Freelancers must claim their allocation from their own wallet.', requestId);
+    return;
+  }
+
+  const { getBlockchainMode } = await import('../services/blockchain/factory.js');
+  const { isWeb3Available } = await import('../services/web3-client.js');
+  if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
+    sendErrorResponse(res, 422, 'ESCROW_WITHDRAW_UNAVAILABLE', 'Escrow withdrawals are only available in real blockchain mode', requestId);
+    return;
+  }
+
+  if (!contract.escrowAddress) {
+    sendErrorResponse(res, 400, 'ESCROW_NOT_FOUND', 'Contract has no escrow address', requestId);
+    return;
+  }
+
+  try {
+    const { withdrawFromEscrow } = await import('../services/escrow-blockchain.js');
+    const result = await withdrawFromEscrow(contract.escrowAddress);
+    res.status(200).json({
+      message: 'Escrow withdrawal processed',
+      transactionHash: result.transactionHash,
+    });
+  } catch (error) {
+    console.error('Error withdrawing from escrow:', error);
+    sendErrorResponse(res, 500, 'WITHDRAW_FAILED', 'Failed to withdraw from escrow', requestId);
+  }
+}));
+
+/**
+ * @swagger
  * /api/contracts/{id}/cancel:
  *   post:
  *     summary: Cancel a pending contract

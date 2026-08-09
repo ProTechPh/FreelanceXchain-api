@@ -97,32 +97,21 @@ const mockDisputeRepo = {
   clear: () => disputeStore.clear(),
 };
 
-// Create mock escrow operations
-const mockEscrowOps = {
-  getEscrowByContractId: jest.fn<any>(async (contractId: string) => ({
-    address: '0x' + 'e'.repeat(40),
-    contractId,
-    employerAddress: '0x' + 'f'.repeat(40),
-    freelancerAddress: '0x' + 'a'.repeat(40),
-    totalAmount: BigInt(5000),
-    balance: BigInt(5000),
-    milestones: [],
-    deployedAt: Date.now(),
-    deploymentTxHash: '0x' + 'd'.repeat(64),
-  })),
-  releaseMilestone: jest.fn<any>(async () => ({
+// Create mock blockchain adapter (dispute escrow resolution routes through it)
+const mockBlockchainAdapter = {
+  isAvailable: jest.fn<any>(() => true),
+  resolveDispute: jest.fn<any>(async () => ({
     transactionHash: '0x' + 'b'.repeat(64),
-    blockNumber: 12345,
-    status: 'success',
-    gasUsed: BigInt(21000),
-    timestamp: Date.now(),
+    receipt: {
+      transactionHash: '0x' + 'b'.repeat(64),
+      blockNumber: 12345,
+      status: 'success',
+      gasUsed: BigInt(21000),
+      timestamp: Date.now(),
+    },
   })),
-  refundMilestone: jest.fn<any>(async () => ({
-    transactionHash: '0x' + 'c'.repeat(64),
-    blockNumber: 12346,
-    status: 'success',
-    gasUsed: BigInt(21000),
-    timestamp: Date.now(),
+  disputeMilestone: jest.fn<any>(async () => ({
+    transactionHash: '0x' + 'd'.repeat(64),
   })),
 };
 
@@ -145,11 +134,9 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
   notificationRepository: mockNotificationRepo,
 }));
 
-// Mock escrow contract
-jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () => ({
-  getEscrowByContractId: mockEscrowOps.getEscrowByContractId,
-  releaseMilestone: mockEscrowOps.releaseMilestone,
-  refundMilestone: mockEscrowOps.refundMilestone,
+// Mock blockchain factory (dispute resolution routes through the adapter)
+jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+  getBlockchainAdapter: jest.fn<any>(() => mockBlockchainAdapter),
 }));
 
 // Mock dispute-registry (blockchain recording)
@@ -903,24 +890,86 @@ describe('Dispute Service - Direct Branch Coverage', () => {
     if (!result.success) expect(result.error.code).toBe('ALREADY_RESOLVED');
   });
 
-  it('should handle resolveDispute with split decision', async () => {
+  it('should handle resolveDispute with split decision (defaults to 5000 bps)', async () => {
     const { resolveDispute } = await importModule();
     mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
       id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [], resolution: null,
     });
     mockContractRepository.getContractById.mockResolvedValueOnce({
-      id: 'c1', project_id: 'p1',
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
     });
     mockProjectRepository.findProjectById.mockResolvedValueOnce({
       id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
+      transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
+    });
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [],
+      resolution: { decision: 'split', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
     });
 
     const result = await resolveDispute({
       disputeId: 'd1', decision: 'split', reasoning: 'test',
       resolvedBy: 'admin-1', resolverRole: 'admin',
     });
+    expect(result.success).toBe(true);
+    // Default split ratio is 50/50 (5000 bps)
+    expect(mockBlockchainAdapter.resolveDispute).toHaveBeenCalledWith('0xescrow', 0, 5000);
+    if (result.success) expect(result.data.resolution?.decision).toBe('split');
+  });
+
+  it('should handle resolveDispute with split decision and explicit freelancerBps', async () => {
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [], resolution: null,
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
+      transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
+    });
+    mockDisputeRepository.updateDispute.mockResolvedValueOnce({
+      id: 'd1', status: 'resolved', contract_id: 'c1', milestone_id: 'm1',
+      initiator_id: 'i1', reason: 'r', evidence: [],
+      resolution: { decision: 'split', reasoning: 'test', resolved_by: 'admin-1', resolved_at: new Date().toISOString() },
+    });
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'split', reasoning: 'test', freelancerBps: 7500,
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
+    expect(result.success).toBe(true);
+    expect(mockBlockchainAdapter.resolveDispute).toHaveBeenCalledWith('0xescrow', 0, 7500);
+  });
+
+  it('should reject split decisions with invalid freelancerBps (0 or 10000)', async () => {
+    mockBlockchainAdapter.resolveDispute.mockClear();
+    const { resolveDispute } = await importModule();
+    mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+      id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+    });
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+
+    const result = await resolveDispute({
+      disputeId: 'd1', decision: 'split', reasoning: 'test', freelancerBps: 0,
+      resolvedBy: 'admin-1', resolverRole: 'admin',
+    });
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.error.code).toBe('UNSUPPORTED_DECISION');
+    if (!result.success) expect(result.error.code).toBe('INVALID_SPLIT_BPS');
+    expect(mockBlockchainAdapter.resolveDispute).not.toHaveBeenCalled();
   });
 
   it('should handle getDisputesByContract when unauthorized', async () => {
@@ -1031,9 +1080,9 @@ describe('Dispute Service - Additional Coverage', () => {
     mockDisputeRepository.getDisputesByInitiator.mockReset();
     mockDisputeRepository.getDisputesByStatus.mockReset();
     mockDisputeRepository.createDispute.mockReset();
-    mockEscrowOps.getEscrowByContractId.mockReset();
-    mockEscrowOps.releaseMilestone.mockReset();
-    mockEscrowOps.refundMilestone.mockReset();
+    mockBlockchainAdapter.isAvailable.mockReset().mockReturnValue(true);
+    mockBlockchainAdapter.resolveDispute.mockReset();
+    mockBlockchainAdapter.disputeMilestone.mockReset();
   });
 
   const importModule = async () => import('../../services/dispute-service.js');
@@ -1047,6 +1096,28 @@ describe('Dispute Service - Additional Coverage', () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('L203: should catch disputeMilestone throw and still succeed', async () => {
+    const { createDispute } = await importModule();
+    mockContractRepository.getContractById.mockResolvedValueOnce({
+      id: 'c1', employer_id: 'e1', freelancer_id: 'f1', project_id: 'p1', status: 'active', escrow_address: '0xescrow',
+    });
+    mockProjectRepository.findProjectById.mockResolvedValueOnce({
+      id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+    });
+    mockDisputeRepository.getDisputeByMilestone.mockResolvedValueOnce(null);
+    mockDisputeRepository.createDispute.mockResolvedValueOnce({
+      id: 'd1', contract_id: 'c1', milestone_id: 'm1', initiator_id: 'e1',
+      reason: 'test', evidence: [], status: 'open', resolution: null,
+      created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+    });
+    mockBlockchainAdapter.disputeMilestone.mockRejectedValueOnce(new Error('chain error'));
+
+    const result = await createDispute({
+      contractId: 'c1', milestoneId: 'm1', initiatorId: 'e1', reason: 'test',
+    });
+    expect(result.success).toBe(true);
   });
 
   it('should return NOT_FOUND when milestone not found in createDispute', async () => {
@@ -1144,7 +1215,6 @@ describe('Dispute Service - Additional Coverage', () => {
     mockProjectRepository.findProjectById.mockResolvedValueOnce({
       id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
     });
-      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
 
       const result = await resolveDispute({
         disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
@@ -1168,7 +1238,6 @@ describe('Dispute Service - Additional Coverage', () => {
     mockProjectRepository.findProjectById.mockResolvedValueOnce({
       id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
     });
-    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
 
     const result = await resolveDispute({
       disputeId: 'd1', decision: 'employer_favor', reasoning: 'test',
@@ -1187,15 +1256,12 @@ describe('Dispute Service - Additional Coverage', () => {
       id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
     });
     mockContractRepository.getContractById.mockResolvedValueOnce({
-      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
     });
     mockProjectRepository.findProjectById.mockResolvedValueOnce({
       id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
     });
-    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
-      address: '0xescrow', employerAddress: '0xemployer',
-    });
-    mockEscrowOps.releaseMilestone.mockRejectedValueOnce(new Error('Payment failed'));
+    mockBlockchainAdapter.resolveDispute.mockRejectedValueOnce(new Error('Payment failed'));
 
     const result = await resolveDispute({
       disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
@@ -1220,15 +1286,12 @@ describe('Dispute Service - Additional Coverage', () => {
       id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
     });
     mockContractRepository.getContractById.mockResolvedValueOnce({
-      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+      id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
     });
     mockProjectRepository.findProjectById.mockResolvedValueOnce({
       id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
     });
-    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
-      address: '0xescrow', employerAddress: '0xemployer',
-    });
-    mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+    mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
       transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
     });
     mockDisputeRepository.updateDispute.mockResolvedValueOnce(null);
@@ -1260,9 +1323,9 @@ describe('Dispute Service - Coverage Gaps', () => {
     mockDisputeRepository.getDisputesByInitiator.mockReset();
     mockDisputeRepository.getDisputesByStatus.mockReset();
     mockDisputeRepository.createDispute.mockReset();
-    mockEscrowOps.getEscrowByContractId.mockReset();
-    mockEscrowOps.releaseMilestone.mockReset();
-    mockEscrowOps.refundMilestone.mockReset();
+    mockBlockchainAdapter.isAvailable.mockReset().mockReturnValue(true);
+    mockBlockchainAdapter.resolveDispute.mockReset();
+    mockBlockchainAdapter.disputeMilestone.mockReset();
     mockCreateDisputeOnBlockchain.mockReset().mockResolvedValue({
       transactionHash: '0x' + 'a'.repeat(64), blockNumber: 12345, status: 'success',
     });
@@ -1617,7 +1680,6 @@ describe('Dispute Service - Coverage Gaps', () => {
       mockProjectRepository.findProjectById.mockResolvedValueOnce({
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
-      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
 
       const result = await resolveDispute({
         disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
@@ -1641,7 +1703,6 @@ describe('Dispute Service - Coverage Gaps', () => {
       mockProjectRepository.findProjectById.mockResolvedValueOnce({
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
-      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce(null);
 
       const result = await resolveDispute({
         disputeId: 'd1', decision: 'employer_favor', reasoning: 'test',
@@ -1660,15 +1721,33 @@ describe('Dispute Service - Coverage Gaps', () => {
         id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
       });
       mockProjectRepository.findProjectById.mockResolvedValueOnce({
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
-      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
-        address: '0xescrow', employerAddress: '0xemployer',
+      mockBlockchainAdapter.resolveDispute.mockRejectedValueOnce(new Error('Payment failed'));
+
+      const result = await resolveDispute({
+        disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
+        resolvedBy: 'admin-1', resolverRole: 'admin',
       });
-      mockEscrowOps.releaseMilestone.mockRejectedValueOnce(new Error('Payment failed'));
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('PAYMENT_FAILED');
+    });
+
+    it('L456-460: should return PAYMENT_FAILED when blockchain adapter is unavailable', async () => {
+      const { resolveDispute } = await importModule();
+      mockDisputeRepository.getDisputeById.mockResolvedValueOnce({
+        id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
+      });
+      mockContractRepository.getContractById.mockResolvedValueOnce({
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
+      });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce({
+        id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
+      });
+      mockBlockchainAdapter.isAvailable.mockReturnValueOnce(false);
 
       const result = await resolveDispute({
         disputeId: 'd1', decision: 'freelancer_favor', reasoning: 'test',
@@ -1686,7 +1765,7 @@ describe('Dispute Service - Coverage Gaps', () => {
         id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
       });
       mockProjectRepository.findProjectById.mockResolvedValueOnce({
         id: 'p1', milestones: [
@@ -1694,10 +1773,7 @@ describe('Dispute Service - Coverage Gaps', () => {
           { id: 'm2', title: 'M2', status: 'pending', amount: 200 },
         ],
       });
-      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
-        address: '0xescrow', employerAddress: '0xemployer',
-      });
-      mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+      mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
         transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
       });
       mockDisputeRepository.updateDispute.mockResolvedValueOnce({
@@ -1721,15 +1797,12 @@ describe('Dispute Service - Coverage Gaps', () => {
         id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
       });
       mockProjectRepository.findProjectById.mockResolvedValueOnce({
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
-      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
-        address: '0xescrow', employerAddress: '0xemployer',
-      });
-      mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+      mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
         transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
       });
       mockDisputeRepository.updateDispute.mockResolvedValueOnce(null);
@@ -1748,15 +1821,12 @@ describe('Dispute Service - Coverage Gaps', () => {
         id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
       });
       mockProjectRepository.findProjectById.mockResolvedValueOnce({
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
-      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
-        address: '0xescrow', employerAddress: '0xemployer',
-      });
-      mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+      mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
         transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
       });
       mockDisputeRepository.updateDispute.mockResolvedValueOnce({
@@ -1786,15 +1856,12 @@ describe('Dispute Service - Coverage Gaps', () => {
         id: 'd1', status: 'open', contract_id: 'c1', milestone_id: 'm1',
       });
       mockContractRepository.getContractById.mockResolvedValueOnce({
-        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1',
+        id: 'c1', project_id: 'p1', employer_id: 'e1', freelancer_id: 'f1', escrow_address: '0xescrow',
       });
       mockProjectRepository.findProjectById.mockResolvedValueOnce({
         id: 'p1', milestones: [{ id: 'm1', title: 'M1', status: 'submitted', amount: 100 }],
       });
-      mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
-        address: '0xescrow', employerAddress: '0xemployer',
-      });
-      mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+      mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
         transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
       });
       mockDisputeRepository.updateDispute.mockResolvedValueOnce({
@@ -1847,9 +1914,9 @@ describe('Dispute Service - Additional Branch Coverage', () => {
     mockDisputeRepository.getDisputesByInitiator.mockReset();
     mockDisputeRepository.getDisputesByStatus.mockReset();
     mockDisputeRepository.createDispute.mockReset();
-    mockEscrowOps.getEscrowByContractId.mockReset();
-    mockEscrowOps.releaseMilestone.mockReset();
-    mockEscrowOps.refundMilestone.mockReset();
+    mockBlockchainAdapter.isAvailable.mockReset().mockReturnValue(true);
+    mockBlockchainAdapter.resolveDispute.mockReset();
+    mockBlockchainAdapter.disputeMilestone.mockReset();
     mockCreateDisputeOnBlockchain.mockReset().mockResolvedValue({
       transactionHash: '0x' + 'a'.repeat(64), blockNumber: 12345, status: 'success',
     });
@@ -1916,10 +1983,7 @@ describe('Dispute Service - Additional Branch Coverage', () => {
         { id: 'ms-3', title: 'M3', amount: 1000, status: 'approved' },
       ],
     });
-    mockEscrowOps.getEscrowByContractId.mockResolvedValueOnce({
-      address: '0xescrow', employerAddress: '0xemployer',
-    });
-    mockEscrowOps.releaseMilestone.mockResolvedValueOnce({
+    mockBlockchainAdapter.resolveDispute.mockResolvedValueOnce({
       transactionHash: '0xtx', blockNumber: 1, status: 'success', gasUsed: BigInt(21000), timestamp: Date.now(),
     });
     mockDisputeRepository.updateDispute.mockResolvedValueOnce({

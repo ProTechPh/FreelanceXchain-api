@@ -33,6 +33,7 @@ export type WalletInfo = {
 // Singleton instances
 let provider: JsonRpcProvider | null = null;
 let wallet: Wallet | null = null;
+let arbiterWallet: Wallet | null = null;
 const GAS_PRICE_REDUCTION_PERCENT = BigInt(10);
 const HUNDRED_PERCENT = BigInt(100);
 
@@ -76,6 +77,53 @@ export function getWallet(): Wallet {
 }
 
 /**
+ * Get or create the arbiter wallet instance.
+ *
+ * The on-chain FreelanceEscrow contract restricts resolveDispute() to the arbiter
+ * address (onlyArbiter). The arbiter is a dedicated platform address configured via
+ * PLATFORM_ARBITER_ADDRESS/PLATFORM_ARBITER_PRIVATE_KEY and must differ from the
+ * deployer wallet (the on-chain employer).
+ */
+export function getArbiterWallet(): Wallet {
+  if (!config.blockchain.arbiterPrivateKey) {
+    throw new Error('PLATFORM_ARBITER_PRIVATE_KEY is not configured');
+  }
+  if (!arbiterWallet) {
+    arbiterWallet = new Wallet(config.blockchain.arbiterPrivateKey, getProvider());
+    // Fail fast if the key does not match the configured arbiter address
+    if (config.blockchain.arbiterAddress) {
+      let configuredAddress: string;
+      try {
+        configuredAddress = getChecksumAddress(config.blockchain.arbiterAddress);
+      } catch {
+        throw new Error(`PLATFORM_ARBITER_ADDRESS is not a valid Ethereum address: ${config.blockchain.arbiterAddress}`);
+      }
+      if (configuredAddress !== arbiterWallet.address) {
+        throw new Error('PLATFORM_ARBITER_PRIVATE_KEY does not match PLATFORM_ARBITER_ADDRESS');
+      }
+    }
+  }
+  return arbiterWallet;
+}
+
+/**
+ * Get a fresh arbiter wallet instance (not cached).
+ *
+ * Like getFreshWallet, this avoids nonce collisions when multiple arbiter-signed
+ * transactions (e.g. concurrent dispute resolutions on different escrows) would
+ * otherwise be broadcast from the same cached wallet with the same nonce.
+ */
+export function getFreshArbiterWallet(): Wallet {
+  if (!config.blockchain.arbiterPrivateKey) {
+    throw new Error('PLATFORM_ARBITER_PRIVATE_KEY is not configured');
+  }
+  if (!config.blockchain.rpcUrl) {
+    throw new Error('BLOCKCHAIN_RPC_URL is not configured');
+  }
+  return new Wallet(config.blockchain.arbiterPrivateKey, new JsonRpcProvider(config.blockchain.rpcUrl));
+}
+
+/**
  * Get a fresh wallet instance (not cached) for sequential transactions
  * This creates a new provider connection to ensure accurate nonce
  */
@@ -97,6 +145,7 @@ export function getFreshWallet(): Wallet {
 export function resetWeb3Instances(): void {
   provider = null;
   wallet = null;
+  arbiterWallet = null;
 }
 
 /**
@@ -356,6 +405,17 @@ export function getContractWithSigner(
 ): ethers.Contract {
   const w = getWallet();
   return new ethers.Contract(address, abi, w);
+}
+
+/**
+ * Get contract instance for arbiter-only writing operations
+ * (e.g. FreelanceEscrow.resolveDispute, which is restricted to the arbiter)
+ */
+export function getContractWithArbiterSigner(
+  address: string,
+  abi: ethers.InterfaceAbi
+): ethers.Contract {
+  return new ethers.Contract(address, abi, getArbiterWallet());
 }
 
 /**

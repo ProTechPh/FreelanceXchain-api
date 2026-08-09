@@ -3,12 +3,14 @@ import path from 'node:path';
 
 const mockGetContract = jest.fn();
 const mockGetContractWithSigner = jest.fn();
+const mockGetContractWithArbiterSigner = jest.fn();
 const mockIsWeb3Available = jest.fn();
 const mockGetWallet = jest.fn();
 
 jest.unstable_mockModule(path.resolve(process.cwd(), 'src/services/web3-client.ts'), () => ({
   getContract: mockGetContract,
   getContractWithSigner: mockGetContractWithSigner,
+  getContractWithArbiterSigner: mockGetContractWithArbiterSigner,
   isWeb3Available: mockIsWeb3Available,
   getWallet: mockGetWallet,
   getProvider: jest.fn(),
@@ -58,6 +60,8 @@ describe('Escrow Blockchain Integration - Refactored', () => {
       getMilestone: jest.fn(),
       getMilestoneCount: jest.fn(),
       getRemainingAmount: jest.fn(),
+      pendingWithdrawals: jest.fn(),
+      withdraw: jest.fn(),
       getAddress: jest.fn<any>().mockResolvedValue('0xEscrowContract'),
       deploymentTransaction: jest.fn(),
       waitForDeployment: jest.fn<any>().mockResolvedValue(undefined),
@@ -65,6 +69,7 @@ describe('Escrow Blockchain Integration - Refactored', () => {
 
     mockGetContract.mockReturnValue(mockContract);
     mockGetContractWithSigner.mockReturnValue(mockContract);
+    mockGetContractWithArbiterSigner.mockReturnValue(mockContract);
   });
 
   describe('deployEscrowContract', () => {
@@ -240,7 +245,7 @@ describe('Escrow Blockchain Integration - Refactored', () => {
   });
 
   describe('resolveDispute', () => {
-    it('should resolve dispute in favor of freelancer', async () => {
+    it('should resolve dispute in favor of freelancer (10000 bps) signed by the arbiter', async () => {
       const mockReceipt = {
         hash: '0xResolveHash',
         blockNumber: 104,
@@ -251,14 +256,94 @@ describe('Escrow Blockchain Integration - Refactored', () => {
       });
 
       const { resolveDispute } = await import('../../services/escrow-blockchain.js');
-      const result = await resolveDispute('0xEscrowContract', 0, true);
+      const result = await resolveDispute('0xEscrowContract', 0, 10000);
 
       expect(result).toEqual({
         transactionHash: '0xResolveHash',
         receipt: mockReceipt,
       });
 
-      expect(mockContract.resolveDispute).toHaveBeenCalledWith(0, true);
+      expect(mockContract.resolveDispute).toHaveBeenCalledWith(0, 10000);
+      expect(mockGetContractWithArbiterSigner).toHaveBeenCalledWith('0xEscrowContract', []);
+    });
+
+    it('should resolve dispute in favor of employer (0 bps)', async () => {
+      const mockReceipt = {
+        hash: '0xResolveHashEmployer',
+        blockNumber: 105,
+      };
+
+      mockContract.resolveDispute.mockResolvedValue({
+        wait: jest.fn<any>().mockResolvedValue(mockReceipt),
+      });
+
+      const { resolveDispute } = await import('../../services/escrow-blockchain.js');
+      const result = await resolveDispute('0xEscrowContract', 1, 0);
+
+      expect(mockContract.resolveDispute).toHaveBeenCalledWith(1, 0);
+      expect(result.transactionHash).toBe('0xResolveHashEmployer');
+    });
+
+    it('should reject bps outside the 0-10000 range', async () => {
+      const { resolveDispute } = await import('../../services/escrow-blockchain.js');
+
+      await expect(resolveDispute('0xEscrowContract', 0, 10001)).rejects.toThrow('freelancerBps must be between 0 and 10000');
+      await expect(resolveDispute('0xEscrowContract', 0, -1)).rejects.toThrow('freelancerBps must be between 0 and 10000');
+      expect(mockContract.resolveDispute).not.toHaveBeenCalled();
+    });
+
+    it('should throw when Web3 is not available', async () => {
+      mockIsWeb3Available.mockReturnValue(false);
+      const { resolveDispute } = await import('../../services/escrow-blockchain.js');
+      await expect(resolveDispute('0xEscrowContract', 0, 10000)).rejects.toThrow('Web3 is not configured');
+    });
+  });
+
+  describe('getPendingWithdrawals', () => {
+    it('should return the pending withdrawal amount for a party', async () => {
+      mockContract.pendingWithdrawals.mockResolvedValue(BigInt('1500000000000000000'));
+
+      const { getPendingWithdrawals } = await import('../../services/escrow-blockchain.js');
+      const amount = await getPendingWithdrawals('0xEscrowContract', '0xFreelancer');
+
+      expect(amount).toBe(BigInt('1500000000000000000'));
+      expect(mockContract.pendingWithdrawals).toHaveBeenCalledWith('0xFreelancer');
+      expect(mockGetContract).toHaveBeenCalledWith('0xEscrowContract', []);
+    });
+
+    it('should throw when Web3 is not available', async () => {
+      mockIsWeb3Available.mockReturnValue(false);
+      const { getPendingWithdrawals } = await import('../../services/escrow-blockchain.js');
+      await expect(getPendingWithdrawals('0xEscrowContract', '0xFreelancer')).rejects.toThrow('Web3 is not configured');
+    });
+  });
+
+  describe('withdrawFromEscrow', () => {
+    it('should withdraw pending funds with the server wallet', async () => {
+      const mockReceipt = {
+        hash: '0xWithdrawHash',
+        blockNumber: 106,
+      };
+
+      mockContract.withdraw.mockResolvedValue({
+        wait: jest.fn<any>().mockResolvedValue(mockReceipt),
+      });
+
+      const { withdrawFromEscrow } = await import('../../services/escrow-blockchain.js');
+      const result = await withdrawFromEscrow('0xEscrowContract');
+
+      expect(result).toEqual({
+        transactionHash: '0xWithdrawHash',
+        receipt: mockReceipt,
+      });
+      expect(mockContract.withdraw).toHaveBeenCalledTimes(1);
+      expect(mockGetContractWithSigner).toHaveBeenCalledWith('0xEscrowContract', []);
+    });
+
+    it('should throw when Web3 is not available', async () => {
+      mockIsWeb3Available.mockReturnValue(false);
+      const { withdrawFromEscrow } = await import('../../services/escrow-blockchain.js');
+      await expect(withdrawFromEscrow('0xEscrowContract')).rejects.toThrow('Web3 is not configured');
     });
   });
 });

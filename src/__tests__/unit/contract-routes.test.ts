@@ -819,6 +819,14 @@ describe('contract-routes - ?? nullish fallback branches', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
       getWallet: () => ({ address: '0xWALLET' }),
+      isWeb3Available: () => true,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: () => 'real',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+      getPendingWithdrawals: jest.fn(),
+      withdrawFromEscrow: jest.fn(),
     }));
     jest.unstable_mockModule('ethers', () => ({
       ethers: { parseEther: (v: string) => BigInt(Math.floor(Number(v) * 1e18)) },
@@ -872,6 +880,31 @@ describe('contract-routes - ?? nullish fallback branches', () => {
     mockGetDisputesByContract.mockResolvedValueOnce({ success: true, data: [] });
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/contracts/c1/disputes');
+    expect(res.status).toBe(200);
+  });
+
+  it('L400: GET /:id/escrow/withdrawable with nullish id param', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { freelancerWallet: '0xFREELANCER' } });
+    const mockGetPendingWithdrawals = (await import('../../services/escrow-blockchain.js')).getPendingWithdrawals as jest.Mock;
+    mockGetPendingWithdrawals
+      .mockResolvedValueOnce(BigInt('1000000000000000000'))
+      .mockResolvedValueOnce(BigInt('2000000000000000000'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(200);
+  });
+
+  it('L500: POST /:id/escrow/withdraw with nullish id param', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    const mockWithdrawFromEscrow = (await import('../../services/escrow-blockchain.js')).withdrawFromEscrow as jest.Mock;
+    mockWithdrawFromEscrow.mockResolvedValueOnce({ transactionHash: '0xTX', receipt: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
     expect(res.status).toBe(200);
   });
 });
@@ -1016,5 +1049,434 @@ describe('contract-routes - remaining branch coverage', () => {
     const res = await request(app).post('/api/contracts/c1/fund');
     expect(res.status).toBe(500);
     expect(res.body.error.message).toBe('Failed to initialize escrow');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Real-blockchain escrow withdraw / withdrawable endpoints
+// Routes: GET /:id/escrow/withdrawable, POST /:id/escrow/withdraw
+// ═══════════════════════════════════════════════════════════════
+
+describe('contract-routes - escrow withdraw endpoints', () => {
+  let app: any;
+  const mockGetContractById = jest.fn<any>();
+  const mockGetContractWalletAddresses = jest.fn<any>();
+  const mockGetBlockchainMode = jest.fn<any>();
+  const mockIsWeb3Available = jest.fn<any>();
+  const mockGetWallet = jest.fn<any>();
+  const mockGetPendingWithdrawals = jest.fn<any>();
+  const mockWithdrawFromEscrow = jest.fn<any>();
+
+  beforeEach(async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', role: 'employer' };
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: jest.fn(),
+      cancelPendingContract: jest.fn(),
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
+      getProjectById: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+      initializeContractEscrow: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
+      getDisputesByContract: jest.fn(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
+      contractRepository: { updateContract: jest.fn() },
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: mockGetBlockchainMode,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: mockGetWallet,
+      isWeb3Available: mockIsWeb3Available,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+      getPendingWithdrawals: mockGetPendingWithdrawals,
+      withdrawFromEscrow: mockWithdrawFromEscrow,
+    }));
+
+    const express = (await import('express')).default;
+    const router = (await import('../../routes/contract-routes.js')).default;
+    app = express();
+    app.use(express.json());
+    app.use('/api/contracts', router);
+    jest.clearAllMocks();
+    mockGetBlockchainMode.mockReturnValue('real');
+    mockIsWeb3Available.mockReturnValue(true);
+    mockGetWallet.mockReturnValue({ address: '0xPLATFORM' });
+  });
+
+  it('GET /:id/escrow/withdrawable returns pending withdrawal amounts', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { freelancerWallet: '0xFREELANCER' } });
+    mockGetPendingWithdrawals
+      .mockResolvedValueOnce(BigInt('1000000000000000000'))
+      .mockResolvedValueOnce(BigInt('2000000000000000000'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(200);
+    expect(res.body.escrowAddress).toBe('0xESC');
+    expect(res.body.pendingWithdrawals.platformWallet).toBe('0xPLATFORM');
+    expect(res.body.pendingWithdrawals.platformAmount).toBe('1000000000000000000');
+    expect(res.body.pendingWithdrawals.freelancerWallet).toBe('0xFREELANCER');
+    expect(res.body.pendingWithdrawals.freelancerAmount).toBe('2000000000000000000');
+    expect(mockGetPendingWithdrawals).toHaveBeenCalledWith('0xESC', '0xPLATFORM');
+    expect(mockGetPendingWithdrawals).toHaveBeenCalledWith('0xESC', '0xFREELANCER');
+  });
+
+  it('GET /:id/escrow/withdrawable returns 401 when not authenticated', async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { role: 'employer' }; next(); },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: jest.fn(),
+      cancelPendingContract: jest.fn(),
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: mockGetBlockchainMode,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: mockGetWallet,
+      isWeb3Available: mockIsWeb3Available,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+      getPendingWithdrawals: mockGetPendingWithdrawals,
+      withdrawFromEscrow: mockWithdrawFromEscrow,
+    }));
+
+    const express2 = (await import('express')).default;
+    const router2 = (await import('../../routes/contract-routes.js')).default;
+    const app2 = express2();
+    app2.use(express2.json());
+    app2.use('/api/contracts', router2);
+    const request = (await import('supertest')).default;
+    const res = await request(app2).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(401);
+  });
+
+  it('GET /:id/escrow/withdrawable returns 404 when contract not found', async () => {
+    mockGetContractById.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /:id/escrow/withdrawable returns 403 for a user not party to the contract', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'other', freelancerId: 'other', escrowAddress: '0xESC' },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(403);
+  });
+
+  it('GET /:id/escrow/withdrawable returns 422 in simulated mode', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockGetBlockchainMode.mockReturnValue('simulated');
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe('ESCROW_WITHDRAW_UNAVAILABLE');
+  });
+
+  it('GET /:id/escrow/withdrawable returns 422 when web3 is unavailable', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockIsWeb3Available.mockReturnValue(false);
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(422);
+  });
+
+  it('GET /:id/escrow/withdrawable returns 400 when contract has no escrow address', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: null },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ESCROW_NOT_FOUND');
+  });
+
+  it('GET /:id/escrow/withdrawable returns 400 when wallet lookup fails', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: false, error: { code: 'WALLET_ERROR', message: 'Wallet error' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WALLET_ERROR');
+  });
+
+  it('GET /:id/escrow/withdrawable returns 400 when freelancer has no wallet address', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { freelancerWallet: null } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('WALLET_NOT_FOUND');
+    expect(mockGetPendingWithdrawals).not.toHaveBeenCalled();
+  });
+
+  it('GET /:id/escrow/withdrawable returns 500 when the chain call throws', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockGetContractWalletAddresses.mockResolvedValueOnce({ success: true, data: { freelancerWallet: '0xFREELANCER' } });
+    mockGetPendingWithdrawals.mockRejectedValue(new Error('rpc down'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).get('/api/contracts/c1/escrow/withdrawable');
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
+  });
+
+  it('POST /:id/escrow/withdraw processes the platform withdrawal', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockWithdrawFromEscrow.mockResolvedValueOnce({ transactionHash: '0xTX', receipt: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(200);
+    expect(res.body.message).toBe('Escrow withdrawal processed');
+    expect(res.body.transactionHash).toBe('0xTX');
+    expect(mockWithdrawFromEscrow).toHaveBeenCalledWith('0xESC');
+  });
+
+  it('POST /:id/escrow/withdraw returns 401 when not authenticated', async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => { req.user = { role: 'employer' }; next(); },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: jest.fn(),
+      cancelPendingContract: jest.fn(),
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: mockGetBlockchainMode,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: mockGetWallet,
+      isWeb3Available: mockIsWeb3Available,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+      getPendingWithdrawals: mockGetPendingWithdrawals,
+      withdrawFromEscrow: mockWithdrawFromEscrow,
+    }));
+
+    const express2 = (await import('express')).default;
+    const router2 = (await import('../../routes/contract-routes.js')).default;
+    const app2 = express2();
+    app2.use(express2.json());
+    app2.use('/api/contracts', router2);
+    const request = (await import('supertest')).default;
+    const res = await request(app2).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(401);
+  });
+
+  it('POST /:id/escrow/withdraw returns 404 when contract not found', async () => {
+    mockGetContractById.mockResolvedValueOnce({ success: false, error: { code: 'NOT_FOUND', message: 'Not found' } });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /:id/escrow/withdraw returns 403 for a freelancer', async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'f1', role: 'freelancer' };
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: jest.fn(),
+      cancelPendingContract: jest.fn(),
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: mockGetBlockchainMode,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: mockGetWallet,
+      isWeb3Available: mockIsWeb3Available,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+      getPendingWithdrawals: mockGetPendingWithdrawals,
+      withdrawFromEscrow: mockWithdrawFromEscrow,
+    }));
+
+    const express2 = (await import('express')).default;
+    const router2 = (await import('../../routes/contract-routes.js')).default;
+    const app2 = express2();
+    app2.use(express2.json());
+    app2.use('/api/contracts', router2);
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'emp-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app2).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(403);
+  });
+
+  it('POST /:id/escrow/withdraw allows an admin', async () => {
+    jest.resetModules();
+    jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
+      authMiddleware: (req: any, _res: any, next: any) => {
+        req.user = { userId: 'admin-1', role: 'admin' };
+        next();
+      },
+      requireRole: () => (_req: any, _res: any, next: any) => next(),
+      requireVerifiedKyc: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
+      apiRateLimiter: (_req: any, _res: any, next: any) => next(),
+      mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    }));
+    jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
+      getRequestId: () => 'test-request-id',
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/contract-service.ts'), () => ({
+      getContractById: mockGetContractById,
+      getUserContracts: jest.fn(),
+      updateContractStatus: jest.fn(),
+      cancelPendingContract: jest.fn(),
+      getContractWalletAddresses: mockGetContractWalletAddresses,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
+      getBlockchainMode: mockGetBlockchainMode,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
+      getWallet: mockGetWallet,
+      isWeb3Available: mockIsWeb3Available,
+    }));
+    jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () => ({
+      getPendingWithdrawals: mockGetPendingWithdrawals,
+      withdrawFromEscrow: mockWithdrawFromEscrow,
+    }));
+
+    const express2 = (await import('express')).default;
+    const router2 = (await import('../../routes/contract-routes.js')).default;
+    const app2 = express2();
+    app2.use(express2.json());
+    app2.use('/api/contracts', router2);
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'emp-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockWithdrawFromEscrow.mockResolvedValueOnce({ transactionHash: '0xTX', receipt: {} });
+    const request = (await import('supertest')).default;
+    const res = await request(app2).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(200);
+    expect(mockWithdrawFromEscrow).toHaveBeenCalledWith('0xESC');
+  });
+
+  it('POST /:id/escrow/withdraw returns 422 in simulated mode', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockGetBlockchainMode.mockReturnValue('simulated');
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(422);
+  });
+
+  it('POST /:id/escrow/withdraw returns 400 when contract has no escrow address', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: null },
+    });
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('ESCROW_NOT_FOUND');
+  });
+
+  it('POST /:id/escrow/withdraw returns 500 when the chain call throws', async () => {
+    mockGetContractById.mockResolvedValueOnce({
+      success: true, data: { id: 'c1', employerId: 'user-1', freelancerId: 'f1', escrowAddress: '0xESC' },
+    });
+    mockWithdrawFromEscrow.mockRejectedValue(new Error('rpc down'));
+    const request = (await import('supertest')).default;
+    const res = await request(app).post('/api/contracts/c1/escrow/withdraw');
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('WITHDRAW_FAILED');
   });
 });

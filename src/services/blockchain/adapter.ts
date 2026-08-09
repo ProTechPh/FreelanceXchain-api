@@ -71,10 +71,15 @@ export interface IBlockchainAdapter {
   submitMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult>;
   approveMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult>;
   disputeMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult>;
+  /**
+   * Resolve a disputed milestone.
+   * @param freelancerBps Portion of the milestone awarded to the freelancer (0-10000).
+   *                      10000 = full to freelancer, 0 = full to employer.
+   */
   resolveDispute(
     escrowAddress: string,
     milestoneIndex: number,
-    inFavorOfFreelancer: boolean
+    freelancerBps: number
   ): Promise<TransactionResult>;
   refundEscrow(escrowAddress: string): Promise<TransactionResult>;
   getMilestone(escrowAddress: string, milestoneIndex: number): Promise<{

@@ -7,6 +7,7 @@ const mockDeployEscrow = jest.fn() as jest.Mock<any>;
 const mockDepositToEscrow = jest.fn() as jest.Mock<any>;
 const mockReleaseMilestone = jest.fn() as jest.Mock<any>;
 const mockRefundMilestone = jest.fn() as jest.Mock<any>;
+const mockResolveDisputeSplit = jest.fn() as jest.Mock<any>;
 const mockGetEscrowBalance = jest.fn() as jest.Mock<any>;
 const mockGetEscrowState = jest.fn() as jest.Mock<any>;
 
@@ -15,6 +16,7 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-contract.ts'), () =>
   depositToEscrow: mockDepositToEscrow,
   releaseMilestone: mockReleaseMilestone,
   refundMilestone: mockRefundMilestone,
+  resolveDisputeSplit: mockResolveDisputeSplit,
   getEscrowBalance: mockGetEscrowBalance,
   getEscrowState: mockGetEscrowState,
 }));
@@ -149,39 +151,59 @@ describe('SimulatedBlockchainAdapter', () => {
   });
 
   describe('resolveDispute', () => {
-    it('should release milestone in favor of freelancer', async () => {
+    it('should release milestone in favor of freelancer (10000 bps)', async () => {
       mockGetEscrowState.mockResolvedValue(makeEscrowState());
       mockReleaseMilestone.mockResolvedValue(makeTxReceipt('resolve-release-tx'));
 
-      const result = await adapter.resolveDispute(ESCROW_ADDR, 0, true);
+      const result = await adapter.resolveDispute(ESCROW_ADDR, 0, 10000);
       expect(result.transactionHash).toBe('resolve-release-tx');
       expect(mockReleaseMilestone).toHaveBeenCalled();
     });
 
-    it('should refund milestone in favor of employer', async () => {
+    it('should refund milestone in favor of employer (0 bps)', async () => {
       mockGetEscrowState.mockResolvedValue(makeEscrowState());
       mockRefundMilestone.mockResolvedValue(makeTxReceipt('resolve-refund-tx'));
 
-      const result = await adapter.resolveDispute(ESCROW_ADDR, 0, false);
+      const result = await adapter.resolveDispute(ESCROW_ADDR, 0, 0);
       expect(result.transactionHash).toBe('resolve-refund-tx');
       expect(mockRefundMilestone).toHaveBeenCalled();
     });
 
+    it('should resolve a partial (split) resolution via resolveDisputeSplit (5000 bps)', async () => {
+      mockGetEscrowState.mockResolvedValue(makeEscrowState());
+      mockResolveDisputeSplit.mockResolvedValue(makeTxReceipt('resolve-split-tx'));
+
+      const result = await adapter.resolveDispute(ESCROW_ADDR, 0, 5000);
+      expect(result.transactionHash).toBe('resolve-split-tx');
+      expect(mockResolveDisputeSplit).toHaveBeenCalledWith(ESCROW_ADDR, 'ms-0', 5000, '0xEmployer');
+      expect(mockReleaseMilestone).not.toHaveBeenCalled();
+      expect(mockRefundMilestone).not.toHaveBeenCalled();
+    });
+
+    it('should resolve a custom-ratio split resolution (7500 bps)', async () => {
+      mockGetEscrowState.mockResolvedValue(makeEscrowState());
+      mockResolveDisputeSplit.mockResolvedValue(makeTxReceipt('resolve-split-75-tx'));
+
+      const result = await adapter.resolveDispute(ESCROW_ADDR, 1, 7500);
+      expect(result.transactionHash).toBe('resolve-split-75-tx');
+      expect(mockResolveDisputeSplit).toHaveBeenCalledWith(ESCROW_ADDR, 'ms-1', 7500, '0xEmployer');
+    });
+
     it('should throw when escrow not found', async () => {
       mockGetEscrowState.mockResolvedValue(null);
-      await expect(adapter.resolveDispute(ESCROW_ADDR, 0, true)).rejects.toThrow('Escrow not found');
+      await expect(adapter.resolveDispute(ESCROW_ADDR, 0, 10000)).rejects.toThrow('Escrow not found');
     });
 
     it('should throw when milestone index out of bounds', async () => {
       mockGetEscrowState.mockResolvedValue(makeEscrowState());
-      await expect(adapter.resolveDispute(ESCROW_ADDR, 99, true)).rejects.toThrow('Milestone index out of bounds');
+      await expect(adapter.resolveDispute(ESCROW_ADDR, 99, 10000)).rejects.toThrow('Milestone index out of bounds');
     });
 
     it('should throw when milestone at index is falsy (line 159)', async () => {
       mockGetEscrowState.mockResolvedValue(
         makeEscrowState({ milestones: [null, { id: 'ms-1', amount: BigInt(500), status: 'pending' }] })
       );
-      await expect(adapter.resolveDispute(ESCROW_ADDR, 0, true)).rejects.toThrow('Milestone not found');
+      await expect(adapter.resolveDispute(ESCROW_ADDR, 0, 10000)).rejects.toThrow('Milestone not found');
     });
   });
 

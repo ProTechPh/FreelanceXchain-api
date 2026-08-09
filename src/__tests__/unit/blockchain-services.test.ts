@@ -5,6 +5,7 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 
 const mockGetContract = jest.fn();
 const mockGetContractWithSigner = jest.fn();
+const mockGetContractWithArbiterSigner = jest.fn();
 const mockIsWeb3Available = jest.fn();
 const mockGetWallet = jest.fn();
 
@@ -33,6 +34,8 @@ jest.unstable_mockModule(resolveModule('src/services/web3-client.ts'), () => ({
   deployContract: jest.fn(),
   resetWeb3Instances: jest.fn(),
   getFreshWallet: jest.fn(),
+  getArbiterWallet: jest.fn(),
+  getContractWithArbiterSigner: mockGetContractWithArbiterSigner,
 }));
 
 const mockEthers = {

@@ -41,7 +41,7 @@ const router = Router();
  *       properties:
  *         decision:
  *           type: string
- *           enum: [freelancer_favor, employer_favor]
+ *           enum: [freelancer_favor, employer_favor, split]
  *         reasoning:
  *           type: string
  *         resolvedBy:
@@ -109,9 +109,16 @@ const router = Router();
  *       properties:
  *         decision:
  *           type: string
- *           enum: [freelancer_favor, employer_favor]
+ *           enum: [freelancer_favor, employer_favor, split]
  *         reasoning:
  *           type: string
+ *         freelancerBps:
+ *           type: integer
+ *           minimum: 1
+ *           maximum: 9999
+ *           description: >
+ *             Portion of the milestone awarded to the freelancer in basis points (0-10000).
+ *             Only used when decision is 'split'; defaults to 5000 (50/50).
  */
 
 
@@ -696,9 +703,10 @@ router.post(
       const userId = req.user?.userId;
       const userRole = req.user?.role;
       const disputeId = req.params['disputeId'] ?? '';
-      const { decision, reasoning } = req.body as {
-        decision?: 'freelancer_favor' | 'employer_favor';
+      const { decision, reasoning, freelancerBps } = req.body as {
+        decision?: 'freelancer_favor' | 'employer_favor' | 'split';
         reasoning?: string;
+        freelancerBps?: number;
       };
 
       if (!userId) {
@@ -716,9 +724,38 @@ router.post(
         return;
       }
 
-      if (!decision || !['freelancer_favor', 'employer_favor'].includes(decision)) {
+      if (!decision || !['freelancer_favor', 'employer_favor', 'split'].includes(decision)) {
         res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'decision must be one of: freelancer_favor, employer_favor' },
+          error: { code: 'VALIDATION_ERROR', message: 'decision must be one of: freelancer_favor, employer_favor, split' },
+        });
+        return;
+      }
+
+      if (freelancerBps !== undefined && (
+        typeof freelancerBps !== 'number' ||
+        !Number.isInteger(freelancerBps) ||
+        freelancerBps < 0 ||
+        freelancerBps > 10000
+      )) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'freelancerBps must be an integer between 0 and 10000' },
+        });
+        return;
+      }
+
+      // Basis points are only meaningful for split decisions; freelancer_favor = 10000,
+      // employer_favor = 0 are computed in the service. Reject an explicit bps that would
+      // contradict the chosen decision to avoid ambiguous resolutions.
+      if (decision !== 'split' && freelancerBps !== undefined) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'freelancerBps can only be provided when decision is split' },
+        });
+        return;
+      }
+
+      if (decision === 'split' && (freelancerBps === 0 || freelancerBps === 10000)) {
+        res.status(400).json({
+          error: { code: 'VALIDATION_ERROR', message: 'freelancerBps must be between 1 and 9999 for a split decision' },
         });
         return;
       }
@@ -736,6 +773,7 @@ router.post(
         reasoning,
         resolvedBy: userId,
         resolverRole: 'admin',
+        ...(decision === 'split' && freelancerBps !== undefined ? { freelancerBps } : {}),
       });
 
       if (!result.success) {

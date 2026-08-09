@@ -16,11 +16,12 @@ import {
   depositToEscrow,
   releaseMilestone,
   refundMilestone,
+  resolveDisputeSplit,
   getEscrowBalance,
   getEscrowState,
 } from '../escrow-contract.js';
 
-import { EscrowParams } from '../blockchain-types.js';
+import { EscrowParams, TransactionReceipt } from '../blockchain-types.js';
 
 /**
  * Simulated Blockchain Adapter Implementation
@@ -142,7 +143,7 @@ export class SimulatedBlockchainAdapter implements IBlockchainAdapter {
   async resolveDispute(
     escrowAddress: string,
     milestoneIndex: number,
-    inFavorOfFreelancer: boolean
+    freelancerBps: number
   ): Promise<TransactionResult> {
     const state = await getEscrowState(escrowAddress);
     if (!state) {
@@ -158,11 +159,17 @@ export class SimulatedBlockchainAdapter implements IBlockchainAdapter {
       throw new Error('Milestone not found');
     }
 
-    // Resolve in favor of freelancer = release payment
-    // Resolve in favor of employer = refund
-    const receipt = inFavorOfFreelancer
-      ? await releaseMilestone(escrowAddress, milestone.id, state.employerAddress)
-      : await refundMilestone(escrowAddress, milestone.id, state.employerAddress);
+    let receipt: TransactionReceipt;
+    if (freelancerBps === 10000) {
+      // Full to freelancer (release payment)
+      receipt = await releaseMilestone(escrowAddress, milestone.id, state.employerAddress);
+    } else if (freelancerBps === 0) {
+      // Full to employer (refund)
+      receipt = await refundMilestone(escrowAddress, milestone.id, state.employerAddress);
+    } else {
+      // Partial (split) payout via the simulated ledger's partial release/refund
+      receipt = await resolveDisputeSplit(escrowAddress, milestone.id, freelancerBps, state.employerAddress);
+    }
 
     return {
       transactionHash: receipt.transactionHash,
