@@ -5,9 +5,16 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { transactionRepository } from '../repositories/transaction-repository.js';
+import {
+  createKycVerification,
+  getKycVerificationByUserId,
+  updateKycVerification,
+} from '../repositories/didit-kyc-repository.js';
+import type { KycVerification } from '../models/didit-kyc.js';
 import type { DisputeEntity } from '../repositories/dispute-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
+import { generateId } from '../utils/id.js';
 
 export interface PlatformStats {
   totalUsers: number;
@@ -272,7 +279,7 @@ export async function verifyUser(
 
     logger.info('ADMIN ACTION: user manually verified', { actor: adminUserId, userId });
 
-    return successResult(updated as UserEntity);
+    return successResult(verification);
   } catch (error) {
     logger.error('Unexpected error in verifyUser', { error, userId });
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');

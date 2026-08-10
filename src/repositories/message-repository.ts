@@ -100,7 +100,6 @@ export const messageRepository = {
   },
 
   async createMessage(messageData: Omit<MessageEntity, 'id' | 'created_at' | 'updated_at'>): Promise<MessageEntity> {
-    const now = new Date().toISOString();
     const attrs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(messageData)) {
       if (value !== undefined) {

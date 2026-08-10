@@ -239,7 +239,8 @@ router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: 
   const result = await getKycStatus(userId);
 
   if (!result.success) {
-    sendKycServiceError(res, 400, result.error, requestId);
+    const statusCode = result.error.code === 'DATABASE_ERROR' ? 500 : 400;
+    sendKycServiceError(res, statusCode, result.error, requestId);
     return;
   }
 

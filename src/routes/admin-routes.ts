@@ -24,7 +24,7 @@ import { getAdminAnalytics } from '../services/analytics-service.js';
 const router = Router();
 
 /** Transform a user entity into the admin frontend shape */
-function mapAdminUser(user: UserEntity | null | undefined) {
+function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean }) | null | undefined) {
   if (!user) return null;
   return {
     id: user.id,
@@ -33,7 +33,7 @@ function mapAdminUser(user: UserEntity | null | undefined) {
     walletAddress: user.wallet_address || '',
     createdAt: user.created_at,
     name: user.name || '',
-    kycVerified: false, // TODO: Join with KYC table
+    kycVerified: user.kyc_verified,
     isActive: !user.is_suspended, // Active means NOT suspended
   };
 }
@@ -227,8 +227,29 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
     return;
   }
 
+  if (
+    submittedReason !== undefined &&
+    (typeof submittedReason !== 'string' || submittedReason.trim().length < 10 || submittedReason.trim().length > 500)
+  ) {
+    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must be between 10 and 500 characters', requestId);
+    return;
+  }
+
+  const reason = typeof submittedReason === 'string'
+    ? submittedReason.trim()
+    : 'Manual verification approved by administrator';
+
+  const result = await verifyUser(userId, adminUserId, reason);
+
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    const statusCode = result.error?.code === 'NOT_FOUND'
+      ? 404
+      : result.error?.code === 'SELF_REVIEW_FORBIDDEN'
+        ? 403
+        : ['DATABASE_ERROR', 'INTERNAL_ERROR'].includes(result.error?.code ?? '')
+          ? 500
+          : 400;
+    sendErrorResponse(res, statusCode, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 

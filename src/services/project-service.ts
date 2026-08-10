@@ -163,7 +163,8 @@ export async function getProjectById(projectId: string): Promise<ServiceResult<P
   if (!project) {
     return errorResult('NOT_FOUND', 'Project not found');
   }
-  return successResult(project);
+  const proposalCount = await proposalRepository.getProposalCountByProject(projectId);
+  return successResult({ ...project, proposalCount });
 }
 
 export async function updateProject(
@@ -352,13 +353,13 @@ export async function listProjectsByEmployer(
     hasMore: result.hasMore,
     total: result.total,
   });
-  }
+}
 
 export async function listOpenProjects(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getAllOpenProjects(options);
-  return successResult(result);
+  return successResult(await addProposalCounts(result));
 }
 
 export async function listProjectsByStatus(
@@ -366,7 +367,7 @@ export async function listProjectsByStatus(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByStatus(status, options);
-  return successResult(result);
+  return successResult(await addProposalCounts(result));
 }
 
 export async function searchProjects(
@@ -374,7 +375,7 @@ export async function searchProjects(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.searchProjects(keyword, options);
-  return successResult(result);
+  return successResult(await addProposalCounts(result));
 }
 
 export async function listProjectsBySkills(
@@ -382,7 +383,7 @@ export async function listProjectsBySkills(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsBySkills(skillIds, options);
-  return successResult(result);
+  return successResult(await addProposalCounts(result));
 }
 
 export async function listProjectsByBudgetRange(
@@ -391,7 +392,7 @@ export async function listProjectsByBudgetRange(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, options);
-  return successResult(result);
+  return successResult(await addProposalCounts(result));
 }
 
 export async function listProjectsByCategory(
@@ -399,7 +400,7 @@ export async function listProjectsByCategory(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByCategory(categoryId, options);
-  return successResult(result);
+  return successResult(await addProposalCounts(result));
 }
 
 export async function listProjectsByMultipleCategories(
@@ -407,7 +408,7 @@ export async function listProjectsByMultipleCategories(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByMultipleCategories(categoryIds, options);
-  return successResult(result);
+  return successResult(await addProposalCounts(result));
 }
 
 export async function deleteProject(
