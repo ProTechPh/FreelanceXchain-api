@@ -66,7 +66,7 @@ export async function getKycVerificationByUserId(userId: string): Promise<KycVer
       TABLE_NAME,
       [
         Query.equal('user_id', userId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
         Query.limit(1),
       ]
     );
@@ -74,7 +74,7 @@ export async function getKycVerificationByUserId(userId: string): Promise<KycVer
     return doc ? mapKyc(doc) : null;
   } catch (error) {
     logger.error('Error fetching KYC verification by user', error as Error);
-    return null;
+    throw error;
   }
 }
 
@@ -141,7 +141,7 @@ export async function getKycVerificationsByStatus(status: KycVerification['statu
       TABLE_NAME,
       [
         Query.equal('status', status),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
         Query.limit(1000),
       ]
     );
@@ -163,7 +163,7 @@ export async function getPendingReviews(): Promise<KycVerification[]> {
       [
         Query.equal('status', 'completed'),
         Query.isNull('reviewed_by'),
-        Query.orderAsc('completed_at'),
+        Query.orderAsc('$createdAt'),
         Query.limit(1000),
       ]
     );
@@ -197,7 +197,7 @@ export async function getKycVerificationHistory(userId: string): Promise<KycVeri
       TABLE_NAME,
       [
         Query.equal('user_id', userId),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
         Query.limit(1000),
       ]
     );

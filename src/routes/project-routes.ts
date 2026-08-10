@@ -25,6 +25,7 @@ import {
 } from '../services/project-service.js';
 import { getProposalsByProject } from '../services/proposal-service.js';
 import { mapProjectFromEntity } from '../utils/entity-mapper.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -76,6 +77,10 @@ const router = Router();
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/Milestone'
+ *         proposalCount:
+ *           type: integer
+ *           minimum: 0
+ *           description: Number of non-withdrawn proposals submitted for the project
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -446,7 +451,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -520,7 +525,7 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 /**
  * @swagger

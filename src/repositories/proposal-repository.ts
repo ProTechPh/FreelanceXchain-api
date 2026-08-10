@@ -65,7 +65,7 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
       [
         Query.equal('project_id', projectId),
         Query.notEqual('status', 'withdrawn'),
-        Query.orderDesc('created_at'),
+        Query.orderDesc('$createdAt'),
       ],
       limit,
       offset,
@@ -75,7 +75,7 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
 
   async getProposalsByFreelancer(freelancerId: string): Promise<ProposalEntity[]> {
     return this.listWithQueries<ProposalEntity>(
-      [Query.equal('freelancer_id', freelancerId), Query.orderDesc('created_at')],
+      [Query.equal('freelancer_id', freelancerId), Query.orderDesc('$createdAt')],
       mapDoc
     );
   }

@@ -114,9 +114,9 @@ describe('Message Routes Integration Tests', () => {
       expect(response.status).toBe(401);
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .get('/api/messages/conversations/invalid-uuid')
+        .get('/api/messages/conversations/-invalid-id')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect([400, 401]).toContain(response.status);
@@ -141,9 +141,9 @@ describe('Message Routes Integration Tests', () => {
       expect(response.status).toBe(401);
     });
 
-    it('should validate UUID format', async () => {
+    it('should validate Appwrite document ID format', async () => {
       const response = await request(app)
-        .patch('/api/messages/conversations/invalid-uuid/read')
+        .patch('/api/messages/conversations/-invalid-id/read')
         .set('Authorization', `Bearer ${authToken}`);
 
       expect([400, 401]).toContain(response.status);

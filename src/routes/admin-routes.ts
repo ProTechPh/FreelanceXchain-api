@@ -199,12 +199,33 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
  *     tags: [Admin]
  *     security:
  *       - bearerAuth: []
+ *     requestBody:
+ *       required: false
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               reason:
+ *                 type: string
+ *                 minLength: 10
+ *                 maxLength: 500
+ *                 description: Audit reason for the manual KYC approval
  */
 router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
+  const adminUserId = req.user?.userId;
+  const submittedReason = req.body?.reason;
 
-  const result = await verifyUser(userId);
+  if (!adminUserId) {
+    res.status(401).json({
+      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
+      timestamp: new Date().toISOString(),
+      requestId,
+    });
+    return;
+  }
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);

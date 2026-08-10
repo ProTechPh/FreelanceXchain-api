@@ -25,7 +25,7 @@ function mapProfile(doc: Record<string, unknown>): FreelancerProfileEntity {
   if (typeof result.experience === 'string') {
     result.experience = JSON.parse(result.experience);
   }
-  return result as FreelancerProfileEntity;
+  return normalizeProfileEntity(result as FreelancerProfileEntity);
 }
 
 export class FreelancerProfileRepository extends BaseRepository<FreelancerProfileEntity> {
@@ -34,15 +34,17 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   }
 
   async createProfile(profile: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'>): Promise<FreelancerProfileEntity> {
-    return this.create(profile);
+    return normalizeProfileEntity(await this.create(profile));
   }
 
   async getProfileByUserId(userId: string): Promise<FreelancerProfileEntity | null> {
-    return this.findOne('user_id', userId);
+    const profile = await this.findOne('user_id', userId);
+    return profile ? normalizeProfileEntity(profile) : null;
   }
 
   async updateProfile(id: string, updates: Partial<FreelancerProfileEntity>): Promise<FreelancerProfileEntity | null> {
-    return this.update(id, updates);
+    const profile = await this.update(id, updates);
+    return profile ? normalizeProfileEntity(profile) : null;
   }
 
   async getAvailableProfiles(): Promise<FreelancerProfileEntity[]> {
@@ -124,7 +126,8 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
   }
 
   async getAllProfilesPaginated(options?: QueryOptions): Promise<PaginatedResult<FreelancerProfileEntity>> {
-    return this.queryPaginated(options, 'created_at', false);
+    const result = await this.queryPaginated(options, 'created_at', false);
+    return { ...result, items: result.items.map(normalizeProfileEntity) };
   }
 }
 

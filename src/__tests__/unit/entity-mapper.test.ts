@@ -92,6 +92,7 @@ describe('Entity Mapper - Extended Coverage (null/undefined fields)', () => {
         freelancer_limit: 1,
         tags: null,
         attachments: null,
+        proposalCount: 3,
         created_at: now,
         updated_at: now,
       };
@@ -100,6 +101,7 @@ describe('Entity Mapper - Extended Coverage (null/undefined fields)', () => {
       expect(result.requiredSkills).toEqual([]);
       expect(result.tags).toEqual([]);
       expect(result.attachments).toEqual([]);
+      expect(result.proposalCount).toBe(3);
     });
 
     it('should map project with empty milestones', () => {

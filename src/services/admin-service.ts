@@ -30,7 +30,10 @@ export interface UserFilters {
 }
 
 export interface UserManagementData {
-  users: UserEntity[];
+  users: Array<UserEntity & {
+    kyc_status: KycVerification['status'] | 'not_started';
+    kyc_verified: boolean;
+  }>;
   total: number;
 }
 
@@ -112,9 +115,17 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
  */
 export async function getUserManagement(filters?: UserFilters): Promise<ServiceResult<UserManagementData>> {
   try {
-    const allUsers = await userRepository.queryAll();
+    const allUsers = await userRepository.queryAll('$createdAt');
+    const usersWithKyc = await Promise.all(allUsers.map(async (user) => {
+      const verification = await getKycVerificationByUserId(user.id);
+      return {
+        ...user,
+        kyc_status: verification?.status ?? 'not_started' as const,
+        kyc_verified: verification?.status === 'approved',
+      };
+    }));
 
-    let filtered = allUsers;
+    let filtered = usersWithKyc;
 
     if (filters?.role) {
       filtered = filtered.filter(u => u.role === filters.role);
@@ -200,7 +211,11 @@ export async function unsuspendUser(userId: string): Promise<ServiceResult<UserE
 /**
  * Manually verify a user
  */
-export async function verifyUser(userId: string): Promise<ServiceResult<UserEntity>> {
+export async function verifyUser(
+  userId: string,
+  adminUserId = 'system-admin',
+  reason = 'Manual verification approved by administrator'
+): Promise<ServiceResult<KycVerification>> {
   try {
     const existing = await userRepository.getUserById(userId);
 
@@ -208,11 +223,54 @@ export async function verifyUser(userId: string): Promise<ServiceResult<UserEnti
       return errorResult('NOT_FOUND', 'User not found');
     }
 
-    const updated = await userRepository.updateUser(userId, {
-      is_verified: true,
-    } as Partial<UserEntity>);
+    if (userId === adminUserId) {
+      return {
+        success: false,
+        error: {
+          code: 'SELF_REVIEW_FORBIDDEN',
+          message: 'Administrators cannot verify their own account',
+        },
+      };
+    }
 
-    logger.info('ADMIN ACTION: user manually verified', { actor: 'admin', userId });
+    const existingVerification = await getKycVerificationByUserId(userId);
+    const reviewedAt = new Date().toISOString();
+    const expiresAt = new Date();
+    expiresAt.setFullYear(expiresAt.getFullYear() + 1);
+    const auditReason = reason.trim() || 'Manual verification approved by administrator';
+    const approval: Partial<KycVerification> = {
+      status: 'approved',
+      decision: 'approved',
+      reviewed_by: adminUserId,
+      reviewed_at: reviewedAt,
+      admin_notes: auditReason,
+      completed_at: reviewedAt,
+      expires_at: expiresAt.toISOString(),
+    };
+
+    let verification: KycVerification | null;
+    if (existingVerification) {
+      verification = await updateKycVerification(existingVerification.id, approval);
+    } else {
+      verification = await createKycVerification({
+        id: generateId(),
+        user_id: userId,
+        didit_session_id: `admin-override-${generateId()}`,
+        didit_session_token: null,
+        didit_session_url: null,
+        didit_workflow_id: 'admin-override',
+        ...approval,
+      } as Omit<KycVerification, 'created_at' | 'updated_at'>);
+    }
+
+    if (!verification) {
+      return {
+        success: false,
+        error: { code: 'DATABASE_ERROR', message: 'Failed to save KYC verification' },
+      };
+    }
+
+    logger.info('ADMIN ACTION: user manually verified', { actor: adminUserId, userId });
 
     return successResult(updated as UserEntity);
   } catch (error) {

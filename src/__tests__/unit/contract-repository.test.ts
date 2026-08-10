@@ -9,6 +9,7 @@ const mockListDocuments = jest.fn();
 const mockCreateDocument = jest.fn();
 const mockUpdateDocument = jest.fn();
 const mockDeleteDocument = jest.fn();
+const mockOrderDesc = jest.fn((...args: any[]) => ({ type: 'orderDesc', args }));
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   databases: {
@@ -21,7 +22,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   DATABASE_ID: 'freelancexchain',
   Query: {
     equal: jest.fn((...args: any[]) => ({ type: 'equal', args })),
-    orderDesc: jest.fn((...args: any[]) => ({ type: 'orderDesc', args })),
+    orderDesc: mockOrderDesc,
     limit: jest.fn((...args: any[]) => ({ type: 'limit', args })),
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
   },
@@ -157,6 +158,7 @@ describe('ContractRepository', () => {
       });
       const result = await repo.getContractsByEmployer('e1');
       expect(result.items).toHaveLength(1);
+      expect(mockOrderDesc).toHaveBeenCalledWith('$createdAt');
     });
   });
 

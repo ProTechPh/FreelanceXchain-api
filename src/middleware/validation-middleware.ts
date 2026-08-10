@@ -3,9 +3,14 @@ import { ValidationError } from './error-handler.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const APPWRITE_DOCUMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
 
 export function isValidUUID(value: string): boolean {
   return UUID_PATTERN.test(value);
+}
+
+export function isValidAppwriteDocumentId(value: string): boolean {
+  return APPWRITE_DOCUMENT_ID_PATTERN.test(value);
 }
 
 export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
@@ -26,6 +31,39 @@ export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
 
     if (errors.length > 0) {
       sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid UUID format', requestId, errors);
+      return;
+    }
+
+    next();
+  };
+}
+
+export function validateAppwriteDocumentId(paramNames: string[] = ['id']): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const requestId = (req.headers['x-request-id'] as string) ?? 'unknown';
+    const errors: ValidationError[] = [];
+
+    for (const paramName of paramNames) {
+      const value = req.params[paramName];
+      if (value && !isValidAppwriteDocumentId(value)) {
+        errors.push({
+          field: paramName,
+          message: `${paramName} must be a valid Appwrite document ID`,
+          value,
+        });
+      }
+    }
+
+    if (errors.length > 0) {
+      res.status(400).json({
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid Appwrite document ID format',
+          details: errors,
+        },
+        timestamp: new Date().toISOString(),
+        requestId,
+      });
       return;
     }
 

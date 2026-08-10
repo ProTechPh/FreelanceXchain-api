@@ -755,4 +755,3 @@ export async function manualKycVerification(params: {
     return errorResult('VERIFICATION_ERROR', error instanceof Error ? error.message : 'Manual verification failed');
   }
 }
-

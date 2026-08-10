@@ -172,7 +172,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
 
   async getContractsByFreelancer(freelancerId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
     return this.paginatedWithQueries<ContractEntity>(
-      [Query.equal('freelancer_id', freelancerId), Query.orderDesc('created_at')],
+      [Query.equal('freelancer_id', freelancerId), Query.orderDesc('$createdAt')],
       options?.limit ?? 20,
       options?.offset ?? 0,
       mapDoc
@@ -181,7 +181,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
 
   async getContractsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
     return this.paginatedWithQueries<ContractEntity>(
-      [Query.equal('employer_id', employerId), Query.orderDesc('created_at')],
+      [Query.equal('employer_id', employerId), Query.orderDesc('$createdAt')],
       options?.limit ?? 20,
       options?.offset ?? 0,
       mapDoc
@@ -190,7 +190,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
 
   async getContractsByProject(projectId: string): Promise<ContractEntity[]> {
     return this.listWithQueries<ContractEntity>(
-      [Query.equal('project_id', projectId), Query.orderDesc('created_at')],
+      [Query.equal('project_id', projectId), Query.orderDesc('$createdAt')],
       mapDoc
     );
   }
@@ -203,11 +203,11 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     // Fetch all contracts for both roles without pagination, then merge and paginate
     const [freelancer, employer] = await Promise.all([
       this.listWithQueries<ContractEntity>(
-        [Query.equal('freelancer_id', userId), Query.orderDesc('created_at')],
+        [Query.equal('freelancer_id', userId), Query.orderDesc('$createdAt')],
         mapDoc
       ),
       this.listWithQueries<ContractEntity>(
-        [Query.equal('employer_id', userId), Query.orderDesc('created_at')],
+        [Query.equal('employer_id', userId), Query.orderDesc('$createdAt')],
         mapDoc
       ),
     ]);
