@@ -3,7 +3,7 @@
  * Real blockchain integration for reputation system using deployed smart contracts
  */
 
-import { Contract, TransactionReceipt } from 'ethers';
+import type { Contract, ContractTransactionResponse, TransactionReceipt } from 'ethers';
 import { getContractWithSigner, getContract, isWeb3Available } from './web3-client.js';
 import { getContractAddress } from '../config/contracts.js';
 import { FreelanceReputationABI } from './contract-abis.js';
@@ -23,29 +23,70 @@ export type RatingSubmissionParams = {
   rateeAddress: string;
   rating: number;
   comment: string;
-  isEmployerRating: boolean;
 };
 
 /**
  * Get Reputation contract instance for reading
  */
-function getReputationContract(): Contract {
+function getReputationContract(): ReputationContract {
   const address = getContractAddress('reputation');
   if (!address) {
     throw new Error('Reputation contract not deployed. Please deploy contracts first.');
   }
-  return getContract(address, FreelanceReputationABI);
+  return getContract(address, FreelanceReputationABI) as ReputationContract;
 }
 
 /**
  * Get Reputation contract instance for writing
  */
-function getReputationContractWithSigner(): Contract {
+function getReputationContractWithSigner(): ReputationContract {
   const address = getContractAddress('reputation');
   if (!address) {
     throw new Error('Reputation contract not deployed. Please deploy contracts first.');
   }
-  return getContractWithSigner(address, FreelanceReputationABI);
+  return getContractWithSigner(address, FreelanceReputationABI) as ReputationContract;
+}
+
+/**
+ * Typed view of the FreelanceReputation ABI surface used by this module.
+ * ethers.Contract is intentionally untyped for arbitrary ABIs, so we declare
+ * the exact methods we call here instead of casting to `any` at each call site.
+ *
+ * submitRating takes 4 arguments: the deployed contract derives the
+ * isEmployerRating flag on-chain from msg.sender (see FreelanceReputation.sol).
+ */
+type ReputationContract = Contract & {
+  submitRating(
+    ratee: string,
+    score: number,
+    comment: string,
+    contractId: string
+  ): Promise<ContractTransactionResponse>;
+  getUserRatingIndices(user: string, offset: number, limit: number): Promise<bigint[]>;
+  getGivenRatingIndices(user: string, offset: number, limit: number): Promise<bigint[]>;
+  getRating(index: bigint): Promise<[string, string, bigint, string, string, bigint, boolean]>;
+  getAverageRating(user: string): Promise<bigint>;
+  getRatingCount(user: string): Promise<bigint>;
+  hasRated(rater: string, ratee: string, contractId: string): Promise<boolean>;
+  getTotalRatings(): Promise<bigint>;
+};
+
+/**
+ * Map raw on-chain rating tuples to BlockchainRating records.
+ */
+async function fetchRatings(contract: ReputationContract, indices: bigint[]): Promise<BlockchainRating[]> {
+  const rawRatings = await Promise.all(
+    indices.map(index => contract.getRating(index))
+  );
+  return rawRatings.map((rating): BlockchainRating => ({
+    rater: rating[0],
+    ratee: rating[1],
+    score: Number(rating[2]),
+    comment: rating[3],
+    contractId: rating[4],
+    timestamp: Number(rating[5]),
+    isEmployerRating: rating[6],
+  }));
 }
 
 /**
@@ -71,20 +112,23 @@ export async function submitRatingToBlockchain(
   const contract = getReputationContractWithSigner();
 
   // Submit rating transaction
-  // Contract signature: submitRating(address ratee, uint8 score, string comment, string contractId, bool isEmployerRating)
-  const tx = await (contract as any).submitRating(
+  // Contract signature: submitRating(address ratee, uint8 score, string comment, bytes32 contractIdHash)
+  // isEmployerRating is derived on-chain from msg.sender and must not be passed.
+  const tx = await contract.submitRating(
     params.rateeAddress,
     params.rating,
     params.comment || '',
-    params.contractId,
-    params.isEmployerRating
+    params.contractId
   );
 
   // Wait for transaction confirmation
   const receipt = await tx.wait();
+  if (!receipt) {
+    throw new Error('Transaction was replaced or dropped');
+  }
 
   // Extract rating index from event
-  const event = receipt.logs.find((log: any) => {
+  const event = receipt.logs.find(log => {
     try {
       const parsed = contract.interface.parseLog(log);
       return parsed?.name === 'RatingSubmitted';
@@ -96,7 +140,7 @@ export async function submitRatingToBlockchain(
   let ratingIndex = BigInt(0);
   if (event) {
     const parsed = contract.interface.parseLog(event);
-    ratingIndex = parsed?.args[0] || BigInt(0);
+    ratingIndex = parsed ? BigInt(parsed.args[0] ?? 0) : BigInt(0);
   }
 
   return {
@@ -117,23 +161,10 @@ export async function getRatingsFromBlockchain(userAddress: string): Promise<Blo
   const contract = getReputationContract();
 
   // Get rating indices for user (with pagination - contract requires offset and limit)
-  const indices = await (contract as any).getUserRatingIndices(userAddress, 0, 100);
+  const indices = await contract.getUserRatingIndices(userAddress, 0, 100);
 
   // Fetch all ratings
-  const rawRatings = await Promise.all(
-    indices.map((index: bigint) => (contract as any).getRating(index))
-  );
-  const ratings: BlockchainRating[] = rawRatings.map((rating: any) => ({
-    rater: rating[0],
-    ratee: rating[1],
-    score: Number(rating[2]),
-    comment: rating[3],
-    contractId: rating[4],
-    timestamp: Number(rating[5]),
-    isEmployerRating: rating[6],
-  }));
-
-  return ratings;
+  return fetchRatings(contract, indices);
 }
 
 /**
@@ -147,23 +178,10 @@ export async function getRatingsGivenByUser(userAddress: string): Promise<Blockc
   const contract = getReputationContract();
 
   // Get rating indices given by user (with pagination - contract requires offset and limit)
-  const indices = await (contract as any).getGivenRatingIndices(userAddress, 0, 100);
+  const indices = await contract.getGivenRatingIndices(userAddress, 0, 100);
 
   // Fetch all ratings
-  const rawRatings = await Promise.all(
-    indices.map((index: bigint) => (contract as any).getRating(index))
-  );
-  const ratings: BlockchainRating[] = rawRatings.map((rating: any) => ({
-    rater: rating[0],
-    ratee: rating[1],
-    score: Number(rating[2]),
-    comment: rating[3],
-    contractId: rating[4],
-    timestamp: Number(rating[5]),
-    isEmployerRating: rating[6],
-  }));
-
-  return ratings;
+  return fetchRatings(contract, indices);
 }
 
 /**
@@ -175,7 +193,7 @@ export async function getAverageRating(userAddress: string): Promise<number> {
   }
 
   const contract = getReputationContract();
-  const avgRating = await (contract as any).getAverageRating(userAddress);
+  const avgRating = await contract.getAverageRating(userAddress);
   
   // Convert from (rating * 100) to actual rating
   return Number(avgRating) / 100;
@@ -190,7 +208,7 @@ export async function getRatingCount(userAddress: string): Promise<number> {
   }
 
   const contract = getReputationContract();
-  const count = await (contract as any).getRatingCount(userAddress);
+  const count = await contract.getRatingCount(userAddress);
   return Number(count);
 }
 
@@ -207,7 +225,7 @@ export async function hasUserRatedForContract(
   }
 
   const contract = getReputationContract();
-  return await (contract as any).hasRated(raterAddress, rateeAddress, contractId);
+  return contract.hasRated(raterAddress, rateeAddress, contractId);
 }
 
 /**
@@ -219,7 +237,7 @@ export async function getTotalRatings(): Promise<number> {
   }
 
   const contract = getReputationContract();
-  const total = await (contract as any).getTotalRatings();
+  const total = await contract.getTotalRatings();
   return Number(total);
 }
 

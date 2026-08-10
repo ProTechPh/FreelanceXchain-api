@@ -5,6 +5,7 @@ import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 export type CreateProjectInput = {
   title: string;
@@ -95,14 +96,7 @@ export async function createProject(
   if (input.attachments && input.attachments.length > 0) {
     const attachmentErrors = validateAttachments(input.attachments, { maxFiles: 10 });
     if (attachmentErrors.length > 0) {
-      return {
-        success: false,
-        error: { 
-          code: 'VALIDATION_ERROR', 
-          message: 'Invalid attachments',
-          details: attachmentErrors.map(e => e.message),
-        },
-      };
+      return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map(e => e.message));
     }
   }
 
@@ -110,14 +104,7 @@ export async function createProject(
   const skillValidation = await validateSkills(skillIds);
   
   if (!skillValidation.valid) {
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_SKILL',
-        message: 'One or more skill IDs are invalid or inactive',
-        details: skillValidation.invalidIds,
-      },
-    };
+    return errorResult('INVALID_SKILL', 'One or more skill IDs are invalid or inactive', skillValidation.invalidIds);
   }
 
   const skillRefs = await buildSkillReferences(skillIds);
@@ -125,19 +112,13 @@ export async function createProject(
   // Validate rush fee percentage if provided
   if (input.isRush && input.rushFeePercentage !== undefined) {
     if (input.rushFeePercentage <= 0 || input.rushFeePercentage > 100) {
-      return {
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Rush fee percentage must be between 0.01 and 100' },
-      };
+      return errorResult('VALIDATION_ERROR', 'Rush fee percentage must be between 0.01 and 100');
     }
   }
 
   // Validate freelancer limit
   if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
-    return {
-      success: false,
-      error: { code: 'VALIDATION_ERROR', message: 'Freelancer limit must be a positive integer (minimum 1)' },
-    };
+    return errorResult('VALIDATION_ERROR', 'Freelancer limit must be a positive integer (minimum 1)');
   }
 
   const projectInput = {
@@ -158,18 +139,15 @@ export async function createProject(
   };
 
   const created = await projectRepository.createProject(projectInput);
-  return { success: true, data: created };
+  return successResult(created);
 }
 
 export async function getProjectById(projectId: string): Promise<ServiceResult<ProjectEntity>> {
   const project = await projectRepository.findProjectById(projectId);
   if (!project) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
-  return { success: true, data: project };
+  return successResult(project);
 }
 
 export async function updateProject(
@@ -179,25 +157,16 @@ export async function updateProject(
 ): Promise<ServiceResult<ProjectEntity>> {
   const existingProject = await projectRepository.getProjectById(projectId);
   if (!existingProject) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
   
   if (existingProject.employer_id !== employerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Not authorized to update this project' },
-    };
+    return errorResult('UNAUTHORIZED', 'Not authorized to update this project');
   }
 
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
-    return {
-      success: false,
-      error: { code: 'PROJECT_LOCKED', message: 'Cannot update project with accepted proposals' },
-    };
+    return errorResult('PROJECT_LOCKED', 'Cannot update project with accepted proposals');
   }
 
   let skillRefs = existingProject.required_skills;
@@ -206,14 +175,7 @@ export async function updateProject(
     const skillValidation = await validateSkills(skillIds);
     
     if (!skillValidation.valid) {
-      return {
-        success: false,
-        error: {
-          code: 'INVALID_SKILL',
-          message: 'One or more skill IDs are invalid or inactive',
-          details: skillValidation.invalidIds,
-        },
-      };
+      return errorResult('INVALID_SKILL', 'One or more skill IDs are invalid or inactive', skillValidation.invalidIds);
     }
     skillRefs = await buildSkillReferences(skillIds);
   }
@@ -222,10 +184,7 @@ export async function updateProject(
   if (existingProject.milestones.length > 0) {
     const budgetValidation = validateMilestoneBudget(existingProject.milestones, newBudget);
     if (!budgetValidation.valid) {
-      return {
-        success: false,
-        error: { code: 'MILESTONE_SUM_MISMATCH', message: budgetValidation.message ?? 'Milestone budget mismatch' },
-      };
+      return errorResult('MILESTONE_SUM_MISMATCH', budgetValidation.message ?? 'Milestone budget mismatch');
     }
   }
 
@@ -242,32 +201,20 @@ export async function updateProject(
     const currentStatus = existingProject.status;
     const allowedNextStatuses = validTransitions[currentStatus] ?? [];
     if (!allowedNextStatuses.includes(input.status)) {
-      return {
-        success: false,
-        error: { 
-          code: 'INVALID_STATUS_TRANSITION', 
-          message: `Cannot transition project from "${currentStatus}" to "${input.status}". Allowed: ${allowedNextStatuses.join(', ') || 'none (terminal state)'}` 
-        },
-      };
+      return errorResult('INVALID_STATUS_TRANSITION', `Cannot transition project from "${currentStatus}" to "${input.status}". Allowed: ${allowedNextStatuses.join(', ') || 'none (terminal state)'}`);
     }
   }
 
   // Validate rush fee percentage if provided
   if (input.isRush && input.rushFeePercentage !== undefined) {
     if (input.rushFeePercentage <= 0 || input.rushFeePercentage > 100) {
-      return {
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Rush fee percentage must be between 0.01 and 100' },
-      };
+      return errorResult('VALIDATION_ERROR', 'Rush fee percentage must be between 0.01 and 100');
     }
   }
 
   // Validate freelancer limit if provided
   if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
-    return {
-      success: false,
-      error: { code: 'VALIDATION_ERROR', message: 'Freelancer limit must be a positive integer (minimum 1)' },
-    };
+    return errorResult('VALIDATION_ERROR', 'Freelancer limit must be a positive integer (minimum 1)');
   }
 
   const updates: Partial<ProjectEntity> = {
@@ -286,13 +233,10 @@ export async function updateProject(
 
   const updated = await projectRepository.updateProject(projectId, updates);
   if (!updated) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update project' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update project');
   }
 
-  return { success: true, data: updated };
+  return successResult(updated);
 }
 
 export async function addMilestones(
@@ -302,18 +246,12 @@ export async function addMilestones(
 ): Promise<ServiceResult<ProjectEntity>> {
   const existingProject = await projectRepository.getProjectById(projectId);
   if (!existingProject || existingProject.employer_id !== employerId) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
 
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
-    return {
-      success: false,
-      error: { code: 'PROJECT_LOCKED', message: 'Cannot modify milestones for project with accepted proposals' },
-    };
+    return errorResult('PROJECT_LOCKED', 'Cannot modify milestones for project with accepted proposals');
   }
 
   const newMilestones: MilestoneEntity[] = milestones.map(m => ({
@@ -329,21 +267,15 @@ export async function addMilestones(
   
   const budgetValidation = validateMilestoneBudget(allMilestones, existingProject.budget);
   if (!budgetValidation.valid) {
-    return {
-      success: false,
-      error: { code: 'MILESTONE_SUM_MISMATCH', message: budgetValidation.message ?? 'Milestone budget mismatch' },
-    };
+    return errorResult('MILESTONE_SUM_MISMATCH', budgetValidation.message ?? 'Milestone budget mismatch');
   }
 
   const updated = await projectRepository.updateProject(projectId, { milestones: allMilestones });
   if (!updated) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to add milestones' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to add milestones');
   }
 
-  return { success: true, data: updated };
+  return successResult(updated);
 }
 
 export async function setMilestones(
@@ -353,18 +285,12 @@ export async function setMilestones(
 ): Promise<ServiceResult<ProjectEntity>> {
   const existingProject = await projectRepository.getProjectById(projectId);
   if (!existingProject || existingProject.employer_id !== employerId) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
 
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
-    return {
-      success: false,
-      error: { code: 'PROJECT_LOCKED', message: 'Cannot modify milestones for project with accepted proposals' },
-    };
+    return errorResult('PROJECT_LOCKED', 'Cannot modify milestones for project with accepted proposals');
   }
 
   const newMilestones: MilestoneEntity[] = milestones.map(m => ({
@@ -378,21 +304,15 @@ export async function setMilestones(
 
   const budgetValidation = validateMilestoneBudget(newMilestones, existingProject.budget);
   if (!budgetValidation.valid) {
-    return {
-      success: false,
-      error: { code: 'MILESTONE_SUM_MISMATCH', message: budgetValidation.message ?? 'Milestone budget mismatch' },
-    };
+    return errorResult('MILESTONE_SUM_MISMATCH', budgetValidation.message ?? 'Milestone budget mismatch');
   }
 
   const updated = await projectRepository.updateProject(projectId, { milestones: newMilestones });
   if (!updated) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to set milestones' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to set milestones');
   }
 
-  return { success: true, data: updated };
+  return successResult(updated);
 }
 
 export async function listProjectsByEmployer(
@@ -411,21 +331,18 @@ export async function listProjectsByEmployer(
     proposalCount: proposalCounts.get(project.id) ?? 0,
   }));
 
-  return { 
-    success: true, 
-    data: {
-      items: projectsWithCounts,
-      hasMore: result.hasMore,
-      total: result.total,
-    }
-  };
-}
+  return successResult({
+    items: projectsWithCounts,
+    hasMore: result.hasMore,
+    total: result.total,
+  });
+  }
 
 export async function listOpenProjects(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getAllOpenProjects(options);
-  return { success: true, data: result };
+  return successResult(result);
 }
 
 export async function listProjectsByStatus(
@@ -433,7 +350,7 @@ export async function listProjectsByStatus(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByStatus(status, options);
-  return { success: true, data: result };
+  return successResult(result);
 }
 
 export async function searchProjects(
@@ -441,7 +358,7 @@ export async function searchProjects(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.searchProjects(keyword, options);
-  return { success: true, data: result };
+  return successResult(result);
 }
 
 export async function listProjectsBySkills(
@@ -449,7 +366,7 @@ export async function listProjectsBySkills(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsBySkills(skillIds, options);
-  return { success: true, data: result };
+  return successResult(result);
 }
 
 export async function listProjectsByBudgetRange(
@@ -458,7 +375,7 @@ export async function listProjectsByBudgetRange(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByBudgetRange(minBudget, maxBudget, options);
-  return { success: true, data: result };
+  return successResult(result);
 }
 
 export async function listProjectsByCategory(
@@ -466,7 +383,7 @@ export async function listProjectsByCategory(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByCategory(categoryId, options);
-  return { success: true, data: result };
+  return successResult(result);
 }
 
 export async function listProjectsByMultipleCategories(
@@ -474,7 +391,7 @@ export async function listProjectsByMultipleCategories(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectEntity>>> {
   const result = await projectRepository.getProjectsByMultipleCategories(categoryIds, options);
-  return { success: true, data: result };
+  return successResult(result);
 }
 
 export async function deleteProject(
@@ -483,20 +400,14 @@ export async function deleteProject(
 ): Promise<ServiceResult<boolean>> {
   const existingProject = await projectRepository.getProjectById(projectId);
   if (!existingProject || existingProject.employer_id !== employerId) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
 
   const hasAccepted = await proposalRepository.hasAcceptedProposal(projectId);
   if (hasAccepted) {
-    return {
-      success: false,
-      error: { code: 'PROJECT_LOCKED', message: 'Cannot delete project with accepted proposals' },
-    };
+    return errorResult('PROJECT_LOCKED', 'Cannot delete project with accepted proposals');
   }
 
   const deleted = await projectRepository.deleteProject(projectId);
-  return { success: true, data: deleted };
+  return successResult(deleted);
 }

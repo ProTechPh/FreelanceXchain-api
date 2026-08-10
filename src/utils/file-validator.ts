@@ -100,7 +100,7 @@ export function hasValidExtension(filename: string): boolean {
  */
 export function isAllowedMimeType(mimeType: string): boolean {
   if (!mimeType || typeof mimeType !== 'string') return false;
-  return ALLOWED_MIME_TYPES.includes(mimeType as any);
+  return (ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType);
 }
 
 export type ValidationOptions = {
@@ -245,7 +245,7 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
   } else {
     // Validate MIME type
     const mimeType = att.mimeType as string;
-    if (!ALLOWED_MIME_TYPES.includes(mimeType as any)) {
+    if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)) {
       errors.push({
         field: `${field}.mimeType`,
         message: `MIME type not allowed. Allowed types: ${ALLOWED_MIME_TYPES.join(', ')}`,

@@ -93,7 +93,7 @@ describe('File Upload Routes', () => {
 
       shouldProvideFile = true;
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('No file provided');
+      expect(res.body.error.message).toBe('No file provided');
     });
 
     it('should return 400 when bucket is missing', async () => {
@@ -102,7 +102,7 @@ describe('File Upload Routes', () => {
         .send({});
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Bucket name is required');
+      expect(res.body.error.message).toContain('Bucket name is required');
     });
 
     it('should return 400 for invalid bucket', async () => {
@@ -111,7 +111,7 @@ describe('File Upload Routes', () => {
         .send({ bucket: 'invalid-bucket' });
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Invalid bucket');
+      expect(res.body.error.message).toContain('Invalid bucket');
     });
 
     it('should return 401 when user is not authenticated', async () => {
@@ -135,7 +135,7 @@ describe('File Upload Routes', () => {
         .send({ bucket: 'profile-images' });
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Storage error');
+      expect(res.body.error.message).toBe('Storage error');
     });
 
     it('should handle unexpected errors', async () => {
@@ -146,7 +146,7 @@ describe('File Upload Routes', () => {
         .send({ bucket: 'profile-images' });
 
       expect(res.status).toBe(500);
-      expect(res.body.error).toBe('Failed to upload file');
+      expect(res.body.error.message).toBe('Failed to upload file');
     });
 
     it('should accept all allowed buckets', async () => {
@@ -190,7 +190,7 @@ describe('File Upload Routes', () => {
         .delete('/api/files/invalid-bucket/user-123/file.txt');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Invalid bucket');
+      expect(res.body.error.message).toContain('Invalid bucket');
     });
 
     it('should return 403 when deleting another users file', async () => {
@@ -198,7 +198,7 @@ describe('File Upload Routes', () => {
         .delete('/api/files/profile-images/other-user/photo.png');
 
       expect(res.status).toBe(403);
-      expect(res.body.error).toContain('Unauthorized');
+      expect(res.body.error.message).toContain('Unauthorized');
     });
 
     it('should return 400 when deleteFile fails', async () => {
@@ -208,7 +208,7 @@ describe('File Upload Routes', () => {
         .delete('/api/files/profile-images/user-123/photo.png');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Delete failed');
+      expect(res.body.error.message).toBe('Delete failed');
     });
 
     it('should handle unexpected errors on delete', async () => {
@@ -218,7 +218,7 @@ describe('File Upload Routes', () => {
         .delete('/api/files/profile-images/user-123/photo.png');
 
       expect(res.status).toBe(500);
-      expect(res.body.error).toBe('Failed to delete file');
+      expect(res.body.error.message).toBe('Failed to delete file');
     });
 
     it('should allow deleting path equal to userId', async () => {
@@ -260,7 +260,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/signed-url/invalid/user-123/doc.pdf');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Invalid bucket');
+      expect(res.body.error.message).toContain('Invalid bucket');
     });
 
     it('should return 403 for accessing another users file', async () => {
@@ -297,7 +297,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Sign error');
+      expect(res.body.error.message).toBe('Sign error');
     });
 
     it('should handle unexpected errors', async () => {
@@ -349,7 +349,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/list/invalid-bucket');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toContain('Invalid bucket');
+      expect(res.body.error.message).toContain('Invalid bucket');
     });
 
     it('should pass folder query parameter', async () => {
@@ -368,7 +368,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/list/profile-images');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('List failed');
+      expect(res.body.error.message).toBe('List failed');
     });
 
     it('should handle unexpected errors', async () => {
@@ -378,7 +378,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/list/profile-images');
 
       expect(res.status).toBe(500);
-      expect(res.body.error).toBe('Failed to list files');
+      expect(res.body.error.message).toBe('Failed to list files');
     });
   });
 });
@@ -405,28 +405,28 @@ describe('File Upload - path traversal protection', () => {
     const res = await request(app)
       .delete('/api/files/profile-images/user-123/..secret/file.txt');
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Invalid file path');
+    expect(res.body.error.message).toBe('Invalid file path');
   });
 
   it('L91: DELETE should reject path with backslash', async () => {
     const res = await request(app)
       .delete('/api/files/profile-images/user-123/some%5Cpath');
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Invalid file path');
+    expect(res.body.error.message).toBe('Invalid file path');
   });
 
   it('L128: GET signed-url should reject path with .. (path traversal)', async () => {
     const res = await request(app)
       .get('/api/files/signed-url/contract-documents/user-123/..secret/file.txt');
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Invalid file path');
+    expect(res.body.error.message).toBe('Invalid file path');
   });
 
   it('L129: GET signed-url should reject path with backslash', async () => {
     const res = await request(app)
       .get('/api/files/signed-url/contract-documents/user-123/some%5Cpath');
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Invalid file path');
+    expect(res.body.error.message).toBe('Invalid file path');
   });
 });
 

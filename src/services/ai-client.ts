@@ -76,6 +76,21 @@ Response format (return ONLY valid JSON, no markdown):
 
 
 /**
+ * Minimal OpenAI Chat Completions response shape (the subset we consume).
+ */
+type OpenAICompletionResponse = {
+  choices?: {
+    message?: { content?: string; role?: string };
+    finish_reason?: string;
+  }[];
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
+};
+
+/**
  * Check if AI/LLM API is available
  */
 export function isAIAvailable(): boolean {
@@ -168,11 +183,11 @@ async function makeAIRequest(
     }
 
     // Parse OpenAI-compatible response and convert to internal format
-    const openAIResponse = await response.json();
+    const openAIResponse: OpenAICompletionResponse = await response.json();
     
     // Convert OpenAI format to internal AIResponse format
     const data: AIResponse = {
-      candidates: openAIResponse.choices?.map((choice: any, index: number) => ({
+      candidates: openAIResponse.choices?.map((choice, index) => ({
         content: {
           parts: [{ text: choice.message?.content || '' }],
           role: choice.message?.role || 'assistant',

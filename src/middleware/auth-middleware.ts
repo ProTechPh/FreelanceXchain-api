@@ -2,33 +2,18 @@ import { Request, Response, NextFunction } from 'express';
 import { validateToken } from '../services/auth-service.js';
 import { AuthError } from '../services/auth-types.js';
 import { UserRole } from '../models/user.js';
+import type { ValidatedUser } from '../types/express.js';
 import { isUserVerified } from '../services/didit-kyc-service.js';
 import { logger } from '../config/logger.js';
-
-type ValidatedUser = {
-  /** @deprecated Use `userId` instead. */
-  id: string;
-  userId: string;
-  email: string;
-  role: UserRole;
-};
+import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
 function isTokenError(result: ValidatedUser | AuthError): result is AuthError {
   return 'code' in result;
 }
 
-declare global {
-  namespace Express {
-    interface Request {
-      user?: ValidatedUser;
-      rawBody?: string;
-    }
-  }
-}
-
 export async function authMiddleware(req: Request, res: Response, next: NextFunction): Promise<void> {
   const authHeader = req.headers.authorization;
-  const requestId = req.headers['x-request-id'] ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!authHeader) {
     logger.auth('Missing authorization header', undefined, {
@@ -38,14 +23,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       ip: req.ip,
     });
 
-    res.status(401).json({
-      error: {
-        code: 'AUTH_MISSING_TOKEN',
-        message: 'Authorization header is required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_MISSING_TOKEN', 'Authorization header is required', requestId);
     return;
   }
 
@@ -58,14 +36,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       ip: req.ip,
     });
 
-    res.status(401).json({
-      error: {
-        code: 'AUTH_INVALID_FORMAT',
-        message: 'Authorization header must be in format: Bearer <token>',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_INVALID_FORMAT', 'Authorization header must be in format: Bearer <token>', requestId);
     return;
   }
 
@@ -84,14 +55,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       errorCode: result.code,
     });
 
-    res.status(401).json({
-      error: {
-        code: result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN',
-        message: result.message,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN', result.message, requestId);
     return;
   }
 
@@ -112,17 +76,10 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
  * TODO: If per-endpoint MFA re-challenge is required, verify Appwrite session MFA scope.
  */
 export async function requireAuthentication(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const requestId = req.headers['x-request-id'] ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!req.user) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_UNAUTHORIZED',
-        message: 'Authentication required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', requestId);
     return;
   }
 
@@ -132,7 +89,7 @@ export async function requireAuthentication(req: Request, res: Response, next: N
 
 export function requireRole(...roles: UserRole[]) {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const requestId = req.headers['x-request-id'] ?? 'unknown';
+    const requestId = getRequestId(req);
     
     if (!req.user) {
       logger.auth('Authentication required but user not authenticated', undefined, {
@@ -142,14 +99,7 @@ export function requireRole(...roles: UserRole[]) {
         ip: req.ip,
       });
       
-      res.status(401).json({
-        error: {
-          code: 'AUTH_UNAUTHORIZED',
-          message: 'Authentication required',
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', requestId);
       return;
     }
 
@@ -161,14 +111,7 @@ export function requireRole(...roles: UserRole[]) {
         ip: req.ip,
       });
       
-      res.status(403).json({
-        error: {
-          code: 'AUTH_FORBIDDEN',
-          message: 'Insufficient permissions',
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 403, 'AUTH_FORBIDDEN', 'Insufficient permissions', requestId);
       return;
     }
 
@@ -177,17 +120,10 @@ export function requireRole(...roles: UserRole[]) {
 }
 
 export async function requireVerifiedKyc(req: Request, res: Response, next: NextFunction): Promise<void> {
-  const requestId = req.headers['x-request-id'] ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (!req.user) {
-    res.status(401).json({
-      error: {
-        code: 'AUTH_UNAUTHORIZED',
-        message: 'Authentication required',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', requestId);
     return;
   }
 
@@ -204,14 +140,7 @@ export async function requireVerifiedKyc(req: Request, res: Response, next: Next
         reason: 'KYC_NOT_VERIFIED',
       });
 
-      res.status(403).json({
-        error: {
-          code: 'KYC_REQUIRED',
-          message: 'Identity verification is required for this operation',
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 403, 'KYC_REQUIRED', 'Identity verification is required for this operation', requestId);
       return;
     }
   } catch (error) {
@@ -220,14 +149,7 @@ export async function requireVerifiedKyc(req: Request, res: Response, next: Next
       userId: req.user.userId,
     });
 
-    res.status(500).json({
-      error: {
-        code: 'KYC_CHECK_FAILED',
-        message: 'Failed to verify KYC status',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 500, 'KYC_CHECK_FAILED', 'Failed to verify KYC status', requestId);
     return;
   }
 

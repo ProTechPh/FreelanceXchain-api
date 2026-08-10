@@ -1,27 +1,16 @@
 import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
+import { fromAppwriteDoc } from './base-repository.js';
 import { MessageEntity, ConversationEntity } from '../models/message.js';
 
 const CONVERSATIONS_COLLECTION = 'conversations';
 const MESSAGES_COLLECTION = 'messages';
 
-function mapConversation(doc: Record<string, any>): ConversationEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as ConversationEntity;
+function mapConversation(doc: Record<string, unknown>): ConversationEntity {
+  return fromAppwriteDoc<ConversationEntity>(doc);
 }
 
-function mapMessage(doc: Record<string, any>): MessageEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-  const result: Record<string, any> = {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  };
+function mapMessage(doc: Record<string, unknown>): MessageEntity {
+  const result = fromAppwriteDoc<Record<string, unknown>>(doc);
   if (typeof result.attachments === 'string') {
     result.attachments = JSON.parse(result.attachments);
   }
@@ -114,7 +103,7 @@ export const messageRepository = {
 
   async createMessage(messageData: Omit<MessageEntity, 'id' | 'created_at' | 'updated_at'>): Promise<MessageEntity> {
     const now = new Date().toISOString();
-    const attrs: Record<string, any> = {};
+    const attrs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(messageData)) {
       if (value !== undefined) {
         attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
@@ -179,7 +168,7 @@ export const messageRepository = {
     const ALLOWED_COLUMNS = new Set([
       'last_message_at', 'unread_count_1', 'unread_count_2',
     ]);
-    const attrs: Record<string, any> = {};
+    const attrs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(updates)) {
       if (key !== 'id' && key !== 'created_at' && key !== 'updated_at' && ALLOWED_COLUMNS.has(key) && value !== undefined) {
         attrs[key] = value;
@@ -219,10 +208,10 @@ export const messageRepository = {
       );
       let total = 0;
       for (const conv of response1.documents) {
-        total += (conv as any).unread_count_1 || 0;
+        total += Number(conv.unread_count_1 ?? 0);
       }
       for (const conv of response2.documents) {
-        total += (conv as any).unread_count_2 || 0;
+        total += Number(conv.unread_count_2 ?? 0);
       }
       return total;
     } catch {

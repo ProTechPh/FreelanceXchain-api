@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { config } from '../config/env.js';
 import { redis } from '../config/redis.js';
 import { logger } from '../config/logger.js';
+import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
 // Atomic fixed-window rate limit via Lua — INCR + PEXPIRE in one round-trip.
 // Returns [currentCount, remainingTtlMs]
@@ -20,6 +21,14 @@ type RateLimitConfig = {
   /** When true (default), requests pass through on Redis errors. Auth limiters should set false. */
   failOpen?: boolean;
 };
+
+/**
+ * Emit the standard 429 response (shared by the quota-exceeded and fail-closed paths).
+ */
+function sendRateLimitError(res: Response, req: Request, message: string | undefined, retryAfter: number): void {
+  res.set('Retry-After', String(retryAfter));
+  sendErrorResponse(res, 429, 'RATE_LIMIT_EXCEEDED', message ?? 'Too many requests, please try again later', getRequestId(req), undefined, undefined, retryAfter);
+}
 
 export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
   const { windowMs, maxRequests, message, failOpen = true } = rateLimitConfig;
@@ -43,17 +52,7 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
       )) as [number, number];
 
       if (current > maxRequests) {
-        const retryAfter = Math.ceil(ttlMs / 1000);
-        res.set('Retry-After', String(retryAfter));
-        res.status(429).json({
-          error: {
-            code: 'RATE_LIMIT_EXCEEDED',
-            message: message ?? 'Too many requests, please try again later',
-          },
-          retryAfter,
-          timestamp: new Date().toISOString(),
-          requestId: req.headers['x-request-id'] ?? 'unknown',
-        });
+        sendRateLimitError(res, req, message, Math.ceil(ttlMs / 1000));
         return;
       }
     } catch (err) {
@@ -61,17 +60,7 @@ export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {
         // Fail closed for security-critical endpoints (login, MFA, password reset).
         // Blocking the request during Redis outage is safer than allowing unlimited attempts.
         logger.error('[rate-limiter] Redis error, failing closed', err as Error);
-        const retryAfter = Math.ceil(windowMs / 1000);
-        res.set('Retry-After', String(retryAfter));
-        res.status(429).json({
-          error: {
-            code: 'RATE_LIMIT_EXCEEDED',
-            message: message ?? 'Too many requests, please try again later',
-          },
-          retryAfter,
-          timestamp: new Date().toISOString(),
-          requestId: req.headers['x-request-id'] ?? 'unknown',
-        });
+        sendRateLimitError(res, req, message, Math.ceil(windowMs / 1000));
         return;
       }
       // Fail open: if Redis is unavailable, let the request through rather than

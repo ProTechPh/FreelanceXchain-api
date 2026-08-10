@@ -40,6 +40,40 @@ type SkillRefEntity = { name: string; years_of_experience: number };
 type ProjectSkillRefEntity = { skill_id?: string; skill_name: string; category_id?: string; years_of_experience?: number };
 type ExpEntity = { id: string; title: string; company: string; description: string; start_date: string; end_date: string | null };
 
+// Relational fields populated by getContractByIdWithRelations; shapes match the
+// repository's output (singular `profile` object). Other producers may omit
+// these fields entirely, so every relational field stays optional.
+// Kept in sync with `ContractWithRelations` in src/repositories/contract-repository.ts.
+type ContractRelations = {
+  project?: {
+    id?: string;
+    title?: string | undefined;
+    description?: string | undefined;
+    deadline?: string;
+    milestones?: MilestoneEntity[];
+  } | null;
+  freelancer?: {
+    id?: string;
+    name?: string | undefined;
+    email?: string | undefined;
+    profile?: {
+      id?: string;
+      hourly_rate?: number | undefined;
+      skills?: unknown;
+    } | null;
+  };
+  employer?: {
+    id?: string;
+    name?: string | undefined;
+    email?: string | undefined;
+    profile?: {
+      id?: string;
+      company_name?: string | undefined;
+      industry?: string | undefined;
+    } | null;
+  };
+};
+
 // User mapping functions
 export function mapUserFromEntity(entity: UserEntity, kycStatus?: string): User {
   return {
@@ -171,7 +205,7 @@ export function mapMilestoneFromEntity(entity: MilestoneEntity): Milestone {
     status: entity.status,
     deliverableFiles: entity.deliverableFiles || entity.deliverable_files || [],
     revisionCount: entity.revisionCount ?? entity.revision_count ?? 0,
-    notes: (entity as any).notes,
+    ...(entity.notes !== undefined ? { notes: entity.notes } : {}),
     ...(contractId !== undefined ? { contractId } : {}),
     ...(submittedAt !== undefined ? { submittedAt } : {}),
     ...(approvedAt !== undefined ? { approvedAt } : {}),
@@ -225,7 +259,7 @@ export function mapProposalFromEntity(entity: ProposalEntity): Proposal {
 }
 
 // Contract mapping functions
-export function mapContractFromEntity(entity: ContractEntity & { project?: any; freelancer?: any; employer?: any }): Contract {
+export function mapContractFromEntity(entity: ContractEntity & ContractRelations): Contract {
   if (!entity) {
     throw new Error('Cannot map null or undefined ContractEntity');
   }
@@ -234,18 +268,15 @@ export function mapContractFromEntity(entity: ContractEntity & { project?: any; 
     id: entity.freelancer.id,
     name: entity.freelancer.name,
     email: entity.freelancer.email,
-    bio: entity.freelancer.freelancer_profile?.[0]?.bio,
-    hourlyRate: entity.freelancer.freelancer_profile?.[0]?.hourly_rate,
-    availability: entity.freelancer.freelancer_profile?.[0]?.availability,
+    hourlyRate: entity.freelancer.profile?.hourly_rate,
   } : undefined;
   
   const employerData = entity.employer ? {
     id: entity.employer.id,
     name: entity.employer.name,
     email: entity.employer.email,
-    companyName: entity.employer.employer_profile?.[0]?.company_name,
-    industry: entity.employer.employer_profile?.[0]?.industry,
-    description: entity.employer.employer_profile?.[0]?.description,
+    companyName: entity.employer.profile?.company_name,
+    industry: entity.employer.profile?.industry,
   } : undefined;
   
   return {
@@ -259,16 +290,20 @@ export function mapContractFromEntity(entity: ContractEntity & { project?: any; 
     rushFee: entity.rush_fee,
     totalAmount: entity.total_amount,
     status: entity.status,
-    title: entity.project?.title,
-    description: entity.project?.description,
+    ...(entity.project?.title !== undefined ? { title: entity.project.title } : {}),
+    ...(entity.project?.description !== undefined ? { description: entity.project.description } : {}),
     startDate: entity.created_at,
-    endDate: entity.project?.deadline,
-    milestones: entity.project?.milestones || [],
+    ...(entity.project?.deadline !== undefined ? { endDate: entity.project.deadline } : {}),
+    // Project milestones are the project-flavored Milestone (no canonical
+    // createdAt/updatedAt); the Contract model uses the canonical milestone
+    // shape. The repository never populates project.milestones today, so this
+    // boundary cast is only exercised with empty arrays.
+    milestones: (entity.project?.milestones ?? []).map(mapMilestoneFromEntity) as unknown as NonNullable<Contract['milestones']>,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
-    project: entity.project,
-    freelancer: freelancerData,
-    employer: employerData,
+    ...(entity.project !== undefined ? { project: entity.project } : {}),
+    ...(freelancerData !== undefined ? { freelancer: freelancerData } : {}),
+    ...(employerData !== undefined ? { employer: employerData } : {}),
   };
 }
 

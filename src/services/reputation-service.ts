@@ -17,6 +17,7 @@ import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { errorResult, successResult } from '../types/service-result.js';
 import type { Review, ReviewEntity } from '../models/review.js';
 
 
@@ -76,67 +77,31 @@ export async function submitRating(
   input: RatingInput
 ): Promise<ServiceResult<RatingResult>> {
   if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_RATING',
-        message: 'Rating must be an integer between 1 and 5',
-      },
-    };
+    return errorResult('INVALID_RATING', 'Rating must be an integer between 1 and 5');
   }
 
   const contractEntity = await contractRepository.getContractById(input.contractId);
   if (!contractEntity) {
-    return {
-      success: false,
-      error: {
-        code: 'NOT_FOUND',
-        message: 'Contract not found',
-      },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
   const contract = mapContractFromEntity(contractEntity);
 
   if (contract.status !== 'completed') {
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_CONTRACT_STATUS',
-        message: `Can only submit ratings for completed contracts (current status: ${contract.status})`,
-      },
-    };
+    return errorResult('INVALID_CONTRACT_STATUS', `Can only submit ratings for completed contracts (current status: ${contract.status})`);
   }
 
   if (contract.freelancerId !== input.raterId && contract.employerId !== input.raterId) {
-    return {
-      success: false,
-      error: {
-        code: 'UNAUTHORIZED',
-        message: 'Only contract participants can submit ratings',
-      },
-    };
+    return errorResult('UNAUTHORIZED', 'Only contract participants can submit ratings');
   }
 
   const rateeId = input.rateeId ?? (input.raterId === contract.freelancerId ? contract.employerId : contract.freelancerId);
 
   if (contract.freelancerId !== rateeId && contract.employerId !== rateeId) {
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_RATEE',
-        message: 'Ratee must be a contract participant',
-      },
-    };
+    return errorResult('INVALID_RATEE', 'Ratee must be a contract participant');
   }
 
   if (input.raterId === rateeId) {
-    return {
-      success: false,
-      error: {
-      code: 'SELF_RATING',
-      message: 'Users cannot rate themselves',
-    },
-  };
+    return errorResult('SELF_RATING', 'Users cannot rate themselves');
 }
 
 // Check for duplicate review
@@ -151,13 +116,7 @@ const existingReviewResponse = await databases.listDocuments(
 );
 
 if (existingReviewResponse.total > 0) {
-  return {
-    success: false,
-    error: {
-      code: 'DUPLICATE_RATING',
-      message: 'You have already rated this user for this contract',
-    },
-  };
+  return errorResult('DUPLICATE_RATING', 'You have already rated this user for this contract');
 }
 
 const reviewerRole = input.reviewerRole ?? (contract.employerId === input.raterId ? 'employer' : 'freelancer');
@@ -194,7 +153,7 @@ const reviewDoc = await databases.createDocument(
   reviewData
 );
 
-const reviewAttrs = reviewDoc as any;
+const reviewAttrs = reviewDoc;
 const review = {
   id: reviewAttrs.$id,
   contract_id: reviewAttrs.contract_id,
@@ -215,12 +174,8 @@ const review = {
 let transactionHash = '';
 try {
   // Look up ratee wallet address for blockchain sync
-  let rateeDoc: Record<string, any> | null = null;
-  try {
-    rateeDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, rateeId) as any;
-  } catch { /* ignore */ }
-
-  const rateeWallet = (rateeDoc as any)?.wallet_address;
+  const rateeDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, rateeId).catch(() => null);
+  const rateeWallet = rateeDoc?.wallet_address;
 
   if (rateeWallet) {
     const { isWeb3Available } = await import('./web3-client.js');
@@ -236,13 +191,12 @@ try {
           web3Available: true,
         });
 
-        const isEmployerRating = contract.employerId === input.raterId;
+        // isEmployerRating is derived on-chain from msg.sender — not passed here.
         const result = await submitRatingToBlockchain({
           contractId: input.contractId,
           rateeAddress: rateeWallet,
           rating: input.rating,
           comment: input.comment || '',
-          isEmployerRating,
         });
         transactionHash = result.transactionHash;
         logger.info('Rating synced to blockchain', { reviewId: review.id, transactionHash });
@@ -278,14 +232,11 @@ try {
     projectTitle
   );
 
-  return {
-    success: true,
-    data: {
-      rating,
-      transactionHash,
-    },
-  };
-}
+  return successResult({
+    rating,
+    transactionHash,
+  });
+  }
 
 /**
  * Get reputation score for a user
@@ -305,7 +256,7 @@ export async function getReputation(
       ]
     );
 
-    const ratings: RatingData[] = response.documents.map((r: any) => ({
+    const ratings: RatingData[] = response.documents.map((r) => ({
       id: r.$id,
       contractId: r.contract_id,
       raterId: r.reviewer_id,
@@ -322,26 +273,17 @@ export async function getReputation(
       ? Math.round((ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length) * 100) / 100
       : 0;
 
-    return {
-      success: true,
-      data: {
-        userId,
-        score,
-        totalRatings: ratings.length,
-        averageRating,
-        ratings,
-      },
-    };
-  } catch (error) {
-    logger.error('Failed to get reputation', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: 'Failed to get reputation',
-      },
-    };
-  }
+    return successResult({
+      userId,
+      score,
+      totalRatings: ratings.length,
+      averageRating,
+      ratings,
+    });
+      } catch (error) {
+      logger.error('Failed to get reputation', { error, userId });
+      return errorResult('DATABASE_ERROR', 'Failed to get reputation');
+    }
 }
 
 /**
@@ -386,7 +328,7 @@ export async function getWorkHistory(
       ]
     );
 
-    const reviewsByContractId = new Map(reviewsResponse.documents.map((r: any) => [r.contract_id, r]));
+    const reviewsByContractId = new Map(reviewsResponse.documents.map((r) => [r.contract_id, r]));
 
     const workHistory: WorkHistoryEntry[] = await Promise.all(
       completedContracts.map(async (contractEntity) => {
@@ -416,19 +358,10 @@ export async function getWorkHistory(
       new Date(b.completedAt).getTime() - new Date(a.completedAt).getTime()
     );
 
-    return {
-      success: true,
-      data: workHistory,
-    };
+    return successResult(workHistory);
   } catch (error) {
     logger.error('Failed to get work history', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: 'Failed to get work history',
-      },
-    };
+    return errorResult('DATABASE_ERROR', 'Failed to get work history');
   }
 }
 
@@ -448,7 +381,7 @@ export async function getContractRatings(
       ]
     );
 
-    const ratings: RatingData[] = response.documents.map((r: any) => ({
+    const ratings: RatingData[] = response.documents.map((r) => ({
       id: r.$id,
       contractId: r.contract_id,
       raterId: r.reviewer_id,
@@ -459,19 +392,10 @@ export async function getContractRatings(
       transactionHash: '',
     }));
 
-    return {
-      success: true,
-      data: ratings,
-    };
+    return successResult(ratings);
   } catch (error) {
     logger.error('Failed to get contract ratings', { error, contractId });
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: 'Failed to get contract ratings',
-      },
-    };
+    return errorResult('DATABASE_ERROR', 'Failed to get contract ratings');
   }
 }
 
@@ -486,39 +410,24 @@ export async function canUserRate(
   try {
     const contractEntity = await contractRepository.getContractById(contractId);
     if (!contractEntity) {
-      return {
-        success: true,
-        data: { canRate: false, reason: 'Contract not found' },
-      };
+      return successResult({ canRate: false, reason: 'Contract not found' });
     }
   const contract = mapContractFromEntity(contractEntity);
 
   if (contract.status !== 'completed') {
-    return {
-      success: true,
-      data: { canRate: false, reason: 'Contract must be completed before rating' },
-    };
+    return successResult({ canRate: false, reason: 'Contract must be completed before rating' });
   }
 
   if (contract.freelancerId !== raterId && contract.employerId !== raterId) {
-    return {
-      success: true,
-      data: { canRate: false, reason: 'You are not a participant in this contract' },
-    };
+    return successResult({ canRate: false, reason: 'You are not a participant in this contract' });
   }
 
   if (contract.freelancerId !== rateeId && contract.employerId !== rateeId) {
-    return {
-      success: true,
-      data: { canRate: false, reason: 'Ratee is not a participant in this contract' },
-    };
+    return successResult({ canRate: false, reason: 'Ratee is not a participant in this contract' });
   }
 
   if (raterId === rateeId) {
-    return {
-      success: true,
-      data: { canRate: false, reason: 'You cannot rate yourself' },
-    };
+    return successResult({ canRate: false, reason: 'You cannot rate yourself' });
   }
 
   const existingReviewResponse = await databases.listDocuments(
@@ -532,25 +441,13 @@ export async function canUserRate(
   );
 
   if (existingReviewResponse.total > 0) {
-    return {
-      success: true,
-      data: { canRate: false, reason: 'You have already rated this user for this contract' },
-    };
+    return successResult({ canRate: false, reason: 'You have already rated this user for this contract' });
   }
 
-  return {
-    success: true,
-    data: { canRate: true },
-  };
+  return successResult({ canRate: true });
   } catch (error) {
     logger.error('Failed to check if user can rate', { error, raterId, rateeId, contractId });
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: 'Failed to check rating eligibility',
-      },
-    };
+    return errorResult('DATABASE_ERROR', 'Failed to check rating eligibility');
   }
 }
 
@@ -563,16 +460,10 @@ export async function getReviewById(reviewId: string): Promise<ServiceResult<Rev
   try {
     const doc = await databases.getDocument(DATABASE_ID, COLLECTIONS.REVIEWS, reviewId);
 
-    return {
-      success: true,
-      data: mapReviewFromEntity(doc as any as ReviewEntity),
-    };
+    return successResult(mapReviewFromEntity(doc as unknown as ReviewEntity));
   } catch (error) {
     logger.error('Failed to get review by ID', { error, reviewId });
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Review not found' },
-    };
+    return errorResult('NOT_FOUND', 'Review not found');
   }
 }
 
@@ -591,16 +482,10 @@ export async function getUserReviews(userId: string): Promise<ServiceResult<Revi
       ]
     );
 
-    return {
-      success: true,
-      data: response.documents.map((r: any) => mapReviewFromEntity(r as ReviewEntity)),
-    };
+    return successResult(response.documents.map((r) => mapReviewFromEntity(r as unknown as ReviewEntity)));
   } catch (error) {
     logger.error('Failed to get user reviews', { error, userId });
-    return {
-      success: false,
-      error: { code: 'DATABASE_ERROR', message: 'Failed to fetch reviews' },
-    };
+    return errorResult('DATABASE_ERROR', 'Failed to fetch reviews');
   }
 }
 
@@ -619,16 +504,10 @@ export async function getProjectReviews(projectId: string): Promise<ServiceResul
       ]
     );
 
-    return {
-      success: true,
-      data: response.documents.map((r: any) => mapReviewFromEntity(r as ReviewEntity)),
-    };
+    return successResult(response.documents.map((r) => mapReviewFromEntity(r as unknown as ReviewEntity)));
   } catch (error) {
     logger.error('Failed to get project reviews', { error, projectId });
-    return {
-      success: false,
-      error: { code: 'DATABASE_ERROR', message: 'Failed to fetch reviews' },
-    };
+    return errorResult('DATABASE_ERROR', 'Failed to fetch reviews');
   }
 }
 

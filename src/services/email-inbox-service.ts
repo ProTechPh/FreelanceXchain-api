@@ -1,5 +1,6 @@
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import {
   emailInboxRepository,
   type EmailEntity,
@@ -77,24 +78,18 @@ export async function processInboundEmail(
   try {
     const username = extractUsername(payload.to);
     if (!username) {
-      return {
-        success: false,
-        error: { code: 'INVALID_RECIPIENT', message: `Recipient address not on platform domain: ${payload.to}` },
-      };
+      return errorResult('INVALID_RECIPIENT', `Recipient address not on platform domain: ${payload.to}`);
     }
 
     const user = await userRepository.findOne('name', username);
     if (!user) {
       logger.warn(`Inbound email to unknown user: ${username}@${PLATFORM_DOMAIN}`);
-      return {
-        success: false,
-        error: { code: 'USER_NOT_FOUND', message: `No user found with username: ${username}` },
-      };
+      return errorResult('USER_NOT_FOUND', `No user found with username: ${username}`);
     }
 
     const existing = await emailInboxRepository.findByMessageId(payload.messageId);
     if (existing) {
-      return { success: true, data: { emailId: existing.id } };
+      return successResult({ emailId: existing.id });
     }
 
     const email = await emailInboxRepository.create({
@@ -116,13 +111,10 @@ export async function processInboundEmail(
     });
 
     logger.info(`Email stored for user ${user.id}`, { emailId: email.id, from: payload.from });
-    return { success: true, data: { emailId: email.id } };
+    return successResult({ emailId: email.id });
   } catch (error) {
     logger.error('Failed to process inbound email:', error);
-    return {
-      success: false,
-      error: { code: 'INBOUND_EMAIL_FAILED', message: error instanceof Error ? error.message : 'Failed to process inbound email' },
-    };
+    return errorResult('INBOUND_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to process inbound email');
   }
 }
 
@@ -135,13 +127,10 @@ export async function listEmails(
 ): Promise<ServiceResult<PaginatedResult<EmailListItem>>> {
   try {
     const result = await emailInboxRepository.listByUserFolder(userId, folder, limit, offset, isRead);
-    return { success: true, data: result };
+    return successResult(result);
   } catch (error) {
     logger.error('Failed to list emails:', error);
-    return {
-      success: false,
-      error: { code: 'LIST_EMAILS_FAILED', message: error instanceof Error ? error.message : 'Failed to list emails' },
-    };
+    return errorResult('LIST_EMAILS_FAILED', error instanceof Error ? error.message : 'Failed to list emails');
   }
 }
 
@@ -153,10 +142,7 @@ export async function getEmail(
   try {
     const email = await emailInboxRepository.getFullEmail(emailId, userId);
     if (!email) {
-      return {
-        success: false,
-        error: { code: 'EMAIL_NOT_FOUND', message: 'Email not found' },
-      };
+      return errorResult('EMAIL_NOT_FOUND', 'Email not found');
     }
 
     if (markAsRead && !email.is_read) {
@@ -164,13 +150,10 @@ export async function getEmail(
       email.is_read = true;
     }
 
-    return { success: true, data: email };
+    return successResult(email);
   } catch (error) {
     logger.error('Failed to get email:', error);
-    return {
-      success: false,
-      error: { code: 'GET_EMAIL_FAILED', message: error instanceof Error ? error.message : 'Failed to get email' },
-    };
+    return errorResult('GET_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to get email');
   }
 }
 
@@ -182,27 +165,18 @@ export async function updateEmail(
   try {
     const email = await emailInboxRepository.getFullEmail(emailId, userId);
     if (!email) {
-      return {
-        success: false,
-        error: { code: 'EMAIL_NOT_FOUND', message: 'Email not found' },
-      };
+      return errorResult('EMAIL_NOT_FOUND', 'Email not found');
     }
 
     const updated = await emailInboxRepository.update(emailId, updates as Partial<EmailEntity>);
     if (!updated) {
-      return {
-        success: false,
-        error: { code: 'UPDATE_FAILED', message: 'Failed to update email' },
-      };
+      return errorResult('UPDATE_FAILED', 'Failed to update email');
     }
 
-    return { success: true, data: updated };
+    return successResult(updated);
   } catch (error) {
     logger.error('Failed to update email:', error);
-    return {
-      success: false,
-      error: { code: 'UPDATE_EMAIL_FAILED', message: error instanceof Error ? error.message : 'Failed to update email' },
-    };
+    return errorResult('UPDATE_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to update email');
   }
 }
 
@@ -213,25 +187,19 @@ export async function deleteEmail(
   try {
     const email = await emailInboxRepository.getFullEmail(emailId, userId);
     if (!email) {
-      return {
-        success: false,
-        error: { code: 'EMAIL_NOT_FOUND', message: 'Email not found' },
-      };
+      return errorResult('EMAIL_NOT_FOUND', 'Email not found');
     }
 
     if (email.folder === 'trash') {
       const deleted = await emailInboxRepository.delete(emailId);
-      return { success: true, data: { deleted } };
+      return successResult({ deleted });
     }
 
     await emailInboxRepository.moveToFolder(emailId, 'trash');
-    return { success: true, data: { deleted: true } };
+    return successResult({ deleted: true });
   } catch (error) {
     logger.error('Failed to delete email:', error);
-    return {
-      success: false,
-      error: { code: 'DELETE_EMAIL_FAILED', message: error instanceof Error ? error.message : 'Failed to delete email' },
-    };
+    return errorResult('DELETE_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to delete email');
   }
 }
 
@@ -245,10 +213,7 @@ export async function sendNewEmail(
   try {
     const user = await userRepository.getUserById(userId);
     if (!user) {
-      return {
-        success: false,
-        error: { code: 'USER_NOT_FOUND', message: 'User not found' },
-      };
+      return errorResult('USER_NOT_FOUND', 'User not found');
     }
 
     const fromAddress = `${user.name}@${PLATFORM_DOMAIN}`;
@@ -256,10 +221,7 @@ export async function sendNewEmail(
     const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
     const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
     if (!apiToken || !accountId) {
-      return {
-        success: false,
-        error: { code: 'EMAIL_CONFIG_MISSING', message: 'Cloudflare email configuration not found' },
-      };
+      return errorResult('EMAIL_CONFIG_MISSING', 'Cloudflare email configuration not found');
     }
 
     const response = await fetch(
@@ -282,10 +244,7 @@ export async function sendNewEmail(
 
     const sendError = await readCloudflareSendError(response);
     if (sendError) {
-      return {
-        success: false,
-        error: { code: 'EMAIL_SEND_FAILED', message: sendError },
-      };
+      return errorResult('EMAIL_SEND_FAILED', sendError);
     }
 
     const messageId = `<${crypto.randomUUID()}@${PLATFORM_DOMAIN}>`;
@@ -308,13 +267,10 @@ export async function sendNewEmail(
     });
 
     logger.info(`Email sent by user ${userId}`, { emailId: email.id, to });
-    return { success: true, data: { emailId: email.id } };
+    return successResult({ emailId: email.id });
   } catch (error) {
     logger.error('Failed to send email:', error);
-    return {
-      success: false,
-      error: { code: 'SEND_EMAIL_FAILED', message: error instanceof Error ? error.message : 'Failed to send email' },
-    };
+    return errorResult('SEND_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to send email');
   }
 }
 
@@ -327,18 +283,12 @@ export async function replyToEmail(
   try {
     const original = await emailInboxRepository.getFullEmail(emailId, userId);
     if (!original) {
-      return {
-        success: false,
-        error: { code: 'EMAIL_NOT_FOUND', message: 'Original email not found' },
-      };
+      return errorResult('EMAIL_NOT_FOUND', 'Original email not found');
     }
 
     const user = await userRepository.getUserById(userId);
     if (!user) {
-      return {
-        success: false,
-        error: { code: 'USER_NOT_FOUND', message: 'User not found' },
-      };
+      return errorResult('USER_NOT_FOUND', 'User not found');
     }
 
     const fromAddress = `${user.name}@${PLATFORM_DOMAIN}`;
@@ -352,10 +302,7 @@ export async function replyToEmail(
     const apiToken = process.env['CLOUDFLARE_API_TOKEN'];
     const accountId = process.env['CLOUDFLARE_ACCOUNT_ID'];
     if (!apiToken || !accountId) {
-      return {
-        success: false,
-        error: { code: 'EMAIL_CONFIG_MISSING', message: 'Cloudflare email configuration not found' },
-      };
+      return errorResult('EMAIL_CONFIG_MISSING', 'Cloudflare email configuration not found');
     }
 
     const response = await fetch(
@@ -382,10 +329,7 @@ export async function replyToEmail(
 
     const sendError = await readCloudflareSendError(response);
     if (sendError) {
-      return {
-        success: false,
-        error: { code: 'EMAIL_SEND_FAILED', message: sendError },
-      };
+      return errorResult('EMAIL_SEND_FAILED', sendError);
     }
 
     const messageId = `<${crypto.randomUUID()}@${PLATFORM_DOMAIN}>`;
@@ -408,13 +352,10 @@ export async function replyToEmail(
     });
 
     logger.info(`Reply sent by user ${userId}`, { emailId: email.id, to: replyTo });
-    return { success: true, data: { emailId: email.id } };
+    return successResult({ emailId: email.id });
   } catch (error) {
     logger.error('Failed to reply to email:', error);
-    return {
-      success: false,
-      error: { code: 'REPLY_EMAIL_FAILED', message: error instanceof Error ? error.message : 'Failed to reply to email' },
-    };
+    return errorResult('REPLY_EMAIL_FAILED', error instanceof Error ? error.message : 'Failed to reply to email');
   }
 }
 
@@ -424,12 +365,9 @@ export async function getUnreadCount(
 ): Promise<ServiceResult<{ count: number }>> {
   try {
     const count = await emailInboxRepository.getUnreadCount(userId, folder);
-    return { success: true, data: { count } };
+    return successResult({ count });
   } catch (error) {
     logger.error('Failed to get unread count:', error);
-    return {
-      success: false,
-      error: { code: 'UNREAD_COUNT_FAILED', message: error instanceof Error ? error.message : 'Failed to get unread count' },
-    };
+    return errorResult('UNREAD_COUNT_FAILED', error instanceof Error ? error.message : 'Failed to get unread count');
   }
 }

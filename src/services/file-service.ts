@@ -1,5 +1,6 @@
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import { storage, BUCKETS } from '../config/appwrite.js';
 import { config } from '../config/env.js';
 
@@ -73,19 +74,10 @@ export async function getUserFiles(
     );
     const allFiles: FileInfo[] = bucketResults.flat();
 
-    return {
-      success: true,
-      data: allFiles,
-    };
+    return successResult(allFiles);
   } catch (error) {
     logger.error('Unexpected error in getUserFiles', { error, userId, bucket });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -103,40 +95,19 @@ export async function deleteFile(
       const file = await storage.getFile(bucket, path);
       // Verify file ownership by checking owner write permission
       if (!isFileOwnedByUser(file, userId)) {
-        return {
-          success: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: 'You can only delete your own files',
-          },
-        };
+        return errorResult('UNAUTHORIZED', 'You can only delete your own files');
       }
     } catch (error) {
       logger.error('Failed to get file info', { error, userId, bucket, path });
-      return {
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'File not found',
-        },
-      };
+      return errorResult('NOT_FOUND', 'File not found');
     }
 
     await storage.deleteFile(bucket, path);
 
-    return {
-      success: true,
-      data: undefined as unknown as void,
-    };
+    return successResult(undefined as unknown as void);
   } catch (error) {
     logger.error('Unexpected error in deleteFile', { error, userId, bucket, path });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -158,25 +129,16 @@ export async function getFileQuota(userId: string): Promise<ServiceResult<FileQu
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
     const percentage = (totalSize / DEFAULT_QUOTA_BYTES) * 100;
 
-    return {
-      success: true,
-      data: {
-        used: totalSize,
-        limit: DEFAULT_QUOTA_BYTES,
-        percentage: Math.min(percentage, 100),
-        files: files.length,
-      },
-    };
-  } catch (error) {
-    /* istanbul ignore next */
-    logger.error('Unexpected error in getFileQuota', { error, userId });
-    /* istanbul ignore next */
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      used: totalSize,
+      limit: DEFAULT_QUOTA_BYTES,
+      percentage: Math.min(percentage, 100),
+      files: files.length,
+    });
+      } catch (error) {
+      /* istanbul ignore next */
+      logger.error('Unexpected error in getFileQuota', { error, userId });
+      /* istanbul ignore next */
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }

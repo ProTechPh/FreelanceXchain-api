@@ -3,6 +3,7 @@ import { logger } from '../config/logger.js';
 import { EmailPreference, EmailType } from '../models/email-preference.js';
 import { COLLECTIONS } from '../config/collections.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { errorResult, successResult } from '../types/service-result.js';
 
 /**
  * Get user's email preferences (create default if doesn't exist)
@@ -38,27 +39,15 @@ export async function getEmailPreferences(userId: string): Promise<ServiceResult
         }
       );
 
-      return {
-        success: true,
-        data: mapEmailPreference(doc),
-      };
+      return successResult(mapEmailPreference(doc));
     }
 
-    return {
-      success: true,
-      data: mapEmailPreference(response.documents[0]!),
-    };
+    return successResult(mapEmailPreference(response.documents[0]!));
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Unexpected error in getEmailPreferences', { error, userId });
     /* istanbul ignore next */
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -70,15 +59,13 @@ export async function updateEmailPreferences(
   preferences: Partial<EmailPreference>
 ): Promise<ServiceResult<EmailPreference>> {
   try {
-    const { id: _id, user_id: _user_id, created_at: _created_at, updated_at: _updated_at, ...updates } = preferences as any;
-
     const ALLOWED_COLUMNS = new Set([
       'proposal_received', 'proposal_accepted', 'milestone_updates',
       'payment_notifications', 'dispute_notifications', 'marketing_emails', 'weekly_digest',
     ]);
 
-    const updateData: Record<string, any> = {};
-    for (const [key, value] of Object.entries(updates)) {
+    const updateData: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(preferences)) {
       if (ALLOWED_COLUMNS.has(key)) {
         updateData[key] = value;
       }
@@ -98,10 +85,7 @@ export async function updateEmailPreferences(
     );
 
     if (response.documents.length === 0) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Preferences not found' }
-      };
+      return errorResult('NOT_FOUND', 'Preferences not found');
     }
 
     const doc = response.documents[0]!;
@@ -112,19 +96,10 @@ export async function updateEmailPreferences(
       updateData
     );
 
-    return {
-      success: true,
-      data: mapEmailPreference(updated),
-    };
+    return successResult(mapEmailPreference(updated));
   } catch (error) {
     logger.error('Failed to update email preferences', { error, userId, preferences });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -157,19 +132,10 @@ export async function unsubscribeAll(userId: string): Promise<ServiceResult<void
       );
     }
 
-    return {
-      success: true,
-      data: undefined as unknown as void,
-    };
+    return successResult(undefined as unknown as void);
   } catch (error) {
     logger.error('Unexpected error in unsubscribeAll', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -186,7 +152,7 @@ export async function shouldSendEmail(userId: string, emailType: EmailType): Pro
 
     const preferences = result.data;
 
-    const preferenceMap: Record<EmailType, string> = {
+    const preferenceMap: Record<EmailType, keyof Pick<EmailPreference, 'proposalReceived' | 'proposalAccepted' | 'milestoneUpdates' | 'paymentNotifications' | 'disputeNotifications' | 'marketingEmails' | 'weeklyDigest'>> = {
       proposal_received: 'proposalReceived',
       proposal_accepted: 'proposalAccepted',
       milestone_updates: 'milestoneUpdates',
@@ -197,7 +163,7 @@ export async function shouldSendEmail(userId: string, emailType: EmailType): Pro
     };
 
     const preferenceKey = preferenceMap[emailType];
-    return (preferences as any)[preferenceKey] as boolean ?? true;
+    return preferences[preferenceKey] ?? true;
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Error checking email preference', { error, userId, emailType });

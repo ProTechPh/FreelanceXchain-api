@@ -1,25 +1,17 @@
 import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
 import { KycVerification, UpdateKycVerificationInput } from '../models/didit-kyc.js';
 import { logger } from '../config/logger.js';
+import { fromAppwriteDoc } from './base-repository.js';
 
 const TABLE_NAME = 'kyc_verifications';
 
-function mapKyc(doc: Record<string, any>): KycVerification {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-  const result: Record<string, any> = {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  };
-  if (typeof result.decline_reasons === 'string') {
-    result.decline_reasons = JSON.parse(result.decline_reasons);
-  }
-  if (typeof result.review_reasons === 'string') {
-    result.review_reasons = JSON.parse(result.review_reasons);
-  }
-  if (typeof result.metadata === 'string') {
-    result.metadata = JSON.parse(result.metadata);
+function mapKyc(doc: Record<string, unknown>): KycVerification {
+  const result = fromAppwriteDoc<Record<string, unknown>>(doc);
+  for (const field of ['decline_reasons', 'review_reasons', 'metadata']) {
+    const value = result[field];
+    if (typeof value === 'string') {
+      result[field] = JSON.parse(value);
+    }
   }
   return result as KycVerification;
 }
@@ -28,7 +20,7 @@ export async function createKycVerification(
   verification: Omit<KycVerification, 'created_at' | 'updated_at'>
 ): Promise<KycVerification | null> {
   const now = new Date().toISOString();
-  const attrs: Record<string, any> = {};
+  const attrs: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(verification)) {
     if (value !== undefined) {
       attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;
@@ -41,7 +33,7 @@ export async function createKycVerification(
     const doc = await databases.createDocument(
       DATABASE_ID,
       TABLE_NAME,
-      (verification as any).id || ID.unique(),
+      verification.id || ID.unique(),
       attrs
     );
     return mapKyc(doc);
@@ -117,7 +109,7 @@ export async function updateKycVerification(
   if (Object.keys(updates).length === 0) return getKycVerificationById(id);
 
   const now = new Date().toISOString();
-  const attrs: Record<string, any> = {};
+  const attrs: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(updates)) {
     if (key !== 'id' && key !== 'user_id' && key !== 'created_at' && value !== undefined) {
       attrs[key] = typeof value === 'object' ? JSON.stringify(value) : value;

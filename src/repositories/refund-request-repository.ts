@@ -1,5 +1,6 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import type { ContractEntity } from './contract-repository.js';
 
 export type RefundRequestEntity = {
   id: string;
@@ -20,15 +21,11 @@ export type RefundRequestEntity = {
 
 const COLLECTION_ID = 'refund_requests';
 
-function mapDoc(doc: Record<string, any>): RefundRequestEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as RefundRequestEntity;
+function mapDoc(doc: Record<string, unknown>): RefundRequestEntity {
+  return fromAppwriteDoc<RefundRequestEntity>(doc);
 }
+
+export type RefundWithContract = RefundRequestEntity & { contract?: ContractEntity | null };
 
 export class RefundRequestRepository extends BaseRepository<RefundRequestEntity> {
   constructor() {
@@ -62,25 +59,19 @@ export class RefundRequestRepository extends BaseRepository<RefundRequestEntity>
     );
   }
 
-  async findWithContract(id: string): Promise<(RefundRequestEntity & { contract?: any }) | null> {
+  async findWithContract(id: string): Promise<RefundWithContract | null> {
     try {
       const doc = await databases.getDocument(DATABASE_ID, COLLECTION_ID, id);
-      const refund = mapDoc(doc as any);
+      const refund = mapDoc(doc);
 
-      let contract = null;
+      let contract: ContractEntity | null = null;
       try {
         const contractDoc = await databases.getDocument(
           DATABASE_ID,
           'contracts',
           refund.contract_id
         );
-        const { $id, $createdAt, $updatedAt, ...cAttrs } = contractDoc as any;
-        contract = {
-          id: $id,
-          ...cAttrs,
-          created_at: cAttrs.created_at ?? $createdAt,
-          updated_at: cAttrs.updated_at ?? $updatedAt,
-        };
+        contract = fromAppwriteDoc<ContractEntity>(contractDoc);
       } catch {
         // Contract not found; return refund without it
       }

@@ -4,7 +4,8 @@ import { validateUUID, isValidUUID } from '../middleware/validation-middleware.j
 import { uploadProjectAttachments } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter, apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
+import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
+import { uploadMultipleFiles, cleanupUploadedFiles, type FileMetadata } from '../utils/storage-uploader.js';
 import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
 import { generateId } from '../utils/id.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
@@ -182,11 +183,7 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
   }
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId: getRequestId(req),
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
     return;
   }
 
@@ -248,11 +245,7 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -261,11 +254,7 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
   const result = await listProjectsByEmployer(userId, options);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -325,11 +314,7 @@ router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Respon
     const result = await listOpenProjects({ limit, offset: 0 });
     
     if (!result.success) {
-      res.status(500).json({
-        error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve project statistics', requestId);
       return;
     }
 
@@ -358,11 +343,7 @@ router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Respon
     });
   } catch (error) {
     logger.error('Failed to get project category statistics', { error });
-    res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to retrieve project statistics' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve project statistics', requestId);
   }
 });
 
@@ -401,11 +382,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   const result = await getProjectById(id);
 
   if (!result.success) {
-    res.status(404).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -476,11 +453,7 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -522,11 +495,7 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, errors, requestId);
     return;
   }
 
@@ -546,11 +515,7 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
   });
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message, details: result.error.details },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId, result.error.details);
     return;
   }
 
@@ -626,11 +591,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -687,15 +648,11 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, errors, requestId);
     return;
   }
 
-  let attachments: any[] = [];
+  let attachments: FileMetadata[] = [];
   
   // Upload files if provided
   if (files && files.length > 0) {
@@ -717,7 +674,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
         if (result.success && result.metadata) acc.push(result.metadata!);
         return acc;
       }, []);
-    } catch (uploadError: any) {
+    } catch (uploadError) {
       // Clean up any partially uploaded files
       /* istanbul ignore next */
       if (attachments.length > 0) {
@@ -725,15 +682,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
       }
       
       /* istanbul ignore next */
-      res.status(500).json({
-        error: { 
-          code: 'FILE_UPLOAD_ERROR', 
-          message: 'Failed to upload attachments',
-          details: uploadError.message 
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 500, 'FILE_UPLOAD_ERROR', 'Failed to upload attachments', requestId, uploadError instanceof Error ? uploadError.message : 'Failed to upload attachments');
       /* istanbul ignore next */
       return;
     }
@@ -761,11 +710,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
       await cleanupUploadedFiles(attachments, STORAGE_BUCKETS.PROJECT_ATTACHMENTS);
     }
     
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message, details: result.error.details },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId, result.error.details);
     return;
   }
 
@@ -841,11 +786,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -862,11 +803,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, errors, requestId);
     return;
   }
 
@@ -881,11 +818,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'PROJECT_LOCKED') statusCode = 409;
     
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message, details: result.error.details },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId, result.error.details);
     return;
   }
 
@@ -963,11 +896,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -993,11 +922,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, errors, requestId);
     return;
   }
 
@@ -1008,11 +933,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'PROJECT_LOCKED') statusCode = 409;
     
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -1081,31 +1002,19 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   // Verify employer owns this project
   const projectResult = await getProjectById(projectId);
   if (!projectResult.success) {
-    res.status(404).json({
-      error: { code: projectResult.error.code, message: projectResult.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, projectResult.error.code, projectResult.error.message, requestId);
     return;
   }
 
   if (projectResult.data.employer_id !== userId) {
-    res.status(403).json({
-      error: { code: 'FORBIDDEN', message: 'You can only view proposals for your own projects' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'You can only view proposals for your own projects', requestId);
     return;
   }
 
@@ -1114,11 +1023,7 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
   const result = await getProposalsByProject(projectId, options);
 
   if (!result.success) {
-    res.status(404).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
     return;
   }
 

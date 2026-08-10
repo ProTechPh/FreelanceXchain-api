@@ -369,7 +369,10 @@ describe('Milestone Attachments API', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: 'No files provided',
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'No files provided',
+        },
       });
     });
   });

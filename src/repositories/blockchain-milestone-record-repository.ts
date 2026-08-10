@@ -27,18 +27,15 @@ export class BlockchainMilestoneRecordRepository extends BaseRepository<Blockcha
   }
 
   async getMilestoneRecordById(id: string): Promise<BlockchainMilestoneRecordEntity | null> {
-    const doc = await this.getById(id);
-    return doc ? this.mapDoc(doc as any) : null;
+    return this.getById(id);
   }
 
   async createMilestoneRecord(data: Omit<BlockchainMilestoneRecordEntity, 'created_at' | 'updated_at'>): Promise<BlockchainMilestoneRecordEntity> {
-    const doc = await this.create(data);
-    return this.mapDoc(doc as any);
+    return this.create(data);
   }
 
   async updateMilestoneRecord(id: string, updates: Partial<BlockchainMilestoneRecordEntity>): Promise<BlockchainMilestoneRecordEntity | null> {
-    const doc = await this.update(id, updates);
-    return doc ? this.mapDoc(doc as any) : null;
+    return this.update(id, updates);
   }
 
   async findByMilestoneIdHash(milestoneIdHash: string): Promise<BlockchainMilestoneRecordEntity | null> {

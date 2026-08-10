@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
 import { clampLimit } from '../utils/index.js';
 import {
   getEmployerProfileByUserId,
@@ -91,11 +92,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -106,11 +103,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
   const result = await listProjectsByEmployer(userId, options);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -146,22 +139,14 @@ router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, 
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   const result = await getEmployerProfileByUserId(userId);
 
   if (!result.success) {
-    res.status(404).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -213,11 +198,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -234,11 +215,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
   }
 
   if (errors.length > 0) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendValidationError(res, errors, requestId);
     return;
   }
 
@@ -246,11 +223,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -292,14 +265,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   const result = await getEmployerProfileByUserId(id);
 
   if (!result.success) {
-    res.status(404).json({
-      error: {
-        code: result.error.code,
-        message: result.error.message,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
     return;
   }
 

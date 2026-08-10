@@ -6,8 +6,8 @@
 import { Dispute, Contract, Project, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import { disputeRepository, DisputeEntity, EvidenceEntity, DisputeResolutionEntity } from '../repositories/dispute-repository.js';
 import { disputeEvidenceRepository } from '../repositories/dispute-evidence-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
+import { contractRepository, ContractEntity } from '../repositories/contract-repository.js';
+import { projectRepository, ProjectEntity, MilestoneEntity } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity, mapProjectFromEntity, mapMilestoneFromEntity } from '../utils/entity-mapper.js';
 import { generateId } from '../utils/id.js';
@@ -24,6 +24,7 @@ import { getBlockchainAdapter } from './blockchain/factory.js';
 import { disputeAgreement } from './agreement-contract.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 
 export type DisputeServiceResult<T> = ServiceResult<T>;
@@ -68,58 +69,37 @@ export async function createDispute(
   // Validate contract exists
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
   const contract = mapContractFromEntity(contractEntity);
 
   // Cannot dispute milestones on completed, cancelled, or pending contracts
   if (contract.status !== 'active') {
-    return {
-      success: false,
-      error: { 
-        code: 'INVALID_CONTRACT_STATUS', 
-        message: `Cannot create disputes on a ${contract.status} contract. Only active contracts can be disputed.` 
-      },
-    };
+    return errorResult('INVALID_CONTRACT_STATUS', `Cannot create disputes on a ${contract.status} contract. Only active contracts can be disputed.`);
   }
 
   // Verify initiator is part of this contract
   if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can create disputes' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only contract parties can create disputes');
   }
 
   // Get project to validate milestone
   const projectEntity = await projectRepository.findProjectById(contract.projectId);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
   // Validate milestone exists
   const milestoneEntity = projectEntity.milestones.find(m => m.id === milestoneId);
   if (!milestoneEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-    };
+    return errorResult('NOT_FOUND', 'Milestone not found');
   }
   const milestone = mapMilestoneFromEntity(milestoneEntity);
 
   // Only submitted milestones can be disputed
   if (milestone.status === 'disputed') {
-    return {
-      success: false,
-      error: { code: 'ALREADY_DISPUTED', message: 'Milestone is already under dispute' },
-    };
+    return errorResult('ALREADY_DISPUTED', 'Milestone is already under dispute');
   }
 
   if (milestone.status !== 'submitted') {
@@ -127,19 +107,13 @@ export async function createDispute(
       ? 'Cannot dispute an approved milestone'
       : `Milestone must be submitted before it can be disputed (current status: ${milestone.status})`;
 
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message },
-    };
+    return errorResult('INVALID_STATUS', message);
   }
 
   // Check for existing active dispute on this milestone (M9: use lock to prevent race)
   const existingDispute = await disputeRepository.getDisputeByMilestone(milestoneId);
   if (existingDispute) {
-    return {
-      success: false,
-      error: { code: 'DUPLICATE_DISPUTE', message: 'An active dispute already exists for this milestone' },
-    };
+    return errorResult('DUPLICATE_DISPUTE', 'An active dispute already exists for this milestone');
   }
 
   // Create dispute entity
@@ -194,7 +168,7 @@ export async function createDispute(
   try {
     const escrowAddress = contractEntity.escrow_address;
     if (escrowAddress) {
-      const milestoneIndex = projectEntity.milestones.findIndex((m: any) => m.id === milestoneId);
+      const milestoneIndex = projectEntity.milestones.findIndex((m) => m.id === milestoneId);
       if (milestoneIndex !== -1) {
         await getBlockchainAdapter().disputeMilestone(escrowAddress, milestoneIndex);
       }
@@ -258,7 +232,7 @@ export async function createDispute(
     });
   }
 
-  return { success: true, data: createdDispute };
+  return successResult(createdDispute);
 }
 
 
@@ -273,34 +247,22 @@ export async function submitEvidence(
   // Find dispute
   const disputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!disputeEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Dispute not found' },
-    };
+    return errorResult('NOT_FOUND', 'Dispute not found');
   }
 
   // Check dispute status - can only submit evidence for open or under_review disputes
   if (disputeEntity.status === 'resolved') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Cannot submit evidence for resolved disputes' },
-    };
+    return errorResult('INVALID_STATUS', 'Cannot submit evidence for resolved disputes');
   }
 
   // Verify submitter is part of the contract
   const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
   if (!contractEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
 
   if (contractEntity.employer_id !== submitterId && contractEntity.freelancer_id !== submitterId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can submit evidence' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only contract parties can submit evidence');
   }
 
   // Create evidence entity
@@ -319,19 +281,16 @@ export async function submitEvidence(
     submitted_by: submitterId,
     evidence_type: type,
     description: content,
-  } as any);
+  });
 
   // Append evidence to dispute's evidence array
   const updatedEvidence = [...disputeEntity.evidence, { ...evidenceEntity, submitted_at: new Date().toISOString() }];
-  await disputeRepository.updateDispute(disputeId, { evidence: updatedEvidence } as any);
+  await disputeRepository.updateDispute(disputeId, { evidence: updatedEvidence });
 
   // Get the fully updated entity
   const updatedDisputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!updatedDisputeEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to retrieve updated dispute' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to retrieve updated dispute');
   }
 
   // Update evidence hash on blockchain
@@ -348,7 +307,7 @@ export async function submitEvidence(
     });
   }
 
-  return { success: true, data: mapDisputeFromEntity(updatedDisputeEntity) };
+  return successResult(mapDisputeFromEntity(updatedDisputeEntity));
 }
 
 
@@ -363,11 +322,11 @@ async function validateDisputeResolution(
   | {
       disputeEntity: DisputeEntity;
       contract: Contract;
-      contractEntity: any;
+      contractEntity: ContractEntity;
       project: Project;
-      projectEntity: any;
+      projectEntity: ProjectEntity;
       milestone: NonNullable<Project['milestones'][number]>;
-      milestoneEntity: any;
+      milestoneEntity: MilestoneEntity;
       milestoneIndex: number;
     }
 > {
@@ -375,40 +334,40 @@ async function validateDisputeResolution(
 
   // Verify resolver is admin (defense in depth - route should also check)
   if (resolverRole !== 'admin') {
-    return { error: { success: false, error: { code: 'UNAUTHORIZED', message: 'Only administrators can resolve disputes' } } };
+    return { error: errorResult('UNAUTHORIZED', 'Only administrators can resolve disputes') };
   }
 
   // Find dispute
   const disputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!disputeEntity) {
-    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Dispute not found' } } };
+    return { error: errorResult('NOT_FOUND', 'Dispute not found') };
   }
 
   // Check dispute status
   if (disputeEntity.status === 'resolved') {
-    return { error: { success: false, error: { code: 'ALREADY_RESOLVED', message: 'Dispute is already resolved' } } };
+    return { error: errorResult('ALREADY_RESOLVED', 'Dispute is already resolved') };
   }
 
   // Get contract
   const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
   if (!contractEntity) {
-    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Contract not found' } } };
+    return { error: errorResult('NOT_FOUND', 'Contract not found') };
   }
   const contract = mapContractFromEntity(contractEntity);
 
   // Get project for milestone info
   const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
   if (!projectEntity) {
-    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } } };
+    return { error: errorResult('NOT_FOUND', 'Project not found') };
   }
   const project = mapProjectFromEntity(projectEntity);
 
-  const milestoneEntity = projectEntity.milestones.find((m: any) => m.id === disputeEntity.milestone_id);
+  const milestoneEntity = projectEntity.milestones.find((m) => m.id === disputeEntity.milestone_id);
   if (!milestoneEntity) {
-    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Milestone not found' } } };
+    return { error: errorResult('NOT_FOUND', 'Milestone not found') };
   }
   const milestone = mapMilestoneFromEntity(milestoneEntity);
-  const milestoneIndex = projectEntity.milestones.findIndex((m: any) => m.id === disputeEntity.milestone_id);
+  const milestoneIndex = projectEntity.milestones.findIndex((m) => m.id === disputeEntity.milestone_id);
 
   return { disputeEntity, contract, contractEntity, project, projectEntity, milestone, milestoneEntity, milestoneIndex };
 }
@@ -424,7 +383,7 @@ async function processDisputeEscrowPayment(
   disputeId: string,
   disputeEntity: DisputeEntity,
   decision: 'freelancer_favor' | 'employer_favor' | 'split',
-  milestoneEntity: any,
+  milestoneEntity: MilestoneEntity,
   escrowAddress: string,
   milestoneIndex: number,
   freelancerBps?: number,
@@ -439,15 +398,7 @@ async function processDisputeEscrowPayment(
       disputeId,
       contractId: disputeEntity.contract_id,
     });
-    return {
-      error: {
-        success: false,
-        error: {
-          code: 'ESCROW_NOT_FOUND',
-          message: 'Escrow record not found. Cannot process dispute payment. Please ensure the contract has been funded.',
-        },
-      },
-    };
+    return { error: errorResult('ESCROW_NOT_FOUND', 'Escrow record not found. Cannot process dispute payment. Please ensure the contract has been funded.') };
   }
 
   try {
@@ -457,15 +408,7 @@ async function processDisputeEscrowPayment(
         disputeId,
         contractId: disputeEntity.contract_id,
       });
-      return {
-        error: {
-          success: false,
-          error: {
-            code: 'PAYMENT_FAILED',
-            message: 'Blockchain adapter unavailable. Cannot process dispute payment. Please retry.',
-          },
-        },
-      };
+      return { error: errorResult('PAYMENT_FAILED', 'Blockchain adapter unavailable. Cannot process dispute payment. Please retry.') };
     }
 
     // Basis-points mapping:
@@ -478,15 +421,7 @@ async function processDisputeEscrowPayment(
       : freelancerBps ?? 5000;
 
     if (decision === 'split' && (resolvedBps <= 0 || resolvedBps >= 10000)) {
-      return {
-        error: {
-          success: false,
-          error: {
-            code: 'INVALID_SPLIT_BPS',
-            message: 'freelancerBps must be between 1 and 9999 for a split decision.',
-          },
-        },
-      };
+      return { error: errorResult('INVALID_SPLIT_BPS', 'freelancerBps must be between 1 and 9999 for a split decision.') };
     }
 
     await adapter.resolveDispute(escrowAddress, milestoneIndex, resolvedBps);
@@ -501,15 +436,7 @@ async function processDisputeEscrowPayment(
     });
     // IMPORTANT: If payment fails, do NOT mark the dispute as resolved
     // The admin should retry the resolution after fixing the payment issue
-    return {
-      error: {
-        success: false,
-        error: {
-          code: 'PAYMENT_FAILED',
-          message: 'Payment processing failed during dispute resolution. Please retry.',
-        },
-      },
-    };
+    return { error: errorResult('PAYMENT_FAILED', 'Payment processing failed during dispute resolution. Please retry.') };
   }
 
   return { success: true };
@@ -527,7 +454,7 @@ async function updateDisputeStatuses(
   resolvedBy: string,
   contract: Contract,
   project: Project,
-  projectEntity: any,
+  projectEntity: ProjectEntity,
   milestone: NonNullable<Project['milestones'][number]>,
   resolutionEntity: DisputeResolutionEntity,
 ): Promise<
@@ -541,12 +468,12 @@ async function updateDisputeStatuses(
 
   // Check if contract should be updated
   const hasOtherDisputes = projectEntity.milestones.some(
-    (m: any) => m.status === 'disputed' && m.id !== disputeEntity.milestone_id
+    (m) => m.status === 'disputed' && m.id !== disputeEntity.milestone_id
   );
   if (!hasOtherDisputes) {
     // Check if all milestones are now completed (approved or refunded)
     const allMilestonesDone = projectEntity.milestones.every(
-      (m: any) => m.status === 'approved' || m.status === 'refunded'
+      (m) => m.status === 'approved' || m.status === 'refunded'
     );
     if (allMilestonesDone) {
       await contractRepository.updateContract(disputeEntity.contract_id, { status: 'completed' });
@@ -564,9 +491,7 @@ async function updateDisputeStatuses(
   );
 
   if (!updatedDisputeEntity) {
-    return {
-      error: { success: false, error: { code: 'UPDATE_FAILED', message: 'Failed to update dispute' } },
-    };
+    return { error: errorResult('UPDATE_FAILED', 'Failed to update dispute') };
   }
 
   const updatedDispute = mapDisputeFromEntity(updatedDisputeEntity);
@@ -649,7 +574,7 @@ export async function resolveDispute(
     );
     if ('error' in statusResult) return statusResult.error;
 
-    return { success: true, data: statusResult.dispute };
+    return successResult(statusResult.dispute);
   });
 }
 
@@ -662,12 +587,9 @@ export async function getDisputeById(
 ): Promise<DisputeServiceResult<Dispute>> {
   const disputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!disputeEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Dispute not found' },
-    };
+    return errorResult('NOT_FOUND', 'Dispute not found');
   }
-  return { success: true, data: mapDisputeFromEntity(disputeEntity) };
+  return successResult(mapDisputeFromEntity(disputeEntity));
 }
 
 /**
@@ -680,21 +602,15 @@ export async function getDisputesByContract(
   // Verify user is part of the contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
 
   if (contractEntity.employer_id !== userId && contractEntity.freelancer_id !== userId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can view disputes' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only contract parties can view disputes');
   }
 
   const disputeEntities = await disputeRepository.getAllDisputesByContract(contractId);
-  return { success: true, data: disputeEntities.map(mapDisputeFromEntity) };
+  return successResult(disputeEntities.map(mapDisputeFromEntity));
 }
 
 /**
@@ -709,7 +625,7 @@ export async function getOpenDisputes(): Promise<DisputeServiceResult<Dispute[]>
     ...openResult.items.map(mapDisputeFromEntity),
     ...reviewResult.items.map(mapDisputeFromEntity),
   ];
-  return { success: true, data: allActive };
+  return successResult(allActive);
 }
 
 /**
@@ -719,7 +635,7 @@ export async function getDisputesByInitiator(
   initiatorId: string
 ): Promise<DisputeServiceResult<Dispute[]>> {
   const result = await disputeRepository.getDisputesByInitiator(initiatorId);
-  return { success: true, data: result.items.map(mapDisputeFromEntity) };
+  return successResult(result.items.map(mapDisputeFromEntity));
 }
 
 /**
@@ -749,20 +665,11 @@ export async function getAllDisputes(
     const disputes = result.items.map(mapDisputeFromEntity);
     const hasMore = result.hasMore;
 
-    return {
-      success: true,
-      data: {
-        items: disputes,
-        continuationToken: hasMore ? String(offset + limit) : null,
-      },
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: {
-        code: 'FETCH_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to fetch disputes',
-      },
-    };
-  }
+    return successResult({
+      items: disputes,
+      continuationToken: hasMore ? String(offset + limit) : null,
+    });
+      } catch (error) {
+      return errorResult('FETCH_FAILED', error instanceof Error ? error.message : 'Failed to fetch disputes');
+    }
 }

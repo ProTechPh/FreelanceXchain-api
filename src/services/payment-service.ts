@@ -6,7 +6,7 @@
 import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import { logger } from '../config/logger.js';
 import { contractRepository } from '../repositories/contract-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
+import { projectRepository, type ProjectEntity } from '../repositories/project-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { paymentRepository, PaymentType } from '../repositories/payment-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
@@ -26,6 +26,7 @@ import {
 import { EscrowMilestone } from './blockchain-types.js';
 import { parseUnits } from 'ethers';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import {
   submitMilestoneToRegistry,
   approveMilestoneOnRegistry,
@@ -145,36 +146,24 @@ export async function requestMilestoneCompletion(
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
   const contract = mapContractFromEntity(contractEntity);
 
   // Verify contract is active
   if (contract.status !== 'active') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot submit milestone on a ${contract.status} contract` },
-    };
+    return errorResult('INVALID_STATUS', `Cannot submit milestone on a ${contract.status} contract`);
   }
 
   // Verify freelancer owns this contract
   if (contract.freelancerId !== freelancerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only the contract freelancer can request milestone completion' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only the contract freelancer can request milestone completion');
   }
 
   // Get project to access milestones
   const projectEntity = await projectRepository.findProjectById(contract.projectId);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
@@ -182,39 +171,24 @@ export async function requestMilestoneCompletion(
   const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
   const milestone = project.milestones.find(m => m.id === milestoneId);
   if (!milestone || milestoneIndex === -1) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-    };
+    return errorResult('NOT_FOUND', 'Milestone not found');
   }
 
   // Check milestone status - only 'pending' or 'in_progress' can be submitted
   if (milestone.status === 'approved') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Milestone already approved' },
-    };
+    return errorResult('INVALID_STATUS', 'Milestone already approved');
   }
 
   if (milestone.status === 'disputed') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Milestone is under dispute' },
-    };
+    return errorResult('INVALID_STATUS', 'Milestone is under dispute');
   }
 
   if (milestone.status === 'refunded') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Milestone has been refunded' },
-    };
+    return errorResult('INVALID_STATUS', 'Milestone has been refunded');
   }
 
   if (milestone.status === 'submitted') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Milestone already submitted for review' },
-    };
+    return errorResult('INVALID_STATUS', 'Milestone already submitted for review');
   }
 
   // Submit milestone to blockchain registry FIRST (blockchain-first pattern)
@@ -242,22 +216,24 @@ export async function requestMilestoneCompletion(
   const now = new Date().toISOString();
   const updatedMilestones = projectEntity.milestones.map((m, i) => {
     if (i !== milestoneIndex) return m;
-    const currentRevisionCount = Number((m as any).revisionCount ?? (m as any).revision_count ?? 0);
-    const existingStatus = String((m as any).status ?? '');
+    const currentRevisionCount = Number(m.revisionCount ?? m.revision_count ?? 0);
+    const existingStatus = String(m.status ?? '');
     const nextRevisionCount = existingStatus === 'rejected' ? currentRevisionCount + 1 : currentRevisionCount;
+    const deliverables = metadata?.deliverables ?? m.deliverable_files ?? m.deliverableFiles ?? [];
+    const notes = metadata?.notes ?? m.notes;
     return {
       ...m,
       status: 'submitted' as const,
       submitted_at: now,
       submittedAt: now,
-      deliverable_files: metadata?.deliverables ?? (m as any).deliverable_files ?? (m as any).deliverableFiles ?? [],
-      deliverableFiles: metadata?.deliverables ?? (m as any).deliverableFiles ?? (m as any).deliverable_files ?? [],
-      notes: metadata?.notes ?? (m as any).notes,
+      deliverable_files: deliverables,
+      deliverableFiles: deliverables,
+      ...(notes !== undefined ? { notes } : {}),
       revision_count: nextRevisionCount,
       revisionCount: nextRevisionCount,
       rejection_reason: null,
       rejectionReason: null,
-    } as any;
+    };
   });
 
   // Update project in database
@@ -275,16 +251,13 @@ export async function requestMilestoneCompletion(
     contractId
   );
 
-  return {
-    success: true,
-    data: {
-      milestoneId,
-      status: 'submitted',
-      notificationSent: true,
-    },
-  };
-  }); // BLF-2.2: end withLock
-}
+  return successResult({
+    milestoneId,
+    status: 'submitted',
+    notificationSent: true,
+  });
+    }); // BLF-2.2: end withLock
+  }
 
 
 /**
@@ -304,33 +277,33 @@ async function validateMilestoneApproval(
       milestoneIndex: number;
       employer: { wallet_address: string };
       freshProject: Project;
-      projectEntity: any;
-      freshProjectEntity: any;
+      projectEntity: ProjectEntity;
+      freshProjectEntity: ProjectEntity;
     }
 > {
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
-    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Contract not found' } } };
+    return { error: errorResult('NOT_FOUND', 'Contract not found') };
   }
   const contract = mapContractFromEntity(contractEntity);
 
   if (contract.status !== 'active') {
-    return { error: { success: false, error: { code: 'INVALID_STATUS', message: `Cannot approve milestone on a ${contract.status} contract` } } };
+    return { error: errorResult('INVALID_STATUS', `Cannot approve milestone on a ${contract.status} contract`) };
   }
   if (contract.employerId !== employerId) {
-    return { error: { success: false, error: { code: 'UNAUTHORIZED', message: 'Only the contract employer can approve milestones' } } };
+    return { error: errorResult('UNAUTHORIZED', 'Only the contract employer can approve milestones') };
   }
 
   const projectEntity = await projectRepository.findProjectById(contract.projectId);
   if (!projectEntity) {
-    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Project not found' } } };
+    return { error: errorResult('NOT_FOUND', 'Project not found') };
   }
   const project = mapProjectFromEntity(projectEntity);
 
   const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
   const milestone = project.milestones.find(m => m.id === milestoneId);
   if (!milestone || milestoneIndex === -1) {
-    return { error: { success: false, error: { code: 'NOT_FOUND', message: 'Milestone not found' } } };
+    return { error: errorResult('NOT_FOUND', 'Milestone not found') };
   }
 
   if (milestone.status !== 'submitted') {
@@ -341,25 +314,28 @@ async function validateMilestoneApproval(
         : milestone.status === 'releasing'
           ? 'Milestone payment is already being processed'
           : `Milestone must be submitted before it can be approved (current status: ${milestone.status})`;
-    return { error: { success: false, error: { code: 'INVALID_STATUS', message: statusMsg } } };
+    return { error: errorResult('INVALID_STATUS', statusMsg) };
   }
 
   const employer = await userRepository.getUserById(employerId);
   if (!employer?.wallet_address) {
-    return { error: { success: false, error: { code: 'MISSING_WALLET', message: 'Employer wallet address is required to approve and release milestone payment.' } } };
+    return { error: errorResult('MISSING_WALLET', 'Employer wallet address is required to approve and release milestone payment.') };
   }
 
   // Re-read project before intent write to reduce concurrent-approval race window
   const freshProject = await projectRepository.findProjectById(contract.projectId);
-  const freshStatus = freshProject?.milestones[milestoneIndex]?.status;
+  if (!freshProject) {
+    return { error: errorResult('NOT_FOUND', 'Project not found') };
+  }
+  const freshStatus = freshProject.milestones[milestoneIndex]?.status;
   if (freshStatus !== 'submitted') {
     const msg = freshStatus === 'releasing'
       ? 'Milestone payment is already being processed'
       : `Milestone status changed concurrently (current: ${freshStatus ?? 'unknown'})`;
-    return { error: { success: false, error: { code: 'INVALID_STATUS', message: msg } } };
+    return { error: errorResult('INVALID_STATUS', msg) };
   }
 
-  return { contract, project, milestone, milestoneIndex, employer: { wallet_address: employer.wallet_address }, freshProject: project, projectEntity, freshProjectEntity: freshProject as any };
+  return { contract, project, milestone, milestoneIndex, employer: { wallet_address: employer.wallet_address }, freshProject: project, projectEntity, freshProjectEntity: freshProject };
 }
 
 /**
@@ -375,11 +351,11 @@ async function releaseEscrowPaymentWithSaga(
   milestoneAmount: number,
   employerId: string,
   employerWallet: string,
-  releasingBaseEntity: any,
+  releasingBaseEntity: ProjectEntity,
 ): Promise<
   { transactionHash: string } | { error: ServiceResult<MilestoneApprovalResult> }
 > {
-  const releasingMilestones = releasingBaseEntity.milestones.map((m: any, i: number) =>
+  const releasingMilestones = releasingBaseEntity.milestones.map((m, i) =>
     i === milestoneIndex ? { ...m, status: 'releasing' as const } : m
   );
   await projectRepository.updateProject(project.id, { milestones: releasingMilestones });
@@ -388,7 +364,7 @@ async function releaseEscrowPaymentWithSaga(
   try {
     if (getBlockchainMode() === 'real' && isWeb3Available()) {
       if (!contract.escrowAddress) {
-        return { error: { success: false, error: { code: 'ESCROW_NOT_FOUND', message: 'No escrow contract address found on this contract.' } } };
+        return { error: errorResult('ESCROW_NOT_FOUND', 'No escrow contract address found on this contract.') };
       }
       const onChainResult = await approveOnChainMilestone(contract.escrowAddress, milestoneIndex);
       transactionHash = onChainResult.transactionHash;
@@ -401,7 +377,7 @@ async function releaseEscrowPaymentWithSaga(
           const simReceipt = await escrowOps.releaseMilestone(escrow.address, milestoneId, employerWallet);
           if (!transactionHash) transactionHash = simReceipt.transactionHash;
         } else if (!transactionHash) {
-          return { error: { success: false, error: { code: 'ESCROW_NOT_FOUND', message: 'No escrow record found for this contract. Payment cannot be released.' } } };
+          return { error: errorResult('ESCROW_NOT_FOUND', 'No escrow record found for this contract. Payment cannot be released.') };
         }
       } catch (simError) {
         if (!transactionHash) throw simError;
@@ -470,12 +446,7 @@ async function releaseEscrowPaymentWithSaga(
         actionRequired: 'Check milestone status in DB. If stuck in "releasing", manually revert to "submitted" or retry escrow release.',
       });
     }
-    return {
-      error: {
-        success: false,
-        error: { code: 'PAYMENT_RELEASE_FAILED', message: error instanceof Error ? error.message : 'Failed to release escrow payment' },
-      },
-    };
+    return { error: errorResult('PAYMENT_RELEASE_FAILED', error instanceof Error ? error.message : 'Failed to release escrow payment') };
   }
 
   return { transactionHash: transactionHash! };
@@ -492,10 +463,10 @@ async function finalizeMilestoneApproval(
   milestone: NonNullable<Project['milestones'][number]>,
   milestoneIndex: number,
   employerId: string,
-  releasingBaseEntity: any,
+  releasingBaseEntity: ProjectEntity,
   transactionHash: string,
 ): Promise<MilestoneApprovalResult> {
-  const updatedMilestones = releasingBaseEntity.milestones.map((m: any, i: number) =>
+  const updatedMilestones = releasingBaseEntity.milestones.map((m, i) =>
     i === milestoneIndex ? { ...m, status: 'approved' as const } : m
   );
   await projectRepository.updateProject(project.id, { milestones: updatedMilestones });
@@ -509,7 +480,7 @@ async function finalizeMilestoneApproval(
     logger.error('Failed to approve milestone on blockchain registry', { error });
   }
 
-  const allApproved = updatedMilestones.every((m: any) => m.status === 'approved' || m.status === 'refunded');
+  const allApproved = updatedMilestones.every(m => m.status === 'approved' || m.status === 'refunded');
   let contractCompleted = false;
 
   if (allApproved) {
@@ -557,10 +528,7 @@ export async function approveMilestone(
     // H9: Check for pending refund requests before approving
     const pendingRefund = await refundRequestRepository.findPendingByContract(contractId);
     if (pendingRefund) {
-      return {
-        success: false,
-        error: { code: 'PENDING_REFUND', message: 'Cannot approve milestone while a refund request is pending. Resolve the refund first.' },
-      };
+      return errorResult('PENDING_REFUND', 'Cannot approve milestone while a refund request is pending. Resolve the refund first.');
     }
 
     const released = await releaseEscrowPaymentWithSaga(
@@ -574,7 +542,7 @@ export async function approveMilestone(
       milestoneIndex, employerId, releasingBaseEntity, released.transactionHash,
     );
 
-    return { success: true, data: result };
+    return successResult(result);
   });
 }
 
@@ -598,36 +566,24 @@ export async function disputeMilestone(
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
   const contract = mapContractFromEntity(contractEntity);
 
   // Verify contract is active
   if (contract.status !== 'active') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot dispute milestone on a ${contract.status} contract` },
-    };
+    return errorResult('INVALID_STATUS', `Cannot dispute milestone on a ${contract.status} contract`);
   }
 
   // Verify initiator is part of this contract
   if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can dispute milestones' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only contract parties can dispute milestones');
   }
 
   // Get project to access milestones
   const projectEntity = await projectRepository.findProjectById(contract.projectId);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
@@ -635,26 +591,17 @@ export async function disputeMilestone(
   const milestoneIndex = projectEntity.milestones.findIndex(m => m.id === milestoneId);
   const milestone = project.milestones.find(m => m.id === milestoneId);
   if (!milestone || milestoneIndex === -1) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-    };
+    return errorResult('NOT_FOUND', 'Milestone not found');
   }
 
   // Only milestones with status 'submitted' can be disputed
   // You can't dispute work that hasn't been submitted
   if (milestone.status !== 'submitted') {
-    return {
-      success: false,
-      error: { 
-        code: 'INVALID_STATUS', 
-        message: milestone.status === 'approved' 
-          ? 'Cannot dispute an already approved milestone'
-          : milestone.status === 'disputed'
-          ? 'Milestone is already under dispute'
-          : `Milestone must be submitted before it can be disputed (current status: ${milestone.status})`
-      },
-    };
+    return errorResult('INVALID_STATUS', milestone.status === 'approved' 
+             ? 'Cannot dispute an already approved milestone'
+             : milestone.status === 'disputed'
+             ? 'Milestone is already under dispute'
+             : `Milestone must be submitted before it can be disputed (current status: ${milestone.status})`);
   }
 
   // Create dispute record
@@ -705,17 +652,14 @@ export async function disputeMilestone(
     contractId
   );
 
-  return {
-    success: true,
-    data: {
-      milestoneId,
-      status: 'disputed',
-      disputeId,
-      disputeCreated: true,
-    },
-  };
-  }); // BLF-2.1: end withLock
-}
+  return successResult({
+    milestoneId,
+    status: 'disputed',
+    disputeId,
+    disputeCreated: true,
+  });
+    }); // BLF-2.1: end withLock
+  }
 
 
 /**
@@ -730,20 +674,14 @@ export async function getContractPaymentStatus(
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
   const contract = mapContractFromEntity(contractEntity);
 
   // Verify user is a contract party — admins are allowed through for oversight
   if (contract.employerId !== userId && contract.freelancerId !== userId) {
     if (role !== 'admin') {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'Only contract parties can view payment status' },
-      };
+      return errorResult('UNAUTHORIZED', 'Only contract parties can view payment status');
     }
     // admin is allowed through — no early return
   }
@@ -751,10 +689,7 @@ export async function getContractPaymentStatus(
   // Get project to access milestones
   const projectEntity = await projectRepository.findProjectById(contract.projectId);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
@@ -768,24 +703,21 @@ export async function getContractPaymentStatus(
     .reduce((sum, m) => sum + m.amount, 0);
   const pendingAmount = Math.max(totalAmount - releasedAmount - refundedAmount, 0);
 
-  return {
-    success: true,
-    data: {
-      contractId,
-      escrowAddress: contract.escrowAddress,
-      totalAmount,
-      releasedAmount,
-      pendingAmount,
-      milestones: project.milestones.map(m => ({
-        id: m.id,
-        title: m.title,
-        amount: m.amount,
-        status: m.status,
-      })),
-      contractStatus: contract.status,
-    },
-  };
-}
+  return successResult({
+    contractId,
+    escrowAddress: contract.escrowAddress,
+    totalAmount,
+    releasedAmount,
+    pendingAmount,
+    milestones: project.milestones.map(m => ({
+    id: m.id,
+    title: m.title,
+    amount: m.amount,
+    status: m.status,
+    })),
+    contractStatus: contract.status,
+  });
+  }
 
 /**
  * Check if contract is complete (all milestones approved or refunded)
@@ -857,13 +789,7 @@ export async function initializeContractEscrow(
 ): Promise<ServiceResult<{ escrowAddress: string }>> {
   try {
     if (contract.totalAmount <= 0) {
-      return {
-        success: false,
-        error: {
-          code: 'INVALID_CONTRACT_AMOUNT',
-          message: 'Contract total amount must be greater than zero',
-        },
-      };
+      return errorResult('INVALID_CONTRACT_AMOUNT', 'Contract total amount must be greater than zero');
     }
 
     // Prepare milestone data for escrow
@@ -879,13 +805,7 @@ export async function initializeContractEscrow(
     const contractTotalWei = toWei(contract.totalAmount);
 
     if (totalFromMilestones !== contractTotalWei) {
-      return {
-        success: false,
-        error: {
-          code: 'AMOUNT_MISMATCH',
-          message: 'Contract total amount does not match total milestone amount',
-        },
-      };
+      return errorResult('AMOUNT_MISMATCH', 'Contract total amount does not match total milestone amount');
     }
 
     // Use milestone sum as source of truth for escrow amount
@@ -964,17 +884,8 @@ export async function initializeContractEscrow(
       throw new Error('Failed to persist escrow address on contract');
     }
 
-    return {
-      success: true,
-      data: { escrowAddress },
-    };
+    return successResult({ escrowAddress });
   } catch (error) {
-    return {
-      success: false,
-      error: {
-        code: 'ESCROW_DEPLOYMENT_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to deploy escrow',
-      },
-    };
+    return errorResult('ESCROW_DEPLOYMENT_FAILED', error instanceof Error ? error.message : 'Failed to deploy escrow');
   }
 }

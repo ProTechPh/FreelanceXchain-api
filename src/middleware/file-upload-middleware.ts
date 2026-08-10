@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { fileTypeFromBuffer } from 'file-type';
 import { logger } from '../config/logger.js';
+import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
 const EICAR_SIGNATURE = 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*';
 
@@ -109,7 +110,7 @@ const storage = multer.memoryStorage();
 const fileFilter: multer.Options['fileFilter'] = (req, file, cb) => {
   if (!hasValidExtension(file.originalname)) {
     const error = new Error(`File type not allowed. Allowed types: ${ALLOWED_EXTENSIONS.join(', ')}`);
-    (error as any).code = 'INVALID_FILE_TYPE';
+    (error as Error & { code?: string }).code = 'INVALID_FILE_TYPE';
     return cb(error);
   }
   
@@ -141,36 +142,23 @@ export function createFileUploadMiddleware(
 
   return [
     (req: Request, res: Response, next: NextFunction): void => {
-      upload.array(fieldName, maxFiles)(req, res, (err: any) => {
+      upload.array(fieldName, maxFiles)(req, res, (err: unknown) => {
         if (!err) return next();
 
-        if (err.code === 'LIMIT_FILE_SIZE') {
-          res.status(400).json({
-            error: {
-              code: 'FILE_TOO_LARGE',
-              message: `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`,
-            },
-          });
+        // Multer and our fileFilter attach a `code` to the error (Error | MulterError).
+        const uploadError = err as { code?: string; message: string };
+        if (uploadError.code === 'LIMIT_FILE_SIZE') {
+          sendErrorResponse(res, 400, 'FILE_TOO_LARGE', `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`, getRequestId(req));
           return;
         }
 
-        if (err.code === 'LIMIT_FILE_COUNT') {
-          res.status(400).json({
-            error: {
-              code: 'TOO_MANY_FILES',
-              message: `Maximum ${maxFiles} files allowed`,
-            },
-          });
+        if (uploadError.code === 'LIMIT_FILE_COUNT') {
+          sendErrorResponse(res, 400, 'TOO_MANY_FILES', `Maximum ${maxFiles} files allowed`, getRequestId(req));
           return;
         }
 
-        if (err.code === 'INVALID_FILE_TYPE') {
-          res.status(400).json({
-            error: {
-              code: 'INVALID_FILE_TYPE',
-              message: err.message,
-            },
-          });
+        if (uploadError.code === 'INVALID_FILE_TYPE') {
+          sendErrorResponse(res, 400, 'INVALID_FILE_TYPE', uploadError.message, getRequestId(req));
           return;
         }
 
@@ -186,12 +174,7 @@ export function createFileUploadMiddleware(
         // Type guard: ensure files is an array, not a dictionary or other type
         if (!files || !Array.isArray(files)) {
           if (minFiles > 0) {
-            res.status(400).json({
-              error: {
-                code: 'NO_FILES_UPLOADED',
-                message: `At least ${minFiles} file(s) required`,
-              },
-            });
+            sendErrorResponse(res, 400, 'NO_FILES_UPLOADED', `At least ${minFiles} file(s) required`, getRequestId(req));
             return;
           }
           // minFiles === 0: files are optional, proceed
@@ -202,12 +185,7 @@ export function createFileUploadMiddleware(
         // Check if files were uploaded
         if (files.length === 0) {
           if (minFiles > 0) {
-            res.status(400).json({
-              error: {
-                code: 'NO_FILES_UPLOADED',
-                message: `At least ${minFiles} file(s) required`,
-              },
-            });
+            sendErrorResponse(res, 400, 'NO_FILES_UPLOADED', `At least ${minFiles} file(s) required`, getRequestId(req));
             return;
           }
           // minFiles === 0: no files is fine
@@ -217,35 +195,20 @@ export function createFileUploadMiddleware(
 
         // Check minimum file count
         if (files.length < minFiles) {
-          res.status(400).json({
-            error: {
-              code: 'INSUFFICIENT_FILES',
-              message: `At least ${minFiles} file(s) required, received ${String(files.length)}`,
-            },
-          });
+          sendErrorResponse(res, 400, 'INSUFFICIENT_FILES', `At least ${minFiles} file(s) required, received ${String(files.length)}`, getRequestId(req));
           return;
         }
 
         // Check maximum file count
         if (files.length > maxFiles) {
-          res.status(400).json({
-            error: {
-              code: 'TOO_MANY_FILES',
-              message: `Maximum ${maxFiles} file(s) allowed, received ${String(files.length)}`,
-            },
-          });
+          sendErrorResponse(res, 400, 'TOO_MANY_FILES', `Maximum ${maxFiles} file(s) allowed, received ${String(files.length)}`, getRequestId(req));
           return;
         }
 
         // Calculate total size
         const totalSize = files.reduce((sum, file) => sum + file.size, 0);
         if (totalSize > MAX_TOTAL_SIZE) {
-          res.status(400).json({
-            error: {
-              code: 'TOTAL_SIZE_EXCEEDED',
-              message: `Total file size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`,
-            },
-          });
+          sendErrorResponse(res, 400, 'TOTAL_SIZE_EXCEEDED', `Total file size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`, getRequestId(req));
           return;
         }
 
@@ -261,21 +224,22 @@ export function createFileUploadMiddleware(
                 error: validation.error,
               });
               
-              res.status(400).json({
-                error: {
-                  code: 'INVALID_FILE_TYPE',
-                  message: validation.error || 'Invalid file type detected',
-                  details: {
-                    filename: file.originalname,
-                    detectedType: validation.detectedType,
-                  },
-                },
-              });
+              sendErrorResponse(
+                res,
+                400,
+                'INVALID_FILE_TYPE',
+                validation.error || 'Invalid file type detected',
+                getRequestId(req),
+                {
+                  filename: file.originalname,
+                  detectedType: validation.detectedType,
+                }
+              );
               return;
             }
 
             // Store detected MIME type for later use
-            (file as any).detectedMimeType = validation.detectedType;
+            (file as Express.Multer.File & { detectedMimeType?: string | undefined }).detectedMimeType = validation.detectedType;
 
             const scanResult = await scanFileForViruses(file.buffer, file.originalname);
             if (!scanResult.clean) {
@@ -284,16 +248,17 @@ export function createFileUploadMiddleware(
                 threat: scanResult.threat,
               });
 
-              res.status(400).json({
-                error: {
-                  code: 'MALICIOUS_FILE_DETECTED',
-                  message: 'File failed antivirus security scan',
-                  details: {
-                    filename: file.originalname,
-                    threat: scanResult.threat,
-                  },
-                },
-              });
+              sendErrorResponse(
+                res,
+                400,
+                'MALICIOUS_FILE_DETECTED',
+                'File failed antivirus security scan',
+                getRequestId(req),
+                {
+                  filename: file.originalname,
+                  threat: scanResult.threat,
+                }
+              );
               return;
             }
           }
@@ -312,16 +277,13 @@ export function createFileUploadMiddleware(
         });
 
         next();
-      } catch (error: any) {
+      } catch (error) {
         // Log unexpected errors
-        logger.error('File upload error', { error: error.message, stack: error.stack });
+        const message = error instanceof Error ? error.message : String(error);
+        const stack = error instanceof Error ? error.stack : undefined;
+        logger.error('File upload error', { error: message, stack });
 
-        res.status(500).json({
-          error: {
-            code: 'FILE_UPLOAD_ERROR',
-            message: 'An error occurred during file upload',
-          },
-        });
+        sendErrorResponse(res, 500, 'FILE_UPLOAD_ERROR', 'An error occurred during file upload', getRequestId(req));
       }
     },
   ];

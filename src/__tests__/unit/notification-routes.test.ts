@@ -386,7 +386,7 @@ describe('notification-routes - !userId guards and /stream endpoint', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/notifications/stream');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('SSE connection failed');
+    expect(res.body.error.message).toBe('SSE connection failed');
   });
 });
 

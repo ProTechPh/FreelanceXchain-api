@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
 import type { ServiceResult } from '../types/service-result.js';
+import { sendErrorResponse } from './response-helpers.js';
 
 export function getRequestId(req: Request): string {
-  return req.headers['x-request-id'] as string ?? 'unknown';
+  return (req.headers?.['x-request-id'] as string) ?? 'unknown';
 }
 
 export function sendError(
@@ -11,11 +12,7 @@ export function sendError(
   error: { code: string; message: string; details?: unknown },
   requestId?: string
 ): void {
-  res.status(statusCode).json({
-    error,
-    timestamp: new Date().toISOString(),
-    requestId: requestId ?? 'unknown',
-  });
+  sendErrorResponse(res, statusCode, error.code, error.message, requestId, error.details);
 }
 
 export function sendServiceError<T>(

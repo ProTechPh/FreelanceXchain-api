@@ -13,6 +13,7 @@ import {
 import { generateId } from '../utils/id.js';
 import { searchSkills } from './skill-service.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 // Entity mapping functions
 function mapUserCustomSkillFromEntity(entity: UserCustomSkillEntity): UserCustomSkill {
@@ -54,19 +55,12 @@ export async function createUserCustomSkill(
 ): Promise<ServiceResult<UserCustomSkill>> {
   // Check if skill already exists in global taxonomy
   const globalSkills = await searchSkills(input.name);
-  const exactMatch = globalSkills.find((skill: any) => 
+  const exactMatch = globalSkills.find((skill) => 
     skill.name.toLowerCase() === input.name.toLowerCase()
   );
 
   if (exactMatch) {
-    return {
-      success: false,
-      error: { 
-        code: 'SKILL_EXISTS_GLOBALLY', 
-        message: `Skill "${input.name}" already exists in the global skill taxonomy. Use the existing skill instead.`,
-        details: [`Existing skill ID: ${exactMatch.id}`, `Category: ${exactMatch.categoryName}`]
-      },
-    };
+    return errorResult('SKILL_EXISTS_GLOBALLY', `Skill "${input.name}" already exists in the global skill taxonomy. Use the existing skill instead.`, [`Existing skill ID: ${exactMatch.id}`, `Category: ${exactMatch.categoryName}`]);
   }
 
   // Check if user already has this custom skill
@@ -76,13 +70,7 @@ export async function createUserCustomSkill(
   );
 
   if (duplicateSkill) {
-    return {
-      success: false,
-      error: { 
-        code: 'DUPLICATE_USER_SKILL', 
-        message: `You already have a custom skill named "${input.name}".` 
-      },
-    };
+    return errorResult('DUPLICATE_USER_SKILL', `You already have a custom skill named "${input.name}".`);
   }
 
   const skillEntity: Omit<UserCustomSkillEntity, 'created_at' | 'updated_at'> = {
@@ -97,7 +85,7 @@ export async function createUserCustomSkill(
 
   // Only add category_name if it exists
   if (input.categoryName?.trim()) {
-    (skillEntity as any).category_name = input.categoryName.trim();
+    skillEntity.category_name = input.categoryName.trim();
   }
 
   try {
@@ -108,16 +96,9 @@ export async function createUserCustomSkill(
       await handleSkillSuggestion(userId, userName, input);
     }
 
-    return { success: true, data: mapUserCustomSkillFromEntity(createdEntity) };
+    return successResult(mapUserCustomSkillFromEntity(createdEntity));
   } catch (error) {
-    return {
-      success: false,
-      error: { 
-        code: 'CREATE_FAILED', 
-        message: 'Failed to create custom skill',
-        details: [error instanceof Error ? error.message : 'Unknown error']
-      },
-    };
+    return errorResult('CREATE_FAILED', 'Failed to create custom skill', [error instanceof Error ? error.message : 'Unknown error']);
   }
 }
 
@@ -132,12 +113,9 @@ export async function getUserCustomSkillById(
 ): Promise<ServiceResult<UserCustomSkill>> {
   const entity = await userCustomSkillRepository.getUserCustomSkillById(id, userId);
   if (!entity) {
-    return {
-      success: false,
-      error: { code: 'SKILL_NOT_FOUND', message: 'Custom skill not found' },
-    };
+    return errorResult('SKILL_NOT_FOUND', 'Custom skill not found');
   }
-  return { success: true, data: mapUserCustomSkillFromEntity(entity) };
+  return successResult(mapUserCustomSkillFromEntity(entity));
 }
 
 export async function updateUserCustomSkill(
@@ -147,10 +125,7 @@ export async function updateUserCustomSkill(
 ): Promise<ServiceResult<UserCustomSkill>> {
   const existing = await userCustomSkillRepository.getUserCustomSkillById(id, userId);
   if (!existing) {
-    return {
-      success: false,
-      error: { code: 'SKILL_NOT_FOUND', message: 'Custom skill not found' },
-    };
+    return errorResult('SKILL_NOT_FOUND', 'Custom skill not found');
   }
 
   // If updating name, check for duplicates
@@ -161,13 +136,7 @@ export async function updateUserCustomSkill(
     );
 
     if (duplicateSkill) {
-      return {
-        success: false,
-        error: { 
-          code: 'DUPLICATE_USER_SKILL', 
-          message: `You already have a custom skill named "${updates.name}".` 
-        },
-      };
+      return errorResult('DUPLICATE_USER_SKILL', `You already have a custom skill named "${updates.name}".`);
     }
   }
 
@@ -180,22 +149,12 @@ export async function updateUserCustomSkill(
   try {
     const updatedEntity = await userCustomSkillRepository.updateUserCustomSkill(id, userId, entityUpdates);
     if (!updatedEntity) {
-      return {
-        success: false,
-        error: { code: 'UPDATE_FAILED', message: 'Failed to update custom skill' },
-      };
+      return errorResult('UPDATE_FAILED', 'Failed to update custom skill');
     }
-    return { success: true, data: mapUserCustomSkillFromEntity(updatedEntity) };
+    return successResult(mapUserCustomSkillFromEntity(updatedEntity));
   } catch (error) {
     /* istanbul ignore next */
-    return {
-      success: false,
-      error: { 
-        code: 'UPDATE_FAILED', 
-        message: 'Failed to update custom skill',
-        details: [error instanceof Error ? error.message : 'Unknown error']
-      },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update custom skill', [error instanceof Error ? error.message : 'Unknown error']);
   }
 }
 
@@ -205,25 +164,15 @@ export async function deleteUserCustomSkill(
 ): Promise<ServiceResult<boolean>> {
   const existing = await userCustomSkillRepository.getUserCustomSkillById(id, userId);
   if (!existing) {
-    return {
-      success: false,
-      error: { code: 'SKILL_NOT_FOUND', message: 'Custom skill not found' },
-    };
+    return errorResult('SKILL_NOT_FOUND', 'Custom skill not found');
   }
 
   try {
     await userCustomSkillRepository.deleteUserCustomSkill(id, userId);
-    return { success: true, data: true };
+    return successResult(true);
   } catch (error) {
     /* istanbul ignore next */
-    return {
-      success: false,
-      error: { 
-        code: 'DELETE_FAILED', 
-        message: 'Failed to delete custom skill',
-        details: [error instanceof Error ? error.message : 'Unknown error']
-      },
-    };
+    return errorResult('DELETE_FAILED', 'Failed to delete custom skill', [error instanceof Error ? error.message : 'Unknown error']);
   }
 }
 
@@ -262,7 +211,7 @@ async function handleSkillSuggestion(
 
     // Only add category_name if it exists
     if (skillInput.categoryName?.trim()) {
-      (suggestionEntity as any).category_name = skillInput.categoryName.trim();
+      suggestionEntity.category_name = skillInput.categoryName.trim();
     }
 
     await skillSuggestionRepository.createSkillSuggestion(suggestionEntity);
@@ -281,21 +230,11 @@ export async function updateSkillSuggestionStatus(
   try {
     const updatedEntity = await skillSuggestionRepository.updateSkillSuggestionStatus(id, status);
     if (!updatedEntity) {
-      return {
-        success: false,
-        error: { code: 'SUGGESTION_NOT_FOUND', message: 'Skill suggestion not found' },
-      };
+      return errorResult('SUGGESTION_NOT_FOUND', 'Skill suggestion not found');
     }
-    return { success: true, data: mapSkillSuggestionFromEntity(updatedEntity) };
+    return successResult(mapSkillSuggestionFromEntity(updatedEntity));
   } catch (error) {
     /* istanbul ignore next */
-    return {
-      success: false,
-      error: { 
-        code: 'UPDATE_FAILED', 
-        message: 'Failed to update skill suggestion status',
-        details: [error instanceof Error ? error.message : 'Unknown error']
-      },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update skill suggestion status', [error instanceof Error ? error.message : 'Unknown error']);
   }
 }

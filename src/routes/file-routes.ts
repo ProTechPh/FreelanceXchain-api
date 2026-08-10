@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import {
   getUserFiles,
   deleteFile,
@@ -17,22 +18,14 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   const result = await getUserFiles(userId, bucket);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -46,20 +39,12 @@ router.delete('/:bucket/:path', authMiddleware, apiRateLimiter, async (req: Requ
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   if (!bucket || !path) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'bucket and path are required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'bucket and path are required', requestId);
     return;
   }
 
@@ -67,15 +52,11 @@ router.delete('/:bucket/:path', authMiddleware, apiRateLimiter, async (req: Requ
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
     return;
   }
 
-  res.status(200).json({ message: 'File deleted' });
+  sendSuccessResponse(res, 200, { message: 'File deleted' }, requestId);
 });
 
 router.get('/quota', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
@@ -84,22 +65,14 @@ router.get('/quota', authMiddleware, apiRateLimiter, async (req: Request, res: R
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   const result = await getFileQuota(userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 

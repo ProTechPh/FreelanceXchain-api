@@ -12,7 +12,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
-import { blockchainDisputeRecordRepository } from '../repositories/blockchain-dispute-record-repository.js';
+import { blockchainDisputeRecordRepository, type BlockchainDisputeRecordEntity } from '../repositories/blockchain-dispute-record-repository.js';
 
 export type BlockchainDisputeOutcome = 'pending' | 'freelancer_favor' | 'employer_favor' | 'split' | 'cancelled';
 
@@ -63,23 +63,7 @@ function generateHash(value: string): string {
   return '0x' + createHash('sha256').update(value).digest('hex');
 }
 
-function entityToRecord(entity: {
-  dispute_id_hash: string;
-  contract_id_hash: string;
-  milestone_id_hash: string;
-  evidence_hash?: string;
-  initiator_wallet: string;
-  freelancer_wallet: string;
-  employer_wallet: string;
-  arbiter_wallet?: string;
-  amount: number;
-  outcome: string;
-  reasoning?: string;
-  created_at_ts: number;
-  resolved_at?: number;
-  transaction_hash: string;
-  block_number: number;
-}): BlockchainDisputeRecord {
+function entityToRecord(entity: BlockchainDisputeRecordEntity): BlockchainDisputeRecord {
   return {
     disputeIdHash: entity.dispute_id_hash,
     contractIdHash: entity.contract_id_hash,
@@ -169,7 +153,7 @@ export async function createDisputeOnBlockchain(
     created_at_ts: record.createdAt,
     transaction_hash: record.transactionHash,
     block_number: record.blockNumber,
-  } as any);
+  });
 
   return {
     record,

@@ -1,4 +1,5 @@
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { fromAppwriteDoc } from './base-repository.js';
 
 export type AuditLogStatus = 'success' | 'failure' | 'pending';
 
@@ -24,18 +25,12 @@ export type CreateAuditLogEntry = Omit<AuditLogEntry, 'id' | 'created_at'>;
 
 const COLLECTION_ID = 'audit_log_entries';
 
-function mapAuditLog(doc: Record<string, any>): AuditLogEntry {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-  const result: Record<string, any> = {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  };
+function mapAuditLog(doc: Record<string, unknown>): AuditLogEntry {
+  const result = fromAppwriteDoc<Record<string, unknown>>(doc);
   if (typeof result.payload === 'string') {
     result.payload = JSON.parse(result.payload);
   }
-  return result as AuditLogEntry;
+  return result as unknown as AuditLogEntry;
 }
 
 export class AuditLogRepository {

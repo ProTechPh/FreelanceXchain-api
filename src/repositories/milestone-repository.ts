@@ -1,4 +1,4 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type MilestoneEntity = {
@@ -21,14 +21,8 @@ export type MilestoneEntity = {
 
 const COLLECTION_ID = 'milestones';
 
-function mapDoc(doc: Record<string, any>): MilestoneEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as MilestoneEntity;
+function mapDoc(doc: Record<string, unknown>): MilestoneEntity {
+  return fromAppwriteDoc<MilestoneEntity>(doc);
 }
 
 export class MilestoneRepository extends BaseRepository<MilestoneEntity> {

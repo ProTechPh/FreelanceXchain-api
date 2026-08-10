@@ -1,4 +1,4 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
+import { BaseRepository, PaginatedResult, QueryOptions, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type FreelancerProfileEntity = {
@@ -17,14 +17,8 @@ export type FreelancerProfileEntity = {
 
 const COLLECTION_ID = 'freelancer_profiles';
 
-function mapProfile(doc: Record<string, any>): FreelancerProfileEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-  const result: Record<string, any> = {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  };
+function mapProfile(doc: Record<string, unknown>): FreelancerProfileEntity {
+  const result = fromAppwriteDoc<Record<string, unknown>>(doc);
   if (typeof result.skills === 'string') {
     result.skills = JSON.parse(result.skills);
   }

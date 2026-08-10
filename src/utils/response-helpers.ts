@@ -23,18 +23,45 @@ export function sendValidationError(
 }
 
 /**
+ * Send a standardized success response with a given status code.
+ * Replaces the manual `{ ...payload, timestamp, requestId }` pattern.
+ * `timestamp`/`requestId` are appended after `...payload` and therefore
+ * override any payload keys with the same name.
+ */
+export function sendSuccessResponse(
+  res: Response,
+  statusCode: number,
+  payload: Record<string, unknown>,
+  requestId?: string
+): void {
+  res.status(statusCode).json({
+    ...payload,
+    timestamp: new Date().toISOString(),
+    requestId: requestId ?? 'unknown',
+  });
+}
+
+/**
  * Send a standardized error response with a given status code.
  * Replaces the manual `{ error: { code, message }, timestamp, requestId }` pattern.
+ * Pass `success` to include a top-level `success` flag (e.g. `false` for OAuth error flows).
+ * Pass `retryAfter` to include a top-level `retryAfter` field — either a delta-seconds
+ * number (e.g. 429 rate-limit responses) or an ISO date string (RFC 7231 Retry-After).
  */
 export function sendErrorResponse(
   res: Response,
   statusCode: number,
-  code: string,
-  message: string,
-  requestId?: string
+  code: string | undefined,
+  message: string | undefined,
+  requestId?: string,
+  details?: unknown,
+  success?: boolean,
+  retryAfter?: number | string
 ): void {
   res.status(statusCode).json({
-    error: { code, message },
+    ...(success === undefined ? {} : { success }),
+    error: details === undefined ? { code, message } : { code, message, details },
+    ...(retryAfter === undefined ? {} : { retryAfter }),
     timestamp: new Date().toISOString(),
     requestId: requestId ?? 'unknown',
   });

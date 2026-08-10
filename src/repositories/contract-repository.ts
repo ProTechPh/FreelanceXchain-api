@@ -1,4 +1,5 @@
-import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
+import type { Models } from 'node-appwrite';
+import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { safeJsonParse } from '../utils/index.js';
 
@@ -21,14 +22,61 @@ export type ContractEntity = {
 
 const COLLECTION_ID = 'contracts';
 
-function mapDoc(doc: Record<string, any>): ContractEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as ContractEntity;
+function mapDoc(doc: Record<string, unknown>): ContractEntity {
+  return fromAppwriteDoc<ContractEntity>(doc);
+}
+
+/**
+ * Contract plus the relational fields populated by `getContractByIdWithRelations`.
+ * Shapes match the repository's real output (singular `profile` object); every
+ * relational field stays optional since related docs may be missing.
+ * Kept in sync with `ContractRelations` in src/utils/entity-mapper.ts (which
+ * additionally allows `project.deadline`/`project.milestones` from other producers).
+ */
+export type ContractWithRelations = ContractEntity & {
+  project?: {
+    id?: string;
+    title?: string | undefined;
+    description?: string | undefined;
+  } | null;
+  freelancer?: {
+    id?: string;
+    name?: string | undefined;
+    email?: string | undefined;
+    profile?: {
+      id?: string;
+      hourly_rate?: number | undefined;
+      skills?: unknown;
+    } | null;
+  };
+  employer?: {
+    id?: string;
+    name?: string | undefined;
+    email?: string | undefined;
+    profile?: {
+      id?: string;
+      company_name?: string | undefined;
+      industry?: string | undefined;
+    } | null;
+  };
+};
+
+// The SDK only types $-prefixed metadata on `Models.Document`; real document
+// attributes are untyped, so read them through a plain record.
+function docAttrs(doc: Models.Document | null): Record<string, unknown> {
+  return doc ? (doc as unknown as Record<string, unknown>) : {};
+}
+
+// Appwrite documents expose attributes through an index signature typed `unknown`;
+// narrow the values we actually read instead of casting the whole document.
+function strField(doc: Models.Document | null, key: string): string | undefined {
+  const value = docAttrs(doc)[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function numField(doc: Models.Document | null, key: string): number | undefined {
+  const value = docAttrs(doc)[key];
+  return typeof value === 'number' ? value : undefined;
 }
 
 export class ContractRepository extends BaseRepository<ContractEntity> {
@@ -37,14 +85,13 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
   }
 
   async getContractById(id: string): Promise<ContractEntity | null> {
-    const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return this.getById(id);
   }
 
-  async getContractByIdWithRelations(id: string): Promise<any | null> {
+  async getContractByIdWithRelations(id: string): Promise<ContractWithRelations | null> {
     try {
       const doc = await databases.getDocument(DATABASE_ID, COLLECTION_ID, id);
-      const contract = mapDoc(doc as any);
+      const contract = mapDoc(doc);
 
       // Fetch related entities
       const [projectDoc, freelancerDoc, employerDoc] = await Promise.all([
@@ -53,7 +100,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
         databases.getDocument(DATABASE_ID, 'users', contract.employer_id).catch(() => null),
       ]);
 
-      let freelancerProfile = null;
+      let freelancerProfile: Models.Document | null = null;
       if (freelancerDoc) {
         try {
           const resp = await databases.listDocuments(DATABASE_ID, 'freelancer_profiles', [
@@ -64,7 +111,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
         } catch { /* ignore */ }
       }
 
-      let employerProfile = null;
+      let employerProfile: Models.Document | null = null;
       if (employerDoc) {
         try {
           const resp = await databases.listDocuments(DATABASE_ID, 'employer_profiles', [
@@ -75,25 +122,30 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
         } catch { /* ignore */ }
       }
 
-      const mapUser = (d: any) => d ? { id: d.$id, name: d.name, email: d.email } : null;
+      const mapUser = (d: Models.Document | null) =>
+        d ? { id: d.$id, name: strField(d, 'name'), email: strField(d, 'email') } : null;
 
       return {
         ...contract,
-        project: projectDoc ? { id: projectDoc.$id, title: (projectDoc as any).title, description: (projectDoc as any).description } : null,
+        project: projectDoc ? {
+          id: projectDoc.$id,
+          title: strField(projectDoc, 'title'),
+          description: strField(projectDoc, 'description'),
+        } : null,
         freelancer: {
           ...mapUser(freelancerDoc),
           profile: freelancerProfile ? {
             id: freelancerProfile.$id,
-            hourly_rate: (freelancerProfile as any).hourly_rate,
-            skills: safeJsonParse((freelancerProfile as any).skills),
+            hourly_rate: numField(freelancerProfile, 'hourly_rate'),
+            skills: safeJsonParse(docAttrs(freelancerProfile).skills),
           } : null,
         },
         employer: {
           ...mapUser(employerDoc),
           profile: employerProfile ? {
             id: employerProfile.$id,
-            company_name: (employerProfile as any).company_name,
-            industry: (employerProfile as any).industry,
+            company_name: strField(employerProfile, 'company_name'),
+            industry: strField(employerProfile, 'industry'),
           } : null,
         },
       };
@@ -103,8 +155,7 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
   }
 
   async updateContract(id: string, updates: Partial<ContractEntity>): Promise<ContractEntity | null> {
-    const doc = await this.update(id, updates);
-    return doc ? mapDoc(doc as any) : null;
+    return this.update(id, updates);
   }
 
   async findContractByProposalId(proposalId: string): Promise<ContractEntity | null> {

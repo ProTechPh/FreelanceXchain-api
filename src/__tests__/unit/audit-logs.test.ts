@@ -102,7 +102,8 @@ describe('Audit Logs Routes', () => {
       const res = await request(app).get('/api/audit-logs/me');
 
       expect(res.status).toBe(500);
-      expect(res.body.error).toBe('DB error');
+      expect(res.body.error.code).toBe('INTERNAL_ERROR');
+      expect(res.body.error.message).toBe('DB error');
     });
   });
 
@@ -223,14 +224,16 @@ describe('Audit Logs Routes', () => {
       const res = await request(app).get('/api/audit-logs/range?startDate=invalid&endDate=2025-01-31');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Invalid date format');
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('Invalid date format');
     });
 
     it('should return 400 for invalid end date', async () => {
       const res = await request(app).get('/api/audit-logs/range?startDate=2025-01-01&endDate=invalid');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Invalid date format');
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('Invalid date format');
     });
 
     it('should handle service errors', async () => {
@@ -257,7 +260,8 @@ describe('Audit Logs Routes', () => {
       const res = await request(app).get('/api/audit-logs/report/user/user-1?startDate=invalid&endDate=2025-01-31');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Invalid date format');
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('Invalid date format');
     });
 
     it('should handle service errors', async () => {
@@ -284,7 +288,8 @@ describe('Audit Logs Routes', () => {
       const res = await request(app).get('/api/audit-logs/report/system?startDate=bad&endDate=2025-01-31');
 
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Invalid date format');
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('Invalid date format');
     });
 
     it('should handle service errors', async () => {
@@ -313,7 +318,8 @@ describe('Audit Logs Routes', () => {
       const res = await request(app).get('/api/audit-logs/nonexistent');
 
       expect(res.status).toBe(404);
-      expect(res.body.error).toBe('Audit log not found');
+      expect(res.body.error.code).toBe('NOT_FOUND');
+      expect(res.body.error.message).toBe('Audit log not found');
     });
 
     it('should handle service errors', async () => {

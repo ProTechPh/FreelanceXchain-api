@@ -1,5 +1,6 @@
-import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
+import { parseField } from '../utils/index.js';
 import type { MilestoneStatus, FileAttachment } from '../models/milestone.js';
 export type { MilestoneStatus } from '../models/milestone.js';
 
@@ -53,26 +54,18 @@ export type ProjectEntity = {
 
 const COLLECTION_ID = 'projects';
 
-function mapDoc(doc: Record<string, any>): ProjectEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  /* istanbul ignore next -- parse fallback for null/undefined is tested via getProjectById with null fields */
-  const parse = (val: any, fallback: any = undefined) => {
-    if (val === undefined || val === null) return fallback;
-    if (typeof val === 'string') {
-      try { return JSON.parse(val); } catch { return fallback; }
-    }
-    return val;
-  };
+function normalizeProject(project: ProjectEntity): ProjectEntity {
   return {
-    id: $id,
-    ...attrs,
-    required_skills: parse(attrs.required_skills, []),
-    milestones: parse(attrs.milestones, []),
-    tags: parse(attrs.tags, []),
-    attachments: parse(attrs.attachments, []),
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as ProjectEntity;
+    ...project,
+    required_skills: parseField(project.required_skills, []),
+    milestones: parseField(project.milestones, []),
+    tags: parseField(project.tags, []),
+    attachments: parseField(project.attachments, []),
+  };
+}
+
+function mapDoc(doc: Record<string, unknown>): ProjectEntity {
+  return normalizeProject(fromAppwriteDoc<ProjectEntity>(doc));
 }
 
 export class ProjectRepository extends BaseRepository<ProjectEntity> {
@@ -81,27 +74,27 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
   }
 
   async createProject(project: Omit<ProjectEntity, 'created_at' | 'updated_at'>): Promise<ProjectEntity> {
-    const data: Record<string, any> = { ...project };
+    const data: Record<string, unknown> = { ...project };
     if (data.required_skills) data.required_skills = JSON.stringify(data.required_skills);
     if (data.milestones) data.milestones = JSON.stringify(data.milestones);
     if (data.tags) data.tags = JSON.stringify(data.tags);
     if (data.attachments) data.attachments = JSON.stringify(data.attachments);
-    return this.create(data as any);
+    return this.create(data as Omit<ProjectEntity, 'created_at' | 'updated_at'>);
   }
 
   async getProjectById(id: string): Promise<ProjectEntity | null> {
     const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? normalizeProject(doc) : null;
   }
 
   async updateProject(id: string, updates: Partial<ProjectEntity>): Promise<ProjectEntity | null> {
-    const data: Record<string, any> = { ...updates };
+    const data: Record<string, unknown> = { ...updates };
     if (data.required_skills) data.required_skills = JSON.stringify(data.required_skills);
     if (data.milestones) data.milestones = JSON.stringify(data.milestones);
     if (data.tags) data.tags = JSON.stringify(data.tags);
     if (data.attachments) data.attachments = JSON.stringify(data.attachments);
-    const doc = await this.update(id, data as any);
-    return doc ? mapDoc(doc as any) : null;
+    const doc = await this.update(id, data as Partial<ProjectEntity>);
+    return doc ? normalizeProject(doc) : null;
   }
 
   async deleteProject(id: string): Promise<boolean> {

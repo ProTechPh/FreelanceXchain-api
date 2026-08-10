@@ -106,20 +106,21 @@ export function sanitizeString(input: string): string {
 }
 
 /**
- * Sanitize an object by redacting sensitive fields
+ * Sanitize an object by redacting sensitive fields.
+ * The generic preserves the input's shape so callers keep their types.
  */
-export function sanitizeObject(obj: any): any {
+export function sanitizeObject<T>(obj: T): T {
   if (!obj || typeof obj !== 'object') {
     return obj;
   }
 
   // Handle arrays
   if (Array.isArray(obj)) {
-    return obj.map(item => sanitizeObject(item));
+    return obj.map(item => sanitizeObject(item)) as T;
   }
 
   // Handle objects
-  const sanitized: any = {};
+  const sanitized: Record<string, unknown> = {};
   
   for (const [key, value] of Object.entries(obj)) {
     const lowerKey = key.toLowerCase();
@@ -140,18 +141,19 @@ export function sanitizeObject(obj: any): any {
     }
   }
 
-  return sanitized;
+  return sanitized as T;
 }
 
 /**
- * Sanitize log data (can be string or object)
+ * Sanitize log data (can be string or object).
+ * The generic preserves the input's shape so callers keep their types.
  */
-export function sanitizeLogData(data: any): any {
+export function sanitizeLogData<T>(data: T): T {
   if (typeof data === 'string') {
-    return sanitizeString(data);
+    return sanitizeString(data) as T;
   }
   
-  if (typeof data === 'object') {
+  if (typeof data === 'object' && data !== null) {
     return sanitizeObject(data);
   }
   
@@ -161,8 +163,8 @@ export function sanitizeLogData(data: any): any {
 /**
  * Sanitize error objects for logging
  */
-export function sanitizeError(error: Error): any {
-  const sanitized: any = {
+export function sanitizeError(error: Error): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {
     name: error.name,
     message: sanitizeString(error.message),
   };

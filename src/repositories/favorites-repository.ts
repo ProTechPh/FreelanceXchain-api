@@ -1,4 +1,4 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type FavoriteTargetType = 'project' | 'freelancer';
@@ -14,14 +14,8 @@ export type FavoriteEntity = {
 
 const COLLECTION_ID = 'favorites';
 
-function mapDoc(doc: Record<string, any>): FavoriteEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as FavoriteEntity;
+function mapDoc(doc: Record<string, unknown>): FavoriteEntity {
+  return fromAppwriteDoc<FavoriteEntity>(doc);
 }
 
 export class FavoriteRepository extends BaseRepository<FavoriteEntity> {
@@ -55,7 +49,7 @@ export class FavoriteRepository extends BaseRepository<FavoriteEntity> {
     userId: string,
     targetType?: FavoriteTargetType
   ): Promise<FavoriteEntity[]> {
-    const queries: any[] = [
+    const queries: string[] = [
       Query.equal('user_id', userId),
       Query.orderDesc('created_at'),
     ];

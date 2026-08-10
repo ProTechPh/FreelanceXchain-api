@@ -29,6 +29,7 @@ import { getActiveSkills } from './skill-service.js';
 import { getReputation } from './reputation-service.js';
 
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 
 // Constants
@@ -77,10 +78,7 @@ export async function getProjectRecommendations(
   // Get freelancer profile
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
   // Get open projects
@@ -88,7 +86,7 @@ export async function getProjectRecommendations(
   const projectEntities = projectsResult.items;
 
   if (projectEntities.length === 0) {
-    return { success: true, data: [] };
+    return successResult([]);
   }
 
   // Convert freelancer skills to SkillInfo
@@ -131,7 +129,7 @@ export async function getProjectRecommendations(
   recommendations.sort((a, b) => b.matchScore - a.matchScore);
 
   // Return top N recommendations
-  return { success: true, data: recommendations.slice(0, limit) };
+  return successResult(recommendations.slice(0, limit));
 }
 
 /**
@@ -145,17 +143,14 @@ export async function getFreelancerRecommendations(
   // Get project
   const projectEntity = await projectRepository.findProjectById(projectId);
   if (!projectEntity) {
-    return {
-      success: false,
-      error: { code: 'PROJECT_NOT_FOUND', message: 'Project not found' },
-    };
+    return errorResult('PROJECT_NOT_FOUND', 'Project not found');
   }
 
   // Get available freelancers
   const freelancerEntities = await freelancerProfileRepository.getAvailableProfiles();
 
   if (freelancerEntities.length === 0) {
-    return { success: true, data: [] };
+    return successResult([]);
   }
 
   // Convert project requirements to SkillInfo
@@ -216,7 +211,7 @@ export async function getFreelancerRecommendations(
   recommendations.sort((a, b) => b.combinedScore - a.combinedScore);
 
   // Return top N recommendations
-  return { success: true, data: recommendations.slice(0, limit) };
+  return successResult(recommendations.slice(0, limit));
 }
 
 /**
@@ -226,10 +221,7 @@ export async function extractSkillsFromText(
   text: string
 ): Promise<ServiceResult<ExtractedSkill[]>> {
   if (!text || text.trim().length === 0) {
-    return {
-      success: false,
-      error: { code: 'INVALID_INPUT', message: 'Text cannot be empty' },
-    };
+    return errorResult('INVALID_INPUT', 'Text cannot be empty');
   }
 
   // Get available skills from taxonomy
@@ -241,7 +233,7 @@ export async function extractSkillsFromText(
   }));
 
   if (availableSkills.length === 0) {
-    return { success: true, data: [] };
+    return successResult([]);
   }
 
   let extractedSkills: ExtractedSkill[];
@@ -268,7 +260,7 @@ export async function extractSkillsFromText(
   const validSkillIds = new Set(availableSkills.map(s => s.skillId));
   const mappedSkills = extractedSkills.filter(skill => validSkillIds.has(skill.skillId));
 
-  return { success: true, data: mappedSkills };
+  return successResult(mappedSkills);
 }
 
 /**
@@ -280,26 +272,20 @@ export async function analyzeSkillGaps(
   // Get freelancer profile
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
   const currentSkills = profileEntity.skills.map(s => s.name);
 
   if (!isAIAvailable()) {
     // Return basic analysis without AI
-    return {
-      success: true,
-      data: {
-        currentSkills,
-        recommendedSkills: [],
-        marketDemand: [],
-        reasoning: 'AI analysis unavailable. Please configure LLM API for detailed skill gap analysis.',
-      },
-    };
-  }
+    return successResult({
+      currentSkills,
+      recommendedSkills: [],
+      marketDemand: [],
+      reasoning: 'AI analysis unavailable. Please configure LLM API for detailed skill gap analysis.',
+    });
+    }
 
   // Build prompt for skill gap analysis
   const prompt = SKILL_GAP_PROMPT.replace('{currentSkills}', JSON.stringify(currentSkills));
@@ -311,16 +297,13 @@ export async function analyzeSkillGaps(
   if (typeof response !== 'string') {
     // AI error, return basic analysis
     logger.error('[SkillGap] AI returned non-string', { type: typeof response });
-    return {
-      success: true,
-      data: {
-        currentSkills,
-        recommendedSkills: [],
-        marketDemand: [],
-        reasoning: 'AI analysis failed. Please try again later.',
-      },
-    };
-  }
+    return successResult({
+      currentSkills,
+      recommendedSkills: [],
+      marketDemand: [],
+      reasoning: 'AI analysis failed. Please try again later.',
+    });
+    }
 
   // Parse response using shared robust parser
   try {
@@ -358,30 +341,24 @@ export async function analyzeSkillGaps(
       marketDemand: sanitizedMarketDemand.length
     });
     
-    return {
-      success: true,
-      data: {
-        currentSkills: analysis.currentSkills ?? currentSkills,
-        recommendedSkills: analysis.recommendedSkills ?? [],
-        marketDemand: sanitizedMarketDemand,
-        reasoning: analysis.reasoning ?? 'Analysis completed.',
-      },
-    };
-  } catch (error) {
-    logger.error('[SkillGap] Failed to parse AI response', { error });
-    /* istanbul ignore next -- response is guaranteed string by line 313 early return */
-    logger.debug('[SkillGap] Response preview', { preview: typeof response === 'string' ? response.substring(0, 500) : String(response).substring(0, 500) });
+    return successResult({
+      currentSkills: analysis.currentSkills ?? currentSkills,
+      recommendedSkills: analysis.recommendedSkills ?? [],
+      marketDemand: sanitizedMarketDemand,
+      reasoning: analysis.reasoning ?? 'Analysis completed.',
+    });
+      } catch (error) {
+      logger.error('[SkillGap] Failed to parse AI response', { error });
+      /* istanbul ignore next -- response is guaranteed string by line 313 early return */
+      logger.debug('[SkillGap] Response preview', { preview: typeof response === 'string' ? response.substring(0, 500) : String(response).substring(0, 500) });
     
-    return {
-      success: true,
-      data: {
+      return successResult({
         currentSkills,
         recommendedSkills: [],
         marketDemand: [],
         reasoning: 'Failed to parse AI response. The AI may need to be reconfigured.',
-      },
-    };
-  }
+      });
+    }
 }
 
 /**

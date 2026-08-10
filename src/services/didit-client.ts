@@ -4,6 +4,7 @@
  */
 
 import crypto from 'crypto';
+import { successResult } from '../types/service-result.js';
 import {
   DiditCreateSessionRequest,
   DiditCreateSessionResponse,
@@ -76,10 +77,7 @@ export async function createVerificationSession(
 
     const data = await response.json();
 
-    return {
-      success: true,
-      data: data as DiditCreateSessionResponse,
-    };
+    return successResult(data as DiditCreateSessionResponse);
   } catch (error) {
     return {
       success: false,
@@ -142,10 +140,7 @@ export async function getVerificationDecision(
 
     const data = await response.json();
 
-    return {
-      success: true,
-      data: data as DiditVerificationDecisionResponse,
-    };
+    return successResult(data as DiditVerificationDecisionResponse);
   } catch (error) {
     logger.error('Failed to get verification decision', error as Error, {
       sessionId,
@@ -207,10 +202,7 @@ export async function getVerificationSession(sessionId: string): Promise<DiditCl
 
     const data = await response.json();
 
-    return {
-      success: true,
-      data: data as DiditCreateSessionResponse,
-    };
+    return successResult(data as DiditCreateSessionResponse);
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Failed to get session details', error as Error, {
@@ -395,7 +387,8 @@ export async function verifyIdDocument(
         'x-api-key': DIDIT_API_KEY ?? '',
         ...form.getHeaders(),
       },
-      body: form as any,
+      // form-data instances are Node streams, which undici accepts as a fetch body.
+      body: form as unknown as BodyInit,
     });
 
     if (!response.ok) {
@@ -407,7 +400,7 @@ export async function verifyIdDocument(
 
     const data = await response.json();
 
-    return { success: true, data };
+    return successResult(data);
   } catch (error) {
     logger.error('Failed to verify ID document', error as Error);
     return {
@@ -452,7 +445,8 @@ export async function checkPassiveLiveness(
         'x-api-key': DIDIT_API_KEY ?? '',
         ...form.getHeaders(),
       },
-      body: form as any,
+      // form-data instances are Node streams, which undici accepts as a fetch body.
+      body: form as unknown as BodyInit,
     });
 
     if (!response.ok) {
@@ -464,7 +458,7 @@ export async function checkPassiveLiveness(
 
     const data = await response.json();
 
-    return { success: true, data };
+    return successResult(data);
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Failed to check liveness', error as Error);
@@ -511,7 +505,8 @@ export async function matchFaces(
         'x-api-key': DIDIT_API_KEY ?? '',
         ...form.getHeaders(),
       },
-      body: form as any,
+      // form-data instances are Node streams, which undici accepts as a fetch body.
+      body: form as unknown as BodyInit,
     });
 
     if (!response.ok) {
@@ -523,7 +518,7 @@ export async function matchFaces(
 
     const data = await response.json();
 
-    return { success: true, data };
+    return successResult(data);
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Failed to match faces', error as Error);
@@ -588,7 +583,7 @@ export async function screenAml(params: {
 
     const data = await response.json();
 
-    return { success: true, data };
+    return successResult(data);
   } catch (error) {
     logger.error('Failed to screen AML', error as Error);
     return {

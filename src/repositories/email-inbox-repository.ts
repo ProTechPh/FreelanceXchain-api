@@ -1,4 +1,4 @@
-import { BaseRepository, type PaginatedResult } from './base-repository.js';
+import { BaseRepository, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type EmailFolder = 'inbox' | 'sent' | 'trash';
@@ -27,25 +27,13 @@ export type EmailListItem = Omit<EmailEntity, 'text_body' | 'html_body'>;
 
 const COLLECTION_ID = 'emails';
 
-function mapDoc(doc: Record<string, any>): EmailEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as EmailEntity;
+function mapDoc(doc: Record<string, unknown>): EmailEntity {
+  return fromAppwriteDoc<EmailEntity>(doc);
 }
 
-function mapListItem(doc: Record<string, any>): EmailListItem {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  const { text_body: _text, html_body: _html, ...rest } = attrs;
-  return {
-    id: $id,
-    ...rest,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as EmailListItem;
+function mapListItem(doc: Record<string, unknown>): EmailListItem {
+  const { text_body: _text, html_body: _html, ...rest } = fromAppwriteDoc<Record<string, unknown>>(doc);
+  return rest as EmailListItem;
 }
 
 export class EmailInboxRepository extends BaseRepository<EmailEntity> {
@@ -76,7 +64,7 @@ export class EmailInboxRepository extends BaseRepository<EmailEntity> {
     offset: number = 0,
     isRead?: boolean
   ): Promise<PaginatedResult<EmailListItem>> {
-    const queries: any[] = [
+    const queries: string[] = [
       Query.equal('user_id', userId),
       Query.equal('folder', folder),
       Query.orderDesc('received_at'),
@@ -94,15 +82,15 @@ export class EmailInboxRepository extends BaseRepository<EmailEntity> {
   }
 
   async markAsRead(id: string): Promise<EmailEntity | null> {
-    return this.update(id, { is_read: true } as Partial<EmailEntity>);
+    return this.update(id, { is_read: true });
   }
 
   async toggleStar(id: string, isStarred: boolean): Promise<EmailEntity | null> {
-    return this.update(id, { is_starred: isStarred } as Partial<EmailEntity>);
+    return this.update(id, { is_starred: isStarred });
   }
 
   async moveToFolder(id: string, folder: EmailFolder): Promise<EmailEntity | null> {
-    return this.update(id, { folder } as Partial<EmailEntity>);
+    return this.update(id, { folder });
   }
 
   async getUnreadCount(userId: string, folder: EmailFolder = 'inbox'): Promise<number> {
@@ -114,7 +102,7 @@ export class EmailInboxRepository extends BaseRepository<EmailEntity> {
   }
 
   async findByThread(userId: string, messageId: string): Promise<EmailEntity[]> {
-    const queries: any[] = [
+    const queries: string[] = [
       Query.equal('user_id', userId),
       Query.contains('references', messageId),
       Query.orderAsc('received_at'),

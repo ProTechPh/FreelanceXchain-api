@@ -1,4 +1,4 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type SkillCategoryEntity = {
@@ -49,15 +49,7 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as SkillEntity;
-      });
+      return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
     } catch {
       return [];
     }
@@ -74,15 +66,7 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as SkillEntity;
-      });
+      return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
     } catch {
       return [];
     }
@@ -99,15 +83,7 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as SkillEntity;
-      });
+      return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
     } catch {
       return [];
     }
@@ -125,15 +101,7 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as SkillEntity;
-      });
+      return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
     } catch {
       return [];
     }
@@ -151,14 +119,8 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
         ]
       );
       const lowerKeyword = keyword.toLowerCase();
-      return response.documents.reduce<SkillEntity[]>((acc, doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        const skill = {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as SkillEntity;
+      return response.documents.reduce<SkillEntity[]>((acc, doc) => {
+        const skill = fromAppwriteDoc<SkillEntity>(doc);
         if (skill.name.toLowerCase().includes(lowerKeyword) ||
           skill.description.toLowerCase().includes(lowerKeyword)) {
           acc.push(skill);
@@ -181,16 +143,10 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
         ]
       );
       const doc = response.documents.find(
-        (d: any) => d.name?.toLowerCase() === name.toLowerCase()
+        d => typeof d.name === 'string' && d.name.toLowerCase() === name.toLowerCase()
       );
       if (!doc) return null;
-      const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-      return {
-        id: $id,
-        ...attrs,
-        created_at: attrs.created_at ?? $createdAt,
-        updated_at: attrs.updated_at ?? $updatedAt,
-      } as SkillEntity;
+      return fromAppwriteDoc<SkillEntity>(doc);
     } catch {
       return null;
     }

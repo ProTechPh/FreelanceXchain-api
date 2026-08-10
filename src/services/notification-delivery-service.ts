@@ -3,6 +3,7 @@ import type { Response } from 'express';
 import { logger } from '../config/logger.js';
 import type { Notification } from '../models/notification.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 /**
  * Event emitter for real-time notifications
@@ -169,16 +170,10 @@ export function initializeSSEConnection(userId: string, res: Response): ServiceR
       logger.info(`SSE connection closed for user ${userId}`);
     });
 
-    return { success: true, data: undefined };
+    return successResult(undefined);
   } catch (error) {
     logger.error('Failed to initialize SSE connection:', error);
-    return {
-      success: false,
-      error: {
-        code: 'SSE_INIT_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to initialize SSE connection',
-      },
-    };
+    return errorResult('SSE_INIT_FAILED', error instanceof Error ? error.message : 'Failed to initialize SSE connection');
   }
 }
 
@@ -190,16 +185,10 @@ export function sendNotificationToUser(userId: string, notification: Notificatio
     // Emit to event emitter (for SSE connections)
     notificationEmitter.emitToUser(userId, notification);
 
-    return { success: true, data: undefined };
+    return successResult(undefined);
   } catch (error) {
     logger.error('Failed to send notification:', error);
-    return {
-      success: false,
-      error: {
-        code: 'NOTIFICATION_SEND_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to send notification',
-      },
-    };
+    return errorResult('NOTIFICATION_SEND_FAILED', error instanceof Error ? error.message : 'Failed to send notification');
   }
 }
 
@@ -214,24 +203,15 @@ export function getSSEStats(): ServiceResult<{
     const totalConnections = sseConnectionManager.getTotalConnections();
     const activeUsers = Array.from(sseConnectionManager['connections'].keys()).length;
 
-    return {
-      success: true,
-      data: {
-        totalConnections,
-        activeUsers,
-      },
-    };
-  /* c8 ignore next 9 */
-  } catch (error) {
-    logger.error('Failed to get SSE stats:', error);
-    return {
-      success: false,
-      error: {
-        code: 'SSE_STATS_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to get SSE stats',
-      },
-    };
-  }
+    return successResult({
+      totalConnections,
+      activeUsers,
+    });
+      /* c8 ignore next 9 */
+      } catch (error) {
+      logger.error('Failed to get SSE stats:', error);
+      return errorResult('SSE_STATS_FAILED', error instanceof Error ? error.message : 'Failed to get SSE stats');
+    }
 }
 
 /**

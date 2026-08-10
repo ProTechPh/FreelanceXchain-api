@@ -1,4 +1,4 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
 
 export type SavedSearchType = 'project' | 'freelancer';
@@ -16,14 +16,8 @@ export type SavedSearchEntity = {
 
 const COLLECTION_ID = 'saved_searches';
 
-function mapDoc(doc: Record<string, any>): SavedSearchEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as SavedSearchEntity;
+function mapDoc(doc: Record<string, unknown>): SavedSearchEntity {
+  return fromAppwriteDoc<SavedSearchEntity>(doc);
 }
 
 export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
@@ -32,7 +26,7 @@ export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
   }
 
   async findByUser(userId: string, searchType?: SavedSearchType): Promise<SavedSearchEntity[]> {
-    const queries: any[] = [
+    const queries: string[] = [
       Query.equal('user_id', userId),
       Query.orderDesc('created_at'),
     ];
@@ -44,7 +38,7 @@ export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
 
   async findOwnerById(id: string): Promise<string | null> {
     const doc = await this.getById(id);
-    return doc ? (doc as any).user_id ?? null : null;
+    return doc ? doc.user_id ?? null : null;
   }
 }
 

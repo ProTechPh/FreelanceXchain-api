@@ -30,18 +30,15 @@ export class BlockchainDisputeRecordRepository extends BaseRepository<Blockchain
   }
 
   async getDisputeRecordById(id: string): Promise<BlockchainDisputeRecordEntity | null> {
-    const doc = await this.getById(id);
-    return doc ? this.mapDoc(doc as any) : null;
+    return this.getById(id);
   }
 
   async createDisputeRecord(data: Omit<BlockchainDisputeRecordEntity, 'created_at' | 'updated_at'>): Promise<BlockchainDisputeRecordEntity> {
-    const doc = await this.create(data);
-    return this.mapDoc(doc as any);
+    return this.create(data);
   }
 
   async updateDisputeRecord(id: string, updates: Partial<BlockchainDisputeRecordEntity>): Promise<BlockchainDisputeRecordEntity | null> {
-    const doc = await this.update(id, updates);
-    return doc ? this.mapDoc(doc as any) : null;
+    return this.update(id, updates);
   }
 
   async findByDisputeIdHash(disputeIdHash: string): Promise<BlockchainDisputeRecordEntity | null> {

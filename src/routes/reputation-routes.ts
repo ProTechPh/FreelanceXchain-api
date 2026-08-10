@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import { logger } from '../config/logger.js';
 import {
   submitRating,
@@ -151,11 +152,7 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -163,25 +160,14 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
   const rateeId = req.query['rateeId'] as string | undefined;
 
   if (!contractId || !rateeId) {
-    res.status(400).json({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'contractId and rateeId are required query parameters',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId and rateeId are required query parameters', requestId);
     return;
   }
 
   const result = await canUserRate(userId, rateeId, contractId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -231,11 +217,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -253,15 +235,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
   if (rating === undefined || rating === null) missingFields.push('rating');
 
   if (missingFields.length > 0) {
-    res.status(400).json({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Missing required fields',
-        details: missingFields,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Missing required fields', requestId);
     return;
   }
 
@@ -275,15 +249,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
   }
 
   if (uuidErrors.length > 0) {
-    res.status(400).json({
-      error: {
-        code: 'VALIDATION_ERROR',
-        message: 'Invalid UUID format',
-        details: uuidErrors,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid UUID format', requestId);
     return;
   }
 
@@ -302,11 +268,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
     if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
     if (result.error.code === 'DUPLICATE_RATING') statusCode = 409;
 
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -342,13 +304,13 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
     const result = await getReputationLeaderboard(limit);
 
     if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting reputation leaderboard', { error });
-    return res.status(500).json({ error: 'Failed to get leaderboard' });
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get leaderboard', getRequestId(req));
   }
 });
 
@@ -391,22 +353,14 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'User ID is required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'User ID is required', requestId);
     return;
   }
 
   const result = await getReputation(userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -449,22 +403,14 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (
 
   /* istanbul ignore next */
   if (!userId) {
-    res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'User ID is required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'User ID is required', requestId);
     return;
   }
 
   const result = await getWorkHistory(userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -495,13 +441,13 @@ router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, async (re
     const result = await getAggregatedScore(userId);
 
     if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting reputation score', { error });
-    return res.status(500).json({ error: 'Failed to get reputation score' });
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation score', getRequestId(req));
   }
 });
 
@@ -529,13 +475,13 @@ router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async
     const result = await getReputationBreakdown(userId);
 
     if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting reputation breakdown', { error });
-    return res.status(500).json({ error: 'Failed to get reputation breakdown' });
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation breakdown', getRequestId(req));
   }
 });
 
@@ -569,13 +515,13 @@ router.get('/:userId/reputation-history', validateUUID(['userId']), apiRateLimit
     const result = await getReputationHistory(userId, months);
 
     if (!result.success) {
-      return res.status(400).json({ error: result.error.message });
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting reputation history', { error });
-    return res.status(500).json({ error: 'Failed to get reputation history' });
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation history', getRequestId(req));
   }
 });
 

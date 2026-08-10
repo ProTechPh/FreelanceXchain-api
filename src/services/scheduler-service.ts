@@ -21,7 +21,7 @@ async function autoCloseExpiredProjects(): Promise<void> {
 
     const now = new Date();
     const expiredProjects = response.documents.filter(
-      (p: any) => p.deadline && new Date(p.deadline) < now
+      p => p.deadline && new Date(p.deadline) < now
     );
 
     if (expiredProjects.length > 0) {
@@ -68,18 +68,14 @@ async function sendWeeklyDigests(): Promise<void> {
 
     for (const pref of emailPrefsResponse.documents) {
       try {
-        const userId = (pref as any).user_id;
+        const userId = pref.user_id;
 
         // Fetch user info
-        let userDoc: Record<string, any> | null = null;
-        try {
-          userDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, userId) as any;
-        } catch {
-          continue;
-        }
+        const userDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, userId).catch(() => null);
+        if (!userDoc) continue;
 
-        const userEmail = (userDoc as any).email;
-        const userFullName = (userDoc as any).full_name || (userDoc as any).name || 'User';
+        const userEmail = userDoc.email;
+        const userFullName = userDoc.full_name || userDoc.name || 'User';
 
         // Get user stats for the week
         const weekAgo = new Date();
@@ -92,7 +88,7 @@ async function sendWeeklyDigests(): Promise<void> {
           [Query.limit(1000)]
         );
         const newProjectsCount = projectsResponse.documents.filter(
-          (p: any) => new Date(p.created_at) >= weekAgo
+          p => new Date(p.created_at) >= weekAgo
         ).length;
 
         // Count new messages
@@ -123,12 +119,12 @@ async function sendWeeklyDigests(): Promise<void> {
               const projectDoc = await databases.getDocument(
                 DATABASE_ID,
                 COLLECTIONS.PROJECTS,
-                (contract as any).project_id
+                contract.project_id
               );
-              const milestones = typeof (projectDoc as any).milestones === 'string'
-                ? JSON.parse((projectDoc as any).milestones)
-                : (projectDoc as any).milestones || [];
-              return milestones.filter((m: any) => m.status === 'pending').length;
+              const milestones = typeof projectDoc.milestones === 'string'
+                ? JSON.parse(projectDoc.milestones)
+                : projectDoc.milestones || [];
+              return (milestones as Array<{ status?: string }>).filter(m => m.status === 'pending').length;
             } catch {
               return 0;
             }
@@ -152,7 +148,7 @@ async function sendWeeklyDigests(): Promise<void> {
           newProjects: newProjectsCount,
           newMessages: newMessagesCount,
           pendingMilestones: pendingMilestonesCount,
-          topProjects: topProjectsResponse.documents.map((p: any) => ({
+          topProjects: topProjectsResponse.documents.map(p => ({
             title: p.title,
             budget: `$${p.budget}`,
             url: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${p.$id}`,
@@ -190,20 +186,25 @@ async function executeSavedSearches(): Promise<void> {
 
     for (const search of searchesResponse.documents) {
       try {
-        const filters = typeof (search as any).filters === 'string'
-          ? JSON.parse((search as any).filters)
-          : (search as any).filters || {};
-        const searchType = (search as any).search_type;
+        const filters: Record<string, unknown> = typeof search.filters === 'string'
+          ? JSON.parse(search.filters)
+          : search.filters || {};
+        const searchType = search.search_type;
         const collectionId = searchType === 'project' ? COLLECTIONS.PROJECTS : 'freelancer_profiles';
 
         // Build Appwrite queries from filters
-        const queries: any[] = [Query.limit(10)];
+        const queries: string[] = [Query.limit(10)];
         const ALLOWED_COLUMNS = new Set(['status', 'budget', 'category', 'title']);
 
         for (const [key, value] of Object.entries(filters)) {
           if (!ALLOWED_COLUMNS.has(key)) continue;
-          if (value !== undefined && value !== null) {
-            queries.push(Query.equal(key, value as any));
+          // Only query-able primitive values can be passed to Appwrite's Query.equal.
+          if (
+            value !== undefined &&
+            value !== null &&
+            (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value))
+          ) {
+            queries.push(Query.equal(key, value));
           }
         }
 
@@ -215,10 +216,10 @@ async function executeSavedSearches(): Promise<void> {
 
         if (results.documents.length > 0) {
           // TODO: Create notification for new matches
-          logger.info(`Found ${results.documents.length} results for saved search ${(search as any).$id}`);
+          logger.info(`Found ${results.documents.length} results for saved search ${search.$id}`);
         }
       } catch (error) {
-        logger.error(`Failed to execute saved search ${(search as any).$id}:`, error);
+        logger.error(`Failed to execute saved search ${search.$id}:`, error);
       }
     }
   } catch (error) {
@@ -245,7 +246,7 @@ async function cleanupOldNotifications(): Promise<void> {
     );
 
     const oldNotifications = response.documents.filter(
-      (n: any) => new Date(n.created_at) < thirtyDaysAgo
+      n => new Date(n.created_at) < thirtyDaysAgo
     );
 
     const deleteResults = await Promise.all(
@@ -293,10 +294,10 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
     await Promise.all(
       contractsResponse.documents.map(async (contract) => {
         try {
-          const projectId = (contract as any).project_id;
+          const projectId = contract.project_id;
           if (!projectId) return;
 
-          const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId) as any;
+          const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId);
           const milestones = typeof projectDoc.milestones === 'string'
             ? JSON.parse(projectDoc.milestones)
             : (projectDoc.milestones || []);
@@ -312,7 +313,7 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
           if (stuckIndexes.length === 0) return;
 
           const stuckIndexSet = new Set(stuckIndexes);
-          const recovered = milestones.map((m: any, i: number) =>
+          const recovered = (milestones as Array<{ status?: string; updated_at?: string }>).map((m, i) =>
             stuckIndexSet.has(i) ? { ...m, status: 'submitted' } : m
           );
 
@@ -326,7 +327,7 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
             recoveredMilestoneIndexes: stuckIndexes,
           });
         } catch (err) {
-          logger.error('Failed to recover stuck releasing milestone for a contract', { contractId: (contract as any).$id, error: err });
+          logger.error('Failed to recover stuck releasing milestone for a contract', { contractId: contract.$id, error: err });
         }
       })
     );

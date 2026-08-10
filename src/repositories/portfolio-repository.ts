@@ -1,4 +1,4 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
 
 export type PortfolioItemEntity = {
@@ -16,14 +16,8 @@ export type PortfolioItemEntity = {
 
 const COLLECTION_ID = 'portfolio_items';
 
-function mapDoc(doc: Record<string, any>): PortfolioItemEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as PortfolioItemEntity;
+function mapDoc(doc: Record<string, unknown>): PortfolioItemEntity {
+  return fromAppwriteDoc<PortfolioItemEntity>(doc);
 }
 
 export class PortfolioRepository extends BaseRepository<PortfolioItemEntity> {
@@ -43,7 +37,7 @@ export class PortfolioRepository extends BaseRepository<PortfolioItemEntity> {
 
   async findOwnerById(id: string): Promise<string | null> {
     const doc = await this.getById(id);
-    return doc ? (doc as any).freelancer_id ?? null : null;
+    return doc ? doc.freelancer_id ?? null : null;
   }
 }
 

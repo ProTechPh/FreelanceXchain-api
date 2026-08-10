@@ -172,18 +172,20 @@ describe('Entity Mapper - Extended Coverage (null/undefined fields)', () => {
           id: 'fl1',
           name: 'Freelancer',
           email: 'fl@test.com',
-          freelancer_profile: [{ bio: 'Bio', hourly_rate: 50, availability: 'available' }],
+          profile: { id: 'fp1', hourly_rate: 50, skills: [] },
         },
         employer: {
           id: 'emp1',
           name: 'Employer',
           email: 'emp@test.com',
-          employer_profile: [{ company_name: 'Corp', industry: 'Tech', description: 'Desc' }],
+          profile: { id: 'ep1', company_name: 'Corp', industry: 'Tech' },
         },
       };
       const result = mapContractFromEntity(entity);
       expect(result.freelancer?.name).toBe('Freelancer');
+      expect(result.freelancer?.hourlyRate).toBe(50);
       expect(result.employer?.companyName).toBe('Corp');
+      expect(result.employer?.industry).toBe('Tech');
       expect(result.title).toBe('Test');
     });
 
