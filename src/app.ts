@@ -7,6 +7,7 @@ import cookieParser from 'cookie-parser';
 import swaggerUi from 'swagger-ui-express';
 import { errorHandler } from './middleware/error-handler.js';
 import { requestLogger } from './middleware/request-logger.js';
+import { sendErrorResponse, getRequestId } from './utils/response-helpers.js';
 import {
   securityHeaders,
   requestIdMiddleware,
@@ -136,9 +137,9 @@ export async function createApp(): Promise<Express> {
   app.use('/api', routes);
 
   // Catch-all 404 handler — prevents Express finalhandler from overriding security headers
-  app.use((_req: Request, res: Response) => {
+  app.use((req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } });
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Route not found', getRequestId(req));
   });
 
   // Error handling middleware (must be last)

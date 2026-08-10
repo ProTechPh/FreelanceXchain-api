@@ -1,8 +1,10 @@
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import type { Models } from 'node-appwrite';
 import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
 import { platformMetricsCache, skillTrendsCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 export interface DateRangeOptions {
   startDate?: string;
@@ -80,14 +82,14 @@ export async function getFreelancerAnalytics(
     // Filter by date range in memory
     let contracts = contractsResponse.documents;
     if (startDate) {
-      contracts = contracts.filter((c: any) => new Date(c.created_at) >= new Date(startDate));
+      contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
     }
     if (endDate) {
-      contracts = contracts.filter((c: any) => new Date(c.created_at) <= new Date(endDate));
+      contracts = contracts.filter(c => new Date(c.created_at) <= new Date(endDate));
     }
 
     // Calculate total earnings
-    const totalEarnings = contracts.reduce((sum: number, c: any) => sum + Number(c.total_amount || 0), 0);
+    const totalEarnings = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
 
     // Get average rating
@@ -102,7 +104,7 @@ export async function getFreelancerAnalytics(
 
     const reviews = reviewsResponse.documents;
     const averageRating = reviews.length > 0
-      ? reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0) / reviews.length
+      ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length
       : 0;
 
     // Get proposal acceptance rate
@@ -116,33 +118,24 @@ export async function getFreelancerAnalytics(
     );
     
     const totalProposals = proposalsResponse.documents.length;
-    const acceptedProposals = proposalsResponse.documents.filter((p: any) => p.status === 'accepted').length;
+    const acceptedProposals = proposalsResponse.documents.filter(p => p.status === 'accepted').length;
     const proposalAcceptanceRate = totalProposals > 0 ? (acceptedProposals / totalProposals) * 100 : 0;
 
     const earningsByMonth = calculateEarningsByMonth(contracts);
     const topSkills = await calculateTopSkills(userId, 'freelancer');
 
-    return {
-      success: true,
-      data: {
-        totalEarnings,
-        projectsCompleted,
-        averageRating: Math.round(averageRating * 10) / 10,
-        earningsByMonth,
-        topSkills,
-        proposalAcceptanceRate: Math.round(proposalAcceptanceRate * 10) / 10,
-      },
-    };
-  } catch (error) {
-    logger.error('Failed to get freelancer analytics', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      totalEarnings,
+      projectsCompleted,
+      averageRating: Math.round(averageRating * 10) / 10,
+      earningsByMonth,
+      topSkills,
+      proposalAcceptanceRate: Math.round(proposalAcceptanceRate * 10) / 10,
+    });
+      } catch (error) {
+      logger.error('Failed to get freelancer analytics', { error, userId });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -167,14 +160,14 @@ export async function getEmployerAnalytics(
 
     let projectsPostedData = postedResponse.documents;
     if (startDate) {
-      projectsPostedData = projectsPostedData.filter((p: any) => new Date(p.created_at) >= new Date(startDate));
+      projectsPostedData = projectsPostedData.filter(p => new Date(p.created_at) >= new Date(startDate));
     }
     if (endDate) {
-      projectsPostedData = projectsPostedData.filter((p: any) => new Date(p.created_at) <= new Date(endDate));
+      projectsPostedData = projectsPostedData.filter(p => new Date(p.created_at) <= new Date(endDate));
     }
 
     const projectsPosted = projectsPostedData.length;
-    const totalBudget = projectsPostedData.reduce((sum: number, p: any) => sum + Number(p.budget || 0), 0);
+    const totalBudget = projectsPostedData.reduce((sum, p) => sum + Number(p.budget || 0), 0);
     /* istanbul ignore next -- tested via getEmployerAnalytics with zero projects */
     const averageProjectBudget = projectsPosted > 0 ? totalBudget / projectsPosted : 0;
 
@@ -191,39 +184,30 @@ export async function getEmployerAnalytics(
 
     let contracts = contractsResponse.documents;
     if (startDate) {
-      contracts = contracts.filter((c: any) => new Date(c.created_at) >= new Date(startDate));
+      contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
     }
     if (endDate) {
-      contracts = contracts.filter((c: any) => new Date(c.created_at) <= new Date(endDate));
+      contracts = contracts.filter(c => new Date(c.created_at) <= new Date(endDate));
     }
 
-    const totalSpent = contracts.reduce((sum: number, c: any) => sum + Number(c.total_amount || 0), 0);
+    const totalSpent = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
 
     const spendingByMonth = calculateEarningsByMonth(contracts);
     const topHiredSkills = await calculateTopSkills(userId, 'employer');
 
-    return {
-      success: true,
-      data: {
-        totalSpent,
-        projectsPosted,
-        projectsCompleted,
-        averageProjectBudget: Math.round(averageProjectBudget * 100) / 100,
-        spendingByMonth,
-        topHiredSkills,
-      },
-    };
-  } catch (error) {
-    logger.error('Failed to get employer analytics', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      totalSpent,
+      projectsPosted,
+      projectsCompleted,
+      averageProjectBudget: Math.round(averageProjectBudget * 100) / 100,
+      spendingByMonth,
+      topHiredSkills,
+    });
+      } catch (error) {
+      logger.error('Failed to get employer analytics', { error, userId });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -233,7 +217,7 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
   // Check cache first
   const cached = platformMetricsCache.get('platform_metrics');
   if (cached) {
-    return { success: true, data: cached };
+    return successResult(cached);
   }
 
   try {
@@ -271,7 +255,7 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
       ]
     );
     const totalTransactionVolume = completedDocs.documents.reduce(
-      (sum: number, c: any) => sum + Number(c.total_amount || 0), 0
+      (sum, c) => sum + Number(c.total_amount || 0), 0
     );
 
     // Count active users (those with audit log entries in last 30 days)
@@ -299,19 +283,10 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
     // Cache the result
     platformMetricsCache.set('platform_metrics', data);
 
-    return {
-      success: true,
-      data,
-    };
+    return successResult(data);
   } catch (error) {
     logger.error('Failed to get platform metrics', { error });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -344,7 +319,7 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
 
     // Calculate total revenue (5% fee on completed contracts)
     const totalRevenue = completedContractsResponse.documents.reduce(
-      (sum: number, c: any) => sum + Number(c.total_amount || 0) * 0.05, 0
+      (sum, c) => sum + Number(c.total_amount || 0) * 0.05, 0
     );
 
     // Calculate user growth (last 30 days)
@@ -357,7 +332,7 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       [Query.limit(1000)]
     );
     const userGrowth = allUsersResponse.documents.filter(
-      (u: any) => new Date(u.created_at) >= thirtyDaysAgo
+      u => new Date(u.created_at) >= thirtyDaysAgo
     ).length;
 
     const allProjectsResponse = await databases.listDocuments(
@@ -366,7 +341,7 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       [Query.limit(1000)]
     );
     const projectGrowth = allProjectsResponse.documents.filter(
-      (p: any) => new Date(p.created_at) >= thirtyDaysAgo
+      p => new Date(p.created_at) >= thirtyDaysAgo
     ).length;
 
     // Get growth data for charts (last 12 months, group by month)
@@ -374,35 +349,26 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
     twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
 
     const userGrowthData = computeMonthlyCounts(
-      allUsersResponse.documents.filter((u: any) => new Date(u.created_at) >= twelveMonthsAgo)
+      allUsersResponse.documents.filter(u => new Date(u.created_at) >= twelveMonthsAgo)
     );
     const projectActivityData = computeMonthlyCounts(
-      allProjectsResponse.documents.filter((p: any) => new Date(p.created_at) >= twelveMonthsAgo)
+      allProjectsResponse.documents.filter(p => new Date(p.created_at) >= twelveMonthsAgo)
     );
 
-    return {
-      success: true,
-      data: {
-        totalUsers,
-        totalProjects,
-        totalRevenue: Math.round(totalRevenue * 100) / 100,
-        activeContracts,
-        userGrowth,
-        projectGrowth,
-        userGrowthData,
-        projectActivityData,
-      },
-    };
-  } catch (error) {
-    logger.error('Failed to get admin analytics', { error });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      totalUsers,
+      totalProjects,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      activeContracts,
+      userGrowth,
+      projectGrowth,
+      userGrowthData,
+      projectActivityData,
+    });
+      } catch (error) {
+      logger.error('Failed to get admin analytics', { error });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -412,7 +378,7 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
   // Check cache first
   const cached = skillTrendsCache.get('skill_trends');
   if (cached) {
-    return { success: true, data: cached };
+    return successResult(cached);
   }
 
   try {
@@ -438,11 +404,12 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
     }>();
 
     for (const project of response.documents) {
-      const skills = typeof (project as any).required_skills === 'string'
-        ? JSON.parse((project as any).required_skills)
-        : (project as any).required_skills || [];
-      const budget = Number((project as any).budget || 0);
-      const createdAt = new Date((project as any).created_at);
+      const requiredSkills = project.required_skills;
+      const skills: Array<string | { skill_name?: string; name?: string }> = typeof requiredSkills === 'string'
+        ? JSON.parse(requiredSkills)
+        : requiredSkills || [];
+      const budget = Number(project.budget || 0);
+      const createdAt = new Date(project.created_at);
       const isRecent = createdAt >= thirtyDaysAgo;
 
       for (const skill of skills) {
@@ -495,25 +462,16 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
     // Cache the result
     skillTrendsCache.set('skill_trends', data);
 
-    return {
-      success: true,
-      data,
-    };
+    return successResult(data);
   } catch (error) {
     logger.error('Failed to get skill trends', { error });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
 // Helper functions
 
-function calculateEarningsByMonth(contracts: any[]): { month: string; amount: number }[] {
+function calculateEarningsByMonth(contracts: Models.DefaultDocument[]): { month: string; amount: number }[] {
   const monthMap = new Map<string, number>();
 
   for (const contract of contracts) {
@@ -529,7 +487,7 @@ function calculateEarningsByMonth(contracts: any[]): { month: string; amount: nu
     .sort((a, b) => a.month.localeCompare(b.month));
 }
 
-function computeMonthlyCounts(documents: any[]): { month: string; count: number }[] {
+function computeMonthlyCounts(documents: Models.DefaultDocument[]): { month: string; count: number }[] {
   const monthMap = new Map<string, number>();
 
   for (const doc of documents) {
@@ -563,7 +521,7 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
     }
 
     // Fetch projects for these contracts
-    const projectIds = contractsResponse.documents.map((c: any) => c.project_id);
+    const projectIds = contractsResponse.documents.map(c => c.project_id);
     const skillMap = new Map<string, number>();
 
     // Fetch each project (Appwrite doesn't support IN queries)
@@ -571,11 +529,12 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
       projectIds.map(async (projectId: string) => {
         try {
           const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId);
-          const skills = typeof (projectDoc as any).required_skills === 'string'
-            ? JSON.parse((projectDoc as any).required_skills)
-            : (projectDoc as any).required_skills || [];
+          const requiredSkills = projectDoc.required_skills;
+          const skills: Array<string | { skill_name?: string; name?: string }> = typeof requiredSkills === 'string'
+            ? JSON.parse(requiredSkills)
+            : requiredSkills || [];
 
-          return skills as Array<string | { skill_name?: string; name?: string }>;
+          return skills;
         } catch {
           return [] as Array<string | { skill_name?: string; name?: string }>;
         }

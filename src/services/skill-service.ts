@@ -15,14 +15,12 @@ import { skillRepository, SkillEntity } from '../repositories/skill-repository.j
 import { generateId } from '../utils/id.js';
 import { skillCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 export async function createCategory(input: CreateSkillCategoryInput): Promise<ServiceResult<SkillCategory>> {
   const existingCategory = await skillCategoryRepository.getCategoryByName(input.name);
   if (existingCategory) {
-    return {
-      success: false,
-      error: { code: 'DUPLICATE_CATEGORY', message: `Category with name "${input.name}" already exists` },
-    };
+    return errorResult('DUPLICATE_CATEGORY', `Category with name "${input.name}" already exists`);
   }
 
   const categoryEntity: Omit<SkillCategoryEntity, 'created_at' | 'updated_at'> = {
@@ -33,18 +31,15 @@ export async function createCategory(input: CreateSkillCategoryInput): Promise<S
   };
 
   const createdEntity = await skillCategoryRepository.createCategory(categoryEntity);
-  return { success: true, data: mapSkillCategoryFromEntity(createdEntity) };
+  return successResult(mapSkillCategoryFromEntity(createdEntity));
 }
 
 export async function getCategoryById(id: string): Promise<ServiceResult<SkillCategory>> {
   const categoryEntity = await skillCategoryRepository.getCategoryById(id);
   if (!categoryEntity) {
-    return {
-      success: false,
-      error: { code: 'CATEGORY_NOT_FOUND', message: `Category with id "${id}" not found` },
-    };
+    return errorResult('CATEGORY_NOT_FOUND', `Category with id "${id}" not found`);
   }
-  return { success: true, data: mapSkillCategoryFromEntity(categoryEntity) };
+  return successResult(mapSkillCategoryFromEntity(categoryEntity));
 }
 
 
@@ -54,30 +49,21 @@ export async function updateCategory(
 ): Promise<ServiceResult<SkillCategory>> {
   const existing = await skillCategoryRepository.getCategoryById(id);
   if (!existing) {
-    return {
-      success: false,
-      error: { code: 'CATEGORY_NOT_FOUND', message: `Category with id "${id}" not found` },
-    };
+    return errorResult('CATEGORY_NOT_FOUND', `Category with id "${id}" not found`);
   }
 
   if (updates.name && updates.name.toLowerCase() !== existing.name.toLowerCase()) {
     const duplicateCategory = await skillCategoryRepository.getCategoryByName(updates.name);
     if (duplicateCategory) {
-      return {
-        success: false,
-        error: { code: 'DUPLICATE_CATEGORY', message: `Category with name "${updates.name}" already exists` },
-      };
+      return errorResult('DUPLICATE_CATEGORY', `Category with name "${updates.name}" already exists`);
     }
   }
 
   const updatedEntity = await skillCategoryRepository.updateCategory(id, updates);
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update category' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update category');
   }
-  return { success: true, data: mapSkillCategoryFromEntity(updatedEntity) };
+  return successResult(mapSkillCategoryFromEntity(updatedEntity));
 }
 
 export async function getAllCategories(): Promise<SkillCategory[]> {
@@ -99,18 +85,12 @@ export async function getActiveCategories(): Promise<SkillCategory[]> {
 export async function createSkill(input: CreateSkillInput): Promise<ServiceResult<Skill>> {
   const category = await skillCategoryRepository.getCategoryById(input.categoryId);
   if (!category) {
-    return {
-      success: false,
-      error: { code: 'CATEGORY_NOT_FOUND', message: `Category with id "${input.categoryId}" not found` },
-    };
+    return errorResult('CATEGORY_NOT_FOUND', `Category with id "${input.categoryId}" not found`);
   }
 
   const existingSkill = await skillRepository.getSkillByNameInCategory(input.name, input.categoryId);
   if (existingSkill) {
-    return {
-      success: false,
-      error: { code: 'DUPLICATE_SKILL', message: `Skill with name "${input.name}" already exists in this category` },
-    };
+    return errorResult('DUPLICATE_SKILL', `Skill with name "${input.name}" already exists in this category`);
   }
 
   const skillEntity: Omit<SkillEntity, 'created_at' | 'updated_at'> = {
@@ -122,18 +102,15 @@ export async function createSkill(input: CreateSkillInput): Promise<ServiceResul
   };
 
   const createdEntity = await skillRepository.createSkill(skillEntity);
-  return { success: true, data: mapSkillFromEntity(createdEntity) };
+  return successResult(mapSkillFromEntity(createdEntity));
 }
 
 export async function getSkillById(id: string): Promise<ServiceResult<Skill>> {
   const skillEntity = await skillRepository.findSkillById(id);
   if (!skillEntity) {
-    return {
-      success: false,
-      error: { code: 'SKILL_NOT_FOUND', message: `Skill with id "${id}" not found` },
-    };
+    return errorResult('SKILL_NOT_FOUND', `Skill with id "${id}" not found`);
   }
-  return { success: true, data: mapSkillFromEntity(skillEntity) };
+  return successResult(mapSkillFromEntity(skillEntity));
 }
 
 export async function updateSkill(
@@ -142,19 +119,13 @@ export async function updateSkill(
 ): Promise<ServiceResult<Skill>> {
   const existing = await skillRepository.findSkillById(id);
   if (!existing) {
-    return {
-      success: false,
-      error: { code: 'SKILL_NOT_FOUND', message: `Skill with id "${id}" not found` },
-    };
+    return errorResult('SKILL_NOT_FOUND', `Skill with id "${id}" not found`);
   }
 
   if (updates.categoryId && updates.categoryId !== existing.category_id) {
     const category = await skillCategoryRepository.getCategoryById(updates.categoryId);
     if (!category) {
-      return {
-        success: false,
-        error: { code: 'CATEGORY_NOT_FOUND', message: `Category with id "${updates.categoryId}" not found` },
-      };
+      return errorResult('CATEGORY_NOT_FOUND', `Category with id "${updates.categoryId}" not found`);
     }
   }
 
@@ -162,10 +133,7 @@ export async function updateSkill(
     const categoryId = updates.categoryId ?? existing.category_id;
     const duplicateSkill = await skillRepository.getSkillByNameInCategory(updates.name, categoryId);
     if (duplicateSkill) {
-      return {
-        success: false,
-        error: { code: 'DUPLICATE_SKILL', message: `Skill with name "${updates.name}" already exists in this category` },
-      };
+      return errorResult('DUPLICATE_SKILL', `Skill with name "${updates.name}" already exists in this category`);
     }
   }
 
@@ -177,31 +145,22 @@ export async function updateSkill(
   const updatedEntity = await skillRepository.updateSkill(id, entityUpdates);
   /* istanbul ignore next */
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update skill' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update skill');
   }
-  return { success: true, data: mapSkillFromEntity(updatedEntity) };
+  return successResult(mapSkillFromEntity(updatedEntity));
 }
 
 export async function deprecateSkill(id: string): Promise<ServiceResult<Skill>> {
   const existing = await skillRepository.findSkillById(id);
   if (!existing) {
-    return {
-      success: false,
-      error: { code: 'SKILL_NOT_FOUND', message: `Skill with id "${id}" not found` },
-    };
+    return errorResult('SKILL_NOT_FOUND', `Skill with id "${id}" not found`);
   }
 
   const updatedEntity = await skillRepository.updateSkill(id, { is_active: false });
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to deprecate skill' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to deprecate skill');
   }
-  return { success: true, data: mapSkillFromEntity(updatedEntity) };
+  return successResult(mapSkillFromEntity(updatedEntity));
 }
 
 export async function getAllSkills(): Promise<Skill[]> {

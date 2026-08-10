@@ -1,4 +1,4 @@
-import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
 
@@ -19,14 +19,8 @@ export type TransactionEntity = {
 
 const COLLECTION_ID = 'transactions';
 
-function mapDoc(doc: Record<string, any>): TransactionEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as TransactionEntity;
+function mapDoc(doc: Record<string, unknown>): TransactionEntity {
+  return fromAppwriteDoc<TransactionEntity>(doc);
 }
 
 export class TransactionRepository extends BaseRepository<TransactionEntity> {

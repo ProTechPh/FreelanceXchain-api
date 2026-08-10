@@ -1,4 +1,4 @@
-import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type BlockchainTransactionEntity = {
@@ -26,18 +26,15 @@ export class BlockchainTransactionRepository extends BaseRepository<BlockchainTr
   }
 
   async getTransactionById(id: string): Promise<BlockchainTransactionEntity | null> {
-    const doc = await this.getById(id);
-    return doc ? this.mapDoc(doc as any) : null;
+    return this.getById(id);
   }
 
   async createTransaction(data: Omit<BlockchainTransactionEntity, 'created_at' | 'updated_at'>): Promise<BlockchainTransactionEntity> {
-    const doc = await this.create(data);
-    return this.mapDoc(doc as any);
+    return this.create(data);
   }
 
   async updateTransaction(id: string, updates: Partial<BlockchainTransactionEntity>): Promise<BlockchainTransactionEntity | null> {
-    const doc = await this.update(id, updates);
-    return doc ? this.mapDoc(doc as any) : null;
+    return this.update(id, updates);
   }
 
   async findByHash(hash: string): Promise<BlockchainTransactionEntity | null> {
@@ -55,7 +52,8 @@ export class BlockchainTransactionRepository extends BaseRepository<BlockchainTr
   async findConfirmable(txId: string): Promise<{ confirm_at?: number } | null> {
     try {
       const doc = await databases.getDocument(DATABASE_ID, COLLECTION_ID, txId);
-      return { confirm_at: (doc as any).confirm_at };
+      const { confirm_at } = fromAppwriteDoc<BlockchainTransactionEntity>(doc);
+      return confirm_at !== undefined ? { confirm_at } : {};
     } catch {
       return null;
     }

@@ -4,6 +4,9 @@ import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter, fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
 import { uploadFile } from '../utils/storage-uploader.js';
+import { logger } from '../config/logger.js';
+import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository, type MilestoneEntity, type ProjectEntity } from '../repositories/project-repository.js';
 import {
@@ -62,13 +65,13 @@ function mapMilestoneResponse(
   project: ProjectEntity,
   submittedAtIso?: string
 ) {
-  const deliverableFiles = (milestone as any).deliverableFiles || (milestone as any).deliverable_files || [];
-  const revisionCount = (milestone as any).revisionCount ?? (milestone as any).revision_count ?? 0;
-  const submittedAt = (milestone as any).submittedAt || (milestone as any).submitted_at || submittedAtIso;
-  const approvedAt = (milestone as any).approvedAt || (milestone as any).approved_at;
-  const rejectedAt = (milestone as any).rejectedAt || (milestone as any).rejected_at;
-  const completedAt = (milestone as any).completedAt || (milestone as any).completed_at;
-  const rejectionReason = (milestone as any).rejectionReason || (milestone as any).rejection_reason;
+  const deliverableFiles = milestone.deliverableFiles || milestone.deliverable_files || [];
+  const revisionCount = milestone.revisionCount ?? milestone.revision_count ?? 0;
+  const submittedAt = milestone.submittedAt || milestone.submitted_at || submittedAtIso;
+  const approvedAt = milestone.approvedAt || milestone.approved_at;
+  const rejectedAt = milestone.rejectedAt || milestone.rejected_at;
+  const completedAt = milestone.completedAt || milestone.completed_at;
+  const rejectionReason = milestone.rejectionReason || milestone.rejection_reason;
 
   return {
     id: milestone.id,
@@ -76,7 +79,7 @@ function mapMilestoneResponse(
     title: milestone.title,
     description: milestone.description,
     amount: milestone.amount,
-    dueDate: (milestone as any).dueDate || milestone.due_date,
+    dueDate: milestone.dueDate || milestone.due_date,
     status: milestone.status,
     submittedAt,
     approvedAt,
@@ -85,18 +88,60 @@ function mapMilestoneResponse(
     deliverableFiles,
     rejectionReason,
     revisionCount,
-    notes: (milestone as any).notes,
+    notes: milestone.notes,
     createdAt: project.created_at,
     updatedAt: project.updated_at,
   };
 }
 
+type MilestoneDeliverable = { filename: string; url: string; size: number; mimeType: string };
+
+async function uploadMilestoneDeliverables(
+  files: Express.Multer.File[],
+  userId: string,
+  milestoneId: string
+): Promise<MilestoneDeliverable[]> {
+  const uploadPromises = files.map(async (file) => {
+    const result = await uploadFile({
+      bucket: 'milestone-deliverables',
+      userId,
+      file: file.buffer,
+      filename: file.originalname,
+      mimetype: file.mimetype,
+      folder: `milestone-${milestoneId}`,
+    });
+
+    if (!result.success) {
+      throw new Error(`Failed to upload ${file.originalname}: ${result.error}`);
+    }
+
+    return {
+      filename: file.originalname,
+      url: result.url!,
+      size: file.size,
+      mimeType: file.mimetype,
+    };
+  });
+
+  return Promise.all(uploadPromises);
+}
+
+function sendMilestoneSubmitError(
+  res: Response,
+  errorResult: { code: string; message: string },
+  requestId: string
+): void {
+  const statusCode = errorResult.code === 'NOT_FOUND' ? 404 :
+    errorResult.code === 'UNAUTHORIZED' ? 403 : 400;
+  sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, requestId);
+}
+
 async function submitMilestoneFromProjectContext(
   milestoneId: string,
   freelancerId: string,
-  deliverables: Array<{ filename: string; url: string; size: number; mimeType: string }>,
+  deliverables: MilestoneDeliverable[],
   notes?: string
-): Promise<{ success: true; data: any } | { success: false; error: { code: string; message: string } }> {
+): Promise<{ success: true; data: ReturnType<typeof mapMilestoneResponse> } | { success: false; error: { code: string; message: string } }> {
   const context = await findFreelancerMilestoneContext(freelancerId, milestoneId);
   if (!context) {
     return {
@@ -175,14 +220,14 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: R
     const result = await getMilestoneById(milestoneId, userId);
 
     if (!result.success) {
-      const message = 'error' in result ? result.error.message : 'Milestone not found';
-      return res.status(404).json({ error: message });
+      const errorResult = 'error' in result ? result.error : { code: 'NOT_FOUND', message: 'Milestone not found' };
+      return sendErrorResponse(res, 404, errorResult.code, errorResult.message, getRequestId(req));
     }
 
     return res.json(result.data.milestone);
   } catch (error) {
-    console.error('Error getting milestone:', error);
-    return res.status(500).json({ error: 'Failed to get milestone' });
+    logger.error('Error getting milestone', error);
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestone', getRequestId(req));
   }
 });
 
@@ -210,14 +255,14 @@ router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId'])
     const result = await getContractMilestones(contractId, req.user?.userId);
 
     if (!result.success) {
-      const message = 'error' in result ? result.error.message : 'Failed to get milestones';
-      return res.status(400).json({ error: message });
+      const errorResult = 'error' in result ? result.error : { code: 'FETCH_FAILED', message: 'Failed to get milestones' };
+      return sendErrorResponse(res, 400, errorResult.code, errorResult.message, getRequestId(req));
     }
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error getting contract milestones:', error);
-    return res.status(500).json({ error: 'Failed to get milestones' });
+    logger.error('Error getting contract milestones', error);
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestones', getRequestId(req));
   }
 });
 
@@ -272,48 +317,26 @@ router.post('/:id/upload-deliverables',
       const files = req.files as Express.Multer.File[] | undefined;
 
       if (!files || files.length === 0) {
-        return res.status(400).json({ error: 'No files provided' });
+        return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'No files provided', getRequestId(req));
       }
 
       // Verify milestone ownership via freelancer's contracts/projects
       const context = await findFreelancerMilestoneContext(userId, milestoneId);
       if (!context) {
-        return res.status(404).json({ error: 'Milestone not found' });
+        return sendErrorResponse(res, 404, 'NOT_FOUND', 'Milestone not found', getRequestId(req));
       }
 
       // Upload files to milestone-deliverables bucket
-      const uploadPromises = files.map(async (file) => {
-        const result = await uploadFile({
-          bucket: 'milestone-deliverables',
-          userId,
-          file: file.buffer,
-          filename: file.originalname,
-          mimetype: file.mimetype,
-          folder: `milestone-${milestoneId}`,
-        });
+      const uploadedFiles = await uploadMilestoneDeliverables(files, userId, milestoneId);
 
-        if (!result.success) {
-          throw new Error(`Failed to upload ${file.originalname}: ${result.error}`);
-        }
-
-        return {
-          filename: file.originalname,
-          url: result.url!,
-          size: file.size,
-          mimeType: file.mimetype,
-        };
-      });
-
-      const uploadedFiles = await Promise.all(uploadPromises);
-
-      return res.json({
+      return sendSuccessResponse(res, 200, {
         success: true,
         files: uploadedFiles,
         message: `Successfully uploaded ${uploadedFiles.length} file(s)`,
-      });
+      }, getRequestId(req));
     } catch (error) {
-      console.error('Error uploading milestone deliverables:', error);
-      return res.status(500).json({ error: 'Failed to upload files' });
+      logger.error('Error uploading milestone deliverables', error);
+      return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to upload files', getRequestId(req));
     }
   }
 );
@@ -369,15 +392,13 @@ router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUU
       const errorResult = 'error' in result
         ? result.error
         : { code: 'SUBMIT_FAILED', message: 'Failed to submit milestone' };
-      const statusCode = errorResult.code === 'NOT_FOUND' ? 404 :
-        errorResult.code === 'UNAUTHORIZED' ? 403 : 400;
-      return res.status(statusCode).json({ error: errorResult.message });
+      return sendMilestoneSubmitError(res, errorResult, getRequestId(req));
     }
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error submitting milestone:', error);
-    return res.status(500).json({ error: 'Failed to submit milestone' });
+    logger.error('Error submitting milestone', error);
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit milestone', getRequestId(req));
   }
 });
 
@@ -434,7 +455,7 @@ router.post('/:id/submit-with-files',
         try {
           existingFiles = JSON.parse(existingDeliverables);
         } catch {
-          return res.status(400).json({ error: 'Invalid existingDeliverables format' });
+          return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid existingDeliverables format', getRequestId(req));
         }
       }
 
@@ -446,29 +467,7 @@ router.post('/:id/submit-with-files',
         mimeType: string;
       }> = [];
       if (files && files.length > 0) {
-        const uploadPromises = files.map(async (file) => {
-          const result = await uploadFile({
-            bucket: 'milestone-deliverables',
-            userId,
-            file: file.buffer,
-            filename: file.originalname,
-            mimetype: file.mimetype,
-            folder: `milestone-${milestoneId}`,
-          });
-
-          if (!result.success) {
-            throw new Error(`Failed to upload ${file.originalname}: ${result.error}`);
-          }
-
-          return {
-            filename: file.originalname,
-            url: result.url!,
-            size: file.size,
-            mimeType: file.mimetype,
-          };
-        });
-
-        newFiles = await Promise.all(uploadPromises);
+        newFiles = await uploadMilestoneDeliverables(files, userId, milestoneId);
       }
 
       // Combine existing and new files
@@ -483,7 +482,7 @@ router.post('/:id/submit-with-files',
           : { code: 'SUBMIT_FAILED', message: 'Failed to submit milestone' };
         const statusCode = errorResult.code === 'NOT_FOUND' ? 404 :
           errorResult.code === 'UNAUTHORIZED' ? 403 : 400;
-        return res.status(statusCode).json({ error: errorResult.message });
+        return sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, getRequestId(req));
       }
 
       return res.json({
@@ -492,8 +491,8 @@ router.post('/:id/submit-with-files',
         totalFiles: allDeliverables.length,
       });
     } catch (error) {
-      console.error('Error submitting milestone with files:', error);
-      return res.status(500).json({ error: 'Failed to submit milestone with files' });
+      logger.error('Error submitting milestone with files', error);
+      return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit milestone with files', getRequestId(req));
     }
   }
 );
@@ -543,7 +542,7 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
     }
 
     if (!contractId) {
-      return res.status(404).json({ error: 'Milestone not found in any of your contracts' });
+      return sendErrorResponse(res, 404, 'NOT_FOUND', 'Milestone not found in any of your contracts', getRequestId(req));
     }
 
     // Use payment-service approveMilestone which handles blockchain escrow release + project milestone update
@@ -554,13 +553,13 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
         result.error.code === 'UNAUTHORIZED' ? 403 :
         result.error.code === 'ESCROW_NOT_FOUND' || result.error.code === 'MISSING_WALLET' ? 422 : 400;
-      return res.status(statusCode).json({ error: message, code: result.error.code });
+      return sendErrorResponse(res, statusCode, result.error.code, message, getRequestId(req));
     }
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error approving milestone:', error);
-    return res.status(500).json({ error: 'Failed to approve milestone' });
+    logger.error('Error approving milestone', error);
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to approve milestone', getRequestId(req));
   }
 });
 
@@ -601,7 +600,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID
     const { reason, requestRevision } = req.body;
 
     if (!reason) {
-      return res.status(400).json({ error: 'Rejection reason is required' });
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Rejection reason is required', getRequestId(req));
     }
 
     const result = await rejectMilestone({
@@ -612,14 +611,14 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID
     });
 
     if (!result.success) {
-      const message = 'error' in result ? result.error.message : 'Failed to reject milestone';
-      return res.status(400).json({ error: message });
+      const errorResult = 'error' in result ? result.error : { code: 'REJECT_FAILED', message: 'Failed to reject milestone' };
+      return sendErrorResponse(res, 400, errorResult.code, errorResult.message, getRequestId(req));
     }
 
     return res.json(result.data);
   } catch (error) {
-    console.error('Error rejecting milestone:', error);
-    return res.status(500).json({ error: 'Failed to reject milestone' });
+    logger.error('Error rejecting milestone', error);
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject milestone', getRequestId(req));
   }
 });
 

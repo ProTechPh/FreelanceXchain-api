@@ -3,6 +3,7 @@ import { notificationRepository, NotificationEntity } from '../repositories/noti
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 export type CreateNotificationInput = {
   userId: string;
@@ -27,7 +28,7 @@ export async function createNotification(
   };
 
   const createdEntity = await notificationRepository.createNotification(notificationEntity);
-  return { success: true, data: mapNotificationFromEntity(createdEntity) };
+  return successResult(mapNotificationFromEntity(createdEntity));
 }
 
 // Create multiple notifications at once
@@ -50,7 +51,7 @@ export async function createNotifications(
   );
   const notifications = createdEntities.map(mapNotificationFromEntity);
 
-  return { success: true, data: notifications };
+  return successResult(notifications);
 }
 
 // Get notification by ID
@@ -60,21 +61,15 @@ export async function getNotificationById(
 ): Promise<ServiceResult<Notification>> {
   const notificationEntity = await notificationRepository.getNotificationById(notificationId);
   if (!notificationEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Notification not found' },
-    };
+    return errorResult('NOT_FOUND', 'Notification not found');
   }
 
   // Verify the notification belongs to the requesting user
   if (notificationEntity.user_id !== userId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'You do not have access to this notification' },
-    };
+    return errorResult('UNAUTHORIZED', 'You do not have access to this notification');
   }
 
-  return { success: true, data: mapNotificationFromEntity(notificationEntity) };
+  return successResult(mapNotificationFromEntity(notificationEntity));
 }
 
 // Get notifications for a user with pagination
@@ -83,22 +78,19 @@ export async function getNotificationsByUser(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<Notification>>> {
   const result = await notificationRepository.getNotificationsByUser(userId, options);
-  return { 
-    success: true, 
-    data: {
-      items: result.items.map(mapNotificationFromEntity),
-      hasMore: result.hasMore,
-      total: result.total,
-    }
-  };
-}
+  return successResult({
+    items: result.items.map(mapNotificationFromEntity),
+    hasMore: result.hasMore,
+    total: result.total,
+  });
+  }
 
 // Get all notifications for a user (sorted by creation time descending)
 export async function getAllNotificationsByUser(
   userId: string
 ): Promise<ServiceResult<Notification[]>> {
   const notificationEntities = await notificationRepository.getAllNotificationsByUser(userId);
-  return { success: true, data: notificationEntities.map(mapNotificationFromEntity) };
+  return successResult(notificationEntities.map(mapNotificationFromEntity));
 }
 
 
@@ -107,7 +99,7 @@ export async function getUnreadNotificationsByUser(
   userId: string
 ): Promise<ServiceResult<Notification[]>> {
   const notificationEntities = await notificationRepository.getUnreadNotificationsByUser(userId);
-  return { success: true, data: notificationEntities.map(mapNotificationFromEntity) };
+  return successResult(notificationEntities.map(mapNotificationFromEntity));
 }
 
 // Mark a notification as read
@@ -117,29 +109,20 @@ export async function markNotificationAsRead(
 ): Promise<ServiceResult<Notification>> {
   const notificationEntity = await notificationRepository.getNotificationById(notificationId);
   if (!notificationEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Notification not found' },
-    };
+    return errorResult('NOT_FOUND', 'Notification not found');
   }
 
   // Verify the notification belongs to the user
   if (notificationEntity.user_id !== userId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'You are not authorized to update this notification' },
-    };
+    return errorResult('UNAUTHORIZED', 'You are not authorized to update this notification');
   }
 
   const updatedEntity = await notificationRepository.markAsRead(notificationId);
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to mark notification as read' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to mark notification as read');
   }
 
-  return { success: true, data: mapNotificationFromEntity(updatedEntity) };
+  return successResult(mapNotificationFromEntity(updatedEntity));
 }
 
 // Mark all notifications as read for a user
@@ -147,7 +130,7 @@ export async function markAllNotificationsAsRead(
   userId: string
 ): Promise<ServiceResult<{ count: number }>> {
   const count = await notificationRepository.markAllAsRead(userId);
-  return { success: true, data: { count } };
+  return successResult({ count });
 }
 
 // Get unread notification count for a user
@@ -155,7 +138,7 @@ export async function getUnreadCount(
   userId: string
 ): Promise<ServiceResult<number>> {
   const count = await notificationRepository.getUnreadCount(userId);
-  return { success: true, data: count };
+  return successResult(count);
 }
 
 

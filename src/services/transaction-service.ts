@@ -1,7 +1,8 @@
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import type { PaginatedResult } from '../repositories/types.js';
-import { transactionRepository } from '../repositories/transaction-repository.js';
+import { transactionRepository, type TransactionEntity } from '../repositories/transaction-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 
 export interface Transaction {
@@ -14,7 +15,7 @@ export interface Transaction {
   type: string;
   status: string;
   transaction_hash?: string;
-  metadata?: any;
+  metadata?: unknown;
   created_at: string;
   updated_at: string;
 }
@@ -37,7 +38,7 @@ export interface TransactionInput {
   type: string;
   status: string;
   transaction_hash?: string;
-  metadata?: any;
+  metadata?: unknown;
 }
 
 /**
@@ -72,24 +73,15 @@ export async function getUserTransactions(
     const total = filtered.length;
     const items = filtered.slice(offset, offset + limit);
 
-    return {
-      success: true,
-      data: {
-        items: items as Transaction[],
-        total,
-        hasMore: offset + limit < total,
-      },
-    };
-  } catch (error) {
-    logger.error('Unexpected error in getUserTransactions', { error, userId, options });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      items,
+      total,
+      hasMore: offset + limit < total,
+    });
+      } catch (error) {
+      logger.error('Unexpected error in getUserTransactions', { error, userId, options });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -103,39 +95,18 @@ export async function getTransactionById(
     const transaction = await transactionRepository.getById(transactionId);
 
     if (!transaction) {
-      return {
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Transaction not found',
-        },
-      };
+      return errorResult('NOT_FOUND', 'Transaction not found');
     }
 
     // Verify ownership
     if (transaction.from_user_id !== userId && transaction.to_user_id !== userId) {
-      return {
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'You are not authorized to view this transaction',
-        },
-      };
+      return errorResult('UNAUTHORIZED', 'You are not authorized to view this transaction');
     }
 
-    return {
-      success: true,
-      data: transaction as Transaction,
-    };
+    return successResult(transaction);
   } catch (error) {
     logger.error('Unexpected error in getTransactionById', { error, transactionId, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -151,40 +122,19 @@ export async function getContractTransactions(
     const contract = await contractRepository.getContractById(contractId);
 
     if (!contract) {
-      return {
-        success: false,
-        error: {
-          code: 'CONTRACT_NOT_FOUND',
-          message: 'Contract not found',
-        },
-      };
+      return errorResult('CONTRACT_NOT_FOUND', 'Contract not found');
     }
 
     if (contract.freelancer_id !== userId && contract.employer_id !== userId) {
-      return {
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'You are not authorized to view transactions for this contract',
-        },
-      };
+      return errorResult('UNAUTHORIZED', 'You are not authorized to view transactions for this contract');
     }
 
     const transactions = await transactionRepository.findByContract(contractId);
 
-    return {
-      success: true,
-      data: transactions as Transaction[],
-    };
+    return successResult(transactions);
   } catch (error) {
     logger.error('Unexpected error in getContractTransactions', { error, contractId, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -196,39 +146,27 @@ export async function createTransaction(
 ): Promise<ServiceResult<Transaction>> {
   try {
     if (typeof input.amount !== 'number' || !isFinite(input.amount) || input.amount <= 0) {
-      return {
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: `Invalid transaction amount: ${input.amount}`,
-        },
-      };
+      return errorResult('VALIDATION_ERROR', `Invalid transaction amount: ${input.amount}`);
     }
 
-    const created = await transactionRepository.create({
-      contract_id: input.contract_id,
-      milestone_id: input.milestone_id,
-      from_user_id: input.from_user_id,
-      to_user_id: input.to_user_id,
+    // Build the create payload so optional fields are only included when set
+    const transactionData: Omit<TransactionEntity, 'created_at' | 'updated_at' | 'id'> = {
       amount: input.amount,
       type: input.type,
       status: input.status,
-      transaction_hash: input.transaction_hash,
-      metadata: input.metadata ? JSON.stringify(input.metadata) : undefined,
-    } as any);
-
-    return {
-      success: true,
-      data: created as Transaction,
     };
+    if (input.contract_id !== undefined) transactionData.contract_id = input.contract_id;
+    if (input.milestone_id !== undefined) transactionData.milestone_id = input.milestone_id;
+    if (input.from_user_id !== undefined) transactionData.from_user_id = input.from_user_id;
+    if (input.to_user_id !== undefined) transactionData.to_user_id = input.to_user_id;
+    if (input.transaction_hash !== undefined) transactionData.transaction_hash = input.transaction_hash;
+    if (input.metadata) transactionData.metadata = JSON.stringify(input.metadata);
+
+    const created = await transactionRepository.create(transactionData);
+
+    return successResult(created);
   } catch (error) {
     logger.error('Unexpected error in createTransaction', { error, input });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }

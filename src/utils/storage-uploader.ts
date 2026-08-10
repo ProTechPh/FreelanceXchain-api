@@ -5,7 +5,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid';
-import { ID } from 'node-appwrite';
+import { ID, type Models } from 'node-appwrite';
 import { InputFile } from 'node-appwrite/file';
 import { storage, BUCKETS, type BucketId } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
@@ -26,6 +26,8 @@ export type UploadResult = {
   path?: string;
   error?: string;
 };
+
+type UploadedFile = Express.Multer.File & { detectedMimeType?: string };
 
 /**
  * Generate a unique filename with UUID prefix
@@ -113,17 +115,19 @@ export async function uploadFileToStorage(
       success: true,
       metadata,
     };
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
     logger.error('Unexpected error during file upload', {
-      error: error.message,
-      stack: error.stack,
+      error: message,
+      stack,
       filename: originalFilename,
       bucket,
     });
     
     return {
       success: false,
-      error: `An unexpected error occurred during file upload: ${error.message}`,
+      error: `An unexpected error occurred during file upload: ${message}`,
     };
   }
 }
@@ -143,7 +147,7 @@ export async function uploadMultipleFiles(
 ): Promise<UploadResult[]> {
   const uploadPromises = files.map(file => {
     // Use detected MIME type from magic number validation if available
-    const mimeType = (file as any).detectedMimeType || file.mimetype;
+    const mimeType = (file as UploadedFile).detectedMimeType || file.mimetype;
 
     return uploadFileToStorage(
       file.buffer,
@@ -177,17 +181,19 @@ export async function deleteFileFromStorage(
     });
     
     return { success: true };
-  } catch (error: any) {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
     logger.error('Unexpected error during file deletion', {
-      error: error.message,
-      stack: error.stack,
+      error: message,
+      stack,
       fileId,
       bucket,
     });
     
     return {
       success: false,
-      error: `An unexpected error occurred during file deletion: ${error.message}`,
+      error: `An unexpected error occurred during file deletion: ${message}`,
     };
   }
 }
@@ -302,7 +308,7 @@ export async function getSignedUrl(bucket: BucketId, path: string): Promise<Uplo
 /**
  * Compatibility wrapper for legacy listUserFiles calls
  */
-export async function listUserFiles(bucket: BucketId, userId: string): Promise<{ success: boolean; files: any[]; error?: string }> {
+export async function listUserFiles(bucket: BucketId, userId: string): Promise<{ success: boolean; files: Models.File[]; error?: string }> {
   try {
     const result = await storage.listFiles(bucket);
     // Filter by userId in filename prefix
@@ -311,11 +317,11 @@ export async function listUserFiles(bucket: BucketId, userId: string): Promise<{
       success: true,
       files: userFiles,
     };
-  } catch (error: any) {
+  } catch (error) {
     return {
       success: false,
       files: [],
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }

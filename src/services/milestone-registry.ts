@@ -12,7 +12,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
-import { blockchainMilestoneRecordRepository } from '../repositories/blockchain-milestone-record-repository.js';
+import { blockchainMilestoneRecordRepository, type BlockchainMilestoneRecordEntity } from '../repositories/blockchain-milestone-record-repository.js';
 
 export type BlockchainMilestoneStatus = 'submitted' | 'approved' | 'rejected' | 'disputed';
 
@@ -49,20 +49,7 @@ export type SubmitMilestoneInput = {
 
 const MILESTONE_REGISTRY_ADDRESS = generateWalletAddress();
 
-function entityToRecord(entity: {
-  milestone_id_hash: string;
-  contract_id_hash: string;
-  work_hash: string;
-  freelancer_wallet: string;
-  employer_wallet: string;
-  amount: number;
-  status: string;
-  submitted_at: number;
-  completed_at?: number;
-  title: string;
-  transaction_hash: string;
-  block_number: number;
-}): BlockchainMilestoneRecord {
+function entityToRecord(entity: BlockchainMilestoneRecordEntity): BlockchainMilestoneRecord {
   return {
     milestoneIdHash: entity.milestone_id_hash,
     contractIdHash: entity.contract_id_hash,
@@ -154,7 +141,7 @@ export async function submitMilestoneToRegistry(
     title: record.title,
     transaction_hash: record.transactionHash,
     block_number: record.blockNumber,
-  } as any);
+  });
 
   return {
     record,

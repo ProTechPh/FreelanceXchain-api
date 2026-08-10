@@ -3,10 +3,12 @@
  * Handles user authentication, registration, and session management
  */
 
-import { ID, Account, OAuthProvider, AuthenticatorType } from 'node-appwrite';
+import { ID, Account, OAuthProvider, AuthenticatorType, AuthenticationFactor } from 'node-appwrite';
+import type { Models } from 'node-appwrite';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
 import { account as adminAccount, createUserClient, users } from '../config/appwrite.js';
 import { UserRole } from '../models/user.js';
+import { getErrorMessage } from '../utils/index.js';
 import { logger } from '../config/logger.js';
 import {
   RegisterInput,
@@ -21,6 +23,28 @@ export { isAuthError };
 
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
+
+/**
+ * Safely extract a numeric error code (e.g. Appwrite's HTTP status) from an unknown thrown value.
+ */
+function getErrorCode(error: unknown): number | undefined {
+  if (typeof error === 'object' && error !== null) {
+    const code = (error as Record<string, unknown>).code;
+    return typeof code === 'number' ? code : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Safely extract a string error type (e.g. Appwrite's `user_more_factors_required`) from an unknown thrown value.
+ */
+function getErrorType(error: unknown): string | undefined {
+  if (typeof error === 'object' && error !== null) {
+    const type = (error as Record<string, unknown>).type;
+    return typeof type === 'string' ? type : undefined;
+  }
+  return undefined;
+}
 
 function requireSessionSecret(session: { secret?: string }): string {
   if (!session.secret) {
@@ -109,7 +133,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
     };
   }
 
-  let appwriteUser: any;
+  let appwriteUser: Models.User<Models.Preferences> | undefined;
   try {
     // Create user in Appwrite
     appwriteUser = await users.create(
@@ -156,7 +180,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       accessToken: sessionSecret,
       refreshToken: sessionSecret,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Compensate: if Appwrite user was created but session failed, delete the Appwrite user
     if (appwriteUser?.$id) {
       try {
@@ -174,9 +198,9 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       }
     }
 
-    logger.error('Registration failed', { error: error.message, email: normalizedEmail });
+    logger.error('Registration failed', { error: getErrorMessage(error), email: normalizedEmail });
     
-    if (error.message?.includes('already exists') || error.code === 409) {
+    if (getErrorMessage(error)?.includes('already exists') || getErrorCode(error) === 409) {
       return {
         code: 'DUPLICATE_EMAIL',
         message: 'An account with this email already exists',
@@ -185,7 +209,7 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
     
     return {
       code: 'INTERNAL_ERROR',
-      message: error.message || 'Failed to create user',
+      message: getErrorMessage(error) || '' || 'Failed to create user',
     };
   }
 }
@@ -208,8 +232,8 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
     // Appwrite throws user_more_factors_required if MFA is enabled
     try {
       await authenticatedAccount.get();
-    } catch (mfaError: any) {
-      if (mfaError.type === 'user_more_factors_required') {
+    } catch (mfaError: unknown) {
+      if (getErrorType(mfaError) === 'user_more_factors_required') {
         // SECURITY NOTE: The session.secret returned here is a partially-authenticated
         // Appwrite session. It is needed for the MFA challenge/verify flow but should
         // NOT be treated as a fully authenticated token. Appwrite enforces MFA at the
@@ -238,8 +262,8 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
     }
 
     return await createAuthResult(publicUser, sessionSecret, sessionSecret);
-  } catch (error: any) {
-    logger.error('Login failed', { error: error.message, email: normalizedEmail });
+  } catch (error: unknown) {
+    logger.error('Login failed', { error: getErrorMessage(error), email: normalizedEmail });
     
     return {
       code: 'INVALID_CREDENTIALS',
@@ -272,8 +296,8 @@ export async function refreshTokens(refreshToken: string): Promise<AuthResult | 
     // Appwrite sessions are long-lived, return the same token
     const result = await createAuthResult(publicUser, refreshToken, refreshToken);
     return result;
-  } catch (error: any) {
-    logger.error('Token refresh failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Token refresh failed', { error: getErrorMessage(error) });
     
     return {
       code: 'INVALID_TOKEN',
@@ -316,8 +340,8 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
       email: publicUser.email,
       role: publicUser.role,
     };
-  } catch (error: any) {
-    logger.error('Token validation failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Token validation failed', { error: getErrorMessage(error) });
     
     return {
       code: 'INVALID_TOKEN',
@@ -368,8 +392,8 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
     });
 
     return { success: true };
-  } catch (error: any) {
-    logger.error('Password reset request failed', { error: error.message, email });
+  } catch (error: unknown) {
+    logger.error('Password reset request failed', { error: getErrorMessage(error), email });
     // BLF-4.3: Return generic message to prevent user enumeration via error message differences
     return {
       code: 'INTERNAL_ERROR',
@@ -403,8 +427,8 @@ export async function updatePassword(accessToken: string, newPassword: string): 
     }
 
     return { success: true };
-  } catch (error: any) {
-    logger.error('Password update failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Password update failed', { error: getErrorMessage(error) });
 
     return {
       code: 'INTERNAL_ERROR',
@@ -431,12 +455,12 @@ export async function logout(accessToken?: string): Promise<{ success: boolean }
     });
 
     return { success: true };
-  } catch (error: any) {
-    logger.error('Logout failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Logout failed', { error: getErrorMessage(error) });
     
     return {
       code: 'INTERNAL_ERROR',
-      message: error.message || 'Failed to logout',
+      message: getErrorMessage(error) || '' || 'Failed to logout',
     };
   }
 }
@@ -537,8 +561,8 @@ export async function exchangeCodeForSession(accessToken: string): Promise<{ acc
       accessToken,
       refreshToken: accessToken, // Appwrite sessions are persistent
     };
-  } catch (error: any) {
-    logger.error('OAuth session exchange failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('OAuth session exchange failed', { error: getErrorMessage(error) });
     return {
       code: 'INTERNAL_ERROR',
       message: 'Failed to verify OAuth session',
@@ -559,7 +583,7 @@ export async function enrollMFA(accessToken: string, factorType: 'totp' | 'email
 
     if (factorType === 'totp') {
       // TOTP enrollment returns secret and URI for QR code
-      const result = await account.createMFAAuthenticator({ type: 'totp' as any });
+      const result = await account.createMFAAuthenticator({ type: AuthenticatorType.Totp });
       
       // Generate recovery codes (only once per account)
       let recoveryCodes: string[] = [];
@@ -573,19 +597,19 @@ export async function enrollMFA(accessToken: string, factorType: 'totp' | 'email
       return { 
         success: true, 
         recoveryCodes,
-        secret: (result as any).secret,
-        uri: (result as any).uri,
+        secret: result.secret,
+        uri: result.uri,
       };
     }
 
     // Email is challenge-based, no enrollment needed
     // They're verified through challenges during login
     return { success: true };
-  } catch (error: any) {
-    logger.error('MFA enrollment failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('MFA enrollment failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_ENROLLMENT_FAILED',
-      message: error.message || 'Failed to enroll in MFA',
+      message: getErrorMessage(error) || '' || 'Failed to enroll in MFA',
     };
   }
 }
@@ -601,7 +625,7 @@ export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp
     // Only TOTP needs authenticator verification
     if (factorType === 'totp') {
       await account.updateMFAAuthenticator({
-        type: 'totp' as any,
+        type: AuthenticatorType.Totp,
         otp: code
       });
     }
@@ -614,11 +638,11 @@ export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp
     await userRepository.update(appwriteUser.$id, { mfa_enabled: true });
 
     return { success: true };
-  } catch (error: any) {
-    logger.error('MFA verification failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('MFA verification failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_VERIFY_FAILED',
-      message: error.message || 'Invalid MFA code',
+      message: getErrorMessage(error) || '' || 'Invalid MFA code',
     };
   }
 }
@@ -632,14 +656,14 @@ export async function challengeMFA(accessToken: string, factorId: string): Promi
     const account = new Account(userClient);
     
     const challenge = await account.createMFAChallenge({
-      factor: factorId as any // e.g. 'totp'
+      factor: factorId as AuthenticationFactor // e.g. 'totp' — client-supplied factor id
     });
     
     return { challengeId: challenge.$id };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       code: 'INTERNAL_ERROR',
-      message: error.message
+      message: getErrorMessage(error) || ''
     };
   }
 }
@@ -659,11 +683,11 @@ export async function verifyMFAChallenge(accessToken: string, factorId: string, 
     });
 
     return { success: true };
-  } catch (error: any) {
-    logger.error('MFA challenge verification failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('MFA challenge verification failed', { error: getErrorMessage(error) });
     return {
       code: 'MFA_CHALLENGE_FAILED',
-      message: error.message || 'Invalid MFA code',
+      message: getErrorMessage(error) || '' || 'Invalid MFA code',
     };
   }
 }
@@ -683,10 +707,10 @@ export async function getMFAFactors(accessToken: string): Promise<{ factors: { i
     if (factors.email) result.push({ id: 'email', type: 'email' });
     
     return { factors: result };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       code: 'MFA_LIST_FAILED',
-      message: error.message,
+      message: getErrorMessage(error) || '',
     };
   }
 }
@@ -709,7 +733,7 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
 
     // Create a challenge and verify the OTP code for the specified factor
     const challenge = await account.createMFAChallenge({
-      factor: factorType as any,
+      factor: factorType as AuthenticationFactor,
     });
 
     await account.updateMFAChallenge({
@@ -731,10 +755,10 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
     await userRepository.update(appwriteUser.$id, { mfa_enabled: false });
 
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       code: 'MFA_DISABLE_FAILED',
-      message: error.message,
+      message: getErrorMessage(error) || '',
     };
   }
 }
@@ -772,8 +796,8 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
 
     logger.info('Confirmation email sent', { email: normalizedEmail });
     return { success: true };
-  } catch (error: any) {
-    logger.error('Failed to resend confirmation email', { error: error.message, email });
+  } catch (error: unknown) {
+    logger.error('Failed to resend confirmation email', { error: getErrorMessage(error), email });
     // Don't reveal internal errors to prevent enumeration
     return { success: true };
   }
@@ -801,8 +825,8 @@ export async function loginWithAppwrite(accessToken: string): Promise<AuthResult
     }
     
     return createAuthResult(publicUser, accessToken, accessToken);
-  } catch (error: any) {
-    logger.error('Login with Appwrite token failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Login with Appwrite token failed', { error: getErrorMessage(error) });
     return {
       code: 'AUTH_INVALID_TOKEN',
       message: 'Invalid or expired authentication token.',
@@ -844,8 +868,8 @@ export async function registerWithAppwrite(accessToken: string, role: UserRole):
     });
     
     return createAuthResult(publicUser, accessToken, accessToken);
-  } catch (error: any) {
-    logger.error('Appwrite registration failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Appwrite registration failed', { error: getErrorMessage(error) });
     return {
       code: 'INTERNAL_ERROR',
       message: 'Failed to complete registration.',
@@ -863,9 +887,9 @@ export async function requestEmailOtp(email: string): Promise<{ userId: string }
     
     const token = await account.createEmailToken(ID.unique(), email.toLowerCase().trim());
     return { userId: token.userId };
-  } catch (error: any) {
-    logger.error('Email OTP request failed', { error: error.message, email });
-    return { code: 'INTERNAL_ERROR', message: error.message || 'Failed to send OTP to email' };
+  } catch (error: unknown) {
+    logger.error('Email OTP request failed', { error: getErrorMessage(error), email });
+    return { code: 'INTERNAL_ERROR', message: getErrorMessage(error) || '' || 'Failed to send OTP to email' };
   }
 }
 
@@ -882,9 +906,9 @@ export async function requestMagicUrl(email: string): Promise<{ userId: string }
     
     const token = await account.createMagicURLToken(ID.unique(), email.toLowerCase().trim(), redirectUrl);
     return { userId: token.userId };
-  } catch (error: any) {
-    logger.error('Magic URL request failed', { error: error.message, email });
-    return { code: 'INTERNAL_ERROR', message: error.message || 'Failed to send Magic URL' };
+  } catch (error: unknown) {
+    logger.error('Magic URL request failed', { error: getErrorMessage(error), email });
+    return { code: 'INTERNAL_ERROR', message: getErrorMessage(error) || '' || 'Failed to send Magic URL' };
   }
 }
 
@@ -897,8 +921,8 @@ export async function verifyAuthToken(userId: string, secret: string): Promise<A
     const sessionSecret = requireSessionSecret(session);
 
     return await loginWithAppwrite(sessionSecret);
-  } catch (error: any) {
-    logger.error('Token verification failed', { error: error.message });
+  } catch (error: unknown) {
+    logger.error('Token verification failed', { error: getErrorMessage(error) });
     return { code: 'AUTH_INVALID_CREDENTIALS', message: 'Invalid or expired code/token' };
   }
 }

@@ -1,5 +1,6 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { getErrorMessageOr } from '../utils/index.js';
 
 export type SkillCategoryEntity = {
   id: string;
@@ -20,8 +21,8 @@ export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity>
   async createCategory(category: Omit<SkillCategoryEntity, 'created_at' | 'updated_at'>): Promise<SkillCategoryEntity> {
     try {
       return await this.create(category);
-    } catch (error: any) {
-      throw new Error(`Failed to create: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to create: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -47,17 +48,9 @@ export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity>
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as SkillCategoryEntity;
-      });
-    } catch (error: any) {
-      throw new Error(`Failed to get all categories: ${error.message}`);
+      return response.documents.map(doc => fromAppwriteDoc<SkillCategoryEntity>(doc));
+    } catch (error) {
+      throw new Error(`Failed to get all categories: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -72,17 +65,9 @@ export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity>
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as SkillCategoryEntity;
-      });
-    } catch (error: any) {
-      throw new Error(`Failed to get active categories: ${error.message}`);
+      return response.documents.map(doc => fromAppwriteDoc<SkillCategoryEntity>(doc));
+    } catch (error) {
+      throw new Error(`Failed to get active categories: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -96,18 +81,12 @@ export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity>
         ]
       );
       const doc = response.documents.find(
-        (d: any) => d.name?.toLowerCase() === name.toLowerCase()
+        d => typeof d.name === 'string' && d.name.toLowerCase() === name.toLowerCase()
       );
       if (!doc) return null;
-      const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-      return {
-        id: $id,
-        ...attrs,
-        created_at: attrs.created_at ?? $createdAt,
-        updated_at: attrs.updated_at ?? $updatedAt,
-      } as SkillCategoryEntity;
-    } catch (error: any) {
-      throw new Error(`Failed to get category by name: ${error.message}`);
+      return fromAppwriteDoc<SkillCategoryEntity>(doc);
+    } catch (error) {
+      throw new Error(`Failed to get category by name: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 }

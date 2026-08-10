@@ -85,8 +85,8 @@ describe('log-sanitizer', () => {
       const arr = [{ token: 'abc123' }, { name: 'test' }];
       const result = sanitizeObject(arr);
       expect(Array.isArray(result)).toBe(true);
-      expect(result[0].token).toBe('[REDACTED]');
-      expect(result[1].name).toBe('test');
+      expect(result[0]!.token).toBe('[REDACTED]');
+      expect(result[1]!.name).toBe('test');
     });
 
     it('should recursively sanitize nested objects', () => {

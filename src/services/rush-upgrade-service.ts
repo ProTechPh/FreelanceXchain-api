@@ -7,6 +7,7 @@ import { notificationRepository, type NotificationType } from '../repositories/n
 import { generateId } from '../utils/id.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 
 
@@ -56,21 +57,21 @@ async function applyRushFeeToMilestones(projectId: string, baseAmount: number, r
 
   let allocated = 0;
   for (let i = 0; i < milestones.length - 1; i++) {
-    const current = milestones[i] as any;
+    const current = milestones[i]!;
     const newAmount = Math.round((current.amount ?? 0) * newTotal / baseAmount * 100) / 100;
     milestones[i] = {
       ...current,
       amount: newAmount,
-    } as any;
+    };
     allocated += newAmount;
   }
 
   const lastIndex = milestones.length - 1;
-  const last = milestones[lastIndex] as any;
+  const last = milestones[lastIndex]!;
   milestones[lastIndex] = {
     ...last,
     amount: Math.round((newTotal - allocated) * 100) / 100,
-  } as any;
+  };
 
   await projectRepository.updateProject(projectId, { milestones });
 }
@@ -84,41 +85,26 @@ export async function requestRushUpgrade(
   return withLock(`rush-upgrade:${input.contractId}`, async () => {
     // Validate percentage
     if (input.proposedPercentage <= 0 || input.proposedPercentage > 100) {
-      return {
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Proposed percentage must be between 0.01 and 100' },
-      };
+      return errorResult('VALIDATION_ERROR', 'Proposed percentage must be between 0.01 and 100');
     }
 
     // Check if contract exists and is active
     const contractEntity = await contractRepository.getContractById(input.contractId);
     if (!contractEntity) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Contract not found' },
-      };
+      return errorResult('NOT_FOUND', 'Contract not found');
     }
 
   if (contractEntity.employer_id !== employerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only the employer can request a rush upgrade' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only the employer can request a rush upgrade');
   }
 
   if (contractEntity.status !== 'active') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Contract must be active to request a rush upgrade' },
-    };
+    return errorResult('INVALID_STATUS', 'Contract must be active to request a rush upgrade');
   }
 
   // Check if contract already has rush fee applied
   if (contractEntity.rush_fee > 0) {
-    return {
-      success: false,
-      error: { code: 'ALREADY_RUSH', message: 'This contract already has a rush fee applied' },
-    };
+    return errorResult('ALREADY_RUSH', 'This contract already has a rush fee applied');
   }
 
   // Check for existing pending/counter_offered request.
@@ -128,10 +114,7 @@ export async function requestRushUpgrade(
   // prevent duplicates across instances.
   const existingRequest = await rushUpgradeRequestRepository.getPendingRequestByContract(input.contractId);
   if (existingRequest) {
-    return {
-      success: false,
-      error: { code: 'PENDING_REQUEST_EXISTS', message: 'A pending rush upgrade request already exists for this contract' },
-    };
+    return errorResult('PENDING_REQUEST_EXISTS', 'A pending rush upgrade request already exists for this contract');
   }
 
   const requestEntity: Omit<RushUpgradeRequestEntity, 'created_at' | 'updated_at'> = {
@@ -163,7 +146,7 @@ export async function requestRushUpgrade(
     },
   });
 
-  return { success: true, data: created };
+  return successResult(created);
   }); // end withLock
 }
 
@@ -174,27 +157,18 @@ export async function respondToRushUpgrade(
 ): Promise<ServiceResult<RushUpgradeRequest | RushUpgradeWithContract>> {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(input.requestId);
   if (!requestEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Rush upgrade request not found' },
-    };
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
 
   // Verify the freelancer is the one on the contract
   const contractEntity = await contractRepository.getContractById(requestEntity.contract_id);
   if (!contractEntity || contractEntity.freelancer_id !== freelancerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only the contract freelancer can respond to this request' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only the contract freelancer can respond to this request');
   }
 
   // Check request is in a valid state for response
   if (requestEntity.status !== 'pending' && requestEntity.status !== 'counter_offered') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot respond to a request with status "${requestEntity.status}"` },
-    };
+    return errorResult('INVALID_STATUS', `Cannot respond to a request with status "${requestEntity.status}"`);
   }
 
   const now = new Date().toISOString();
@@ -208,10 +182,7 @@ export async function respondToRushUpgrade(
     });
 
     if (!updatedEntity) {
-      return {
-        success: false,
-        error: { code: 'UPDATE_FAILED', message: 'Failed to update rush upgrade request' },
-      };
+      return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
     }
 
     // Apply rush upgrade: calculate new fees and update contract
@@ -226,10 +197,7 @@ export async function respondToRushUpgrade(
 
     if (!updatedContractEntity) {
       logger.error('Failed to apply rush upgrade to contract');
-      return {
-        success: false,
-        error: { code: 'UPDATE_FAILED', message: 'Failed to apply rush upgrade to contract' },
-      };
+      return errorResult('UPDATE_FAILED', 'Failed to apply rush upgrade to contract');
     }
 
     await applyRushFeeToMilestones(contractEntity.project_id, contractEntity.base_amount, newRushFee);
@@ -252,10 +220,7 @@ export async function respondToRushUpgrade(
       },
     });
 
-    return {
-      success: true,
-      data: { request: updatedRequest, contract: updatedContract } as RushUpgradeWithContract,
-    };
+    return successResult({ request: updatedRequest, contract: updatedContract });
   }
 
   if (input.action === 'decline') {
@@ -266,10 +231,7 @@ export async function respondToRushUpgrade(
     });
 
     if (!updatedEntity) {
-      return {
-        success: false,
-        error: { code: 'UPDATE_FAILED', message: 'Failed to update rush upgrade request' },
-      };
+      return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
     }
 
     // Notify employer
@@ -284,15 +246,12 @@ export async function respondToRushUpgrade(
       },
     });
 
-    return { success: true, data: mapRushUpgradeRequestFromEntity(updatedEntity) };
+    return successResult(mapRushUpgradeRequestFromEntity(updatedEntity));
   }
 
   if (input.action === 'counter_offer') {
     if (!input.counterPercentage || input.counterPercentage <= 0 || input.counterPercentage > 100) {
-      return {
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Counter percentage must be between 0.01 and 100' },
-      };
+      return errorResult('VALIDATION_ERROR', 'Counter percentage must be between 0.01 and 100');
     }
 
     const updatedEntity = await rushUpgradeRequestRepository.updateRequest(input.requestId, {
@@ -303,10 +262,7 @@ export async function respondToRushUpgrade(
     });
 
     if (!updatedEntity) {
-      return {
-        success: false,
-        error: { code: 'UPDATE_FAILED', message: 'Failed to update rush upgrade request' },
-      };
+      return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
     }
 
     // Notify employer about counter-offer
@@ -322,13 +278,10 @@ export async function respondToRushUpgrade(
       },
     });
 
-    return { success: true, data: mapRushUpgradeRequestFromEntity(updatedEntity) };
+    return successResult(mapRushUpgradeRequestFromEntity(updatedEntity));
   }
 
-  return {
-    success: false,
-    error: { code: 'INVALID_ACTION', message: 'Invalid action. Must be accept, decline, or counter_offer' },
-  };
+  return errorResult('INVALID_ACTION', 'Invalid action. Must be accept, decline, or counter_offer');
 }
 
 // Employer accepts freelancer's counter-offer
@@ -338,33 +291,21 @@ export async function acceptCounterOffer(
 ): Promise<ServiceResult<RushUpgradeWithContract>> {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!requestEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Rush upgrade request not found' },
-    };
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
 
   // Verify employer owns the contract
   const contractEntity = await contractRepository.getContractById(requestEntity.contract_id);
   if (!contractEntity || contractEntity.employer_id !== employerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only the employer can accept a counter-offer' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only the employer can accept a counter-offer');
   }
 
   if (requestEntity.status !== 'counter_offered') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Can only accept a counter-offered request' },
-    };
+    return errorResult('INVALID_STATUS', 'Can only accept a counter-offered request');
   }
 
   if (!requestEntity.counter_percentage) {
-    return {
-      success: false,
-      error: { code: 'NO_COUNTER', message: 'No counter percentage found on this request' },
-    };
+    return errorResult('NO_COUNTER', 'No counter percentage found on this request');
   }
 
   const now = new Date().toISOString();
@@ -375,10 +316,7 @@ export async function acceptCounterOffer(
   });
 
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update rush upgrade request' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
   }
 
   // Apply rush upgrade with the counter percentage
@@ -392,10 +330,7 @@ export async function acceptCounterOffer(
 
   if (!updatedContractEntity) {
     logger.error('Failed to apply rush upgrade to contract');
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to apply rush upgrade to contract' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to apply rush upgrade to contract');
   }
 
   await applyRushFeeToMilestones(contractEntity.project_id, contractEntity.base_amount, newRushFee);
@@ -417,10 +352,7 @@ export async function acceptCounterOffer(
     },
   });
 
-  return {
-    success: true,
-    data: { request: updatedRequest, contract: updatedContract },
-  };
+  return successResult({ request: updatedRequest, contract: updatedContract });
 }
 
 // Employer declines freelancer's counter-offer
@@ -430,26 +362,17 @@ export async function declineCounterOffer(
 ): Promise<ServiceResult<RushUpgradeRequest>> {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!requestEntity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Rush upgrade request not found' },
-    };
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
 
   // Verify employer owns the contract
   const contractEntity = await contractRepository.getContractById(requestEntity.contract_id);
   if (!contractEntity || contractEntity.employer_id !== employerId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only the employer can decline a counter-offer' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only the employer can decline a counter-offer');
   }
 
   if (requestEntity.status !== 'counter_offered') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: 'Can only decline a counter-offered request' },
-    };
+    return errorResult('INVALID_STATUS', 'Can only decline a counter-offered request');
   }
 
   const now = new Date().toISOString();
@@ -459,10 +382,7 @@ export async function declineCounterOffer(
   });
 
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update rush upgrade request' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
   }
 
   // Notify freelancer
@@ -477,7 +397,7 @@ export async function declineCounterOffer(
     },
   });
 
-  return { success: true, data: mapRushUpgradeRequestFromEntity(updatedEntity) };
+  return successResult(mapRushUpgradeRequestFromEntity(updatedEntity));
 }
 
 // Get rush upgrade requests for a contract
@@ -485,7 +405,7 @@ export async function getRushUpgradeRequestsByContract(
   contractId: string
 ): Promise<ServiceResult<RushUpgradeRequest[]>> {
   const entities = await rushUpgradeRequestRepository.getRequestsByContract(contractId);
-  return { success: true, data: entities.map(mapRushUpgradeRequestFromEntity) };
+  return successResult(entities.map(mapRushUpgradeRequestFromEntity));
 }
 
 // Get a single rush upgrade request
@@ -494,10 +414,7 @@ export async function getRushUpgradeRequestById(
 ): Promise<ServiceResult<RushUpgradeRequest>> {
   const entity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!entity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Rush upgrade request not found' },
-    };
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
-  return { success: true, data: mapRushUpgradeRequestFromEntity(entity) };
+  return successResult(mapRushUpgradeRequestFromEntity(entity));
 }

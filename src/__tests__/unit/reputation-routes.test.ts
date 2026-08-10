@@ -560,7 +560,7 @@ describe('reputation-routes - catch blocks for 500 errors', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/reputation/leaderboard');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to get leaderboard');
+    expect(res.body.error.message).toBe('Failed to get leaderboard');
   });
 
   it('L502-504: GET /:userId/score catch block returns 500', async () => {
@@ -568,7 +568,7 @@ describe('reputation-routes - catch blocks for 500 errors', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/reputation/user-1/score');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to get reputation score');
+    expect(res.body.error.message).toBe('Failed to get reputation score');
   });
 
   it('L536-538: GET /:userId/breakdown catch block returns 500', async () => {
@@ -576,7 +576,7 @@ describe('reputation-routes - catch blocks for 500 errors', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/reputation/user-1/breakdown');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to get reputation breakdown');
+    expect(res.body.error.message).toBe('Failed to get reputation breakdown');
   });
 
   it('L576-578: GET /:userId/reputation-history catch block returns 500', async () => {
@@ -584,7 +584,7 @@ describe('reputation-routes - catch blocks for 500 errors', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/reputation/user-1/reputation-history');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to get reputation history');
+    expect(res.body.error.message).toBe('Failed to get reputation history');
   });
 });
 

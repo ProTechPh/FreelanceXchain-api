@@ -71,7 +71,6 @@ describe('Reputation Blockchain Integration - Refactored', () => {
         rateeAddress: '0xRatee',
         rating: 5,
         comment: 'Excellent work!',
-        isEmployerRating: true,
       });
 
       expect(result).toEqual({
@@ -84,8 +83,7 @@ describe('Reputation Blockchain Integration - Refactored', () => {
         '0xRatee',
         5,
         'Excellent work!',
-        'contract-123',
-        true
+        'contract-123'
       );
     });
 
@@ -98,7 +96,6 @@ describe('Reputation Blockchain Integration - Refactored', () => {
           rateeAddress: '0xRatee',
           rating: 6,
           comment: 'Test',
-          isEmployerRating: true,
         })
       ).rejects.toThrow('Rating must be an integer between 1 and 5');
     });
@@ -114,7 +111,6 @@ describe('Reputation Blockchain Integration - Refactored', () => {
           rateeAddress: '0xRatee',
           rating: 5,
           comment: 'Test',
-          isEmployerRating: true,
         })
       ).rejects.toThrow('Web3 is not configured');
     });

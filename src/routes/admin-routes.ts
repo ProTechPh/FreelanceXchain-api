@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import { reviewRepository } from '../repositories/review-repository.js';
 
 import {
@@ -14,10 +15,28 @@ import {
   updateUser,
   getDisputeManagement,
   getSystemHealth,
+  type UserFilters,
+  type DisputeFilters,
 } from '../services/admin-service.js';
+import type { UserEntity } from '../repositories/user-repository.js';
 import { getAdminAnalytics } from '../services/analytics-service.js';
 
 const router = Router();
+
+/** Transform a user entity into the admin frontend shape */
+function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean }) | null | undefined) {
+  if (!user) return null;
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    walletAddress: user.wallet_address || '',
+    createdAt: user.created_at,
+    name: user.name || '',
+    kycVerified: user.kyc_verified,
+    isActive: !user.is_suspended, // Active means NOT suspended
+  };
+}
 
 /**
  * @swagger
@@ -34,11 +53,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const result = await getPlatformStats();
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
@@ -60,11 +75,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, a
   const result = await getAdminAnalytics();
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
@@ -85,34 +96,19 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const status = req.query['status'] as string | undefined;
   const role = req.query['role'] as string | undefined;
 
-  const filters: any = {};
+  const filters: UserFilters = {};
   if (status) filters.status = status;
   if (role) filters.role = role;
   const result = await getUserManagement(filters);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
   // Transform database entities to frontend format
-  const transformedUsers = result.data.users.map((user: any) => ({
-    id: user.id,
-    email: user.email,
-    role: user.role,
-    walletAddress: user.wallet_address || '',
-    createdAt: user.created_at,
-    name: user.name || '',
-    kycVerified: user.kyc_verified,
-    isActive: !user.is_suspended, // Active means NOT suspended
-  }));
-
   res.status(200).json({
-    users: transformedUsers,
+    users: result.data.users.map(mapAdminUser),
     total: result.data.total,
   });
 });
@@ -133,37 +129,19 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
 
   const validRoles = ['freelancer', 'employer'];
   if (role !== undefined && !validRoles.includes(role)) {
-    res.status(400).json({
-      error: { code: 'INVALID_ROLE', message: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`, requestId);
     return;
   }
 
   const result = await updateUser(userId, { name, role, isActive });
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
   // Transform to frontend format
-  const user = result.data;
-  res.status(200).json({
-    id: user?.id,
-    email: user?.email,
-    role: user?.role,
-    walletAddress: user?.wallet_address || '',
-    createdAt: user?.created_at,
-    name: user?.name || '',
-    kycVerified: false,
-    isActive: !user?.is_suspended,
-  });
+  res.status(200).json(mapAdminUser(result.data));
 });
 
 /**
@@ -183,11 +161,7 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
   const result = await suspendUser(userId, reason);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
@@ -210,11 +184,7 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
   const result = await unsuspendUser(userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
@@ -261,11 +231,7 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
     submittedReason !== undefined &&
     (typeof submittedReason !== 'string' || submittedReason.trim().length < 10 || submittedReason.trim().length > 500)
   ) {
-    res.status(400).json({
-      error: { code: 'INVALID_REASON', message: 'Reason must be between 10 and 500 characters' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must be between 10 and 500 characters', requestId);
     return;
   }
 
@@ -283,11 +249,7 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
         : ['DATABASE_ERROR', 'INTERNAL_ERROR'].includes(result.error?.code ?? '')
           ? 500
           : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
@@ -307,16 +269,12 @@ router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, as
   const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
 
-  const filters: any = {};
+  const filters: DisputeFilters = {};
   if (status) filters.status = status;
   const result = await getDisputeManagement(filters);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
@@ -338,11 +296,7 @@ router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimite
   const result = await getSystemHealth();
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code ?? 'UNKNOWN', message: result.error?.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
     return;
   }
 
@@ -363,11 +317,7 @@ router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimit
   const result = await getPlatformStats();
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code ?? 'UNKNOWN', message: result.error.message ?? 'An error occurred' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code ?? 'UNKNOWN', result.error.message ?? 'An error occurred', requestId);
     return;
   }
 

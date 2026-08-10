@@ -4,6 +4,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import { verifyWebhookSignature } from '../services/didit-client.js';
 import { logger } from '../config/logger.js';
 import {
@@ -21,6 +22,7 @@ import {
   manualKycVerification,
 } from '../services/didit-kyc-service.js';
 import { DiditWebhookPayload, DiditWebhookStatus, DiditWebhookType, KycStatus } from '../models/didit-kyc.js';
+import type { ServiceError } from '../types/service-result.js';
 
 const router = Router();
 
@@ -107,6 +109,21 @@ function parseWebhookPayload(payload: unknown): DiditWebhookPayload | null {
 }
 
 /**
+ * Send a standardized error response for a failed KYC service result,
+ * preserving any details carried by the service error. `retryAfter` is
+ * emitted at top level (matching the rate-limiter convention) rather than
+ * nested inside `error`.
+ */
+function sendKycServiceError(
+  res: Response,
+  statusCode: number,
+  error: ServiceError,
+  requestId: string
+): void {
+  sendErrorResponse(res, statusCode, error.code, error.message, requestId, error.details, undefined, error.retryAfter);
+}
+
+/**
  * @swagger
  * components:
  *   schemas:
@@ -176,11 +193,7 @@ router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, re
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', requestId);
     return;
   }
 
@@ -188,11 +201,7 @@ router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, re
 
   if (!result.success) {
     const statusCode = result.error.code === 'USER_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: result.error,
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendKycServiceError(res, statusCode, result.error, requestId);
     return;
   }
 
@@ -223,11 +232,7 @@ router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: 
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', requestId);
     return;
   }
 
@@ -235,20 +240,12 @@ router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: 
 
   if (!result.success) {
     const statusCode = result.error.code === 'DATABASE_ERROR' ? 500 : 400;
-    res.status(statusCode).json({
-      error: result.error,
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendKycServiceError(res, statusCode, result.error, requestId);
     return;
   }
 
   if (!result.data) {
-    res.status(404).json({
-      error: { code: 'NOT_FOUND', message: 'No KYC verification found' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'No KYC verification found', requestId);
     return;
   }
 
@@ -279,9 +276,7 @@ router.get('/verified', authMiddleware, apiRateLimiter, async (req: Request, res
   const userId = req.user?.userId;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-    });
+    sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', getRequestId(req));
     return;
   }
 
@@ -329,16 +324,14 @@ router.get('/profile-data', authMiddleware, apiRateLimiter, async (req: Request,
   const userId = req.user?.userId;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-    });
+    sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', getRequestId(req));
     return;
   }
 
   const result = await getProfileDataFromKyc(userId);
 
   if (!result.success) {
-    res.status(400).json({ error: result.error });
+    sendKycServiceError(res, 400, result.error, getRequestId(req));
     return;
   }
 
@@ -368,16 +361,14 @@ router.get('/history', authMiddleware, apiRateLimiter, async (req: Request, res:
   const userId = req.user?.userId;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-    });
+    sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', getRequestId(req));
     return;
   }
 
   const result = await getUserVerificationHistory(userId);
 
   if (!result.success) {
-    res.status(400).json({ error: result.error });
+    sendKycServiceError(res, 400, result.error, getRequestId(req));
     return;
   }
 
@@ -415,30 +406,18 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
   const requestId = getRequestId(req);
 
   if (!verificationId) {
-    res.status(400).json({
-      error: { code: 'INVALID_ID', message: 'Verification ID required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'INVALID_ID', 'Verification ID required', requestId);
     return;
   }
 
   // Ownership check: verify this verification belongs to the requesting user
   const verification = await getKycById(verificationId);
   if (!verification || !verification.success || !verification.data) {
-    res.status(404).json({
-      error: { code: 'VERIFICATION_NOT_FOUND', message: 'Verification not found' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 404, 'VERIFICATION_NOT_FOUND', 'Verification not found', requestId);
     return;
   }
   if (verification.data.user_id !== userId && req.user?.role !== 'admin') {
-    res.status(403).json({
-      error: { code: 'FORBIDDEN', message: 'You can only refresh your own verifications' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'You can only refresh your own verifications', requestId);
     return;
   }
 
@@ -446,11 +425,7 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
 
   if (!result.success) {
     const statusCode = result.error.code === 'VERIFICATION_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({
-      error: result.error,
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendKycServiceError(res, statusCode, result.error, requestId);
     return;
   }
 
@@ -491,11 +466,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
       bodyType: typeof req.body,
     });
 
-    res.status(400).json({
-      error: { code: 'INVALID_PAYLOAD', message: 'Invalid webhook payload' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'INVALID_PAYLOAD', 'Invalid webhook payload', requestId);
     return;
   }
 
@@ -508,11 +479,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
       webhookType: webhookPayload.webhook_type,
     });
     
-    res.status(401).json({
-      error: { code: 'INVALID_SIGNATURE', message: 'Invalid webhook signature' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'INVALID_SIGNATURE', 'Invalid webhook signature', requestId);
     return;
   }
 
@@ -535,11 +502,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
         sessionId: webhookPayload.session_id,
       });
 
-      res.status(400).json({
-        error: result.error,
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendKycServiceError(res, 400, result.error, requestId);
       return;
     }
 
@@ -551,11 +514,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
       sessionId: webhookPayload.session_id,
     });
 
-    res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'Failed to process webhook' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to process webhook', requestId);
   }
 });
 
@@ -578,11 +537,11 @@ router.post('/webhook', async (req: Request, res: Response) => {
  *               items:
  *                 $ref: '#/components/schemas/KycVerification'
  */
-router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimiter, async (_req: Request, res: Response) => {
+router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
   const result = await getPendingAdminReviews();
 
   if (!result.success) {
-    res.status(400).json({ error: result.error });
+    sendKycServiceError(res, 400, result.error, getRequestId(req));
     return;
   }
 
@@ -614,16 +573,14 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRat
   const validStatuses: KycStatus[] = ['pending', 'in_progress', 'completed', 'approved', 'rejected', 'expired'];
 
   if (!validStatuses.includes(status)) {
-    res.status(400).json({
-      error: { code: 'INVALID_STATUS', message: 'Invalid status' },
-    });
+    sendErrorResponse(res, 400, 'INVALID_STATUS', 'Invalid status', getRequestId(req));
     return;
   }
 
   const result = await getVerificationsByStatus(status);
 
   if (!result.success) {
-    res.status(400).json({ error: result.error });
+    sendKycServiceError(res, 400, result.error, getRequestId(req));
     return;
   }
 
@@ -710,16 +667,12 @@ router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'
   const { decision, notes } = req.body;
 
   if (!verificationId || !adminUserId) {
-    res.status(401).json({
-      error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-    });
+    sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', getRequestId(req));
     return;
   }
 
   if (!decision || !['approved', 'rejected'].includes(decision)) {
-    res.status(400).json({
-      error: { code: 'INVALID_DECISION', message: 'Decision must be approved or rejected' },
-    });
+    sendErrorResponse(res, 400, 'INVALID_DECISION', 'Decision must be approved or rejected', getRequestId(req));
     return;
   }
 
@@ -727,7 +680,7 @@ router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'
 
   if (!result.success) {
     const statusCode = result.error.code === 'VERIFICATION_NOT_FOUND' ? 404 : 400;
-    res.status(statusCode).json({ error: result.error });
+    sendKycServiceError(res, statusCode, result.error, getRequestId(req));
     return;
   }
 
@@ -758,23 +711,19 @@ router.get('/admin/verification/:verificationId', authMiddleware, requireRole('a
   const verificationId = req.params['verificationId'];
 
   if (!verificationId) {
-    res.status(400).json({
-      error: { code: 'INVALID_ID', message: 'Verification ID required' },
-    });
+    sendErrorResponse(res, 400, 'INVALID_ID', 'Verification ID required', getRequestId(req));
     return;
   }
 
   const result = await getKycById(verificationId);
 
   if (!result.success) {
-    res.status(400).json({ error: result.error });
+    sendKycServiceError(res, 400, result.error, getRequestId(req));
     return;
   }
 
   if (!result.data) {
-    res.status(404).json({
-      error: { code: 'NOT_FOUND', message: 'Verification not found' },
-    });
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Verification not found', getRequestId(req));
     return;
   }
 
@@ -840,26 +789,17 @@ router.post(
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
     if (!adminUserId) {
-      res.status(401).json({
-        error: { code: 'UNAUTHORIZED', message: 'Authentication required' },
-      });
+      sendErrorResponse(res, 401, 'UNAUTHORIZED', 'Authentication required', getRequestId(req));
       return;
     }
 
     if (!userId) {
-      res.status(400).json({
-        error: { code: 'MISSING_USER_ID', message: 'User ID is required' },
-      });
+      sendErrorResponse(res, 400, 'MISSING_USER_ID', 'User ID is required', getRequestId(req));
       return;
     }
 
     if (!files || !files['id_front'] || !files['selfie']) {
-      res.status(400).json({
-        error: {
-          code: 'MISSING_FILES',
-          message: 'ID front image and selfie are required',
-        },
-      });
+      sendErrorResponse(res, 400, 'MISSING_FILES', 'ID front image and selfie are required', getRequestId(req));
       return;
     }
 
@@ -878,7 +818,7 @@ router.post(
 
       if (!result.success) {
         const statusCode = result.error.code === 'USER_NOT_FOUND' ? 404 : 400;
-        res.status(statusCode).json({ error: result.error });
+        sendKycServiceError(res, statusCode, result.error, getRequestId(req));
         return;
       }
 
@@ -889,22 +829,17 @@ router.post(
         status: result.data.status,
       });
 
-      res.status(200).json({
+      sendSuccessResponse(res, 200, {
         message: 'Manual verification completed',
         verification: result.data,
-      });
+      }, getRequestId(req));
     } catch (error) {
       logger.error('Manual KYC verification error', error as Error, {
         userId,
         adminUserId,
       });
 
-      res.status(500).json({
-        error: {
-          code: 'VERIFICATION_ERROR',
-          message: 'Failed to process manual verification',
-        },
-      });
+      sendErrorResponse(res, 500, 'VERIFICATION_ERROR', 'Failed to process manual verification', getRequestId(req));
     }
   }
 );

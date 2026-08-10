@@ -1,6 +1,7 @@
 import { createEmailClient } from '@opencoredev/email-sdk';
 import { cloudflare } from '@opencoredev/email-sdk/cloudflare';
 import { logger } from '../config/logger.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import type { ServiceResult } from '../types/service-result.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -96,19 +97,10 @@ export async function sendEmail(emailData: EmailData): Promise<ServiceResult<{ m
 
     logger.info(`Email sent successfully to ${emailData.to}`, { messageId: result.id });
 
-    return {
-      success: true,
-      data: { messageId: result.id ?? 'unknown' },
-    };
+    return successResult({ messageId: result.id ?? 'unknown' });
   } catch (error) {
     logger.error('Failed to send email:', error);
-    return {
-      success: false,
-      error: {
-        code: 'EMAIL_SEND_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to send email',
-      },
-    };
+    return errorResult('EMAIL_SEND_FAILED', error instanceof Error ? error.message : 'Failed to send email');
   }
 }
 
@@ -250,18 +242,9 @@ export async function testEmailConfiguration(): Promise<ServiceResult<{ verified
 
     logger.info('Email configuration verified successfully');
 
-    return {
-      success: true,
-      data: { verified: true },
-    };
+    return successResult({ verified: true });
   } catch (error) {
     logger.error('Email configuration verification failed:', error);
-    return {
-      success: false,
-      error: {
-        code: 'EMAIL_CONFIG_INVALID',
-        message: error instanceof Error ? error.message : 'Email configuration is invalid',
-      },
-    };
+    return errorResult('EMAIL_CONFIG_INVALID', error instanceof Error ? error.message : 'Email configuration is invalid');
   }
 }

@@ -3,6 +3,7 @@ import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import { clampLimit } from '../utils/index.js';
 import {
   getNotificationsByUser,
@@ -89,11 +90,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -110,11 +107,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const result = await getNotificationsByUser(userId, options);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -150,22 +143,14 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request,
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   const result = await getUnreadCount(userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -211,11 +196,7 @@ router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async 
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -226,11 +207,7 @@ router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async 
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
 
-    res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -267,22 +244,14 @@ router.patch('/read-all', authMiddleware, apiRateLimiter, async (req: Request, r
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   const result = await markAllNotificationsAsRead(userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -313,14 +282,14 @@ router.get('/stream', authMiddleware, (req: Request, res: Response) => {
   const userId = req.user?.id ?? '';
   
   if (!userId) {
-    res.status(401).json({ error: 'Unauthorized' });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
     return;
   }
 
   const result = initializeSSEConnection(userId, res);
   
   if (!result.success) {
-    res.status(500).json({ error: result.error.message });
+    sendErrorResponse(res, 500, result.error.code, result.error.message, getRequestId(req));
   }
 });
 
@@ -342,7 +311,7 @@ router.get('/sse-stats', authMiddleware, requireRole('admin'), apiRateLimiter, a
   const result = getSSEStats();
   
   if (!result.success) {
-    return res.status(500).json({ error: result.error.message });
+    return sendErrorResponse(res, 500, result.error.code, result.error.message, getRequestId(req));
   }
   
   return res.json(result.data);

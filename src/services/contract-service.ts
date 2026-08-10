@@ -5,6 +5,7 @@ import { disputeRepository } from '../repositories/dispute-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 
 export type ContractServiceResult<T> = ServiceResult<T>;
@@ -21,12 +22,9 @@ function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): Paginat
 export async function getContractById(contractId: string): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.getContractByIdWithRelations(contractId);
   if (!entity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
-  return { success: true, data: mapContractFromEntity(entity) };
+  return successResult(mapContractFromEntity(entity));
 }
 
 export async function getUserContracts(
@@ -34,7 +32,7 @@ export async function getUserContracts(
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getUserContracts(userId, options);
-  return { success: true, data: mapPaginatedContracts(result) };
+  return successResult(mapPaginatedContracts(result));
 }
 
 export async function getContractsByFreelancer(
@@ -42,7 +40,7 @@ export async function getContractsByFreelancer(
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getContractsByFreelancer(freelancerId, options);
-  return { success: true, data: mapPaginatedContracts(result) };
+  return successResult(mapPaginatedContracts(result));
 }
 
 export async function getContractsByEmployer(
@@ -50,14 +48,14 @@ export async function getContractsByEmployer(
   options?: QueryOptions
 ): Promise<ContractServiceResult<PaginatedResult<Contract>>> {
   const result = await contractRepository.getContractsByEmployer(employerId, options);
-  return { success: true, data: mapPaginatedContracts(result) };
+  return successResult(mapPaginatedContracts(result));
 }
 
 export async function getContractsByProject(
   projectId: string
 ): Promise<ContractServiceResult<Contract[]>> {
   const entities = await contractRepository.getContractsByProject(projectId);
-  return { success: true, data: entities.map(mapContractFromEntity) };
+  return successResult(entities.map(mapContractFromEntity));
 }
 
 export async function updateContractStatus(
@@ -68,18 +66,12 @@ export async function updateContractStatus(
 ): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.getContractById(contractId);
   if (!entity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
 
   // BLF-5.1: Always enforce authorization — userId is now required
   if (entity.employer_id !== userId && entity.freelancer_id !== userId && userRole !== 'admin') {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can update contract status' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only contract parties can update contract status');
   }
 
   // BLF-5.3: Role-based transition restrictions
@@ -112,24 +104,12 @@ export async function updateContractStatus(
   const allowed = validTransitions[entity.status];
   const transition = allowed.find(t => t.status === status);
   if (!transition) {
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_STATUS_TRANSITION',
-        message: `Cannot transition from "${entity.status}" to "${status}"`,
-      },
-    };
+    return errorResult('INVALID_STATUS_TRANSITION', `Cannot transition from "${entity.status}" to "${status}"`);
   }
 
   const callerRole = isEmployer ? 'employer' : isFreelancer ? 'freelancer' : userRole;
   if (!transition.allowedRoles.includes(callerRole as 'employer' | 'freelancer' | 'admin')) {
-    return {
-      success: false,
-      error: {
-        code: 'UNAUTHORIZED',
-        message: `Only ${transition.allowedRoles.join(' or ')} can perform this transition`,
-      },
-    };
+    return errorResult('UNAUTHORIZED', `Only ${transition.allowedRoles.join(' or ')} can perform this transition`);
   }
 
   // Extra check: disputed→resolved requires no open disputes
@@ -137,25 +117,16 @@ export async function updateContractStatus(
     const openDisputes = await disputeRepository.getDisputesByContract(contractId);
     const hasOpenDisputes = openDisputes.items.some(d => d.status === 'open' || d.status === 'under_review');
     if (hasOpenDisputes) {
-      return {
-        success: false,
-        error: {
-          code: 'OPEN_DISPUTES_EXIST',
-          message: 'Cannot resolve contract while open disputes exist',
-        },
-      };
+      return errorResult('OPEN_DISPUTES_EXIST', 'Cannot resolve contract while open disputes exist');
     }
   }
 
   const updated = await contractRepository.updateContract(contractId, { status });
   if (!updated) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update contract status' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update contract status');
   }
 
-  return { success: true, data: mapContractFromEntity(updated) };
+  return successResult(mapContractFromEntity(updated));
 }
 
 export async function setEscrowAddress(
@@ -165,37 +136,25 @@ export async function setEscrowAddress(
 ): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.getContractById(contractId);
   if (!entity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
 
   // H3: Only allow setting escrow on pending contracts by contract parties
   if (entity.status !== 'pending') {
-    return {
-      success: false,
-      error: { code: 'INVALID_STATUS', message: `Cannot set escrow address on a ${entity.status} contract` },
-    };
+    return errorResult('INVALID_STATUS', `Cannot set escrow address on a ${entity.status} contract`);
   }
 
   // BLF-5.2: Always enforce authorization — userId is now required
   if (entity.employer_id !== userId && entity.freelancer_id !== userId) {
-    return {
-      success: false,
-      error: { code: 'UNAUTHORIZED', message: 'Only contract parties can set escrow address' },
-    };
+    return errorResult('UNAUTHORIZED', 'Only contract parties can set escrow address');
   }
 
   const updated = await contractRepository.updateContract(contractId, { escrow_address: escrowAddress });
   if (!updated) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to set escrow address' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to set escrow address');
   }
 
-  return { success: true, data: mapContractFromEntity(updated) };
+  return successResult(mapContractFromEntity(updated));
 }
 
 export async function getContractByProposalId(
@@ -203,39 +162,30 @@ export async function getContractByProposalId(
 ): Promise<ContractServiceResult<Contract>> {
   const entity = await contractRepository.findContractByProposalId(proposalId);
   if (!entity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found for this proposal' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found for this proposal');
   }
-  return { success: true, data: mapContractFromEntity(entity) };
+  return successResult(mapContractFromEntity(entity));
 }
 
 /**
  * Cancel a pending contract
  * Only allowed for contracts that haven't been funded yet (status = 'pending')
  */
-export async function cancelPendingContract(contractId: string, userId: string): Promise<{ success: boolean; error?: any }> {
+export async function cancelPendingContract(contractId: string, userId: string): Promise<{ success: boolean; error?: ServiceError }> {
   // BLF-5.4: Serialize concurrent cancel requests to prevent duplicate side effects
   return withLock(`contract-cancel:${contractId}`, async () => {
   const contract = await contractRepository.getContractById(contractId);
   
   if (!contract) {
-    return { success: false, error: { code: 'NOT_FOUND', message: 'Contract not found' } };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
 
   if (contract.status !== 'pending') {
-    return { 
-      success: false, 
-      error: { code: 'INVALID_STATUS', message: `Only pending contracts can be cancelled. Current status: ${contract.status}` } 
-    };
+    return errorResult('INVALID_STATUS', `Only pending contracts can be cancelled. Current status: ${contract.status}`);
   }
 
   if (contract.employer_id !== userId && contract.freelancer_id !== userId) {
-    return { 
-      success: false, 
-      error: { code: 'UNAUTHORIZED', message: 'Only the employer or freelancer can cancel this contract' } 
-    };
+    return errorResult('UNAUTHORIZED', 'Only the employer or freelancer can cancel this contract');
   }
 
   // Update contract status to cancelled
@@ -243,13 +193,7 @@ export async function cancelPendingContract(contractId: string, userId: string):
 
   if (!updated) {
     logger.error('Failed to cancel pending contract');
-    return {
-      success: false,
-      error: { 
-        code: 'UPDATE_FAILED', 
-        message: 'Failed to cancel contract' 
-      },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to cancel contract');
   }
 
   return { success: true };
@@ -265,10 +209,7 @@ export async function getContractWalletAddresses(
 ): Promise<ContractServiceResult<{ employerWallet: string; freelancerWallet: string }>> {
   const entity = await contractRepository.getContractById(contractId);
   if (!entity) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Contract not found' },
-    };
+    return errorResult('NOT_FOUND', 'Contract not found');
   }
 
   const [employer, freelancer] = await Promise.all([
@@ -277,20 +218,11 @@ export async function getContractWalletAddresses(
   ]);
 
   if (!employer?.wallet_address || !freelancer?.wallet_address) {
-    return {
-      success: false,
-      error: { 
-        code: 'MISSING_WALLET', 
-        message: 'Both employer and freelancer must have wallet addresses configured' 
-      },
-    };
+    return errorResult('MISSING_WALLET', 'Both employer and freelancer must have wallet addresses configured');
   }
 
-  return {
-    success: true,
-    data: {
-      employerWallet: employer.wallet_address,
-      freelancerWallet: freelancer.wallet_address,
-    },
-  };
-}
+  return successResult({
+    employerWallet: employer.wallet_address,
+    freelancerWallet: freelancer.wallet_address,
+  });
+  }

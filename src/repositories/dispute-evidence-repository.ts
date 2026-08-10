@@ -1,4 +1,4 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type DisputeEvidenceEntity = {
@@ -16,14 +16,8 @@ export type DisputeEvidenceEntity = {
 
 const COLLECTION_ID = 'dispute_evidence';
 
-function mapDoc(doc: Record<string, any>): DisputeEvidenceEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as DisputeEvidenceEntity;
+function mapDoc(doc: Record<string, unknown>): DisputeEvidenceEntity {
+  return fromAppwriteDoc<DisputeEvidenceEntity>(doc);
 }
 
 export class DisputeEvidenceRepository extends BaseRepository<DisputeEvidenceEntity> {
@@ -32,18 +26,15 @@ export class DisputeEvidenceRepository extends BaseRepository<DisputeEvidenceEnt
   }
 
   async getEvidenceById(id: string): Promise<DisputeEvidenceEntity | null> {
-    const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return this.getById(id);
   }
 
   async createEvidence(data: Omit<DisputeEvidenceEntity, 'created_at' | 'updated_at'>): Promise<DisputeEvidenceEntity> {
-    const doc = await this.create(data);
-    return mapDoc(doc as any);
+    return this.create(data);
   }
 
   async updateEvidence(id: string, updates: Partial<DisputeEvidenceEntity>): Promise<DisputeEvidenceEntity | null> {
-    const doc = await this.update(id, updates);
-    return doc ? mapDoc(doc as any) : null;
+    return this.update(id, updates);
   }
 
   async deleteEvidence(id: string): Promise<boolean> {
@@ -60,7 +51,7 @@ export class DisputeEvidenceRepository extends BaseRepository<DisputeEvidenceEnt
   async findOwnerById(id: string): Promise<string | null> {
     try {
       const doc = await databases.getDocument(DATABASE_ID, COLLECTION_ID, id);
-      return (doc as any).submitted_by ?? null;
+      return fromAppwriteDoc<DisputeEvidenceEntity>(doc).submitted_by ?? null;
     } catch {
       return null;
     }

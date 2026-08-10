@@ -64,7 +64,8 @@ describe('Escrow Refund Routes', () => {
         .post('/api/escrow/contract-1/refund-request')
         .send({ amount: 500 });
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Refund reason is required');
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('Refund reason is required');
     });
 
     it('should return 400 on service failure', async () => {
@@ -139,7 +140,8 @@ describe('Escrow Refund Routes', () => {
         .post('/api/escrow/refunds/refund-1/reject')
         .send({});
       expect(res.status).toBe(400);
-      expect(res.body.error).toBe('Rejection reason is required');
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.message).toBe('Rejection reason is required');
     });
 
     it('should return 400 on service failure', async () => {
@@ -334,7 +336,8 @@ describe('escrow-refund-routes - catch blocks for refund-request and refunds', (
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/escrow/c1/refund-request').send({ reason: 'Test' });
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to create refund request');
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    expect(res.body.error.message).toBe('Failed to create refund request');
   });
 
   it('L104-105: GET refunds catch block returns 500', async () => {
@@ -342,7 +345,8 @@ describe('escrow-refund-routes - catch blocks for refund-request and refunds', (
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/escrow/c1/refunds');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to get refunds');
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    expect(res.body.error.message).toBe('Failed to get refunds');
   });
 });
 
@@ -378,7 +382,8 @@ describe('escrow-refund-routes - instanceof Error false branch', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/escrow/c1/refund-request').send({ reason: 'test' });
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to create refund request');
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    expect(res.body.error.message).toBe('Failed to create refund request');
   });
 
   it('L142: POST approve catch with non-Error uses String(error)', async () => {
@@ -386,7 +391,8 @@ describe('escrow-refund-routes - instanceof Error false branch', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/escrow/refunds/r1/approve');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to approve refund');
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    expect(res.body.error.message).toBe('Failed to approve refund');
   });
 
   it('L197: POST reject catch with non-Error uses String(error)', async () => {
@@ -394,7 +400,8 @@ describe('escrow-refund-routes - instanceof Error false branch', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/escrow/refunds/r1/reject').send({ reason: 'test' });
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('Failed to reject refund');
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    expect(res.body.error.message).toBe('Failed to reject refund');
   });
 });
 

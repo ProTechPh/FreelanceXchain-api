@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals';
-import { clampLimit, clampOffset, generateId } from '../../utils/index.js';
+import { clampLimit, clampOffset, generateId, getErrorMessage, getErrorMessageOr } from '../../utils/index.js';
 
 describe('utils/index', () => {
   describe('generateId', () => {
@@ -12,6 +12,31 @@ describe('utils/index', () => {
     it('should generate unique IDs', () => {
       const ids = new Set(Array.from({ length: 20 }, () => generateId()));
       expect(ids.size).toBe(20);
+    });
+  });
+
+  describe('getErrorMessage', () => {
+    it('should return the message of an Error instance', () => {
+      expect(getErrorMessage(new Error('boom'))).toBe('boom');
+    });
+
+    it('should return the message of an object with a message property', () => {
+      expect(getErrorMessage({ message: 'sdk error' })).toBe('sdk error');
+    });
+
+    it('should return undefined for non-object throws', () => {
+      expect(getErrorMessage('boom')).toBeUndefined();
+      expect(getErrorMessage(null)).toBeUndefined();
+    });
+  });
+
+  describe('getErrorMessageOr', () => {
+    it('should return the message when available', () => {
+      expect(getErrorMessageOr(new Error('boom'), 'fallback')).toBe('boom');
+    });
+
+    it('should return the fallback when no message can be derived', () => {
+      expect(getErrorMessageOr('boom', 'fallback')).toBe('fallback');
     });
   });
 

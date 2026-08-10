@@ -1,5 +1,6 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { getErrorMessageOr } from '../utils/index.js';
 
 export type UserEntity = {
   id: string;
@@ -41,16 +42,9 @@ export class UserRepository extends BaseRepository<UserEntity> {
         ]
       );
       if (response.documents.length === 0) return null;
-      const doc = response.documents[0];
-      const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-      return {
-        id: $id,
-        ...attrs,
-        created_at: attrs.created_at ?? $createdAt,
-        updated_at: attrs.updated_at ?? $updatedAt,
-      } as UserEntity;
-    } catch (error: any) {
-      throw new Error(`Failed to get user by email: ${error.message}`);
+      return fromAppwriteDoc<UserEntity>(response.documents[0]!);
+    } catch (error) {
+      throw new Error(`Failed to get user by email: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -75,7 +69,7 @@ export class UserRepository extends BaseRepository<UserEntity> {
   }
 
   async updateUserName(id: string, name: string): Promise<UserEntity | null> {
-    return this.update(id, { name } as Partial<UserEntity>);
+    return this.update(id, { name });
   }
 
   async getUsersByRole(role: 'freelancer' | 'employer' | 'admin'): Promise<UserEntity[]> {
@@ -89,17 +83,9 @@ export class UserRepository extends BaseRepository<UserEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as UserEntity;
-      });
-    } catch (error: any) {
-      throw new Error(`Failed to get users by role: ${error.message}`);
+      return response.documents.map(doc => fromAppwriteDoc<UserEntity>(doc));
+    } catch (error) {
+      throw new Error(`Failed to get users by role: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 

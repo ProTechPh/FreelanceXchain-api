@@ -1948,4 +1948,48 @@ describe('auth-service - Additional Branch Coverage', () => {
       'http://localhost:3000/auth/magic-url-callback'
     );
   });
+
+  // Helper coverage: getErrorMessage with a plain object that has a string message
+  it('helpers: should surface the message from a plain object error in register', async () => {
+    users.create.mockRejectedValueOnce({ message: 'Plain failure' });
+
+    const result = await register({ email: 'test@example.com', password: 'Password1!', role: 'freelancer' });
+    expect(result).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'Plain failure',
+    });
+  });
+
+  // Helper coverage: getErrorType/getErrorMessage with a non-object (string) throw in login
+  it('helpers: should handle a string throw from account.get during login', async () => {
+    global.mockAppwriteAccount.get.mockRejectedValueOnce('connection reset');
+
+    const result = await login({ email: 'test@example.com', password: 'Password1!' });
+    expect(result).toEqual({
+      code: 'INVALID_CREDENTIALS',
+      message: 'Invalid email or password',
+    });
+  });
+
+  // Helper coverage: getErrorCode with a non-object (string) throw in register
+  it('helpers: should fall back to generic message when register throws a string', async () => {
+    users.create.mockRejectedValueOnce('boom');
+
+    const result = await register({ email: 'test@example.com', password: 'Password1!', role: 'freelancer' });
+    expect(result).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to create user',
+    });
+  });
+
+  // Helper coverage: getErrorMessage when the thrown object has a non-string message
+  it('helpers: should fall back to generic message when error message is not a string', async () => {
+    users.create.mockRejectedValueOnce({ message: 42 });
+
+    const result = await register({ email: 'test@example.com', password: 'Password1!', role: 'freelancer' });
+    expect(result).toEqual({
+      code: 'INTERNAL_ERROR',
+      message: 'Failed to create user',
+    });
+  });
 });

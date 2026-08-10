@@ -1,5 +1,6 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { getErrorMessageOr } from '../utils/index.js';
 
 export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 export type PaymentType = 'escrow_deposit' | 'milestone_release' | 'refund' | 'dispute_resolution';
@@ -23,14 +24,8 @@ export type CreatePaymentInput = Omit<PaymentEntity, 'id' | 'created_at' | 'upda
 
 const COLLECTION_ID = 'payments';
 
-function mapPayment(doc: any): PaymentEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  return {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as PaymentEntity;
+function mapPayment(doc: Record<string, unknown>): PaymentEntity {
+  return fromAppwriteDoc<PaymentEntity>(doc);
 }
 
 class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
@@ -50,8 +45,8 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
         ]
       );
       return response.documents.map(mapPayment);
-    } catch (error: any) {
-      throw new Error(`Failed to find payments: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to find payments: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -83,8 +78,8 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
       );
       const items = response.documents.map(mapPayment);
       return { items, total, hasMore: items.length === limit };
-    } catch (error: any) {
-      throw new Error(`Failed to find payments: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to find payments: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -99,14 +94,14 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
         ]
       );
       if (response.documents.length === 0) return null;
-      return mapPayment(response.documents[0]);
+      return mapPayment(response.documents[0]!);
     } catch {
       return null;
     }
   }
 
   async updateStatus(id: string, status: PaymentStatus): Promise<PaymentEntity | null> {
-    return this.update(id, { status } as Partial<PaymentEntity>);
+    return this.update(id, { status });
   }
 
   async getTotalEarnings(userId: string): Promise<number> {
@@ -120,7 +115,7 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.reduce((sum: number, doc: any) => sum + Number(doc.amount || 0), 0);
+      return response.documents.reduce((sum, doc) => sum + Number(doc.amount ?? 0), 0);
     } catch {
       return 0;
     }
@@ -137,7 +132,7 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.reduce((sum: number, doc: any) => sum + Number(doc.amount || 0), 0);
+      return response.documents.reduce((sum, doc) => sum + Number(doc.amount ?? 0), 0);
     } catch {
       return 0;
     }

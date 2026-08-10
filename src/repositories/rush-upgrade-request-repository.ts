@@ -1,4 +1,4 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 export type RushUpgradeRequestStatus = 'pending' | 'accepted' | 'declined' | 'counter_offered' | 'expired';
@@ -46,15 +46,7 @@ export class RushUpgradeRequestRepository extends BaseRepository<RushUpgradeRequ
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as RushUpgradeRequestEntity;
-      });
+      return response.documents.map(doc => fromAppwriteDoc<RushUpgradeRequestEntity>(doc));
     } catch {
       return [];
     }
@@ -73,14 +65,7 @@ export class RushUpgradeRequestRepository extends BaseRepository<RushUpgradeRequ
         ]
       );
       if (response.documents.length === 0) return null;
-      const doc = response.documents[0];
-      const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-      return {
-        id: $id,
-        ...attrs,
-        created_at: attrs.created_at ?? $createdAt,
-        updated_at: attrs.updated_at ?? $updatedAt,
-      } as RushUpgradeRequestEntity;
+      return fromAppwriteDoc<RushUpgradeRequestEntity>(response.documents[0]!);
     } catch {
       return null;
     }

@@ -11,7 +11,7 @@
 import { config } from '../config/env.js';
 import { generateId } from '../utils/id.js';
 import { safeJsonParse } from '../utils/index.js';
-import { blockchainTransactionRepository } from '../repositories/blockchain-transaction-repository.js';
+import { blockchainTransactionRepository, type BlockchainTransactionEntity } from '../repositories/blockchain-transaction-repository.js';
 import {
   Transaction,
   TransactionInput,
@@ -266,12 +266,12 @@ export async function confirmTransaction(txId: string): Promise<Transaction | nu
   const blockNumber = Math.floor(Math.random() * 1000000) + 1;
   const gasUsed = BigInt(21000 + Math.floor(Math.random() * 50000));
 
-  const updates: Record<string, unknown> = {
+  const updates: Partial<BlockchainTransactionEntity> = {
     status: 'confirmed',
     block_number: blockNumber,
     gas_used: gasUsed.toString(),
   };
-  const entity = await blockchainTransactionRepository.updateTransaction(txId, updates as any);
+  const entity = await blockchainTransactionRepository.updateTransaction(txId, updates);
 
   if (!entity) return null;
   return {
@@ -293,10 +293,10 @@ export async function confirmTransaction(txId: string): Promise<Transaction | nu
  * Fail a transaction (for testing)
  */
 export async function failTransaction(txId: string): Promise<Transaction | null> {
-  const failUpdates: Record<string, unknown> = {
+  const failUpdates: Partial<BlockchainTransactionEntity> = {
     status: 'failed',
   };
-  const entity = await blockchainTransactionRepository.updateTransaction(txId, failUpdates as any);
+  const entity = await blockchainTransactionRepository.updateTransaction(txId, failUpdates);
 
   if (!entity) return null;
   return {

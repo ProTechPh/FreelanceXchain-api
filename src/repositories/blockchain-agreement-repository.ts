@@ -27,18 +27,15 @@ export class BlockchainAgreementRepository extends BaseRepository<BlockchainAgre
   }
 
   async getAgreementById(id: string): Promise<BlockchainAgreementEntity | null> {
-    const doc = await this.getById(id);
-    return doc ? this.mapDoc(doc as any) : null;
+    return this.getById(id);
   }
 
   async createAgreement(data: Omit<BlockchainAgreementEntity, 'created_at' | 'updated_at'>): Promise<BlockchainAgreementEntity> {
-    const doc = await this.create(data);
-    return this.mapDoc(doc as any);
+    return this.create(data);
   }
 
   async updateAgreement(id: string, updates: Partial<BlockchainAgreementEntity>): Promise<BlockchainAgreementEntity | null> {
-    const doc = await this.update(id, updates);
-    return doc ? this.mapDoc(doc as any) : null;
+    return this.update(id, updates);
   }
 
   async findByContractIdHash(contractIdHash: string): Promise<BlockchainAgreementEntity | null> {

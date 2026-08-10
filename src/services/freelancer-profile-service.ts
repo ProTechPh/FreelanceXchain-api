@@ -3,6 +3,7 @@ import { freelancerProfileRepository, FreelancerProfileEntity } from '../reposit
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 export type CreateFreelancerProfileInput = {
   bio: string;
@@ -73,10 +74,7 @@ export async function createProfile(
 ): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_EXISTS', message: 'Freelancer profile already exists for this user' },
-    };
+    return errorResult('PROFILE_EXISTS', 'Freelancer profile already exists for this user');
   }
 
   const profileEntity: Omit<FreelancerProfileEntity, 'created_at' | 'updated_at'> = {
@@ -92,7 +90,7 @@ export async function createProfile(
   };
 
   const createdEntity = await freelancerProfileRepository.createProfile(profileEntity);
-  return { success: true, data: mapFreelancerProfileFromEntity(createdEntity) };
+  return successResult(mapFreelancerProfileFromEntity(createdEntity));
 }
 
 /**
@@ -106,30 +104,18 @@ export async function createProfileFromKyc(
   // Check if profile already exists
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_EXISTS', message: 'Freelancer profile already exists for this user' },
-    };
+    return errorResult('PROFILE_EXISTS', 'Freelancer profile already exists for this user');
   }
 
   // Get KYC data
   const kycResult = await getProfileDataFromKyc(userId);
   if (!kycResult.success) {
-    return {
-      success: false,
-      error: { 
-        code: 'KYC_NOT_APPROVED', 
-        message: kycResult.error.message || 'KYC verification must be approved before creating profile' 
-      },
-    };
+    return errorResult('KYC_NOT_APPROVED', kycResult.error.message || 'KYC verification must be approved before creating profile');
   }
 
   const kycData = kycResult.data;
   if (!kycData) {
-    return {
-      success: false,
-      error: { code: 'KYC_NOT_APPROVED', message: 'No KYC data available' },
-    };
+    return errorResult('KYC_NOT_APPROVED', 'No KYC data available');
   }
 
   // Build bio from KYC data if not provided
@@ -150,18 +136,15 @@ export async function createProfileFromKyc(
   };
 
   const createdEntity = await freelancerProfileRepository.createProfile(profileEntity);
-  return { success: true, data: mapFreelancerProfileFromEntity(createdEntity) };
+  return successResult(mapFreelancerProfileFromEntity(createdEntity));
 }
 
 export async function getProfileByUserId(userId: string): Promise<ServiceResult<FreelancerProfile>> {
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!profileEntity) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
-  return { success: true, data: mapFreelancerProfileFromEntity(profileEntity) };
+  return successResult(mapFreelancerProfileFromEntity(profileEntity));
 }
 
 export async function updateProfile(
@@ -170,10 +153,7 @@ export async function updateProfile(
 ): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
   const updates: Partial<FreelancerProfileEntity> = {};
@@ -183,13 +163,10 @@ export async function updateProfile(
 
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, updates);
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update profile' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update profile');
   }
 
-  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
+  return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
 
@@ -201,10 +178,7 @@ export async function addSkillsToProfile(
 ): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
   const newSkills: FreelancerProfileEntity['skills'] = [];
@@ -250,13 +224,10 @@ export async function addSkillsToProfile(
   });
 
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to add skills to profile' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to add skills to profile');
   }
 
-  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
+  return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
 export async function removeSkillFromProfile(
@@ -265,10 +236,7 @@ export async function removeSkillFromProfile(
 ): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
   // Safely fallback and check for skills array to avoid crashing when deleting
@@ -282,13 +250,10 @@ export async function removeSkillFromProfile(
   });
 
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to remove skill from profile' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to remove skill from profile');
   }
 
-  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
+  return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
 
@@ -300,20 +265,14 @@ export async function addExperience(
 ): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
   const dateValidation = validateDateRange(input.startDate, input.endDate);
   if (!dateValidation.valid) {
     /* istanbul ignore next -- validateDateRange always returns message when valid=false */
     const msg = dateValidation.message != null ? dateValidation.message : 'Invalid date range';
-    return {
-      success: false,
-      error: { code: 'INVALID_DATE_RANGE', message: msg },
-    };
+    return errorResult('INVALID_DATE_RANGE', msg);
   }
 
   const experienceEntity: FreelancerProfileEntity['experience'][0] = {
@@ -331,13 +290,10 @@ export async function addExperience(
   });
 
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to add experience' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to add experience');
   }
 
-  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
+  return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
 export async function updateExperience(
@@ -347,27 +303,18 @@ export async function updateExperience(
 ): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
   const experienceIndex = existingProfile.experience.findIndex(e => e.id === experienceId);
   if (experienceIndex === -1) {
-    return {
-      success: false,
-      error: { code: 'EXPERIENCE_NOT_FOUND', message: 'Work experience entry not found' },
-    };
+    return errorResult('EXPERIENCE_NOT_FOUND', 'Work experience entry not found');
   }
 
   const currentExperience = existingProfile.experience[experienceIndex];
   /* istanbul ignore next */
   if (!currentExperience) {
-    return {
-      success: false,
-      error: { code: 'EXPERIENCE_NOT_FOUND', message: 'Work experience entry not found' },
-    };
+    return errorResult('EXPERIENCE_NOT_FOUND', 'Work experience entry not found');
   }
 
   const newStartDate = input.startDate ?? currentExperience.start_date;
@@ -377,10 +324,7 @@ export async function updateExperience(
   if (!dateValidation.valid) {
     /* istanbul ignore next -- validateDateRange always returns message when valid=false */
     const msg = dateValidation.message != null ? dateValidation.message : 'Invalid date range';
-    return {
-      success: false,
-      error: { code: 'INVALID_DATE_RANGE', message: msg },
-    };
+    return errorResult('INVALID_DATE_RANGE', msg);
   }
 
   const updatedExperience = [...existingProfile.experience];
@@ -398,13 +342,10 @@ export async function updateExperience(
   });
 
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update experience' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update experience');
   }
 
-  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
+  return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }
 
 export async function removeExperience(
@@ -413,10 +354,7 @@ export async function removeExperience(
 ): Promise<ServiceResult<FreelancerProfile>> {
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Freelancer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
   const updatedExperience = existingProfile.experience.filter(e => e.id !== experienceId);
@@ -425,11 +363,8 @@ export async function removeExperience(
   });
 
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to remove experience' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to remove experience');
   }
 
-  return { success: true, data: mapFreelancerProfileFromEntity(updatedEntity) };
+  return successResult(mapFreelancerProfileFromEntity(updatedEntity));
 }

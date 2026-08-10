@@ -22,9 +22,9 @@ function shouldLog(level: LogLevel): boolean {
   return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[CURRENT_LOG_LEVEL];
 }
 
-function formatLogEntry(level: LogLevel, message: string, meta?: any): string {
+function formatLogEntry(level: LogLevel, message: string, meta?: unknown): string {
   const timestamp = new Date().toISOString();
-  const entry: any = {
+  const entry: Record<string, unknown> = {
     timestamp,
     level,
     message,
@@ -38,7 +38,7 @@ function formatLogEntry(level: LogLevel, message: string, meta?: any): string {
 }
 
 class Logger {
-  debug(message: string, meta?: any): void {
+  debug(message: string, meta?: Record<string, unknown>): void {
     if (!shouldLog(LogLevel.DEBUG)) return;
 
     const sanitizedMessage = typeof message === 'string' ? sanitizeLogData(message) : message;
@@ -46,7 +46,7 @@ class Logger {
     console.log(formatLogEntry(LogLevel.DEBUG, sanitizedMessage, meta));
   }
 
-  info(message: string, meta?: any): void {
+  info(message: string, meta?: Record<string, unknown>): void {
     if (!shouldLog(LogLevel.INFO)) return;
 
     const sanitizedMessage = typeof message === 'string' ? sanitizeLogData(message) : message;
@@ -54,18 +54,18 @@ class Logger {
     console.log(formatLogEntry(LogLevel.INFO, sanitizedMessage, meta));
   }
 
-  warn(message: string, meta?: any): void {
+  warn(message: string, meta?: Record<string, unknown>): void {
     if (!shouldLog(LogLevel.WARN)) return;
 
     const sanitizedMessage = typeof message === 'string' ? sanitizeLogData(message) : message;
     console.warn(formatLogEntry(LogLevel.WARN, sanitizedMessage, meta));
   }
 
-  error(message: string, error?: Error | any, meta?: any): void {
+  error(message: string, error?: unknown, meta?: Record<string, unknown>): void {
     if (!shouldLog(LogLevel.ERROR)) return;
 
     const sanitizedMessage = typeof message === 'string' ? sanitizeLogData(message) : message;
-    const logMeta: any = { ...meta };
+    const logMeta: Record<string, unknown> = { ...meta };
 
     if (error) {
       if (error instanceof Error) {
@@ -80,7 +80,7 @@ class Logger {
   }
 
   // Always logged regardless of level
-  security(event: string, meta?: any): void {
+  security(event: string, meta?: Record<string, unknown>): void {
     const sanitizedEvent = sanitizeLogData(event);
     const entry = {
       timestamp: new Date().toISOString(),
@@ -91,14 +91,14 @@ class Logger {
     console.warn(JSON.stringify(entry));
   }
 
-  auth(event: string, userId?: string, meta?: any): void {
+  auth(event: string, userId?: string, meta?: Record<string, unknown>): void {
     this.security(`AUTH: ${event}`, {
       userId,
       ...meta,
     });
   }
 
-  authzFailure(userId: string, resource: string, action: string, meta?: any): void {
+  authzFailure(userId: string, resource: string, action: string, meta?: Record<string, unknown>): void {
     this.security('AUTHORIZATION_FAILURE', {
       userId,
       resource,
@@ -107,7 +107,7 @@ class Logger {
     });
   }
 
-  rateLimit(identifier: string, endpoint: string, meta?: any): void {
+  rateLimit(identifier: string, endpoint: string, meta?: Record<string, unknown>): void {
     this.security('RATE_LIMIT_EXCEEDED', {
       identifier,
       endpoint,
@@ -115,7 +115,7 @@ class Logger {
     });
   }
 
-  suspicious(activity: string, meta?: any): void {
+  suspicious(activity: string, meta?: Record<string, unknown>): void {
     this.security('SUSPICIOUS_ACTIVITY', {
       activity,
       ...meta,

@@ -11,6 +11,7 @@ import { userRepository } from '../repositories/user-repository.js';
 import { freelancerProfileRepository } from '../repositories/freelancer-profile-repository.js';
 import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import {
   createKycVerification,
   getKycVerificationById,
@@ -55,10 +56,7 @@ export async function initiateKycVerification(
   // Check if user exists
   const user = await userRepository.getUserById(input.user_id);
   if (!user) {
-    return {
-      success: false,
-      error: { code: 'USER_NOT_FOUND', message: 'User not found' },
-    };
+    return errorResult('USER_NOT_FOUND', 'User not found');
   }
 
   // Check if user already has a verification
@@ -66,13 +64,7 @@ export async function initiateKycVerification(
 
   // If already approved, don't allow retry
   if (existingKyc && existingKyc.status === 'approved') {
-    return {
-      success: false,
-      error: {
-        code: 'ALREADY_VERIFIED',
-        message: 'User is already verified',
-      },
-    };
+    return errorResult('ALREADY_VERIFIED', 'User is already verified');
   }
 
   // Check cooldown for pending/in_progress/rejected/expired verifications
@@ -87,11 +79,7 @@ export async function initiateKycVerification(
 
       return {
         success: false,
-        error: {
-          code: 'RETRY_COOLDOWN',
-          message: `Please wait ${hoursRemaining} hour(s) before retrying KYC verification`,
-          retryAfter,
-        },
+        error: { code: 'RETRY_COOLDOWN', message: `Please wait ${hoursRemaining} hour(s) before retrying KYC verification`, retryAfter },
       };
     }
 
@@ -111,13 +99,7 @@ export async function initiateKycVerification(
 
   if (!sessionResult.success) {
     logger.error('Didit session creation failed', { error: sessionResult.error });
-    return {
-      success: false,
-      error: {
-        code: sessionResult.error?.error?.code ?? 'DIDIT_API_ERROR',
-        message: sessionResult.error?.error?.message ?? 'Failed to create Didit verification session',
-      },
-    };
+    return errorResult(sessionResult.error?.error?.code ?? 'DIDIT_API_ERROR', sessionResult.error?.error?.message ?? 'Failed to create Didit verification session');
   }
 
   const session = sessionResult.data;
@@ -148,13 +130,10 @@ export async function initiateKycVerification(
   }
 
   if (!verification) {
-    return {
-      success: false,
-      error: { code: 'DATABASE_ERROR', message: 'Failed to create verification record' },
-    };
+    return errorResult('DATABASE_ERROR', 'Failed to create verification record');
   }
 
-  return { success: true, data: verification };
+  return successResult(verification);
 }
 
 /**
@@ -163,16 +142,10 @@ export async function initiateKycVerification(
 export async function getKycStatus(userId: string): Promise<ServiceResult<KycVerification | null>> {
   try {
     const verification = await getKycVerificationByUserId(userId);
-    return { success: true, data: verification };
+    return successResult(verification);
   } catch (error) {
     logger.error('Failed to load KYC verification status', error as Error, { userId });
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: 'Unable to load KYC verification status',
-      },
-    };
+    return errorResult('DATABASE_ERROR', 'Unable to load KYC verification status');
   }
 }
 
@@ -181,7 +154,7 @@ export async function getKycStatus(userId: string): Promise<ServiceResult<KycVer
  */
 export async function getKycById(id: string): Promise<ServiceResult<KycVerification | null>> {
   const verification = await getKycVerificationById(id);
-  return { success: true, data: verification };
+  return successResult(verification);
 }
 
 /**
@@ -192,23 +165,14 @@ export async function refreshVerificationStatus(
 ): Promise<ServiceResult<KycVerification>> {
   const verification = await getKycVerificationById(verificationId);
   if (!verification) {
-    return {
-      success: false,
-      error: { code: 'VERIFICATION_NOT_FOUND', message: 'Verification not found' },
-    };
+    return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found');
   }
 
   // Get latest status from Didit
   const sessionResult = await getVerificationSession(verification.didit_session_id);
   if (!sessionResult.success) {
     logger.error('Failed to get session details', { error: sessionResult.error });
-    return {
-      success: false,
-      error: {
-        code: sessionResult.error?.error?.code ?? 'DIDIT_API_ERROR',
-        message: sessionResult.error?.error?.message ?? 'Failed to fetch session details from Didit',
-      },
-    };
+    return errorResult(sessionResult.error?.error?.code ?? 'DIDIT_API_ERROR', sessionResult.error?.error?.message ?? 'Failed to fetch session details from Didit');
   }
 
   const session = sessionResult.data;
@@ -223,13 +187,10 @@ export async function refreshVerificationStatus(
 
   const updated = await updateKycVerification(verification.id, updates);
   if (!updated) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update verification status' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update verification status');
   }
 
-  return { success: true, data: updated };
+  return successResult(updated);
 }
 
 // L4: Track processed webhook event IDs to prevent duplicate processing
@@ -260,7 +221,7 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
       // Return success since the event was already processed
       const existingVerification = await getKycVerificationBySessionId(payload.session_id);
       if (existingVerification) {
-        return { success: true, data: existingVerification };
+        return successResult(existingVerification);
       }
     }
     processedWebhookEvents.set(payload.event_id, Date.now());
@@ -272,10 +233,7 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
 
   const verification = await getKycVerificationBySessionId(payload.session_id);
   if (!verification) {
-    return {
-      success: false,
-      error: { code: 'VERIFICATION_NOT_FOUND', message: 'Verification not found for session' },
-    };
+    return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found for session');
   }
 
   const status = mapDiditStatusToKycStatus(payload.status);
@@ -348,10 +306,7 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
 
   const updated = await updateKycVerification(verification.id, updates);
   if (!updated) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update verification' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update verification');
   }
 
   // Auto-create profile when KYC is approved
@@ -359,7 +314,7 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
     await autoCreateProfile(verification.user_id, firstName, lastName, nationality);
   }
 
-  return { success: true, data: updated };
+  return successResult(updated);
 }
 
 /**
@@ -480,17 +435,11 @@ export async function getProfileDataFromKyc(userId: string): Promise<ServiceResu
   const verification = await getKycVerificationByUserId(userId);
   
   if (!verification) {
-    return {
-      success: false,
-      error: { code: 'NO_KYC', message: 'No KYC verification found for user' },
-    };
+    return errorResult('NO_KYC', 'No KYC verification found for user');
   }
 
   if (verification.status !== 'approved') {
-    return {
-      success: false,
-      error: { code: 'KYC_NOT_APPROVED', message: 'KYC verification is not approved' },
-    };
+    return errorResult('KYC_NOT_APPROVED', 'KYC verification is not approved');
   }
 
   const profileData: ProfileDataFromKyc = {
@@ -502,7 +451,7 @@ export async function getProfileDataFromKyc(userId: string): Promise<ServiceResu
     kyc_verified_at: verification.completed_at ?? null,
   };
 
-  return { success: true, data: profileData };
+  return successResult(profileData);
 }
 
 type ProfileDataFromKyc = {
@@ -525,31 +474,16 @@ export async function adminReviewVerification(
 ): Promise<ServiceResult<KycVerification>> {
   const verification = await getKycVerificationById(verificationId);
   if (!verification) {
-    return {
-      success: false,
-      error: { code: 'VERIFICATION_NOT_FOUND', message: 'Verification not found' },
-    };
+    return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found');
   }
 
   if (verification.status !== 'completed') {
-    return {
-      success: false,
-      error: {
-        code: 'INVALID_STATUS',
-        message: 'Can only review completed verifications',
-      },
-    };
+    return errorResult('INVALID_STATUS', 'Can only review completed verifications');
   }
 
   // BLF-7.1: Prevent admin from approving their own KYC to maintain audit integrity
   if (verification.user_id === adminUserId) {
-    return {
-      success: false,
-      error: {
-        code: 'SELF_REVIEW_FORBIDDEN',
-        message: 'Admins cannot review their own KYC verification',
-      },
-    };
+    return errorResult('SELF_REVIEW_FORBIDDEN', 'Admins cannot review their own KYC verification');
   }
 
   const updates: Partial<KycVerification> = {
@@ -568,10 +502,7 @@ export async function adminReviewVerification(
 
   const updated = await updateKycVerification(verificationId, updates);
   if (!updated) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update verification' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update verification');
   }
 
   // Sync name to users table and profiles when admin approves
@@ -584,7 +515,7 @@ export async function adminReviewVerification(
     );
   }
 
-  return { success: true, data: updated };
+  return successResult(updated);
 }
 
 /**
@@ -592,7 +523,7 @@ export async function adminReviewVerification(
  */
 export async function getPendingAdminReviews(): Promise<ServiceResult<KycVerification[]>> {
   const verifications = await getPendingReviews();
-  return { success: true, data: verifications };
+  return successResult(verifications);
 }
 
 /**
@@ -602,7 +533,7 @@ export async function getVerificationsByStatus(
   status: KycStatus
 ): Promise<ServiceResult<KycVerification[]>> {
   const verifications = await getKycVerificationsByStatus(status);
-  return { success: true, data: verifications };
+  return successResult(verifications);
 }
 
 /**
@@ -612,7 +543,7 @@ export async function getUserVerificationHistory(
   userId: string
 ): Promise<ServiceResult<KycVerification[]>> {
   const verifications = await getKycVerificationHistory(userId);
-  return { success: true, data: verifications };
+  return successResult(verifications);
 }
 
 /**
@@ -681,19 +612,13 @@ export async function manualKycVerification(params: {
   // Check if user exists
   const user = await userRepository.getUserById(userId);
   if (!user) {
-    return {
-      success: false,
-      error: { code: 'USER_NOT_FOUND', message: 'User not found' },
-    };
+    return errorResult('USER_NOT_FOUND', 'User not found');
   }
 
   // Check if user already has an active verification
   const existingVerification = await getKycVerificationByUserId(userId);
   if (existingVerification && existingVerification.status === 'approved') {
-    return {
-      success: false,
-      error: { code: 'ALREADY_VERIFIED', message: 'User is already verified' },
-    };
+    return errorResult('ALREADY_VERIFIED', 'User is already verified');
   }
 
   try {
@@ -702,18 +627,12 @@ export async function manualKycVerification(params: {
     const idResult = await verifyIdDocument(idFrontImage, idBackImage, userId);
 
     if (!idResult.success) {
-      return {
-        success: false,
-        error: { code: 'ID_VERIFICATION_FAILED', message: 'ID verification failed' },
-      };
+      return errorResult('ID_VERIFICATION_FAILED', 'ID verification failed');
     }
 
     const idData = idResult.data.id_verification;
     if (idData.status !== 'Approved') {
-      return {
-        success: false,
-        error: { code: 'ID_DECLINED', message: 'ID document was declined by Didit' },
-      };
+      return errorResult('ID_DECLINED', 'ID document was declined by Didit');
     }
 
     // Step 2: Check liveness
@@ -721,18 +640,12 @@ export async function manualKycVerification(params: {
     const livenessResult = await checkPassiveLiveness(selfieImage, userId);
 
     if (!livenessResult.success) {
-      return {
-        success: false,
-        error: { code: 'LIVENESS_CHECK_FAILED', message: 'Liveness check failed' },
-      };
+      return errorResult('LIVENESS_CHECK_FAILED', 'Liveness check failed');
     }
 
     const livenessData = livenessResult.data.passive_liveness;
     if (livenessData.status !== 'Approved') {
-      return {
-        success: false,
-        error: { code: 'LIVENESS_DECLINED', message: 'Liveness check declined - possible spoof detected' },
-      };
+      return errorResult('LIVENESS_DECLINED', 'Liveness check declined - possible spoof detected');
     }
 
     // Step 3: Face match (compare selfie with ID photo)
@@ -740,18 +653,12 @@ export async function manualKycVerification(params: {
     const faceMatchResult = await matchFaces(selfieImage, idFrontImage, userId);
 
     if (!faceMatchResult.success) {
-      return {
-        success: false,
-        error: { code: 'FACE_MATCH_FAILED', message: 'Face match failed' },
-      };
+      return errorResult('FACE_MATCH_FAILED', 'Face match failed');
     }
 
     const faceMatchData = faceMatchResult.data.face_match;
     if (faceMatchData.status !== 'Approved') {
-      return {
-        success: false,
-        error: { code: 'FACE_MISMATCH', message: 'Face does not match ID photo' },
-      };
+      return errorResult('FACE_MISMATCH', 'Face does not match ID photo');
     }
 
     // Step 4: Optional AML screening
@@ -827,10 +734,7 @@ export async function manualKycVerification(params: {
 
     if (!verification) {
       /* istanbul ignore next */
-      return {
-        success: false,
-        error: { code: 'DATABASE_ERROR', message: 'Failed to save verification' },
-      };
+      return errorResult('DATABASE_ERROR', 'Failed to save verification');
     }
 
     // Sync name to user and profiles if approved
@@ -850,15 +754,9 @@ export async function manualKycVerification(params: {
       amlClean
     });
 
-    return { success: true, data: verification };
+    return successResult(verification);
   } catch (error) {
     logger.error('Manual KYC verification error', error as Error, { userId });
-    return {
-      success: false,
-      error: {
-        code: 'VERIFICATION_ERROR',
-        message: error instanceof Error ? error.message : 'Manual verification failed'
-      },
-    };
+    return errorResult('VERIFICATION_ERROR', error instanceof Error ? error.message : 'Manual verification failed');
   }
 }

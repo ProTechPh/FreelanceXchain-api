@@ -11,7 +11,7 @@ import {
 } from './blockchain-client.js';
 import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
-import { blockchainAgreementRepository } from '../repositories/blockchain-agreement-repository.js';
+import { blockchainAgreementRepository, type BlockchainAgreementEntity } from '../repositories/blockchain-agreement-repository.js';
 
 // Agreement status on blockchain
 export type BlockchainAgreementStatus = 'pending' | 'signed' | 'completed' | 'disputed' | 'cancelled';
@@ -74,6 +74,26 @@ export function generateTermsHash(terms: CreateAgreementInput['terms']): string 
 }
 
 /**
+ * Map a persisted agreement entity to the public BlockchainAgreement shape.
+ */
+function mapAgreementFromEntity(entity: BlockchainAgreementEntity): BlockchainAgreement {
+  return {
+    contractIdHash: entity.contract_id_hash,
+    termsHash: entity.terms_hash,
+    employerWallet: entity.employer_wallet,
+    freelancerWallet: entity.freelancer_wallet,
+    totalAmount: entity.total_amount,
+    milestoneCount: entity.milestone_count,
+    status: entity.status as BlockchainAgreementStatus,
+    employerSignedAt: entity.employer_signed_at ?? null,
+    freelancerSignedAt: entity.freelancer_signed_at ?? null,
+    createdAt: entity.created_at_ts,
+    transactionHash: entity.transaction_hash,
+    blockNumber: entity.block_number,
+  };
+}
+
+/**
  * Create agreement on blockchain
  */
 export async function createAgreementOnBlockchain(
@@ -125,7 +145,7 @@ export async function createAgreementOnBlockchain(
   };
 
   // Persist to DB
-  const createData: Record<string, unknown> = {
+  const createData: Omit<BlockchainAgreementEntity, 'created_at' | 'updated_at'> = {
     id: contractIdHash,
     contract_id_hash: agreement.contractIdHash,
     terms_hash: agreement.termsHash,
@@ -138,10 +158,10 @@ export async function createAgreementOnBlockchain(
     transaction_hash: agreement.transactionHash,
     block_number: agreement.blockNumber,
   };
-  if (agreement.employerSignedAt != null) createData['employer_signed_at'] = agreement.employerSignedAt;
+  if (agreement.employerSignedAt != null) createData.employer_signed_at = agreement.employerSignedAt;
   /* istanbul ignore next -- freelancerSignedAt is always null at creation time; set via signAgreement/updateAgreement */
-  if (agreement.freelancerSignedAt != null) createData['freelancer_signed_at'] = agreement.freelancerSignedAt;
-  await blockchainAgreementRepository.createAgreement(createData as any);
+  if (agreement.freelancerSignedAt != null) createData.freelancer_signed_at = agreement.freelancerSignedAt;
+  await blockchainAgreementRepository.createAgreement(createData);
 
   return {
     agreement,
@@ -167,20 +187,7 @@ export async function signAgreement(
   const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
   if (!entity) throw new Error('Agreement not found');
-  const agreement: BlockchainAgreement = {
-    contractIdHash: entity.contract_id_hash,
-    termsHash: entity.terms_hash,
-    employerWallet: entity.employer_wallet,
-    freelancerWallet: entity.freelancer_wallet,
-    totalAmount: entity.total_amount,
-    milestoneCount: entity.milestone_count,
-    status: entity.status as BlockchainAgreementStatus,
-    employerSignedAt: entity.employer_signed_at ?? null,
-    freelancerSignedAt: entity.freelancer_signed_at ?? null,
-    createdAt: entity.created_at_ts,
-    transactionHash: entity.transaction_hash,
-    blockNumber: entity.block_number,
-  };
+  const agreement = mapAgreementFromEntity(entity);
   if (agreement.status !== 'pending') throw new Error('Agreement not pending');
   if (signerWallet !== agreement.employerWallet && signerWallet !== agreement.freelancerWallet) {
     throw new Error('Not a party to this agreement');
@@ -214,14 +221,14 @@ export async function signAgreement(
     status = 'signed';
   }
 
-  const signUpdates: Record<string, unknown> = {
+  const signUpdates: Partial<BlockchainAgreementEntity> = {
     status,
     transaction_hash: confirmed.hash!,
     block_number: confirmed.blockNumber!,
   };
-  if (employerSignedAt != null) signUpdates['employer_signed_at'] = employerSignedAt;
-  if (freelancerSignedAt != null) signUpdates['freelancer_signed_at'] = freelancerSignedAt;
-  await blockchainAgreementRepository.updateAgreement(entity.id, signUpdates as any);
+  if (employerSignedAt != null) signUpdates.employer_signed_at = employerSignedAt;
+  if (freelancerSignedAt != null) signUpdates.freelancer_signed_at = freelancerSignedAt;
+  await blockchainAgreementRepository.updateAgreement(entity.id, signUpdates);
 
   const updatedAgreement = {
     ...agreement,
@@ -256,20 +263,7 @@ export async function completeAgreement(
   const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
   if (!entity) throw new Error('Agreement not found');
-  const agreement: BlockchainAgreement = {
-    contractIdHash: entity.contract_id_hash,
-    termsHash: entity.terms_hash,
-    employerWallet: entity.employer_wallet,
-    freelancerWallet: entity.freelancer_wallet,
-    totalAmount: entity.total_amount,
-    milestoneCount: entity.milestone_count,
-    status: entity.status as BlockchainAgreementStatus,
-    employerSignedAt: entity.employer_signed_at ?? null,
-    freelancerSignedAt: entity.freelancer_signed_at ?? null,
-    createdAt: entity.created_at_ts,
-    transactionHash: entity.transaction_hash,
-    blockNumber: entity.block_number,
-  };
+  const agreement = mapAgreementFromEntity(entity);
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
 
   if (callerWallet !== agreement.employerWallet && callerWallet !== agreement.freelancerWallet) {
@@ -327,20 +321,7 @@ export async function disputeAgreement(
   const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
   if (!entity) throw new Error('Agreement not found');
-  const agreement: BlockchainAgreement = {
-    contractIdHash: entity.contract_id_hash,
-    termsHash: entity.terms_hash,
-    employerWallet: entity.employer_wallet,
-    freelancerWallet: entity.freelancer_wallet,
-    totalAmount: entity.total_amount,
-    milestoneCount: entity.milestone_count,
-    status: entity.status as BlockchainAgreementStatus,
-    employerSignedAt: entity.employer_signed_at ?? null,
-    freelancerSignedAt: entity.freelancer_signed_at ?? null,
-    createdAt: entity.created_at_ts,
-    transactionHash: entity.transaction_hash,
-    blockNumber: entity.block_number,
-  };
+  const agreement = mapAgreementFromEntity(entity);
   if (agreement.status !== 'signed') throw new Error('Agreement not active');
 
   if (callerWallet !== agreement.employerWallet && callerWallet !== agreement.freelancerWallet) {
@@ -394,20 +375,7 @@ export async function getAgreementFromBlockchain(contractId: string): Promise<Bl
   const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
   if (!entity) return null;
-  return {
-    contractIdHash: entity.contract_id_hash,
-    termsHash: entity.terms_hash,
-    employerWallet: entity.employer_wallet,
-    freelancerWallet: entity.freelancer_wallet,
-    totalAmount: entity.total_amount,
-    milestoneCount: entity.milestone_count,
-    status: entity.status as BlockchainAgreementStatus,
-    employerSignedAt: entity.employer_signed_at ?? null,
-    freelancerSignedAt: entity.freelancer_signed_at ?? null,
-    createdAt: entity.created_at_ts,
-    transactionHash: entity.transaction_hash,
-    blockNumber: entity.block_number,
-  };
+  return mapAgreementFromEntity(entity);
 }
 
 /**
@@ -439,20 +407,7 @@ export async function isAgreementFullySigned(contractId: string): Promise<boolea
 export async function getUserAgreements(walletAddress: string): Promise<BlockchainAgreement[]> {
   try {
     const entities = await blockchainAgreementRepository.findByWallet(walletAddress);
-    return entities.map(entity => ({
-      contractIdHash: entity.contract_id_hash,
-      termsHash: entity.terms_hash,
-      employerWallet: entity.employer_wallet,
-      freelancerWallet: entity.freelancer_wallet,
-      totalAmount: entity.total_amount,
-      milestoneCount: entity.milestone_count,
-      status: entity.status as BlockchainAgreementStatus,
-      employerSignedAt: entity.employer_signed_at ?? null,
-      freelancerSignedAt: entity.freelancer_signed_at ?? null,
-      createdAt: entity.created_at_ts,
-      transactionHash: entity.transaction_hash,
-      blockNumber: entity.block_number,
-    }));
+    return entities.map(mapAgreementFromEntity);
   } catch {
     return [];
   }

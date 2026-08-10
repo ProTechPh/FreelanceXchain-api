@@ -1,15 +1,15 @@
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import type {
-  Milestone,
   MilestoneStatus,
   SubmitMilestoneInput,
   RejectMilestoneInput,
 } from '../models/milestone.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
-import { milestoneRepository } from '../repositories/milestone-repository.js';
-import { contractRepository } from '../repositories/contract-repository.js';
+import { milestoneRepository, type MilestoneEntity } from '../repositories/milestone-repository.js';
+import { contractRepository, type ContractEntity } from '../repositories/contract-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { generateId } from '../utils/id.js';
 
@@ -17,8 +17,8 @@ import { generateId } from '../utils/id.js';
  * Get milestone by ID with contract authorization
  */
 export type MilestoneWithContract = {
-  milestone: Milestone;
-  contract: any;
+  milestone: MilestoneEntity;
+  contract: ContractEntity;
 };
 
 export async function getMilestoneById(milestoneId: string, userId?: string): Promise<ServiceResult<MilestoneWithContract>> {
@@ -26,45 +26,29 @@ export async function getMilestoneById(milestoneId: string, userId?: string): Pr
     const milestone = await milestoneRepository.getById(milestoneId);
 
     if (!milestone) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-      };
+      return errorResult('NOT_FOUND', 'Milestone not found');
     }
 
     if (!userId) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this milestone' },
-      };
+      return errorResult('UNAUTHORIZED', 'You are not authorized to view this milestone');
     }
 
-    const contractId = (milestone as any).contract_id ?? (milestone as any).contractId;
+    // contract_id is the canonical field; the camelCase fallback supports callers that
+    // pass model-shaped milestone payloads (e.g. test fixtures) instead of entities
+    const contractId = milestone.contract_id ?? (milestone as { contractId?: string }).contractId;
     if (!contractId) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-      };
+      return errorResult('NOT_FOUND', 'Milestone not found');
     }
 
     const contract = await contractRepository.getContractById(contractId);
     if (!contract || (contract.employer_id !== userId && contract.freelancer_id !== userId)) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this milestone' },
-      };
+      return errorResult('UNAUTHORIZED', 'You are not authorized to view this milestone');
     }
 
-    return { success: true, data: { milestone: milestone as any, contract } };
+    return successResult({ milestone, contract });
   } catch (error) {
     logger.error('Failed to get milestone:', error);
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: error instanceof Error ? error.message : 'Failed to get milestone',
-      },
-    };
+    return errorResult('DATABASE_ERROR', error instanceof Error ? error.message : 'Failed to get milestone');
   }
 }
 
@@ -73,7 +57,7 @@ export async function getMilestoneById(milestoneId: string, userId?: string): Pr
  */
 export async function submitMilestone(
   input: SubmitMilestoneInput
-): Promise<ServiceResult<Milestone>> {
+): Promise<ServiceResult<MilestoneEntity>> {
   try {
     // Get milestone and verify ownership
     const milestoneResult = await getMilestoneById(input.milestoneId, input.freelancerId);
@@ -85,24 +69,12 @@ export async function submitMilestone(
 
     // H4: Verify contract is active before allowing milestone submission
     if (contract.status !== 'active') {
-      return {
-        success: false,
-        error: {
-          code: 'INVALID_STATUS',
-          message: `Cannot submit milestone on a ${contract.status} contract`,
-        },
-      };
+      return errorResult('INVALID_STATUS', `Cannot submit milestone on a ${contract.status} contract`);
     }
 
     // Check if milestone can be submitted
     if (milestone.status !== 'pending' && milestone.status !== 'rejected') {
-      return {
-        success: false,
-        error: {
-          code: 'INVALID_STATUS',
-          message: `Cannot submit milestone with status "${milestone.status}"`,
-        },
-      };
+      return errorResult('INVALID_STATUS', `Cannot submit milestone with status "${milestone.status}"`);
     }
 
     // Update milestone
@@ -110,7 +82,7 @@ export async function submitMilestone(
       status: 'submitted',
       submitted_at: new Date().toISOString(),
       deliverable_files: JSON.stringify(input.deliverables),
-      revision_count: (milestone as any).status === 'rejected' ? (milestone as any).revision_count + 1 : (milestone as any).revision_count,
+      revision_count: milestone.status === 'rejected' ? milestone.revision_count + 1 : milestone.revision_count,
       updated_at: new Date().toISOString(),
     });
 
@@ -136,16 +108,10 @@ export async function submitMilestone(
 
     logger.info(`Milestone ${input.milestoneId} submitted by freelancer ${input.freelancerId}`);
 
-    return { success: true, data: updated as unknown as Milestone };
+    return successResult(updated);
   } catch (error) {
     logger.error('Failed to submit milestone:', error);
-    return {
-      success: false,
-      error: {
-        code: 'SUBMIT_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to submit milestone',
-      },
-    };
+    return errorResult('SUBMIT_FAILED', error instanceof Error ? error.message : 'Failed to submit milestone');
   }
 }
 
@@ -154,7 +120,7 @@ export async function submitMilestone(
  */
 export async function rejectMilestone(
   input: RejectMilestoneInput
-): Promise<ServiceResult<Milestone>> {
+): Promise<ServiceResult<MilestoneEntity>> {
   try {
     // Get milestone
     const milestoneResult = await getMilestoneById(input.milestoneId, input.employerId);
@@ -166,25 +132,13 @@ export async function rejectMilestone(
 
     // Check if milestone can be rejected
     if (milestone.status !== 'submitted') {
-      return {
-        success: false,
-        error: {
-          code: 'INVALID_STATUS',
-          message: `Cannot reject milestone with status "${milestone.status}"`,
-        },
-      };
+      return errorResult('INVALID_STATUS', `Cannot reject milestone with status "${milestone.status}"`);
     }
 
     // L2: Enforce revision count cap to prevent infinite rejection loop
     const MAX_REVISIONS = 5;
-    if (input.requestRevision && (milestone as any).revision_count >= MAX_REVISIONS) {
-      return {
-        success: false,
-        error: {
-          code: 'MAX_REVISIONS_REACHED',
-          message: `Maximum number of revisions (${MAX_REVISIONS}) has been reached. The milestone must be disputed or approved.`,
-        },
-      };
+    if (input.requestRevision && milestone.revision_count >= MAX_REVISIONS) {
+      return errorResult('MAX_REVISIONS_REACHED', `Maximum number of revisions (${MAX_REVISIONS}) has been reached. The milestone must be disputed or approved.`);
     }
 
     // Update milestone
@@ -206,7 +160,7 @@ export async function rejectMilestone(
       const disputeId = generateId();
       await disputeRepository.createDispute({
         id: disputeId,
-        contract_id: (milestone as any).contract_id,
+        contract_id: milestone.contract_id,
         milestone_id: input.milestoneId,
         initiator_id: input.employerId,
         reason: input.reason || 'Milestone rejected without revision',
@@ -237,52 +191,34 @@ export async function rejectMilestone(
 
     logger.info(`Milestone ${input.milestoneId} rejected by employer ${input.employerId}`);
 
-    return { success: true, data: updated as unknown as Milestone };
+    return successResult(updated);
   } catch (error) {
     logger.error('Failed to reject milestone:', error);
-    return {
-      success: false,
-      error: {
-        code: 'REJECT_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to reject milestone',
-      },
-    };
+    return errorResult('REJECT_FAILED', error instanceof Error ? error.message : 'Failed to reject milestone');
   }
 }
 
 /**
  * Get milestones for contract
  */
-export async function getContractMilestones(contractId: string, userId?: string): Promise<ServiceResult<Milestone[]>> {
+export async function getContractMilestones(contractId: string, userId?: string): Promise<ServiceResult<MilestoneEntity[]>> {
   try {
     // BLF-8.1: Verify user is a party to the contract before returning milestones
     if (userId) {
       const contract = await contractRepository.getContractById(contractId);
       if (!contract) {
-        return {
-          success: false,
-          error: { code: 'NOT_FOUND', message: 'Contract not found' },
-        };
+        return errorResult('NOT_FOUND', 'Contract not found');
       }
       if (contract.employer_id !== userId && contract.freelancer_id !== userId) {
-        return {
-          success: false,
-          error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view these milestones' },
-        };
+        return errorResult('UNAUTHORIZED', 'You are not authorized to view these milestones');
       }
     }
 
     const milestones = await milestoneRepository.findByContract(contractId);
 
-    return { success: true, data: milestones as unknown as Milestone[] };
+    return successResult(milestones);
   } catch (error) {
     logger.error('Failed to get contract milestones:', error);
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: error instanceof Error ? error.message : 'Failed to get milestones',
-      },
-    };
+    return errorResult('DATABASE_ERROR', error instanceof Error ? error.message : 'Failed to get milestones');
   }
 }

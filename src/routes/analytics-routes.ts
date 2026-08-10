@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import { 
   getFreelancerAnalytics, 
   getEmployerAnalytics, 
@@ -18,11 +19,7 @@ router.get('/freelancer', authMiddleware, apiRateLimiter, async (req: Request, r
   const endDate = req.query['endDate'] as string | undefined;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -32,11 +29,7 @@ router.get('/freelancer', authMiddleware, apiRateLimiter, async (req: Request, r
   });
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -50,11 +43,7 @@ router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res
   const endDate = req.query['endDate'] as string | undefined;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -64,11 +53,7 @@ router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res
   });
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -80,11 +65,7 @@ router.get('/skill-trends', authMiddleware, apiRateLimiter, async (req: Request,
   const result = await getSkillTrends();
   
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -96,11 +77,7 @@ router.get('/platform', authMiddleware, apiRateLimiter, async (req: Request, res
   const result = await getPlatformMetrics();
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 

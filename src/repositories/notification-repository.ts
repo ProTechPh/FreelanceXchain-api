@@ -1,4 +1,4 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
+import { BaseRepository, PaginatedResult, QueryOptions, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 export type { NotificationType } from '../models/notification.js';
 import type { NotificationType } from '../models/notification.js';
@@ -17,14 +17,8 @@ export type NotificationEntity = {
 
 const COLLECTION_ID = 'notifications';
 
-function mapNotification(doc: Record<string, any>): NotificationEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-  const result: Record<string, any> = {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  };
+function mapNotification(doc: Record<string, unknown>): NotificationEntity {
+  const result = fromAppwriteDoc<Record<string, unknown>>(doc);
   if (typeof result.data === 'string') {
     result.data = JSON.parse(result.data);
   }
@@ -105,7 +99,7 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
   }
 
   async markAsRead(id: string): Promise<NotificationEntity | null> {
-    return this.update(id, { is_read: true } as Partial<NotificationEntity>);
+    return this.update(id, { is_read: true });
   }
 
   async markAllAsRead(userId: string): Promise<number> {

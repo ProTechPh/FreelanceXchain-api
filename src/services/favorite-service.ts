@@ -1,9 +1,10 @@
 import { logger } from '../config/logger.js';
-import { Favorite } from '../models/favorite.js';
+import type { Favorite } from '../models/favorite.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { errorResult, successResult } from '../types/service-result.js';
 import { favoriteRepository } from '../repositories/favorites-repository.js';
-import { projectRepository } from '../repositories/project-repository.js';
-import { userRepository } from '../repositories/user-repository.js';
+import { projectRepository, type ProjectEntity } from '../repositories/project-repository.js';
+import { userRepository, type UserEntity } from '../repositories/user-repository.js';
 
 /**
  * Add a favorite (project or freelancer)
@@ -18,13 +19,7 @@ export async function addFavorite(
     const existing = await favoriteRepository.findByUserAndTarget(userId, targetType, targetId);
 
     if (existing) {
-      return {
-        success: false,
-        error: {
-          code: 'ALREADY_FAVORITED',
-          message: 'This item is already in your favorites',
-        },
-      };
+      return errorResult('ALREADY_FAVORITED', 'This item is already in your favorites');
     }
 
     // Verify target exists
@@ -34,13 +29,7 @@ export async function addFavorite(
         : await userRepository.getUserById(targetId);
 
     if (!target) {
-      return {
-        success: false,
-        error: {
-          code: 'TARGET_NOT_FOUND',
-          message: `${targetType} not found`,
-        },
-      };
+      return errorResult('TARGET_NOT_FOUND', `${targetType} not found`);
     }
 
     // Create favorite
@@ -48,28 +37,19 @@ export async function addFavorite(
       user_id: userId,
       target_type: targetType,
       target_id: targetId,
-    } as any);
+    });
 
-    return {
-      success: true,
-      data: {
-        id: created.id,
-        userId: created.user_id,
-        targetType: created.target_type,
-        targetId: created.target_id,
-        createdAt: created.created_at,
-      } as Favorite,
-    };
-  } catch (error) {
-    logger.error('Unexpected error in addFavorite', { error, userId, targetType, targetId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      id: created.id,
+      userId: created.user_id,
+      targetType: created.target_type,
+      targetId: created.target_id,
+      createdAt: created.created_at,
+    });
+      } catch (error) {
+      logger.error('Unexpected error in addFavorite', { error, userId, targetType, targetId });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -83,19 +63,10 @@ export async function removeFavorite(
   try {
     await favoriteRepository.removeByUserAndTarget(userId, targetType, targetId);
 
-    return {
-      success: true,
-      data: undefined as unknown as void,
-    };
+    return successResult(undefined as unknown as void);
   } catch (error) {
     logger.error('Unexpected error in removeFavorite', { error, userId, targetType, targetId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -120,21 +91,21 @@ export async function getUserFavorites(
     const [projectMap, userMap] = await Promise.all([
       projectIds.length > 0
         ? Promise.all(projectIds.map(id => projectRepository.getById(id))).then(results => {
-            const m = new Map<string, any>();
+            const m = new Map<string, ProjectEntity>();
             results.forEach(item => { if (item) m.set(item.id, item); });
             return m;
           })
-        : Promise.resolve(new Map<string, any>()),
+        : Promise.resolve(new Map<string, ProjectEntity>()),
       userIds.length > 0
         ? Promise.all(userIds.map(id => userRepository.getUserById(id))).then(results => {
-            const m = new Map<string, any>();
+            const m = new Map<string, UserEntity>();
             results.forEach(item => { if (item) m.set(item.id, item); });
             return m;
           })
-        : Promise.resolve(new Map<string, any>()),
+        : Promise.resolve(new Map<string, UserEntity>()),
     ]);
 
-    const enrichedFavorites: (Favorite & { target: any })[] = favorites.map((fav) => {
+    const enrichedFavorites: (Favorite & { target: ProjectEntity | UserEntity | null })[] = favorites.map((fav) => {
       const targetMap = fav.target_type === 'project' ? projectMap : userMap;
       return {
         id: fav.id,
@@ -146,19 +117,10 @@ export async function getUserFavorites(
       };
     });
 
-    return {
-      success: true,
-      data: enrichedFavorites,
-    };
+    return successResult(enrichedFavorites);
   } catch (error) {
     logger.error('Unexpected error in getUserFavorites', { error, userId, targetType });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -173,18 +135,9 @@ export async function isFavorited(
   try {
     const existing = await favoriteRepository.findByUserAndTarget(userId, targetType, targetId);
 
-    return {
-      success: true,
-      data: existing !== null,
-    };
+    return successResult(existing !== null);
   } catch (error) {
     logger.error('Unexpected error in isFavorited', { error, userId, targetType, targetId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }

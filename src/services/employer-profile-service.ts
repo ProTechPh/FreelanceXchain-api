@@ -3,6 +3,7 @@ import { employerProfileRepository, EmployerProfileEntity } from '../repositorie
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 
 export type CreateEmployerProfileInput = {
   companyName: string;
@@ -33,10 +34,7 @@ export async function createEmployerProfile(
 ): Promise<EmployerProfileServiceResult<EmployerProfile>> {
   const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
   if (existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_EXISTS', message: 'Employer profile already exists for this user' },
-    };
+    return errorResult('PROFILE_EXISTS', 'Employer profile already exists for this user');
   }
 
   const profileEntity: Omit<EmployerProfileEntity, 'created_at' | 'updated_at'> = {
@@ -50,7 +48,7 @@ export async function createEmployerProfile(
   };
 
   const createdEntity = await employerProfileRepository.createProfile(profileEntity);
-  return { success: true, data: mapEmployerProfileFromEntity(createdEntity) };
+  return successResult(mapEmployerProfileFromEntity(createdEntity));
 }
 
 /**
@@ -64,30 +62,18 @@ export async function createEmployerProfileFromKyc(
   // Check if profile already exists
   const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
   if (existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_EXISTS', message: 'Employer profile already exists for this user' },
-    };
+    return errorResult('PROFILE_EXISTS', 'Employer profile already exists for this user');
   }
 
   // Get KYC data
   const kycResult = await getProfileDataFromKyc(userId);
   if (!kycResult.success) {
-    return {
-      success: false,
-      error: { 
-        code: 'KYC_NOT_APPROVED', 
-        message: kycResult.error.message || 'KYC verification must be approved before creating profile' 
-      },
-    };
+    return errorResult('KYC_NOT_APPROVED', kycResult.error.message || 'KYC verification must be approved before creating profile');
   }
 
   const kycData = kycResult.data;
   if (!kycData) {
-    return {
-      success: false,
-      error: { code: 'KYC_NOT_APPROVED', message: 'No KYC data available' },
-    };
+    return errorResult('KYC_NOT_APPROVED', 'No KYC data available');
   }
 
   // Build default description from KYC data if not provided
@@ -106,7 +92,7 @@ export async function createEmployerProfileFromKyc(
   };
 
   const createdEntity = await employerProfileRepository.createProfile(profileEntity);
-  return { success: true, data: mapEmployerProfileFromEntity(createdEntity) };
+  return successResult(mapEmployerProfileFromEntity(createdEntity));
 }
 
 export async function getEmployerProfileByUserId(
@@ -114,12 +100,9 @@ export async function getEmployerProfileByUserId(
 ): Promise<EmployerProfileServiceResult<EmployerProfile>> {
   const profileEntity = await employerProfileRepository.getProfileByUserId(userId);
   if (!profileEntity) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Employer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Employer profile not found');
   }
-  return { success: true, data: mapEmployerProfileFromEntity(profileEntity) };
+  return successResult(mapEmployerProfileFromEntity(profileEntity));
 }
 
 export async function updateEmployerProfile(
@@ -128,10 +111,7 @@ export async function updateEmployerProfile(
 ): Promise<EmployerProfileServiceResult<EmployerProfile>> {
   const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
   if (!existingProfile) {
-    return {
-      success: false,
-      error: { code: 'PROFILE_NOT_FOUND', message: 'Employer profile not found' },
-    };
+    return errorResult('PROFILE_NOT_FOUND', 'Employer profile not found');
   }
 
   const updates: Partial<EmployerProfileEntity> = {};
@@ -141,11 +121,8 @@ export async function updateEmployerProfile(
 
   const updatedEntity = await employerProfileRepository.updateProfile(existingProfile.id, updates);
   if (!updatedEntity) {
-    return {
-      success: false,
-      error: { code: 'UPDATE_FAILED', message: 'Failed to update profile' },
-    };
+    return errorResult('UPDATE_FAILED', 'Failed to update profile');
   }
 
-  return { success: true, data: mapEmployerProfileFromEntity(updatedEntity) };
+  return successResult(mapEmployerProfileFromEntity(updatedEntity));
 }

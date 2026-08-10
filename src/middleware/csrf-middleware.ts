@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { randomBytes } from 'crypto';
 import { doubleCsrf } from 'csrf-csrf';
 import { logger } from '../config/logger.js';
+import { getErrorMessage } from '../utils/index.js';
+import { getRequestId, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 
 const csrfSecret = process.env['CSRF_SECRET'] ?? randomBytes(32).toString('hex');
 if (!process.env['CSRF_SECRET']) {
@@ -64,7 +66,7 @@ function isExemptPath(path: string): boolean {
 }
 
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
-  const requestId = req.headers['x-request-id'] ?? 'unknown';
+  const requestId = getRequestId(req);
 
   if (process.env.NODE_ENV === 'test') {
     next();
@@ -81,24 +83,17 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
     return;
   }
 
-  doubleCsrfProtection(req, res, (err?: any) => {
+  doubleCsrfProtection(req, res, (err?: unknown) => {
     if (err) {
       logger.warn('CSRF validation failed', {
         requestId,
         path: req.path,
         method: req.method,
         ip: req.ip,
-        error: err.message,
+        error: getErrorMessage(err),
       });
 
-      res.status(403).json({
-        error: {
-          code: 'CSRF_VALIDATION_FAILED',
-          message: 'Invalid or missing CSRF token',
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 403, 'CSRF_VALIDATION_FAILED', 'Invalid or missing CSRF token', requestId);
       return;
     }
 
@@ -107,7 +102,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
 }
 
 export function generateCsrfToken(req: Request, res: Response): void {
-  const requestId = req.headers['x-request-id'] ?? 'unknown';
+  const requestId = getRequestId(req);
 
   try {
     if (typeof csrfTokenGenerator !== 'function') {
@@ -125,12 +120,10 @@ export function generateCsrfToken(req: Request, res: Response): void {
       tokenGenerated: !!token,
     });
 
-    res.status(200).json({
+    sendSuccessResponse(res, 200, {
       message: 'CSRF token generated and set in cookie',
       cookieName,
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    }, requestId);
   } catch (error) {
     logger.error('Failed to generate CSRF token', {
       requestId,
@@ -138,13 +131,6 @@ export function generateCsrfToken(req: Request, res: Response): void {
       stack: error instanceof Error ? error.stack : undefined,
     });
 
-    res.status(500).json({
-      error: {
-        code: 'CSRF_TOKEN_GENERATION_FAILED',
-        message: 'Failed to generate CSRF token',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 500, 'CSRF_TOKEN_GENERATION_FAILED', 'Failed to generate CSRF token', requestId);
   }
 }

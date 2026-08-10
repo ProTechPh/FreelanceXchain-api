@@ -1,5 +1,6 @@
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { getErrorMessageOr } from '../utils/index.js';
 
 export type ReviewEntity = {
   id: string;
@@ -33,17 +34,9 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as ReviewEntity;
-      });
-    } catch (error: any) {
-      throw new Error(`Failed to find reviews: ${error.message}`);
+      return response.documents.map(doc => fromAppwriteDoc<ReviewEntity>(doc));
+    } catch (error) {
+      throw new Error(`Failed to find reviews: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -73,18 +66,10 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
           Query.offset(offset),
         ]
       );
-      const items = response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as ReviewEntity;
-      });
+      const items = response.documents.map(doc => fromAppwriteDoc<ReviewEntity>(doc));
       return { items, total, hasMore: items.length === limit };
-    } catch (error: any) {
-      throw new Error(`Failed to find reviews: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to find reviews: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -102,7 +87,7 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
       if (reviews.length === 0) {
         return { average: 0, count: 0 };
       }
-      const totalRating = reviews.reduce((sum: number, r: any) => sum + (r.rating || 0), 0);
+      const totalRating = reviews.reduce((sum, r) => sum + Number(r.rating ?? 0), 0);
       return {
         average: totalRating / reviews.length,
         count: reviews.length,
@@ -124,8 +109,8 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
         ]
       );
       return response.documents.length > 0;
-    } catch (error: any) {
-      throw new Error(`Failed to check review: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to check review: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -139,17 +124,9 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
           Query.limit(1000),
         ]
       );
-      return response.documents.map((doc: any) => {
-        const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-        return {
-          id: $id,
-          ...attrs,
-          created_at: attrs.created_at ?? $createdAt,
-          updated_at: attrs.updated_at ?? $updatedAt,
-        } as ReviewEntity;
-      });
-    } catch (error: any) {
-      throw new Error(`Failed to query reviews: ${error.message}`);
+      return response.documents.map(doc => fromAppwriteDoc<ReviewEntity>(doc));
+    } catch (error) {
+      throw new Error(`Failed to query reviews: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 }

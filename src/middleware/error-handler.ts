@@ -1,21 +1,12 @@
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../config/logger.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 
 export type ValidationError = {
   field: string;
   message: string;
   value?: unknown;
-};
-
-export type ErrorResponse = {
-  error: {
-    code: string;
-    message: string;
-    details?: ValidationError[] | undefined;
-  };
-  timestamp: string;
-  requestId: string;
 };
 
 export class AppError extends Error {
@@ -81,16 +72,7 @@ export function errorHandler(
       });
     }
 
-    const response: ErrorResponse = {
-      error: {
-        code: err.code,
-        message: err.message,
-        details: err.details,
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    };
-    res.status(err.statusCode).json(response);
+    sendErrorResponse(res, err.statusCode, err.code, err.message, requestId, err.details);
     return;
   }
 
@@ -101,13 +83,5 @@ export function errorHandler(
     statusCode: 500,
   });
 
-  const response: ErrorResponse = {
-    error: {
-      code: 'INTERNAL_ERROR',
-      message: 'An unexpected error occurred',
-    },
-    timestamp: new Date().toISOString(),
-    requestId,
-  };
-  res.status(500).json(response);
+  sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred', requestId);
 }

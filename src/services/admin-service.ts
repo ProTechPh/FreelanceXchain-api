@@ -11,7 +11,9 @@ import {
   updateKycVerification,
 } from '../repositories/didit-kyc-repository.js';
 import type { KycVerification } from '../models/didit-kyc.js';
+import type { DisputeEntity } from '../repositories/dispute-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { errorResult, successResult } from '../types/service-result.js';
 import { generateId } from '../utils/id.js';
 
 export interface PlatformStats {
@@ -48,7 +50,7 @@ export interface DisputeFilters {
 }
 
 export interface DisputeManagementData {
-  disputes: any[];
+  disputes: DisputeEntity[];
   total: number;
   pendingCount: number;
   resolvedCount: number;
@@ -97,31 +99,22 @@ export async function getPlatformStats(): Promise<ServiceResult<PlatformStats>> 
       completedTransactions.reduce((sum, t) => sum + (t.amount || 0), 0) * 100
     ) / 100;
 
-    return {
-      success: true,
-      data: {
-        totalUsers,
-        totalFreelancers,
-        totalEmployers,
-        totalProjects,
-        totalContracts,
-        totalDisputes,
-        totalTransactionVolume,
-        activeProjects,
-        completedProjects,
-        averageProjectBudget,
-      },
-    };
-  } catch (error) {
-    logger.error('Unexpected error in getPlatformStats', { error });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      totalUsers,
+      totalFreelancers,
+      totalEmployers,
+      totalProjects,
+      totalContracts,
+      totalDisputes,
+      totalTransactionVolume,
+      activeProjects,
+      completedProjects,
+      averageProjectBudget,
+    });
+      } catch (error) {
+      logger.error('Unexpected error in getPlatformStats', { error });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -148,7 +141,10 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
       filtered = filtered.filter(u => u.is_suspended === (filters.status === 'suspended'));
     }
     if (filters?.kycStatus) {
-      filtered = filtered.filter(u => u.kyc_status === filters.kycStatus);
+      // KYC status may be mirrored onto the user document at runtime by the Didit flow.
+      filtered = filtered.filter(u =>
+        (u as UserEntity & { kyc_status?: string }).kyc_status === filters.kycStatus
+      );
     }
     if (filters?.search) {
       const term = filters.search.toLowerCase();
@@ -159,23 +155,14 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
 
     filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    return {
-      success: true,
-      data: {
-        users: filtered,
-        total: filtered.length,
-      },
-    };
-  } catch (error) {
-    logger.error('Failed to fetch user management data', { error, filters });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      users: filtered,
+      total: filtered.length,
+    });
+      } catch (error) {
+      logger.error('Failed to fetch user management data', { error, filters });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -186,10 +173,7 @@ export async function suspendUser(userId: string, reason: string): Promise<Servi
     const existing = await userRepository.getUserById(userId);
 
     if (!existing) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'User not found' }
-      };
+      return errorResult('NOT_FOUND', 'User not found');
     }
 
     const updated = await userRepository.updateUser(userId, {
@@ -199,19 +183,10 @@ export async function suspendUser(userId: string, reason: string): Promise<Servi
 
     logger.info('ADMIN ACTION: user suspended', { actor: 'admin', userId, reason });
 
-    return {
-      success: true,
-      data: updated as UserEntity,
-    };
+    return successResult(updated as UserEntity);
   } catch (error) {
     logger.error('Unexpected error in suspendUser', { error, userId, reason });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -223,10 +198,7 @@ export async function unsuspendUser(userId: string): Promise<ServiceResult<UserE
     const existing = await userRepository.getUserById(userId);
 
     if (!existing) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'User not found' }
-      };
+      return errorResult('NOT_FOUND', 'User not found');
     }
 
     const updated = await userRepository.updateUser(userId, {
@@ -236,19 +208,10 @@ export async function unsuspendUser(userId: string): Promise<ServiceResult<UserE
 
     logger.info('ADMIN ACTION: user unsuspended', { actor: 'admin', userId });
 
-    return {
-      success: true,
-      data: updated as UserEntity,
-    };
+    return successResult(updated as UserEntity);
   } catch (error) {
     logger.error('Unexpected error in unsuspendUser', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -264,10 +227,7 @@ export async function verifyUser(
     const existing = await userRepository.getUserById(userId);
 
     if (!existing) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'User not found' }
-      };
+      return errorResult('NOT_FOUND', 'User not found');
     }
 
     if (userId === adminUserId) {
@@ -319,19 +279,10 @@ export async function verifyUser(
 
     logger.info('ADMIN ACTION: user manually verified', { actor: adminUserId, userId });
 
-    return {
-      success: true,
-      data: verification,
-    };
+    return successResult(verification);
   } catch (error) {
     logger.error('Unexpected error in verifyUser', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -350,13 +301,10 @@ export async function updateUser(
     }
     if (updates.role !== undefined) {
       const validRoles = ['freelancer', 'employer', 'admin'] as const;
-      if (!validRoles.includes(updates.role as any)) {
-        return {
-          success: false,
-          error: { code: 'INVALID_ROLE', message: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
-        };
+      if (!(validRoles as readonly string[]).includes(updates.role)) {
+        return errorResult('INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`);
       }
-      updatesObj.role = updates.role as any;
+      updatesObj.role = updates.role as UserEntity['role'];
     }
     if (updates.isActive !== undefined) {
       updatesObj.is_suspended = !updates.isActive;
@@ -364,16 +312,13 @@ export async function updateUser(
 
     if (Object.keys(updatesObj).length === 0) {
       const existing = await userRepository.getUserById(userId);
-      return { success: true, data: existing as UserEntity };
+      return successResult(existing as UserEntity);
     }
 
     const existing = await userRepository.getUserById(userId);
 
     if (!existing) {
-      return {
-        success: false,
-        error: { code: 'NOT_FOUND', message: 'User not found' }
-      };
+      return errorResult('NOT_FOUND', 'User not found');
     }
 
     const updated = await userRepository.updateUser(userId, updatesObj);
@@ -385,19 +330,10 @@ export async function updateUser(
       changes: updatesObj,
     });
 
-    return {
-      success: true,
-      data: updated as UserEntity,
-    };
+    return successResult(updated as UserEntity);
   } catch (error) {
     logger.error('Unexpected error in updateUser', { error, userId, updates });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -412,28 +348,20 @@ export async function getDisputeManagement(filters?: DisputeFilters): Promise<Se
     }
     const { items: disputes } = await disputeRepository.getAllDisputes(disputeOptions);
 
-    const pendingCount = disputes.filter((d: any) => d.status === 'pending').length;
-    const resolvedCount = disputes.filter((d: any) => d.status === 'resolved').length;
+    // The runtime status may include values outside the modeled union (e.g. 'pending').
+    const pendingCount = disputes.filter(d => (d.status as string) === 'pending').length;
+    const resolvedCount = disputes.filter(d => d.status === 'resolved').length;
 
-    return {
-      success: true,
-      data: {
-        disputes,
-        total: disputes.length,
-        pendingCount,
-        resolvedCount,
-      },
-    };
-  } catch (error) {
-    logger.error('Failed to fetch dispute management data', { error, filters });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      disputes,
+      total: disputes.length,
+      pendingCount,
+      resolvedCount,
+    });
+      } catch (error) {
+      logger.error('Failed to fetch dispute management data', { error, filters });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -454,23 +382,14 @@ export async function getSystemHealth(): Promise<ServiceResult<SystemHealth>> {
     // For now, let's assume healthy if DB is healthy
     const storageHealth: 'healthy' | 'unhealthy' = 'healthy';
 
-    return {
-      success: true,
-      data: {
-        database: databaseHealth,
-        storage: storageHealth,
-        uptime: Math.round(process.uptime()),
-        timestamp: new Date().toISOString(),
-      },
-    };
-  } catch (error) {
-    logger.error('Unexpected error in getSystemHealth', { error });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      database: databaseHealth,
+      storage: storageHealth,
+      uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
+      } catch (error) {
+      logger.error('Unexpected error in getSystemHealth', { error });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }

@@ -3,7 +3,7 @@
  * Real blockchain integration for escrow system using deployed smart contracts
  */
 
-import { Contract, TransactionReceipt } from 'ethers';
+import type { Contract, ContractTransactionResponse, ContractTransactionReceipt, TransactionReceipt } from 'ethers';
 import { getContractWithSigner, getContractWithArbiterSigner, getContract, isWeb3Available, getWallet } from './web3-client.js';
 import { FreelanceEscrowABI, FreelanceEscrowBytecode } from './contract-abis.js';
 import { ContractFactory } from 'ethers';
@@ -80,17 +80,63 @@ export async function deployEscrowContract(
 }
 
 /**
+ * Typed view of the FreelanceEscrow ABI surface used by this module.
+ * ethers.Contract is intentionally untyped for arbitrary ABIs, so we declare
+ * the exact methods we call here instead of casting to `any` at each call site.
+ */
+type EscrowContract = Contract & {
+  employer(): Promise<string>;
+  freelancer(): Promise<string>;
+  arbiter(): Promise<string>;
+  totalAmount(): Promise<bigint>;
+  releasedAmount(): Promise<bigint>;
+  isActive(): Promise<boolean>;
+  contractId(): Promise<string>;
+  getBalance(): Promise<bigint>;
+  getRemainingAmount(): Promise<bigint>;
+  getMilestoneCount(): Promise<bigint>;
+  getMilestone(index: number): Promise<[bigint, bigint, string]>;
+  pendingWithdrawals(party: string): Promise<bigint>;
+  submitMilestone(index: number): Promise<ContractTransactionResponse>;
+  approveMilestone(index: number): Promise<ContractTransactionResponse>;
+  disputeMilestone(index: number): Promise<ContractTransactionResponse>;
+  resolveDispute(index: number, freelancerBps: number): Promise<ContractTransactionResponse>;
+  refundMilestone(index: number): Promise<ContractTransactionResponse>;
+  cancelContract(): Promise<ContractTransactionResponse>;
+  withdraw(): Promise<ContractTransactionResponse>;
+};
+
+/**
+ * Wait for a contract transaction to be mined and return its receipt.
+ * ethers returns null when the transaction was replaced or dropped.
+ */
+async function waitForReceipt(tx: ContractTransactionResponse): Promise<ContractTransactionReceipt> {
+  const receipt = await tx.wait();
+  if (!receipt) {
+    throw new Error('Transaction was replaced or dropped');
+  }
+  return receipt;
+}
+
+/**
  * Get escrow contract instance for reading
  */
-function getEscrowContract(escrowAddress: string): Contract {
-  return getContract(escrowAddress, FreelanceEscrowABI);
+function getEscrowContract(escrowAddress: string): EscrowContract {
+  return getContract(escrowAddress, FreelanceEscrowABI) as EscrowContract;
 }
 
 /**
  * Get escrow contract instance for writing
  */
-function getEscrowContractWithSigner(escrowAddress: string): Contract {
-  return getContractWithSigner(escrowAddress, FreelanceEscrowABI);
+function getEscrowContractWithSigner(escrowAddress: string): EscrowContract {
+  return getContractWithSigner(escrowAddress, FreelanceEscrowABI) as EscrowContract;
+}
+
+/**
+ * Get escrow contract instance for arbiter-only writing operations
+ */
+function getEscrowContractWithArbiterSigner(escrowAddress: string): EscrowContract {
+  return getContractWithArbiterSigner(escrowAddress, FreelanceEscrowABI) as EscrowContract;
 }
 
 /**
@@ -104,14 +150,14 @@ export async function getEscrowInfo(escrowAddress: string): Promise<EscrowInfo> 
   const contract = getEscrowContract(escrowAddress);
 
   const [employer, freelancer, arbiter, totalAmount, releasedAmount, isActive, contractId, balance] = await Promise.all([
-    (contract as any).employer(),
-    (contract as any).freelancer(),
-    (contract as any).arbiter(),
-    (contract as any).totalAmount(),
-    (contract as any).releasedAmount(),
-    (contract as any).isActive(),
-    (contract as any).contractId(),
-    (contract as any).getBalance(),
+    contract.employer(),
+    contract.freelancer(),
+    contract.arbiter(),
+    contract.totalAmount(),
+    contract.releasedAmount(),
+    contract.isActive(),
+    contract.contractId(),
+    contract.getBalance(),
   ]);
 
   return {
@@ -137,9 +183,9 @@ export async function submitMilestone(
     throw new Error('Web3 is not configured');
   }
 
-  const contract = getEscrowContractWithSigner(escrowAddress);
-  const tx = await (contract as any).submitMilestone(milestoneIndex);
-  const receipt = await tx.wait();
+  const receipt = await waitForReceipt(
+    await getEscrowContractWithSigner(escrowAddress).submitMilestone(milestoneIndex)
+  );
 
   return {
     transactionHash: receipt.hash,
@@ -158,9 +204,9 @@ export async function approveMilestone(
     throw new Error('Web3 is not configured');
   }
 
-  const contract = getEscrowContractWithSigner(escrowAddress);
-  const tx = await (contract as any).approveMilestone(milestoneIndex);
-  const receipt = await tx.wait();
+  const receipt = await waitForReceipt(
+    await getEscrowContractWithSigner(escrowAddress).approveMilestone(milestoneIndex)
+  );
 
   return {
     transactionHash: receipt.hash,
@@ -179,9 +225,9 @@ export async function disputeMilestone(
     throw new Error('Web3 is not configured');
   }
 
-  const contract = getEscrowContractWithSigner(escrowAddress);
-  const tx = await (contract as any).disputeMilestone(milestoneIndex);
-  const receipt = await tx.wait();
+  const receipt = await waitForReceipt(
+    await getEscrowContractWithSigner(escrowAddress).disputeMilestone(milestoneIndex)
+  );
 
   return {
     transactionHash: receipt.hash,
@@ -213,9 +259,9 @@ export async function resolveDispute(
   }
 
   // Requires PLATFORM_ARBITER_PRIVATE_KEY — throws a clear error if missing
-  const contract = getContractWithArbiterSigner(escrowAddress, FreelanceEscrowABI);
-  const tx = await (contract as any).resolveDispute(milestoneIndex, freelancerBps);
-  const receipt = await tx.wait();
+  const receipt = await waitForReceipt(
+    await getEscrowContractWithArbiterSigner(escrowAddress).resolveDispute(milestoneIndex, freelancerBps)
+  );
 
   return {
     transactionHash: receipt.hash,
@@ -234,7 +280,7 @@ export async function getPendingWithdrawals(escrowAddress: string, party: string
   }
 
   const contract = getEscrowContract(escrowAddress);
-  return await (contract as any).pendingWithdrawals(party);
+  return contract.pendingWithdrawals(party);
 }
 
 /**
@@ -251,9 +297,9 @@ export async function withdrawFromEscrow(
     throw new Error('Web3 is not configured');
   }
 
-  const contract = getEscrowContractWithSigner(escrowAddress);
-  const tx = await (contract as any).withdraw();
-  const receipt = await tx.wait();
+  const receipt = await waitForReceipt(
+    await getEscrowContractWithSigner(escrowAddress).withdraw()
+  );
 
   return {
     transactionHash: receipt.hash,
@@ -272,9 +318,9 @@ export async function refundMilestone(
     throw new Error('Web3 is not configured');
   }
 
-  const contract = getEscrowContractWithSigner(escrowAddress);
-  const tx = await (contract as any).refundMilestone(milestoneIndex);
-  const receipt = await tx.wait();
+  const receipt = await waitForReceipt(
+    await getEscrowContractWithSigner(escrowAddress).refundMilestone(milestoneIndex)
+  );
 
   return {
     transactionHash: receipt.hash,
@@ -292,9 +338,9 @@ export async function cancelContract(
     throw new Error('Web3 is not configured');
   }
 
-  const contract = getEscrowContractWithSigner(escrowAddress);
-  const tx = await (contract as any).cancelContract();
-  const receipt = await tx.wait();
+  const receipt = await waitForReceipt(
+    await getEscrowContractWithSigner(escrowAddress).cancelContract()
+  );
 
   return {
     transactionHash: receipt.hash,
@@ -314,7 +360,7 @@ export async function getMilestone(
   }
 
   const contract = getEscrowContract(escrowAddress);
-  const milestone = await (contract as any).getMilestone(milestoneIndex);
+  const milestone = await contract.getMilestone(milestoneIndex);
 
   const statusMap: BlockchainMilestoneStatus[] = ['Pending', 'Submitted', 'Approved', 'Disputed', 'Refunded'];
   return {
@@ -333,7 +379,7 @@ export async function getMilestoneCount(escrowAddress: string): Promise<number> 
   }
 
   const contract = getEscrowContract(escrowAddress);
-  const count = await (contract as any).getMilestoneCount();
+  const count = await contract.getMilestoneCount();
   return Number(count);
 }
 
@@ -356,7 +402,7 @@ export async function getEscrowBalance(escrowAddress: string): Promise<bigint> {
   }
 
   const contract = getEscrowContract(escrowAddress);
-  return await (contract as any).getBalance();
+  return contract.getBalance();
 }
 
 /**
@@ -368,5 +414,5 @@ export async function getRemainingAmount(escrowAddress: string): Promise<bigint>
   }
 
   const contract = getEscrowContract(escrowAddress);
-  return await (contract as any).getRemainingAmount();
+  return contract.getRemainingAmount();
 }

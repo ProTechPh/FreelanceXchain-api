@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import { 
   getUserTransactions, 
@@ -21,11 +22,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const status = req.query['status'] as string | undefined;
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -37,11 +34,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   });
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error?.code, result.error?.message, requestId);
     return;
   }
 
@@ -54,11 +47,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -66,11 +55,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, requestId);
     return;
   }
 
@@ -83,11 +68,7 @@ router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
@@ -95,11 +76,7 @@ router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID
 
   if (!result.success) {
     const statusCode = result.error?.code === 'CONTRACT_NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    res.status(statusCode).json({
-      error: { code: result.error?.code, message: result.error?.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, requestId);
     return;
   }
 

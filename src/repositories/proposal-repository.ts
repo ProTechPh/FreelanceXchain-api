@@ -1,5 +1,6 @@
-import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
+import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { parseField } from '../utils/index.js';
 import type { FileAttachment } from '../models/milestone.js';
 
 export type ProposalStatus = 'pending' | 'accepted' | 'rejected' | 'withdrawn';
@@ -19,21 +20,15 @@ export type ProposalEntity = {
 
 const COLLECTION_ID = 'proposals';
 
-function mapDoc(doc: Record<string, any>): ProposalEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
-  /* istanbul ignore next -- parse fallback for null/undefined is tested via getProposalById with null fields */
-  const parse = (val: any, fallback: any = undefined) => {
-    if (val === undefined || val === null) return fallback;
-    if (typeof val === 'string') { try { return JSON.parse(val); } catch { return fallback; } }
-    return val;
-  };
+function normalizeProposal(proposal: ProposalEntity): ProposalEntity {
   return {
-    id: $id,
-    ...attrs,
-    attachments: parse(attrs.attachments, []),
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  } as ProposalEntity;
+    ...proposal,
+    attachments: parseField(proposal.attachments, []),
+  };
+}
+
+function mapDoc(doc: Record<string, unknown>): ProposalEntity {
+  return normalizeProposal(fromAppwriteDoc<ProposalEntity>(doc));
 }
 
 export class ProposalRepository extends BaseRepository<ProposalEntity> {
@@ -42,21 +37,21 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
   }
 
   async createProposal(proposal: Omit<ProposalEntity, 'created_at' | 'updated_at'>): Promise<ProposalEntity> {
-    const data: Record<string, any> = { ...proposal };
+    const data: Record<string, unknown> = { ...proposal };
     if (data.attachments) data.attachments = JSON.stringify(data.attachments);
-    return this.create(data as any);
+    return this.create(data as Omit<ProposalEntity, 'created_at' | 'updated_at'>);
   }
 
   async getProposalById(id: string): Promise<ProposalEntity | null> {
     const doc = await this.getById(id);
-    return doc ? mapDoc(doc as any) : null;
+    return doc ? normalizeProposal(doc) : null;
   }
 
   async updateProposal(id: string, updates: Partial<ProposalEntity>): Promise<ProposalEntity | null> {
-    const data: Record<string, any> = { ...updates };
+    const data: Record<string, unknown> = { ...updates };
     if (data.attachments) data.attachments = JSON.stringify(data.attachments);
-    const doc = await this.update(id, data as any);
-    return doc ? mapDoc(doc as any) : null;
+    const doc = await this.update(id, data as Partial<ProposalEntity>);
+    return doc ? normalizeProposal(doc) : null;
   }
 
   async findProposalById(id: string): Promise<ProposalEntity | null> {

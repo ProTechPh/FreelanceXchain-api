@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
 import { ValidationError } from './error-handler.js';
+import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const APPWRITE_DOCUMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/;
@@ -14,7 +15,7 @@ export function isValidAppwriteDocumentId(value: string): boolean {
 
 export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
   return (req: Request, res: Response, next: NextFunction): void => {
-    const requestId = (req.headers['x-request-id'] as string) ?? 'unknown';
+    const requestId = getRequestId(req);
     const errors: ValidationError[] = [];
 
     for (const paramName of paramNames) {
@@ -29,15 +30,7 @@ export function validateUUID(paramNames: string[] = ['id']): RequestHandler {
     }
 
     if (errors.length > 0) {
-      res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Invalid UUID format',
-          details: errors,
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid UUID format', requestId, errors);
       return;
     }
 
@@ -89,7 +82,7 @@ type SchemaProperty = {
   maximum?: number;
   minItems?: number;
   maxItems?: number;
-  enum?: any[];
+  enum?: unknown[];
   properties?: Record<string, SchemaProperty>;
   items?: SchemaProperty;
   requiredProperties?: string[];
@@ -106,7 +99,7 @@ type ValidationResult = {
   errors: { field: string; message: string }[];
 };
 
-export function validateRequest(data: any, schema: Schema): ValidationResult {
+export function validateRequest(data: Record<string, unknown> | undefined, schema: Schema): ValidationResult {
   const errors: { field: string; message: string }[] = [];
 
   if (!schema.properties) {
@@ -210,8 +203,9 @@ export function validateRequest(data: any, schema: Schema): ValidationResult {
     }
 
     if (prop.type === 'object' && prop.properties && typeof value === 'object' && !Array.isArray(value)) {
+      const objectValue = value as Record<string, unknown>;
       for (const [nestedKey, nestedProp] of Object.entries(prop.properties)) {
-        const nestedValue = value[nestedKey];
+        const nestedValue = objectValue[nestedKey];
         if (nestedProp.type === 'string' && nestedValue !== undefined && typeof nestedValue !== 'string') {
           errors.push({ field: `${key}.${nestedKey}`, message: `"${nestedKey}" must be a string` });
         }
@@ -221,7 +215,7 @@ export function validateRequest(data: any, schema: Schema): ValidationResult {
       }
       if (prop.requiredProperties) {
         for (const reqProp of prop.requiredProperties) {
-          if (value[reqProp] === undefined || value[reqProp] === null) {
+          if (objectValue[reqProp] === undefined || objectValue[reqProp] === null) {
             errors.push({ field: `${key}.${reqProp}`, message: `"${reqProp}" is required in "${key}"` });
           }
         }
@@ -270,9 +264,9 @@ export function validate(schema: Schema | RequestSchema): RequestHandler {
     let valid = true;
     const allErrors: { field: string; message: string }[] = [];
 
-    const coerceQueryParams = (query: any, schemaObj: Schema): any => {
+    const coerceQueryParams = (query: Record<string, unknown>, schemaObj: Schema): Record<string, unknown> => {
       if (!schemaObj.properties) return query;
-      const coerced: any = { ...query };
+      const coerced: Record<string, unknown> = { ...query };
       for (const [key, prop] of Object.entries(schemaObj.properties)) {
         if (coerced[key] === undefined) continue;
         if (prop.type === 'number' && typeof coerced[key] === 'string') {
@@ -323,16 +317,8 @@ export function validate(schema: Schema | RequestSchema): RequestHandler {
     }
 
     if (!valid) {
-      const requestId = (req.headers['x-request-id'] as string) ?? 'unknown';
-      res.status(400).json({
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Validation failed',
-          details: allErrors,
-        },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      const requestId = getRequestId(req);
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Validation failed', requestId, allErrors);
       return;
     }
 

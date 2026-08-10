@@ -3,6 +3,7 @@ import { projectRepository, ProjectEntity } from '../repositories/project-reposi
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult } from '../types/service-result.js';
 import { logger } from '../config/logger.js';
 
 // TODO: Multi-filter search currently chains individual repository calls and merges client-side.
@@ -153,10 +154,7 @@ export async function searchProjects(
   // Map entities to models
   const projects = entityResult.items.map(mapProjectFromEntity);
 
-  return {
-    success: true,
-    data: buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset),
-  };
+  return successResult(buildSearchResult(projects, pageSize, entityResult.hasMore, pagination?.offset));
 }
 
 
@@ -218,8 +216,5 @@ export async function searchFreelancers(
   // Map entities to models
   const profiles = entityResult.items.map(mapFreelancerProfileFromEntity);
 
-  return {
-    success: true,
-    data: buildSearchResult(profiles, pageSize, entityResult.hasMore, pagination?.offset),
-  };
+  return successResult(buildSearchResult(profiles, pageSize, entityResult.hasMore, pagination?.offset));
 }

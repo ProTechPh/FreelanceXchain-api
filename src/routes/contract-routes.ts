@@ -5,7 +5,8 @@ import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import { asyncHandler } from '../utils/async-handler.js';
-import { sendErrorResponse } from '../utils/response-helpers.js';
+import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
+import { logger } from '../config/logger.js';
 import {
   getContractById,
   getUserContracts,
@@ -228,11 +229,11 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
 
   // Must be pending
   if (contract.status === 'active' && contract.escrowAddress) {
-    res.status(200).json({
+    sendSuccessResponse(res, 200, {
       message: 'Contract already funded and active',
       escrowAddress: contract.escrowAddress,
       contractStatus: 'active',
-    });
+    }, requestId);
     return;
   }
 
@@ -291,11 +292,11 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     if (statusResult.error.code === 'INVALID_STATUS_TRANSITION') {
       const latestContractResult = await getContractById(contractId);
       if (latestContractResult.success && latestContractResult.data.status === 'active' && latestContractResult.data.escrowAddress) {
-        res.status(200).json({
+        sendSuccessResponse(res, 200, {
           message: 'Contract already funded and active',
           escrowAddress: latestContractResult.data.escrowAddress,
           contractStatus: 'active',
-        });
+        }, requestId);
         return;
       }
     }
@@ -304,11 +305,11 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     return;
   }
 
-  res.status(200).json({
+  sendSuccessResponse(res, 200, {
     message: 'Contract funded and activated',
     escrowAddress,
     contractStatus: 'active',
-  });
+  }, requestId);
 }));
 
 // Get contract funding info (for frontend MetaMask deployment)
@@ -464,7 +465,7 @@ router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateU
       },
     });
   } catch (error) {
-    console.error('Error fetching pending escrow withdrawals:', error);
+    logger.error('Error fetching pending escrow withdrawals', error);
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch pending escrow withdrawals', requestId);
   }
 }));
@@ -533,12 +534,12 @@ router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateL
   try {
     const { withdrawFromEscrow } = await import('../services/escrow-blockchain.js');
     const result = await withdrawFromEscrow(contract.escrowAddress);
-    res.status(200).json({
+    sendSuccessResponse(res, 200, {
       message: 'Escrow withdrawal processed',
       transactionHash: result.transactionHash,
-    });
+    }, requestId);
   } catch (error) {
-    console.error('Error withdrawing from escrow:', error);
+    logger.error('Error withdrawing from escrow', error);
     sendErrorResponse(res, 500, 'WITHDRAW_FAILED', 'Failed to withdraw from escrow', requestId);
   }
 }));
@@ -590,9 +591,7 @@ router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, v
     return;
   }
 
-  res.status(200).json({
-    message: 'Contract cancelled successfully',
-  });
+  sendSuccessResponse(res, 200, { message: 'Contract cancelled successfully' }, requestId);
 }));
 
 /**
@@ -644,7 +643,7 @@ router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID
 
     res.json(result.data);
   } catch (error) {
-    console.error('Error fetching contract disputes:', error);
+    logger.error('Error fetching contract disputes', error);
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch disputes', requestId);
   }
 }));

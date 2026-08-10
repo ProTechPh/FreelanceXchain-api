@@ -4,8 +4,10 @@ import { validateUUID, isValidUUID } from '../middleware/validation-middleware.j
 import { uploadProposalAttachments } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter, apiRateLimiter, withdrawalRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
 import { uploadMultipleFiles, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
+import { logger } from '../config/logger.js';
 
 import {
   submitProposal,
@@ -162,13 +164,13 @@ const router = Router();
  *         description: Duplicate proposal
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via fileUploadRateLimiter middleware
-router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, fileUploadRateLimiter, async (req: Request, res: Response, next) => {
+router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, fileUploadRateLimiter, async (req: Request, res: Response) => {
   const contentType = req.headers['content-type'] || '';
   
   // Route to appropriate handler based on Content-Type
   if (contentType.includes('multipart/form-data')) {
     // Server-side file upload pattern
-    return handleMultipartProposalSubmission(req, res, next);
+    return handleMultipartProposalSubmission(req, res);
   } else {
     // URL-reference pattern (backward compatibility)
     return handleJsonProposalSubmission(req, res);
@@ -178,7 +180,7 @@ router.post('/', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, 
 /**
  * Handle proposal submission with multipart/form-data (server-side upload)
  */
-async function handleMultipartProposalSubmission(req: Request, res: Response, _next: any) {
+async function handleMultipartProposalSubmission(req: Request, res: Response) {
   // Apply file upload middleware
   const middleware = uploadProposalAttachments;
 
@@ -193,7 +195,7 @@ async function handleMultipartProposalSubmission(req: Request, res: Response, _n
     const currentMiddleware = middleware[index++];
     if (!currentMiddleware) return;
     await new Promise<void>((resolve, reject) => {
-      currentMiddleware(req, res, (err?: any) => {
+      currentMiddleware(req, res, (err?: unknown) => {
         if (err) reject(err);
         else resolve();
       });
@@ -210,11 +212,7 @@ async function handleMultipartProposalSubmission(req: Request, res: Response, _n
     
     // Handle unexpected errors
     const requestId = getRequestId(req);
-    res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An error occurred processing the upload', requestId);
   }
 }
 
@@ -226,11 +224,7 @@ async function processMultipartProposal(req: Request, res: Response) {
   const requestId = getRequestId(req);
   
   if (!userId) {
-    return res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
   }
   
   const files = req.files as Express.Multer.File[] | undefined;
@@ -255,19 +249,11 @@ async function processMultipartProposal(req: Request, res: Response) {
   }
   
   if (errors.length > 0) {
-    return res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    return sendValidationError(res, errors, requestId);
   }
   
   if (!files || files.length === 0) {
-    return res.status(400).json({
-      error: { code: 'NO_FILES', message: 'At least 1 file is required' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    return sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 file is required', requestId);
   }
   
   // Upload files to Appwrite Storage
@@ -285,15 +271,7 @@ async function processMultipartProposal(req: Request, res: Response) {
       );
     }
     
-    return res.status(500).json({
-      error: { 
-        code: 'UPLOAD_FAILED', 
-        message: 'Failed to upload one or more files',
-        details: failedUploads.map(r => r.error),
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', requestId, failedUploads.map(r => r.error));
   }
   
   // Extract file metadata
@@ -315,11 +293,7 @@ async function processMultipartProposal(req: Request, res: Response) {
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'DUPLICATE_PROPOSAL') statusCode = 409;
     
-    return res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message, details: result.error.details },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    return sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId, result.error.details);
   }
 
   return res.status(201).json(result.data.proposal);
@@ -334,11 +308,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
   const requestId = getRequestId(req);
 
   if (!userId) {
-    return res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
   }
 
   // Validate input
@@ -359,11 +329,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
   }
 
   if (errors.length > 0) {
-    return res.status(400).json({
-      error: { code: 'VALIDATION_ERROR', message: 'Invalid request data', details: errors },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    return sendValidationError(res, errors, requestId);
   }
 
   const result = await submitProposal(userId, { 
@@ -378,11 +344,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'DUPLICATE_PROPOSAL') statusCode = 409;
     
-    return res.status(statusCode).json({
-      error: { code: result.error.code, message: result.error.message, details: result.error.details },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    return sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId, result.error.details);
   }
 
   return res.status(201).json(result.data.proposal);
@@ -431,11 +393,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
     const result = await getProposalById(id);
 
     if (!result.success) {
-      res.status(404).json({
-        error: { code: result.error.code, message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
       return;
     }
 
@@ -446,19 +404,15 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
       // Check if the user is the employer of the project
       const projectResult = await getProjectById(proposal.projectId);
       if (!projectResult.success || projectResult.data.employer_id !== userId) {
-        res.status(403).json({
-          error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this proposal' },
-          timestamp: new Date().toISOString(),
-          requestId,
-        });
+        sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this proposal', requestId);
         return;
       }
     }
 
     res.status(200).json(result.data);
   } catch (error) {
-    console.error('Error fetching proposal:', error);
-    res.status(500).json({ error: 'Failed to fetch proposal' });
+    logger.error('Error fetching proposal', error);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch proposal', getRequestId(req));
   }
 });
 
@@ -528,11 +482,7 @@ router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer
     const userId = req.user?.userId;
 
     if (!userId) {
-      res.status(401).json({
-        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
       return;
     }
 
@@ -540,28 +490,20 @@ router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer
 
     if (!result.success) {
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 : 400;
-      res.status(statusCode).json({
-        error: { code: result.error.code, message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
       return;
     }
 
     // Authorization check - only the freelancer who submitted the proposal can view employer history
     if (result.data.proposal.freelancerId !== userId) {
-      res.status(403).json({
-        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this proposal' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this proposal', requestId);
       return;
     }
 
     res.status(200).json(result.data);
   } catch (error) {
-    console.error('Error fetching proposal with employer history:', error);
-    res.status(500).json({ error: 'Failed to fetch proposal with employer history' });
+    logger.error('Error fetching proposal with employer history', error);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch proposal with employer history', getRequestId(req));
   }
 });
 
@@ -593,22 +535,14 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateL
   const requestId = getRequestId(req);
 
   if (!userId) {
-    res.status(401).json({
-      error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
     return;
   }
 
   const result = await getProposalsByFreelancer(userId);
 
   if (!result.success) {
-    res.status(400).json({
-      error: { code: result.error.code, message: result.error.message },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
     return;
   }
 
@@ -661,11 +595,7 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
     const requestId = getRequestId(req);
 
     if (!userId) {
-      res.status(401).json({
-        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
       return;
     }
 
@@ -676,11 +606,7 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
       if (result.error.code === 'NOT_FOUND') statusCode = 404;
       if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
       
-      res.status(statusCode).json({
-        error: { code: result.error.code, message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
       return;
     }
 
@@ -689,8 +615,8 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
       contract: result.data.contract,
     });
   } catch (error) {
-    console.error('Error accepting proposal:', error);
-    res.status(500).json({ error: 'Failed to accept proposal' });
+    logger.error('Error accepting proposal', error);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to accept proposal', getRequestId(req));
   }
 });
 
@@ -734,11 +660,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
     const requestId = getRequestId(req);
 
     if (!userId) {
-      res.status(401).json({
-        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
       return;
     }
 
@@ -749,18 +671,14 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
       if (result.error.code === 'NOT_FOUND') statusCode = 404;
       if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
       
-      res.status(statusCode).json({
-        error: { code: result.error.code, message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
       return;
     }
 
     res.status(200).json(result.data.proposal);
   } catch (error) {
-    console.error('Error rejecting proposal:', error);
-    res.status(500).json({ error: 'Failed to reject proposal' });
+    logger.error('Error rejecting proposal', error);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject proposal', getRequestId(req));
   }
 });
 
@@ -805,11 +723,7 @@ router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireV
     const requestId = getRequestId(req);
 
     if (!userId) {
-      res.status(401).json({
-        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
       return;
     }
 
@@ -820,18 +734,14 @@ router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireV
       if (result.error.code === 'NOT_FOUND') statusCode = 404;
       if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
       
-      res.status(statusCode).json({
-        error: { code: result.error.code, message: result.error.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
       return;
     }
 
     res.status(200).json(result.data);
   } catch (error) {
-    console.error('Error withdrawing proposal:', error);
-    res.status(500).json({ error: 'Failed to withdraw proposal' });
+    logger.error('Error withdrawing proposal', error);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to withdraw proposal', getRequestId(req));
   }
 });
 

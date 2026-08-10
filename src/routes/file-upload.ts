@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth-middleware.js';
 import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadFile, deleteFile, getSignedUrl, listUserFiles } from '../utils/storage-uploader.js';
+import { sendErrorResponse, getRequestId } from '../utils/response-helpers.js';
 
 const router = Router();
 
@@ -26,25 +27,25 @@ router.post(
   async (req: Request, res: Response) => {
     const userId = req.user?.userId;
     if (!userId) {
-      res.status(401).json({ error: 'Unauthorized' });
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
       return;
     }
 
     const { bucket, folder } = req.body as { bucket?: string; folder?: string };
 
     if (!bucket) {
-      res.status(400).json({ error: 'Bucket name is required' });
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Bucket name is required', getRequestId(req));
       return;
     }
 
     if (!isValidBucket(bucket)) {
-      res.status(400).json({ error: `Invalid bucket: ${bucket}` });
+      sendErrorResponse(res, 400, 'INVALID_BUCKET', `Invalid bucket: ${bucket}`, getRequestId(req));
       return;
     }
 
     const files = req.files as Express.Multer.File[] | undefined;
     if (!files || files.length === 0) {
-      res.status(400).json({ error: 'No file provided' });
+      sendErrorResponse(res, 400, 'NO_FILES_UPLOADED', 'No file provided', getRequestId(req));
       return;
     }
 
@@ -70,13 +71,13 @@ router.post(
       const result = await uploadFile(uploadOptions);
 
       if (!result.success) {
-        res.status(400).json({ error: result.error });
+        sendErrorResponse(res, 400, 'FILE_UPLOAD_FAILED', result.error, getRequestId(req));
         return;
       }
 
       res.status(200).json({ success: true, url: result.url, path: result.path });
     } catch {
-      res.status(500).json({ error: 'Failed to upload file' });
+      sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to upload file', getRequestId(req));
     }
   }
 );
@@ -84,90 +85,90 @@ router.post(
 router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   if (!userId) {
-    res.status(401).json({ error: 'Unauthorized' });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
     return;
   }
 
   const bucket = req.params['bucket'] as string;
-  const filePath = ((req.params as any)[0] as string | undefined) ?? '';
+  const filePath = (req.params as { 0?: string })[0] ?? '';
 
   if (!isValidBucket(bucket)) {
-    res.status(400).json({ error: `Invalid bucket: ${bucket}` });
+    sendErrorResponse(res, 400, 'INVALID_BUCKET', `Invalid bucket: ${bucket}`, getRequestId(req));
     return;
   }
 
   if (filePath.includes('..') || filePath.includes('\\')) {
-    res.status(400).json({ error: 'Invalid file path' });
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid file path', getRequestId(req));
     return;
   }
 
   const pathStart = filePath.split('/')[0];
   if (pathStart && pathStart !== userId) {
-    res.status(403).json({ error: 'Unauthorized: cannot delete another user\'s file' });
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'Unauthorized: cannot delete another user\'s file', getRequestId(req));
     return;
   }
 
   try {
     const result = await deleteFile(bucket, filePath || userId);
     if (!result.success) {
-      res.status(400).json({ error: result.error });
+      sendErrorResponse(res, 400, 'FILE_DELETE_FAILED', result.error, getRequestId(req));
       return;
     }
     res.status(200).json({ success: true });
   } catch {
-    res.status(500).json({ error: 'Failed to delete file' });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to delete file', getRequestId(req));
   }
 });
 
 router.get('/signed-url/:bucket/*', authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   if (!userId) {
-    res.status(401).json({ error: 'Unauthorized' });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
     return;
   }
 
   const bucket = req.params['bucket'] as string;
-  const filePath = ((req.params as any)[0] as string | undefined) ?? '';
+  const filePath = (req.params as { 0?: string })[0] ?? '';
 
   if (!isValidBucket(bucket)) {
-    res.status(400).json({ error: `Invalid bucket: ${bucket}` });
+    sendErrorResponse(res, 400, 'INVALID_BUCKET', `Invalid bucket: ${bucket}`, getRequestId(req));
     return;
   }
 
   if (filePath.includes('..') || filePath.includes('\\')) {
-    res.status(400).json({ error: 'Invalid file path' });
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid file path', getRequestId(req));
     return;
   }
 
   const pathStart = filePath.split('/')[0];
   if (pathStart && pathStart !== userId) {
-    res.status(403).json({ error: 'Unauthorized: cannot access another user\'s file' });
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'Unauthorized: cannot access another user\'s file', getRequestId(req));
     return;
   }
 
   try {
     const result = await getSignedUrl(bucket, filePath || userId);
     if (!result.success) {
-      res.status(400).json({ error: result.error });
+      sendErrorResponse(res, 400, 'SIGNED_URL_FAILED', result.error, getRequestId(req));
       return;
     }
     res.status(200).json({ success: true, url: result.url });
   } catch {
-    res.status(500).json({ error: 'Failed to get signed URL' });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get signed URL', getRequestId(req));
   }
 });
 
 router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   if (!userId) {
-    res.status(401).json({ error: 'Unauthorized' });
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
     return;
   }
 
   const bucket = req.params['bucket'] as string;
 
   if (!isValidBucket(bucket)) {
-    res.status(400).json({ error: `Invalid bucket: ${bucket}` });
+    sendErrorResponse(res, 400, 'INVALID_BUCKET', `Invalid bucket: ${bucket}`, getRequestId(req));
     return;
   }
 
@@ -178,12 +179,12 @@ router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response) 
     if (folder) listOptions.push(folder);
     const result = await listUserFiles(...listOptions);
     if (!result.success) {
-      res.status(400).json({ error: result.error });
+      sendErrorResponse(res, 400, 'FILE_LIST_FAILED', result.error, getRequestId(req));
       return;
     }
     res.status(200).json({ success: true, files: result.files });
   } catch {
-    res.status(500).json({ error: 'Failed to list files' });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to list files', getRequestId(req));
   }
 });
 

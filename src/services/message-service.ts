@@ -7,6 +7,7 @@ import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/m
 import { notificationEmitter } from './notification-delivery-service.js';
 import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { errorResult, successResult } from '../types/service-result.js';
 import type { PaginatedResult } from '../repositories/types.js';
 
 export interface PaginationOptions {
@@ -63,24 +64,12 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
 
     // Validate input
     if (!content || content.trim().length === 0) {
-      return {
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'Message content is required',
-        },
-      };
+      return errorResult('VALIDATION_ERROR', 'Message content is required');
     }
 
     const resolvedReceiverId = await resolveReceiverUserId(receiverId);
     if (!resolvedReceiverId) {
-      return {
-        success: false,
-        error: {
-          code: 'RECEIVER_NOT_FOUND',
-          message: 'Unable to resolve receiver user. This contract/conversation has inconsistent participant data.',
-        },
-      };
+      return errorResult('RECEIVER_NOT_FOUND', 'Unable to resolve receiver user. This contract/conversation has inconsistent participant data.');
     }
 
     // Find or create conversation
@@ -135,19 +124,10 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
 
     logger.debug('Message sent successfully', { messageId: message.id, conversationId: conversation.id });
 
-    return {
-      success: true,
-      data: message,
-    };
+    return successResult(message);
   } catch (error) {
     logger.error('Unexpected error in sendMessage', { error, data });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -201,24 +181,15 @@ export async function getConversations(
     );
     const enrichedConversations: ConversationWithDetails[] = enrichedResults.filter((c): c is ConversationWithDetails => c !== null);
 
-    return {
-      success: true,
-      data: {
-        items: enrichedConversations,
-        total: enrichedConversations.length,
-        hasMore: enrichedConversations.length === limit,
-      },
-    };
-  } catch (error) {
-    logger.error('Unexpected error in getConversations', { error, userId, options });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      items: enrichedConversations,
+      total: enrichedConversations.length,
+      hasMore: enrichedConversations.length === limit,
+    });
+      } catch (error) {
+      logger.error('Unexpected error in getConversations', { error, userId, options });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -243,23 +214,11 @@ export async function getConversationMessages(
     const conv = userConversations.find(c => c.id === conversationId);
 
     if (!conv) {
-      return {
-        success: false,
-        error: {
-          code: 'CONVERSATION_NOT_FOUND',
-          message: 'Conversation not found',
-        },
-      };
+      return errorResult('CONVERSATION_NOT_FOUND', 'Conversation not found');
     }
 
     if (conv.participant1_id !== userId && conv.participant2_id !== userId) {
-      return {
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'You are not a participant in this conversation',
-        },
-      };
+      return errorResult('UNAUTHORIZED', 'You are not a participant in this conversation');
     }
 
     const page = options.page || 1;
@@ -268,24 +227,15 @@ export async function getConversationMessages(
 
     const { items, total } = await messageRepository.getConversationMessages(conversationId, limit, offset);
 
-    return {
-      success: true,
-      data: {
-        items,
-        total,
-        hasMore: offset + limit < total,
-      },
-    };
-  } catch (error) {
-    logger.error('Unexpected error in getConversationMessages', { error, conversationId, userId, options });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      items,
+      total,
+      hasMore: offset + limit < total,
+    });
+      } catch (error) {
+      logger.error('Unexpected error in getConversationMessages', { error, conversationId, userId, options });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }
 
 /**
@@ -301,23 +251,11 @@ export async function markConversationAsRead(
     const conv = userConversations.find(c => c.id === conversationId);
 
     if (!conv) {
-      return {
-        success: false,
-        error: {
-          code: 'CONVERSATION_NOT_FOUND',
-          message: 'Conversation not found',
-        },
-      };
+      return errorResult('CONVERSATION_NOT_FOUND', 'Conversation not found');
     }
 
     if (conv.participant1_id !== userId && conv.participant2_id !== userId) {
-      return {
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'You are not a participant in this conversation',
-        },
-      };
+      return errorResult('UNAUTHORIZED', 'You are not a participant in this conversation');
     }
 
     // Mark messages as read
@@ -331,19 +269,10 @@ export async function markConversationAsRead(
 
     await messageRepository.updateConversation(conversationId, updates);
 
-    return {
-      success: true,
-      data: undefined as unknown as void,
-    };
+    return successResult(undefined as unknown as void);
   } catch (error) {
     logger.error('Unexpected error in markConversationAsRead', { error, conversationId, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -354,19 +283,10 @@ export async function getUnreadMessageCount(userId: string): Promise<ServiceResu
   try {
     const count = await messageRepository.getUnreadCount(userId);
 
-    return {
-      success: true,
-      data: count,
-    };
+    return successResult(count);
   } catch (error) {
     logger.error('Unexpected error in getUnreadMessageCount', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -415,21 +335,12 @@ export async function validateConversationParticipants(userId: string): Promise<
       }
     }
 
-    return {
-      success: true,
-      data: {
-        validConversations,
-        orphanedConversations,
-      },
-    };
-  } catch (error) {
-    logger.error('Unexpected error in validateConversationParticipants', { error, userId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
-  }
+    return successResult({
+      validConversations,
+      orphanedConversations,
+    });
+      } catch (error) {
+      logger.error('Unexpected error in validateConversationParticipants', { error, userId });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 }

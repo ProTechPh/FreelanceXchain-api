@@ -45,11 +45,8 @@ function serializeAttributeValue(value: unknown): unknown {
  * reverses JSON serialization done by create()/update().
  */
 function mapDocument<T extends BaseEntity>(doc: Record<string, unknown>): T {
-  const { $id, $collectionId: _cid, $databaseId: _did, $createdAt, $updatedAt, ...attrs } = doc;
-  const result: Record<string, unknown> = {
-    id: $id,
-    ...attrs,
-  };
+  const { $collectionId: _cid, $databaseId: _did, ...rest } = doc;
+  const result = fromAppwriteDoc<Record<string, unknown>>(rest);
 
   for (const key of Object.keys(result)) {
     const value = result[key];
@@ -58,15 +55,26 @@ function mapDocument<T extends BaseEntity>(doc: Record<string, unknown>): T {
     }
   }
 
-  const created = (attrs as Record<string, unknown>).created_at ?? $createdAt;
-  const updated = (attrs as Record<string, unknown>).updated_at ?? $updatedAt;
-  if (created !== undefined) result.created_at = created;
-  if (updated !== undefined) result.updated_at = updated;
   return result as T;
 }
 
 function mapDocuments<T extends BaseEntity>(docs: Record<string, unknown>[]): T[] {
   return docs.map(doc => mapDocument<T>(doc));
+}
+
+/**
+ * Map an Appwrite document into an entity-shaped object.
+ * Strips Appwrite-internal fields and falls back to system timestamps
+ * when the document does not carry its own created_at/updated_at.
+ */
+export function fromAppwriteDoc<T = Record<string, unknown>>(doc: Record<string, unknown>): T {
+  const { $id, $createdAt, $updatedAt, ...attrs } = doc;
+  return {
+    id: $id,
+    ...attrs,
+    created_at: attrs.created_at ?? $createdAt,
+    updated_at: attrs.updated_at ?? $updatedAt,
+  } as T;
 }
 
 export class BaseRepository<T extends BaseEntity> {
@@ -80,7 +88,7 @@ export class BaseRepository<T extends BaseEntity> {
     return mapDocument<T>(doc);
   }
 
-  async create(item: Omit<T, 'created_at' | 'updated_at'>): Promise<T> {
+  async create(item: Omit<T, 'created_at' | 'updated_at' | 'id'> & { id?: string }): Promise<T> {
     const { id, ...data } = item as Record<string, unknown>;
     const attrs: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(data)) {

@@ -33,7 +33,7 @@ import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { asyncHandler } from '../utils/async-handler.js';
-import { sendValidationError, sendErrorResponse } from '../utils/response-helpers.js';
+import { sendValidationError, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 
 const router = Router();
 
@@ -324,10 +324,10 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
   if (isAuthError(result)) {
     if (result.code === 'MFA_REQUIRED') {
       const mfaResult = result as MfaRequiredResult;
-      res.status(200).json({
+      sendSuccessResponse(res, 200, {
         mfaRequired: true,
         mfaSessionToken: mfaResult.mfaSessionToken,
-      });
+      }, requestId);
       return;
     }
 
@@ -500,12 +500,7 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
   const requestId = getRequestId(req);
 
   if (error) {
-    res.status(400).json({
-      success: false,
-      error: { code: 'OAUTH_ERROR', message: error_description || error },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 400, 'OAUTH_ERROR', String(error_description || error), requestId, undefined, false);
     return;
   }
 
@@ -513,12 +508,7 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
     const sessionResult = await exchangeCodeForSession(code);
 
     if ('code' in sessionResult) {
-      res.status(401).json({
-        success: false,
-        error: { code: 'AUTH_EXCHANGE_FAILED', message: sessionResult.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 401, 'AUTH_EXCHANGE_FAILED', sessionResult.message, requestId, undefined, false);
       return;
     }
 
@@ -526,30 +516,25 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
 
     if (isAuthError(result)) {
       if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
-        res.status(202).json({
+        sendSuccessResponse(res, 202, {
           success: true,
           status: 'registration_required',
           message: 'User does not exist. Please register with a role.',
           access_token: sessionResult.accessToken, // pass this to frontend so they can call /oauth/register
-        });
+        }, requestId);
         return;
       }
 
-      res.status(401).json({
-        success: false,
-        error: { code: 'AUTH_INVALID_TOKEN', message: result.message },
-        timestamp: new Date().toISOString(),
-        requestId,
-      });
+      sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message, requestId, undefined, false);
       return;
     }
 
-    res.status(200).json({
+    sendSuccessResponse(res, 200, {
       success: true,
       access_token: result.accessToken,
       refresh_token: result.refreshToken,
       user: result.user,
-    });
+    }, requestId);
     return;
   }
 
@@ -687,12 +672,12 @@ router.post('/login/verify-token', authRateLimiter, asyncHandler(async (req: Req
   const result = await verifyAuthToken(userId, secret);
   if (isAuthError(result)) {
     if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
-      res.status(202).json({
+      sendSuccessResponse(res, 202, {
         success: true,
         status: 'registration_required',
         message: 'User does not exist. Please register with a role.',
         access_token: secret,
-      });
+      }, requestId);
       return;
     }
     sendErrorResponse(res, 400, result.code, result.message, requestId);
@@ -763,14 +748,7 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
     const url = await getOAuthUrl(provider);
     res.redirect(url);
   } catch {
-    res.status(500).json({
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'Failed to initiate OAuth flow',
-      },
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to initiate OAuth flow', requestId);
   }
 }));
 
@@ -830,19 +808,20 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
     if (result.code === 'MFA_REQUIRED') {
       logger.info('OAuth user requires MFA', { requestId });
       const mfaResult = result as MfaRequiredResult;
-      res.status(200).json({
+      sendSuccessResponse(res, 200, {
         mfaRequired: true,
         mfaSessionToken: mfaResult.mfaSessionToken,
-      });
+      }, requestId);
       return;
     }
     
     if (result.code === 'AUTH_REQUIRE_REGISTRATION') {
       logger.info('OAuth user requires registration', { requestId });
-      res.status(202).json({
+      sendSuccessResponse(res, 202, {
+        success: true,
         status: 'registration_required',
         message: 'User does not exist. Please register with a role.',
-      });
+      }, requestId);
       return;
     }
 
@@ -906,7 +885,7 @@ router.post('/resend-confirmation', passwordResetRateLimiter, asyncHandler(async
     return;
   }
 
-  res.status(200).json({ message: 'Confirmation email sent' });
+  sendSuccessResponse(res, 200, { message: 'Confirmation email sent' }, requestId);
 }));
 
 /**
@@ -951,11 +930,9 @@ router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (re
     logger.info('Password reset request processed (email may not exist)', { requestId });
   }
 
-  res.status(200).json({
+  sendSuccessResponse(res, 200, {
     message: 'If this email is registered, a password reset link has been sent',
-    timestamp: new Date().toISOString(),
-    requestId,
-  });
+  }, requestId);
 }));
 
 /**
@@ -1038,7 +1015,7 @@ router.post('/reset-password', passwordResetRateLimiter, asyncHandler(async (req
     return;
   }
 
-  res.status(200).json({ message: 'Password updated successfully' });
+  sendSuccessResponse(res, 200, { message: 'Password updated successfully' }, requestId);
 }));
 
 /**
@@ -1085,7 +1062,7 @@ router.post('/logout', authMiddleware, authRateLimiter, asyncHandler(async (req:
   }
 
   logger.info('User logout successful', { userId, requestId });
-  res.status(200).json({ message: 'Logout successful' });
+  sendSuccessResponse(res, 200, { message: 'Logout successful' }, requestId);
 }));
 
 /**
@@ -1177,7 +1154,7 @@ router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, asyncHand
     return;
   }
 
-  res.status(200).json({ message: 'MFA enrollment verified successfully' });
+  sendSuccessResponse(res, 200, { message: 'MFA enrollment verified successfully' }, requestId);
 }));
 
 /**
@@ -1289,7 +1266,7 @@ router.post('/mfa/verify', authMiddleware, mfaVerifyRateLimiter, asyncHandler(as
     return;
   }
 
-  res.status(200).json({ message: 'MFA verified successfully' });
+  sendSuccessResponse(res, 200, { message: 'MFA verified successfully' }, requestId);
 }));
 
 /**
@@ -1386,7 +1363,7 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, asyncHandler(async 
     return;
   }
 
-  res.status(200).json({ message: 'MFA disabled successfully' });
+  sendSuccessResponse(res, 200, { message: 'MFA disabled successfully' }, requestId);
 }));
 
 /**
@@ -1519,12 +1496,10 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
       return;
     }
 
-    res.status(200).json({
+    sendSuccessResponse(res, 200, {
       message: 'Wallet address updated successfully',
       walletAddress: updatedUser.wallet_address,
-      timestamp: new Date().toISOString(),
-      requestId,
-    });
+    }, requestId);
   } catch (error) {
     logger.error('Failed to update wallet address:', error);
     sendErrorResponse(res, 500, 'UPDATE_FAILED', 'Failed to update wallet address', requestId);

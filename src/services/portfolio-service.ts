@@ -1,11 +1,27 @@
 import { logger } from '../config/logger.js';
 import { PortfolioItem, PortfolioItemInput, PortfolioImage } from '../models/portfolio.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { errorResult, successResult } from '../types/service-result.js';
 import { storage, BUCKETS } from '../config/appwrite.js';
 import { extractFileIdFromUrl } from '../utils/storage-uploader.js';
-import { portfolioRepository } from '../repositories/portfolio-repository.js';
+import { portfolioRepository, type PortfolioItemEntity } from '../repositories/portfolio-repository.js';
 import { skillRepository } from '../repositories/skill-repository.js';
 import { safeJsonParse } from '../utils/index.js';
+
+function mapPortfolioItemFromEntity(item: PortfolioItemEntity): PortfolioItem {
+  return {
+    id: item.id,
+    freelancerId: item.freelancer_id,
+    title: item.title,
+    description: item.description,
+    images: safeJsonParse<PortfolioImage[]>(item.images),
+    skills: safeJsonParse<string[]>(item.skills),
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+    ...(item.project_url != null ? { projectUrl: item.project_url } : {}),
+    ...(item.completed_at != null ? { completedAt: item.completed_at } : {}),
+  };
+}
 
 /**
  * Create a new portfolio item
@@ -17,13 +33,7 @@ export async function createPortfolioItem(
   try {
     // Validate images array
     if (!input.images || input.images.length === 0) {
-      return {
-        success: false,
-        error: {
-          code: 'VALIDATION_ERROR',
-          message: 'At least one image is required',
-        },
-      };
+      return errorResult('VALIDATION_ERROR', 'At least one image is required');
     }
 
     // Verify skills exist if provided
@@ -33,13 +43,7 @@ export async function createPortfolioItem(
       const invalidSkills = input.skills.filter(s => !validSkillNames.has(s));
 
       if (invalidSkills.length > 0) {
-        return {
-          success: false,
-          error: {
-            code: 'VALIDATION_ERROR',
-            message: `Invalid skills: ${invalidSkills.join(', ')}`,
-          },
-        };
+        return errorResult('VALIDATION_ERROR', `Invalid skills: ${invalidSkills.join(', ')}`);
       }
     }
 
@@ -47,36 +51,16 @@ export async function createPortfolioItem(
       freelancer_id: freelancerId,
       title: input.title,
       description: input.description,
-      project_url: input.projectUrl,
       images: JSON.stringify(input.images),
       skills: JSON.stringify(input.skills || []),
-      completed_at: input.completedAt,
-    } as any);
+      ...(input.projectUrl !== undefined ? { project_url: input.projectUrl } : {}),
+      ...(input.completedAt !== undefined ? { completed_at: input.completedAt } : {}),
+    });
 
-    return {
-      success: true,
-      data: {
-        id: created.id,
-        freelancerId: created.freelancer_id,
-        title: created.title,
-        description: created.description,
-        projectUrl: created.project_url,
-        images: safeJsonParse<PortfolioImage[]>(created.images),
-        skills: safeJsonParse<string[]>(created.skills),
-        completedAt: created.completed_at ?? undefined,
-        createdAt: created.created_at,
-        updatedAt: created.updated_at,
-      } as PortfolioItem,
-    };
+    return successResult(mapPortfolioItemFromEntity(created));
   } catch (error) {
     logger.error('Unexpected error in createPortfolioItem', { error, freelancerId, input });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -93,23 +77,11 @@ export async function updatePortfolioItem(
     const ownerId = await portfolioRepository.findOwnerById(portfolioId);
 
     if (ownerId === null) {
-      return {
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Portfolio item not found',
-        },
-      };
+      return errorResult('NOT_FOUND', 'Portfolio item not found');
     }
 
     if (ownerId !== userId) {
-      return {
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'You can only update your own portfolio items',
-        },
-      };
+      return errorResult('UNAUTHORIZED', 'You can only update your own portfolio items');
     }
 
     // Build update data
@@ -123,49 +95,15 @@ export async function updatePortfolioItem(
 
     if (Object.keys(updateData).length === 0) {
       const existing = await portfolioRepository.getById(portfolioId);
-      return {
-        success: true,
-        data: {
-          id: existing!.id,
-          freelancerId: (existing as any).freelancer_id,
-          title: (existing as any).title,
-          description: (existing as any).description,
-          projectUrl: (existing as any).project_url,
-          images: safeJsonParse<PortfolioImage[]>((existing as any).images),
-          skills: safeJsonParse<string[]>((existing as any).skills),
-          completedAt: (existing as any).completed_at ?? undefined,
-          createdAt: (existing as any).created_at,
-          updatedAt: (existing as any).updated_at,
-        } as PortfolioItem,
-      };
+      return successResult(mapPortfolioItemFromEntity(existing!));
     }
 
     const updated = await portfolioRepository.update(portfolioId, updateData);
 
-    return {
-      success: true,
-      data: {
-        id: updated!.id,
-        freelancerId: (updated as any).freelancer_id,
-        title: (updated as any).title,
-        description: (updated as any).description,
-        projectUrl: (updated as any).project_url,
-          images: safeJsonParse<PortfolioImage[]>((updated as any).images),
-          skills: safeJsonParse<string[]>((updated as any).skills),
-        completedAt: (updated as any).completed_at ?? undefined,
-        createdAt: (updated as any).created_at,
-        updatedAt: (updated as any).updated_at,
-      } as PortfolioItem,
-    };
+    return successResult(mapPortfolioItemFromEntity(updated!));
   } catch (error) {
     logger.error('Unexpected error in updatePortfolioItem', { error, portfolioId, updates });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -181,23 +119,11 @@ export async function deletePortfolioItem(
     const ownerId = await portfolioRepository.findOwnerById(portfolioId);
 
     if (ownerId === null) {
-      return {
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Portfolio item not found',
-        },
-      };
+      return errorResult('NOT_FOUND', 'Portfolio item not found');
     }
 
     if (ownerId !== userId) {
-      return {
-        success: false,
-        error: {
-          code: 'UNAUTHORIZED',
-          message: 'You can only delete your own portfolio items',
-        },
-      };
+      return errorResult('UNAUTHORIZED', 'You can only delete your own portfolio items');
     }
 
     // Get existing item for image cleanup
@@ -209,7 +135,7 @@ export async function deletePortfolioItem(
     // Clean up images from storage (best effort)
     if (existing) {
       let images: string[] = [];
-      const raw = (existing as any).images;
+      const raw = existing.images;
       if (typeof raw === 'string') {
         try { images = JSON.parse(raw); } catch { /* ignore */ }
       } else if (Array.isArray(raw)) {
@@ -230,19 +156,10 @@ export async function deletePortfolioItem(
       );
     }
 
-    return {
-      success: true,
-      data: undefined as unknown as void,
-    };
+    return successResult(undefined as unknown as void);
   } catch (error) {
     logger.error('Unexpected error in deletePortfolioItem', { error, portfolioId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -255,30 +172,10 @@ export async function getFreelancerPortfolio(
   try {
     const items = await portfolioRepository.findByFreelancer(freelancerId);
 
-    return {
-      success: true,
-      data: items.map(item => ({
-        id: item.id,
-        freelancerId: item.freelancer_id,
-        title: item.title,
-        description: item.description,
-        projectUrl: item.project_url,
-        images: safeJsonParse<PortfolioImage[]>(item.images),
-        skills: safeJsonParse<string[]>(item.skills),
-        completedAt: item.completed_at ?? undefined,
-        createdAt: item.created_at,
-        updatedAt: item.updated_at,
-      } as PortfolioItem)),
-    };
+    return successResult(items.map(mapPortfolioItemFromEntity));
   } catch (error) {
     logger.error('Unexpected error in getFreelancerPortfolio', { error, freelancerId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }
 
@@ -290,38 +187,12 @@ export async function getPortfolioItem(portfolioId: string): Promise<ServiceResu
     const item = await portfolioRepository.getById(portfolioId);
 
     if (!item) {
-      return {
-        success: false,
-        error: {
-          code: 'NOT_FOUND',
-          message: 'Portfolio item not found',
-        },
-      };
+      return errorResult('NOT_FOUND', 'Portfolio item not found');
     }
 
-    return {
-      success: true,
-      data: {
-        id: item.id,
-        freelancerId: (item as any).freelancer_id,
-        title: (item as any).title,
-        description: (item as any).description,
-        projectUrl: (item as any).project_url,
-        images: safeJsonParse<PortfolioImage[]>((item as any).images),
-        skills: safeJsonParse<string[]>((item as any).skills),
-        completedAt: (item as any).completed_at ?? undefined,
-        createdAt: (item as any).created_at,
-        updatedAt: (item as any).updated_at,
-      } as PortfolioItem,
-    };
+    return successResult(mapPortfolioItemFromEntity(item));
   } catch (error) {
     logger.error('Unexpected error in getPortfolioItem', { error, portfolioId });
-    return {
-      success: false,
-      error: {
-        code: 'INTERNAL_ERROR',
-        message: 'An unexpected error occurred',
-      },
-    };
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
 }

@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 
-// Workaround for TypeScript/Helmet import issue in NodeNext
-const helmetMiddleware = (helmet as any).default || helmet;
+// NodeNext CJS/ESM interop: some bundlers wrap the default export under `.default`.
+// The double cast is only to reach that optional property — never to escape type checks.
+const helmetMiddleware = (helmet as unknown as { default?: typeof helmet }).default ?? helmet;
 import { v4 as uuidv4 } from 'uuid';
 
 export const securityHeaders = helmetMiddleware({
@@ -27,12 +28,11 @@ export const securityHeaders = helmetMiddleware({
     hidePoweredBy: true,
     noSniff: true,
     xssFilter: true,
-    // HSTS — 1 year, forced on all connections including HTTP
+    // HSTS — 1 year (helmet v8 always emits the header, so no `force` option needed)
     hsts: {
         maxAge: 31536000,
         includeSubDomains: true,
         preload: true,
-        force: true,
     },
     referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 });

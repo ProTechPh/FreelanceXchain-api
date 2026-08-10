@@ -1,5 +1,6 @@
 import { BaseRepository } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
+import { getErrorMessageOr } from '../utils/index.js';
 
 export type UserCustomSkillEntity = {
   id: string;
@@ -38,8 +39,8 @@ class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
   async createUserCustomSkill(skill: Omit<UserCustomSkillEntity, "created_at" | "updated_at">): Promise<UserCustomSkillEntity> {
     try {
       return await this.create(skill);
-    } catch (error: any) {
-      throw new Error(`Failed to create user custom skill: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to create user custom skill: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -49,8 +50,8 @@ class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
         Query.equal('user_id', userId),
         Query.orderDesc('created_at'),
       ]);
-    } catch (error: any) {
-      throw new Error(`Failed to get user custom skills: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to get user custom skills: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -59,8 +60,8 @@ class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
       const skill = await this.getById(id);
       if (!skill || skill.user_id !== userId) return null;
       return skill;
-    } catch (error: any) {
-      throw new Error(`Failed to get user custom skill: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to get user custom skill: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -73,8 +74,8 @@ class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
       const existing = await this.getById(id);
       if (!existing || existing.user_id !== userId) return null;
       return await this.update(id, updates);
-    } catch (error: any) {
-      throw new Error(`Failed to update user custom skill: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to update user custom skill: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -83,8 +84,8 @@ class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
       const existing = await this.getById(id);
       if (!existing || existing.user_id !== userId) return false;
       return await this.delete(id);
-    } catch (error: any) {
-      throw new Error(`Failed to delete user custom skill: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to delete user custom skill: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -99,8 +100,8 @@ class UserCustomSkillRepository extends BaseRepository<UserCustomSkillEntity> {
         s.name.toLowerCase().includes(lower) ||
         s.description.toLowerCase().includes(lower)
       );
-    } catch (error: any) {
-      throw new Error(`Failed to search user custom skills: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to search user custom skills: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 }
@@ -113,16 +114,16 @@ class SkillSuggestionRepositoryAppwrite extends BaseRepository<SkillSuggestionEn
   async createSkillSuggestion(suggestion: Omit<SkillSuggestionEntity, "created_at" | "updated_at">): Promise<SkillSuggestionEntity> {
     try {
       return await this.create(suggestion);
-    } catch (error: any) {
-      throw new Error(`Failed to create skill suggestion: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to create skill suggestion: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
   async getSkillSuggestionByName(skillName: string): Promise<SkillSuggestionEntity | null> {
     try {
       return await this.findOne('skill_name', skillName);
-    } catch (error: any) {
-      throw new Error(`Failed to get skill suggestion: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to get skill suggestion: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -131,8 +132,8 @@ class SkillSuggestionRepositoryAppwrite extends BaseRepository<SkillSuggestionEn
       const existing = await this.getById(id);
       if (!existing) return null;
       return await this.update(id, { times_requested: existing.times_requested + 1 });
-    } catch (error: any) {
-      throw new Error(`Failed to increment skill suggestion count: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to increment skill suggestion count: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -142,8 +143,8 @@ class SkillSuggestionRepositoryAppwrite extends BaseRepository<SkillSuggestionEn
         Query.equal('status', 'pending'),
         Query.orderDesc('times_requested'),
       ]);
-    } catch (error: any) {
-      throw new Error(`Failed to get pending skill suggestions: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to get pending skill suggestions: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
@@ -153,8 +154,8 @@ class SkillSuggestionRepositoryAppwrite extends BaseRepository<SkillSuggestionEn
   ): Promise<SkillSuggestionEntity | null> {
     try {
       return await this.update(id, { status });
-    } catch (error: any) {
-      throw new Error(`Failed to update skill suggestion status: ${error.message}`);
+    } catch (error) {
+      throw new Error(`Failed to update skill suggestion status: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 }

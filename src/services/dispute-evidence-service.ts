@@ -4,6 +4,7 @@ import { contractRepository } from '../repositories/contract-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
+import { successResult, errorResult } from '../types/service-result.js';
 import type {
   DisputeEvidence,
   SubmitEvidenceInput,
@@ -23,19 +24,13 @@ export async function submitEvidence(
     // Verify dispute exists
     const disputeEntity = await disputeRepository.getDisputeById(input.disputeId);
     if (!disputeEntity) {
-      return {
-        success: false,
-        error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
-      };
+      return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
     }
 
     // Get contract to check involvement
     const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
     if (!contractEntity) {
-      return {
-        success: false,
-        error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
-      };
+      return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
     }
 
     const isInvolved = 
@@ -43,10 +38,7 @@ export async function submitEvidence(
       contractEntity.employer_id === input.submittedBy;
 
     if (!isInvolved) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'You are not involved in this dispute' },
-      };
+      return errorResult('UNAUTHORIZED', 'You are not involved in this dispute');
     }
 
     // Create evidence entity
@@ -119,16 +111,10 @@ export async function submitEvidence(
 
     logger.info(`Evidence submitted for dispute ${input.disputeId} by user ${input.submittedBy}`);
 
-    return { success: true, data: evidence };
+    return successResult(evidence);
   } catch (error) {
     logger.error('Failed to submit evidence:', error);
-    return {
-      success: false,
-      error: {
-        code: 'SUBMIT_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to submit evidence',
-      },
-    };
+    return errorResult('SUBMIT_FAILED', error instanceof Error ? error.message : 'Failed to submit evidence');
   }
 }
 
@@ -143,19 +129,13 @@ export async function getDisputeEvidence(
     // Verify dispute exists
     const disputeEntity = await disputeRepository.getDisputeById(disputeId);
     if (!disputeEntity) {
-      return {
-        success: false,
-        error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
-      };
+      return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
     }
 
     // Get contract to check authorization
     const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
     if (!contractEntity) {
-      return {
-        success: false,
-        error: { code: 'DISPUTE_NOT_FOUND', message: 'Dispute not found' },
-      };
+      return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
     }
 
     const isAuthorized = 
@@ -164,10 +144,7 @@ export async function getDisputeEvidence(
       disputeEntity.resolution?.resolved_by === userId;
 
     if (!isAuthorized) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this evidence' },
-      };
+      return errorResult('UNAUTHORIZED', 'You are not authorized to view this evidence');
     }
 
     // Get all evidence
@@ -186,16 +163,10 @@ export async function getDisputeEvidence(
       ...(e.verified_at ? { verifiedAt: new Date(e.verified_at) } : {}),
     }));
 
-    return { success: true, data: evidence };
+    return successResult(evidence);
   } catch (error) {
     logger.error('Failed to get dispute evidence:', error);
-    return {
-      success: false,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: error instanceof Error ? error.message : 'Failed to get evidence',
-      },
-    };
+    return errorResult('DATABASE_ERROR', error instanceof Error ? error.message : 'Failed to get evidence');
   }
 }
 
@@ -211,26 +182,17 @@ export async function deleteEvidence(
     const evidenceEntity = await disputeEvidenceRepository.getEvidenceById(evidenceId);
 
     if (!evidenceEntity) {
-      return {
-        success: false,
-        error: { code: 'EVIDENCE_NOT_FOUND', message: 'Evidence not found' },
-      };
+      return errorResult('EVIDENCE_NOT_FOUND', 'Evidence not found');
     }
 
     // Check ownership
     if (evidenceEntity.submitted_by !== userId) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'You can only delete your own evidence' },
-      };
+      return errorResult('UNAUTHORIZED', 'You can only delete your own evidence');
     }
 
     // Check if already verified
     if (evidenceEntity.verified_at) {
-      return {
-        success: false,
-        error: { code: 'ALREADY_VERIFIED', message: 'Cannot delete verified evidence' },
-      };
+      return errorResult('ALREADY_VERIFIED', 'Cannot delete verified evidence');
     }
 
     // Delete evidence
@@ -238,16 +200,10 @@ export async function deleteEvidence(
 
     logger.info(`Evidence ${evidenceId} deleted by user ${userId}`);
 
-    return { success: true, data: undefined };
+    return successResult(undefined);
   } catch (error) {
     logger.error('Failed to delete evidence:', error);
-    return {
-      success: false,
-      error: {
-        code: 'DELETE_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to delete evidence',
-      },
-    };
+    return errorResult('DELETE_FAILED', error instanceof Error ? error.message : 'Failed to delete evidence');
   }
 }
 
@@ -262,19 +218,13 @@ export async function verifyEvidence(
     const evidenceEntity = await disputeEvidenceRepository.getEvidenceById(input.evidenceId);
 
     if (!evidenceEntity) {
-      return {
-        success: false,
-        error: { code: 'EVIDENCE_NOT_FOUND', message: 'Evidence not found' },
-      };
+      return errorResult('EVIDENCE_NOT_FOUND', 'Evidence not found');
     }
 
     // Get dispute to check arbiter
     const disputeEntity = await disputeRepository.getDisputeById(evidenceEntity.dispute_id);
     if (!disputeEntity) {
-      return {
-        success: false,
-        error: { code: 'EVIDENCE_NOT_FOUND', message: 'Evidence not found' },
-      };
+      return errorResult('EVIDENCE_NOT_FOUND', 'Evidence not found');
     }
 
     // M12: Allow admins to verify evidence at any stage (not just after resolution).
@@ -285,10 +235,7 @@ export async function verifyEvidence(
     const isArbiter = disputeEntity.resolution?.resolved_by === input.verifiedBy;
 
     if (!isAdmin && !isArbiter) {
-      return {
-        success: false,
-        error: { code: 'UNAUTHORIZED', message: 'Only admins or the assigned arbiter can verify evidence' },
-      };
+      return errorResult('UNAUTHORIZED', 'Only admins or the assigned arbiter can verify evidence');
     }
 
     // Update evidence
@@ -318,15 +265,9 @@ export async function verifyEvidence(
 
     logger.info(`Evidence ${input.evidenceId} verified by arbiter ${input.verifiedBy}`);
 
-    return { success: true, data: updated };
+    return successResult(updated);
   } catch (error) {
     logger.error('Failed to verify evidence:', error);
-    return {
-      success: false,
-      error: {
-        code: 'VERIFY_FAILED',
-        message: error instanceof Error ? error.message : 'Failed to verify evidence',
-      },
-    };
+    return errorResult('VERIFY_FAILED', error instanceof Error ? error.message : 'Failed to verify evidence');
   }
 }

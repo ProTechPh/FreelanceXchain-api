@@ -4,7 +4,7 @@ import crypto from 'crypto';
 
 const router = Router();
 
-function verifyBlockchainSignature(payload: string, signature: string): boolean {
+export function verifyBlockchainSignature(payload: string, signature: string): boolean {
   const secret = process.env['BLOCKCHAIN_WEBHOOK_SECRET'];
   if (!secret) {
     logger.warn('BLOCKCHAIN_WEBHOOK_SECRET not configured - all blockchain webhook requests will be rejected. Set BLOCKCHAIN_WEBHOOK_SECRET to enable this endpoint.');

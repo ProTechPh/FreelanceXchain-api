@@ -1,4 +1,4 @@
-import { BaseRepository, PaginatedResult, QueryOptions } from './base-repository.js';
+import { BaseRepository, PaginatedResult, QueryOptions, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import type { DisputeStatus } from '../models/dispute.js';
 
@@ -34,14 +34,8 @@ export type DisputeEntity = {
 
 const COLLECTION_ID = 'disputes';
 
-function mapDispute(doc: Record<string, any>): DisputeEntity {
-  const { $id, $createdAt, $updatedAt, ...attrs } = doc as any;
-  const result: Record<string, any> = {
-    id: $id,
-    ...attrs,
-    created_at: attrs.created_at ?? $createdAt,
-    updated_at: attrs.updated_at ?? $updatedAt,
-  };
+function mapDispute(doc: Record<string, unknown>): DisputeEntity {
+  const result = fromAppwriteDoc<Record<string, unknown>>(doc);
   if (typeof result.evidence === 'string') {
     result.evidence = JSON.parse(result.evidence);
   }
@@ -183,7 +177,7 @@ export class DisputeRepository extends BaseRepository<DisputeEntity> {
     const offset = options?.offset ?? 0;
 
     try {
-      const queries: any[] = [
+      const queries: string[] = [
         Query.orderDesc('created_at'),
         Query.limit(limit),
         Query.offset(offset),

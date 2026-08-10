@@ -3,6 +3,8 @@ import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middlewar
 import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
 import { uploadDisputeEvidence } from '../middleware/file-upload-middleware.js';
 import { clampLimit } from '../utils/index.js';
+import { getRequestId } from '../utils/route-helpers.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import { fileUploadRateLimiter, apiRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadFileToStorage, cleanupUploadedFiles } from '../utils/storage-uploader.js';
 import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
@@ -175,9 +177,7 @@ router.get(
       const limit = clampLimit(req.query['limit'] ? parseInt(req.query['limit'] as string) : undefined);
 
       if (!userId || !userRole) {
-        res.status(401).json({
-          error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        });
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
         return;
       }
 
@@ -187,7 +187,7 @@ router.get(
       });
 
       if (!result.success) {
-        res.status(400).json({ error: result.error });
+        sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req), result.error.details);
         return;
       }
 
@@ -244,44 +244,32 @@ router.post(
       };
 
       if (!userId) {
-        res.status(401).json({
-          error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        });
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
         return;
       }
 
       if (!contractId || typeof contractId !== 'string') {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'contractId is required' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId is required', getRequestId(req));
         return;
       }
 
       if (!isValidUUID(contractId)) {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'contractId must be a valid UUID' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', getRequestId(req));
         return;
       }
 
       if (!milestoneId || typeof milestoneId !== 'string') {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'milestoneId is required' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'milestoneId is required', getRequestId(req));
         return;
       }
 
       if (!isValidUUID(milestoneId)) {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'milestoneId must be a valid UUID' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'milestoneId must be a valid UUID', getRequestId(req));
         return;
       }
 
       if (!reason || typeof reason !== 'string') {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'reason is required' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'reason is required', getRequestId(req));
         return;
       }
 
@@ -297,7 +285,7 @@ router.post(
                           result.error.code === 'UNAUTHORIZED' ? 403 :
                           result.error.code === 'ALREADY_DISPUTED' ? 409 :
                           result.error.code === 'DUPLICATE_DISPUTE' ? 409 : 400;
-        res.status(statusCode).json({ error: result.error });
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
         return;
       }
 
@@ -352,9 +340,7 @@ router.get(
       const disputeId = req.params['disputeId'] ?? '';
 
       if (!userId) {
-        res.status(401).json({
-          error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        });
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
         return;
       }
 
@@ -362,7 +348,7 @@ router.get(
 
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 : 400;
-        res.status(statusCode).json({ error: result.error });
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
         return;
       }
 
@@ -374,16 +360,12 @@ router.get(
         if (contractResult.success) {
           const contract = contractResult.data;
           if (contract.freelancerId !== userId && contract.employerId !== userId) {
-            res.status(403).json({
-              error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this dispute' },
-            });
+            sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this dispute', getRequestId(req));
             return;
           }
         } else {
           // Contract not found — deny access as a precaution
-          res.status(403).json({
-            error: { code: 'UNAUTHORIZED', message: 'You are not authorized to view this dispute' },
-          });
+          sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this dispute', getRequestId(req));
           return;
         }
       }
@@ -478,7 +460,7 @@ router.post(
  */
 async function handleMultipartEvidenceSubmission(req: Request, res: Response, next: NextFunction) {
   // Apply rate limiting for file uploads
-  fileUploadRateLimiter(req, res, async (err?: any) => {
+  fileUploadRateLimiter(req, res, async (err?: unknown) => {
     if (err || res.headersSent) return;
     
     // Apply file upload middleware (single file for evidence)
@@ -495,7 +477,7 @@ async function handleMultipartEvidenceSubmission(req: Request, res: Response, ne
     const currentMiddleware = middleware[index++];
     if (!currentMiddleware) return;
     await new Promise<void>((resolve, reject) => {
-      currentMiddleware(req, res, (err?: any) => {
+      currentMiddleware(req, res, (err?: unknown) => {
         if (err) reject(err);
         else resolve();
       });
@@ -511,9 +493,7 @@ async function handleMultipartEvidenceSubmission(req: Request, res: Response, ne
     if (res.headersSent) return;
     
     // Handle unexpected errors
-    res.status(500).json({
-      error: { code: 'INTERNAL_ERROR', message: 'An error occurred processing the upload' },
-    });
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An error occurred processing the upload', getRequestId(req));
   }
   });
 }
@@ -529,28 +509,22 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
     const { _type } = req.body;
 
     if (!userId) {
-      res.status(401).json({
-        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      });
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
       return;
     }
 
     if (!files || files.length === 0) {
-      res.status(400).json({
-        error: { code: 'NO_FILES', message: 'At least 1 file is required' },
-      });
+      sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 file is required', getRequestId(req));
       return;
     }
 
     // For evidence, we typically upload one file at a time
     const file = files[0];
     if (!file) {
-      res.status(400).json({
-        error: { code: 'NO_FILES', message: 'At least 1 file is required' },
-      });
+      sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 file is required', getRequestId(req));
       return;
     }
-    const mimeType = (file as any).detectedMimeType || file.mimetype;
+    const mimeType = (file as Express.Multer.File & { detectedMimeType?: string }).detectedMimeType || file.mimetype;
     
     // Upload file to Appwrite Storage
     const uploadResult = await uploadFileToStorage(
@@ -562,12 +536,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
     );
     
     if (!uploadResult.success) {
-      res.status(500).json({
-        error: { 
-          code: 'UPLOAD_FAILED', 
-          message: uploadResult.error || 'Failed to upload file',
-        },
-      });
+      sendErrorResponse(res, 500, 'UPLOAD_FAILED', uploadResult.error || 'Failed to upload file', getRequestId(req));
       return;
     }
     
@@ -588,7 +557,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                         result.error.code === 'UNAUTHORIZED' ? 403 :
                         result.error.code === 'INVALID_STATUS' ? 400 : 400;
-      res.status(statusCode).json({ error: result.error });
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
       return;
     }
 
@@ -611,23 +580,17 @@ async function handleJsonEvidenceSubmission(req: Request, res: Response, next: N
     };
 
     if (!userId) {
-      res.status(401).json({
-        error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-      });
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
       return;
     }
 
     if (!type || !['text', 'file', 'link'].includes(type)) {
-      res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'type must be one of: text, file, link' },
-      });
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'type must be one of: text, file, link', getRequestId(req));
       return;
     }
 
     if (!content || typeof content !== 'string') {
-      res.status(400).json({
-        error: { code: 'VALIDATION_ERROR', message: 'content is required' },
-      });
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'content is required', getRequestId(req));
       return;
     }
 
@@ -642,7 +605,7 @@ async function handleJsonEvidenceSubmission(req: Request, res: Response, next: N
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                         result.error.code === 'UNAUTHORIZED' ? 403 :
                         result.error.code === 'INVALID_STATUS' ? 400 : 400;
-      res.status(statusCode).json({ error: result.error });
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
       return;
     }
 
@@ -710,24 +673,18 @@ router.post(
       };
 
       if (!userId) {
-        res.status(401).json({
-          error: { code: 'AUTH_UNAUTHORIZED', message: 'User not authenticated' },
-        });
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
         return;
       }
 
       // Only admins can resolve disputes
       if (userRole !== 'admin') {
-        res.status(403).json({
-          error: { code: 'AUTH_UNAUTHORIZED', message: 'Only administrators can resolve disputes' },
-        });
+        sendErrorResponse(res, 403, 'AUTH_UNAUTHORIZED', 'Only administrators can resolve disputes', getRequestId(req));
         return;
       }
 
       if (!decision || !['freelancer_favor', 'employer_favor', 'split'].includes(decision)) {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'decision must be one of: freelancer_favor, employer_favor, split' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'decision must be one of: freelancer_favor, employer_favor, split', getRequestId(req));
         return;
       }
 
@@ -737,9 +694,7 @@ router.post(
         freelancerBps < 0 ||
         freelancerBps > 10000
       )) {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'freelancerBps must be an integer between 0 and 10000' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps must be an integer between 0 and 10000', getRequestId(req));
         return;
       }
 
@@ -747,23 +702,17 @@ router.post(
       // employer_favor = 0 are computed in the service. Reject an explicit bps that would
       // contradict the chosen decision to avoid ambiguous resolutions.
       if (decision !== 'split' && freelancerBps !== undefined) {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'freelancerBps can only be provided when decision is split' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps can only be provided when decision is split', getRequestId(req));
         return;
       }
 
       if (decision === 'split' && (freelancerBps === 0 || freelancerBps === 10000)) {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'freelancerBps must be between 1 and 9999 for a split decision' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps must be between 1 and 9999 for a split decision', getRequestId(req));
         return;
       }
 
       if (!reasoning || typeof reasoning !== 'string') {
-        res.status(400).json({
-          error: { code: 'VALIDATION_ERROR', message: 'reasoning is required' },
-        });
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'reasoning is required', getRequestId(req));
         return;
       }
 
@@ -779,7 +728,7 @@ router.post(
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                           result.error.code === 'ALREADY_RESOLVED' ? 400 : 400;
-        res.status(statusCode).json({ error: result.error });
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
         return;
       }
 

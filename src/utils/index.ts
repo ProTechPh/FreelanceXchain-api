@@ -6,10 +6,47 @@ export { asyncHandler } from './async-handler.js';
 export { sendValidationError, sendErrorResponse } from './response-helpers.js';
 
 /**
+ * Safely extract a message string from an unknown thrown value.
+ * Handles Error instances, Appwrite exceptions, and plain objects
+ * (some SDK paths throw non-Error values).
+ */
+export function getErrorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === 'object' && error !== null) {
+    const message = (error as Record<string, unknown>).message;
+    return typeof message === 'string' ? message : undefined;
+  }
+  return undefined;
+}
+
+/**
+ * Extract a message string from an unknown thrown value, or return `fallback`
+ * when no message can be derived. Centralizes the fallback so call sites don't
+ * each add a `??` branch.
+ */
+export function getErrorMessageOr(error: unknown, fallback: string): string {
+  return getErrorMessage(error) ?? fallback;
+}
+
+/**
+ * Parse a field that may be a JSON string, a raw value, or nullish.
+ * Returns `fallback` for null/undefined and for unparseable JSON strings.
+ */
+export function parseField<T>(value: unknown, fallback: T): T {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value === 'string') {
+    try { return JSON.parse(value) as T; } catch { return fallback; }
+  }
+  return value as T;
+}
+
+/**
  * Safely parse a JSON string, or return the value as-is if it's already an object.
  * Replaces the common `typeof x === 'string' ? JSON.parse(x) : x` pattern.
  */
-export function safeJsonParse<T = any>(value: string | T): T {
+export function safeJsonParse<T = unknown>(value: string | T): T {
   if (typeof value === 'string') {
     return JSON.parse(value) as T;
   }
