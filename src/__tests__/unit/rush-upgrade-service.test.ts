@@ -30,15 +30,10 @@ const mockNotificationRepo = createMockNotificationRepository(notificationStore)
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Override database mock with controllable pool
+
+// Legacy pool mock: the Postgres pool was removed; kept as an inert jest.fn() so
+// test-body setups that reference mockQuery stay valid.
 const mockQuery = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/rush-upgrade-request-repository.ts'), () => ({

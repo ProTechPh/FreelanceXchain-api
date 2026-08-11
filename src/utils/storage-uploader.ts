@@ -19,7 +19,7 @@ export type FileMetadata = {
   fileId?: string; // Appwrite file ID for deletion
 };
 
-export type UploadResult = {
+type UploadResult = {
   success: boolean;
   metadata?: FileMetadata;
   url?: string;
@@ -58,7 +58,7 @@ function generateUniqueFilename(originalFilename: string, userId?: string): stri
  * @param originalFilename - Original filename
  * @param mimeType - MIME type of the file
  * @param bucket - Storage bucket ID
- * @param folder - Optional folder path within bucket (not used in Appwrite, kept for compatibility)
+ * @param userId - Owner user ID (used for ownership prefix + permissions)
  * @returns Upload result with file metadata or error
  */
 export async function uploadFileToStorage(
@@ -66,7 +66,6 @@ export async function uploadFileToStorage(
   originalFilename: string,
   mimeType: string,
   bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS,
-  _folder?: string,
   userId?: string
 ): Promise<UploadResult> {
   try {
@@ -139,13 +138,12 @@ export async function uploadFileToStorage(
  * Upload multiple files to Appwrite Storage
  * @param files - Array of multer files
  * @param bucket - Storage bucket ID
- * @param folder - Optional folder path within bucket (not used in Appwrite, kept for compatibility)
+ * @param userId - Owner user ID (used for ownership prefix + permissions)
  * @returns Array of upload results
  */
 export async function uploadMultipleFiles(
   files: Express.Multer.File[],
   bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS,
-  folder?: string,
   userId?: string
 ): Promise<UploadResult[]> {
   const uploadPromises = files.map(file => {
@@ -157,7 +155,6 @@ export async function uploadMultipleFiles(
       file.originalname,
       mimeType,
       bucket,
-      folder,
       userId
     );
   });
@@ -225,11 +222,6 @@ export function extractFileIdFromUrl(url: string): string | null {
 }
 
 /**
- * Alias for extractFileIdFromUrl (backward compatibility)
- */
-export const extractFilePathFromUrl = extractFileIdFromUrl;
-
-/**
  * Cleanup uploaded files in case of transaction failure
  * @param fileMetadata - Array of file metadata to cleanup
  * @param bucket - Storage bucket ID
@@ -267,14 +259,12 @@ export async function uploadFile(options: {
   file: Buffer;
   filename: string;
   mimetype?: string;
-  folder?: string;
 }): Promise<UploadResult> {
   const result = await uploadFileToStorage(
     options.file,
     options.filename,
     options.mimetype || 'application/octet-stream',
     options.bucket,
-    options.folder,
     options.userId
   );
 
@@ -388,4 +378,50 @@ export async function listUserFiles(bucket: BucketId, userId: string): Promise<{
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/**
+ * Storage quota usage for a user (bytes used, limit, percentage, file count).
+ * The quota covers the user's personal upload buckets (portfolio + proposal).
+ */
+export async function getFileQuota(userId: string): Promise<{
+  success: boolean;
+  used: number;
+  limit: number;
+  percentage: number;
+  files: number;
+  error?: string;
+}> {
+  const DEFAULT_QUOTA_BYTES = 100 * 1024 * 1024;
+
+  const buckets: BucketId[] = [BUCKETS.PORTFOLIO_IMAGES, BUCKETS.PROPOSAL_ATTACHMENTS];
+  const results = await Promise.all(
+    buckets.map(bucket => listUserFiles(bucket, userId))
+  );
+
+  // listUserFiles never throws, but a bucket listing can fail — surface that
+  // instead of reporting a silently-undersized quota.
+  const failed = results.find(r => !r.success);
+  if (failed) {
+    return {
+      success: false,
+      used: 0,
+      limit: DEFAULT_QUOTA_BYTES,
+      percentage: 0,
+      files: 0,
+      error: failed.error ?? 'Failed to list files',
+    };
+  }
+
+  const files = results.flatMap(r => r.files);
+  const used = files.reduce((sum, f) => sum + (f.sizeOriginal || 0), 0);
+  const percentage = Math.min((used / DEFAULT_QUOTA_BYTES) * 100, 100);
+
+  return {
+    success: true,
+    used,
+    limit: DEFAULT_QUOTA_BYTES,
+    percentage,
+    files: files.length,
+  };
 }

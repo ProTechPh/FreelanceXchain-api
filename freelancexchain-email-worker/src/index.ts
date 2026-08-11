@@ -21,11 +21,18 @@ export default {
     const rawEmail = await new Response(message.raw).arrayBuffer();
     const parsed = await PostalMime.parse(rawEmail);
 
-    const attachments: EmailAttachmentMeta[] = (parsed.attachments || []).map((att) => ({
-      filename: att.filename || "unnamed",
-      size: att.content?.byteLength || 0,
-      mimeType: att.mimeType || "application/octet-stream",
-    }));
+    const attachments: EmailAttachmentMeta[] = (parsed.attachments || []).map((att) => {
+      const content = att.content;
+      const size =
+        typeof content === "string"
+          ? new TextEncoder().encode(content).byteLength
+          : content?.byteLength || 0;
+      return {
+        filename: att.filename || "unnamed",
+        size,
+        mimeType: att.mimeType || "application/octet-stream",
+      };
+    });
 
     const payload: InboundEmailPayload = {
       messageId: message.headers.get("message-id") || crypto.randomUUID(),

@@ -532,7 +532,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
       file.originalname,
       mimeType,
       STORAGE_BUCKETS.DISPUTE_EVIDENCE,
-      `evidence/${disputeId}`
+      userId
     );
     
     if (!uploadResult.success) {

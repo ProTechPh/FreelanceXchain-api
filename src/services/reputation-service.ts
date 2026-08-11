@@ -36,7 +36,7 @@ export type RatingInput = {
   wouldWorkAgain?: boolean;
 };
 
-export type RatingData = {
+type RatingData = {
   id: string;
   contractId: string;
   raterId: string;
@@ -65,7 +65,7 @@ export type WorkHistoryEntry = {
   ratingComment?: string;
 };
 
-export type RatingResult = {
+type RatingResult = {
   rating: RatingData;
   transactionHash: string;
 };

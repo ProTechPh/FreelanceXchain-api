@@ -7,7 +7,6 @@ import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
 import { uploadMultipleFiles, cleanupUploadedFiles, type FileMetadata } from '../utils/storage-uploader.js';
 import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
-import { generateId } from '../utils/id.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
 import { logger } from '../config/logger.js';
 import {
@@ -664,8 +663,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
     try {
       const uploadResults = await uploadMultipleFiles(
         files,
-        STORAGE_BUCKETS.PROJECT_ATTACHMENTS,
-        `projects/${generateId()}`
+        STORAGE_BUCKETS.PROJECT_ATTACHMENTS
       );
 
       // Check for upload failures

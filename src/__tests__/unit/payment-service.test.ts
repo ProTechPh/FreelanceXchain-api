@@ -48,15 +48,6 @@ const mockDisputeRepo = {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Override database mock with controllable pool
-const mockQuery = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 
 // Mock Appwrite client - return the global mock so beforeEach can modify it
 
@@ -140,7 +131,6 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
 
 // Import after mocking
 const {
-  clearDisputes,
   getDisputeById,
   requestMilestoneCompletion,
   disputeMilestone,
@@ -150,8 +140,6 @@ const {
   setEscrowOpsForTesting,
 } = await import('../../services/payment-service.js');
 
-const { clearTransactions } = await import('../../services/blockchain-client.js');
-const escrowContract = await import('../../services/escrow-contract.js');
 
 describe('Payment Service - Property-Based Tests', () => {
   beforeEach(() => {
@@ -161,9 +149,6 @@ describe('Payment Service - Property-Based Tests', () => {
     notificationStore.clear();
     disputeStore.clear();
     mockAuditLogRepo.create.mockClear();
-    clearTransactions();
-    escrowContract.clearEscrows();
-    clearDisputes();
 
     // Setup Appwrite RPC mock for atomic milestone approval
     const mockAppwriteClient = (globalThis as any).mockAppwriteClient;
@@ -469,9 +454,6 @@ describe('Payment Service - Unit Tests', () => {
     userStore.clear();
     notificationStore.clear();
     disputeStore.clear();
-    clearTransactions();
-    escrowContract.clearEscrows();
-    clearDisputes();
 
     // Setup Appwrite RPC mock (same as property tests)
     const mockAppwriteClient = (globalThis as any).mockAppwriteClient;

@@ -372,7 +372,7 @@ describe('notification-routes - !userId guards and /stream endpoint', () => {
   });
 
   it('GET /stream initializes SSE connection on success (lines 313, 320)', async () => {
-    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = { userId: 'user-1' }; next(); });
     mockSSEConnection.mockImplementation((_userId: any, res: any) => { res.status(200).end(); return { success: true }; });
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/notifications/stream');
@@ -381,7 +381,7 @@ describe('notification-routes - !userId guards and /stream endpoint', () => {
   });
 
   it('GET /stream returns 500 when SSE connection fails (lines 322-323)', async () => {
-    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = { id: 'user-1' }; next(); });
+    mockAuthNoUser.mockImplementation((req: any, _res: any, next: any) => { req.user = { userId: 'user-1' }; next(); });
     mockSSEConnection.mockReturnValue({ success: false, error: { message: 'SSE connection failed' } });
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/notifications/stream');

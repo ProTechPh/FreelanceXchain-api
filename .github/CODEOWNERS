@@ -28,9 +28,9 @@
 /Dockerfile @ProTechPh
 /deployment.json @ProTechPh
 
-# Database schema and migrations
-/appwrite/schema.sql @ProTechPh
-/appwrite/migrations/ @ProTechPh
+# Database schema (Appwrite setup script)
+/scripts/setup-appwrite-db.ts @ProTechPh
+/src/config/collections.ts @ProTechPh
 
 # Security documentation
 /docs/SECURITY_IMPLEMENTATION.md @ProTechPh

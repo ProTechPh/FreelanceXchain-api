@@ -40,13 +40,13 @@ At the heart of FreelanceXchain is an AI-powered skill matching engine that conn
 
 FreelanceXchain employs a multi-layered architecture that integrates traditional backend services with blockchain technology and AI capabilities. The system follows a microservices-inspired design with clear separation of concerns between different functional components.
 
-The platform is built on a Node.js/TypeScript backend with Express.js for the REST API, providing a robust foundation for handling business logic and user interactions. Appwrite, a PostgreSQL-based database solution, serves as the primary data store for user profiles, projects, proposals, and other application data. This traditional backend layer handles authentication, authorization, and data management, ensuring efficient data retrieval and storage.
+The platform is built on a Node.js/TypeScript backend with Express.js for the REST API, providing a robust foundation for handling business logic and user interactions. Appwrite (Backend-as-a-Service) serves as the primary data store for user profiles, projects, proposals, and other application data, with its schema defined in `scripts/setup-appwrite-db.ts`. This backend layer handles authentication, authorization, and data management, ensuring efficient data retrieval and storage.
 
 The blockchain layer, built on Ethereum-compatible smart contracts, handles critical functions that require decentralization, immutability, and trustless execution. The core smart contracts include FreelanceEscrow.sol for milestone-based payments, FreelanceReputation.sol for on-chain reputation, and KYCVerification.sol for identity verification. These contracts are deployed on the Ethereum network (initially on testnets like Sepolia) and interact with the backend through Web3.js or Ethers.js libraries.
 
 The AI layer integrates with external LLM (Large Language Model) APIs to power the intelligent matching system. This layer processes natural language descriptions of projects and freelancer profiles to extract skills, analyze requirements, and generate recommendations. The AI system also performs gap analysis to identify skill deficiencies and suggest professional development opportunities for freelancers.
 
-Security is implemented at multiple levels, including HTTPS/TLS for transport security, JWT-based authentication with role-based access control, Appwrite Row Level Security (RLS) for database security, and smart contract security measures like reentrancy guards and access modifiers. The architecture also includes comprehensive logging and monitoring to ensure system transparency and facilitate regulatory compliance.
+Security is implemented at multiple levels, including HTTPS/TLS for transport security, session-based authentication with role-based access control, Appwrite collection permissions for data security, and smart contract security measures like reentrancy guards and access modifiers. The architecture also includes comprehensive logging and monitoring to ensure system transparency and facilitate regulatory compliance.
 
 ## Key User Workflows
 

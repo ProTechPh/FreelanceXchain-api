@@ -42,7 +42,6 @@ Complete guide to all configuration files in the FreelanceXchain API project.
     "test:ci": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage --passWithNoTests",
     "compile": "hardhat compile --config hardhat.config.cjs",
     "deploy:contracts": "tsx scripts/deploy-contracts.ts",
-    "openapi:generate": "tsx scripts/generate-openapi.ts",
     "lint": "eslint src/**/*.ts",
     "security:audit": "pnpm audit --audit-level=moderate"
   }
@@ -51,7 +50,7 @@ Complete guide to all configuration files in the FreelanceXchain API project.
 
 #### Dependencies
 
-- **Production:** Express, Appwrite, PostgreSQL, Ethers.js, bcrypt, JWT, etc.
+- **Production:** Express, Appwrite, Ethers.js, JWT, Redis, etc.
 - **Development:** TypeScript, Jest, Hardhat, ESLint, tsx, etc.
 
 ### Common Commands
@@ -429,10 +428,7 @@ pnpm run deploy:contracts:prod   # Production network
 
 ### Generation
 
-```bash
-# Generate from code
-pnpm run openapi:generate
-```
+The OpenAPI spec is checked in as `openapi.json` at the repo root and served by `src/app.ts` when `ENABLE_API_DOCS=true`.
 
 ### Usage
 
@@ -520,12 +516,6 @@ docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```env
 NODE_ENV=development
 PORT=7860
-```
-
-#### Database
-
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/freelancexchain
 ```
 
 #### Appwrite

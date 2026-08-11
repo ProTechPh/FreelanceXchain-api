@@ -19,7 +19,7 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: mockLogger,
 }));
 
-// Config/Env (for file-service and async-lock's redis import)
+// Config/Env (for async-lock's redis import)
 const mockConfig = {
   appwrite: {
     endpoint: 'https://mock.appwrite.io/v1',
@@ -774,91 +774,6 @@ describe('employer-profile-service: update fails (line 144)', () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.code).toBe('UPDATE_FAILED');
-    }
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════
-// TESTS: file-service
-// ═══════════════════════════════════════════════════════════════
-
-describe('file-service: no permissions (line 34)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should exclude files without $permissions from results', async () => {
-    mockAppwriteStorage.listFiles.mockResolvedValueOnce({
-      files: [
-        { $id: 'file-1', name: 'no-perms.txt', sizeOriginal: 100, $createdAt: '2024-01-01', $updatedAt: '2024-01-01' },
-      ],
-      total: 1,
-    });
-
-    const { getUserFiles } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await getUserFiles('user-1', 'portfolio-images');
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toHaveLength(0);
-    }
-  });
-});
-
-describe('file-service: outer catch in getUserFiles (lines 80-81)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should return INTERNAL_ERROR when inner catch logger throws', async () => {
-    // storage.listFiles throws → enters inner catch
-    mockAppwriteStorage.listFiles.mockRejectedValueOnce(new Error('storage error'));
-    // logger.error in inner catch throws → propagates to outer catch
-    mockLogger.error.mockImplementationOnce(() => { throw new Error('logger exploded'); });
-
-    const { getUserFiles } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await getUserFiles('user-1');
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INTERNAL_ERROR');
-    }
-  });
-});
-
-describe('file-service: outer catch in deleteFile (lines 131-132)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should return INTERNAL_ERROR when deleteFile storage call fails after ownership check', async () => {
-    // getFile succeeds with correct ownership
-    mockAppwriteStorage.getFile.mockResolvedValueOnce({
-      $id: 'file-1',
-      name: 'test.txt',
-      $permissions: ['write("user:user-1")'],
-    });
-    // deleteFile throws
-    mockAppwriteStorage.deleteFile.mockRejectedValueOnce(new Error('delete failed'));
-
-    const { deleteFile } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await deleteFile('user-1', 'portfolio-images', 'file-1');
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INTERNAL_ERROR');
-    }
-  });
-});
-
-describe('file-service: getUserFiles fails in getFileQuota (line 150)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should propagate error when getUserFiles fails', async () => {
-    // Make getUserFiles fail by triggering its outer catch
-    mockAppwriteStorage.listFiles.mockRejectedValueOnce(new Error('storage error'));
-    mockLogger.error.mockImplementationOnce(() => { throw new Error('logger exploded'); });
-
-    const { getFileQuota } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await getFileQuota('user-1');
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INTERNAL_ERROR');
     }
   });
 });

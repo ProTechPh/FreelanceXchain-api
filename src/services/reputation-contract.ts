@@ -15,7 +15,7 @@ import { generateId } from '../utils/id.js';
 import { blockchainRatingRepository } from '../repositories/blockchain-rating-repository.js';
 
 // Simulated blockchain rating record type (Appwrite-backed)
-export type SimulatedBlockchainRating = {
+type SimulatedBlockchainRating = {
   id: string;
   contractId: string;
   raterId: string;
@@ -28,7 +28,7 @@ export type SimulatedBlockchainRating = {
 
 // Backward-compatible alias
 export type BlockchainRating = SimulatedBlockchainRating;
-export type SerializedBlockchainRating = SimulatedBlockchainRating;
+
 
 // Rating submission parameters
 export type RatingSubmissionParams = {

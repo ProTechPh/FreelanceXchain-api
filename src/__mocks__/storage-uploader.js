@@ -14,10 +14,10 @@ module.exports = {
   uploadMultipleFiles: jest.fn().mockResolvedValue([mockUploadResult.metadata]),
   deleteFileFromStorage: jest.fn().mockResolvedValue(undefined),
   extractFileIdFromUrl: jest.fn().mockReturnValue('test-file-id'),
-  extractFilePathFromUrl: jest.fn().mockReturnValue('test-file-id'),
   cleanupUploadedFiles: jest.fn().mockResolvedValue(undefined),
   uploadFile: jest.fn().mockResolvedValue(mockUploadResult),
   deleteFile: jest.fn().mockResolvedValue({ success: true, error: undefined }),
   getSignedUrl: jest.fn().mockResolvedValue(mockUploadResult),
   listUserFiles: jest.fn().mockResolvedValue({ success: true, files: [], error: undefined }),
+  getFileQuota: jest.fn().mockResolvedValue({ success: true, used: 0, limit: 104857600, percentage: 0, files: 0, error: undefined }),
 };

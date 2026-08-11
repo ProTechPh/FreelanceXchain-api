@@ -32,14 +32,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts
   getKycVerificationByUserId: jest.fn(async () => null),
 }));
 
-jest.unstable_mockModule('bcrypt', () => {
-  const mock = {
-    hash: jest.fn().mockResolvedValue('hashed_password' as never),
-    compare: jest.fn().mockResolvedValue(true as never),
-  };
-  return { default: mock, ...mock };
-});
-
 jest.unstable_mockModule('jsonwebtoken', () => {
   const mock = {
     sign: jest.fn().mockReturnValue('mock_token'),

@@ -272,6 +272,13 @@ const storageUploaderMocks = {
     success: true,
     files: [],
   })),
+  getFileQuota: jest.fn(async (userId: string) => ({
+    success: true,
+    used: 0,
+    limit: 104857600,
+    percentage: 0,
+    files: 0,
+  })),
   extractFileIdFromUrl: jest.fn((url: string) => 'test-file-id'),
 };
 

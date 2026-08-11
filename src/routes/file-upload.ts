@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { createFileUploadMiddleware } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
-import { uploadFile, deleteFile, getSignedUrl, listUserFiles } from '../utils/storage-uploader.js';
+import { uploadFile, deleteFile, getSignedUrl, listUserFiles, getFileQuota } from '../utils/storage-uploader.js';
 import { sendErrorResponse, getRequestId } from '../utils/response-helpers.js';
 
 const router = Router();
@@ -31,7 +31,7 @@ router.post(
       return;
     }
 
-    const { bucket, folder } = req.body as { bucket?: string; folder?: string };
+    const { bucket } = req.body as { bucket?: string };
 
     if (!bucket) {
       sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Bucket name is required', getRequestId(req));
@@ -58,16 +58,6 @@ router.post(
         filename: file.originalname,
         mimetype: file.mimetype,
       };
-      // BLF-11.1: Sanitize folder parameter to prevent path traversal
-      if (folder) {
-        const sanitizedFolder = folder
-          .replace(/\.\./g, '')           // Remove traversal sequences
-          .replace(/[^a-zA-Z0-9/_-]/g, '') // Only allow safe characters
-          .replace(/^\/+|\/+$/g, '');       // Trim leading/trailing slashes
-        if (sanitizedFolder) {
-          uploadOptions.folder = sanitizedFolder;
-        }
-      }
       const result = await uploadFile(uploadOptions);
 
       if (!result.success) {
@@ -165,12 +155,8 @@ router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response) 
     return;
   }
 
-  const folder = req.query['folder'] as string | undefined;
-
   try {
-    const listOptions: Parameters<typeof listUserFiles> = [bucket, userId];
-    if (folder) listOptions.push(folder);
-    const result = await listUserFiles(...listOptions);
+    const result = await listUserFiles(bucket, userId);
     if (!result.success) {
       sendErrorResponse(res, 400, 'FILE_LIST_FAILED', result.error, getRequestId(req));
       return;
@@ -178,6 +164,25 @@ router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response) 
     res.status(200).json({ success: true, files: result.files });
   } catch {
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to list files', getRequestId(req));
+  }
+});
+
+router.get('/quota', authMiddleware, async (req: Request, res: Response) => {
+  const userId = req.user?.userId;
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+    return;
+  }
+
+  try {
+    const result = await getFileQuota(userId);
+    if (!result.success) {
+      sendErrorResponse(res, 400, 'QUOTA_FAILED', result.error, getRequestId(req));
+      return;
+    }
+    res.status(200).json({ success: true, used: result.used, limit: result.limit, percentage: result.percentage, files: result.files });
+  } catch {
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get file quota', getRequestId(req));
   }
 });
 

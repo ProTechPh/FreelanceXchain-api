@@ -799,18 +799,6 @@ export async function getDisputesByContract(contractId: string): Promise<Dispute
 }
 
 /**
- * @deprecated Disputes are now persisted in the database. Use direct repository calls
- * in tests. This function is a no-op in all environments and will throw in production
- * to prevent accidental calls that expect side effects.
- */
-export function clearDisputes(): void {
-  if (process.env['NODE_ENV'] === 'production') {
-    throw new Error('clearDisputes must not be called in production — disputes are persisted in the database');
-  }
-  // No-op in non-production environments: disputes are stored in the database
-}
-
-/**
  * Convert a decimal number to wei (BigInt) safely without floating-point precision loss.
  * Uses ethers.parseUnits which handles the full numeric range correctly.
  * e.g., 0.3 * 1e18 = 299999999999999940 (wrong), but parseUnits('0.3', 18) returns 300000000000000000 (correct)

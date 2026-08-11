@@ -116,12 +116,12 @@ E --> F[Serve Production Swagger Docs]
 
 For Appwrite integration, create a new project and configure:
 
-1. Database schema using `appwrite/schema.sql`
-2. Environment variables with project URL and keys
-3. Row Level Security (RLS) policies as defined in the schema
+1. Run `npx tsx scripts/setup-appwrite-db.ts` to create the database, collections, attributes, and indexes (idempotent)
+2. Environment variables with project URL and API keys
+3. Collection permissions (default: public read, authenticated create/update/delete)
 4. Authentication settings for user management
 
-The schema includes comprehensive RLS policies, with service role bypass for backend operations and public read access for certain tables.
+Collection-level permissions are set at creation time by `scripts/setup-appwrite-db.ts`; ownership rules are enforced in application middleware.
 
 ### Custom Domain and SSL Configuration
 

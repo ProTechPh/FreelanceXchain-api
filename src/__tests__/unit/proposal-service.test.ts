@@ -88,15 +88,6 @@ jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), ()
   signAgreement: jest.fn<any>().mockResolvedValue(undefined),
 }));
 
-const mockQuery = jest.fn();
-(globalThis as any).mockPool = { query: mockQuery };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 
 // Mock review repository
 jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
@@ -146,64 +137,6 @@ describe('Proposal Service - Property-Based Tests', () => {
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
-    // Mock pool.query for atomic proposal acceptance
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('COUNT(*)') && text.includes('proposals')) {
-        return { rows: [{ count: '0' }], rowCount: 1 };
-      }
-      if (text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerId = params?.[1];
-        const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) {
-          return { rows: [], rowCount: 0 };
-        }
-        
-        proposal.status = 'accepted';
-        proposalStore.set(proposalId, proposal);
-        
-        const contractId = 'contract-' + Date.now();
-        const now = new Date().toISOString();
-        const contract = {
-          id: contractId,
-          proposal_id: proposalId,
-          project_id: proposal.project_id,
-          freelancer_id: proposal.freelancer_id,
-          employer_id: employerId,
-          total_amount: proposal.proposed_rate,
-          status: 'pending',
-          escrow_address: null,
-          created_at: now,
-          updated_at: now,
-        };
-        contractStore.set(contractId, contract);
-        
-        for (const [id, p] of proposalStore.entries()) {
-          const otherProposal = p as any;
-          if (otherProposal.project_id === proposal.project_id && 
-              otherProposal.id !== proposalId && 
-              otherProposal.status === 'pending') {
-            otherProposal.status = 'rejected';
-            proposalStore.set(id, otherProposal);
-          }
-        }
-        
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalId = params?.[0];
-        // Find the contract for this proposal
-        for (const [, c] of contractStore.entries()) {
-          const contract = c as any;
-          if (contract.proposal_id === proposalId) {
-            return { rows: [{ id: contract.id }], rowCount: 1 };
-          }
-        }
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   /**
@@ -447,63 +380,6 @@ describe('Proposal Service - Unit Tests', () => {
     mockBlockchainService.deployEscrow.mockClear();
     mockAuditLogRepo.create.mockClear();
 
-    // Mock pool.query for atomic proposal acceptance
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('COUNT(*)') && text.includes('proposals')) {
-        return { rows: [{ count: '0' }], rowCount: 1 };
-      }
-      if (text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerId = params?.[1];
-        const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) {
-          return { rows: [], rowCount: 0 };
-        }
-        
-        proposal.status = 'accepted';
-        proposalStore.set(proposalId, proposal);
-        
-        const contractId = 'contract-' + Date.now();
-        const now = new Date().toISOString();
-        const contract = {
-          id: contractId,
-          proposal_id: proposalId,
-          project_id: proposal.project_id,
-          freelancer_id: proposal.freelancer_id,
-          employer_id: employerId,
-          total_amount: proposal.proposed_rate,
-          status: 'pending',
-          escrow_address: null,
-          created_at: now,
-          updated_at: now,
-        };
-        contractStore.set(contractId, contract);
-        
-        for (const [id, p] of proposalStore.entries()) {
-          const otherProposal = p as any;
-          if (otherProposal.project_id === proposal.project_id && 
-              otherProposal.id !== proposalId && 
-              otherProposal.status === 'pending') {
-            otherProposal.status = 'rejected';
-            proposalStore.set(id, otherProposal);
-          }
-        }
-        
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalId = params?.[0];
-        for (const [, c] of contractStore.entries()) {
-          const contract = c as any;
-          if (contract.proposal_id === proposalId) {
-            return { rows: [{ id: contract.id }], rowCount: 1 };
-          }
-        }
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   it('should create proposal with valid data', async () => {
@@ -754,52 +630,6 @@ describe('Proposal Service - Coverage Tests', () => {
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('COUNT(*)') && text.includes('proposals')) {
-        return { rows: [{ count: '0' }], rowCount: 1 };
-      }
-      if (text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerId = params?.[1];
-        const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) {
-          return { rows: [], rowCount: 0 };
-        }
-        proposal.status = 'accepted';
-        proposalStore.set(proposalId, proposal);
-        const contractId = 'contract-' + Date.now();
-        const now = new Date().toISOString();
-        const contract = {
-          id: contractId, proposal_id: proposalId, project_id: proposal.project_id,
-          freelancer_id: proposal.freelancer_id, employer_id: employerId,
-          total_amount: proposal.proposed_rate, status: 'pending', escrow_address: null,
-          created_at: now, updated_at: now,
-        };
-        contractStore.set(contractId, contract);
-        for (const [id, p] of proposalStore.entries()) {
-          const otherProposal = p as any;
-          if (otherProposal.project_id === proposal.project_id &&
-              otherProposal.id !== proposalId &&
-              otherProposal.status === 'pending') {
-            otherProposal.status = 'rejected';
-            proposalStore.set(id, otherProposal);
-          }
-        }
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalId = params?.[0];
-        for (const [, c] of contractStore.entries()) {
-          const contract = c as any;
-          if (contract.proposal_id === proposalId) {
-            return { rows: [{ id: contract.id }], rowCount: 1 };
-          }
-        }
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   // --- submitProposal error paths ---
@@ -1837,52 +1667,6 @@ describe('Proposal Service - Integration Coverage', () => {
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('COUNT(*)') && text.includes('proposals')) {
-        return { rows: [{ count: '0' }], rowCount: 1 };
-      }
-      if (text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerId = params?.[1];
-        const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) {
-          return { rows: [], rowCount: 0 };
-        }
-        proposal.status = 'accepted';
-        proposalStore.set(proposalId, proposal);
-        const contractId = 'contract-' + Date.now();
-        const now = new Date().toISOString();
-        const contract = {
-          id: contractId, proposal_id: proposalId, project_id: proposal.project_id,
-          freelancer_id: proposal.freelancer_id, employer_id: employerId,
-          total_amount: proposal.proposed_rate, status: 'pending', escrow_address: null,
-          created_at: now, updated_at: now,
-        };
-        contractStore.set(contractId, contract);
-        for (const [id, p] of proposalStore.entries()) {
-          const otherProposal = p as any;
-          if (otherProposal.project_id === proposal.project_id &&
-              otherProposal.id !== proposalId &&
-              otherProposal.status === 'pending') {
-            otherProposal.status = 'rejected';
-            proposalStore.set(id, otherProposal);
-          }
-        }
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalId = params?.[0];
-        for (const [, c] of contractStore.entries()) {
-          const contract = c as any;
-          if (contract.proposal_id === proposalId) {
-            return { rows: [{ id: contract.id }], rowCount: 1 };
-          }
-        }
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   // Lines 308-310: rush fee calculation with is_rush: true and rush_fee_percentage

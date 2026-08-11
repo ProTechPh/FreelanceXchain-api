@@ -1,7 +1,7 @@
 import { BaseRepository, type QueryOptions, type PaginatedResult } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
-export type BlockchainRatingEntity = {
+type BlockchainRatingEntity = {
   id: string;
   contract_id: string;
   rater_id: string;

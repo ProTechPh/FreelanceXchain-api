@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-const { ReviewRepository } = await import('../../repositories/review-repository.js');
+const { reviewRepository: ReviewRepository } = await import('../../repositories/review-repository.js');
 
 describe('ReviewRepository', () => {
   let mockDatabases: any;

@@ -2,7 +2,7 @@ import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import type { ContractEntity } from './contract-repository.js';
 
-export type RefundRequestEntity = {
+type RefundRequestEntity = {
   id: string;
   contract_id: string;
   requested_by: string;
@@ -25,7 +25,7 @@ function mapDoc(doc: Record<string, unknown>): RefundRequestEntity {
   return fromAppwriteDoc<RefundRequestEntity>(doc);
 }
 
-export type RefundWithContract = RefundRequestEntity & { contract?: ContractEntity | null };
+type RefundWithContract = RefundRequestEntity & { contract?: ContractEntity | null };
 
 export class RefundRequestRepository extends BaseRepository<RefundRequestEntity> {
   constructor() {

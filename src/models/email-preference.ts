@@ -16,23 +16,7 @@ export type EmailPreference = {
   updatedAt: string;
 };
 
-export type EmailPreferenceEntity = {
-  id: string;
-  user_id: string;
-  proposal_received: boolean;
-  proposal_accepted: boolean;
-  milestone_updates: boolean;
-  payment_notifications: boolean;
-  dispute_notifications: boolean;
-  contract_notifications: boolean;
-  message_notifications: boolean;
-  review_notifications: boolean;
-  kyc_notifications: boolean;
-  marketing_emails: boolean;
-  weekly_digest: boolean;
-  created_at: string;
-  updated_at: string;
-};
+
 
 export type EmailType =
   | 'proposal_received'

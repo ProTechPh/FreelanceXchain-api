@@ -11,22 +11,13 @@ export type LoginInput = {
   password: string;
 };
 
-export type PhoneLoginInput = {
-  phone: string;
-};
 
-export type EmailOtpLoginInput = {
-  email: string;
-};
 
-export type MagicUrlLoginInput = {
-  email: string;
-};
 
-export type VerifyOtpInput = {
-  userId: string;
-  secret: string;
-};
+
+
+
+
 
 export type TokenPayload = {
   userId: string;

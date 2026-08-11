@@ -3,7 +3,7 @@ import { RealBlockchainAdapter } from './real-adapter.js';
 import { SimulatedBlockchainAdapter } from './simulated-adapter.js';
 import { config } from '../../config/env.js';
 
-export type BlockchainMode = 'real' | 'simulated';
+type BlockchainMode = 'real' | 'simulated';
 
 export function getBlockchainMode(): BlockchainMode {
   const mode = config.blockchain.mode?.toLowerCase();

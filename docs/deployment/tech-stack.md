@@ -17,7 +17,7 @@ TypeScript serves as the foundation for backend development, providing static ty
 
 Express.js functions as the web application framework, handling REST API requests and responses. It provides a minimalist and flexible Node.js web application framework for building single-page, multi-page, and hybrid web applications. The framework's middleware architecture enables efficient request processing and response handling.
 
-Appwrite acts as the PostgreSQL database provider and authentication system. It offers real-time capabilities through PostgreSQL's replication functionality and implements Row Level Security (RLS) for fine-grained access control. This allows the application to securely expose the database directly to clients while maintaining data integrity and privacy.
+Appwrite acts as the Backend-as-a-Service provider for data storage and authentication. Its schema (collections, attributes, indexes) is defined in `scripts/setup-appwrite-db.ts`, and collection-level permissions control access. The application layer enforces ownership and role-based rules via middleware.
 
 Hardhat serves as the Ethereum development environment, providing tools for compiling, testing, debugging, and deploying smart contracts. Its local blockchain testing capability enables developers to simulate Ethereum network conditions without incurring gas costs, facilitating rapid development and thorough testing of blockchain functionality.
 
@@ -48,7 +48,6 @@ These dependencies enable blockchain functionality and smart contract interactio
 
 Security-related dependencies protect the application and its users:
 
-- **bcrypt**: Password hashing library for secure credential storage
 - **helmet**: Middleware for setting various HTTP headers to enhance security
 - **jsonwebtoken**: Implementation of JSON Web Tokens for authentication
 - **cors**: Middleware for enabling Cross-Origin Resource Sharing with restrictions
@@ -78,11 +77,11 @@ The technology choices in FreelanceXchain are driven by specific requirements fo
 
 TypeScript's type safety provides significant benefits for a complex application like FreelanceXchain. By catching errors at compile time rather than runtime, TypeScript reduces bugs and improves code quality. The type system also serves as documentation, making the codebase more maintainable and easier for new developers to understand. This is particularly important in a system that handles financial transactions and sensitive user data.
 
-Appwrite was selected over traditional database solutions due to its real-time capabilities and Row Level Security (RLS) features. The real-time functionality enables instant updates across clients when data changes, which is essential for features like notification systems and live project updates. RLS allows the application to implement fine-grained access control directly at the database level, reducing the need for complex application-level permission checks and minimizing the risk of unauthorized data access.
+Appwrite was selected for its managed Backend-as-a-Service model: schema is versioned in the repo (`scripts/setup-appwrite-db.ts`), collection permissions provide a baseline security boundary, and application middleware enforces fine-grained ownership and role-based rules. This reduces operational overhead compared to running a self-managed database while keeping access control explicit and testable in the application layer.
 
 Hardhat's local blockchain testing environment provides significant advantages for smart contract development. Developers can test contract functionality, edge cases, and failure scenarios without incurring gas costs on public networks. The ability to simulate different network conditions, mine blocks programmatically, and inspect transaction details enhances the testing process and ensures contract reliability before deployment to production networks.
 
-The combination of these technologies creates a robust foundation for a decentralized application that requires both traditional web functionality and blockchain integration. The architecture separates concerns effectively, with Appwrite handling relational data and authentication, while the blockchain manages smart contracts for escrow, reputation, and dispute resolution.
+The combination of these technologies creates a robust foundation for a decentralized application that requires both traditional web functionality and blockchain integration. The architecture separates concerns effectively, with Appwrite handling document storage and authentication, while the blockchain manages smart contracts for escrow, reputation, and dispute resolution.
 
 ## Containerization Strategy
 

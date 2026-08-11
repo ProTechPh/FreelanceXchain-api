@@ -17,7 +17,7 @@ import { withLock } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendProposalAcceptedEmail, sendContractCreatedEmail } from './email-delivery-service.js';
 
-export type CreateProposalInput = {
+type CreateProposalInput = {
   projectId: string;
   attachments: FileAttachment[];
   proposedRate: number;
@@ -25,7 +25,7 @@ export type CreateProposalInput = {
 };
 
 
-export type ProposalWithNotification = {
+type ProposalWithNotification = {
   proposal: Proposal;
   notification: {
     userId: string;
@@ -33,12 +33,12 @@ export type ProposalWithNotification = {
   };
 };
 
-export type AcceptProposalResult = {
+type AcceptProposalResult = {
   proposal: Proposal;
   contract: Contract;
 };
 
-export type RejectProposalResult = {
+type RejectProposalResult = {
   proposal: Proposal;
 };
 
@@ -134,7 +134,7 @@ export async function getProposalById(proposalId: string): Promise<ServiceResult
 }
 
 // Get proposal by ID with employer history (rating and completed projects)
-export type EmployerHistory = {
+type EmployerHistory = {
   completedProjectsCount: number;
   averageRating: number;
   reviewCount: number;
@@ -142,7 +142,7 @@ export type EmployerHistory = {
   industry: string | null | undefined;
 };
 
-export type ProposalWithEmployerHistory = {
+type ProposalWithEmployerHistory = {
   proposal: Proposal;
   project: Project;
   employerHistory: EmployerHistory;

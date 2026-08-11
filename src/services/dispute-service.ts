@@ -23,14 +23,14 @@ import {
 import { getBlockchainAdapter } from './blockchain/factory.js';
 import { disputeAgreement } from './agreement-contract.js';
 import { logger } from '../config/logger.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 import { sendGatedEmail, sendDisputeCreatedEmail } from './email-delivery-service.js';
 
-export type DisputeServiceResult<T> = ServiceResult<T>;
-export type DisputeServiceError = ServiceError;
+type DisputeServiceResult<T> = ServiceResult<T>;
+
 
 export type CreateDisputeInput = {
   contractId: string;

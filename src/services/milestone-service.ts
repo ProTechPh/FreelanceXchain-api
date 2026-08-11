@@ -28,7 +28,7 @@ import { generateId } from '../utils/id.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 
-export type MilestoneWithContract = {
+type MilestoneWithContract = {
   milestone: MilestoneEntity & {
     contract_id: string;
     project_id: string;

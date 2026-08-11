@@ -9,8 +9,8 @@ import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
 
-export type ContractServiceResult<T> = ServiceResult<T>;
-export type ContractServiceError = ServiceError;
+type ContractServiceResult<T> = ServiceResult<T>;
+
 
 function mapPaginatedContracts(result: PaginatedResult<ContractEntity>): PaginatedResult<Contract> {
   return {

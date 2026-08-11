@@ -98,8 +98,7 @@ type MilestoneDeliverable = { filename: string; url: string; size: number; mimeT
 
 async function uploadMilestoneDeliverables(
   files: Express.Multer.File[],
-  userId: string,
-  milestoneId: string
+  userId: string
 ): Promise<MilestoneDeliverable[]> {
   const uploadPromises = files.map(async (file) => {
     const result = await uploadFile({
@@ -108,7 +107,6 @@ async function uploadMilestoneDeliverables(
       file: file.buffer,
       filename: file.originalname,
       mimetype: file.mimetype,
-      folder: `milestone-${milestoneId}`,
     });
 
     if (!result.success) {
@@ -313,7 +311,7 @@ router.post('/:id/upload-deliverables',
   async (req: Request, res: Response) => {
     try {
       const milestoneId = req.params['id'] ?? '';
-      const userId = req.user?.id ?? '';
+      const userId = req.user?.userId ?? '';
       const files = req.files as Express.Multer.File[] | undefined;
 
       if (!files || files.length === 0) {
@@ -327,7 +325,7 @@ router.post('/:id/upload-deliverables',
       }
 
       // Upload files to milestone-deliverables bucket
-      const uploadedFiles = await uploadMilestoneDeliverables(files, userId, milestoneId);
+      const uploadedFiles = await uploadMilestoneDeliverables(files, userId);
 
       return sendSuccessResponse(res, 200, {
         success: true,
@@ -383,7 +381,7 @@ router.post('/:id/upload-deliverables',
 router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
-    const userId = req.user?.id ?? '';
+    const userId = req.user?.userId ?? '';
     const { deliverables, notes } = req.body;
 
     const result = await submitMilestoneFromProjectContext(milestoneId, userId, deliverables || [], notes);
@@ -445,7 +443,7 @@ router.post('/:id/submit-with-files',
   async (req: Request, res: Response) => {
     try {
       const milestoneId = req.params['id'] ?? '';
-      const userId = req.user?.id ?? '';
+      const userId = req.user?.userId ?? '';
       const { notes, existingDeliverables } = req.body;
       const files = req.files as Express.Multer.File[] | undefined;
 
@@ -467,7 +465,7 @@ router.post('/:id/submit-with-files',
         mimeType: string;
       }> = [];
       if (files && files.length > 0) {
-        newFiles = await uploadMilestoneDeliverables(files, userId, milestoneId);
+        newFiles = await uploadMilestoneDeliverables(files, userId);
       }
 
       // Combine existing and new files
@@ -525,7 +523,7 @@ router.post('/:id/submit-with-files',
 router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
-    const userId = req.user?.id ?? '';
+    const userId = req.user?.userId ?? '';
 
     // Find the contract containing this milestone by scanning employer's contracts
     const contractsResult = await contractRepository.getContractsByEmployer(userId, { limit: 1000, offset: 0 });
@@ -596,7 +594,7 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
 router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
-    const userId = req.user?.id ?? '';
+    const userId = req.user?.userId ?? '';
     const { reason, requestRevision } = req.body;
 
     if (!reason) {
