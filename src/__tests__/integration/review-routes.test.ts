@@ -130,8 +130,10 @@ describe('Review Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
-      const response = await request(app).get('/api/reviews/invalid-uuid');
+    it('should validate Appwrite document ID format', async () => {
+      // Review IDs are Appwrite document IDs (hex-timestamp), so validation must
+      // reject malformed IDs rather than accept them silently.
+      const response = await request(app).get('/api/reviews/not a valid id!!!');
       expect(response.status).toBe(400);
     });
 
@@ -150,8 +152,8 @@ describe('Review Routes Integration Tests', () => {
       expect(response.body).toBeDefined();
     });
 
-    it('should validate UUID format', async () => {
-      const response = await request(app).get('/api/reviews/user/invalid-uuid');
+    it('should validate Appwrite document ID format', async () => {
+      const response = await request(app).get('/api/reviews/user/not a valid id!!!');
       expect(response.status).toBe(400);
     });
   });

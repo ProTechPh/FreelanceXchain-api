@@ -52,6 +52,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
 const adminRouter = (await import('../../routes/admin-routes.js')).default;
@@ -904,6 +905,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
 
     const express = (await import('express')).default;
@@ -981,6 +983,7 @@ describe('admin verification authentication coverage', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
 
     const express = (await import('express')).default;

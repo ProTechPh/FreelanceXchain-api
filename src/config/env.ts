@@ -49,6 +49,12 @@ export const config = {
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     baseUrl: getBaseUrl(),
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
+    // Number of trusted reverse-proxy hops. Keeps req.ip (used by rate limiters and
+    // audit logging) pointing at the real client instead of the proxy when deployed
+    // behind nginx/Cloudflare/HF Spaces. Set 0 to disable and always use the socket
+    // address. Express `trust proxy` semantics: a positive N trusts N hops from the
+    // socket connection (the rightmost N entries of X-Forwarded-For).
+    trustProxyHops: getEnvVarNumber('TRUST_PROXY_HOPS', 1),
   },
   appwrite: {
     endpoint: getEnvVar('APPWRITE_ENDPOINT'),

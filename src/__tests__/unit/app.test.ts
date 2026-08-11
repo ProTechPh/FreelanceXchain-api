@@ -13,6 +13,7 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       nodeEnv: 'test',
       baseUrl: 'http://localhost:3000',
       enableApiDocs: true,
+      trustProxyHops: 0,
     },
     appwrite: {
       url: 'http://localhost:54321',

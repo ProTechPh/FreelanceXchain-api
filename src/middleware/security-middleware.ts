@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
+import { config } from '../config/env.js';
 
 // NodeNext CJS/ESM interop: some bundlers wrap the default export under `.default`.
 // The double cast is only to reach that optional property — never to escape type checks.
@@ -55,7 +56,17 @@ export function httpsEnforcement(req: Request, res: Response, next: NextFunction
     const isSecure = req.secure || forwardedProto === 'https';
 
     if (!isSecure) {
-        const host = req.headers.host ?? req.hostname;
+        // Derive the redirect target from the configured base URL rather than the
+        // attacker-controlled Host header (prevents open redirect / host-header
+        // poisoning, CWE-601). Falls back to the request host only when the base
+        // URL is not parseable.
+        let host = req.headers.host ?? req.hostname;
+        try {
+            const baseHost = new URL(config.server.baseUrl).host;
+            if (baseHost) host = baseHost;
+        } catch {
+            // Unparseable base URL — keep the request host fallback.
+        }
         res.redirect(301, `https://${host}${req.url}`);
         return;
     }

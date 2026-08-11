@@ -53,7 +53,14 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
     }
     next();
   }),
+  validateAppwriteDocumentId: jest.fn((...args: any[]) => (req: any, _res: any, next: any) => {
+    if (clearParamName && req.params[clearParamName] !== undefined) {
+      req.params[clearParamName] = '';
+    }
+    next();
+  }),
   isValidUUID: jest.fn().mockReturnValue(true),
+  isValidAppwriteDocumentId: jest.fn().mockReturnValue(true),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/csrf-middleware.ts'), () => ({

@@ -26,6 +26,7 @@ describe('Env Config', () => {
     delete process.env.SPACE_ID;
     delete process.env.ENABLE_API_DOCS;
     delete process.env.JWT_REFRESH_SECRET;
+    delete process.env.TRUST_PROXY_HOPS;
   });
 
   const setupRequiredEnv = () => {
@@ -94,6 +95,26 @@ describe('Env Config', () => {
       delete process.env.ENABLE_API_DOCS;
       const { config } = await importModule();
       expect(config.server.enableApiDocs).toBe(false);
+    });
+
+    it('should default trustProxyHops to 1', async () => {
+      setupRequiredEnv();
+      delete process.env.TRUST_PROXY_HOPS;
+      const { config } = await importModule();
+      expect(config.server.trustProxyHops).toBe(1);
+    });
+
+    it('should parse TRUST_PROXY_HOPS as number', async () => {
+      setupRequiredEnv();
+      process.env.TRUST_PROXY_HOPS = '2';
+      const { config } = await importModule();
+      expect(config.server.trustProxyHops).toBe(2);
+    });
+
+    it('should throw when TRUST_PROXY_HOPS is not a number', async () => {
+      setupRequiredEnv();
+      process.env.TRUST_PROXY_HOPS = 'many';
+      await expect(importModule()).rejects.toThrow('Environment variable TRUST_PROXY_HOPS must be a number');
     });
 
     it('should parse ENABLE_API_DOCS as true', async () => {

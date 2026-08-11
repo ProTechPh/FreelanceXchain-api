@@ -166,6 +166,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
   validate: () => (req: any, res: any, next: any) => next(),
   validateRequest: jest.fn((req: any, res: any, next: any) => next()),
   isValidUUID: jest.fn((value: string) => true),
+  isValidAppwriteDocumentId: jest.fn((value: string) => true),
 }));
 
 // Mock rate limiter middleware
