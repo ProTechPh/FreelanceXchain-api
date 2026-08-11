@@ -86,6 +86,19 @@ describe('CSRF Middleware', () => {
     process.env.NODE_ENV = originalEnv;
   });
 
+  it('should skip csrf protection for the email inbox webhook path', () => {
+    const originalEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'development';
+    const req = { method: 'POST', path: '/api/inbox/webhook', headers: {} } as any;
+    const res = {} as any;
+    const next = jest.fn();
+
+    csrfProtection(req, res, next);
+
+    expect(next).toHaveBeenCalled();
+    process.env.NODE_ENV = originalEnv;
+  });
+
   it('should skip csrf protection for GET requests', () => {
     const originalEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'development';

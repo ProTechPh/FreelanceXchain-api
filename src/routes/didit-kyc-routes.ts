@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { validateUUID } from '../middleware/validation-middleware.js';
-import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { apiRateLimiter, webhookRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 import { verifyWebhookSignature } from '../services/didit-client.js';
@@ -453,7 +453,7 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
  *       401:
  *         description: Invalid signature
  */
-router.post('/webhook', asyncHandler(async (req: Request, res: Response) => {
+router.post('/webhook', webhookRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const signature = typeof req.headers['x-signature-v2'] === 'string' ? req.headers['x-signature-v2'] : '';
   const timestamp = typeof req.headers['x-timestamp'] === 'string' ? req.headers['x-timestamp'] : '';

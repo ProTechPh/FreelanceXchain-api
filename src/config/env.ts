@@ -95,6 +95,12 @@ export const config = {
   blockchain: {
     rpcUrl: getEnvVarOptional('BLOCKCHAIN_RPC_URL'),
     privateKey: getEnvVarOptional('BLOCKCHAIN_PRIVATE_KEY'),
+    // BLOCKCHAIN_MODE switches the blockchain backend: 'real' talks to actual
+    // EVM contracts (dev → Ganache, prod → Polygon Amoy), 'simulated' emulates
+    // the ledger in Appwrite for tests/CI and as a no-config fallback. The
+    // `dev` and `prod` npm scripts force 'real' explicitly — the 'simulated'
+    // default ONLY applies when BLOCKCHAIN_MODE is unset. See
+    // src/services/blockchain/README.md for the parity notes between modes.
     mode: getEnvVar('BLOCKCHAIN_MODE', 'simulated') as 'real' | 'simulated',
     arbiterAddress: getEnvVarOptional('PLATFORM_ARBITER_ADDRESS'),
     arbiterPrivateKey: getEnvVarOptional('PLATFORM_ARBITER_PRIVATE_KEY'),
@@ -132,4 +138,8 @@ export function getCorsOrigin(): string | undefined {
 
 export function getBlockchainWebhookSecret(): string | undefined {
   return getEnvVarOptional('BLOCKCHAIN_WEBHOOK_SECRET');
+}
+
+export function getEmailWebhookSecret(): string | undefined {
+  return getEnvVarOptional('EMAIL_WEBHOOK_SECRET');
 }

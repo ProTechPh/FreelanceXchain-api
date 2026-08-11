@@ -15,7 +15,7 @@ import {
   deployEscrow,
   depositToEscrow,
   releaseMilestone,
-  refundMilestone,
+  refundMilestone as simulatedRefundMilestone,
   resolveDisputeSplit,
   getEscrowBalance,
   getEscrowState,
@@ -165,7 +165,7 @@ export class SimulatedBlockchainAdapter implements IBlockchainAdapter {
       receipt = await releaseMilestone(escrowAddress, milestone.id, state.employerAddress);
     } else if (freelancerBps === 0) {
       // Full to employer (refund)
-      receipt = await refundMilestone(escrowAddress, milestone.id, state.employerAddress);
+      receipt = await simulatedRefundMilestone(escrowAddress, milestone.id, state.employerAddress);
     } else {
       // Partial (split) payout via the simulated ledger's partial release/refund
       receipt = await resolveDisputeSplit(escrowAddress, milestone.id, freelancerBps, state.employerAddress);
@@ -186,13 +186,35 @@ export class SimulatedBlockchainAdapter implements IBlockchainAdapter {
     // Refund all pending milestones
     const pendingMilestones = state.milestones.filter(m => m.status === 'pending');
     const receipts = await Promise.all(
-      pendingMilestones.map(milestone => refundMilestone(escrowAddress, milestone.id, state.employerAddress))
+      pendingMilestones.map(milestone => simulatedRefundMilestone(escrowAddress, milestone.id, state.employerAddress))
     );
 
     const lastReceipt = receipts[receipts.length - 1];
     return {
       transactionHash: lastReceipt?.transactionHash || `sim-refund-${escrowAddress}-${Date.now()}`,
       receipt: lastReceipt,
+    };
+  }
+
+  async refundMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult> {
+    const state = await getEscrowState(escrowAddress);
+    if (!state) {
+      throw new Error('Escrow not found');
+    }
+
+    if (milestoneIndex >= state.milestones.length) {
+      throw new Error('Milestone index out of bounds');
+    }
+
+    const milestone = state.milestones[milestoneIndex];
+    if (!milestone) {
+      throw new Error('Milestone not found');
+    }
+
+    const receipt = await simulatedRefundMilestone(escrowAddress, milestone.id, state.employerAddress);
+    return {
+      transactionHash: receipt.transactionHash,
+      receipt,
     };
   }
 

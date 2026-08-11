@@ -960,7 +960,7 @@ export async function requestEmailOtp(email: string): Promise<{ userId: string }
     return { userId: token.userId };
   } catch (error: unknown) {
     logger.error('Email OTP request failed', { error: getErrorMessage(error), email });
-    return { code: 'INTERNAL_ERROR', message: getErrorMessage(error) || '' || 'Failed to send OTP to email' };
+    return { code: 'INTERNAL_ERROR', message: 'Failed to send OTP to email' };
   }
 }
 
@@ -979,7 +979,7 @@ export async function requestMagicUrl(email: string): Promise<{ userId: string }
     return { userId: token.userId };
   } catch (error: unknown) {
     logger.error('Magic URL request failed', { error: getErrorMessage(error), email });
-    return { code: 'INTERNAL_ERROR', message: getErrorMessage(error) || '' || 'Failed to send Magic URL' };
+    return { code: 'INTERNAL_ERROR', message: 'Failed to send Magic URL' };
   }
 }
 

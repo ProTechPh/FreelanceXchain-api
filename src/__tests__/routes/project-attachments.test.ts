@@ -173,6 +173,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   rateLimiter: jest.fn(() => (req: any, res: any, next: any) => next()),
   apiRateLimiter: (req: any, res: any, next: any) => next(),
+  webhookRateLimiter: (req: any, res: any, next: any) => next(),
   fileUploadRateLimiter: (req: any, res: any, next: any) => next(),
   loginRateLimiter: (req: any, res: any, next: any) => next(),
   registerRateLimiter: (req: any, res: any, next: any) => next(),
@@ -180,8 +181,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   authRateLimiter: (req: any, res: any, next: any) => next(),
   sensitiveRateLimiter: (req: any, res: any, next: any) => next(),
   withdrawalRateLimiter: (req: any, res: any, next: any) => next(),
-    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
-  }));
+  mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+}));
 
 // Mock milestone service
 jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () => ({

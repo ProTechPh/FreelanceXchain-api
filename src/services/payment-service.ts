@@ -878,7 +878,12 @@ export async function initializeContractEscrow(
       escrowAddress = realDeployment.escrowAddress;
       logger.info('Real escrow deployed', { escrowAddress, contractTotalAmount });
 
-      // Also save to simulated escrow DB for status tracking
+      // Dual tracking: even in real mode we mirror the escrow into the Appwrite
+      // "simulated" ledger for status tracking (escrow reads in this service
+      // and getContractPaymentStatus use it). This is NOT a second money path —
+      // funds move only through the deployed contract; the Appwrite copy is a
+      // read-model mirror. See src/services/blockchain/README.md "Simulated vs.
+      // Real Behavioral Parity".
       try {
         const simDeployment = await escrowOps.deployEscrow({
           contractId: contract.id,

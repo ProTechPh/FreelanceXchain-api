@@ -268,24 +268,91 @@ export async function approveRefund(
           throw new Error('Failed to approve refund');
         }
 
-        // Execute the on-chain refund through the blockchain adapter so it works in
-        // both real and simulated modes (refunds every not-yet-released milestone).
-        // All-or-nothing: on failure the DB approval is rolled back; a retry is safe
-        // because both adapters only refund milestones still pending in the ledger.
+        // BLF-3.6: Refund scope. Full refunds (the default — any request whose
+        // `is_partial` flag is false) settle the entire remaining escrow through the
+        // contract-cancelling `refundEscrow` adapter call. Partial refunds
+        // (`is_partial: true` + `amount`) are milestone-granular: pending milestones
+        // are refunded in order until the cumulative refunded amount covers the
+        // requested amount, via the per-milestone `refundMilestone` adapter call
+        // (matching the FreelanceEscrow contract, which only allows refunding
+        // pending milestones). Whole milestones are always refunded, so the actual
+        // refunded amount may exceed the request when it doesn't align to a
+        // milestone boundary. All-or-nothing: on failure the DB approval is rolled
+        // back; retries are made safe by the on-chain status pre-check below, which
+        // skips milestones already Refunded in the ledger (a failed attempt may
+        // have refunded some milestones on-chain before rolling back).
+        const isPartialRefund = refund.is_partial === true && (refund.amount ?? 0) > 0;
+
+        let refundTargets: Array<{ index: number; amount: number }>;
+        if (isPartialRefund) {
+          refundTargets = [];
+          let remaining = refund.amount;
+          for (const m of pendingMilestones) {
+            if (remaining <= 0) break;
+            const milestoneAmount = Number((m as { amount?: unknown }).amount ?? 0);
+            refundTargets.push({ index: m.index, amount: milestoneAmount });
+            remaining -= milestoneAmount;
+          }
+        } else {
+          refundTargets = pendingMilestones.map(m => ({
+            index: m.index,
+            amount: Number((m as { amount?: unknown }).amount ?? 0),
+          }));
+        }
+
+        // The contract is only cancelled when every refundable milestone was
+        // refunded; a partial refund leaves it active.
+        const refundsAllPending = refundTargets.length === pendingMilestones.length;
+
         try {
           const adapter = getBlockchainAdapter();
           if (!adapter.isAvailable()) {
             throw new Error('Blockchain adapter unavailable');
           }
-          await adapter.refundEscrow(contract.escrow_address);
-          logger.info('Blockchain refund executed', {
-            refundId: input.refundId,
-            escrowAddress: contract.escrow_address,
-            refundedMilestones: pendingMilestones.map(m => m.index),
-          });
+          if (isPartialRefund) {
+            // Refund only the selected milestones (pending-only on-chain).
+            // Idempotent retry: a failed attempt may have refunded some milestones
+            // on-chain before rolling the DB approval back to 'pending' — on retry
+            // the DB-derived targets still include them, so re-check on-chain status
+            // and skip milestones that are already Refunded (refunding them again
+            // would revert with MilestoneNotPending and wedge the refund forever).
+            // Any other non-Pending status is a genuine DB/ledger inconsistency:
+            // fail closed rather than silently skipping it.
+            for (const target of refundTargets) {
+              const onChainStatus = await adapter.getMilestone(contract.escrow_address, target.index);
+              if (onChainStatus.status === 'Refunded') {
+                logger.info('Skipping already-refunded milestone during partial refund', {
+                  refundId: input.refundId,
+                  escrowAddress: contract.escrow_address,
+                  milestoneIndex: target.index,
+                });
+                continue;
+              }
+              if (onChainStatus.status !== 'Pending') {
+                throw new Error(
+                  `Milestone ${target.index} is ${onChainStatus.status} on-chain; expected Pending for refund`
+                );
+              }
+              await adapter.refundMilestone(contract.escrow_address, target.index);
+            }
+            logger.info('Blockchain partial refund executed', {
+              refundId: input.refundId,
+              escrowAddress: contract.escrow_address,
+              requestedAmount: refund.amount,
+              refundedMilestones: refundTargets.map(t => t.index),
+            });
+          } else {
+            await adapter.refundEscrow(contract.escrow_address);
+            logger.info('Blockchain refund executed', {
+              refundId: input.refundId,
+              escrowAddress: contract.escrow_address,
+              refundedMilestones: refundTargets.map(t => t.index),
+            });
+          }
         } catch (blockchainError) {
-          // Blockchain call failed — rollback the DB approval so the state stays consistent.
-          logger.error('Failed to execute blockchain refund, rolling back DB approval', {
+          // Blockchain call or milestone status read failed — rollback the DB
+          // approval so the state stays consistent.
+          logger.error('Failed to execute blockchain refund or read milestone status, rolling back DB approval', {
             error: blockchainError,
             refundId: input.refundId,
           });
@@ -305,21 +372,23 @@ export async function approveRefund(
 
         // Mark the refunded milestones in the project document so the DB reflects
         // the ledger (settled milestones can no longer be approved or re-refunded).
-        // Approving a refund settles the whole remaining escrow: the contract is
-        // cancelled and every not-yet-released milestone is refunded. The requested
-        // `amount`/`is_partial` fields are the requester's claim and are informational
-        // — they do not limit which milestones are refunded.
+        // Full refunds settle the whole remaining escrow and cancel the contract;
+        // partial refunds mark only the refunded milestones and leave the contract
+        // active so the remaining milestones can still be worked and paid out.
         const refundedAt = new Date().toISOString();
-        const refundedIndices = new Set(pendingMilestones.map(m => m.index));
+        const refundedIndices = new Set(refundTargets.map(t => t.index));
         const updatedMilestones = projectMilestones.map((m, i) =>
           refundedIndices.has(i) ? { ...m, status: 'refunded' as const, refunded_at: refundedAt } : m
         );
         await projectRepository.updateProject(contract.project_id, { milestones: updatedMilestones });
 
-        // Update contract status to cancelled after refund approval
-        await contractRepository.updateContract(refund.contract_id, {
-          status: 'cancelled',
-        });
+        // Update contract status: cancelled only when every refundable milestone was
+        // refunded; a partial refund keeps the contract active.
+        if (refundsAllPending) {
+          await contractRepository.updateContract(refund.contract_id, {
+            status: 'cancelled',
+          });
+        }
 
         // Cancel any other pending refund requests for this contract
         const otherRefunds = await refundRequestRepository.findByContract(refund.contract_id);
@@ -361,7 +430,7 @@ export async function approveRefund(
             amount: refund.amount ?? null,
             isPartial: refund.is_partial ?? false,
             escrowAddress: contract.escrow_address ?? null,
-            refundedMilestoneCount: pendingMilestones.length,
+            refundedMilestoneCount: refundTargets.length,
           },
           ip_address: null,
           user_agent: null,

@@ -11,6 +11,7 @@ System design, middleware, data models, and business logic.
 - [Data Models](architecture/data-models.md) - Appwrite collections and TypeScript model mapping
 - [Business Logic Layer](architecture/business-logic.md) - Service layer architecture
 - [Appwrite Schema Design](architecture/database-schema.md) - Collections, attributes, indexes, security model
+- [Architecture Decision Records](architecture/adr/) - ADR-001: access==refresh token sessions (BLF-4.1); ADR-002: milestone-granular partial escrow refunds (BLF-3.6)
 
 ## API Reference
 
@@ -52,6 +53,12 @@ Appwrite schema, indexes, and security measures.
 - [Database Overview](database/README.md)
 - [Indexing Strategy](database/indexing.md) - Appwrite indexes (unique constraints for race fixes)
 - [Security Documentation](database/security.md) - API security, auth, CSRF, RBAC, privacy
+
+## Reliability
+
+Service-level objectives, error budget, and recovery targets.
+
+- [SLO & Error Budget](reliability/slo.md) - SLI definitions, latency budgets (dashboard/contracts), RPO/RTO, named error-budget owner
 
 ## Deployment & Guides
 

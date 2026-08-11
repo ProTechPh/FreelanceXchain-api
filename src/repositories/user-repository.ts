@@ -92,16 +92,9 @@ export class UserRepository extends BaseRepository<UserEntity> {
 
   async getUsersByRole(role: 'freelancer' | 'employer' | 'admin'): Promise<UserEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('role', role),
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<UserEntity>(doc));
+      // Cursor pagination (fetchAll) instead of Query.limit(1000) so large
+      // user bases are not silently truncated at 1000 records.
+      return await this.fetchAll([Query.equal('role', role), Query.orderDesc('created_at')]);
     } catch (error) {
       throw new Error(`Failed to get users by role: ${getErrorMessageOr(error, 'Unknown error')}`);
     }

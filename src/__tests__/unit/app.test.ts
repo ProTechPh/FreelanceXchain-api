@@ -60,6 +60,7 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
   getCsrfSecret: () => process.env['CSRF_SECRET'],
   getBlockchainWebhookSecret: () => process.env['BLOCKCHAIN_WEBHOOK_SECRET'],
+  getEmailWebhookSecret: () => process.env['EMAIL_WEBHOOK_SECRET'],
 }));
 
 const { createApp } = await import('../../app.js');
@@ -213,6 +214,17 @@ describe('App - express.json verify callback branch coverage (lines 34-36)', () 
 
     // Route may not exist but the middleware should have run
     expect([200, 404, 400, 500]).toContain(response.status);
+  });
+
+  it('should capture rawBody when POST to /api/inbox/webhook (line 35)', async () => {
+    const payload = { messageId: 'msg-1', from: 'a@b.com', to: 'c@d.com' };
+    const response = await request(testApp)
+      .post('/api/inbox/webhook')
+      .send(payload)
+      .set('Content-Type', 'application/json');
+
+    // Route may not exist but the middleware should have run
+    expect([200, 401, 404, 400, 500]).toContain(response.status);
   });
 
   it('should NOT set rawBody for non-webhook POST paths (line 34-35 false branch)', async () => {

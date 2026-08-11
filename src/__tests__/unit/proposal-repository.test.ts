@@ -132,6 +132,26 @@ describe('ProposalRepository', () => {
     });
   });
 
+  describe('countProposalsByFreelancerAndStatus', () => {
+    it('should return the count of proposals with the given status', async () => {
+      db().listDocuments.mockResolvedValue({ documents: [{ $id: 'p1' }], total: 7 });
+      const result = await repo.countProposalsByFreelancerAndStatus('f1', 'pending');
+      expect(result).toBe(7);
+    });
+
+    it('should return 0 when there are no matching proposals', async () => {
+      db().listDocuments.mockResolvedValue({ documents: [], total: 0 });
+      const result = await repo.countProposalsByFreelancerAndStatus('f1', 'pending');
+      expect(result).toBe(0);
+    });
+
+    it('should handle database error gracefully', async () => {
+      db().listDocuments.mockRejectedValue(new Error('select failed'));
+      const result = await repo.countProposalsByFreelancerAndStatus('f1', 'pending');
+      expect(result).toBe(0);
+    });
+  });
+
   describe('getProposalsByFreelancer', () => {
     it('should return proposals for a freelancer', async () => {
       db().listDocuments.mockResolvedValue({

@@ -19,6 +19,7 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () 
   approveMilestone: jest.fn(),
   disputeMilestone: jest.fn(),
   resolveDispute: jest.fn(),
+  refundMilestone: jest.fn(),
   cancelContract: jest.fn(),
   getMilestone: jest.fn(),
   getEscrowBalance: jest.fn(),

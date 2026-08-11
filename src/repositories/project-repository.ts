@@ -136,6 +136,11 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     );
   }
 
+  /** Count an employer's projects by status (e.g. dashboard open-projects count). */
+  async countProjectsByEmployerAndStatus(employerId: string, status: ProjectStatus): Promise<number> {
+    return this.countWithQueries([Query.equal('employer_id', employerId), Query.equal('status', status)]);
+  }
+
   async getAllOpenProjects(options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
@@ -159,94 +164,71 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
   }
 
   async getProjectsBySkills(skillIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    // Appwrite doesn't support JSONB contains; filter in-memory
-    const all = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.limit(1000)],
-      1000,
-      0,
-      mapDoc
-    );
-    const filtered = all.items.filter(p =>
+    // Appwrite doesn't support JSONB contains; filter in-memory over ALL open
+    // projects (cursor-paginated) so results are exact past 1000 documents.
+    const all = await this.fetchAllOpenProjects();
+    const filtered = all.filter(p =>
       skillIds.some(id => p.required_skills?.some(s => s.skill_id === id))
     );
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-    return {
-      items: filtered.slice(offset, offset + limit),
-      hasMore: offset + limit < filtered.length,
-      total: filtered.length,
-    };
+    return this.paginateFiltered(filtered, options);
   }
 
   async getProjectsByBudgetRange(minBudget: number, maxBudget: number, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-    const all = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.limit(1000)],
-      1000,
-      0,
-      mapDoc
-    );
-    const filtered = all.items.filter(p => p.budget >= minBudget && p.budget <= maxBudget);
-    return {
-      items: filtered.slice(offset, offset + limit),
-      hasMore: offset + limit < filtered.length,
-      total: filtered.length,
-    };
+    const all = await this.fetchAllOpenProjects();
+    const filtered = all.filter(p => p.budget >= minBudget && p.budget <= maxBudget);
+    return this.paginateFiltered(filtered, options);
   }
 
   async searchProjects(keyword: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-    const all = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.limit(1000)],
-      1000,
-      0,
-      mapDoc
-    );
+    const all = await this.fetchAllOpenProjects();
     const kw = keyword.toLowerCase();
-    const filtered = all.items.filter(p =>
+    const filtered = all.filter(p =>
       p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw)
     );
-    return {
-      items: filtered.slice(offset, offset + limit),
-      hasMore: offset + limit < filtered.length,
-      total: filtered.length,
-    };
+    return this.paginateFiltered(filtered, options);
   }
 
   async getProjectsByCategory(categoryId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-    const all = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.limit(1000)],
-      1000,
-      0,
-      mapDoc
-    );
-    const filtered = all.items.filter(p =>
+    const all = await this.fetchAllOpenProjects();
+    const filtered = all.filter(p =>
       p.required_skills?.some(s => s.category_id === categoryId)
     );
-    return {
-      items: filtered.slice(offset, offset + limit),
-      hasMore: offset + limit < filtered.length,
-      total: filtered.length,
-    };
+    return this.paginateFiltered(filtered, options);
   }
 
   async getProjectsByMultipleCategories(categoryIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    const limit = options?.limit ?? 20;
-    const offset = options?.offset ?? 0;
-    const all = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.limit(1000)],
-      1000,
-      0,
-      mapDoc
-    );
+    const all = await this.fetchAllOpenProjects();
     const categoryIdSet = new Set(categoryIds);
-    const filtered = all.items.filter(p =>
+    const filtered = all.filter(p =>
       p.required_skills?.some(s => categoryIdSet.has(s.category_id))
     );
+    return this.paginateFiltered(filtered, options);
+  }
+
+  /**
+   * Fetch ALL open projects using cursor-based pagination.
+   *
+   * The in-memory filter methods (skill/category/budget/keyword) can't push
+   * their predicates down to Appwrite (no JSON contains/range on JSON attrs),
+   * so they need the complete open-project set. Using fetchAll (instead of the
+   * previous `Query.limit(1000)` page) keeps those results exact past 1000 docs.
+   * Returns [] on a transient DB failure so callers keep their empty-page
+   * contract instead of throwing. Note: a mid-loop fetch failure discards any
+   * pages already fetched (the whole result becomes []), matching the previous
+   * single-query behavior where any error produced an empty page.
+   */
+  private async fetchAllOpenProjects(): Promise<ProjectEntity[]> {
+    try {
+      return await this.fetchAll([Query.equal('status', 'open')]);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Apply offset/limit pagination to an in-memory filtered result set. */
+  private paginateFiltered(filtered: ProjectEntity[], options?: QueryOptions): PaginatedResult<ProjectEntity> {
+    const limit = options?.limit ?? 20;
+    const offset = options?.offset ?? 0;
     return {
       items: filtered.slice(offset, offset + limit),
       hasMore: offset + limit < filtered.length,
