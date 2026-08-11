@@ -4,6 +4,7 @@ import { createFileUploadMiddleware } from '../middleware/file-upload-middleware
 import { fileUploadRateLimiter } from '../middleware/rate-limiter.js';
 import { uploadFile, deleteFile, getSignedUrl, listUserFiles, getFileQuota } from '../utils/storage-uploader.js';
 import { sendErrorResponse, getRequestId } from '../utils/response-helpers.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ router.post(
   authMiddleware,
   fileUploadRateLimiter,
   ...createFileUploadMiddleware(),
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user?.userId;
     if (!userId) {
       sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
@@ -69,10 +70,10 @@ router.post(
     } catch {
       sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to upload file', getRequestId(req));
     }
-  }
+  })
 );
 
-router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response) => {
+router.delete('/:bucket/*', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   if (!userId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
@@ -105,9 +106,9 @@ router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response) 
   } catch {
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to delete file', getRequestId(req));
   }
-});
+}));
 
-router.get('/signed-url/:bucket/*', authMiddleware, async (req: Request, res: Response) => {
+router.get('/signed-url/:bucket/*', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   if (!userId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
@@ -139,9 +140,9 @@ router.get('/signed-url/:bucket/*', authMiddleware, async (req: Request, res: Re
   } catch {
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get signed URL', getRequestId(req));
   }
-});
+}));
 
-router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response) => {
+router.get('/list/:bucket', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   if (!userId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
@@ -165,9 +166,9 @@ router.get('/list/:bucket', authMiddleware, async (req: Request, res: Response) 
   } catch {
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to list files', getRequestId(req));
   }
-});
+}));
 
-router.get('/quota', authMiddleware, async (req: Request, res: Response) => {
+router.get('/quota', authMiddleware, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   if (!userId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
@@ -184,6 +185,6 @@ router.get('/quota', authMiddleware, async (req: Request, res: Response) => {
   } catch {
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get file quota', getRequestId(req));
   }
-});
+}));
 
 export default router;

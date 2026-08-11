@@ -27,6 +27,7 @@ const mockDisableMFA = jest.fn<any>();
 const mockConsumeMfaSession = jest.fn<any>();
 const mockValidateTokenAndGetUser = jest.fn<any>();
 const mockValidatePasswordStrength = jest.fn<any>();
+const mockUpdateUserWallet = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   register: mockRegister,
@@ -51,6 +52,7 @@ jest.unstable_mockModule(resolveModule('src/services/auth-service.ts'), () => ({
   disableMFA: mockDisableMFA,
   consumeMfaSession: mockConsumeMfaSession,
   validateTokenAndGetUser: mockValidateTokenAndGetUser,
+  updateUserWallet: mockUpdateUserWallet,
   requestPhoneOtp: jest.fn(),
   requestEmailOtp: jest.fn(),
   requestMagicUrl: jest.fn(),
@@ -72,11 +74,6 @@ jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () 
 const mockGenerateCsrfToken = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/middleware/csrf-middleware.ts'), () => ({
   generateCsrfToken: mockGenerateCsrfToken,
-}));
-
-const mockUpdateUser = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
-  userRepository: { updateUser: mockUpdateUser },
 }));
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
@@ -504,7 +501,7 @@ describe('Auth Routes', () => {
 
   describe('PATCH /wallet', () => {
     it('should update wallet address', async () => {
-      mockUpdateUser.mockResolvedValue({ wallet_address: '0x1234567890123456789012345678901234567890' });
+      mockUpdateUserWallet.mockResolvedValue({ walletAddress: '0x1234567890123456789012345678901234567890' });
       const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
       expect(res.status).toBe(200);
       expect(res.body.message).toBe('Wallet address updated successfully');
@@ -521,9 +518,16 @@ describe('Auth Routes', () => {
     });
 
     it('should return 404 if user not found', async () => {
-      mockUpdateUser.mockResolvedValue(null);
+      mockUpdateUserWallet.mockResolvedValue({ code: 'USER_NOT_FOUND', message: 'User not found' });
       const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
       expect(res.status).toBe(404);
+    });
+
+    it('should return 409 if the wallet is already locked', async () => {
+      mockUpdateUserWallet.mockResolvedValue({ code: 'WALLET_LOCKED', message: 'Wallet address is already set and cannot be changed' });
+      const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('WALLET_LOCKED');
     });
   });
 
@@ -615,6 +619,7 @@ describe('auth-routes.ts - Branch Coverage', () => {
       getMFAFactors: jest.fn(),
       disableMFA: jest.fn(),
       validateTokenAndGetUser: jest.fn(),
+      updateUserWallet: jest.fn(),
       requestEmailOtp: jest.fn(),
       requestMagicUrl: jest.fn(),
       verifyAuthToken: jest.fn(),
@@ -824,8 +829,8 @@ describe('auth-routes.ts - Additional Coverage (top-level mocks)', () => {
 
   // Lines 1779-1780: PATCH /wallet catch block
   describe('PATCH /wallet - catch error', () => {
-    it('should return 500 when updateUser throws', async () => {
-      mockUpdateUser.mockRejectedValue(new Error('Database error'));
+    it('should return 500 when updateUserWallet returns UPDATE_FAILED', async () => {
+      mockUpdateUserWallet.mockResolvedValue({ code: 'UPDATE_FAILED', message: 'Failed to update wallet address' });
       const res = await request(app).patch('/api/auth/wallet').set('Authorization', 'Bearer test-token').send({ walletAddress: '0x1234567890123456789012345678901234567890' });
       expect(res.status).toBe(500);
       expect(res.body.error.code).toBe('UPDATE_FAILED');
@@ -906,6 +911,7 @@ describe('auth-routes.ts - Email OTP, Magic URL, Verify Token Coverage', () => {
       getMFAFactors: jest.fn(),
       disableMFA: jest.fn(),
       validateTokenAndGetUser: jest.fn(),
+      updateUserWallet: jest.fn(),
       requestEmailOtp: mockRequestEmailOtp,
       requestMagicUrl: mockRequestMagicUrl,
       verifyAuthToken: mockVerifyAuthToken,

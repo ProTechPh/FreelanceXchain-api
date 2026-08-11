@@ -4,6 +4,7 @@ import { skillRepository, SkillEntity } from '../repositories/skill-repository.j
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
+import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
@@ -406,6 +407,56 @@ export async function listProjectsByMultipleCategories(
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByMultipleCategories(categoryIds, options);
   return successResult(await addProposalCounts(result));
+}
+
+export type CategoryStat = {
+  categoryId: string;
+  categoryName: string;
+  projectCount: number;
+  totalBudget: number;
+};
+
+/**
+ * Aggregate open projects into per-category statistics (project count and total
+ * budget). Extracted from the route so the aggregation logic is testable and the
+ * route stays thin.
+ */
+export async function getProjectCategoryStats(
+  limit = 100
+): Promise<ServiceResult<{ categories: CategoryStat[] }>> {
+  try {
+    const clampedLimit = Math.max(1, Math.min(limit, 10000));
+    const result = await listOpenProjects({ limit: clampedLimit, offset: 0 });
+
+    if (!result.success) {
+      return errorResult('INTERNAL_ERROR', 'Failed to retrieve project statistics');
+    }
+
+    const categoryStats = new Map<string, CategoryStat>();
+
+    for (const project of result.data.items) {
+      for (const skill of project.required_skills ?? []) {
+        const key = skill.category_id;
+        if (!categoryStats.has(key)) {
+          categoryStats.set(key, {
+            categoryId: skill.category_id,
+            categoryName: skill.skill_name || skill.category_id,
+            projectCount: 0,
+            totalBudget: 0,
+          });
+        }
+
+        const stats = categoryStats.get(key)!;
+        stats.projectCount += 1;
+        stats.totalBudget += Number(project.budget) || 0;
+      }
+    }
+
+    return successResult({ categories: Array.from(categoryStats.values()) });
+  } catch (error) {
+    logger.error('Failed to get project category statistics', { error });
+    return errorResult('INTERNAL_ERROR', 'Failed to retrieve project statistics');
+  }
 }
 
 export async function deleteProject(

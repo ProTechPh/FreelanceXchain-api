@@ -9,10 +9,11 @@ import {
   getPlatformMetrics,
   getSkillTrends 
 } from '../services/analytics-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
-router.get('/freelancer', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/freelancer', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const startDate = req.query['startDate'] as string | undefined;
@@ -34,9 +35,9 @@ router.get('/freelancer', authMiddleware, apiRateLimiter, async (req: Request, r
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/employer', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const startDate = req.query['startDate'] as string | undefined;
@@ -58,9 +59,9 @@ router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/skill-trends', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/skill-trends', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const result = await getSkillTrends();
   
@@ -70,9 +71,9 @@ router.get('/skill-trends', authMiddleware, apiRateLimiter, async (req: Request,
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/platform', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/platform', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const result = await getPlatformMetrics();
 
@@ -82,6 +83,6 @@ router.get('/platform', authMiddleware, apiRateLimiter, async (req: Request, res
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

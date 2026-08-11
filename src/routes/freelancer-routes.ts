@@ -14,6 +14,7 @@ import {
   updateExperience,
   removeExperience,
 } from '../services/freelancer-profile-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -118,7 +119,7 @@ const router = Router();
  *       409:
  *         description: Profile already exists
  */
-router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { bio, hourlyRate, availability } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -155,7 +156,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 
 /**
@@ -180,7 +181,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
  *       404:
  *         description: Profile not found
  */
-router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -198,7 +199,7 @@ router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -239,7 +240,7 @@ router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { bio, hourlyRate, availability } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -276,7 +277,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimit
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -333,7 +334,7 @@ router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimit
  *       404:
  *         description: Profile not found
  */
-router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { skills } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -381,7 +382,7 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -413,7 +414,7 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
  *       404:
  *         description: Profile not found or skill not found
  */
-router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const skillName = decodeURIComponent(req.params['name'] ?? '');
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -438,7 +439,7 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -490,7 +491,7 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
  *       404:
  *         description: Profile not found
  */
-router.post('/profile/experience', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/profile/experience', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { title, company, description, startDate, endDate } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -530,7 +531,7 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -584,7 +585,7 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
  *       404:
  *         description: Profile or experience not found
  */
-router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const experienceId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -630,7 +631,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -662,7 +663,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
  *       404:
  *         description: Profile or experience not found
  */
-router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const experienceId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -682,7 +683,7 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -713,7 +714,7 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
  *       404:
  *         description: Profile not found
  */
-router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -737,6 +738,6 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   };
 
   res.status(200).json(safeData);
-});
+}));
 
 export default router;

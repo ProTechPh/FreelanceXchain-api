@@ -11,10 +11,11 @@ import {
   getProjectReviews,
   canUserRate as canUserReview,
 } from '../services/reputation-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
-router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const { contractId, rating, comment, workQuality, communication, professionalism, wouldWorkAgain } = req.body;
@@ -52,9 +53,9 @@ router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, async (req:
   }
 
   res.status(201).json(result.data);
-});
+}));
 
-router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), asyncHandler(async (req: Request, res: Response) => {
   const reviewId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -67,9 +68,9 @@ router.get('/:id', apiRateLimiter, validateAppwriteDocumentId(), async (req: Req
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/user/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
+router.get('/user/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -81,9 +82,9 @@ router.get('/user/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId'
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/project/:projectId', apiRateLimiter, validateUUID(['projectId']), async (req: Request, res: Response) => {
+router.get('/project/:projectId', apiRateLimiter, validateUUID(['projectId']), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['projectId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -95,9 +96,9 @@ router.get('/project/:projectId', apiRateLimiter, validateUUID(['projectId']), a
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/can-review/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/can-review/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
   const rateeId = req.query['rateeId'] as string | undefined;
@@ -121,6 +122,6 @@ router.get('/can-review/:contractId', authMiddleware, apiRateLimiter, validateUU
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

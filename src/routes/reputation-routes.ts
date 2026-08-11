@@ -17,6 +17,7 @@ import {
   getReputationHistory,
   getReputationLeaderboard,
 } from '../services/reputation-aggregation-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -146,7 +147,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/can-rate', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -172,7 +173,7 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -211,7 +212,7 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
  *       409:
  *         description: Duplicate rating
  */
-router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/rate', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -273,7 +274,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 
 // ============================================================
@@ -297,7 +298,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
  *       200:
  *         description: Top rated users
  */
-router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/leaderboard', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query['limit'] as string) || 10;
 
@@ -312,7 +313,7 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
     logger.error('Error getting reputation leaderboard', { error });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get leaderboard', getRequestId(req));
   }
-});
+}));
 
 
 // ============================================================
@@ -346,7 +347,7 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
  *       404:
  *         description: User not found
  */
-router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
+router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -364,7 +365,7 @@ router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), a
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -395,7 +396,7 @@ router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), a
  *       404:
  *         description: User not found
  */
-router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
+router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -413,7 +414,7 @@ router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['user
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -432,7 +433,7 @@ router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['user
  *       200:
  *         description: Aggregated reputation score
  */
-router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -447,7 +448,7 @@ router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimi
     logger.error('Error getting reputation score', { error });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation score', getRequestId(req));
   }
-});
+}));
 
 /**
  * @swagger
@@ -466,7 +467,7 @@ router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimi
  *       200:
  *         description: Reputation breakdown by stars
  */
-router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -481,7 +482,7 @@ router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRate
     logger.error('Error getting reputation breakdown', { error });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation breakdown', getRequestId(req));
   }
-});
+}));
 
 /**
  * @swagger
@@ -505,7 +506,7 @@ router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRate
  *       200:
  *         description: Reputation history
  */
-router.get('/:userId/reputation-history', validateAppwriteDocumentId(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/reputation-history', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
     const months = parseInt(req.query['months'] as string) || 12;
@@ -521,6 +522,6 @@ router.get('/:userId/reputation-history', validateAppwriteDocumentId(['userId'])
     logger.error('Error getting reputation history', { error });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation history', getRequestId(req));
   }
-});
+}));
 
 export default router;

@@ -15,6 +15,7 @@ import { validateUUID } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -141,7 +142,7 @@ router.post(
   requireVerifiedKyc,
   apiRateLimiter,
   validateUUID(['milestoneId']),
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const milestoneId = req.params['milestoneId'] ?? '';
@@ -181,7 +182,7 @@ router.post(
     } catch (error) {
       next(error);
     }
-  }
+  })
 );
 
 
@@ -229,7 +230,7 @@ router.post(
   requireVerifiedKyc,
   apiRateLimiter,
   validateUUID(['milestoneId']),
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const milestoneId = req.params['milestoneId'] ?? '';
@@ -269,7 +270,7 @@ router.post(
     } catch (error) {
       next(error);
     }
-  }
+  })
 );
 
 
@@ -323,7 +324,7 @@ router.post(
   requireVerifiedKyc,
   apiRateLimiter,
   validateUUID(['milestoneId']),
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const milestoneId = req.params['milestoneId'] ?? '';
@@ -374,7 +375,7 @@ router.post(
       /* istanbul ignore next */
       next(error);
     }
-  }
+  })
 );
 
 
@@ -414,7 +415,7 @@ router.get(
   authMiddleware,
   apiRateLimiter,
   validateUUID(['contractId']),
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const contractId = req.params['contractId'] ?? '';
@@ -438,7 +439,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  })
 );
 
 export default router;

@@ -514,6 +514,58 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
 }
 
 /**
+ * Update the authenticated user's wallet address
+ */
+export async function updateUserWallet(
+  userId: string,
+  walletAddress: string
+): Promise<{ walletAddress: string } | AuthError> {
+  try {
+    const existing = await userRepository.getUserById(userId);
+    if (!existing) {
+      return {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      };
+    }
+
+    // A wallet is set once (at registration / first connect) and cannot be silently
+    // overwritten — otherwise funds could be redirected on future escrow payouts.
+    // Ethereum addresses are EIP-55 checksummed but case-insensitive, so compare
+    // normalized forms to avoid false locks for the same address in a different case.
+    const normalizedExisting = existing.wallet_address?.toLowerCase();
+    const normalizedRequested = walletAddress.toLowerCase();
+    if (normalizedExisting && normalizedExisting !== normalizedRequested) {
+      return {
+        code: 'WALLET_LOCKED',
+        message: 'Wallet address is already set and cannot be changed',
+      };
+    }
+
+    // Idempotent: same address (any casing) — nothing to change.
+    if (normalizedExisting === normalizedRequested) {
+      return { walletAddress: existing.wallet_address ?? walletAddress };
+    }
+
+    const updated = await userRepository.updateUser(userId, { wallet_address: walletAddress });
+    if (!updated) {
+      return {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      };
+    }
+
+    return { walletAddress: updated.wallet_address ?? walletAddress };
+  } catch (error: unknown) {
+    logger.error('Failed to update wallet address', { error: getErrorMessage(error), userId });
+    return {
+      code: 'UPDATE_FAILED',
+      message: 'Failed to update wallet address',
+    };
+  }
+}
+
+/**
  * Get OAuth login URL for Appwrite
  */
 export async function getOAuthUrl(provider: string): Promise<string> {

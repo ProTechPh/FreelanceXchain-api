@@ -91,23 +91,6 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () 
       updatedAt: new Date(),
     },
   })),
-  submitMilestone: jest.fn(async (input: any) => ({
-    success: true,
-    data: {
-      id: input.milestoneId,
-      contractId: 'mock-contract-id',
-      title: 'Test Milestone',
-      description: 'Test milestone description',
-      amount: 1000,
-      dueDate: new Date('2026-12-31'),
-      status: 'submitted',
-      submittedAt: new Date(),
-      deliverableFiles: input.deliverables,
-      revisionCount: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  })),
   approveMilestone: jest.fn(async (input: any) => ({
     success: true,
     data: {
@@ -126,6 +109,27 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () 
     success: true,
     data: [],
   })),
+  findFreelancerMilestoneContext: jest.fn(async () => ({
+    contractId: 'mock-contract-id',
+  })),
+  submitMilestoneFromProjectContext: jest.fn(async (milestoneId: string, _freelancerId: string, deliverables: any[], _notes?: string) => ({
+    success: true,
+    data: {
+      id: milestoneId,
+      contractId: 'mock-contract-id',
+      title: 'Test Milestone',
+      description: 'Test milestone description',
+      amount: 1000,
+      dueDate: new Date('2026-12-31'),
+      status: 'submitted',
+      submittedAt: new Date(),
+      deliverableFiles: deliverables,
+      revisionCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  })),
+  findEmployerMilestoneContractId: jest.fn(async () => 'mock-contract-id'),
 }));
 
 const storageUploaderMocks = {

@@ -18,6 +18,7 @@ jest.unstable_mockModule(resolveModule('src/services/rush-upgrade-service.ts'), 
   acceptCounterOffer: mockAcceptCounterOffer,
   declineCounterOffer: mockDeclineCounterOffer,
   getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
+  getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -373,6 +374,7 @@ describe('rush-upgrade-routes.ts - Branch Coverage', () => {
       acceptCounterOffer: mockAcceptCounterOffer,
       declineCounterOffer: mockDeclineCounterOffer,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
+      getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
     }));
 
     const express = (await import('express')).default;
@@ -461,6 +463,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
       acceptCounterOffer: mockAcceptCounterOffer,
       declineCounterOffer: mockDeclineCounterOffer,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
+      getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
     }));
 
     const express = (await import('express')).default;
@@ -529,6 +532,7 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
       acceptCounterOffer: mockAcceptCounterOffer,
       declineCounterOffer: mockDeclineCounterOffer,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
+      getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
     }));
 
     const express2 = (await import('express')).default;
@@ -542,14 +546,14 @@ describe('rush-upgrade-routes - catch blocks and contract access checks', () => 
   });
 
   it('L406: GET rush-upgrade-requests returns 404 when contract not found', async () => {
-    mockRepoGetContractById.mockResolvedValue(null);
+    mockGetRushUpgradeRequestsByContract.mockResolvedValue(fail('NOT_FOUND', 'Contract not found'));
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/contracts/c1/rush-upgrade-requests');
     expect(res.status).toBe(404);
   });
 
   it('L414: GET rush-upgrade-requests returns 403 when user is not a party', async () => {
-    mockRepoGetContractById.mockResolvedValue({ id: 'c-1', employer_id: 'other-user', freelancer_id: 'other-freelancer' });
+    mockGetRushUpgradeRequestsByContract.mockResolvedValue(fail('UNAUTHORIZED', 'Not a party to this contract'));
     const request = (await import('supertest')).default;
     const res = await request(app).get('/api/contracts/c1/rush-upgrade-requests');
     expect(res.status).toBe(403);
@@ -610,6 +614,7 @@ describe('rush-upgrade-routes - ?? nullish coalescing fallback', () => {
       acceptCounterOffer: mockAcceptCounterOffer,
       declineCounterOffer: mockDeclineCounterOffer,
       getRushUpgradeRequestsByContract: mockGetRushUpgradeRequestsByContract,
+      getRushUpgradeRequestsForContract: mockGetRushUpgradeRequestsByContract,
     }));
 
     const express = (await import('express')).default;

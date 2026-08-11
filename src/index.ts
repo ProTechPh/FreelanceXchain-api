@@ -43,7 +43,7 @@ async function main(): Promise<void> {
 
 process.on('unhandledRejection', (reason: unknown) => {
   logger.error('Unhandled promise rejection:', reason);
-  if (process.env['NODE_ENV'] === 'production') {
+  if (config.server.nodeEnv === 'production') {
     process.exit(1);
   }
 });

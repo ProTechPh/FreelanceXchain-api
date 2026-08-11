@@ -10,10 +10,11 @@ import {
   getTransactionById, 
   getContractTransactions 
 } from '../services/transaction-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
-router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
@@ -39,9 +40,9 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const transactionId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -60,9 +61,9 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), async (req: Request, res: Response) => {
+router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID(['contractId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const contractId = req.params['contractId'] ?? '';
   const requestId = getRequestId(req);
@@ -81,6 +82,6 @@ router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

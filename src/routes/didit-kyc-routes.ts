@@ -23,6 +23,7 @@ import {
 } from '../services/didit-kyc-service.js';
 import { DiditWebhookPayload, DiditWebhookStatus, DiditWebhookType, KycStatus } from '../models/didit-kyc.js';
 import type { ServiceError } from '../types/service-result.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -188,7 +189,7 @@ function sendKycServiceError(
  *       401:
  *         description: Unauthorized
  */
-router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/initiate', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -206,7 +207,7 @@ router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, re
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -227,7 +228,7 @@ router.post('/initiate', authMiddleware, apiRateLimiter, async (req: Request, re
  *       404:
  *         description: No verification found
  */
-router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/status', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -250,7 +251,7 @@ router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: 
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -272,7 +273,7 @@ router.get('/status', authMiddleware, apiRateLimiter, async (req: Request, res: 
  *                 verified:
  *                   type: boolean
  */
-router.get('/verified', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/verified', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
 
   if (!userId) {
@@ -282,7 +283,7 @@ router.get('/verified', authMiddleware, apiRateLimiter, async (req: Request, res
 
   const verified = await isUserVerified(userId);
   res.status(200).json({ verified });
-});
+}));
 
 /**
  * @swagger
@@ -320,7 +321,7 @@ router.get('/verified', authMiddleware, apiRateLimiter, async (req: Request, res
  *       400:
  *         description: KYC not approved or not found
  */
-router.get('/profile-data', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/profile-data', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
 
   if (!userId) {
@@ -336,7 +337,7 @@ router.get('/profile-data', authMiddleware, apiRateLimiter, async (req: Request,
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -357,7 +358,7 @@ router.get('/profile-data', authMiddleware, apiRateLimiter, async (req: Request,
  *               items:
  *                 $ref: '#/components/schemas/KycVerification'
  */
-router.get('/history', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/history', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
 
   if (!userId) {
@@ -373,7 +374,7 @@ router.get('/history', authMiddleware, apiRateLimiter, async (req: Request, res:
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -400,7 +401,7 @@ router.get('/history', authMiddleware, apiRateLimiter, async (req: Request, res:
  *             schema:
  *               $ref: '#/components/schemas/KycVerification'
  */
-router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validateUUID(['verificationId']), async (req: Request, res: Response) => {
+router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -430,7 +431,7 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -452,7 +453,7 @@ router.post('/refresh/:verificationId', authMiddleware, apiRateLimiter, validate
  *       401:
  *         description: Invalid signature
  */
-router.post('/webhook', async (req: Request, res: Response) => {
+router.post('/webhook', asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const signature = typeof req.headers['x-signature-v2'] === 'string' ? req.headers['x-signature-v2'] : '';
   const timestamp = typeof req.headers['x-timestamp'] === 'string' ? req.headers['x-timestamp'] : '';
@@ -516,7 +517,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
 
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to process webhook', requestId);
   }
-});
+}));
 
 /**
  * @swagger
@@ -537,7 +538,7 @@ router.post('/webhook', async (req: Request, res: Response) => {
  *               items:
  *                 $ref: '#/components/schemas/KycVerification'
  */
-router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const result = await getPendingAdminReviews();
 
   if (!result.success) {
@@ -546,7 +547,7 @@ router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimite
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -568,7 +569,7 @@ router.get('/admin/pending', authMiddleware, requireRole('admin'), apiRateLimite
  *       200:
  *         description: Verifications list
  */
-router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const status = req.params['status'] as KycStatus;
   const validStatuses: KycStatus[] = ['pending', 'in_progress', 'completed', 'approved', 'rejected', 'expired'];
 
@@ -624,7 +625,7 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRat
   }));
 
   res.status(200).json(transformedData);
-});
+}));
 
 /**
  * @swagger
@@ -661,7 +662,7 @@ router.get('/admin/status/:status', authMiddleware, requireRole('admin'), apiRat
  *       200:
  *         description: Review completed
  */
-router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), async (req: Request, res: Response) => {
+router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
   const adminUserId = req.user?.userId;
   const { decision, notes } = req.body;
@@ -685,7 +686,7 @@ router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -707,7 +708,7 @@ router.post('/admin/review/:verificationId', authMiddleware, requireRole('admin'
  *       200:
  *         description: Verification details
  */
-router.get('/admin/verification/:verificationId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), async (req: Request, res: Response) => {
+router.get('/admin/verification/:verificationId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['verificationId']), asyncHandler(async (req: Request, res: Response) => {
   const verificationId = req.params['verificationId'];
 
   if (!verificationId) {
@@ -728,7 +729,7 @@ router.get('/admin/verification/:verificationId', authMiddleware, requireRole('a
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -783,7 +784,7 @@ router.post(
     { name: 'id_back', maxCount: 1 },
     { name: 'selfie', maxCount: 1 },
   ]),
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     const adminUserId = req.user?.userId;
     const { userId } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
@@ -841,7 +842,7 @@ router.post(
 
       sendErrorResponse(res, 500, 'VERIFICATION_ERROR', 'Failed to process manual verification', getRequestId(req));
     }
-  }
+  })
 );
 
 export default router;

@@ -437,6 +437,26 @@ export async function getRushUpgradeRequestsByContract(
   return successResult(entities.map(mapRushUpgradeRequestFromEntity));
 }
 
+// Get rush upgrade requests for a contract after verifying the caller is a party
+// (or an admin). Keeps contract authorization in the service layer (M11).
+export async function getRushUpgradeRequestsForContract(
+  contractId: string,
+  userId: string,
+  isAdmin = false
+): Promise<ServiceResult<RushUpgradeRequest[]>> {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
+    return errorResult('NOT_FOUND', 'Contract not found');
+  }
+
+  if (contractEntity.employer_id !== userId && contractEntity.freelancer_id !== userId && !isAdmin) {
+    return errorResult('UNAUTHORIZED', 'You are not authorized to view rush upgrade requests for this contract');
+  }
+
+  const entities = await rushUpgradeRequestRepository.getRequestsByContract(contractId);
+  return successResult(entities.map(mapRushUpgradeRequestFromEntity));
+}
+
 // Get a single rush upgrade request
 export async function getRushUpgradeRequestById(
   requestId: string

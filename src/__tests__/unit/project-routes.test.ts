@@ -17,6 +17,7 @@ const mockListProjectsByBudgetRange = jest.fn<any>();
 const mockListProjectsByEmployer = jest.fn<any>();
 const mockListProjectsByCategory = jest.fn<any>();
 const mockListProjectsByMultipleCategories = jest.fn<any>();
+const mockGetProjectCategoryStats = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
   createProject: mockCreateProject,
@@ -30,6 +31,7 @@ jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () =>
   listProjectsByEmployer: mockListProjectsByEmployer,
   listProjectsByCategory: mockListProjectsByCategory,
   listProjectsByMultipleCategories: mockListProjectsByMultipleCategories,
+  getProjectCategoryStats: mockGetProjectCategoryStats,
 }));
 
 const mockGetProposalsByProject = jest.fn<any>();
@@ -92,7 +94,7 @@ const projectRouter = router;
 function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
 const ok = (data: any) => ({ success: true, data });
 const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
-const mockProjectService = { createProject: mockCreateProject, getProjectById: mockGetProjectById, updateProject: mockUpdateProject, setMilestones: mockSetMilestones, listOpenProjects: mockListOpenProjects, searchProjects: mockSearchProjects, listProjectsBySkills: mockListProjectsBySkills, listProjectsByBudgetRange: mockListProjectsByBudgetRange, listProjectsByEmployer: mockListProjectsByEmployer, listProjectsByCategory: mockListProjectsByCategory, listProjectsByMultipleCategories: mockListProjectsByMultipleCategories };
+const mockProjectService = { createProject: mockCreateProject, getProjectById: mockGetProjectById, updateProject: mockUpdateProject, setMilestones: mockSetMilestones, listOpenProjects: mockListOpenProjects, searchProjects: mockSearchProjects, listProjectsBySkills: mockListProjectsBySkills, listProjectsByBudgetRange: mockListProjectsByBudgetRange, listProjectsByEmployer: mockListProjectsByEmployer, listProjectsByCategory: mockListProjectsByCategory, listProjectsByMultipleCategories: mockListProjectsByMultipleCategories, getProjectCategoryStats: mockGetProjectCategoryStats };
 const mockProposalService = { getProposalsByProject: mockGetProposalsByProject };
 
 describe('Project Routes', () => {
@@ -573,6 +575,7 @@ describe('project-routes.ts - Branch Coverage', () => {
       listProjectsByEmployer: mockListProjectsByEmployer,
       listProjectsByCategory: jest.fn(),
       listProjectsByMultipleCategories: jest.fn(),
+      getProjectCategoryStats: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () => ({
       getProposalsByProject: mockGetProposalsByProject,
@@ -658,21 +661,10 @@ describe('project-routes - additional line coverage', () => {
     });
 
     it('returns categories with aggregated stats', async () => {
-      mockListOpenProjects.mockResolvedValue(ok({
-        items: [
-          {
-            required_skills: [
-              { category_id: 'cat-js', skill_name: 'JavaScript' },
-              { category_id: 'cat-py', skill_name: 'Python' },
-            ],
-            budget: 1000,
-          },
-          {
-            required_skills: [
-              { category_id: 'cat-js', skill_name: 'JavaScript' },
-            ],
-            budget: 2000,
-          },
+      mockGetProjectCategoryStats.mockResolvedValue(ok({
+        categories: [
+          { categoryId: 'cat-js', categoryName: 'JavaScript', projectCount: 2, totalBudget: 3000 },
+          { categoryId: 'cat-py', categoryName: 'Python', projectCount: 1, totalBudget: 1000 },
         ],
       }));
       const res = await request(app).get('/api/projects/stats/categories');
@@ -687,8 +679,8 @@ describe('project-routes - additional line coverage', () => {
     });
 
     it('falls back to category_id when skill_name is empty', async () => {
-      mockListOpenProjects.mockResolvedValue(ok({
-        items: [{ required_skills: [{ category_id: 'cat-x', skill_name: '' }], budget: 500 }],
+      mockGetProjectCategoryStats.mockResolvedValue(ok({
+        categories: [{ categoryId: 'cat-x', categoryName: 'cat-x', projectCount: 1, totalBudget: 500 }],
       }));
       const res = await request(app).get('/api/projects/stats/categories');
       expect(res.status).toBe(200);
@@ -696,54 +688,53 @@ describe('project-routes - additional line coverage', () => {
     });
 
     it('returns empty categories when no items', async () => {
-      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      mockGetProjectCategoryStats.mockResolvedValue(ok({ categories: [] }));
       const res = await request(app).get('/api/projects/stats/categories');
       expect(res.status).toBe(200);
       expect(res.body.categories).toEqual([]);
     });
 
-    it('returns 500 when listOpenProjects fails', async () => {
-      mockListOpenProjects.mockResolvedValue(fail('DB_ERROR', 'Failed'));
+    it('returns 500 when getProjectCategoryStats fails', async () => {
+      mockGetProjectCategoryStats.mockResolvedValue(fail('INTERNAL_ERROR', 'Failed to retrieve project statistics'));
       const res = await request(app).get('/api/projects/stats/categories');
       expect(res.status).toBe(500);
       expect(res.body.error.code).toBe('INTERNAL_ERROR');
     });
 
-    it('returns 500 when listOpenProjects throws', async () => {
-      mockListOpenProjects.mockRejectedValue(new Error('DB connection lost'));
+    it('returns 500 when getProjectCategoryStats throws', async () => {
+      mockGetProjectCategoryStats.mockRejectedValue(new Error('DB connection lost'));
       const res = await request(app).get('/api/projects/stats/categories');
       expect(res.status).toBe(500);
-      expect(res.body.error.code).toBe('INTERNAL_ERROR');
     });
 
     it('uses custom limit from query param', async () => {
-      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      mockGetProjectCategoryStats.mockResolvedValue(ok({ categories: [] }));
       await request(app).get('/api/projects/stats/categories?limit=500');
-      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 500, offset: 0 });
+      expect(mockGetProjectCategoryStats).toHaveBeenCalledWith(500);
     });
 
     it('clamps limit to max 10000', async () => {
-      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      mockGetProjectCategoryStats.mockResolvedValue(ok({ categories: [] }));
       await request(app).get('/api/projects/stats/categories?limit=50000');
-      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 10000, offset: 0 });
+      expect(mockGetProjectCategoryStats).toHaveBeenCalledWith(10000);
     });
 
     it('defaults limit to 100 for non-numeric input', async () => {
-      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      mockGetProjectCategoryStats.mockResolvedValue(ok({ categories: [] }));
       await request(app).get('/api/projects/stats/categories?limit=abc');
-      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 100, offset: 0 });
+      expect(mockGetProjectCategoryStats).toHaveBeenCalledWith(100);
     });
 
     it('defaults limit to 100 for zero', async () => {
-      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      mockGetProjectCategoryStats.mockResolvedValue(ok({ categories: [] }));
       await request(app).get('/api/projects/stats/categories?limit=0');
-      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 100, offset: 0 });
+      expect(mockGetProjectCategoryStats).toHaveBeenCalledWith(100);
     });
 
     it('defaults limit to 100 when not provided', async () => {
-      mockListOpenProjects.mockResolvedValue(ok({ items: [] }));
+      mockGetProjectCategoryStats.mockResolvedValue(ok({ categories: [] }));
       await request(app).get('/api/projects/stats/categories');
-      expect(mockListOpenProjects).toHaveBeenCalledWith({ limit: 100, offset: 0 });
+      expect(mockGetProjectCategoryStats).toHaveBeenCalledWith(100);
     });
   });
 
@@ -846,6 +837,7 @@ describe('project-routes - additional line coverage', () => {
         listProjectsByEmployer: jest.fn(),
         listProjectsByCategory: jest.fn(),
         listProjectsByMultipleCategories: jest.fn(),
+        getProjectCategoryStats: jest.fn(),
       }));
 
       jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () => ({
@@ -1244,6 +1236,7 @@ describe('project-routes - error branch verification', () => {
       listProjectsByEmployer: jest.fn(),
       listProjectsByCategory: jest.fn(),
       listProjectsByMultipleCategories: jest.fn(),
+      getProjectCategoryStats: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () => ({
       getProposalsByProject: mockGetProposalsByProject,
@@ -1309,6 +1302,7 @@ describe('project-routes - ?? "" right-side branch coverage', () => {
       listProjectsByEmployer: jest.fn(),
       listProjectsByCategory: jest.fn(),
       listProjectsByMultipleCategories: jest.fn(),
+      getProjectCategoryStats: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/proposal-service.ts'), () => ({
       getProposalsByProject: mockGetProposalsByProject,

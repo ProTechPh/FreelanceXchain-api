@@ -20,6 +20,11 @@ jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), 
   createNotification: mockCreateNotification,
 }));
 
+const mockRequestMilestoneCompletion = jest.fn(async () => ({ success: true, data: {} }));
+jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+  requestMilestoneCompletion: mockRequestMilestoneCompletion,
+}));
+
 jest.unstable_mockModule(resolveModule('src/services/notification-delivery-service.ts'), () => ({
   sendNotificationToUser: mockSendNotificationToUser,
   notificationEmitter: { emitToUser: jest.fn() },
@@ -201,194 +206,6 @@ describe('Milestone Service', () => {
 
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
-    });
-  });
-
-  describe('submitMilestone', () => {
-    it('should submit milestone successfully', async () => {
-      const { submitMilestone } = await importModule();
-
-      const contract = makeContract();
-      const milestone = makeMilestone({ status: 'pending' });
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [contract], total: 1 });
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([milestone]));
-      mockProjectRepository.updateProject.mockResolvedValueOnce(
-        makeProject([{ ...milestone, status: 'submitted', submitted_at: now() }])
-      );
-
-      const result = await submitMilestone({
-        milestoneId: 'ms-1',
-        freelancerId: 'freelancer-1',
-        deliverables: [{ filename: 'f1.pdf', url: 'http://x/f1.pdf', size: 1, mimeType: 'application/pdf' }],
-      });
-
-      expect(result.success).toBe(true);
-      expect(mockProjectRepository.updateProject).toHaveBeenCalledWith(
-        'p-1',
-        expect.objectContaining({
-          milestones: expect.arrayContaining([
-            expect.objectContaining({ id: 'ms-1', status: 'submitted' }),
-          ]),
-        })
-      );
-      expect(mockCreateNotification).toHaveBeenCalled();
-    });
-
-    it('should persist notes when provided', async () => {
-      const { submitMilestone } = await importModule();
-
-      const contract = makeContract();
-      const milestone = makeMilestone({ status: 'pending' });
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [contract], total: 1 });
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([milestone]));
-      mockProjectRepository.updateProject.mockResolvedValueOnce(
-        makeProject([{ ...milestone, status: 'submitted', notes: 'see attached' }])
-      );
-
-      const result = await submitMilestone({
-        milestoneId: 'ms-1',
-        freelancerId: 'freelancer-1',
-        deliverables: [],
-        notes: 'see attached',
-      });
-
-      expect(result.success).toBe(true);
-      const updateCall = mockProjectRepository.updateProject.mock.calls[0];
-      expect(updateCall[1].milestones[0].notes).toBe('see attached');
-    });
-
-    it('should increment revision count when resubmitting rejected milestone', async () => {
-      const { submitMilestone } = await importModule();
-
-      const contract = makeContract();
-      const milestone = makeMilestone({ status: 'rejected', revision_count: 1 });
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [contract], total: 1 });
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([milestone]));
-      mockProjectRepository.updateProject.mockResolvedValueOnce(
-        makeProject([{ ...milestone, status: 'submitted' }])
-      );
-
-      const result = await submitMilestone({
-        milestoneId: 'ms-1',
-        freelancerId: 'freelancer-1',
-        deliverables: [],
-      });
-
-      expect(result.success).toBe(true);
-      const updateCall = mockProjectRepository.updateProject.mock.calls[0];
-      expect(updateCall[1].milestones[0].revision_count).toBe(2);
-      expect(updateCall[1].milestones[0].revisionCount).toBe(2);
-    });
-
-    it('should fail when milestone not found', async () => {
-      const { submitMilestone } = await importModule();
-
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [], total: 0 });
-
-      const result = await submitMilestone({
-        milestoneId: 'nonexistent',
-        freelancerId: 'freelancer-1',
-        deliverables: [],
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
-    });
-
-    it('should fail when user is not the freelancer', async () => {
-      const { submitMilestone } = await importModule();
-
-      // The user finds the milestone as the EMPLOYER of the contract
-      const contract = makeContract({ freelancer_id: 'other-freelancer' });
-      const milestone = makeMilestone({ status: 'pending' });
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [contract], total: 1 });
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([milestone]));
-
-      const result = await submitMilestone({
-        milestoneId: 'ms-1',
-        freelancerId: 'freelancer-1',
-        deliverables: [],
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
-    });
-
-    it('should fail when contract is not active', async () => {
-      const { submitMilestone } = await importModule();
-
-      const contract = makeContract({ status: 'completed' });
-      const milestone = makeMilestone({ status: 'pending' });
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [contract], total: 1 });
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([milestone]));
-
-      const result = await submitMilestone({
-        milestoneId: 'ms-1',
-        freelancerId: 'freelancer-1',
-        deliverables: [],
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) {
-        expect(result.error.code).toBe('INVALID_STATUS');
-        expect(result.error.message).toContain('completed');
-      }
-    });
-
-    it('should fail when milestone status is not pending or rejected', async () => {
-      const { submitMilestone } = await importModule();
-
-      const contract = makeContract();
-      const milestone = makeMilestone({ status: 'approved' });
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [contract], total: 1 });
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([milestone]));
-
-      const result = await submitMilestone({
-        milestoneId: 'ms-1',
-        freelancerId: 'freelancer-1',
-        deliverables: [],
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) expect(result.error.code).toBe('INVALID_STATUS');
-    });
-
-    it('should handle update failure', async () => {
-      const { submitMilestone } = await importModule();
-
-      const contract = makeContract();
-      const milestone = makeMilestone({ status: 'pending' });
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [contract], total: 1 });
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([milestone]));
-      mockProjectRepository.updateProject.mockResolvedValueOnce(null);
-
-      const result = await submitMilestone({
-        milestoneId: 'ms-1',
-        freelancerId: 'freelancer-1',
-        deliverables: [],
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) expect(result.error.code).toBe('SUBMIT_FAILED');
-    });
-
-    it('should handle database errors', async () => {
-      const { submitMilestone } = await importModule();
-
-      const contract = makeContract();
-      const milestone = makeMilestone({ status: 'pending' });
-      mockContractRepository.getUserContracts.mockResolvedValueOnce({ items: [contract], total: 1 });
-      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([milestone]));
-      mockProjectRepository.updateProject.mockRejectedValueOnce(new Error('DB error'));
-
-      const result = await submitMilestone({
-        milestoneId: 'ms-1',
-        freelancerId: 'freelancer-1',
-        deliverables: [],
-      });
-
-      expect(result.success).toBe(false);
-      if (!result.success) expect(result.error.code).toBe('SUBMIT_FAILED');
     });
   });
 
@@ -667,6 +484,308 @@ describe('Milestone Service', () => {
   });
 });
 
+describe('Milestone Service - freelancer context & submission flow', () => {
+  const importModule = async () => {
+    return await import('../../services/milestone-service.js');
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockContractRepository.getContractsByFreelancer.mockReset();
+    mockContractRepository.getContractsByEmployer.mockReset();
+    mockProjectRepository.findProjectById.mockReset();
+    mockRequestMilestoneCompletion.mockReset();
+    mockRequestMilestoneCompletion.mockResolvedValue({ success: true, data: {} });
+  });
+
+  describe('findFreelancerMilestoneContext', () => {
+    it('prefers active contracts and falls back to older contracts', async () => {
+      const { findFreelancerMilestoneContext } = await importModule();
+
+      const active = makeContract({ id: 'c-active', created_at: '2025-01-01T00:00:00.000Z', status: 'active' });
+      const completed = makeContract({ id: 'c-old', project_id: 'p-old', created_at: '2024-01-01T00:00:00.000Z', status: 'completed' });
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [completed, active], total: 2 });
+      // Active contract's project has no matching milestone -> continue to the older one
+      mockProjectRepository.findProjectById
+        .mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-other' })]))
+        .mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-1' })], { id: 'p-old' }));
+
+      const context = await findFreelancerMilestoneContext('freelancer-1', 'ms-1');
+
+      expect(context).not.toBeNull();
+      expect(context?.contractId).toBe('c-old');
+      expect(context?.milestoneIndex).toBe(0);
+      expect(context?.milestone.id).toBe('ms-1');
+      // active contract was scanned first, then the completed fallback
+      expect(mockProjectRepository.findProjectById).toHaveBeenNthCalledWith(1, 'p-1');
+      expect(mockProjectRepository.findProjectById).toHaveBeenNthCalledWith(2, 'p-old');
+    });
+
+    it('returns null when the milestone is not in any contract project', async () => {
+      const { findFreelancerMilestoneContext } = await importModule();
+
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [makeContract({ created_at: now() })], total: 1 });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([]));
+
+      const context = await findFreelancerMilestoneContext('freelancer-1', 'ms-missing');
+
+      expect(context).toBeNull();
+    });
+
+    it('skips contracts whose project document is missing', async () => {
+      const { findFreelancerMilestoneContext } = await importModule();
+
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [makeContract({ created_at: now() })], total: 1 });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(null);
+
+      const context = await findFreelancerMilestoneContext('freelancer-1', 'ms-1');
+
+      expect(context).toBeNull();
+    });
+
+    it('sorts same-status contracts by created_at (newest first)', async () => {
+      const { findFreelancerMilestoneContext } = await importModule();
+
+      const older = makeContract({ id: 'c-old', project_id: 'p-old', created_at: '2024-01-01T00:00:00.000Z', status: 'completed' });
+      const newer = makeContract({ id: 'c-new', project_id: 'p-new', created_at: '2025-01-01T00:00:00.000Z', status: 'completed' });
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [older, newer], total: 2 });
+      // Newer contract scanned first (no matching milestone), then the older one
+      mockProjectRepository.findProjectById
+        .mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-other' })]))
+        .mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-1' })], { id: 'p-old' }));
+
+      const context = await findFreelancerMilestoneContext('freelancer-1', 'ms-1');
+
+      expect(context?.contractId).toBe('c-old');
+      expect(mockProjectRepository.findProjectById).toHaveBeenNthCalledWith(1, 'p-new');
+      expect(mockProjectRepository.findProjectById).toHaveBeenNthCalledWith(2, 'p-old');
+    });
+  });
+
+  describe('mapMilestoneResponse', () => {
+    it('maps camelCase milestone fields into the API response shape', async () => {
+      const { mapMilestoneResponse } = await importModule();
+
+      const milestone = makeMilestone({
+        deliverableFiles: [{ filename: 'a.pdf', url: 'http://x/a.pdf', size: 1, mimeType: 'application/pdf' }],
+        revisionCount: 2,
+        submittedAt: '2025-02-01T00:00:00.000Z',
+        approvedAt: '2025-02-02T00:00:00.000Z',
+        notes: 'needs review',
+      });
+      const project = makeProject([milestone]);
+
+      const mapped = mapMilestoneResponse(milestone, 'c-1', project);
+
+      expect(mapped).toEqual(expect.objectContaining({
+        id: 'ms-1',
+        contractId: 'c-1',
+        dueDate: '2025-01-01',
+        status: 'pending',
+        deliverableFiles: [{ filename: 'a.pdf', url: 'http://x/a.pdf', size: 1, mimeType: 'application/pdf' }],
+        revisionCount: 2,
+        submittedAt: '2025-02-01T00:00:00.000Z',
+        approvedAt: '2025-02-02T00:00:00.000Z',
+        notes: 'needs review',
+        createdAt: project.created_at,
+        updatedAt: project.updated_at,
+      }));
+    });
+
+    it('falls back to snake_case fields', async () => {
+      const { mapMilestoneResponse } = await importModule();
+
+      const milestone = makeMilestone({
+        deliverable_files: [{ filename: 'b.pdf', url: 'http://x/b.pdf', size: 2, mimeType: 'application/pdf' }],
+        revision_count: 3,
+        submitted_at: '2025-03-01T00:00:00.000Z',
+        approved_at: '2025-03-02T00:00:00.000Z',
+        rejected_at: '2025-03-03T00:00:00.000Z',
+        completed_at: '2025-03-04T00:00:00.000Z',
+        rejection_reason: 'redo',
+      });
+      const project = makeProject([milestone]);
+
+      const mapped = mapMilestoneResponse(milestone, 'c-1', project);
+
+      expect(mapped).toEqual(expect.objectContaining({
+        deliverableFiles: [{ filename: 'b.pdf', url: 'http://x/b.pdf', size: 2, mimeType: 'application/pdf' }],
+        revisionCount: 3,
+        submittedAt: '2025-03-01T00:00:00.000Z',
+        approvedAt: '2025-03-02T00:00:00.000Z',
+        rejectedAt: '2025-03-03T00:00:00.000Z',
+        completedAt: '2025-03-04T00:00:00.000Z',
+        rejectionReason: 'redo',
+      }));
+    });
+
+    it('uses submittedAtIso when the milestone has no timestamp fields', async () => {
+      const { mapMilestoneResponse } = await importModule();
+
+      const mapped = mapMilestoneResponse(makeMilestone({}), 'c-1', makeProject([]), '2025-04-01T00:00:00.000Z');
+
+      expect(mapped.submittedAt).toBe('2025-04-01T00:00:00.000Z');
+      expect(mapped.revisionCount).toBe(0);
+      expect(mapped.deliverableFiles).toEqual([]);
+    });
+  });
+
+  describe('submitMilestoneFromProjectContext', () => {
+    it('submits the milestone through the payment service and returns the updated milestone', async () => {
+      const { submitMilestoneFromProjectContext } = await importModule();
+
+      const contract = makeContract({ created_at: now() });
+      const milestone = makeMilestone({ status: 'pending' });
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [contract], total: 1 });
+      mockProjectRepository.findProjectById
+        .mockResolvedValueOnce(makeProject([milestone]))
+        .mockResolvedValueOnce(makeProject([{ ...milestone, status: 'submitted', submitted_at: now() }]));
+
+      const result = await submitMilestoneFromProjectContext(
+        'ms-1',
+        'freelancer-1',
+        [{ filename: 'f1.pdf', url: 'http://x/f1.pdf', size: 1, mimeType: 'application/pdf' }],
+        'see attached'
+      );
+
+      expect(result.success).toBe(true);
+      expect(mockRequestMilestoneCompletion).toHaveBeenCalledWith('c-1', 'ms-1', 'freelancer-1', {
+        deliverables: [{ filename: 'f1.pdf', url: 'http://x/f1.pdf', size: 1, mimeType: 'application/pdf' }],
+        notes: 'see attached',
+      });
+      if (result.success) {
+        expect(result.data.status).toBe('submitted');
+        expect(result.data.contractId).toBe('c-1');
+      }
+    });
+
+    it('returns NOT_FOUND when the milestone cannot be located', async () => {
+      const { submitMilestoneFromProjectContext } = await importModule();
+
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [], total: 0 });
+
+      const result = await submitMilestoneFromProjectContext('ms-1', 'freelancer-1', []);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('returns the completion error when the payment service rejects', async () => {
+      const { submitMilestoneFromProjectContext } = await importModule();
+
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [makeContract({ created_at: now() })], total: 1 });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([makeMilestone()]));
+      mockRequestMilestoneCompletion.mockResolvedValueOnce({ success: false, error: { code: 'SUBMIT_FAILED', message: 'Escrow rejected' } });
+
+      const result = await submitMilestoneFromProjectContext('ms-1', 'freelancer-1', []);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('SUBMIT_FAILED');
+        expect(result.error.message).toBe('Escrow rejected');
+      }
+    });
+
+    it('returns SUBMIT_FAILED when the payment service throws', async () => {
+      const { submitMilestoneFromProjectContext } = await importModule();
+
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [makeContract({ created_at: now() })], total: 1 });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([makeMilestone()]));
+      mockRequestMilestoneCompletion.mockRejectedValueOnce(new Error('Escrow contract unavailable'));
+
+      const result = await submitMilestoneFromProjectContext('ms-1', 'freelancer-1', []);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('SUBMIT_FAILED');
+        expect(result.error.message).toBe('Escrow contract unavailable');
+      }
+    });
+
+    it('returns NOT_FOUND when the project document disappears after completion', async () => {
+      const { submitMilestoneFromProjectContext } = await importModule();
+
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [makeContract({ created_at: now() })], total: 1 });
+      mockProjectRepository.findProjectById
+        .mockResolvedValueOnce(makeProject([makeMilestone()]))
+        .mockResolvedValueOnce(null);
+
+      const result = await submitMilestoneFromProjectContext('ms-1', 'freelancer-1', []);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+
+    it('returns NOT_FOUND when the milestone is missing from the updated project', async () => {
+      const { submitMilestoneFromProjectContext } = await importModule();
+
+      mockContractRepository.getContractsByFreelancer.mockResolvedValueOnce({ items: [makeContract({ created_at: now() })], total: 1 });
+      mockProjectRepository.findProjectById
+        .mockResolvedValueOnce(makeProject([makeMilestone()]))
+        .mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-other' })]));
+
+      const result = await submitMilestoneFromProjectContext('ms-1', 'freelancer-1', []);
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('findEmployerMilestoneContractId', () => {
+    it('returns the contract id that contains the milestone', async () => {
+      const { findEmployerMilestoneContractId } = await importModule();
+
+      mockContractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [makeContract()], total: 1 });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-1' })]));
+
+      const contractId = await findEmployerMilestoneContractId('employer-1', 'ms-1');
+
+      expect(contractId).toBe('c-1');
+    });
+
+    it('skips projects without the milestone and keeps scanning', async () => {
+      const { findEmployerMilestoneContractId } = await importModule();
+
+      mockContractRepository.getContractsByEmployer.mockResolvedValueOnce({
+        items: [
+          makeContract({ id: 'c-1', project_id: 'p-1' }),
+          makeContract({ id: 'c-2', project_id: 'p-2' }),
+        ],
+        total: 2,
+      });
+      mockProjectRepository.findProjectById
+        .mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-other' })]))
+        .mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-1' })], { id: 'p-2' }));
+
+      const contractId = await findEmployerMilestoneContractId('employer-1', 'ms-1');
+
+      expect(contractId).toBe('c-2');
+    });
+
+    it('returns null when the project document is missing', async () => {
+      const { findEmployerMilestoneContractId } = await importModule();
+
+      mockContractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [makeContract()], total: 1 });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(null);
+
+      const contractId = await findEmployerMilestoneContractId('employer-1', 'ms-1');
+
+      expect(contractId).toBeNull();
+    });
+
+    it('returns null when the milestone is nowhere to be found', async () => {
+      const { findEmployerMilestoneContractId } = await importModule();
+
+      mockContractRepository.getContractsByEmployer.mockResolvedValueOnce({ items: [makeContract()], total: 1 });
+      mockProjectRepository.findProjectById.mockResolvedValueOnce(makeProject([makeMilestone({ id: 'ms-other' })]));
+
+      const contractId = await findEmployerMilestoneContractId('employer-1', 'ms-1');
+
+      expect(contractId).toBeNull();
+    });
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════
 // Error-path / branch coverage
 // ═══════════════════════════════════════════════════════════════
@@ -683,25 +802,6 @@ describe('milestone-service – error paths', () => {
     if (!result.success) {
       expect(result.error.code).toBe('DATABASE_ERROR');
       expect(result.error.message).toBe('Failed to get milestone');
-    }
-  });
-
-  it('submitMilestone catches error when update fails', async () => {
-    mockContractRepository.getUserContracts.mockResolvedValueOnce({
-      items: [{ id: 'c1', project_id: 'p1', freelancer_id: 'f1', employer_id: 'e1', status: 'active' }],
-      total: 1,
-    });
-    mockProjectRepository.findProjectById.mockResolvedValueOnce({
-      id: 'p1', milestones: [{ id: 'm1', status: 'pending', title: 'M1', revision_count: 0 }],
-    });
-    mockProjectRepository.updateProject.mockRejectedValueOnce('update failed');
-
-    const { submitMilestone } = await import(resolveModule('src/services/milestone-service.ts'));
-    const result = await submitMilestone({ milestoneId: 'm1', deliverables: [], freelancerId: 'f1' });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('SUBMIT_FAILED');
-      expect(result.error.message).toBe('Failed to submit milestone');
     }
   });
 
