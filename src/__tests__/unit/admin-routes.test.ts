@@ -919,7 +919,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).patch('/api/admin/users/any-id').send({ name: 'Test' });
     expect(res.status).toBe(200);
-    expect(mockUpdateUser).toHaveBeenCalledWith('', { name: 'Test', role: undefined, isActive: undefined });
+    expect(mockUpdateUser).toHaveBeenCalledWith('', { name: 'Test', role: undefined, isActive: undefined }, 'admin-1');
   });
 
   it('L179: POST /users/:userId/suspend uses ?? "" fallback', async () => {
@@ -927,7 +927,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/admin/users/any-id/suspend').send({ reason: 'test' });
     expect(res.status).toBe(200);
-    expect(mockSuspendUser).toHaveBeenCalledWith('', 'test');
+    expect(mockSuspendUser).toHaveBeenCalledWith('', 'test', 'admin-1');
   });
 
   it('L207: POST /users/:userId/unsuspend uses ?? "" fallback', async () => {
@@ -935,7 +935,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/admin/users/any-id/unsuspend');
     expect(res.status).toBe(200);
-    expect(mockUnsuspendUser).toHaveBeenCalledWith('');
+    expect(mockUnsuspendUser).toHaveBeenCalledWith('', 'admin-1');
   });
 
   it('L234: POST /users/:userId/verify uses ?? "" fallback', async () => {

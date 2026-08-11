@@ -108,6 +108,12 @@ jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-reposi
   employerProfileRepository: mockEmployerProfileRepo,
 }));
 
+// Audit-log repository (BLF-12.2 contract-creation audit trail)
+const mockAuditLogRepo = { create: jest.fn<any>().mockResolvedValue(undefined) };
+jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
+  auditLogRepository: mockAuditLogRepo,
+}));
+
 // Import after mocking
 const {
   submitProposal,
@@ -430,6 +436,7 @@ describe('Proposal Service - Unit Tests', () => {
     mockReviewRepo.clear();
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
+    mockAuditLogRepo.create.mockClear();
 
     // Mock pool.query for atomic proposal acceptance
     const mockPoolObj = (globalThis as any).mockPool;
@@ -705,6 +712,15 @@ describe('Proposal Service - Unit Tests', () => {
       expect(updatedContractEntity?.status).toBe('active');
       expect(updatedContractEntity?.escrow_address).toBeDefined();
     }
+
+    // BLF-12.2: contract creation is audited with the employer as actor and freelancer as target
+    expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: freelancerId,
+      actor_id: employerId,
+      action: 'contract.created',
+      resource_type: 'contract',
+      payload: expect.objectContaining({ projectId, proposalId: proposal.id }),
+    }));
   });
 });
 
@@ -1186,6 +1202,67 @@ describe('Proposal Service - Coverage Tests', () => {
 
     expect(result.success).toBe(true);
     mockNotificationRepo.createNotification = origCreateNotification;
+  });
+
+  // BLF-6.2: Only reject the remaining pending proposals once the project's
+  // freelancer slots are full — multi-freelancer projects must be able to fill
+  // their other slots.
+  it('should keep other pending proposals open when freelancer slots remain', async () => {
+    const employerId = 'employer-slots-remain';
+    const milestones = [createTestMilestone({ id: 'ms-sr-1', title: 'M1', amount: 800, status: 'pending' })];
+    const project = createTestProject({
+      id: 'slots-remain-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 2,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id, freelancer_id: 'freelancer-sr-1', proposed_rate: 800, status: 'pending',
+    });
+    const otherProposal = createTestProposal({
+      project_id: project.id, freelancer_id: 'freelancer-sr-2', proposed_rate: 800, status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+    proposalStore.set(otherProposal.id, otherProposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    // One slot still open (limit 2, 1 accepted) → the other proposal is NOT auto-rejected
+    const otherAfter = proposalStore.get(otherProposal.id) as any;
+    expect(otherAfter?.status).toBe('pending');
+  });
+
+  it('should reject other pending proposals once the final slot is filled', async () => {
+    const employerId = 'employer-slots-full';
+    const milestones = [createTestMilestone({ id: 'ms-sf-1', title: 'M1', amount: 800, status: 'pending' })];
+    const project = createTestProject({
+      id: 'slots-full-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 1,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id, freelancer_id: 'freelancer-sf-1', proposed_rate: 800, status: 'pending',
+    });
+    const otherProposal = createTestProposal({
+      project_id: project.id, freelancer_id: 'freelancer-sf-2', proposed_rate: 800, status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+    proposalStore.set(otherProposal.id, otherProposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    // Limit 1 reached → the remaining pending proposal is rejected
+    const otherAfter = proposalStore.get(otherProposal.id) as any;
+    expect(otherAfter?.status).toBe('rejected');
   });
 
   // --- rejectProposal error paths ---

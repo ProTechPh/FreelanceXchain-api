@@ -471,6 +471,24 @@ const COLLECTIONS = [
   },
 ];
 
+// ─── Index Definitions ───────────────────────────────────────────────────────
+// Database-level constraints that cannot be expressed as plain attributes.
+// The unique (contract_id, reviewer_id) index backs BLF-9.1: the reputation
+// service serializes the duplicate-review check-then-insert with an app-level
+// lock, but that lock is per-process — this index is the global backstop that
+// makes a double-submit fail even across server instances.
+// NOTE: on an existing `reviews` collection that already contains duplicate
+// (contract_id, reviewer_id) rows, creation will fail — de-duplicate first.
+const INDEXES = [
+  {
+    collectionId: 'reviews',
+    key: 'unique_contract_reviewer',
+    type: 'key',
+    attributes: ['contract_id', 'reviewer_id'],
+    indexes: ['unique'],
+  },
+];
+
 // ─── Setup Functions ────────────────────────────────────────────────────────
 
 async function ensureDatabase(): Promise<void> {
@@ -502,6 +520,28 @@ async function createCollection(colDef: typeof COLLECTIONS[0]): Promise<void> {
       ]
     );
     console.log(`  ✓ Collection "${colDef.name}" created`);
+  }
+}
+
+async function createIndexes(): Promise<void> {
+  for (const index of INDEXES) {
+    try {
+      await db.createIndex(
+        DATABASE_ID,
+        index.collectionId,
+        index.key,
+        index.type as 'key' | 'fulltext',
+        index.attributes,
+        index.indexes
+      );
+      console.log(`  ✓ Index "${index.key}" created (${index.attributes.join(', ')})`);
+    } catch (e: any) {
+      if (e?.code === 409) {
+        console.log(`  ⊘ Index "${index.key}" already exists`);
+      } else {
+        console.error(`  ✗ Failed to create index "${index.key}":`, e?.message || e);
+      }
+    }
   }
 }
 
@@ -580,7 +620,10 @@ async function main(): Promise<void> {
     console.log('');
   }
 
-  console.log('=== Setup complete! ===');
+  console.log(`\nCreating ${INDEXES.length} indexes...\n`);
+  await createIndexes();
+
+  console.log('\n=== Setup complete! ===');
 }
 
 main().catch((err) => {

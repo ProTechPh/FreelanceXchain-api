@@ -35,8 +35,9 @@ import { completeAgreement } from './agreement-contract.js';
 import { approveMilestone as approveOnChainMilestone, deployEscrowContract as deployRealEscrow } from './escrow-blockchain.js';
 import { isWeb3Available } from './web3-client.js';
 import { getBlockchainMode } from './blockchain/factory.js';
-import { withLock } from '../utils/async-lock.js';
+import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
+import { persistAuditEntry } from '../utils/admin-audit.js';
 
 const escrowOps = {
   deployEscrow,
@@ -518,7 +519,7 @@ export async function approveMilestone(
   employerId: string
 ): Promise<ServiceResult<MilestoneApprovalResult>> {
   // Serialize concurrent approval attempts for the same milestone to prevent double-spend
-  return withLock(`milestone-approve:${milestoneId}`, async () => {
+  return withLock(milestoneLockKey(milestoneId), async () => {
     const validated = await validateMilestoneApproval(contractId, milestoneId, employerId);
     if ('error' in validated) return validated.error;
 
@@ -542,6 +543,30 @@ export async function approveMilestone(
       milestoneIndex, employerId, releasingBaseEntity, released.transactionHash,
     );
 
+    // BLF-12.2: durable audit trail — milestone approvals (escrow releases) are
+    // recorded with the employer as actor, the freelancer as target user, and the
+    // released amount + tx hash. Written only after the release fully commits;
+    // best-effort by design.
+    await persistAuditEntry({
+      user_id: contract.freelancerId,
+      actor_id: employerId,
+      action: 'milestone.approved',
+      resource_type: 'milestone',
+      resource_id: milestoneId,
+      payload: {
+        contractId,
+        projectId: project.id,
+        milestoneTitle: milestone.title ?? null,
+        amount: milestone.amount ?? null,
+        transactionHash: released.transactionHash ?? null,
+        contractCompleted: result.contractCompleted,
+      },
+      ip_address: null,
+      user_agent: null,
+      status: 'success',
+      error_message: null,
+    });
+
     return successResult(result);
   });
 }
@@ -562,7 +587,7 @@ export async function disputeMilestone(
 ): Promise<ServiceResult<MilestoneDisputeResult>> {
   // BLF-2.1: Serialize concurrent dispute+approve attempts using the same lock key
   // as approveMilestone to prevent the race where both succeed simultaneously
-  return withLock(`milestone-approve:${milestoneId}`, async () => {
+  return withLock(milestoneLockKey(milestoneId), async () => {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {

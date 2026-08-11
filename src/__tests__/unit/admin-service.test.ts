@@ -47,6 +47,10 @@ const mockKycRepo = {
   updateKycVerification: jest.fn<any>(),
 };
 
+const mockAuditLogRepo = {
+  create: jest.fn<any>(),
+};
+
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: mockUserRepo,
 }));
@@ -69,6 +73,10 @@ jest.unstable_mockModule(resolveModule('src/repositories/transaction-repository.
 
 jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts'), () => mockKycRepo);
 
+jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
+  auditLogRepository: mockAuditLogRepo,
+}));
+
 describe('Admin Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -80,6 +88,7 @@ describe('Admin Service', () => {
     mockDisputeRepo.queryAll.mockReset();
     mockDisputeRepo.getAllDisputes.mockReset();
     mockTransactionRepo.queryAll.mockReset();
+    mockAuditLogRepo.create.mockReset();
     mockKycRepo.getKycVerificationByUserId.mockReset().mockResolvedValue(null);
     mockKycRepo.createKycVerification.mockReset().mockImplementation(async (verification) => ({
       ...verification,
@@ -274,6 +283,15 @@ describe('Admin Service', () => {
       if (result.success) {
         expect(result.data.is_suspended).toBe(true);
       }
+      // BLF-12.2: the suspension is persisted to the durable audit log
+      expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        actor_id: 'system-admin',
+        user_id: 'user-1',
+        action: 'user.suspended',
+        resource_type: 'user',
+        resource_id: 'user-1',
+        payload: { reason: 'Violation' },
+      }));
     });
 
     it('should handle database errors', async () => {
@@ -305,6 +323,11 @@ describe('Admin Service', () => {
       if (result.success) {
         expect(result.data.is_suspended).toBe(false);
       }
+      expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        actor_id: 'system-admin',
+        user_id: 'user-1',
+        action: 'user.unsuspended',
+      }));
     });
   });
 
@@ -329,6 +352,12 @@ describe('Admin Service', () => {
         admin_notes: 'Government ID reviewed by support',
       }));
       expect(mockUserRepo.updateUser).not.toHaveBeenCalled();
+      expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        actor_id: 'admin-1',
+        user_id: 'user-1',
+        action: 'user.verified',
+        payload: { reason: 'Government ID reviewed by support' },
+      }));
     });
 
     it('should update the canonical KYC record when one already exists', async () => {
@@ -449,6 +478,80 @@ describe('Admin Service', () => {
 
       expect(result.success).toBe(true);
     });
+
+    // BLF-12.1: Last-admin guard — never demote the final remaining administrator.
+    it('should refuse to demote the last remaining admin', async () => {
+      const { updateUser } = await importModule();
+
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'admin-1', role: 'admin' });
+      mockUserRepo.queryAll.mockResolvedValueOnce([{ id: 'admin-1', role: 'admin' }]);
+
+      const result = await updateUser('admin-1', { role: 'freelancer' }, 'admin-1');
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('LAST_ADMIN');
+      expect(mockUserRepo.updateUser).not.toHaveBeenCalled();
+    });
+
+    it('should allow demoting an admin when another admin remains', async () => {
+      const { updateUser } = await importModule();
+
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'admin-1', role: 'admin' });
+      mockUserRepo.queryAll.mockResolvedValueOnce([
+        { id: 'admin-1', role: 'admin' },
+        { id: 'admin-2', role: 'admin' },
+      ]);
+      mockUserRepo.updateUser.mockResolvedValueOnce({ id: 'admin-1', role: 'employer' });
+
+      const result = await updateUser('admin-1', { role: 'employer' }, 'admin-2');
+
+      expect(result.success).toBe(true);
+      expect(mockUserRepo.updateUser).toHaveBeenCalledWith('admin-1', { role: 'employer' });
+    });
+
+    // BLF-12.2: every privileged action is attributed to the acting admin.
+    it('should attribute the update to the acting admin in the audit log', async () => {
+      const { updateUser } = await importModule();
+      const { logger } = await import('../../config/logger.js');
+
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1', role: 'freelancer' });
+      mockUserRepo.updateUser.mockResolvedValueOnce({ id: 'user-1', role: 'employer' });
+
+      const result = await updateUser('user-1', { role: 'employer' }, 'admin-42');
+
+      expect(result.success).toBe(true);
+      expect(logger.info).toHaveBeenCalledWith(
+        'ADMIN ACTION: user updated',
+        expect.objectContaining({ actor: 'admin-42', userId: 'user-1' })
+      );
+      expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        actor_id: 'admin-42',
+        user_id: 'user-1',
+        action: 'user.updated',
+        payload: { changes: { role: 'employer' } },
+      }));
+    });
+
+    it('should attribute the suspension to the acting admin in the audit log', async () => {
+      const { suspendUser } = await importModule();
+      const { logger } = await import('../../config/logger.js');
+
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1', role: 'freelancer' });
+      mockUserRepo.updateUser.mockResolvedValueOnce({ id: 'user-1', is_suspended: true });
+
+      const result = await suspendUser('user-1', 'Violation', 'admin-7');
+
+      expect(result.success).toBe(true);
+      expect(logger.info).toHaveBeenCalledWith(
+        'ADMIN ACTION: user suspended',
+        expect.objectContaining({ actor: 'admin-7', userId: 'user-1' })
+      );
+      expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        actor_id: 'admin-7',
+        user_id: 'user-1',
+        action: 'user.suspended',
+      }));
+    });
   });
 
   describe('getDisputeManagement', () => {
@@ -563,6 +666,7 @@ describe('Admin Service - Extended Tests', () => {
     mockDisputeRepo.queryAll.mockReset();
     mockDisputeRepo.getAllDisputes.mockReset();
     mockTransactionRepo.queryAll.mockReset();
+    mockAuditLogRepo.create.mockReset();
   });
 
   const importModule = async () => {
@@ -779,6 +883,7 @@ describe('Admin Service - Remaining Coverage', () => {
     mockDisputeRepo.queryAll.mockReset();
     mockDisputeRepo.getAllDisputes.mockReset();
     mockTransactionRepo.queryAll.mockReset();
+    mockAuditLogRepo.create.mockReset();
   });
 
   const importModule = async () => {
@@ -883,6 +988,7 @@ describe('Admin Service - Coverage Gaps', () => {
     mockDisputeRepo.queryAll.mockReset();
     mockDisputeRepo.getAllDisputes.mockReset();
     mockTransactionRepo.queryAll.mockReset();
+    mockAuditLogRepo.create.mockReset();
   });
 
   const importModule = async () => {
@@ -954,6 +1060,25 @@ describe('Admin Service - Coverage Gaps', () => {
       const result = await updateUser('nonexistent', { name: 'New Name' });
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+    });
+  });
+
+  describe('admin audit persistence (BLF-12.2)', () => {
+    it('should still succeed when the durable audit write fails', async () => {
+      const { suspendUser } = await importModule();
+      const { logger } = await import('../../config/logger.js');
+
+      mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-1' });
+      mockUserRepo.updateUser.mockResolvedValueOnce({ id: 'user-1', is_suspended: true });
+      mockAuditLogRepo.create.mockRejectedValueOnce(new Error('audit db down'));
+
+      const result = await suspendUser('user-1', 'Violation', 'admin-9');
+
+      expect(result.success).toBe(true);
+      expect(logger.error).toHaveBeenCalledWith(
+        'Failed to persist admin audit log entry',
+        expect.objectContaining({ entry: expect.objectContaining({ action: 'user.suspended' }) })
+      );
     });
   });
 

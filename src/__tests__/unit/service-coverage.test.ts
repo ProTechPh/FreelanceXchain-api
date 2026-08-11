@@ -19,11 +19,17 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: mockLogger,
 }));
 
-// Config/Env (for file-service)
+// Config/Env (for file-service and async-lock's redis import)
 const mockConfig = {
   appwrite: {
     endpoint: 'https://mock.appwrite.io/v1',
     projectId: 'mock-project',
+  },
+  redis: {
+    host: 'localhost',
+    port: 6379,
+    password: undefined,
+    tls: false,
   },
 };
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
@@ -63,21 +69,11 @@ jest.unstable_mockModule(resolveModule('src/services/notification-delivery-servi
   notificationEmitter: { emitToUser: jest.fn() },
 }));
 
-// Milestone repository
-const mockMilestoneRepo = {
-  getById: jest.fn(),
-  update: jest.fn(),
-  findByContract: jest.fn(),
-  create: jest.fn(),
-};
-jest.unstable_mockModule(resolveModule('src/repositories/milestone-repository.ts'), () => ({
-  milestoneRepository: mockMilestoneRepo,
-}));
-
 // Contract repository
 const mockContractRepo = {
   getContractById: jest.fn(),
   updateContract: jest.fn(),
+  getUserContracts: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepo,
@@ -572,26 +568,12 @@ describe('skill-service: updateSkill field mapping (lines 173-174)', () => {
 // TESTS: milestone-service
 // ═══════════════════════════════════════════════════════════════
 
-describe('milestone-service: unauthorized user in getMilestoneById (lines 32-34)', () => {
+describe('milestone-service: missing userId in getMilestoneById', () => {
   beforeEach(() => resetAllMocks());
 
-  it('should return UNAUTHORIZED when userId is not a party to the contract', async () => {
-    mockMilestoneRepo.getById.mockResolvedValueOnce({
-      id: 'ms-1',
-      title: 'Design',
-      status: 'pending',
-      contract_id: 'c-1',
-      revision_count: 0,
-    });
-    mockContractRepo.getContractById.mockResolvedValueOnce({
-      id: 'c-1',
-      employer_id: 'employer-1',
-      freelancer_id: 'freelancer-1',
-      status: 'active',
-    });
-
+  it('should return UNAUTHORIZED when no userId is provided', async () => {
     const { getMilestoneById } = await import(resolveModule('src/services/milestone-service.ts'));
-    const result = await getMilestoneById('ms-1', 'unauthorized-user');
+    const result = await getMilestoneById('ms-1');
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -600,22 +582,17 @@ describe('milestone-service: unauthorized user in getMilestoneById (lines 32-34)
   });
 });
 
-describe('milestone-service: non-active contract in submitMilestone (line 88)', () => {
+describe('milestone-service: non-active contract in submitMilestone', () => {
   beforeEach(() => resetAllMocks());
 
   it('should reject submission when contract is not active', async () => {
-    mockMilestoneRepo.getById.mockResolvedValueOnce({
-      id: 'ms-1',
-      title: 'Design',
-      status: 'pending',
-      contract_id: 'c-1',
-      revision_count: 0,
+    mockContractRepo.getUserContracts.mockResolvedValueOnce({
+      items: [{ id: 'c-1', project_id: 'p-1', freelancer_id: 'fl-1', employer_id: 'em-1', status: 'completed' }],
+      total: 1,
     });
-    mockContractRepo.getContractById.mockResolvedValueOnce({
-      id: 'c-1',
-      freelancer_id: 'fl-1',
-      employer_id: 'em-1',
-      status: 'completed',
+    mockProjectRepo.findProjectById.mockResolvedValueOnce({
+      id: 'p-1',
+      milestones: [{ id: 'ms-1', title: 'Design', status: 'pending', revision_count: 0 }],
     });
 
     const { submitMilestone } = await import(resolveModule('src/services/milestone-service.ts'));
@@ -633,22 +610,17 @@ describe('milestone-service: non-active contract in submitMilestone (line 88)', 
   });
 });
 
-describe('milestone-service: max revisions in rejectMilestone (line 198)', () => {
+describe('milestone-service: max revisions in rejectMilestone', () => {
   beforeEach(() => resetAllMocks());
 
   it('should reject when revision_count >= MAX_REVISIONS (5)', async () => {
-    mockMilestoneRepo.getById.mockResolvedValueOnce({
-      id: 'ms-1',
-      title: 'Design',
-      status: 'submitted',
-      contract_id: 'c-1',
-      revision_count: 5,
+    mockContractRepo.getUserContracts.mockResolvedValueOnce({
+      items: [{ id: 'c-1', project_id: 'p-1', freelancer_id: 'fl-1', employer_id: 'em-1', status: 'active' }],
+      total: 1,
     });
-    mockContractRepo.getContractById.mockResolvedValueOnce({
-      id: 'c-1',
-      freelancer_id: 'fl-1',
-      employer_id: 'em-1',
-      status: 'active',
+    mockProjectRepo.findProjectById.mockResolvedValueOnce({
+      id: 'p-1',
+      milestones: [{ id: 'ms-1', title: 'Design', status: 'submitted', revision_count: 5 }],
     });
 
     const { rejectMilestone } = await import(resolveModule('src/services/milestone-service.ts'));

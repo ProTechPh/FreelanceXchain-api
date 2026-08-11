@@ -155,6 +155,16 @@ export async function respondToRushUpgrade(
   freelancerId: string,
   input: RespondToRushUpgradeInput
 ): Promise<ServiceResult<RushUpgradeRequest | RushUpgradeWithContract>> {
+  const initialRequest = await rushUpgradeRequestRepository.getRequestById(input.requestId);
+  if (!initialRequest) {
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+  }
+
+  // M19: Serialize accept/decline/counter responses per contract — the same
+  // `rush-upgrade:{contractId}` key requestRushUpgrade uses — so a concurrent
+  // accept cannot double-apply the rush fee or race a counter-offer. The request
+  // is re-read under the lock so the status transition is atomic.
+  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(input.requestId);
   if (!requestEntity) {
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
@@ -282,6 +292,7 @@ export async function respondToRushUpgrade(
   }
 
   return errorResult('INVALID_ACTION', 'Invalid action. Must be accept, decline, or counter_offer');
+  }); // M19: end withLock
 }
 
 // Employer accepts freelancer's counter-offer
@@ -289,6 +300,15 @@ export async function acceptCounterOffer(
   employerId: string,
   requestId: string
 ): Promise<ServiceResult<RushUpgradeWithContract>> {
+  const initialRequest = await rushUpgradeRequestRepository.getRequestById(requestId);
+  if (!initialRequest) {
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+  }
+
+  // M19: Serialize with respondToRushUpgrade (same lock key per contract). The
+  // request is re-read under the lock so accept and counter-offer cannot both
+  // apply the rush fee (double-apply) on the same contract.
+  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!requestEntity) {
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
@@ -353,6 +373,7 @@ export async function acceptCounterOffer(
   });
 
   return successResult({ request: updatedRequest, contract: updatedContract });
+  }); // M19: end withLock
 }
 
 // Employer declines freelancer's counter-offer
@@ -360,6 +381,13 @@ export async function declineCounterOffer(
   employerId: string,
   requestId: string
 ): Promise<ServiceResult<RushUpgradeRequest>> {
+  const initialRequest = await rushUpgradeRequestRepository.getRequestById(requestId);
+  if (!initialRequest) {
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+  }
+
+  // M19: Serialize with acceptCounterOffer and respondToRushUpgrade (same key).
+  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!requestEntity) {
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
@@ -398,6 +426,7 @@ export async function declineCounterOffer(
   });
 
   return successResult(mapRushUpgradeRequestFromEntity(updatedEntity));
+  }); // M19: end withLock
 }
 
 // Get rush upgrade requests for a contract

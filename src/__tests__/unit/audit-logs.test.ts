@@ -13,6 +13,8 @@ const mockGetFailedActions = jest.fn() as any;
 const mockGetAuditLogById = jest.fn() as any;
 const mockGenerateUserAuditReport = jest.fn() as any;
 const mockGenerateSystemAuditReport = jest.fn() as any;
+const mockSearchAuditLogs = jest.fn() as any;
+const mockGetAdminActivitySummary = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/services/audit-log-service.ts'), () => ({
   AuditLogService: jest.fn().mockImplementation(() => ({
@@ -24,6 +26,8 @@ jest.unstable_mockModule(resolveModule('src/services/audit-log-service.ts'), () 
     getAuditLogById: mockGetAuditLogById,
     generateUserAuditReport: mockGenerateUserAuditReport,
     generateSystemAuditReport: mockGenerateSystemAuditReport,
+    searchAuditLogs: mockSearchAuditLogs,
+    getAdminActivitySummary: mockGetAdminActivitySummary,
   })),
 }));
 
@@ -242,6 +246,115 @@ describe('Audit Logs Routes', () => {
       const res = await request(app).get('/api/audit-logs/range?startDate=2025-01-01&endDate=2025-01-31');
 
       expect(res.status).toBe(500);
+    });
+  });
+
+  describe('GET /search', () => {
+    it('should return filtered results with all query params', async () => {
+      const result = { items: sampleLogs, total: 1, hasMore: false };
+      mockSearchAuditLogs.mockResolvedValue(result);
+
+      const res = await request(app).get(
+        '/api/audit-logs/search?actor=admin-1&user=user-1&action=kyc.approved&startDate=2025-01-01&endDate=2025-01-31&limit=10&cursor=a-42'
+      );
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toEqual(result.items);
+      expect(res.body.total).toBe(result.total);
+      expect(res.body.hasMore).toBe(result.hasMore);
+      expect(mockSearchAuditLogs).toHaveBeenCalledWith(expect.objectContaining({
+        actorId: 'admin-1',
+        userId: 'user-1',
+        action: 'kyc.approved',
+        startDate: expect.any(Date),
+        endDate: expect.any(Date),
+        limit: 10,
+        cursor: 'a-42',
+      }));
+    });
+
+    it('should call with only provided filters', async () => {
+      mockSearchAuditLogs.mockResolvedValue({ items: [], total: 0, hasMore: false });
+
+      await request(app).get('/api/audit-logs/search?action=login');
+
+      expect(mockSearchAuditLogs).toHaveBeenCalledWith({ action: 'login' });
+    });
+
+    it('should return 400 for invalid startDate', async () => {
+      const res = await request(app).get('/api/audit-logs/search?startDate=invalid');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 for invalid status', async () => {
+      const res = await request(app).get('/api/audit-logs/search?status=bogus');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(mockSearchAuditLogs).not.toHaveBeenCalled();
+    });
+
+    it('should return 400 for invalid endDate', async () => {
+      const res = await request(app).get('/api/audit-logs/search?endDate=not-a-date');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should handle service errors', async () => {
+      mockSearchAuditLogs.mockRejectedValue(new Error('DB error'));
+
+      const res = await request(app).get('/api/audit-logs/search');
+
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_ERROR');
+    });
+  });
+
+  describe('GET /summary/admin-activity', () => {
+    it('should return per-admin activity summary', async () => {
+      const summary = {
+        items: [{ actor_id: 'admin-1', date: '2025-01-01', actions: { 'kyc.approved': 2 }, total: 2 }],
+        totalActions: 2,
+        activeAdmins: 1,
+      };
+      mockGetAdminActivitySummary.mockResolvedValue(summary);
+
+      const res = await request(app).get('/api/audit-logs/summary/admin-activity?startDate=2025-01-01&endDate=2025-01-31');
+
+      expect(res.status).toBe(200);
+      expect(res.body.items).toEqual(summary.items);
+      expect(res.body.totalActions).toBe(2);
+      expect(res.body.activeAdmins).toBe(1);
+      expect(mockGetAdminActivitySummary).toHaveBeenCalledWith(
+        new Date('2025-01-01'),
+        new Date('2025-01-31')
+      );
+    });
+
+    it('should return 400 for invalid start date', async () => {
+      const res = await request(app).get('/api/audit-logs/summary/admin-activity?startDate=bad&endDate=2025-01-31');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should return 400 for invalid end date', async () => {
+      const res = await request(app).get('/api/audit-logs/summary/admin-activity?startDate=2025-01-01&endDate=nope');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('should handle service errors', async () => {
+      mockGetAdminActivitySummary.mockRejectedValue(new Error('DB error'));
+
+      const res = await request(app).get('/api/audit-logs/summary/admin-activity?startDate=2025-01-01&endDate=2025-01-31');
+
+      expect(res.status).toBe(500);
+      expect(res.body.error.code).toBe('INTERNAL_ERROR');
     });
   });
 

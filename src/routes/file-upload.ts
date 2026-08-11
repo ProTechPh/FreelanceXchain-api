@@ -102,16 +102,13 @@ router.delete('/:bucket/*', authMiddleware, async (req: Request, res: Response) 
     return;
   }
 
-  const pathStart = filePath.split('/')[0];
-  if (pathStart && pathStart !== userId) {
-    sendErrorResponse(res, 403, 'FORBIDDEN', 'Unauthorized: cannot delete another user\'s file', getRequestId(req));
-    return;
-  }
-
   try {
-    const result = await deleteFile(bucket, filePath || userId);
+    // BLF-11.2: Ownership is verified server-side from the stored file name
+    // (files are uploaded with a {userId}_ prefix), not from the raw path.
+    const result = await deleteFile(bucket, filePath || userId, userId);
     if (!result.success) {
-      sendErrorResponse(res, 400, 'FILE_DELETE_FAILED', result.error, getRequestId(req));
+      const statusCode = result.error === 'FORBIDDEN' ? 403 : result.error === 'FILE_NOT_FOUND' ? 404 : 400;
+      sendErrorResponse(res, statusCode, result.error === 'FORBIDDEN' ? 'FORBIDDEN' : 'FILE_DELETE_FAILED', result.error, getRequestId(req));
       return;
     }
     res.status(200).json({ success: true });
@@ -140,16 +137,12 @@ router.get('/signed-url/:bucket/*', authMiddleware, async (req: Request, res: Re
     return;
   }
 
-  const pathStart = filePath.split('/')[0];
-  if (pathStart && pathStart !== userId) {
-    sendErrorResponse(res, 403, 'FORBIDDEN', 'Unauthorized: cannot access another user\'s file', getRequestId(req));
-    return;
-  }
-
   try {
-    const result = await getSignedUrl(bucket, filePath || userId);
+    // BLF-11.2: Ownership is verified server-side from the stored file name.
+    const result = await getSignedUrl(bucket, filePath || userId, userId);
     if (!result.success) {
-      sendErrorResponse(res, 400, 'SIGNED_URL_FAILED', result.error, getRequestId(req));
+      const statusCode = result.error === 'FORBIDDEN' ? 403 : result.error === 'FILE_NOT_FOUND' ? 404 : 400;
+      sendErrorResponse(res, statusCode, result.error === 'FORBIDDEN' ? 'FORBIDDEN' : 'SIGNED_URL_FAILED', result.error, getRequestId(req));
       return;
     }
     res.status(200).json({ success: true, url: result.url });
