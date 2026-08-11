@@ -350,14 +350,20 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
     return;
   }
 
+  // Anti-spam cap: keep profiles and AI matching sane
+  if (skills.length > 50) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Too many skills', requestId, [{ field: 'skills', message: 'Skills must have at most 50 items' }]);
+    return;
+  }
+
   const errors: { field: string; message: string }[] = [];
   for (let i = 0; i < skills.length; i++) {
     const skill = skills[i];
-    if (!skill.name || typeof skill.name !== 'string' || skill.name.trim().length === 0) {
-      errors.push({ field: `skills[${i}].name`, message: 'Skill name is required' });
+    if (!skill.name || typeof skill.name !== 'string' || skill.name.trim().length === 0 || skill.name.trim().length > 100) {
+      errors.push({ field: `skills[${i}].name`, message: 'Skill name must be between 1 and 100 characters' });
     }
-    if (typeof skill.yearsOfExperience !== 'number' || skill.yearsOfExperience < 0) {
-      errors.push({ field: `skills[${i}].yearsOfExperience`, message: 'Years of experience must be a non-negative number' });
+    if (typeof skill.yearsOfExperience !== 'number' || skill.yearsOfExperience < 0 || skill.yearsOfExperience > 50) {
+      errors.push({ field: `skills[${i}].yearsOfExperience`, message: 'Years of experience must be between 0 and 50' });
     }
   }
 

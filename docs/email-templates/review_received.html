@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>New Review - FreelanceXchain</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fa;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f7fa;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 40px 30px; text-align: center; background: linear-gradient(135deg, #ed8936 0%, #ecc94b 100%); border-radius: 12px 12px 0 0;">
+                            <div style="font-size: 48px; margin-bottom: 10px;">⭐</div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                You Received a Review
+                            </h1>
+                            <p style="margin: 10px 0 0; color: #fef3c7; font-size: 14px;">
+                                Hi {{ recipientName }}
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <h2 style="margin: 0 0 20px; color: #1a202c; font-size: 24px; font-weight: 600;">
+                                {{ reviewerName }} rated your work
+                            </h2>
+
+                            <p style="margin: 0 0 20px; color: #4a5568; font-size: 16px; line-height: 1.6;">
+                                on the project <strong style="color: #1a202c;">"{{ projectTitle }}"</strong>.
+                            </p>
+
+                            <!-- Rating Box -->
+                            <div style="margin: 25px 0; padding: 20px; background-color: #fffff0; border-radius: 8px; border-left: 4px solid #ecc94b; text-align: center;">
+                                <p style="margin: 0 0 5px; color: #718096; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">
+                                    Your Rating
+                                </p>
+                                <p style="margin: 0; color: #d69e2e; font-size: 40px; font-weight: 700;">
+                                    {{ rating }} <span style="font-size: 24px;">/ 5</span>
+                                </p>
+                            </div>
+
+                            <!-- CTA Button -->
+                            <table role="presentation" style="margin: 30px 0; width: 100%;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="{{ reviewUrl }}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #ed8936 0%, #ecc94b 100%); color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 12px rgba(237, 137, 54, 0.4);">
+                                            View Review
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px 40px; background-color: #f7fafc; border-radius: 0 0 12px 12px; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0 0 10px; color: #718096; font-size: 12px; text-align: center;">
+                                © 2025 FreelanceXchain. All rights reserved.
+                            </p>
+                            <p style="margin: 0; color: #a0aec0; font-size: 11px; text-align: center;">
+                                Secure blockchain-powered freelance marketplace
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

@@ -34,6 +34,15 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   },
 }));
 
+const mockShouldSendEmail = jest.fn<any>();
+const mockGetUserById = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/services/email-preference-service.ts'), () => ({
+  shouldSendEmail: mockShouldSendEmail,
+}));
+jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
+  userRepository: { getUserById: mockGetUserById },
+}));
+
 const CF_ENV = {
   CLOUDFLARE_API_TOKEN: 'test-api-token',
   CLOUDFLARE_ACCOUNT_ID: 'test-account-id',
@@ -232,6 +241,74 @@ describe('Email Delivery Service', () => {
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           html: '<html>Rating: 5</html>',
+        })
+      );
+    });
+
+    it('should repeat the #each block once per array item (weekly digest)', async () => {
+      mockReadFile.mockResolvedValue(
+        '<ul>{{#each topProjects}}<li>{{ title }} - {{ budget }}</li>{{/each}}</ul>'
+      );
+      mockSend.mockResolvedValue({ id: 'msg-each' });
+
+      await importService();
+      await emailService.sendEmail({
+        to: 'user@test.com',
+        subject: 'Test',
+        template: 'weekly_digest',
+        data: {
+          topProjects: [
+            { title: 'Project A', budget: '1000' },
+            { title: 'Project B', budget: '2000' },
+          ],
+        },
+      });
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: '<ul><li>Project A - 1000</li><li>Project B - 2000</li></ul>',
+        })
+      );
+    });
+
+    it('should render nothing for an #each block whose value is not an array', async () => {
+      mockReadFile.mockResolvedValue(
+        '<div>{{#each topProjects}}<li>{{ title }}</li>{{/each}}</div>'
+      );
+      mockSend.mockResolvedValue({ id: 'msg-each-empty' });
+
+      await importService();
+      await emailService.sendEmail({
+        to: 'user@test.com',
+        subject: 'Test',
+        template: 'weekly_digest',
+        data: { topProjects: 'not-an-array' },
+      });
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: '<div></div>',
+        })
+      );
+    });
+
+    it('should HTML-escape values inside an #each block', async () => {
+      mockReadFile.mockResolvedValue(
+        '<ul>{{#each topProjects}}<li>{{ title }}</li>{{/each}}</ul>'
+      );
+      mockSend.mockResolvedValue({ id: 'msg-each-escape' });
+
+      await importService();
+      await emailService.sendEmail({
+        to: 'user@test.com',
+        subject: 'Test',
+        template: 'weekly_digest',
+        data: { topProjects: [{ title: '<script>alert(1)</script>' }] },
+      });
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          html: '<ul><li>&lt;script&gt;alert(1)&lt;/script&gt;</li></ul>',
         })
       );
     });
@@ -575,6 +652,106 @@ describe('Email Delivery Service', () => {
           subject: 'Your weekly FreelanceXchain digest',
         })
       );
+    });
+  });
+
+  describe('sendGatedEmail', () => {
+    beforeEach(() => {
+      mockShouldSendEmail.mockReset();
+      mockGetUserById.mockReset();
+    });
+
+    it('should send when preference is enabled and user has an email', async () => {
+      mockShouldSendEmail.mockResolvedValueOnce(true);
+      mockGetUserById.mockResolvedValueOnce({ id: 'user-1', email: 'user@test.com', name: 'Ada' });
+      mockReadFile.mockResolvedValue('<html>Body</html>');
+      mockSend.mockResolvedValue({ id: 'msg-gated' });
+
+      await importService();
+      const sent = await emailService.sendGatedEmail('user-1', 'proposal_accepted', (recipient) =>
+        emailService.sendProposalAcceptedEmail(recipient.email, {
+          freelancerName: recipient.name,
+          projectTitle: 'Build App',
+          projectUrl: 'https://example.com/project',
+        })
+      );
+
+      expect(sent).toBe(true);
+      expect(mockShouldSendEmail).toHaveBeenCalledWith('user-1', 'proposal_accepted');
+      expect(mockGetUserById).toHaveBeenCalledWith('user-1');
+      expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ to: 'user@test.com' }));
+    });
+
+    it('should skip when preference is disabled', async () => {
+      mockShouldSendEmail.mockResolvedValueOnce(false);
+      mockGetUserById.mockResolvedValueOnce({ id: 'user-1', email: 'user@test.com', name: 'Ada' });
+
+      await importService();
+      const sent = await emailService.sendGatedEmail('user-1', 'weekly_digest', () =>
+        ({ success: true, data: { messageId: 'x' } } as any)
+      );
+
+      expect(sent).toBe(false);
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('should skip when user has no email address', async () => {
+      mockShouldSendEmail.mockResolvedValueOnce(true);
+      mockGetUserById.mockResolvedValueOnce({ id: 'user-1', name: 'No Email' });
+
+      await importService();
+      const sent = await emailService.sendGatedEmail('user-1', 'proposal_accepted', () =>
+        ({ success: true, data: { messageId: 'x' } } as any)
+      );
+
+      expect(sent).toBe(false);
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('should skip when user is not found', async () => {
+      mockShouldSendEmail.mockResolvedValueOnce(true);
+      mockGetUserById.mockResolvedValueOnce(null);
+
+      await importService();
+      const sent = await emailService.sendGatedEmail('ghost', 'proposal_accepted', () =>
+        ({ success: true, data: { messageId: 'x' } } as any)
+      );
+
+      expect(sent).toBe(false);
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it('should return false when the underlying send fails', async () => {
+      mockShouldSendEmail.mockResolvedValueOnce(true);
+      mockGetUserById.mockResolvedValueOnce({ id: 'user-1', email: 'user@test.com', name: 'Ada' });
+      mockReadFile.mockResolvedValueOnce('<html>Body</html>');
+      // sendEmail catches the provider error and returns EMAIL_SEND_FAILED
+      mockSend.mockRejectedValueOnce(new Error('SMTP down'));
+
+      await importService();
+      const sent = await emailService.sendGatedEmail('user-1', 'proposal_accepted', (recipient) =>
+        emailService.sendProposalAcceptedEmail(recipient.email, {
+          freelancerName: recipient.name,
+          projectTitle: 'Build App',
+          projectUrl: 'https://example.com/project',
+        })
+      );
+
+      expect(sent).toBe(false);
+      expect(mockSend).toHaveBeenCalled();
+    });
+
+    it('should return false when preference lookup throws', async () => {
+      mockShouldSendEmail.mockRejectedValueOnce(new Error('pref db down'));
+      mockGetUserById.mockResolvedValueOnce({ id: 'user-1', email: 'user@test.com', name: 'Ada' });
+
+      await importService();
+      const sent = await emailService.sendGatedEmail('user-1', 'proposal_accepted', () =>
+        ({ success: true, data: { messageId: 'x' } } as any)
+      );
+
+      expect(sent).toBe(false);
+      expect(mockSend).not.toHaveBeenCalled();
     });
   });
 

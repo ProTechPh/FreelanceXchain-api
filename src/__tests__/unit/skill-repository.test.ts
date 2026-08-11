@@ -21,6 +21,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     orderAsc: jest.fn().mockImplementation((field: string) => ({ type: 'orderAsc', field })),
     orderDesc: jest.fn().mockImplementation((field: string) => ({ type: 'orderDesc', field })),
     offset: jest.fn().mockImplementation((n: number) => ({ type: 'offset', value: n })),
+    cursorAfter: jest.fn().mockImplementation((id: string) => ({ type: 'cursorAfter', id })),
   },
   ID: { unique: jest.fn(() => 'mock-unique-id') },
 }));
@@ -175,6 +176,14 @@ describe('SkillRepository', () => {
       expect(result).toEqual(skills[0]);
     });
 
+    it('should match padding/casing variants of the same name', async () => {
+      const skills = [{ id: 's1', name: 'React', category_id: 'c1' }];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: skills });
+      const result = await repo.getSkillByNameInCategory(' REACT ', 'c1');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('s1');
+    });
+
     it('should return null when not found', async () => {
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [] });
       const result = await repo.getSkillByNameInCategory('Rust', 'c1');
@@ -185,6 +194,68 @@ describe('SkillRepository', () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
       const result = await repo.getSkillByNameInCategory('React', 'c1');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('getSkillByNameNormalized', () => {
+    it('should return the matching active skill for a normalized name', async () => {
+      const skills = [{ $id: 's1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', name: 'React', is_active: true }];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: skills, total: 1 });
+      const result = await repo.getSkillByNameNormalized(' REACT ');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('s1');
+    });
+
+    it('should return null when no skill matches', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await repo.getSkillByNameNormalized('Rust');
+      expect(result).toBeNull();
+    });
+
+    it('should propagate database errors (fail-closed)', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      await expect(repo.getSkillByNameNormalized('React')).rejects.toThrow('select failed');
+    });
+  });
+
+  describe('findSkillsByIds', () => {
+    it('should return skills matching the ids', async () => {
+      const skills = [{ $id: 's1', name: 'React' }, { $id: 's2', name: 'Vue' }];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: skills, total: 2 });
+      const result = await repo.findSkillsByIds(['s1', 's2']);
+      expect(result).toHaveLength(2);
+      expect(result[0]!.id).toBe('s1');
+      expect(mockDatabases.listDocuments.mock.calls[0]![2]).toEqual(
+        expect.arrayContaining([{ type: 'equal', field: '$id', value: ['s1', 's2'] }])
+      );
+    });
+
+    it('should return empty array when ids list is empty', async () => {
+      const result = await repo.findSkillsByIds([]);
+      expect(result).toEqual([]);
+      expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+    });
+
+    it('should return empty array on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.findSkillsByIds(['s1']);
+      expect(result).toEqual([]);
+    });
+  });
+
+  describe('cursor pagination (fetchAll)', () => {
+    it('should keep paging with cursorAfter until a short page is returned', async () => {
+      const page1 = Array.from({ length: 100 }, (_, i) => ({ $id: `s${i}`, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', name: `Skill ${i}`, description: 'd', category_id: 'c1', is_active: true }));
+      const page2 = [{ $id: 's100', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', name: 'Skill 100', description: 'd', category_id: 'c1', is_active: true }];
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: page1, total: 101 })
+        .mockResolvedValueOnce({ documents: page2, total: 101 });
+
+      const result = await repo.getActiveSkills();
+
+      expect(result).toHaveLength(101);
+      const secondQueries = mockDatabases.listDocuments.mock.calls[1]![2];
+      expect(secondQueries).toEqual(expect.arrayContaining([{ type: 'cursorAfter', id: 's99' }]));
     });
   });
 });

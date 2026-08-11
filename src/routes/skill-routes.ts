@@ -480,6 +480,13 @@ router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimi
  *           type: string
  *         timesRequested:
  *           type: number
+ *           description: Number of distinct users who requested this suggestion
+ *         requesterIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *             format: uuid
+ *           description: Distinct users who requested this suggestion (anti-spam)
  *         status:
  *           type: string
  *           enum: [pending, approved, rejected]
@@ -787,7 +794,10 @@ router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
   const result = await updateUserCustomSkill(id, userId, updateData);
 
   if (!result.success) {
-    const statusCode = result.error.code === 'SKILL_NOT_FOUND' ? 404 : result.error.code === 'DUPLICATE_USER_SKILL' ? 409 : 400;
+    const statusCode =
+      result.error.code === 'SKILL_NOT_FOUND' ? 404 :
+      result.error.code === 'DUPLICATE_USER_SKILL' || result.error.code === 'SKILL_EXISTS_GLOBALLY' ? 409 :
+      400;
     sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId, result.error.details);
     return;
   }

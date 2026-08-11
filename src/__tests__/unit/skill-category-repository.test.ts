@@ -106,6 +106,14 @@ describe('SkillCategoryRepository', () => {
       expect(result).toEqual(category);
     });
 
+    it('should match padding/casing variants of the same name', async () => {
+      const category = { id: 'c1', name: 'Web Dev' };
+      mockAppwriteResult({ data: category });
+      const result = await repo.getCategoryByName(' WEB DEV ');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('c1');
+    });
+
     it('should return null when not found', async () => {
       mockAppwriteResult({ data: null });
       const result = await repo.getCategoryByName('Unknown');

@@ -5,6 +5,7 @@ import { freelancerProfileRepository } from '../repositories/freelancer-profile-
 import { employerProfileRepository } from '../repositories/employer-profile-repository.js';
 import { MessageEntity, ConversationEntity, SendMessageInput } from '../models/message.js';
 import { notificationEmitter } from './notification-delivery-service.js';
+import { sendGatedEmail, sendMessageReceivedEmail } from './email-delivery-service.js';
 import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
@@ -121,6 +122,22 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
       updatedAt: now,
     };
     notificationEmitter.emitToUser(resolvedReceiverId, messageEvent);
+
+    // Transactional email gated by the receiver's email preferences. Best-effort:
+    // a failure to look up the sender or send the email never breaks the message.
+    try {
+      const sender = await userRepository.getUserById(senderId);
+      await sendGatedEmail(resolvedReceiverId, 'message_received', (recipient) =>
+        sendMessageReceivedEmail(recipient.email, {
+          recipientName: recipient.name,
+          senderName: sender?.name || 'Someone',
+          messagePreview: content.substring(0, 100),
+          conversationUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/messages/${conversation.id}`,
+        })
+      );
+    } catch (error) {
+      logger.error('Failed to send message-received email', { error, senderId, receiverId: resolvedReceiverId });
+    }
 
     logger.debug('Message sent successfully', { messageId: message.id, conversationId: conversation.id });
 

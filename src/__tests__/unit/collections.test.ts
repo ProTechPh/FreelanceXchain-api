@@ -25,6 +25,7 @@ describe('Collections Config', () => {
         'MESSAGES',
         'CONVERSATIONS',
         'DISPUTES',
+        'FREELANCER_PROFILES',
         'AUDIT_LOG_ENTRIES',
         'EMAIL_PREFERENCES',
         'SAVED_SEARCHES',

@@ -32,12 +32,23 @@ export async function addFavorite(
       return errorResult('TARGET_NOT_FOUND', `${targetType} not found`);
     }
 
-    // Create favorite
-    const created = await favoriteRepository.create({
-      user_id: userId,
-      target_type: targetType,
-      target_id: targetId,
-    });
+    // Create favorite. A concurrent identical request can race past the check
+    // above and hit the unique (user_id, target_type, target_id) index backstop
+    // — treat that as already-favorited rather than a generic internal error.
+    let created: Awaited<ReturnType<typeof favoriteRepository.create>>;
+    try {
+      created = await favoriteRepository.create({
+        user_id: userId,
+        target_type: targetType,
+        target_id: targetId,
+      });
+    } catch (error) {
+      const raced = await favoriteRepository.findByUserAndTarget(userId, targetType, targetId);
+      if (raced) {
+        return errorResult('ALREADY_FAVORITED', 'This item is already in your favorites');
+      }
+      throw error;
+    }
 
     return successResult({
       id: created.id,
@@ -46,10 +57,10 @@ export async function addFavorite(
       targetId: created.target_id,
       createdAt: created.created_at,
     });
-      } catch (error) {
-      logger.error('Unexpected error in addFavorite', { error, userId, targetType, targetId });
-      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
-    }
+  } catch (error) {
+    logger.error('Unexpected error in addFavorite', { error, userId, targetType, targetId });
+    return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+  }
 }
 
 /**
@@ -80,7 +91,8 @@ export async function getUserFavorites(
   try {
     const favorites = await favoriteRepository.findByUser(userId, targetType);
 
-    // Batch-fetch target details instead of N+1 queries
+    // Batch-fetch target details with ONE query per target type (kills the old
+    // N+1 pattern where each favorite triggered its own getById).
     const projectIds: string[] = [];
     const userIds: string[] = [];
     for (const f of favorites) {
@@ -89,33 +101,29 @@ export async function getUserFavorites(
     }
 
     const [projectMap, userMap] = await Promise.all([
-      projectIds.length > 0
-        ? Promise.all(projectIds.map(id => projectRepository.getById(id))).then(results => {
-            const m = new Map<string, ProjectEntity>();
-            results.forEach(item => { if (item) m.set(item.id, item); });
-            return m;
-          })
-        : Promise.resolve(new Map<string, ProjectEntity>()),
-      userIds.length > 0
-        ? Promise.all(userIds.map(id => userRepository.getUserById(id))).then(results => {
-            const m = new Map<string, UserEntity>();
-            results.forEach(item => { if (item) m.set(item.id, item); });
-            return m;
-          })
-        : Promise.resolve(new Map<string, UserEntity>()),
+      projectRepository.getProjectsByIds(projectIds),
+      userRepository.getUsersByIds(userIds),
     ]);
 
-    const enrichedFavorites: (Favorite & { target: ProjectEntity | UserEntity | null })[] = favorites.map((fav) => {
-      const targetMap = fav.target_type === 'project' ? projectMap : userMap;
-      return {
+    const projectMapById = new Map(projectMap.map(p => [p.id, p]));
+    const userMapById = new Map(userMap.map(u => [u.id, u]));
+
+    // Favorites whose target has been deleted are stale — drop them from the
+    // response instead of leaking `target: null` entries to the client.
+    const enrichedFavorites: (Favorite & { target: ProjectEntity | UserEntity })[] = [];
+    for (const fav of favorites) {
+      const targetMap = fav.target_type === 'project' ? projectMapById : userMapById;
+      const target = targetMap.get(fav.target_id);
+      if (!target) continue;
+      enrichedFavorites.push({
         id: fav.id,
         userId: fav.user_id,
         targetType: fav.target_type,
         targetId: fav.target_id,
         createdAt: fav.created_at,
-        target: targetMap.get(fav.target_id) ?? null,
-      };
-    });
+        target,
+      });
+    }
 
     return successResult(enrichedFavorites);
   } catch (error) {

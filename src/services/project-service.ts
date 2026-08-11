@@ -1,6 +1,6 @@
 import { projectRepository, ProjectEntity, MilestoneEntity, ProjectStatus, MilestoneStatus } from '../repositories/project-repository.js';
 import { proposalRepository } from '../repositories/proposal-repository.js';
-import { skillRepository } from '../repositories/skill-repository.js';
+import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
@@ -75,33 +75,34 @@ function validateMilestoneBudget(milestones: MilestoneEntity[], totalBudget: num
   return { valid: true };
 }
 
-async function validateSkills(skillIds: string[]): Promise<{ valid: boolean; invalidIds: string[] }> {
-  const results = await Promise.all(
-    skillIds.map(async (skillId) => {
-      const skill = await skillRepository.findSkillById(skillId);
-      return { skillId, valid: !!skill && skill.is_active };
-    })
-  );
-  const invalidIds = results.reduce<string[]>((acc, r) => { if (!r.valid) acc.push(r.skillId); return acc; }, []);
+// Batch skill lookups: a single query for all IDs instead of one query per ID
+// (previously validateSkills + buildSkillReferences issued 2N queries per
+// create/update — both walked the same list separately). The active list is
+// fetched ONCE and shared between validation and reference building, so a
+// second, independent query can never diverge from the validation result.
+async function fetchActiveSkillsByIds(skillIds: string[]): Promise<SkillEntity[]> {
+  const skills = await skillRepository.findSkillsByIds([...new Set(skillIds)]);
+  return skills.filter((s) => s.is_active);
+}
+
+async function validateSkills(
+  skillIds: string[],
+  activeSkills?: SkillEntity[]
+): Promise<{ valid: boolean; invalidIds: string[] }> {
+  const active = activeSkills ?? (await fetchActiveSkillsByIds(skillIds));
+  const activeIds = new Set(active.map((s) => s.id));
+  const invalidIds = skillIds.filter((skillId) => !activeIds.has(skillId));
   return { valid: invalidIds.length === 0, invalidIds };
 }
 
-async function buildSkillReferences(skillIds: string[]): Promise<SkillRef[]> {
-  const results = await Promise.all(
-    skillIds.map(async (skillId) => {
-      const skill = await skillRepository.findSkillById(skillId);
-      if (skill && skill.is_active) {
-        return {
-          skill_id: skill.id,
-          skill_name: skill.name,
-          category_id: skill.category_id,
-          years_of_experience: 0,
-        } as SkillRef;
-      }
-      return null;
-    })
-  );
-  return results.filter((r): r is SkillRef => r !== null);
+async function buildSkillReferences(skillIds: string[], activeSkills?: SkillEntity[]): Promise<SkillRef[]> {
+  const active = activeSkills ?? (await fetchActiveSkillsByIds(skillIds));
+  return active.map((skill) => ({
+    skill_id: skill.id,
+    skill_name: skill.name,
+    category_id: skill.category_id,
+    years_of_experience: 0,
+  }));
 }
 
 export async function createProject(
@@ -117,13 +118,15 @@ export async function createProject(
   }
 
   const skillIds = input.requiredSkills.map(s => s.skillId);
-  const skillValidation = await validateSkills(skillIds);
+  // Fetch once, share between validation and reference building
+  const activeSkills = await fetchActiveSkillsByIds(skillIds);
+  const skillValidation = await validateSkills(skillIds, activeSkills);
   
   if (!skillValidation.valid) {
     return errorResult('INVALID_SKILL', 'One or more skill IDs are invalid or inactive', skillValidation.invalidIds);
   }
 
-  const skillRefs = await buildSkillReferences(skillIds);
+  const skillRefs = await buildSkillReferences(skillIds, activeSkills);
 
   // Validate rush fee percentage if provided
   if (input.isRush && input.rushFeePercentage !== undefined) {
@@ -189,12 +192,14 @@ export async function updateProject(
   let skillRefs = existingProject.required_skills;
   if (input.requiredSkills) {
     const skillIds = input.requiredSkills.map(s => s.skillId);
-    const skillValidation = await validateSkills(skillIds);
+    // Fetch once, share between validation and reference building
+    const activeSkills = await fetchActiveSkillsByIds(skillIds);
+    const skillValidation = await validateSkills(skillIds, activeSkills);
     
     if (!skillValidation.valid) {
       return errorResult('INVALID_SKILL', 'One or more skill IDs are invalid or inactive', skillValidation.invalidIds);
     }
-    skillRefs = await buildSkillReferences(skillIds);
+    skillRefs = await buildSkillReferences(skillIds, activeSkills);
   }
 
   const newBudget = input.budget ?? existingProject.budget;

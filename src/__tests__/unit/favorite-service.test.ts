@@ -25,6 +25,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/favorites-repository.ts
 
 const mockProjectRepository = {
   getById: jest.fn<any>(),
+  getProjectsByIds: jest.fn<any>(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: mockProjectRepository,
@@ -32,6 +33,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
 
 const mockUserRepository = {
   getUserById: jest.fn<any>(),
+  getUsersByIds: jest.fn<any>(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: mockUserRepository,
@@ -40,6 +42,9 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
 describe('Favorite Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Batch fetch defaults: no targets → clean empty results unless a test overrides
+    mockProjectRepository.getProjectsByIds.mockResolvedValue([]);
+    mockUserRepository.getUsersByIds.mockResolvedValue([]);
   });
 
   const importModule = async () => {
@@ -146,7 +151,7 @@ describe('Favorite Service', () => {
   });
 
   describe('getUserFavorites', () => {
-    it('should return all user favorites', async () => {
+    it('should return all user favorites with batch-fetched targets', async () => {
       const { getUserFavorites } = await importModule();
 
       const favorites = [
@@ -154,12 +159,15 @@ describe('Favorite Service', () => {
         { id: 'fav-2', user_id: 'user-1', target_type: 'freelancer', target_id: 'user-2', created_at: '2025-01-02' },
       ];
       mockFavoriteRepository.findByUser.mockResolvedValueOnce(favorites);
-      mockProjectRepository.getById.mockResolvedValueOnce({ id: 'project-1', title: 'Test Project' });
-      mockUserRepository.getUserById.mockResolvedValueOnce({ id: 'user-2', name: 'Freelancer' });
+      // Batch fetch: ONE call per target type with all ids (no N+1 getById)
+      mockProjectRepository.getProjectsByIds.mockResolvedValueOnce([{ id: 'project-1', title: 'Test Project' }]);
+      mockUserRepository.getUsersByIds.mockResolvedValueOnce([{ id: 'user-2', name: 'Freelancer' }]);
 
       const result = await getUserFavorites('user-1');
 
       expect(result.success).toBe(true);
+      expect(mockProjectRepository.getProjectsByIds).toHaveBeenCalledWith(['project-1']);
+      expect(mockUserRepository.getUsersByIds).toHaveBeenCalledWith(['user-2']);
       expect(result.data).toHaveLength(2);
     });
 
@@ -170,7 +178,7 @@ describe('Favorite Service', () => {
         { id: 'fav-1', user_id: 'user-1', target_type: 'project', target_id: 'project-1', created_at: '2025-01-01' },
       ];
       mockFavoriteRepository.findByUser.mockResolvedValueOnce(favorites);
-      mockProjectRepository.getById.mockResolvedValueOnce({ id: 'project-1', title: 'Test' });
+      mockProjectRepository.getProjectsByIds.mockResolvedValueOnce([{ id: 'project-1', title: 'Test' }]);
 
       const result = await getUserFavorites('user-1', 'project');
 
@@ -178,10 +186,33 @@ describe('Favorite Service', () => {
       expect(result.data).toHaveLength(1);
     });
 
+    it('should drop favorites whose target has been deleted', async () => {
+      const { getUserFavorites } = await importModule();
+
+      const favorites = [
+        { id: 'fav-1', user_id: 'user-1', target_type: 'project', target_id: 'deleted-project', created_at: '2025-01-01' },
+        { id: 'fav-2', user_id: 'user-1', target_type: 'project', target_id: 'existing-project', created_at: '2025-01-02' },
+      ];
+      mockFavoriteRepository.findByUser.mockResolvedValueOnce(favorites);
+      // Batch fetch only returns the surviving target → stale favorite is filtered out
+      mockProjectRepository.getProjectsByIds.mockResolvedValueOnce([{ id: 'existing-project', title: 'Alive' }]);
+      mockUserRepository.getUsersByIds.mockResolvedValueOnce([]);
+
+      const result = await getUserFavorites('user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.data).toHaveLength(1);
+      if (result.success) {
+        expect(result.data[0].targetId).toBe('existing-project');
+      }
+    });
+
     it('should return empty array when no favorites', async () => {
       const { getUserFavorites } = await importModule();
 
       mockFavoriteRepository.findByUser.mockResolvedValueOnce([]);
+      mockProjectRepository.getProjectsByIds.mockResolvedValueOnce([]);
+      mockUserRepository.getUsersByIds.mockResolvedValueOnce([]);
 
       const result = await getUserFavorites('user-1');
 
@@ -337,36 +368,67 @@ describe('Favorite Service - Additional Branch Coverage', () => {
     return await import('../../services/favorite-service.js');
   };
 
-  it('L141: targetMap.get returns undefined when target not found in lookup', async () => {
+  it('should drop favorites whose project target is missing from the batch fetch', async () => {
     const { getUserFavorites } = await importModule();
 
     // Create a favorite for a project that no longer exists
     mockFavoriteRepository.findByUser.mockResolvedValueOnce([
       { id: 'fav-1', user_id: 'user-1', target_type: 'project', target_id: 'deleted-project', created_at: '2025-01-01' },
     ]);
-    mockProjectRepository.getById.mockResolvedValueOnce(null);
+    mockProjectRepository.getProjectsByIds.mockResolvedValueOnce([]);
+    mockUserRepository.getUsersByIds.mockResolvedValueOnce([]);
 
     const result = await getUserFavorites('user-1', 'project');
     expect(result.success).toBe(true);
     if (result.success) {
-      // When target not found, the mapping should still produce a result
-      // but with limited data (targetMap.get returns undefined, ?? null fallback)
-      expect(result.data).toBeDefined();
+      // Stale favorites are dropped instead of leaking `target: null` entries
+      expect(result.data).toHaveLength(0);
     }
   });
 
-  it('L141: targetMap.get returns undefined for freelancer favorites not found', async () => {
+  it('should drop favorites whose freelancer target is missing from the batch fetch', async () => {
     const { getUserFavorites } = await importModule();
 
     mockFavoriteRepository.findByUser.mockResolvedValueOnce([
       { id: 'fav-1', user_id: 'user-1', target_type: 'freelancer', target_id: 'ghost-user', created_at: '2025-01-01' },
     ]);
-    mockUserRepository.getUserById.mockResolvedValueOnce(null);
+    mockProjectRepository.getProjectsByIds.mockResolvedValueOnce([]);
+    mockUserRepository.getUsersByIds.mockResolvedValueOnce([]);
 
     const result = await getUserFavorites('user-1', 'freelancer');
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data).toBeDefined();
+      expect(result.data).toHaveLength(0);
     }
+  });
+
+  // BLF-fav.1: concurrent addFavorite calls that race past the duplicate check
+  // must be treated as ALREADY_FAVORITED (unique-index backstop), not a generic error.
+  it('should return ALREADY_FAVORITED when create races a concurrent insert', async () => {
+    const { addFavorite } = await importModule();
+
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+    mockProjectRepository.getById.mockResolvedValueOnce({ id: 'proj-1' });
+    mockFavoriteRepository.create.mockRejectedValueOnce(new Error('duplicate key'));
+    // The re-check finds the row the concurrent request inserted
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce({ id: 'fav-race' });
+
+    const result = await addFavorite('user-1', 'project', 'proj-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('ALREADY_FAVORITED');
+  });
+
+  it('should propagate other create errors that are not duplicates', async () => {
+    const { addFavorite } = await importModule();
+
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+    mockProjectRepository.getById.mockResolvedValueOnce({ id: 'proj-1' });
+    mockFavoriteRepository.create.mockRejectedValueOnce(new Error('db down'));
+    // Re-check finds nothing → it was a real failure, not a race
+    mockFavoriteRepository.findByUserAndTarget.mockResolvedValueOnce(null);
+
+    const result = await addFavorite('user-1', 'project', 'proj-1');
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('INTERNAL_ERROR');
   });
 });

@@ -114,6 +114,15 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
   auditLogRepository: mockAuditLogRepo,
 }));
 
+// Email delivery (preference-gated transactional emails). Mocked so the real
+// email-preference-service / user-repository do not touch global mockDatabases.
+const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendProposalAcceptedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+  sendContractCreatedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+}));
+
 // Import after mocking
 const {
   submitProposal,
@@ -721,6 +730,13 @@ describe('Proposal Service - Unit Tests', () => {
       resource_type: 'contract',
       payload: expect.objectContaining({ projectId, proposalId: proposal.id }),
     }));
+
+    // BLF-13: the freelancer gets a preference-gated contract-created email
+    expect(mockSendGatedEmail).toHaveBeenCalledWith(
+      freelancerId,
+      'contract_created',
+      expect.any(Function)
+    );
   });
 });
 

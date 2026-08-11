@@ -129,6 +129,15 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-registry.ts'), ()
   submitMilestoneToRegistry: jest.fn(),
 }));
 
+// Email delivery (preference-gated transactional emails). Mocked so the real
+// email-preference-service does not touch global mockDatabases during approval.
+const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendMilestoneApprovedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+  sendPaymentReleasedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+}));
+
 // Import after mocking
 const {
   clearDisputes,

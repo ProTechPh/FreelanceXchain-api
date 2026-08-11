@@ -10,6 +10,8 @@ export type SavedSearchEntity = {
   search_type: SavedSearchType;
   filters: string;
   notify_on_new: boolean;
+  /** ISO timestamp of the last notification run (dedup watermark). */
+  last_notified_at?: string | null;
   created_at: string;
   updated_at: string;
 };

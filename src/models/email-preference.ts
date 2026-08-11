@@ -6,6 +6,10 @@ export type EmailPreference = {
   milestoneUpdates: boolean;
   paymentNotifications: boolean;
   disputeNotifications: boolean;
+  contractNotifications: boolean;
+  messageNotifications: boolean;
+  reviewNotifications: boolean;
+  kycNotifications: boolean;
   marketingEmails: boolean;
   weeklyDigest: boolean;
   createdAt: string;
@@ -20,6 +24,10 @@ export type EmailPreferenceEntity = {
   milestone_updates: boolean;
   payment_notifications: boolean;
   dispute_notifications: boolean;
+  contract_notifications: boolean;
+  message_notifications: boolean;
+  review_notifications: boolean;
+  kyc_notifications: boolean;
   marketing_emails: boolean;
   weekly_digest: boolean;
   created_at: string;
@@ -32,5 +40,9 @@ export type EmailType =
   | 'milestone_updates'
   | 'payment_notifications'
   | 'dispute_notifications'
+  | 'contract_created'
+  | 'message_received'
+  | 'review_received'
+  | 'kyc_notifications'
   | 'marketing_emails'
   | 'weekly_digest';

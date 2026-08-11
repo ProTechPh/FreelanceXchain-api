@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Weekly Digest - FreelanceXchain</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f5f7fa;">
+    <table role="presentation" style="width: 100%; border-collapse: collapse; background-color: #f5f7fa;">
+        <tr>
+            <td align="center" style="padding: 40px 20px;">
+                <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+                    <!-- Header -->
+                    <tr>
+                        <td style="padding: 40px 40px 30px; text-align: center; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 12px 12px 0 0;">
+                            <div style="font-size: 48px; margin-bottom: 10px;">📊</div>
+                            <h1 style="margin: 0; color: #ffffff; font-size: 28px; font-weight: 700; letter-spacing: -0.5px;">
+                                Your Weekly Digest
+                            </h1>
+                            <p style="margin: 10px 0 0; color: #e0e7ff; font-size: 14px;">
+                                Here's what happened this week, {{ userName }}
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Content -->
+                    <tr>
+                        <td style="padding: 40px;">
+                            <!-- Stats Row -->
+                            <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 0 0 30px;">
+                                <tr>
+                                    <td style="width: 33.33%; padding: 15px; text-align: center; background-color: #f7fafc; border-radius: 8px 0 0 8px;">
+                                        <p style="margin: 0 0 5px; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase;">New Projects</p>
+                                        <p style="margin: 0; color: #667eea; font-size: 28px; font-weight: 700;">{{ newProjects }}</p>
+                                    </td>
+                                    <td style="width: 33.33%; padding: 15px; text-align: center; background-color: #f7fafc; border-left: 1px solid #e2e8f0;">
+                                        <p style="margin: 0 0 5px; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase;">New Messages</p>
+                                        <p style="margin: 0; color: #4299e1; font-size: 28px; font-weight: 700;">{{ newMessages }}</p>
+                                    </td>
+                                    <td style="width: 33.33%; padding: 15px; text-align: center; background-color: #f7fafc; border-left: 1px solid #e2e8f0; border-radius: 0 8px 8px 0;">
+                                        <p style="margin: 0 0 5px; color: #718096; font-size: 12px; font-weight: 600; text-transform: uppercase;">Pending Milestones</p>
+                                        <p style="margin: 0; color: #ed8936; font-size: 28px; font-weight: 700;">{{ pendingMilestones }}</p>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <h2 style="margin: 0 0 15px; color: #1a202c; font-size: 20px; font-weight: 600;">
+                                🔥 Top Projects This Week
+                            </h2>
+
+                            <!-- Top Projects List -->
+                            <table role="presentation" style="width: 100%; border-collapse: collapse;">
+                                {{#each topProjects}}
+                                <tr>
+                                    <td style="padding: 12px 0; border-bottom: 1px solid #e2e8f0;">
+                                        <p style="margin: 0 0 4px; color: #2d3748; font-size: 15px; font-weight: 600;">
+                                            {{ title }}
+                                        </p>
+                                        <p style="margin: 0; color: #718096; font-size: 13px;">
+                                            Budget: <strong style="color: #2f855a;">{{ budget }}</strong>
+                                        </p>
+                                    </td>
+                                </tr>
+                                {{/each}}
+                            </table>
+
+                            <p style="margin: 25px 0 0; color: #a0aec0; font-size: 13px; text-align: center;">
+                                Explore more on FreelanceXchain →
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td style="padding: 30px 40px; background-color: #f7fafc; border-radius: 0 0 12px 12px; border-top: 1px solid #e2e8f0;">
+                            <p style="margin: 0 0 10px; color: #718096; font-size: 12px; text-align: center;">
+                                © 2025 FreelanceXchain. All rights reserved.
+                            </p>
+                            <p style="margin: 0; color: #a0aec0; font-size: 11px; text-align: center;">
+                                You're receiving this because you subscribed to the weekly digest.
+                            </p>
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>

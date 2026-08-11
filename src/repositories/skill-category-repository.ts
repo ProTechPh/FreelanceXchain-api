@@ -1,6 +1,7 @@
-import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
-import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { BaseRepository } from './base-repository.js';
+import { Query } from '../config/appwrite.js';
 import { getErrorMessageOr } from '../utils/index.js';
+import { normalizeSkillName } from '../utils/skill-utils.js';
 
 export type SkillCategoryEntity = {
   id: string;
@@ -38,17 +39,12 @@ export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity>
     return this.delete(id);
   }
 
+  /**
+   * Uses cursor pagination so the full taxonomy is not silently truncated at 1000 rows.
+   */
   async getAllCategories(): Promise<SkillCategoryEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.orderAsc('name'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<SkillCategoryEntity>(doc));
+      return await this.fetchAll([Query.orderAsc('name')]);
     } catch (error) {
       throw new Error(`Failed to get all categories: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
@@ -56,35 +52,24 @@ export class SkillCategoryRepository extends BaseRepository<SkillCategoryEntity>
 
   async getActiveCategories(): Promise<SkillCategoryEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('is_active', true),
-          Query.orderAsc('name'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<SkillCategoryEntity>(doc));
+      return await this.fetchAll([
+        Query.equal('is_active', true),
+        Query.orderAsc('name'),
+      ]);
     } catch (error) {
       throw new Error(`Failed to get active categories: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
   }
 
+  /**
+   * Find a category by name using the canonical normalized form so
+   * padding/casing/unicode variants resolve to the same category.
+   */
   async getCategoryByName(name: string): Promise<SkillCategoryEntity | null> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.limit(1000),
-        ]
-      );
-      const doc = response.documents.find(
-        d => typeof d.name === 'string' && d.name.toLowerCase() === name.toLowerCase()
-      );
-      if (!doc) return null;
-      return fromAppwriteDoc<SkillCategoryEntity>(doc);
+      const all = await this.fetchAll([]);
+      const normalized = normalizeSkillName(name);
+      return all.find((c) => normalizeSkillName(c.name) === normalized) ?? null;
     } catch (error) {
       throw new Error(`Failed to get category by name: ${getErrorMessageOr(error, 'Unknown error')}`);
     }

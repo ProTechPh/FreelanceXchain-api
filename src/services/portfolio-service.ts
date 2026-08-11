@@ -7,6 +7,7 @@ import { extractFileIdFromUrl } from '../utils/storage-uploader.js';
 import { portfolioRepository, type PortfolioItemEntity } from '../repositories/portfolio-repository.js';
 import { skillRepository } from '../repositories/skill-repository.js';
 import { safeJsonParse } from '../utils/index.js';
+import { normalizeSkillName } from '../utils/skill-utils.js';
 
 function mapPortfolioItemFromEntity(item: PortfolioItemEntity): PortfolioItem {
   return {
@@ -24,6 +25,49 @@ function mapPortfolioItemFromEntity(item: PortfolioItemEntity): PortfolioItem {
 }
 
 /**
+ * Resolve a list of skill names against the global taxonomy.
+ *
+ * - Comparison is canonical (case/padding/unicode-insensitive) so "react"
+ *   resolves to the existing "React" skill.
+ * - Stored names are canonicalized to the taxonomy spelling for consistent matching.
+ * - Duplicates are removed, so a portfolio cannot carry the same tag twice.
+ * - DB failures surface as all-invalid (fail-closed) rather than silently accepted.
+ */
+async function resolvePortfolioSkills(skills: string[]): Promise<{
+  valid: boolean;
+  invalidSkills: string[];
+  resolved: string[];
+}> {
+  const allSkills = await skillRepository.getAllSkills();
+  const canonicalByName = new Map(allSkills.map(s => [normalizeSkillName(s.name), s.name]));
+  const seen = new Set<string>();
+  const resolved: string[] = [];
+  const invalidSkills: string[] = [];
+
+  for (const raw of skills) {
+    // Guard against non-string entries: reject them cleanly instead of crashing.
+    if (typeof raw !== 'string') {
+      invalidSkills.push(String(raw));
+      continue;
+    }
+    const trimmed = raw.trim();
+    const key = normalizeSkillName(trimmed);
+    if (!key) continue;
+
+    const canonical = canonicalByName.get(key);
+    if (!canonical) {
+      invalidSkills.push(trimmed);
+      continue;
+    }
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    resolved.push(canonical);
+  }
+
+  return { valid: invalidSkills.length === 0, invalidSkills, resolved };
+}
+
+/**
  * Create a new portfolio item
  */
 export async function createPortfolioItem(
@@ -36,15 +80,14 @@ export async function createPortfolioItem(
       return errorResult('VALIDATION_ERROR', 'At least one image is required');
     }
 
-    // Verify skills exist if provided
+    // Verify skills exist if provided (normalized + deduped)
+    let resolvedSkills: string[] = [];
     if (input.skills && input.skills.length > 0) {
-      const allSkills = await skillRepository.getAllSkills();
-      const validSkillNames = new Set(allSkills.map(s => s.name));
-      const invalidSkills = input.skills.filter(s => !validSkillNames.has(s));
-
-      if (invalidSkills.length > 0) {
-        return errorResult('VALIDATION_ERROR', `Invalid skills: ${invalidSkills.join(', ')}`);
+      const skillResult = await resolvePortfolioSkills(input.skills);
+      if (!skillResult.valid) {
+        return errorResult('VALIDATION_ERROR', `Invalid skills: ${skillResult.invalidSkills.join(', ')}`);
       }
+      resolvedSkills = skillResult.resolved;
     }
 
     const created = await portfolioRepository.create({
@@ -52,7 +95,7 @@ export async function createPortfolioItem(
       title: input.title,
       description: input.description,
       images: JSON.stringify(input.images),
-      skills: JSON.stringify(input.skills || []),
+      skills: JSON.stringify(resolvedSkills),
       ...(input.projectUrl !== undefined ? { project_url: input.projectUrl } : {}),
       ...(input.completedAt !== undefined ? { completed_at: input.completedAt } : {}),
     });
@@ -90,7 +133,15 @@ export async function updatePortfolioItem(
     if (updates.description) updateData.description = updates.description;
     if (updates.projectUrl !== undefined) updateData.project_url = updates.projectUrl;
     if (updates.images) updateData.images = JSON.stringify(updates.images);
-    if (updates.skills) updateData.skills = JSON.stringify(updates.skills);
+    // Update path validates skills the same way creation does (create-only
+    // validation was a logic gap: invalid tags could be silently stored here).
+    if (updates.skills) {
+      const skillResult = await resolvePortfolioSkills(updates.skills);
+      if (!skillResult.valid) {
+        return errorResult('VALIDATION_ERROR', `Invalid skills: ${skillResult.invalidSkills.join(', ')}`);
+      }
+      updateData.skills = JSON.stringify(skillResult.resolved);
+    }
     if (updates.completedAt !== undefined) updateData.completed_at = updates.completedAt;
 
     if (Object.keys(updateData).length === 0) {

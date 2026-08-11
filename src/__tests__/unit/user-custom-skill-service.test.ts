@@ -11,7 +11,7 @@ const mockUpdateUserCustomSkillRepo = jest.fn<any>();
 const mockDeleteUserCustomSkillRepo = jest.fn<any>();
 const mockSearchUserCustomSkillsRepo = jest.fn<any>();
 const mockGetSkillSuggestionByName = jest.fn<any>();
-const mockIncrementSkillSuggestionCount = jest.fn<any>();
+const mockRecordSuggestionRequest = jest.fn<any>();
 const mockCreateSkillSuggestion = jest.fn<any>();
 const mockGetPendingSkillSuggestions = jest.fn<any>();
 const mockUpdateSkillSuggestionStatus = jest.fn<any>();
@@ -27,7 +27,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-custom-skill-repos
   },
   skillSuggestionRepository: {
     getSkillSuggestionByName: mockGetSkillSuggestionByName,
-    incrementSkillSuggestionCount: mockIncrementSkillSuggestionCount,
+    recordSuggestionRequest: mockRecordSuggestionRequest,
     createSkillSuggestion: mockCreateSkillSuggestion,
     getPendingSkillSuggestions: mockGetPendingSkillSuggestions,
     updateSkillSuggestionStatus: mockUpdateSkillSuggestionStatus,
@@ -36,9 +36,11 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-custom-skill-repos
   SkillSuggestionEntity: {},
 }));
 
-const mockSearchSkills = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/services/skill-service.ts'), () => ({
-  searchSkills: mockSearchSkills,
+const mockGetSkillByNameNormalized = jest.fn<any>();
+jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
+  skillRepository: {
+    getSkillByNameNormalized: mockGetSkillByNameNormalized,
+  },
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/id.ts'), () => ({
@@ -58,7 +60,7 @@ describe('User Custom Skill Service', () => {
     it('should create custom skill successfully', async () => {
       const { createUserCustomSkill } = await importModule();
 
-      mockSearchSkills.mockResolvedValueOnce([]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       mockGetUserCustomSkills.mockResolvedValueOnce([]);
       const created = {
         id: 'generated-id', user_id: 'user-1', name: 'Custom Skill',
@@ -81,7 +83,7 @@ describe('User Custom Skill Service', () => {
     it('should create skill with category and suggest for global', async () => {
       const { createUserCustomSkill } = await importModule();
 
-      mockSearchSkills.mockResolvedValueOnce([]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       mockGetUserCustomSkills.mockResolvedValueOnce([]);
       const created = {
         id: 'generated-id', user_id: 'user-1', name: 'New Skill',
@@ -108,7 +110,7 @@ describe('User Custom Skill Service', () => {
     it('should suggest for global without category name', async () => {
       const { createUserCustomSkill } = await importModule();
 
-      mockSearchSkills.mockResolvedValueOnce([]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       mockGetUserCustomSkills.mockResolvedValueOnce([]);
       const created = {
         id: 'generated-id', user_id: 'user-1', name: 'Skill No Category',
@@ -134,10 +136,13 @@ describe('User Custom Skill Service', () => {
       expect(suggestionArg).not.toHaveProperty('category_name');
     });
 
-    it('should increment suggestion count if suggestion already exists', async () => {
+    // BLF-skill.3: a repeat request from the SAME user must NOT inflate the
+    // suggestion counter. The repository's recordSuggestionRequest performs the
+    // per-user dedup; the service must always route through it with the userId.
+    it('should record a suggestion request when the suggestion already exists', async () => {
       const { createUserCustomSkill } = await importModule();
 
-      mockSearchSkills.mockResolvedValueOnce([]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       mockGetUserCustomSkills.mockResolvedValueOnce([]);
       const created = {
         id: 'generated-id', user_id: 'user-1', name: 'Existing Suggestion',
@@ -147,7 +152,7 @@ describe('User Custom Skill Service', () => {
       };
       mockCreateUserCustomSkillRepo.mockResolvedValueOnce(created);
       mockGetSkillSuggestionByName.mockResolvedValueOnce({ id: 'suggestion-1', times_requested: 2 });
-      mockIncrementSkillSuggestionCount.mockResolvedValueOnce(undefined);
+      mockRecordSuggestionRequest.mockResolvedValueOnce(undefined);
 
       const result = await createUserCustomSkill('user-1', 'Test User', {
         name: 'Existing Suggestion',
@@ -157,15 +162,48 @@ describe('User Custom Skill Service', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(mockIncrementSkillSuggestionCount).toHaveBeenCalledWith('suggestion-1');
+      // The userId is passed so the repo can dedup per user (anti-spam).
+      expect(mockRecordSuggestionRequest).toHaveBeenCalledWith('suggestion-1', 'user-1');
+      expect(mockCreateSkillSuggestion).not.toHaveBeenCalled();
+    });
+
+    // BLF-skill.3: creating a fresh suggestion seeds requester_ids with the creator.
+    it('should seed requester_ids when creating a new suggestion', async () => {
+      const { createUserCustomSkill } = await importModule();
+
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetUserCustomSkills.mockResolvedValueOnce([]);
+      const created = {
+        id: 'generated-id', user_id: 'user-1', name: 'Brand New Skill',
+        description: 'Desc', years_of_experience: 1,
+        is_approved: false, suggested_for_global: true,
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      };
+      mockCreateUserCustomSkillRepo.mockResolvedValueOnce(created);
+      mockGetSkillSuggestionByName.mockResolvedValueOnce(null);
+      mockCreateSkillSuggestion.mockResolvedValueOnce(undefined);
+
+      const result = await createUserCustomSkill('user-1', 'Test User', {
+        name: 'Brand New Skill',
+        description: 'Desc',
+        yearsOfExperience: 1,
+        suggestForGlobal: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockCreateSkillSuggestion).toHaveBeenCalledTimes(1);
+      const suggestionArg = mockCreateSkillSuggestion.mock.calls[0][0];
+      expect(suggestionArg.times_requested).toBe(1);
+      expect(suggestionArg.requester_ids).toEqual(['user-1']);
+      expect(mockRecordSuggestionRequest).not.toHaveBeenCalled();
     });
 
     it('should fail when skill exists in global taxonomy', async () => {
       const { createUserCustomSkill } = await importModule();
 
-      mockSearchSkills.mockResolvedValueOnce([
-        { id: 'skill-1', name: 'React', categoryName: 'Frontend' },
-      ]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({
+        id: 'skill-1', category_id: 'c1', name: 'React', is_active: true,
+      });
 
       const result = await createUserCustomSkill('user-1', 'Test User', {
         name: 'React',
@@ -180,7 +218,7 @@ describe('User Custom Skill Service', () => {
     it('should fail when user already has duplicate custom skill', async () => {
       const { createUserCustomSkill } = await importModule();
 
-      mockSearchSkills.mockResolvedValueOnce([]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       mockGetUserCustomSkills.mockResolvedValueOnce([
         { id: 'existing-1', name: 'My Skill', user_id: 'user-1' },
       ]);
@@ -198,7 +236,7 @@ describe('User Custom Skill Service', () => {
     it('should handle repository errors', async () => {
       const { createUserCustomSkill } = await importModule();
 
-      mockSearchSkills.mockResolvedValueOnce([]);
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       mockGetUserCustomSkills.mockResolvedValueOnce([]);
       mockCreateUserCustomSkillRepo.mockRejectedValueOnce(new Error('DB error'));
 
@@ -210,6 +248,120 @@ describe('User Custom Skill Service', () => {
 
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('CREATE_FAILED');
+    });
+
+    it('should block a padded variant of a global skill (whitespace bypass)', async () => {
+      const { createUserCustomSkill } = await importModule();
+
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({
+        id: 'skill-1', category_id: 'c1', name: 'React', is_active: true,
+      });
+
+      const result = await createUserCustomSkill('user-1', 'Test User', {
+        name: '  React  ',
+        description: 'Frontend framework',
+        yearsOfExperience: 3,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('SKILL_EXISTS_GLOBALLY');
+      expect(mockGetUserCustomSkills).not.toHaveBeenCalled();
+    });
+
+    it('should block a padded duplicate of the user\'s own custom skill', async () => {
+      const { createUserCustomSkill } = await importModule();
+
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetUserCustomSkills.mockResolvedValueOnce([
+        { id: 'existing-1', name: 'My Skill', user_id: 'user-1' },
+      ]);
+
+      const result = await createUserCustomSkill('user-1', 'Test User', {
+        name: ' MY SKILL ',
+        description: 'Duplicate',
+        yearsOfExperience: 1,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('DUPLICATE_USER_SKILL');
+    });
+
+    it('should enforce the per-user custom skill cap', async () => {
+      const { createUserCustomSkill } = await importModule();
+
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      const existing = Array.from({ length: 50 }, (_, i) => ({
+        id: `existing-${i}`, name: `Skill ${i}`, user_id: 'user-1',
+      }));
+      mockGetUserCustomSkills.mockResolvedValueOnce(existing);
+
+      const result = await createUserCustomSkill('user-1', 'Test User', {
+        name: 'Brand New Skill',
+        description: 'A brand new skill',
+        yearsOfExperience: 1,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('TOO_MANY_CUSTOM_SKILLS');
+      expect(mockCreateUserCustomSkillRepo).not.toHaveBeenCalled();
+    });
+
+    it('should fail when fetching existing custom skills errors', async () => {
+      const { createUserCustomSkill } = await importModule();
+
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetUserCustomSkills.mockRejectedValueOnce(new Error('DB down'));
+
+      const result = await createUserCustomSkill('user-1', 'Test User', {
+        name: 'New Skill',
+        description: 'Desc',
+        yearsOfExperience: 1,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('CREATE_FAILED');
+    });
+
+    it('should fail closed when the global-taxonomy check errors', async () => {
+      const { createUserCustomSkill } = await importModule();
+
+      mockGetSkillByNameNormalized.mockRejectedValueOnce(new Error('DB down'));
+
+      const result = await createUserCustomSkill('user-1', 'Test User', {
+        name: 'React',
+        description: 'Frontend framework',
+        yearsOfExperience: 3,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('CREATE_FAILED');
+      expect(mockGetUserCustomSkills).not.toHaveBeenCalled();
+      expect(mockCreateUserCustomSkillRepo).not.toHaveBeenCalled();
+    });
+
+    it('should still succeed when the skill suggestion fails (skill already committed)', async () => {
+      const { createUserCustomSkill } = await importModule();
+
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetUserCustomSkills.mockResolvedValueOnce([]);
+      const created = {
+        id: 'generated-id', user_id: 'user-1', name: 'New Skill',
+        description: 'Desc', years_of_experience: 2,
+        is_approved: false, suggested_for_global: true,
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      };
+      mockCreateUserCustomSkillRepo.mockResolvedValueOnce(created);
+      mockGetSkillSuggestionByName.mockRejectedValueOnce(new Error('suggestion lookup failed'));
+
+      const result = await createUserCustomSkill('user-1', 'Test User', {
+        name: 'New Skill',
+        description: 'Desc',
+        yearsOfExperience: 2,
+        suggestForGlobal: true,
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.data.name).toBe('New Skill');
     });
   });
 
@@ -277,6 +429,8 @@ describe('User Custom Skill Service', () => {
         years_of_experience: 1, is_approved: false, suggested_for_global: false,
         created_at: '2025-01-01', updated_at: '2025-01-01',
       });
+      // getSkillByNameNormalized for the global-taxonomy check (since name is changing)
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       // getUserCustomSkills for duplicate check (since name is changing)
       mockGetUserCustomSkills.mockResolvedValueOnce([]);
       mockUpdateUserCustomSkillRepo.mockResolvedValueOnce({
@@ -312,6 +466,7 @@ describe('User Custom Skill Service', () => {
       mockGetUserCustomSkillById.mockResolvedValueOnce({
         id: 'cs-1', user_id: 'user-1', name: 'Skill A',
       });
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       mockGetUserCustomSkills.mockResolvedValueOnce([
         { id: 'cs-2', name: 'Skill B', user_id: 'user-1' },
       ]);
@@ -320,6 +475,76 @@ describe('User Custom Skill Service', () => {
 
       expect(result.success).toBe(false);
       expect(result.error.code).toBe('DUPLICATE_USER_SKILL');
+    });
+
+    it('should fail when renaming to a name that exists in the global taxonomy', async () => {
+      const { updateUserCustomSkill } = await importModule();
+
+      mockGetUserCustomSkillById.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'ReactJS',
+      });
+      mockGetSkillByNameNormalized.mockResolvedValueOnce({
+        id: 'skill-1', category_id: 'c1', name: 'React', is_active: true,
+      });
+
+      const result = await updateUserCustomSkill('cs-1', 'user-1', { name: 'React' });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('SKILL_EXISTS_GLOBALLY');
+      expect(mockGetUserCustomSkills).not.toHaveBeenCalled();
+    });
+
+    it('should return UPDATE_FAILED when the duplicate check fetch errors', async () => {
+      const { updateUserCustomSkill } = await importModule();
+
+      mockGetUserCustomSkillById.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'Skill A',
+      });
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
+      mockGetUserCustomSkills.mockRejectedValueOnce(new Error('DB down'));
+
+      const result = await updateUserCustomSkill('cs-1', 'user-1', { name: 'Skill B' });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('UPDATE_FAILED');
+      expect(mockUpdateUserCustomSkillRepo).not.toHaveBeenCalled();
+    });
+
+    it('should fail closed when the global-taxonomy check errors on rename', async () => {
+      const { updateUserCustomSkill } = await importModule();
+
+      mockGetUserCustomSkillById.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'Skill A',
+      });
+      mockGetSkillByNameNormalized.mockRejectedValueOnce(new Error('DB down'));
+
+      const result = await updateUserCustomSkill('cs-1', 'user-1', { name: 'Skill B' });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('UPDATE_FAILED');
+      expect(mockGetUserCustomSkills).not.toHaveBeenCalled();
+      expect(mockUpdateUserCustomSkillRepo).not.toHaveBeenCalled();
+    });
+
+    it('should allow a case-only rename without duplicate checks', async () => {
+      const { updateUserCustomSkill } = await importModule();
+
+      mockGetUserCustomSkillById.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'React', description: 'UI',
+        years_of_experience: 2, is_approved: false, suggested_for_global: false,
+        created_at: '2025-01-01', updated_at: '2025-01-01',
+      });
+      mockUpdateUserCustomSkillRepo.mockResolvedValueOnce({
+        id: 'cs-1', user_id: 'user-1', name: 'REACT', description: 'UI',
+        years_of_experience: 2, is_approved: false, suggested_for_global: false,
+        created_at: '2025-01-01', updated_at: '2025-01-02',
+      });
+
+      const result = await updateUserCustomSkill('cs-1', 'user-1', { name: 'REACT' });
+
+      expect(result.success).toBe(true);
+      expect(mockGetSkillByNameNormalized).not.toHaveBeenCalled();
+      expect(mockGetUserCustomSkills).not.toHaveBeenCalled();
     });
 
     it('should handle update failure from repository', async () => {
@@ -336,7 +561,8 @@ describe('User Custom Skill Service', () => {
         is_approved: false, suggested_for_global: false,
         created_at: '2025-01-01', updated_at: '2025-01-01',
       });
-      // Name is changing, so duplicate check happens
+      // Name is changing, so global + duplicate checks happen
+      mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
       mockGetUserCustomSkills.mockResolvedValueOnce([]);
       mockUpdateUserCustomSkillRepo.mockResolvedValueOnce(null);
 
@@ -543,10 +769,9 @@ describe('User Custom Skill Service - Direct Branch Coverage', () => {
 
   it('should return error when skill exists globally', async () => {
     const { createUserCustomSkill } = await importModule();
-    const { searchSkills } = await import('../../services/skill-service.ts');
-    (searchSkills as jest.Mock).mockResolvedValueOnce([
-      { id: 's1', name: 'React', categoryName: 'Frontend' },
-    ]);
+    mockGetSkillByNameNormalized.mockResolvedValueOnce({
+      id: 's1', name: 'React', category_id: 'c1', is_active: true,
+    });
 
     const result = await createUserCustomSkill('u1', 'John', {
       name: 'React', description: 'Frontend framework', yearsOfExperience: 3,
@@ -557,8 +782,7 @@ describe('User Custom Skill Service - Direct Branch Coverage', () => {
 
   it('should return error when user already has this skill', async () => {
     const { createUserCustomSkill } = await importModule();
-    const { searchSkills } = await import('../../services/skill-service.ts');
-    (searchSkills as jest.Mock).mockResolvedValueOnce([]);
+    mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
     const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
     (userCustomSkillRepository as any).getUserCustomSkills = jest.fn().mockResolvedValueOnce([
       { id: 'sk-1', name: 'React' },
@@ -675,7 +899,7 @@ describe('User Custom Skill Service - Non-Error Throw Branch Coverage', () => {
     const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
 
     // Set up prerequisite mocks so the function reaches the repository create call
-    mockSearchSkills.mockResolvedValueOnce([]);
+    mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
     mockGetUserCustomSkills.mockResolvedValueOnce([]);
     (userCustomSkillRepository as any).createUserCustomSkill = jest.fn().mockRejectedValueOnce('raw string error');
 
@@ -697,7 +921,7 @@ describe('User Custom Skill Service - Non-Error Throw Branch Coverage', () => {
     const { createUserCustomSkill } = await importModule();
     const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
 
-    mockSearchSkills.mockResolvedValueOnce([]);
+    mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
     mockGetUserCustomSkills.mockResolvedValueOnce([]);
     (userCustomSkillRepository as any).createUserCustomSkill = jest.fn().mockRejectedValueOnce(new Error('DB connection lost'));
 
@@ -718,7 +942,7 @@ describe('User Custom Skill Service - Non-Error Throw Branch Coverage', () => {
     const { createUserCustomSkill } = await importModule();
     const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
 
-    mockSearchSkills.mockResolvedValueOnce([]);
+    mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
     mockGetUserCustomSkills.mockResolvedValueOnce([]);
     (userCustomSkillRepository as any).createUserCustomSkill = jest.fn().mockRejectedValueOnce(42);
 
@@ -739,7 +963,7 @@ describe('User Custom Skill Service - Non-Error Throw Branch Coverage', () => {
     const { createUserCustomSkill } = await importModule();
     const { userCustomSkillRepository } = await import('../../repositories/user-custom-skill-repository.ts');
 
-    mockSearchSkills.mockResolvedValueOnce([]);
+    mockGetSkillByNameNormalized.mockResolvedValueOnce(null);
     mockGetUserCustomSkills.mockResolvedValueOnce([]);
     (userCustomSkillRepository as any).createUserCustomSkill = jest.fn().mockRejectedValueOnce(null);
 

@@ -31,6 +31,24 @@ export class UserRepository extends BaseRepository<UserEntity> {
     return this.getById(id);
   }
 
+  /**
+   * Batch-fetch users by ID in a single query (kills the N+1 pattern used by
+   * favorites enrichment). Users that no longer exist are simply absent.
+   */
+  async getUsersByIds(ids: string[]): Promise<UserEntity[]> {
+    if (ids.length === 0) return [];
+    try {
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [Query.equal('$id', ids), Query.limit(ids.length)]
+      );
+      return response.documents.map(doc => fromAppwriteDoc<UserEntity>(doc));
+    } catch (error) {
+      throw new Error(`Failed to get users by ids: ${getErrorMessageOr(error, 'Unknown error')}`);
+    }
+  }
+
   async getUserByEmail(email: string): Promise<UserEntity | null> {
     try {
       const response = await databases.listDocuments(

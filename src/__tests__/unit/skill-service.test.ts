@@ -55,6 +55,9 @@ const mockSkillRepository = {
   findSkillById: jest.fn(async (id: string) => {
     return skillStore.get(id) ?? null;
   }),
+  findSkillsByIds: jest.fn(async (ids: string[]) => {
+    return ids.map(id => skillStore.get(id)).filter((s): s is SkillEntity => Boolean(s));
+  }),
   getSkillById: jest.fn(async (id: string) => {
     return skillStore.get(id) ?? null;
   }),
@@ -927,31 +930,46 @@ describe('Skill Service - Extended Coverage', () => {
   });
 
   describe('validateSkillIds', () => {
-    it('should validate skill IDs correctly', async () => {
+    it('should validate skill IDs correctly with a single batch query', async () => {
       const { validateSkillIds } = await importModule();
 
-      mockSkillRepository.findSkillById
-        .mockResolvedValueOnce({ id: 'skill-1', is_active: true })
-        .mockResolvedValueOnce(null)
-        .mockResolvedValueOnce({ id: 'skill-3', is_active: false });
+      mockSkillRepository.findSkillsByIds.mockResolvedValueOnce([
+        { id: 'skill-1', is_active: true },
+        { id: 'skill-3', is_active: false },
+      ]);
 
       const result = await validateSkillIds(['skill-1', 'skill-2', 'skill-3']);
 
       expect(result.valid).toEqual(['skill-1']);
       expect(result.invalid).toEqual(['skill-2', 'skill-3']);
+      expect(mockSkillRepository.findSkillsByIds).toHaveBeenCalledWith(['skill-1', 'skill-2', 'skill-3']);
     });
 
     it('should return all valid for existing active skills', async () => {
       const { validateSkillIds } = await importModule();
 
-      mockSkillRepository.findSkillById
-        .mockResolvedValueOnce({ id: 'skill-1', is_active: true })
-        .mockResolvedValueOnce({ id: 'skill-2', is_active: true });
+      mockSkillRepository.findSkillsByIds.mockResolvedValueOnce([
+        { id: 'skill-1', is_active: true },
+        { id: 'skill-2', is_active: true },
+      ]);
 
       const result = await validateSkillIds(['skill-1', 'skill-2']);
 
       expect(result.valid).toEqual(['skill-1', 'skill-2']);
       expect(result.invalid).toEqual([]);
+    });
+
+    it('should deduplicate IDs before the batch query', async () => {
+      const { validateSkillIds } = await importModule();
+
+      mockSkillRepository.findSkillsByIds.mockResolvedValueOnce([
+        { id: 'skill-1', is_active: true },
+      ]);
+
+      const result = await validateSkillIds(['skill-1', 'skill-1', 'skill-1']);
+
+      expect(mockSkillRepository.findSkillsByIds).toHaveBeenCalledWith(['skill-1']);
+      expect(result.valid).toEqual(['skill-1', 'skill-1', 'skill-1']);
     });
 
     it('should handle empty array', async () => {
@@ -961,6 +979,7 @@ describe('Skill Service - Extended Coverage', () => {
 
       expect(result.valid).toEqual([]);
       expect(result.invalid).toEqual([]);
+      expect(mockSkillRepository.findSkillsByIds).not.toHaveBeenCalled();
     });
   });
 });

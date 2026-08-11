@@ -140,27 +140,99 @@ describe('Scheduler Service', () => {
   });
 
   describe('executeSavedSearches', () => {
-    it('should execute searches and log results', async () => {
+    it('should notify user of new matches for a project saved search', async () => {
       const { initializeScheduler } = await importScheduler();
       initializeScheduler();
       const callback = scheduledCallbacks.get('0 */6 * * *');
 
+      const now = new Date().toISOString();
       mockDatabases.listDocuments
-        // saved searches
+        // saved searches with notify_on_new
         .mockResolvedValueOnce({
-          documents: [{ $id: 's1', search_type: 'project', filters: {} }],
+          documents: [{
+            $id: 's1',
+            user_id: 'u1',
+            name: 'React jobs',
+            search_type: 'project',
+            filters: '{}',
+            created_at: new Date(Date.now() - 86400000).toISOString(),
+          }],
           total: 1,
         })
-        // search results
+        // open projects page (newer than the search itself)
         .mockResolvedValueOnce({
-          documents: [{ $id: 'r1' }],
+          documents: [{
+            $id: 'p1',
+            title: 'React Dev',
+            description: 'Build a React app',
+            budget: 1000,
+            required_skills: [{ skill_name: 'React' }],
+            status: 'open',
+            created_at: now,
+          }],
           total: 1,
         });
 
       if (callback) {
         callback();
         await new Promise(resolve => setTimeout(resolve, 10));
-        expect(mockLogger.info).toHaveBeenCalledWith('Found 1 results for saved search s1');
+        expect(mockDatabases.createDocument).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.any(String),
+          expect.any(String),
+          expect.objectContaining({
+            user_id: 'u1',
+            type: 'saved_search_match',
+            title: 'New matches for "React jobs"',
+          })
+        );
+        // The dedup watermark is advanced so the same results aren't re-notified
+        expect(mockDatabases.updateDocument).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.any(String),
+          's1',
+          expect.objectContaining({ last_notified_at: expect.any(String) })
+        );
+        expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Notified user u1'));
+      }
+    });
+
+    it('should not notify again when matches are older than last_notified_at', async () => {
+      const { initializeScheduler } = await importScheduler();
+      initializeScheduler();
+      const callback = scheduledCallbacks.get('0 */6 * * *');
+
+      mockDatabases.listDocuments
+        // saved search with a recent last_notified_at watermark
+        .mockResolvedValueOnce({
+          documents: [{
+            $id: 's1',
+            user_id: 'u1',
+            search_type: 'project',
+            filters: {},
+            created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
+            last_notified_at: new Date().toISOString(),
+          }],
+          total: 1,
+        })
+        // open projects — all older than the watermark
+        .mockResolvedValueOnce({
+          documents: [{
+            $id: 'p1',
+            title: 'Old Project',
+            description: 'desc',
+            budget: 500,
+            required_skills: [],
+            status: 'open',
+            created_at: new Date(Date.now() - 86400000).toISOString(),
+          }],
+          total: 1,
+        });
+
+      if (callback) {
+        callback();
+        await new Promise(resolve => setTimeout(resolve, 10));
+        expect(mockDatabases.createDocument).not.toHaveBeenCalled();
       }
     });
   });
@@ -442,29 +514,44 @@ describe('Scheduler Service - Uncovered Lines', () => {
     }
   });
 
-  // Lines 198-200: filter building with ALLOWED_COLUMNS
-  it('should build queries from allowed filter columns', async () => {
+  // Filter helpers are applied before notifying (skills filter actually honored)
+  it('should apply saved-search filters before notifying', async () => {
     const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
+    const now = new Date().toISOString();
     mockDatabases.listDocuments
-      // saved searches with filters
+      // saved searches with a skills filter
       .mockResolvedValueOnce({
         documents: [{
           $id: 's1',
+          user_id: 'u1',
           search_type: 'project',
-          filters: { status: 'open', budget: 1000, disallowed_col: 'ignored' },
+          filters: { skills: ['python'] },
+          created_at: new Date(Date.now() - 86400000).toISOString(),
         }],
         total: 1,
       })
-      // search results
-      .mockResolvedValueOnce({ documents: [{ $id: 'r1' }], total: 1 });
+      // open projects — only a React project, does not match the python filter
+      .mockResolvedValueOnce({
+        documents: [{
+          $id: 'p1',
+          title: 'React Dev',
+          description: 'desc',
+          budget: 500,
+          required_skills: [{ skill_name: 'React' }],
+          status: 'open',
+          created_at: now,
+        }],
+        total: 1,
+      });
 
     if (callback) {
       callback();
       await new Promise(resolve => setTimeout(resolve, 10));
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Found 1 results'));
+      // The skills filter rejected the React project → no match → no notification
+      expect(mockDatabases.createDocument).not.toHaveBeenCalled();
     }
   });
 
@@ -474,13 +561,31 @@ describe('Scheduler Service - Uncovered Lines', () => {
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
+    const now = new Date().toISOString();
     mockDatabases.listDocuments
+      // saved searches
       .mockResolvedValueOnce({
-        documents: [{ $id: 's1', search_type: 'project', filters: {} }],
+        documents: [{ $id: 's1', user_id: 'u1', search_type: 'project', filters: {}, created_at: new Date(Date.now() - 86400000).toISOString() }],
         total: 1,
       })
-      // search execution throws
-      .mockRejectedValueOnce(new Error('Search failed'));
+      // open projects page (fetched once, outside the per-search loop)
+      .mockResolvedValueOnce({
+        documents: [{
+          $id: 'p1',
+          title: 'Match',
+          description: 'desc',
+          budget: 100,
+          required_skills: [],
+          status: 'open',
+          created_at: now,
+        }],
+        total: 1,
+      })
+      // profiles page (fetched once)
+      .mockResolvedValueOnce({ documents: [], total: 0 });
+
+    // The notification write fails inside the per-search block
+    mockDatabases.createDocument.mockRejectedValueOnce(new Error('notification write failed'));
 
     if (callback) {
       callback();
@@ -748,31 +853,51 @@ describe('Scheduler Service - Integration Coverage', () => {
   });
 
   // Lines 187-191: search_type !== 'project' and typeof filters === 'string'
-  it('executeSavedSearches with search_type freelancer and string filters', async () => {
+  it('executeSavedSearches with search_type freelancer and string filters notifies on new profile', async () => {
     const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 */6 * * *');
 
+    const now = new Date().toISOString();
     mockDatabases.listDocuments
       // saved searches with search_type: 'freelancer' and filters as JSON string
       .mockResolvedValueOnce({
         documents: [{
           $id: 's1',
+          user_id: 'u1',
           search_type: 'freelancer',
-          filters: '{"status":"open"}',
+          filters: '{"skills":["React"]}',
+          created_at: new Date(Date.now() - 86400000).toISOString(),
         }],
         total: 1,
       })
-      // search results (querying freelancer_profiles collection)
+      // open projects page — empty (candidates fetched once per type)
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // freelancer_profiles page — a React profile newer than the search
       .mockResolvedValueOnce({
-        documents: [{ $id: 'fp1' }],
+        documents: [{
+          $id: 'fp1',
+          name: 'Jane',
+          skills: [{ name: 'React' }],
+          hourly_rate: 50,
+          created_at: now,
+        }],
         total: 1,
       });
 
     if (callback) {
       callback();
       await new Promise(resolve => setTimeout(resolve, 10));
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Found 1 results'));
+      expect(mockDatabases.createDocument).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({
+          user_id: 'u1',
+          type: 'saved_search_match',
+          message: expect.stringContaining('freelancer'),
+        })
+      );
     }
   });
 
@@ -791,16 +916,16 @@ describe('Scheduler Service - Integration Coverage', () => {
         }],
         total: 1,
       })
-      .mockResolvedValueOnce({
-        documents: [],
-        total: 0,
-      });
+      // projects page (fetched once per type)
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // profiles page (fetched once per type)
+      .mockResolvedValueOnce({ documents: [], total: 0 });
 
     if (callback) {
       callback();
       await new Promise(resolve => setTimeout(resolve, 10));
       // Should not crash - null filters falls back to {}
-      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(2);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(3);
     }
   });
 

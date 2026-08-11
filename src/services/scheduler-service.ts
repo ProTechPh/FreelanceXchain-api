@@ -1,8 +1,13 @@
 import cron from 'node-cron';
-import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { databases, DATABASE_ID, ID, Query } from '../config/appwrite.js';
 import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
 import { sendWeeklyDigestEmail } from './email-delivery-service.js';
+import { filterProjectsBySavedSearch, filterFreelancersBySavedSearch } from './saved-search-service.js';
+import type { ProjectEntity } from '../repositories/project-repository.js';
+import type { FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
+import { fromAppwriteDoc } from '../repositories/base-repository.js';
+import { parseField } from '../utils/index.js';
 
 /**
  * Auto-close expired projects
@@ -166,7 +171,15 @@ async function sendWeeklyDigests(): Promise<void> {
 }
 
 /**
- * Execute saved searches and notify users
+ * Execute saved searches and notify users of new matches.
+ *
+ * For each saved search with notify_on_new enabled, candidates are fetched via
+ * the shared saved-search filter helpers (skills, budget ranges, keyword — the
+ * old implementation only honored status/budget/category/title via Query.equal,
+ * silently ignored the skills filter, and used the wrong semantics for budgets).
+ * Only matches created after the last notification (or after the search itself)
+ * trigger a notification, so a saved search is not re-notified every 6 hours
+ * about the same results. `last_notified_at` acts as the dedup watermark.
  */
 async function executeSavedSearches(): Promise<void> {
   try {
@@ -184,40 +197,82 @@ async function executeSavedSearches(): Promise<void> {
       return;
     }
 
+    // Fetch the candidate datasets ONCE per type and reuse across all searches
+    // (the old per-search fetch made N full paginated scans every 6 hours).
+    const allProjects = await fetchAllProjectDocs();
+    const allProfiles = await fetchAllProfileDocs();
+
     for (const search of searchesResponse.documents) {
       try {
         const filters: Record<string, unknown> = typeof search.filters === 'string'
           ? JSON.parse(search.filters)
           : search.filters || {};
         const searchType = search.search_type;
-        const collectionId = searchType === 'project' ? COLLECTIONS.PROJECTS : 'freelancer_profiles';
 
-        // Build Appwrite queries from filters
-        const queries: string[] = [Query.limit(10)];
-        const ALLOWED_COLUMNS = new Set(['status', 'budget', 'category', 'title']);
+        const lastNotifiedAt = search.last_notified_at
+          ? new Date(search.last_notified_at).getTime()
+          : 0;
+        // Never notified yet → only surface matches newer than the saved search
+        // itself. Note raw Appwrite docs carry $createdAt, not created_at, so
+        // fall back to $createdAt when the attribute is absent.
+        const searchCreatedAt = search.created_at ?? search.$createdAt;
+        const sinceTimestamp = lastNotifiedAt > 0
+          ? lastNotifiedAt
+          : (searchCreatedAt ? new Date(searchCreatedAt).getTime() : 0);
 
-        for (const [key, value] of Object.entries(filters)) {
-          if (!ALLOWED_COLUMNS.has(key)) continue;
-          // Only query-able primitive values can be passed to Appwrite's Query.equal.
-          if (
-            value !== undefined &&
-            value !== null &&
-            (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value))
-          ) {
-            queries.push(Query.equal(key, value));
-          }
+        let matches: Array<{ id: string; title: string; created_at: string }> = [];
+        if (searchType === 'project') {
+          const filtered = filterProjectsBySavedSearch(allProjects, filters);
+          matches = filtered
+            .filter(p => new Date(p.created_at).getTime() > sinceTimestamp)
+            .map(p => ({ id: p.id, title: p.title, created_at: p.created_at }));
+        } else {
+          const filtered = filterFreelancersBySavedSearch(allProfiles, filters);
+          matches = filtered
+            .filter(fp => new Date(fp.created_at).getTime() > sinceTimestamp)
+            .map(fp => ({ id: fp.id, title: fp.name || 'Freelancer', created_at: fp.created_at }));
         }
 
-        const results = await databases.listDocuments(
+        if (matches.length === 0) {
+          continue;
+        }
+
+        // Create in-app notification for the new matches. matchIds is capped so
+        // a broad saved search can't overflow the notification data column.
+        const matchIds = matches.slice(0, 50).map(m => m.id);
+        await databases.createDocument(
           DATABASE_ID,
-          collectionId,
-          queries
+          COLLECTIONS.NOTIFICATIONS,
+          ID.unique(),
+          {
+            user_id: search.user_id,
+            type: 'saved_search_match',
+            title: `New matches for "${search.name || 'saved search'}"`,
+            message: `${matches.length} new ${searchType === 'project' ? 'project' : 'freelancer'}(s) match your saved search`,
+            data: JSON.stringify({
+              savedSearchId: search.$id,
+              searchType,
+              matchIds,
+              matchCount: matches.length,
+            }),
+            is_read: false,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
         );
 
-        if (results.documents.length > 0) {
-          // TODO: Create notification for new matches
-          logger.info(`Found ${results.documents.length} results for saved search ${search.$id}`);
-        }
+        // Advance the dedup watermark so the same matches aren't re-notified
+        await databases.updateDocument(
+          DATABASE_ID,
+          COLLECTIONS.SAVED_SEARCHES,
+          search.$id,
+          {
+            last_notified_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+        );
+
+        logger.info(`Notified user ${search.user_id} of ${matches.length} new match(es) for saved search ${search.$id}`);
       } catch (error) {
         logger.error(`Failed to execute saved search ${search.$id}:`, error);
       }
@@ -225,6 +280,74 @@ async function executeSavedSearches(): Promise<void> {
   } catch (error) {
     logger.error('Failed to execute saved searches:', error);
   }
+}
+
+/**
+ * Fetch ALL open projects (cursor pagination — no 1000-row truncation) and map
+ * them to ProjectEntity shape so the shared saved-search filter helpers work.
+ */
+async function fetchAllProjectDocs(): Promise<ProjectEntity[]> {
+  const all: ProjectEntity[] = [];
+  let lastId: string | undefined;
+
+  while (true) {
+    const queries = [Query.equal('status', 'open'), Query.limit(100)];
+    if (lastId) queries.push(Query.cursorAfter(lastId));
+
+    const page = await databases.listDocuments(DATABASE_ID, COLLECTIONS.PROJECTS, queries);
+    const docs = page.documents.map(doc => normalizeProjectDoc(doc));
+    all.push(...docs);
+
+    if (page.documents.length < 100) break;
+    lastId = page.documents[page.documents.length - 1]?.$id;
+    if (!lastId) break;
+  }
+
+  return all;
+}
+
+/**
+ * Fetch ALL freelancer profiles (cursor pagination — no 1000-row truncation)
+ * and map them to FreelancerProfileEntity shape.
+ */
+async function fetchAllProfileDocs(): Promise<FreelancerProfileEntity[]> {
+  const all: FreelancerProfileEntity[] = [];
+  let lastId: string | undefined;
+
+  while (true) {
+    const queries = [Query.limit(100)];
+    if (lastId) queries.push(Query.cursorAfter(lastId));
+
+    const page = await databases.listDocuments(DATABASE_ID, COLLECTIONS.FREELANCER_PROFILES, queries);
+    const docs = page.documents.map(doc => normalizeProfileDoc(doc));
+    all.push(...docs);
+
+    if (page.documents.length < 100) break;
+    lastId = page.documents[page.documents.length - 1]?.$id;
+    if (!lastId) break;
+  }
+
+  return all;
+}
+
+function normalizeProjectDoc(doc: Record<string, unknown>): ProjectEntity {
+  const entity = fromAppwriteDoc<Record<string, unknown>>(doc);
+  return {
+    ...entity as unknown as ProjectEntity,
+    required_skills: parseField(entity.required_skills, []),
+    milestones: parseField(entity.milestones, []),
+    tags: parseField(entity.tags, []),
+    attachments: parseField(entity.attachments, []),
+  };
+}
+
+function normalizeProfileDoc(doc: Record<string, unknown>): FreelancerProfileEntity {
+  const entity = fromAppwriteDoc<Record<string, unknown>>(doc);
+  return {
+    ...entity as unknown as FreelancerProfileEntity,
+    skills: parseField(entity.skills, []),
+    experience: parseField(entity.experience, []),
+  };
 }
 
 /**

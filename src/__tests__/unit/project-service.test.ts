@@ -64,6 +64,9 @@ const mockSkillRepo = {
   findSkillById: jest.fn<any>(async (id: string) => {
     return skillStore.get(id) ?? null;
   }),
+  findSkillsByIds: jest.fn<any>(async (ids: string[]) => {
+    return ids.map(id => skillStore.get(id)).filter(Boolean);
+  }),
 };
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);

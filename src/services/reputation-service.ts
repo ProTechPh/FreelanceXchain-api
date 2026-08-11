@@ -15,6 +15,7 @@ import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
+import { sendGatedEmail, sendReviewReceivedEmail } from './email-delivery-service.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
@@ -239,6 +240,25 @@ try {
     input.contractId,
     projectTitle
   );
+
+  // Transactional email gated by the ratee's email preferences. Best-effort:
+  // a lookup/send failure must never break the rating submission.
+  try {
+    const reviewerDoc = await databases
+      .getDocument(DATABASE_ID, COLLECTIONS.USERS, input.raterId)
+      .catch(() => null);
+    await sendGatedEmail(rateeId, 'review_received', (recipient) =>
+      sendReviewReceivedEmail(recipient.email, {
+        recipientName: recipient.name,
+        reviewerName: reviewerDoc?.name || 'A user',
+        rating: input.rating,
+        projectTitle,
+        reviewUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/reviews/${review.id}`,
+      })
+    );
+  } catch (error) {
+    logger.error('Failed to send review-received email', { error, rateeId, raterId: input.raterId });
+  }
 
   return successResult({
     rating,

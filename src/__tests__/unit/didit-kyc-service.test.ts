@@ -70,6 +70,17 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
   auditLogRepository: mockAuditLogRepo,
 }));
 
+// email-delivery-service (BLF-13 email wiring): mocked so the real
+// email-preference-service does not consume queued mockDatabases responses
+// in processWebhook / adminReviewVerification / manualKycVerification.
+const mockSendGatedEmail = jest.fn() as jest.Mock<any>;
+mockSendGatedEmail.mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendKycApprovedEmail: jest.fn() as jest.Mock<any>,
+  sendKycRejectedEmail: jest.fn() as jest.Mock<any>,
+}));
+
 const {
   initiateKycVerification,
   getKycStatus,
@@ -326,6 +337,12 @@ describe('didit-kyc-service', () => {
       } as any);
 
       expect(result.success).toBe(true);
+      // BLF-13: the verified user gets a preference-gated KYC-approved email
+      expect(mockSendGatedEmail).toHaveBeenCalledWith(
+        'user-1',
+        'kyc_notifications',
+        expect.any(Function)
+      );
     });
 
     it('should process Declined webhook without profile creation', async () => {
@@ -335,6 +352,12 @@ describe('didit-kyc-service', () => {
       const result = await processWebhook({ session_id: 'session-abc', status: 'Declined', timestamp: Date.now() / 1000 } as any);
       expect(result.success).toBe(true);
       expect(mockFreelancerCreateProfile).not.toHaveBeenCalled();
+      // BLF-13: the rejected user gets a preference-gated KYC-rejected email
+      expect(mockSendGatedEmail).toHaveBeenCalledWith(
+        'user-1',
+        'kyc_notifications',
+        expect.any(Function)
+      );
     });
 
     it('should process In Review webhook (maps to completed)', async () => {

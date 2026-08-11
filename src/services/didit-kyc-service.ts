@@ -39,6 +39,7 @@ import {
 import { logger } from '../config/logger.js';
 import { withLock } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
+import { sendGatedEmail, sendKycApprovedEmail, sendKycRejectedEmail } from './email-delivery-service.js';
 
 const DIDIT_WORKFLOW_ID = process.env['DIDIT_WORKFLOW_ID'];
 
@@ -327,6 +328,21 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
     await autoCreateProfile(verification.user_id, firstName, lastName, nationality);
   }
 
+  // Transactional emails gated by the user's email preferences. Best-effort:
+  // a preference lookup or send failure must never break webhook processing.
+  if (payload.status === 'Approved') {
+    await sendGatedEmail(verification.user_id, 'kyc_notifications', (recipient) =>
+      sendKycApprovedEmail(recipient.email, { userName: recipient.name, tier: 'Verified' })
+    );
+  } else if (payload.status === 'Declined') {
+    await sendGatedEmail(verification.user_id, 'kyc_notifications', (recipient) =>
+      sendKycRejectedEmail(recipient.email, {
+        userName: recipient.name,
+        reason: 'Your submitted identity documents could not be verified.',
+      })
+    );
+  }
+
   // L4: Mark the event only AFTER successful processing so a failed delivery
   // (e.g. UPDATE_FAILED above) is not permanently swallowed — Didit uses
   // at-least-once delivery, so a retry must be able to complete the work.
@@ -543,6 +559,17 @@ export async function adminReviewVerification(
       verification.nationality ?? null
     );
   }
+
+  // Transactional email gated by the user's email preferences. Best-effort:
+  // a preference lookup or send failure must never break the admin decision.
+  await sendGatedEmail(verification.user_id, 'kyc_notifications', (recipient) =>
+    decision === 'approved'
+      ? sendKycApprovedEmail(recipient.email, { userName: recipient.name, tier: 'Verified' })
+      : sendKycRejectedEmail(recipient.email, {
+          userName: recipient.name,
+          reason: notes?.trim() || 'Your submitted identity documents could not be verified.',
+        })
+  );
 
   // BLF-12.2: durable audit trail — record every admin approve/reject decision
   // (who decided, what outcome, on whose verification). Best-effort by design.
@@ -793,6 +820,11 @@ export async function manualKycVerification(params: {
           idData.first_name || null,
           idData.last_name || null,
           idData.nationality || null
+        );
+
+        // Transactional email gated by the user's email preferences. Best-effort.
+        await sendGatedEmail(userId, 'kyc_notifications', (recipient) =>
+          sendKycApprovedEmail(recipient.email, { userName: recipient.name, tier: 'Verified' })
         );
       }
 
