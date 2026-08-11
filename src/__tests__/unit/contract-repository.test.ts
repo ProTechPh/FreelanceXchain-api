@@ -25,6 +25,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     orderDesc: mockOrderDesc,
     limit: jest.fn((...args: any[]) => ({ type: 'limit', args })),
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
+    cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
   },
   ID: { unique: jest.fn(() => 'unique-id') },
 }));
@@ -173,6 +174,33 @@ describe('ContractRepository', () => {
     });
   });
 
+  describe('countContractsByUserAndStatus', () => {
+    it('should sum active contracts across both roles', async () => {
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: [], total: 3 }) // freelancer role
+        .mockResolvedValueOnce({ documents: [], total: 2 }); // employer role
+
+      const result = await repo.countContractsByUserAndStatus('u1', 'active');
+      expect(result).toBe(5);
+    });
+
+    it('should return 0 when there are no matching contracts', async () => {
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await repo.countContractsByUserAndStatus('u1', 'active');
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 when the count queries fail', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB down'));
+
+      const result = await repo.countContractsByUserAndStatus('u1', 'active');
+      expect(result).toBe(0);
+    });
+  });
+
   describe('getUserContracts', () => {
     it('should return user contracts', async () => {
       mockListDocuments
@@ -204,6 +232,44 @@ describe('ContractRepository', () => {
       expect(result.items).toHaveLength(2);
       expect(result.items[0].id).toBe('c2');
       expect(result.items[1].id).toBe('c1');
+    });
+
+    it('should not truncate at 25 documents per role (fetchAll multi-page regression)', async () => {
+      // 120 freelancer contracts + 120 employer contracts. Each role query
+      // exceeds one 100-doc page, exercising the cursor-pagination loop that
+      // the old listWithQueries implementation (default 25-doc Appwrite limit)
+      // silently dropped.
+      const freelancerPage1 = Array.from({ length: 100 }, (_, i) =>
+        toAppwriteDoc({ id: `f-${i}`, created_at: `2025-01-01T00:00:0${i % 10}Z` })
+      );
+      const freelancerPage2 = Array.from({ length: 20 }, (_, i) =>
+        toAppwriteDoc({ id: `f-${100 + i}`, created_at: '2025-01-02T00:00:00Z' })
+      );
+      const employerPage1 = Array.from({ length: 100 }, (_, i) =>
+        toAppwriteDoc({ id: `e-${i}`, created_at: '2025-02-01T00:00:00Z' })
+      );
+      const employerPage2 = Array.from({ length: 20 }, (_, i) =>
+        toAppwriteDoc({ id: `e-${100 + i}`, created_at: '2025-02-02T00:00:00Z' })
+      );
+
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: freelancerPage1, total: 120 })
+        .mockResolvedValueOnce({ documents: freelancerPage2, total: 120 })
+        .mockResolvedValueOnce({ documents: employerPage1, total: 120 })
+        .mockResolvedValueOnce({ documents: employerPage2, total: 120 });
+
+      const result = await repo.getUserContracts('u1');
+      expect(result.total).toBe(240);
+      expect(result.items).toHaveLength(20); // default page limit
+      // All 240 fetched (not truncated at 25+25=50)
+      expect(mockListDocuments).toHaveBeenCalledTimes(4);
+    });
+
+    it('should return empty page when the database throws', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB down'));
+
+      const result = await repo.getUserContracts('u1');
+      expect(result).toEqual({ items: [], hasMore: false, total: 0 });
     });
   });
 

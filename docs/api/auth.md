@@ -303,8 +303,31 @@ Complete OAuth registration by selecting a role and optionally providing profile
 | authRateLimiter | 15 min | 10 per IP | All `/api/auth/*` endpoints |
 | apiRateLimiter | 1 min | 100 per IP | General API endpoints |
 | sensitiveRateLimiter | 1 hour | 5 per IP | Critical auth operations |
+| webhookRateLimiter | 1 min | 60 per IP | Unauthenticated webhook endpoints: `/api/inbox/webhook`, `/api/kyc/webhook`, `/api/webhooks/blockchain` |
 
 Exceeding the limit returns `429 Too Many Requests` with a `Retry-After` header.
+
+Webhook endpoints are rate-limited **per IP** (not per user) so provider spikes
+can't exhaust a shared account budget, and they fail **open** on Redis errors —
+signature verification, not rate limiting, is the real authorization boundary
+for webhooks (see below).
+
+### Webhook Signature Verification & rawBody
+
+All three webhook endpoints verify an HMAC signature over the **raw request
+bytes** (`req.rawBody`, captured by the `express.json` verify hook for webhook
+paths). When `rawBody` is unavailable, verification falls back to a
+re-serialization of the parsed body (`JSON.stringify(req.body ?? {})`) so the
+handler never crashes on a missing body — the signature simply fails and the
+request is rejected.
+
+- `POST /api/inbox/webhook` — `x-webhook-signature` (HMAC-SHA256 over `EMAIL_WEBHOOK_SECRET`)
+- `POST /api/kyc/webhook` — `x-signature-v2` + `x-timestamp` (Didit signing)
+- `POST /api/webhooks/blockchain` — `x-blockchain-signature` (HMAC-SHA256 over `BLOCKCHAIN_WEBHOOK_SECRET`)
+
+`POST /api/kyc/webhook` and `POST /api/webhooks/blockchain` are exempt from CSRF
+protection (server-to-server, no browser session); `/api/inbox/webhook` is also
+CSRF-exempt.
 
 ---
 

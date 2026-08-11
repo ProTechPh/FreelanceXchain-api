@@ -36,6 +36,7 @@ const {
   fileUploadRateLimiter,
   withdrawalRateLimiter,
   mfaVerifyRateLimiter,
+  webhookRateLimiter,
 } = await import('../../middleware/rate-limiter.js');
 
 function createReq(overrides: Record<string, any> = {}) {
@@ -353,6 +354,10 @@ describe('Rate Limiter - Real Module Coverage', () => {
       expect(typeof mfaVerifyRateLimiter).toBe('function');
     });
 
+    it('should have webhookRateLimiter as function', () => {
+      expect(typeof webhookRateLimiter).toBe('function');
+    });
+
     it('should invoke loginRateLimiter as middleware', async () => {
       const req = createReq();
       const res = createRes();
@@ -414,6 +419,14 @@ describe('Rate Limiter - Real Module Coverage', () => {
       const res = createRes();
       const next = jest.fn();
       await mfaVerifyRateLimiter(req, res, next);
+      expect(next).toHaveBeenCalledTimes(1);
+    });
+
+    it('should invoke webhookRateLimiter as middleware', async () => {
+      const req = createReq();
+      const res = createRes();
+      const next = jest.fn();
+      await webhookRateLimiter(req, res, next);
       expect(next).toHaveBeenCalledTimes(1);
     });
   });

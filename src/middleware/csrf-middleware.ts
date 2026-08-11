@@ -60,6 +60,7 @@ const CSRF_EXEMPT_PATHS = [
   '/api/auth/resend-confirmation',
   '/api/auth/csrf-token',
   '/api/kyc/webhook',
+  '/api/inbox/webhook', // Email inbox webhook (HMAC-verified, server-to-server)
 ];
 
 function isExemptPath(path: string): boolean {

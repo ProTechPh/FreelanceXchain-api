@@ -53,6 +53,12 @@ Appwrite schema, indexes, and security measures.
 - [Indexing Strategy](database/indexing.md) - Appwrite indexes (unique constraints for race fixes)
 - [Security Documentation](database/security.md) - API security, auth, CSRF, RBAC, privacy
 
+## Reliability
+
+Service-level objectives, error budget, and recovery targets.
+
+- [SLO & Error Budget](reliability/slo.md) - SLI definitions, latency budgets (dashboard/contracts), RPO/RTO, named error-budget owner
+
 ## Deployment & Guides
 
 Setup, configuration, maintenance, testing, and troubleshooting.

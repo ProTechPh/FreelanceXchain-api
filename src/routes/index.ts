@@ -33,6 +33,8 @@ import escrowRefundRoutes from './escrow-refund-routes.js';
 import webhookRoutes from './webhook-routes.js';
 import rushUpgradeRoutes from './rush-upgrade-routes.js';
 import emailInboxRoutes from './email-inbox-routes.js';
+import dashboardRoutes from './dashboard-routes.js';
+import metricsRoutes from './metrics-routes.js';
 
 const router = Router();
 
@@ -131,5 +133,11 @@ router.use('/', rushUpgradeRoutes);
 
 // Email inbox routes
 router.use('/inbox', emailInboxRoutes);
+
+// User dashboard summary
+router.use('/dashboard', dashboardRoutes);
+
+// SLO/SLI metrics (admin only)
+router.use('/metrics', metricsRoutes);
 
 export default router;

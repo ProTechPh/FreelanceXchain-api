@@ -80,6 +80,11 @@ export class ProposalRepository extends BaseRepository<ProposalEntity> {
     );
   }
 
+  /** Count a freelancer's proposals by status (e.g. dashboard pending count). */
+  async countProposalsByFreelancerAndStatus(freelancerId: string, status: ProposalStatus): Promise<number> {
+    return this.countWithQueries([Query.equal('freelancer_id', freelancerId), Query.equal('status', status)]);
+  }
+
   async hasAcceptedProposal(projectId: string): Promise<boolean> {
     try {
       const response = await databases.listDocuments(

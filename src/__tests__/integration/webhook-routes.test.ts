@@ -2,6 +2,7 @@ import { jest, describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
 import type { Express } from 'express';
 import path from 'node:path';
+import crypto from 'crypto';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
@@ -106,6 +107,35 @@ describe('Webhook Routes Integration Tests', () => {
   describe('POST /api/webhooks/blockchain', () => {
     beforeAll(() => {
       process.env['BLOCKCHAIN_WEBHOOK_SECRET'] = 'test-blockchain-secret';
+    });
+
+    const hmacSignature = (payload: string) =>
+      crypto.createHmac('sha256', process.env['BLOCKCHAIN_WEBHOOK_SECRET']!)
+        .update(payload)
+        .digest('hex');
+
+    it('should acknowledge duplicate events without re-processing', async () => {
+      const payload = { event: 'payment.released', data: { transactionHash: '0xdup1', amount: '100' } };
+      const body = JSON.stringify(payload);
+      const signature = hmacSignature(body);
+
+      const first = await request(app)
+        .post('/api/webhooks/blockchain')
+        .set('x-blockchain-signature', signature)
+        .set('Content-Type', 'application/json')
+        .send(payload);
+
+      expect(first.status).toBe(200);
+      expect(first.body).toEqual({ received: true });
+
+      const duplicate = await request(app)
+        .post('/api/webhooks/blockchain')
+        .set('x-blockchain-signature', signature)
+        .set('Content-Type', 'application/json')
+        .send(payload);
+
+      expect(duplicate.status).toBe(200);
+      expect(duplicate.body).toEqual({ received: true, duplicate: true });
     });
 
     it('should reject missing signature', async () => {

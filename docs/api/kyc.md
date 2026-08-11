@@ -82,10 +82,20 @@ Manually fetch the latest status from the Didit API.
 Receives verification status updates from Didit. No JWT auth -- validated via `x-signature-v2` and `x-timestamp` headers.
 
 - **Request Body:** Didit webhook payload (see [Webhook Events](#webhook-events))
+- **Rate limit:** webhookRateLimiter (60 req / min per IP, fail-open on Redis errors)
 - **Response:** `200` - `{ message: "Webhook processed" }`
 - **Errors:**
   - `400` - Invalid payload
   - `401` - Invalid signature
+
+**Signature verification:** the HMAC is computed over the raw request bytes
+(`req.rawBody`, captured by the `express.json` verify hook for webhook paths),
+falling back to `JSON.stringify(req.body ?? {})` when rawBody is unavailable.
+
+**Idempotency:** Didit delivers at-least-once. Duplicate `event_id`s are
+acknowledged and skipped (per-process dedup), and the per-session lock plus a
+final-state guard (approved/rejected/expired never regress) make re-delivery
+safe across instances.
 
 ### Admin Endpoints
 

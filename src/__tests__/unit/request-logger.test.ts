@@ -12,6 +12,14 @@ const mockLogger = {
 
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
 
+const mockClassifyRouteClass = jest.fn(() => 'global');
+const mockRecordSliSample = jest.fn();
+
+jest.unstable_mockModule(resolveModule('src/services/sli-metrics-service.ts'), () => ({
+  classifyRouteClass: mockClassifyRouteClass,
+  recordSliSample: mockRecordSliSample,
+}));
+
 const { requestLogger } = await import('../../middleware/request-logger.js');
 
 describe('Request Logger', () => {
@@ -129,5 +137,17 @@ describe('Request Logger', () => {
         requestId: 'req-123',
       }),
     );
+  });
+
+  it('should record an SLI sample with the classified route class on finish', () => {
+    mockClassifyRouteClass.mockReturnValueOnce('contracts');
+    const req = createMockRequest({ path: '/api/contracts/abc' });
+    const res = createMockResponse(200);
+
+    requestLogger(req, res, () => {});
+    res.trigger('finish');
+
+    expect(mockClassifyRouteClass).toHaveBeenCalledWith('/api/contracts/abc');
+    expect(mockRecordSliSample).toHaveBeenCalledWith('contracts', 200, expect.any(Number));
   });
 });

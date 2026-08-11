@@ -114,6 +114,19 @@ export const fileUploadRateLimiter = rateLimiter('file-upload', {
   message: 'Too many file uploads, please try again later',
 });
 
+// Dedicated per-IP limiter for unauthenticated webhook endpoints (email inbox,
+// Didit KYC, blockchain). Kept separate from the general API limiter so spikes
+// from webhook providers can't exhaust the shared per-user budget, and so the
+// webhook endpoints aren't stuck behind a single shared counter. Fail-open on
+// Redis errors (matching apiRateLimiter): signature verification is the real
+// authz boundary, and blocking providers during a Redis outage would drop
+// KYC/email events that the senders retry only slowly.
+export const webhookRateLimiter = rateLimiter('webhook', {
+  windowMs: 60 * 1000,
+  maxRequests: 60,
+  message: 'Too many webhook requests, please try again later',
+});
+
 export const withdrawalRateLimiter = rateLimiter('withdrawal', {
   windowMs: 60 * 60 * 1000,
   maxRequests: 10,

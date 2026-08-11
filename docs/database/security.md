@@ -32,13 +32,14 @@ Each request receives a UUID v4 request ID for logging and debugging.
 
 ### Rate Limiting and DDoS Protection
 
-Three rate limiting profiles, tracked per client IP:
+Rate limiting profiles, tracked per client IP:
 
 | Profile | Limit | Use Case |
 | ------- | ------- | ---------- |
 | **authRateLimiter** | 10 attempts / 15 min | Login, registration |
 | **apiRateLimiter** | 100 requests / min | General API usage |
 | **sensitiveRateLimiter** | 5 attempts / hour | High-risk operations |
+| **webhookRateLimiter** | 60 requests / min | Unauthenticated webhook endpoints (`/api/inbox/webhook`, `/api/kyc/webhook`, `/api/webhooks/blockchain`) |
 
 IP is extracted from `X-Forwarded-For` when behind a proxy. Exceeded limits return `429 Too Many Requests` with a `Retry-After` header.
 

@@ -133,3 +133,7 @@ export function getCorsOrigin(): string | undefined {
 export function getBlockchainWebhookSecret(): string | undefined {
   return getEnvVarOptional('BLOCKCHAIN_WEBHOOK_SECRET');
 }
+
+export function getEmailWebhookSecret(): string | undefined {
+  return getEnvVarOptional('EMAIL_WEBHOOK_SECRET');
+}

@@ -37,6 +37,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/email-inbox-repository.
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   apiRateLimiter: (_req: any, _res: any, next: any) => next(),
   mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  webhookRateLimiter: (_req: any, _res: any, next: any) => next(),
 }));
 
 jest.unstable_mockModule(resolveModule('src/middleware/auth-middleware.ts'), () => ({
@@ -117,6 +118,33 @@ describe('Email Inbox Routes', () => {
         .send({ messageId: 'test', from: 'a@b.com', to: 'c@d.com' });
       expect(res.status).toBe(200);
       expect(res.body.emailId).toBe('e1');
+    });
+
+    it('should verify signature over req.rawBody when present', async () => {
+      mockVerifyWebhookSignature.mockReturnValueOnce(true);
+      mockProcessInboundEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'e1' } });
+
+      // Simulate the express.json verify hook capturing the exact bytes the
+      // sender signed: attach rawBody to the request before it reaches the route.
+      const rawApp = express();
+      rawApp.use(express.json({
+        verify: (req: any, _res: any, buf: Buffer) => {
+          if (req.path === '/api/emails/webhook') {
+            req.rawBody = buf.toString('utf8');
+          }
+        },
+      }));
+      rawApp.use('/api/emails', emailInboxRouter);
+
+      const res = await request(rawApp)
+        .post('/api/emails/webhook')
+        .set('x-webhook-signature', 'validsig')
+        .send({ messageId: 'test', from: 'a@b.com', to: 'c@d.com' });
+
+      expect(res.status).toBe(200);
+      // The route must verify against the raw string (not JSON.stringify(req.body)).
+      const payloadArg = mockVerifyWebhookSignature.mock.calls[0]![0];
+      expect(payloadArg).toBe('{"messageId":"test","from":"a@b.com","to":"c@d.com"}');
     });
 
     it('should return 400 when processInboundEmail fails', async () => {

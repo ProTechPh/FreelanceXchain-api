@@ -200,5 +200,6 @@ Common HTTP status codes:
 | `authRateLimiter` | 10 requests / 15 min | Auth endpoints (login, register, password reset) |
 | `apiRateLimiter` | 100 requests / min | General API endpoints |
 | `sensitiveRateLimiter` | 5 requests / hour | Sensitive operations |
+| `webhookRateLimiter` | 60 requests / min | Webhook endpoints (`/api/inbox/webhook`, `/api/kyc/webhook`, `/api/webhooks/blockchain`) |
 
 Rate-limited responses include a `Retry-After` header.

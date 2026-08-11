@@ -24,6 +24,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     orderDesc: jest.fn((...args: any[]) => ({ type: 'orderDesc', args })),
     limit: jest.fn((...args: any[]) => ({ type: 'limit', args })),
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
+    cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
   },
   ID: { unique: jest.fn(() => 'unique-id') },
 }));
@@ -105,6 +106,26 @@ describe('ProjectRepository', () => {
     });
   });
 
+  describe('countProjectsByEmployerAndStatus', () => {
+    it('should return the count of projects with the given status', async () => {
+      mockListDocuments.mockResolvedValueOnce({ documents: [], total: 4 });
+      const result = await repo.countProjectsByEmployerAndStatus('e1', 'open');
+      expect(result).toBe(4);
+    });
+
+    it('should return 0 when there are no matching projects', async () => {
+      mockListDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await repo.countProjectsByEmployerAndStatus('e1', 'open');
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 on database error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB down'));
+      const result = await repo.countProjectsByEmployerAndStatus('e1', 'open');
+      expect(result).toBe(0);
+    });
+  });
+
   describe('getAllOpenProjects', () => {
     it('should return open projects', async () => {
       const projects = [toAppwriteDoc({ id: 'p1', status: 'open' })];
@@ -157,6 +178,29 @@ describe('ProjectRepository', () => {
       mockListDocuments.mockResolvedValueOnce({ documents: projects, total: 1 });
       const result = await repo.getProjectsBySkills(['s1']);
       expect(result.items).toHaveLength(0);
+    });
+
+    it('should not truncate at 100 open projects (fetchAll multi-page regression)', async () => {
+      // 120 open projects with skill s1 spread across two 100-doc pages.
+      // The old Query.limit(1000) page was fine at this size, but the previous
+      // paginatedWithQueries implementation capped the fetch at 1000 docs — this
+      // test proves the cursor loop fetches every page before filtering.
+      const page1 = Array.from({ length: 100 }, (_, i) =>
+        toAppwriteDoc({ id: `p-${i}`, required_skills: [{ skill_id: 's1' }], status: 'open' })
+      );
+      const page2 = Array.from({ length: 20 }, (_, i) =>
+        toAppwriteDoc({ id: `p-${100 + i}`, required_skills: [{ skill_id: 's1' }], status: 'open' })
+      );
+
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: page1, total: 120 })
+        .mockResolvedValueOnce({ documents: page2, total: 120 });
+
+      const result = await repo.getProjectsBySkills(['s1']);
+      expect(result.total).toBe(120);
+      expect(result.items).toHaveLength(20); // default page limit
+      // Two listDocuments calls prove the cursor loop paginated past one page.
+      expect(mockListDocuments).toHaveBeenCalledTimes(2);
     });
   });
 });

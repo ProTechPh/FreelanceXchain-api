@@ -195,34 +195,49 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
     );
   }
 
+  /**
+   * Count contracts by status across both of the user's roles (freelancer + employer).
+   * Uses two count queries (Appwrite has no OR) — O(1) vs materializing every
+   * contract, and never truncates.
+   */
+  async countContractsByUserAndStatus(userId: string, status: ContractStatus): Promise<number> {
+    const [freelancer, employer] = await Promise.all([
+      this.countWithQueries([Query.equal('freelancer_id', userId), Query.equal('status', status)]),
+      this.countWithQueries([Query.equal('employer_id', userId), Query.equal('status', status)]),
+    ]);
+    return freelancer + employer;
+  }
+
   async getUserContracts(userId: string, options?: QueryOptions): Promise<PaginatedResult<ContractEntity>> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
 
-    // Appwrite doesn't support OR in queries; combine both
-    // Fetch all contracts for both roles without pagination, then merge and paginate
-    const [freelancer, employer] = await Promise.all([
-      this.listWithQueries<ContractEntity>(
-        [Query.equal('freelancer_id', userId), Query.orderDesc('$createdAt')],
-        mapDoc
-      ),
-      this.listWithQueries<ContractEntity>(
-        [Query.equal('employer_id', userId), Query.orderDesc('$createdAt')],
-        mapDoc
-      ),
-    ]);
+    try {
+      // Appwrite doesn't support OR in queries; combine both roles. Use the
+      // cursor-based fetchAll (not listWithQueries) so neither role's result is
+      // silently truncated at Appwrite's default 25-doc page size before the
+      // in-memory merge + pagination.
+      const [freelancer, employer] = await Promise.all([
+        this.fetchAll([Query.equal('freelancer_id', userId), Query.orderDesc('$createdAt')]),
+        this.fetchAll([Query.equal('employer_id', userId), Query.orderDesc('$createdAt')]),
+      ]);
 
-    const all = [...freelancer, ...employer]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+      const all = [...freelancer, ...employer]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-    const total = all.length;
-    const items = all.slice(offset, offset + limit);
+      const total = all.length;
+      const items = all.slice(offset, offset + limit);
 
-    return {
-      items,
-      hasMore: offset + limit < total,
-      total,
-    };
+      return {
+        items,
+        hasMore: offset + limit < total,
+        total,
+      };
+    } catch {
+      // Matches the previous listWithQueries error behavior: surface an empty
+      // page rather than throwing on a transient DB failure.
+      return { items: [], hasMore: false, total: 0 };
+    }
   }
 }
 
