@@ -1,6 +1,6 @@
 import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
-import { Query } from '../config/appwrite.js';
-import { parseField } from '../utils/index.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { parseField, getErrorMessageOr } from '../utils/index.js';
 import type { MilestoneStatus, FileAttachment } from '../models/milestone.js';
 export type { MilestoneStatus } from '../models/milestone.js';
 
@@ -103,6 +103,26 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
 
   async findProjectById(id: string): Promise<ProjectEntity | null> {
     return this.getProjectById(id);
+  }
+
+  /**
+   * Batch-fetch projects by ID in a single query (kills the N+1 pattern used by
+   * favorites enrichment). Projects that no longer exist are simply absent.
+   */
+  async getProjectsByIds(ids: string[]): Promise<ProjectEntity[]> {
+    if (ids.length === 0) return [];
+    try {
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [Query.equal('$id', ids), Query.limit(ids.length)]
+      );
+      return response.documents.map(mapDoc);
+    } catch (error) {
+      // Throw (like user-repository's getUsersByIds) so favorites enrichment
+      // surfaces the failure as an error instead of silently dropping targets.
+      throw new Error(`Failed to get projects by ids: ${getErrorMessageOr(error, 'Unknown error')}`);
+    }
   }
 
   async getProjectsByEmployer(employerId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {

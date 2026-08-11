@@ -11,6 +11,47 @@ This guide provides step-by-step instructions for deploying the new features to 
 
 ---
 
+## Step 0: Appwrite Schema Migration (re-run `setup-appwrite-db.ts`)
+
+The runtime database is Appwrite, not Postgres. The single source of truth for the
+schema is `scripts/setup-appwrite-db.ts` — re-running it is idempotent and applies
+any missing collections, attributes, and indexes:
+
+```bash
+npx tsx scripts/setup-appwrite-db.ts
+```
+
+### 0.1 New attributes (idempotent — safe to re-run)
+
+- **`email_preferences`**: `contract_notifications`, `message_notifications`,
+  `review_notifications`, `kyc_notifications` (all `boolean`, default `true`).
+  These back the newly-wired transactional emails (contract created, message
+  received, review received, KYC approved/rejected). Users can opt out via
+  `PATCH /api/email-preferences`; `unsubscribe-all` keeps them enabled since
+  they are account-critical.
+- **`skill_suggestions`**: `requester_ids` (string array). Anti-spam: the
+  suggestion `times_requested` counter now only increments when a *new* user
+  requests a skill, so one account cannot inflate popularity by deleting and
+  re-creating the same custom skill.
+- **`saved_searches`**: `last_notified_at` (string ISO timestamp). Dedup
+  watermark for the saved-search notify job — results are surfaced only once.
+- **`freelancer_profiles`**: the scheduler's saved-search notify job reads
+  freelancer profiles from this collection (`FREELANCER_PROFILES`).
+
+### 0.2 Unique indexes (see `INDEXES` in the script)
+
+- `reviews (contract_id, reviewer_id)` — **unique**. Global backstop for the
+  duplicate-review race (BLF-9.1). NOTE: de-duplicate existing rows first or
+  creation fails.
+- `user_custom_skills (user_id, name)` — **unique**. Anti-spam backstop so two
+  racing requests cannot both insert the same custom skill (BLF-skill.1).
+- `skill_suggestions (skill_name)` — **unique**. Backstop for the suggestion
+  queue dedup (BLF-skill.2).
+- `favorites (user_id, target_type, target_id)` — **unique**. Backstop for the
+  `addFavorite` check-then-insert race.
+
+---
+
 ## Step 1: Database Migration
 
 ### 1.1 Create New Tables

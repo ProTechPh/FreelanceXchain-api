@@ -1,6 +1,7 @@
 import { FreelancerProfile, mapFreelancerProfileFromEntity } from '../utils/entity-mapper.js';
 import { freelancerProfileRepository, FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { generateId } from '../utils/id.js';
+import { normalizeSkillName } from '../utils/skill-utils.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
@@ -185,16 +186,16 @@ export async function addSkillsToProfile(
 
   for (const skillInput of skills) {
     const trimmedName = skillInput.name.trim();
-    
-    // Check if skill already exists in profile (case-insensitive to prevent duplicates)
+
+    // Check if skill already exists in profile (normalized to prevent duplicates)
     const existingSkillIndex = (existingProfile.skills || []).findIndex(
-      s => s && s.name && s.name.toLowerCase() === trimmedName.toLowerCase()
+      s => s && s.name && normalizeSkillName(s.name) === normalizeSkillName(trimmedName)
     );
 
-    // Check if skill already exists in newSkills being built (case-insensitive)
+    // Check if skill already exists in newSkills being built (normalized)
     /* istanbul ignore next -- newSkills is always initialized as [] at line 210; || [] is dead code */
     const newSkillIndex = (newSkills || []).findIndex(
-      s => s && s.name && s.name.toLowerCase() === trimmedName.toLowerCase()
+      s => s && s.name && normalizeSkillName(s.name) === normalizeSkillName(trimmedName)
     );
     
     if (existingSkillIndex === -1 && newSkillIndex === -1) {
@@ -242,7 +243,7 @@ export async function removeSkillFromProfile(
   // Safely fallback and check for skills array to avoid crashing when deleting
   const currentSkills = existingProfile.skills || [];
   const updatedSkills = currentSkills.filter(
-    s => s && s.name && s.name.toLowerCase() !== skillName.toLowerCase()
+    s => s && s.name && normalizeSkillName(s.name) !== normalizeSkillName(skillName)
   );
 
   const updatedEntity = await freelancerProfileRepository.updateProfile(existingProfile.id, {

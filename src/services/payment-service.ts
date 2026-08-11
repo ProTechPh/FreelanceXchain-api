@@ -38,6 +38,7 @@ import { getBlockchainMode } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
+import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
 
 const escrowOps = {
   deployEscrow,
@@ -501,6 +502,25 @@ async function finalizeMilestoneApproval(
 
   await notifyMilestoneApproved(contract.freelancerId, milestoneId, milestone.title, project.id, project.title, contractId);
   await notifyPaymentReleased(contract.freelancerId, milestone.amount, milestoneId, milestone.title, project.id, project.title, contractId);
+
+  // Transactional emails gated by the freelancer's email preferences.
+  // Best-effort: a preference lookup or send failure must not break the approval.
+  await sendGatedEmail(contract.freelancerId, 'milestone_updates', (recipient) =>
+    sendMilestoneApprovedEmail(recipient.email, {
+      freelancerName: recipient.name,
+      milestoneTitle: milestone.title,
+      amount: `$${milestone.amount}`,
+      contractUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/contracts/${contractId}`,
+    })
+  );
+  await sendGatedEmail(contract.freelancerId, 'payment_notifications', (recipient) =>
+    sendPaymentReleasedEmail(recipient.email, {
+      recipientName: recipient.name,
+      amount: `$${milestone.amount}`,
+      contractTitle: project.title,
+      transactionHash,
+    })
+  );
 
   return { milestoneId, status: 'approved', paymentReleased: true, transactionHash, contractCompleted };
 }

@@ -650,6 +650,19 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), 
           updated_at: skill.updatedAt,
         }));
     }),
+    findSkillsByIds: jest.fn(async (ids: string[]) => {
+      return ids.map(id => skillStore.get(id))
+        .filter((s): s is Skill => s !== undefined)
+        .map(skill => ({
+          id: skill.id,
+          category_id: skill.categoryId,
+          name: skill.name,
+          description: skill.description,
+          is_active: skill.isActive,
+          created_at: skill.createdAt,
+          updated_at: skill.updatedAt,
+        }));
+    }),
   },
   SkillRepository: jest.fn(),
 }));

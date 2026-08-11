@@ -5,6 +5,9 @@ import { successResult, errorResult } from '../types/service-result.js';
 import type { ServiceResult } from '../types/service-result.js';
 import fs from 'fs/promises';
 import path from 'path';
+import { userRepository } from '../repositories/user-repository.js';
+import { shouldSendEmail } from './email-preference-service.js';
+import type { EmailType } from '../models/email-preference.js';
 
 export type EmailTemplate =
   | 'proposal_accepted'
@@ -66,6 +69,19 @@ async function renderTemplate(template: EmailTemplate, data: Record<string, any>
   try {
     const templatePath = path.join(process.cwd(), 'docs/email-templates', `${template}.html`);
     let html = await fs.readFile(templatePath, 'utf-8');
+
+    // {{#each key}}...{{/each}} — repeat the block once per item in an array.
+    // Used by the weekly digest to list top projects. Items are plain objects
+    // whose fields are substituted as {{field}} inside the block, then escaped.
+    html = html.replace(/\{\{#each\s+(\w+)\}\}([\s\S]*?)\{\{\/each\}\}/g, (_match, key, block) => {
+      const items = data[key];
+      if (!Array.isArray(items)) {
+        return '';
+      }
+      return items.map((item: Record<string, any>) =>
+        block.replace(/\{\{\s*(\w+)\s*\}\}/g, (_m: string, field: string) => escapeHtml(String(item[field] ?? '')))
+      ).join('');
+    });
 
     // HTML-escape all template variables to prevent injection
     Object.keys(data).forEach(key => {
@@ -229,6 +245,40 @@ export async function sendWeeklyDigestEmail(
     template: 'weekly_digest',
     data,
   });
+}
+
+export type EmailRecipient = { email: string; name: string };
+
+/**
+ * Send an email to a user, gated by their email preferences.
+ *
+ * Looks up the recipient's email + display name, checks `shouldSendEmail` for
+ * the given email type, and only calls the sender when both succeed.
+ * Best-effort by design: preference lookups, missing emails, and send failures
+ * are logged and return false — an email must never break the primary flow
+ * (mirrors how notification creation is best-effort at the same call sites).
+ */
+export async function sendGatedEmail(
+  userId: string,
+  emailType: EmailType,
+  send: (recipient: EmailRecipient) => Promise<ServiceResult<{ messageId: string }>> | ServiceResult<{ messageId: string }>,
+): Promise<boolean> {
+  try {
+    const [allowed, user] = await Promise.all([
+      shouldSendEmail(userId, emailType),
+      userRepository.getUserById(userId),
+    ]);
+    if (!allowed || !user?.email) {
+      logger.info('Email skipped by preference or missing address', { userId, emailType, allowed });
+      return false;
+    }
+    const recipient: EmailRecipient = { email: user.email, name: user.name || user.email };
+    const result = await send(recipient);
+    return result.success;
+  } catch (error) {
+    logger.error('Failed to send gated email', { error, userId, emailType });
+    return false;
+  }
 }
 
 export async function testEmailConfiguration(): Promise<ServiceResult<{ verified: boolean }>> {

@@ -167,6 +167,15 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
   auditLogRepository: mockAuditLogRepo,
 }));
 
+// Email delivery (preference-gated transactional emails). Mocked so the real
+// email-preference-service / user-repository do not consume the queued
+// mockDatabases.getDocument/listDocuments responses in createDispute tests.
+const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendDisputeCreatedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+}));
+
 const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   pool: mockPoolObj,

@@ -27,6 +27,7 @@ import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
+import { sendGatedEmail, sendDisputeCreatedEmail } from './email-delivery-service.js';
 
 export type DisputeServiceResult<T> = ServiceResult<T>;
 export type DisputeServiceError = ServiceError;
@@ -217,6 +218,25 @@ export async function createDispute(
     project.id,
     project.title,
     contractId
+  );
+
+  // Transactional emails gated by each party's email preferences.
+  // Best-effort: a preference lookup or send failure must not break dispute creation.
+  await sendGatedEmail(contract.freelancerId, 'dispute_notifications', (recipient) =>
+    sendDisputeCreatedEmail(recipient.email, {
+      arbiterName: recipient.name,
+      contractTitle: project.title,
+      disputeReason: reason,
+      disputeUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/disputes/${createdDispute.id}`,
+    })
+  );
+  await sendGatedEmail(contract.employerId, 'dispute_notifications', (recipient) =>
+    sendDisputeCreatedEmail(recipient.email, {
+      arbiterName: recipient.name,
+      contractTitle: project.title,
+      disputeReason: reason,
+      disputeUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/disputes/${createdDispute.id}`,
+    })
   );
 
   // Notify all admin users about the new dispute

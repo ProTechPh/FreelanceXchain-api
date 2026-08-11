@@ -15,6 +15,7 @@ import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
+import { sendGatedEmail, sendProposalAcceptedEmail, sendContractCreatedEmail } from './email-delivery-service.js';
 
 export type CreateProposalInput = {
   projectId: string;
@@ -510,6 +511,25 @@ export async function acceptProposal(
       logger.error('Failed to create notification', { error });
       // Continue - notification is secondary
     }
+
+    // Transactional emails gated by the freelancer's email preferences.
+    // Best-effort: a preference lookup or send failure must not roll back the acceptance.
+    await sendGatedEmail(validatedProposal.freelancer_id, 'proposal_accepted', (recipient) =>
+      sendProposalAcceptedEmail(recipient.email, {
+        freelancerName: recipient.name,
+        projectTitle: project.title,
+        projectUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${project.id}`,
+      })
+    );
+
+    // The accepted proposal also produced a contract record — tell the freelancer.
+    await sendGatedEmail(validatedProposal.freelancer_id, 'contract_created', (recipient) =>
+      sendContractCreatedEmail(recipient.email, {
+        recipientName: recipient.name,
+        projectTitle: project.title,
+        contractUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/contracts/${createdContract.id}`,
+      })
+    );
 
     // BLF-12.2: durable audit trail — contract creation from an accepted proposal
     // is recorded with the employer as actor and the freelancer as target user.

@@ -227,15 +227,17 @@ export async function getFullTaxonomy(): Promise<SkillTaxonomy> {
 }
 
 export async function validateSkillIds(skillIds: string[]): Promise<{ valid: string[]; invalid: string[] }> {
-  const results = await Promise.all(
-    skillIds.map(async (id) => {
-      const skillEntity = await skillRepository.findSkillById(id);
-      return { id, isValid: !!(skillEntity && skillEntity.is_active) };
-    })
-  );
+  if (skillIds.length === 0) {
+    return { valid: [], invalid: [] };
+  }
+
+  // Batch lookup in a single query instead of one query per ID (N+1).
+  const uniqueIds = [...new Set(skillIds)];
+  const entities = await skillRepository.findSkillsByIds(uniqueIds);
+  const validIds = new Set(entities.filter((e) => e.is_active).map((e) => e.id));
 
   return {
-    valid: results.reduce<string[]>((acc, r) => { if (r.isValid) acc.push(r.id); return acc; }, []),
-    invalid: results.reduce<string[]>((acc, r) => { if (!r.isValid) acc.push(r.id); return acc; }, []),
+    valid: skillIds.filter((id) => validIds.has(id)),
+    invalid: skillIds.filter((id) => !validIds.has(id)),
   };
 }

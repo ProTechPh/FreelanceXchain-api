@@ -561,6 +561,12 @@ describe('skill-routes branch coverage', () => {
     expect(res.status).toBe(409);
   });
 
+  it('PUT /custom/:id SKILL_EXISTS_GLOBALLY returns 409', async () => {
+    mockUserCustomSkillService.updateUserCustomSkill.mockResolvedValue(fail('SKILL_EXISTS_GLOBALLY', 'Global'));
+    const res = await request(app).put('/api/skills/custom/cs1').send({ name: 'React' });
+    expect(res.status).toBe(409);
+  });
+
   it('PUT /custom/:id other error returns 400', async () => {
     mockUserCustomSkillService.updateUserCustomSkill.mockResolvedValue(fail('DB_ERROR', 'Failed'));
     const res = await request(app).put('/api/skills/custom/cs1').send({ name: 'Updated Skill Name' });

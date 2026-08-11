@@ -166,6 +166,8 @@ const mockSkillRepo = {
   getActiveSkillsByCategory: jest.fn(),
   searchSkillsByKeyword: jest.fn(),
   getSkillByNameInCategory: jest.fn(),
+  getSkillByNameNormalized: jest.fn(),
+  findSkillsByIds: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
   skillRepository: mockSkillRepo,
@@ -229,7 +231,7 @@ const mockUserCustomSkillRepo = {
 };
 const mockSkillSuggestionRepo = {
   getSkillSuggestionByName: jest.fn(),
-  incrementSkillSuggestionCount: jest.fn(),
+  recordSuggestionRequest: jest.fn(),
   createSkillSuggestion: jest.fn(),
   getPendingSkillSuggestions: jest.fn(),
   updateSkillSuggestionStatus: jest.fn(),
@@ -249,10 +251,21 @@ jest.unstable_mockModule('node-cron', () => ({
   },
 }));
 
-// Email delivery service (for scheduler-service)
+// Email delivery service (for scheduler-service + BLF-13 transactional wiring)
 const mockSendWeeklyDigestEmail = jest.fn();
+const mockSendGatedEmail = jest.fn();
 jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
   sendWeeklyDigestEmail: mockSendWeeklyDigestEmail,
+  sendGatedEmail: mockSendGatedEmail,
+  sendMessageReceivedEmail: jest.fn(),
+  sendProposalAcceptedEmail: jest.fn(),
+  sendContractCreatedEmail: jest.fn(),
+  sendMilestoneApprovedEmail: jest.fn(),
+  sendPaymentReleasedEmail: jest.fn(),
+  sendDisputeCreatedEmail: jest.fn(),
+  sendReviewReceivedEmail: jest.fn(),
+  sendKycApprovedEmail: jest.fn(),
+  sendKycRejectedEmail: jest.fn(),
 }));
 
 // ═══════════════════════════════════════════════════════════════
@@ -926,9 +939,8 @@ describe('user-custom-skill-service: create catch block (line 118)', () => {
   beforeEach(() => resetAllMocks());
 
   it('should return CREATE_FAILED when repository throws during creation', async () => {
-    // searchSkills → returns empty (no global match)
-    mockSkillRepo.searchSkillsByKeyword.mockResolvedValueOnce([]);
-    mockSkillCategoryRepo.getAllCategories.mockResolvedValueOnce([]);
+    // getSkillByNameNormalized → returns null (no global match)
+    mockSkillRepo.getSkillByNameNormalized.mockResolvedValueOnce(null);
     // getUserCustomSkills → returns empty (no duplicate)
     mockUserCustomSkillRepo.getUserCustomSkills.mockResolvedValueOnce([]);
     // createUserCustomSkill → throws

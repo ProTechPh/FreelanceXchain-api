@@ -11,9 +11,15 @@ import {
   SkillSuggestionEntity 
 } from '../repositories/user-custom-skill-repository.js';
 import { generateId } from '../utils/id.js';
-import { searchSkills } from './skill-service.js';
+import { normalizeSkillName } from '../utils/skill-utils.js';
+import { logger } from '../config/logger.js';
+import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
+
+// Anti-spam: a user may hold at most this many custom skills, so the global
+// suggestion queue cannot be flooded by one account.
+const MAX_USER_CUSTOM_SKILLS = 50;
 
 // Entity mapping functions
 function mapUserCustomSkillFromEntity(entity: UserCustomSkillEntity): UserCustomSkill {
@@ -40,6 +46,7 @@ function mapSkillSuggestionFromEntity(entity: SkillSuggestionEntity): SkillSugge
     categoryName: entity.category_name,
     suggestedBy: entity.suggested_by,
     timesRequested: entity.times_requested,
+    requesterIds: Array.isArray(entity.requester_ids) ? entity.requester_ids : [],
     status: entity.status,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
@@ -53,30 +60,50 @@ export async function createUserCustomSkill(
   userName: string,
   input: CreateUserCustomSkillInput
 ): Promise<ServiceResult<UserCustomSkill>> {
-  // Check if skill already exists in global taxonomy
-  const globalSkills = await searchSkills(input.name);
-  const exactMatch = globalSkills.find((skill) => 
-    skill.name.toLowerCase() === input.name.toLowerCase()
-  );
+  const trimmedName = input.name.trim();
+  const normalizedName = normalizeSkillName(trimmedName);
 
-  if (exactMatch) {
-    return errorResult('SKILL_EXISTS_GLOBALLY', `Skill "${input.name}" already exists in the global skill taxonomy. Use the existing skill instead.`, [`Existing skill ID: ${exactMatch.id}`, `Category: ${exactMatch.categoryName}`]);
+  // Check if skill already exists in global taxonomy.
+  // Compare canonical forms so " React ", "REACT", "Ｒｅａｃｔ" all resolve
+  // to the existing "React" skill instead of sneaking a duplicate through.
+  // Fail-closed: a DB read failure surfaces as CREATE_FAILED instead of
+  // letting the duplicate check silently pass.
+  let globalMatch: SkillEntity | null = null;
+  try {
+    globalMatch = await skillRepository.getSkillByNameNormalized(trimmedName);
+  } catch (error) {
+    return errorResult('CREATE_FAILED', 'Failed to create custom skill', [error instanceof Error ? error.message : 'Unknown error']);
   }
 
-  // Check if user already has this custom skill
-  const existingUserSkills = await userCustomSkillRepository.getUserCustomSkills(userId);
-  const duplicateSkill = existingUserSkills.find((skill: UserCustomSkillEntity) => 
-    skill.name.toLowerCase() === input.name.toLowerCase()
+  if (globalMatch) {
+    return errorResult('SKILL_EXISTS_GLOBALLY', `Skill "${trimmedName}" already exists in the global skill taxonomy. Use the existing skill instead.`, [`Existing skill ID: ${globalMatch.id}`]);
+  }
+
+  // Check if user already has this custom skill (canonical comparison)
+  let existingUserSkills: UserCustomSkillEntity[];
+  try {
+    existingUserSkills = await userCustomSkillRepository.getUserCustomSkills(userId);
+  } catch (error) {
+    return errorResult('CREATE_FAILED', 'Failed to create custom skill', [error instanceof Error ? error.message : 'Unknown error']);
+  }
+
+  // Anti-spam cap: stop one account from flooding the admin suggestion queue
+  if (existingUserSkills.length >= MAX_USER_CUSTOM_SKILLS) {
+    return errorResult('TOO_MANY_CUSTOM_SKILLS', `You can have at most ${MAX_USER_CUSTOM_SKILLS} custom skills. Remove an existing one before adding another.`);
+  }
+
+  const duplicateSkill = existingUserSkills.find((skill: UserCustomSkillEntity) =>
+    normalizeSkillName(skill.name) === normalizedName
   );
 
   if (duplicateSkill) {
-    return errorResult('DUPLICATE_USER_SKILL', `You already have a custom skill named "${input.name}".`);
+    return errorResult('DUPLICATE_USER_SKILL', `You already have a custom skill named "${trimmedName}".`);
   }
 
   const skillEntity: Omit<UserCustomSkillEntity, 'created_at' | 'updated_at'> = {
     id: generateId(),
     user_id: userId,
-    name: input.name.trim(),
+    name: trimmedName,
     description: input.description.trim(),
     years_of_experience: input.yearsOfExperience,
     is_approved: false, // Custom skills start as unapproved
@@ -93,7 +120,16 @@ export async function createUserCustomSkill(
     
     // If user wants to suggest this skill for global taxonomy
     if (input.suggestForGlobal) {
-      await handleSkillSuggestion(userId, userName, input);
+      try {
+        await handleSkillSuggestion(userId, userName, { ...input, name: trimmedName });
+      } catch (suggestionError) {
+        // Non-fatal: the skill row is already committed. Reporting failure for
+        // data that was written would mislead the client, so log and continue.
+        logger.error('Failed to create skill suggestion', suggestionError, {
+          userId,
+          skillName: trimmedName,
+        });
+      }
     }
 
     return successResult(mapUserCustomSkillFromEntity(createdEntity));
@@ -128,15 +164,37 @@ export async function updateUserCustomSkill(
     return errorResult('SKILL_NOT_FOUND', 'Custom skill not found');
   }
 
-  // If updating name, check for duplicates
-  if (updates.name && updates.name.toLowerCase() !== existing.name.toLowerCase()) {
-    const userSkills = await userCustomSkillRepository.getUserCustomSkills(userId);
-    const duplicateSkill = userSkills.find((skill: UserCustomSkillEntity) => 
-      skill.id !== id && skill.name.toLowerCase() === updates.name!.toLowerCase()
+  // If updating name, check for duplicates against BOTH the user's own skills
+  // and the global taxonomy (canonical comparison). Renaming a custom skill
+  // to a name that already exists globally is rejected, same as creation.
+  if (updates.name && normalizeSkillName(updates.name) !== normalizeSkillName(existing.name)) {
+    const newName = updates.name.trim();
+
+    // Fail-closed global check (same as creation): DB errors surface as UPDATE_FAILED.
+    let globalMatch: SkillEntity | null = null;
+    try {
+      globalMatch = await skillRepository.getSkillByNameNormalized(newName);
+    } catch (error) {
+      return errorResult('UPDATE_FAILED', 'Failed to update custom skill', [error instanceof Error ? error.message : 'Unknown error']);
+    }
+
+    if (globalMatch) {
+      return errorResult('SKILL_EXISTS_GLOBALLY', `Skill "${newName}" already exists in the global skill taxonomy. Use the existing skill instead.`);
+    }
+
+    let userSkills: UserCustomSkillEntity[];
+    try {
+      userSkills = await userCustomSkillRepository.getUserCustomSkills(userId);
+    } catch (error) {
+      return errorResult('UPDATE_FAILED', 'Failed to update custom skill', [error instanceof Error ? error.message : 'Unknown error']);
+    }
+
+    const duplicateSkill = userSkills.find((skill: UserCustomSkillEntity) =>
+      skill.id !== id && normalizeSkillName(skill.name) === normalizeSkillName(newName)
     );
 
     if (duplicateSkill) {
-      return errorResult('DUPLICATE_USER_SKILL', `You already have a custom skill named "${updates.name}".`);
+      return errorResult('DUPLICATE_USER_SKILL', `You already have a custom skill named "${newName}".`);
     }
   }
 
@@ -191,12 +249,16 @@ async function handleSkillSuggestion(
   userName: string,
   skillInput: CreateUserCustomSkillInput
 ): Promise<void> {
-  // Check if suggestion already exists
+  // Check if a normalized-equivalent suggestion already exists, so
+  // "React", " react", and "REACT" bump one queue entry instead of creating
+  // three separate suggestion rows for admins to triage.
   const existingSuggestion = await skillSuggestionRepository.getSkillSuggestionByName(skillInput.name);
   
   if (existingSuggestion) {
-    // Increment the request count
-    await skillSuggestionRepository.incrementSkillSuggestionCount(existingSuggestion.id);
+    // Record this user's request. BLF-skill.3: the counter only increments
+    // when this user hasn't already requested it, so deleting and re-creating
+    // the same skill cannot inflate the suggestion's popularity.
+    await skillSuggestionRepository.recordSuggestionRequest(existingSuggestion.id, userId);
   } else {
     // Create new suggestion
     const suggestionEntity: Omit<SkillSuggestionEntity, 'created_at' | 'updated_at'> = {
@@ -206,6 +268,7 @@ async function handleSkillSuggestion(
       skill_description: skillInput.description.trim(),
       suggested_by: userName,
       times_requested: 1,
+      requester_ids: [userId],
       status: 'pending',
     };
 

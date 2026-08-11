@@ -53,6 +53,15 @@ jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), 
   notifyRatingReceived: jest.fn<any>(async () => ({ success: true, data: {} })),
 }));
 
+// email-delivery-service (BLF-13 email wiring): mocked so the real
+// email-preference-service / user-repository do not consume queued
+// mockDatabases responses during submitRating.
+const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendReviewReceivedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+}));
+
 // Import after mocking
 const {
   submitRating,
@@ -470,6 +479,12 @@ describe('Reputation Service - Unit Tests', () => {
       expect(result.data.rating.rating).toBe(5);
       expect(result.data.rating.contractId).toBe(contract.id);
     }
+    // BLF-13: the ratee gets a preference-gated review-received email
+    expect(mockSendGatedEmail).toHaveBeenCalledWith(
+      freelancerId,
+      'review_received',
+      expect.any(Function)
+    );
   });
 
   // BLF-9.1: concurrent duplicate submissions for the same (contract, rater) must
