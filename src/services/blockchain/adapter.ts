@@ -54,6 +54,11 @@ export interface IBlockchainAdapter {
     freelancerBps: number
   ): Promise<TransactionResult>;
   refundEscrow(escrowAddress: string): Promise<TransactionResult>;
+  /**
+   * Refund a single milestone back to the employer (pending milestones only,
+   * matching the FreelanceEscrow contract). Used for partial refunds.
+   */
+  refundMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult>;
   getMilestone(escrowAddress: string, milestoneIndex: number): Promise<{
     amount: bigint;
     status: BlockchainMilestoneStatus;

@@ -10,6 +10,7 @@ const mockRealApproveMilestone = jest.fn() as jest.Mock<any>;
 const mockRealDisputeMilestone = jest.fn() as jest.Mock<any>;
 const mockRealResolveDispute = jest.fn() as jest.Mock<any>;
 const mockRealCancelContract = jest.fn() as jest.Mock<any>;
+const mockRealRefundMilestone = jest.fn() as jest.Mock<any>;
 const mockRealGetMilestone = jest.fn() as jest.Mock<any>;
 const mockRealGetEscrowBalance = jest.fn() as jest.Mock<any>;
 const mockIsWeb3Available = jest.fn(() => true);
@@ -22,6 +23,7 @@ jest.unstable_mockModule(resolveModule('src/services/escrow-blockchain.ts'), () 
   disputeMilestone: mockRealDisputeMilestone,
   resolveDispute: mockRealResolveDispute,
   cancelContract: mockRealCancelContract,
+  refundMilestone: mockRealRefundMilestone,
   getMilestone: mockRealGetMilestone,
   getEscrowBalance: mockRealGetEscrowBalance,
   getAllMilestones: jest.fn(),
@@ -135,6 +137,15 @@ describe('RealBlockchainAdapter', () => {
       mockRealCancelContract.mockResolvedValue(makeTxReceipt('refund-tx'));
       const result = await adapter.refundEscrow(ESCROW_ADDR);
       expect(result.transactionHash).toBe('refund-tx');
+    });
+  });
+
+  describe('refundMilestone', () => {
+    it('should delegate to realRefundMilestone', async () => {
+      mockRealRefundMilestone.mockResolvedValue(makeTxReceipt('refund-ms-tx'));
+      const result = await adapter.refundMilestone(ESCROW_ADDR, 2);
+      expect(result.transactionHash).toBe('refund-ms-tx');
+      expect(mockRealRefundMilestone).toHaveBeenCalledWith(ESCROW_ADDR, 2);
     });
   });
 

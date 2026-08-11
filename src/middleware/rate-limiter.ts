@@ -102,10 +102,13 @@ export const apiRateLimiter = rateLimiter('api', {
   message: 'Too many requests, please slow down',
 });
 
+// Fail closed: sensitive operations (manual KYC approval, admin overrides) must
+// not lose their brute-force/abuse protection during a Redis outage.
 export const sensitiveRateLimiter = rateLimiter('sensitive', {
   windowMs: 60 * 60 * 1000,
   maxRequests: 5,
   message: 'Too many attempts for this sensitive operation',
+  failOpen: false,
 });
 
 export const fileUploadRateLimiter = rateLimiter('file-upload', {
@@ -127,10 +130,13 @@ export const webhookRateLimiter = rateLimiter('webhook', {
   message: 'Too many webhook requests, please try again later',
 });
 
+// Fail closed: money-movement endpoints (proposal withdrawal, refund flows) must
+// block during a Redis outage rather than allow unlimited attempts.
 export const withdrawalRateLimiter = rateLimiter('withdrawal', {
   windowMs: 60 * 60 * 1000,
   maxRequests: 10,
   message: 'Too many withdrawal attempts, please try again later',
+  failOpen: false,
 });
 
 export const mfaVerifyRateLimiter = rateLimiter('mfa-verify', {

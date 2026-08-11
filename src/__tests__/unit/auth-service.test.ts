@@ -1466,14 +1466,25 @@ describe('auth-service comprehensive coverage', () => {
       expect(result).toEqual({ userId: 'otp-user-123' });
     });
 
-    it('should return INTERNAL_ERROR on failure', async () => {
+    it('should return a generic INTERNAL_ERROR without leaking upstream error details', async () => {
       global.mockAppwriteAccount.createEmailToken.mockRejectedValueOnce(new Error('OTP send failed'));
 
       const result = await requestEmailOtp('test@example.com');
       expect(result).toEqual({
         code: 'INTERNAL_ERROR',
-        message: 'OTP send failed',
+        message: 'Failed to send OTP to email',
       });
+    });
+
+    it('should return the identical error for every upstream failure (no account-enumeration oracle)', async () => {
+      const upstreamErrors = [new Error('OTP send failed'), new Error('user_not_found')];
+      const results: unknown[] = [];
+      for (const error of upstreamErrors) {
+        global.mockAppwriteAccount.createEmailToken.mockRejectedValueOnce(error);
+        results.push(await requestEmailOtp('test@example.com'));
+      }
+      expect(results[0]).toEqual(results[1]);
+      expect(results[0]).toEqual({ code: 'INTERNAL_ERROR', message: 'Failed to send OTP to email' });
     });
   });
 
@@ -1488,14 +1499,25 @@ describe('auth-service comprehensive coverage', () => {
       expect(result).toEqual({ userId: 'magic-user-456' });
     });
 
-    it('should return INTERNAL_ERROR on failure', async () => {
+    it('should return a generic INTERNAL_ERROR without leaking upstream error details', async () => {
       global.mockAppwriteAccount.createMagicURLToken.mockRejectedValueOnce(new Error('Magic URL failed'));
 
       const result = await requestMagicUrl('test@example.com');
       expect(result).toEqual({
         code: 'INTERNAL_ERROR',
-        message: 'Magic URL failed',
+        message: 'Failed to send Magic URL',
       });
+    });
+
+    it('should return the identical error for every upstream failure (no account-enumeration oracle)', async () => {
+      const upstreamErrors = [new Error('Magic URL failed'), new Error('user_not_found')];
+      const results: unknown[] = [];
+      for (const error of upstreamErrors) {
+        global.mockAppwriteAccount.createMagicURLToken.mockRejectedValueOnce(error);
+        results.push(await requestMagicUrl('test@example.com'));
+      }
+      expect(results[0]).toEqual(results[1]);
+      expect(results[0]).toEqual({ code: 'INTERNAL_ERROR', message: 'Failed to send Magic URL' });
     });
   });
 

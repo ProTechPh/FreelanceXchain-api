@@ -25,12 +25,18 @@ jest.unstable_mockModule(resolveModule('src/services/notification-delivery-servi
   notificationEmitter: { emitToUser: jest.fn() },
 }));
 
-// Blockchain adapter factory — refundEscrow is the mode-agnostic refund path
+// Blockchain adapter factory — refundEscrow is the full-refund path, refundMilestone
+// the per-milestone (partial) refund path. getMilestone lets the service re-check
+// on-chain status for idempotent retries of partial refunds.
 const mockRefundEscrow = jest.fn<any>().mockResolvedValue({ transactionHash: '0xrefund', receipt: {} });
+const mockRefundMilestone = jest.fn<any>().mockResolvedValue({ transactionHash: '0xrefund-ms', receipt: {} });
+const mockAdapterGetMilestone = jest.fn<any>().mockResolvedValue({ status: 'Pending', amount: 1000n, description: 'M' });
 const mockAdapterIsAvailable = jest.fn<any>().mockReturnValue(true);
 jest.unstable_mockModule(resolveModule('src/services/blockchain/factory.ts'), () => ({
   getBlockchainAdapter: () => ({
     refundEscrow: mockRefundEscrow,
+    refundMilestone: mockRefundMilestone,
+    getMilestone: mockAdapterGetMilestone,
     isAvailable: mockAdapterIsAvailable,
   }),
   getBlockchainMode: () => 'simulated',
@@ -109,6 +115,10 @@ describe('Escrow Refund Service', () => {
     mockAuditLogRepo.create.mockReset();
     mockRefundEscrow.mockReset();
     mockRefundEscrow.mockResolvedValue({ transactionHash: '0xrefund', receipt: {} });
+    mockRefundMilestone.mockReset();
+    mockRefundMilestone.mockResolvedValue({ transactionHash: '0xrefund-ms', receipt: {} });
+    mockAdapterGetMilestone.mockReset();
+    mockAdapterGetMilestone.mockResolvedValue({ status: 'Pending', amount: 1000n, description: 'M' });
     mockAdapterIsAvailable.mockReset();
     mockAdapterIsAvailable.mockReturnValue(true);
     // Default: no approved milestones — remainingEscrow === total_amount for all tests
@@ -457,6 +467,248 @@ describe('Escrow Refund Service', () => {
           escrowAddress: '0xescrow',
         }),
       }));
+    });
+
+    it('should refund only the requested milestones for a partial refund and keep the contract active (BLF-3.6)', async () => {
+      const { approveRefund } = await importModule();
+
+      mockRefundRequestRepository.findWithContract
+        .mockResolvedValueOnce({
+          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          amount: 1500, is_partial: true,
+          contract: {
+            project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+            total_amount: 3000, status: 'active', escrow_address: '0xescrow',
+          },
+        })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
+        { id: 'm1', status: 'pending', amount: 1000 },
+        { id: 'm2', status: 'pending', amount: 1000 },
+        { id: 'm3', status: 'pending', amount: 1000 },
+      ]));
+      mockContractRepository.updateContract.mockResolvedValueOnce({});
+      mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      expect(result.success).toBe(true);
+      // Milestone-granular refund: 1500 requested -> m1 + m2 (2000 >= 1500)
+      expect(mockRefundMilestone).toHaveBeenCalledTimes(2);
+      expect(mockRefundMilestone).toHaveBeenNthCalledWith(1, '0xescrow', 0);
+      expect(mockRefundMilestone).toHaveBeenNthCalledWith(2, '0xescrow', 1);
+      // The whole-escrow refund path is NOT used for partial refunds
+      expect(mockRefundEscrow).not.toHaveBeenCalled();
+      // Only m1 and m2 are marked refunded; the contract stays active (not cancelled)
+      const updateCall = mockProjectRepository.updateProject.mock.calls[0];
+      expect(updateCall[1].milestones.map(m => m.status)).toEqual(['refunded', 'refunded', 'pending']);
+      expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
+    });
+
+    it('should cancel the contract when a partial refund covers every pending milestone (BLF-3.6)', async () => {
+      const { approveRefund } = await importModule();
+
+      mockRefundRequestRepository.findWithContract
+        .mockResolvedValueOnce({
+          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          amount: 3000, is_partial: true,
+          contract: {
+            project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+            total_amount: 3000, status: 'active', escrow_address: '0xescrow',
+          },
+        })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
+        { id: 'm1', status: 'pending', amount: 1000 },
+        { id: 'm2', status: 'pending', amount: 1000 },
+        { id: 'm3', status: 'pending', amount: 1000 },
+      ]));
+      mockContractRepository.updateContract.mockResolvedValueOnce({});
+      mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      expect(result.success).toBe(true);
+      expect(mockRefundMilestone).toHaveBeenCalledTimes(3);
+      expect(mockRefundEscrow).not.toHaveBeenCalled();
+      // Everything refunded -> the contract is cancelled
+      expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c-1', { status: 'cancelled' });
+    });
+
+    it('should roll back the approval when a partial refund milestone call fails (BLF-3.6)', async () => {
+      const { approveRefund } = await importModule();
+
+      mockRefundRequestRepository.findWithContract
+        .mockResolvedValueOnce({
+          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          amount: 500, is_partial: true,
+          contract: {
+            project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+            total_amount: 1000, status: 'active', escrow_address: '0xescrow',
+          },
+        })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
+        { id: 'm1', status: 'pending', amount: 1000 },
+      ]));
+      mockRefundMilestone.mockRejectedValueOnce(new Error('On-chain revert'));
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
+      // Approval rolled back to pending; no DB milestone/contract writes
+      expect(mockRefundRequestRepository.update).toHaveBeenCalledWith('ref-1', expect.objectContaining({ status: 'pending' }));
+      expect(mockProjectRepository.updateProject).not.toHaveBeenCalled();
+      expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
+    });
+
+    it('should skip milestones already refunded on-chain when retrying a partial refund (idempotent retry, BLF-3.6)', async () => {
+      const { approveRefund } = await importModule();
+
+      // Scenario: a first attempt refunded m1 on-chain, then failed on m2 and rolled
+      // the DB approval back to 'pending'. On retry the DB still lists both as
+      // pending targets, but the ledger says m1 is already Refunded.
+      mockRefundRequestRepository.findWithContract
+        .mockResolvedValueOnce({
+          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          amount: 1500, is_partial: true,
+          contract: {
+            project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+            total_amount: 3000, status: 'active', escrow_address: '0xescrow',
+          },
+        })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
+        { id: 'm1', status: 'pending', amount: 1000 },
+        { id: 'm2', status: 'pending', amount: 1000 },
+      ]));
+      mockAdapterGetMilestone
+        .mockResolvedValueOnce({ status: 'Refunded', amount: 1000n, description: 'M1' }) // m1 already refunded on-chain
+        .mockResolvedValueOnce({ status: 'Pending', amount: 1000n, description: 'M2' });
+      mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      expect(result.success).toBe(true);
+      // Only the not-yet-refunded milestone is re-refunded
+      expect(mockRefundMilestone).toHaveBeenCalledTimes(1);
+      expect(mockRefundMilestone).toHaveBeenCalledWith('0xescrow', 1);
+      expect(mockRefundMilestone).not.toHaveBeenCalledWith('0xescrow', 0);
+      // Both targets are marked refunded in the DB (they are refunded on-chain)
+      const updateCall = mockProjectRepository.updateProject.mock.calls[0];
+      expect(updateCall[1].milestones.map((m: any) => m.status)).toEqual(['refunded', 'refunded']);
+      // All refundable milestones settled -> contract cancelled
+      expect(mockContractRepository.updateContract).toHaveBeenCalledWith('c-1', { status: 'cancelled' });
+    });
+
+    it('should roll back when the on-chain status read itself fails during a partial refund (BLF-3.6)', async () => {
+      const { approveRefund } = await importModule();
+
+      mockRefundRequestRepository.findWithContract
+        .mockResolvedValueOnce({
+          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          amount: 500, is_partial: true,
+          contract: {
+            project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+            total_amount: 1000, status: 'active', escrow_address: '0xescrow',
+          },
+        })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
+        { id: 'm1', status: 'pending', amount: 1000 },
+      ]));
+      // Escrow read fails (e.g. RPC error / escrow not found on-chain)
+      mockAdapterGetMilestone.mockRejectedValueOnce(new Error('Escrow read failed'));
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
+      // No refund executed, approval rolled back to pending, no DB milestone/contract writes
+      expect(mockRefundMilestone).not.toHaveBeenCalled();
+      expect(mockRefundRequestRepository.update).toHaveBeenCalledWith('ref-1', expect.objectContaining({ status: 'pending' }));
+      expect(mockProjectRepository.updateProject).not.toHaveBeenCalled();
+      expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
+    });
+
+    it('should keep the contract active when skipping already-refunded milestones leaves pending ones (BLF-3.6 retry)', async () => {
+      const { approveRefund } = await importModule();
+
+      // Request only covers m1; m1 was already refunded on-chain by a failed first
+      // attempt. On retry it is skipped, and no on-chain refund is executed — the
+      // remaining milestones keep the contract active (not cancelled).
+      mockRefundRequestRepository.findWithContract
+        .mockResolvedValueOnce({
+          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          amount: 500, is_partial: true,
+          contract: {
+            project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+            total_amount: 3000, status: 'active', escrow_address: '0xescrow',
+          },
+        })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' });
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
+        { id: 'm1', status: 'pending', amount: 1000 },
+        { id: 'm2', status: 'pending', amount: 1000 },
+        { id: 'm3', status: 'pending', amount: 1000 },
+      ]));
+      mockAdapterGetMilestone.mockResolvedValueOnce({ status: 'Refunded', amount: 1000n, description: 'M1' });
+      mockRefundRequestRepository.findByContract.mockResolvedValueOnce([]);
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      expect(result.success).toBe(true);
+      // m1 skipped, nothing new refunded on-chain
+      expect(mockRefundMilestone).not.toHaveBeenCalled();
+      // m1 marked refunded (matches ledger); m2/m3 untouched
+      const updateCall = mockProjectRepository.updateProject.mock.calls[0];
+      expect(updateCall[1].milestones.map((m: any) => m.status)).toEqual(['refunded', 'pending', 'pending']);
+      // Not all refundable milestones settled -> contract stays active
+      expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
+    });
+
+    it('should abort the refund when a target is non-Pending but not Refunded on-chain (BLF-3.6 fail-closed)', async () => {
+      const { approveRefund } = await importModule();
+
+      mockRefundRequestRepository.findWithContract
+        .mockResolvedValueOnce({
+          id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', status: 'pending',
+          amount: 500, is_partial: true,
+          contract: {
+            project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1',
+            total_amount: 2000, status: 'active', escrow_address: '0xescrow',
+          },
+        })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockRefundRequestRepository.update
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'approved', approved_by: 'employer-1' })
+        .mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
+      mockProjectRepository.findProjectById.mockResolvedValue(makeProject([
+        { id: 'm1', status: 'pending', amount: 1000 },
+      ]));
+      // DB says pending, ledger says Approved — genuine DB/ledger inconsistency
+      mockAdapterGetMilestone.mockResolvedValueOnce({ status: 'Approved', amount: 1000n, description: 'M1' });
+
+      const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
+
+      expect(result.success).toBe(false);
+      if (!result.success) expect(result.error.code).toBe('BLOCKCHAIN_REFUND_FAILED');
+      // No refund executed, approval rolled back, no DB milestone/contract writes
+      expect(mockRefundMilestone).not.toHaveBeenCalled();
+      expect(mockRefundRequestRepository.update).toHaveBeenCalledWith('ref-1', expect.objectContaining({ status: 'pending' }));
+      expect(mockProjectRepository.updateProject).not.toHaveBeenCalled();
+      expect(mockContractRepository.updateContract).not.toHaveBeenCalled();
     });
 
     it('should only mark non-approved/non-refunded milestones as refunded', async () => {
