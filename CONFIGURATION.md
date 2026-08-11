@@ -516,6 +516,11 @@ docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```env
 NODE_ENV=development
 PORT=7860
+# Number of trusted reverse-proxy hops (nginx/Cloudflare/HF Spaces). Keeps `req.ip`
+# (used by rate limiters and audit logs) pointing at the real client. Set to 0 when
+# the app is exposed directly (no proxy) — otherwise clients could spoof
+# X-Forwarded-For to bypass rate limits. Must equal your actual proxy hop count.
+TRUST_PROXY_HOPS=1
 ```
 
 #### Appwrite

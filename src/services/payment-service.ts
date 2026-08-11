@@ -143,8 +143,10 @@ export async function requestMilestoneCompletion(
     notes?: string;
   }
 ): Promise<ServiceResult<MilestoneCompletionResult>> {
-  // BLF-2.2: Serialize concurrent submissions to prevent double blockchain registry entry
-  return withLock(`milestone-submit:${milestoneId}`, async () => {
+  // BLF-2.2: Serialize concurrent submissions to prevent double blockchain registry entry.
+  // Uses the same shared milestone lock key as approveMilestone/disputeMilestone so a
+  // submission cannot interleave with an in-flight approval SAGA (BUG-6 fix).
+  return withLock(milestoneLockKey(milestoneId), async () => {
   // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -191,6 +193,10 @@ export async function requestMilestoneCompletion(
 
   if (milestone.status === 'submitted') {
     return errorResult('INVALID_STATUS', 'Milestone already submitted for review');
+  }
+
+  if (milestone.status === 'releasing') {
+    return errorResult('INVALID_STATUS', 'Milestone payment is already being processed');
   }
 
   // Submit milestone to blockchain registry FIRST (blockchain-first pattern)

@@ -1,4 +1,5 @@
 import { jest, describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import path from 'node:path';
 
 jest.unstable_mockModule('uuid', () => ({
   v4: jest.fn(() => 'mock-uuid-1234'),
@@ -8,6 +9,14 @@ jest.unstable_mockModule('helmet', () => {
   const mockMiddleware = jest.fn((_req: any, _res: any, next: any) => next());
   return { default: jest.fn(() => mockMiddleware) };
 });
+
+// BUG-4 fix: httpsEnforcement derives the redirect host from the configured base
+// URL (never the attacker-controlled Host header). Mock it so the tests assert
+// the config-derived behavior deterministically.
+const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
+jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
+  config: { server: { baseUrl: 'https://configured.example.com' } },
+}));
 
 const {
   securityHeaders,
@@ -159,19 +168,20 @@ describe('httpsEnforcement', () => {
     expect(res.redirect).not.toHaveBeenCalled();
   });
 
-  it('should redirect 301 in production when request is not secure', () => {
+  it('should redirect 301 in production when request is not secure, using the configured base URL host (never the Host header)', () => {
     process.env['NODE_ENV'] = 'production';
-    const req = createMockReq({ secure: false, headers: { host: 'example.com' }, url: '/path' });
+    // A spoofed Host header must NOT influence the redirect target (CWE-601).
+    const req = createMockReq({ secure: false, headers: { host: 'evil.com' }, url: '/path' });
     const res = createMockRes();
     const next = createMockNext();
 
     httpsEnforcement(req, res, next);
 
-    expect(res.redirect).toHaveBeenCalledWith(301, 'https://example.com/path');
+    expect(res.redirect).toHaveBeenCalledWith(301, 'https://configured.example.com/path');
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('should use hostname when host header is missing', () => {
+  it('should use the configured base URL host when host header is missing', () => {
     process.env['NODE_ENV'] = 'production';
     const req = createMockReq({ secure: false, hostname: 'fallback.host', headers: {}, url: '/api' });
     const res = createMockRes();
@@ -179,7 +189,7 @@ describe('httpsEnforcement', () => {
 
     httpsEnforcement(req, res, next);
 
-    expect(res.redirect).toHaveBeenCalledWith(301, 'https://fallback.host/api');
+    expect(res.redirect).toHaveBeenCalledWith(301, 'https://configured.example.com/api');
     expect(next).not.toHaveBeenCalled();
   });
 
@@ -195,7 +205,7 @@ describe('httpsEnforcement', () => {
     expect(res.redirect).not.toHaveBeenCalled();
   });
 
-  it('should redirect when x-forwarded-proto is http', () => {
+  it('should redirect when x-forwarded-proto is http, using the configured base URL host', () => {
     process.env['NODE_ENV'] = 'production';
     const req = createMockReq({ secure: false, headers: { 'x-forwarded-proto': 'http', host: 'example.com' }, url: '/' });
     const res = createMockRes();
@@ -203,7 +213,7 @@ describe('httpsEnforcement', () => {
 
     httpsEnforcement(req, res, next);
 
-    expect(res.redirect).toHaveBeenCalledWith(301, 'https://example.com/');
+    expect(res.redirect).toHaveBeenCalledWith(301, 'https://configured.example.com/');
     expect(next).not.toHaveBeenCalled();
   });
 });

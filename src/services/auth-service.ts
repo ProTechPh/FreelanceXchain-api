@@ -207,9 +207,11 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       };
     }
     
+    // CWE-209: never forward raw upstream error details to the client — log them
+    // server-side and return a generic message.
     return {
       code: 'INTERNAL_ERROR',
-      message: getErrorMessage(error) || '' || 'Failed to create user',
+      message: 'Failed to create user',
     };
   }
 }
@@ -775,8 +777,6 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
  */
 export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
   try {
-    // L3: Fix broken implementation — need an authenticated session to create verification.
-    // Look up the user, create a session for them, then request verification.
     const normalizedEmail = email.toLowerCase().trim();
     const user = await userRepository.getUserByEmail(normalizedEmail);
     if (!user) {
@@ -784,15 +784,34 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
       return { success: true };
     }
 
-    // Create a temporary session for the user to request verification
-    const userClient = createUserClient('');
-    const account = new Account(userClient);
+    // Appwrite's account.createVerification requires an authenticated session.
+    // Create a temporary server-side session for the user (admin Users API) so the
+    // verification email can actually be sent, then request the verification token
+    // through that session.
+    const session = await users.createSession(user.id);
+    const sessionSecret = requireSessionSecret(session);
 
-    const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+    try {
+      const userClient = createUserClient(sessionSecret);
+      const account = new Account(userClient);
 
-    // Use the user's ID to create a verification token
-    await account.createVerification(redirectUrl);
+      const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
+      const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+
+      await account.createVerification(redirectUrl);
+    } finally {
+      // The session was created only to send the verification email — delete it so
+      // repeated resends do not accumulate long-lived server-side sessions.
+      // Best-effort: a failed cleanup must not fail the verification request.
+      try {
+        await users.deleteSession(user.id, session.$id);
+      } catch (cleanupError) {
+        logger.warn('Failed to clean up temporary session used for email verification', {
+          error: getErrorMessage(cleanupError),
+          email: normalizedEmail,
+        });
+      }
+    }
 
     logger.info('Confirmation email sent', { email: normalizedEmail });
     return { success: true };

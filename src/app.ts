@@ -23,6 +23,11 @@ import rootRoutes from './routes/root-routes.js';
 export async function createApp(): Promise<Express> {
   const app = express();
 
+  // Trust the configured number of reverse-proxy hops so req.ip reflects the real
+  // client IP (rate limiting, audit logs) behind nginx/Cloudflare/HF Spaces.
+  // See TRUST_PROXY_HOPS in config/env.ts.
+  app.set('trust proxy', config.server.trustProxyHops);
+
   // Security middleware (must be first)
   app.use(securityHeaders);
   app.use(requestIdMiddleware);

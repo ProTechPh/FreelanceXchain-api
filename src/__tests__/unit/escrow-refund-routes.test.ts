@@ -32,6 +32,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
 const router = (await import('../../routes/escrow-refund-routes.js')).default;

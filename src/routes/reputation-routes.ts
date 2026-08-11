@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { isValidUUID, isValidAppwriteDocumentId, validateAppwriteDocumentId } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -239,17 +239,17 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
     return;
   }
 
-  // Validate UUID format
-  const uuidErrors: { field: string; message: string }[] = [];
+  // Validate ID formats: contractId is a UUID, rateeId is an Appwrite document ID
+  const idErrors: { field: string; message: string }[] = [];
   if (contractId && !isValidUUID(contractId)) {
-    uuidErrors.push({ field: 'contractId', message: 'contractId must be a valid UUID' });
+    idErrors.push({ field: 'contractId', message: 'contractId must be a valid UUID' });
   }
-  if (rateeId && !isValidUUID(rateeId)) {
-    uuidErrors.push({ field: 'rateeId', message: 'rateeId must be a valid UUID' });
+  if (rateeId && !isValidAppwriteDocumentId(rateeId)) {
+    idErrors.push({ field: 'rateeId', message: 'rateeId must be a valid user ID' });
   }
 
-  if (uuidErrors.length > 0) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid UUID format', requestId);
+  if (idErrors.length > 0) {
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid ID format', requestId);
     return;
   }
 
@@ -333,8 +333,7 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: User ID to get reputation for (UUID)
+ *         description: User ID to get reputation for (Appwrite document ID)
  *     responses:
  *       200:
  *         description: Reputation retrieved successfully
@@ -347,7 +346,7 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
  *       404:
  *         description: User not found
  */
-router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
+router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -381,8 +380,7 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: User ID to get work history for (UUID)
+ *         description: User ID to get work history for (Appwrite document ID)
  *     responses:
  *       200:
  *         description: Work history retrieved successfully
@@ -397,7 +395,7 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
  *       404:
  *         description: User not found
  */
-router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
+router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -434,7 +432,7 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (
  *       200:
  *         description: Aggregated reputation score
  */
-router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -468,7 +466,7 @@ router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, async (re
  *       200:
  *         description: Reputation breakdown by stars
  */
-router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -507,7 +505,7 @@ router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async
  *       200:
  *         description: Reputation history
  */
-router.get('/:userId/reputation-history', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/reputation-history', validateAppwriteDocumentId(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
     const months = parseInt(req.query['months'] as string) || 12;

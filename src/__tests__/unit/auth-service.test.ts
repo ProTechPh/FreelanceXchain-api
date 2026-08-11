@@ -67,6 +67,8 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   users: {
     create: jest.fn().mockResolvedValue({ $id: 'test-appwrite-user-id' }),
     delete: jest.fn().mockResolvedValue({}),
+    createSession: jest.fn().mockResolvedValue({ $id: 'session-1', secret: 'test-session-secret' }),
+    deleteSession: jest.fn().mockResolvedValue({}),
   },
 }));
 
@@ -671,10 +673,11 @@ describe('auth-service comprehensive coverage', () => {
     it('should return INTERNAL_ERROR for other registration failures', async () => {
       users.create.mockRejectedValueOnce(new Error('Service unavailable'));
 
+      // BUG-5 fix: raw upstream error details must NOT leak to the client (CWE-209).
       const result = await register(validInput);
       expect(result).toEqual({
         code: 'INTERNAL_ERROR',
-        message: 'Service unavailable',
+        message: 'Failed to create user',
       });
     });
 
@@ -1938,13 +1941,14 @@ describe('auth-service - Additional Branch Coverage', () => {
   });
 
   // Helper coverage: getErrorMessage with a plain object that has a string message
-  it('helpers: should surface the message from a plain object error in register', async () => {
+  it('helpers: should surface a generic message from a plain object error in register', async () => {
     users.create.mockRejectedValueOnce({ message: 'Plain failure' });
 
+    // BUG-5 fix: raw upstream error details must NOT leak to the client (CWE-209).
     const result = await register({ email: 'test@example.com', password: 'Password1!', role: 'freelancer' });
     expect(result).toEqual({
       code: 'INTERNAL_ERROR',
-      message: 'Plain failure',
+      message: 'Failed to create user',
     });
   });
 
