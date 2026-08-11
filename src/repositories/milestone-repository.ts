@@ -61,4 +61,3 @@ export class MilestoneRepository extends BaseRepository<MilestoneEntity> {
   }
 }
 
-export const milestoneRepository = new MilestoneRepository();

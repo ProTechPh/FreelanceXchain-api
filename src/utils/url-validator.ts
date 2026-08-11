@@ -146,7 +146,7 @@ export function isHostnameSsrfAllowed(hostname: string): boolean {
   return isHostnameAllowed(hostname);
 }
 
-export interface UrlValidationResult {
+interface UrlValidationResult {
   valid: boolean;
   error?: string;
   sanitizedUrl?: string;

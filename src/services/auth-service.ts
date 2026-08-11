@@ -54,7 +54,7 @@ function requireSessionSecret(session: { secret?: string }): string {
   return session.secret;
 }
 
-export type PasswordValidationResult = {
+type PasswordValidationResult = {
   valid: boolean;
   errors: string[];
 };

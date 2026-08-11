@@ -166,17 +166,15 @@ Mock implementations for external services.
 
 **Files:**
 
-- `blockchain-mocks.ts` - Blockchain and smart contract mocks
 - `appwrite-mocks.ts` - Database operation mocks
 - `test-setup.ts` - Centralized test configuration
 
 **Usage:**
 
 ```typescript
-import { mockAppwrite } from '../mocks/appwrite-mocks.js';
-import { mockBlockchainClient } from '../mocks/blockchain-mocks.js';
+import { mockEthers } from '../mocks/test-setup.js';
 
-jest.mock('../../config/database.js', () => ({ appwrite: mockAppwrite }));
+jest.mock('ethers', () => mockEthers);
 ```
 
 ---
@@ -337,38 +335,33 @@ module.exports = {
 
 ### Setup File (`jest.setup.ts`)
 
-Provides global mocks for: jsonwebtoken, node-appwrite, database pool, file-type, web3-client, contract-abis, appwrite config. Also provides `global.mockAppwriteResult()` and `global.createMockBuilder()` helpers.
+Provides global mocks for: jsonwebtoken, node-appwrite, file-type, web3-client, contract-abis, appwrite config. Also provides `global.mockAppwriteResult()` and `global.createMockBuilder()` helpers.
 
 ---
 
-## 🗄️ Test Database
+## 🗄️ Test Environment
 
-### Setup
-
-```bash
-# Create test database
-createdb freelancexchain_test
-
-# Apply schema
-psql -d freelancexchain_test -f appwrite/schema.sql
-```
+Tests run against mocked Appwrite (`node-appwrite`) via `jest.setup.ts` — no
+Postgres database is required. `.env.test` supplies Appwrite/JWT/LLM values.
 
 ### Environment Variables
 
 ```env
 # .env.test
 NODE_ENV=test
-APPWRITE_URL=http://localhost:54321
-APPWRITE_ANON_KEY=test-key
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/freelancexchain_test
+PORT=3001
+APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
+APPWRITE_PROJECT_ID=test-project-id
+APPWRITE_API_KEY=test-api-key
+JWT_SECRET=test-jwt-secret-key-for-testing-only
 ```
 
 ### Cleanup Strategy
 
 ```typescript
 afterEach(async () => {
-  // Rollback transaction or truncate tables
-  await cleanupTestData();
+  // Reset in-memory stores (defined per-suite) and clear mock call history
+  jest.clearAllMocks();
 });
 ```
 

@@ -1,7 +1,7 @@
 import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { Query } from '../config/appwrite.js';
 
-export type SavedSearchType = 'project' | 'freelancer';
+type SavedSearchType = 'project' | 'freelancer';
 
 export type SavedSearchEntity = {
   id: string;

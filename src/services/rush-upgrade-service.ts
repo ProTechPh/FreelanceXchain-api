@@ -11,18 +11,18 @@ import { successResult, errorResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 
 
-export type RequestRushUpgradeInput = {
+type RequestRushUpgradeInput = {
   contractId: string;
   proposedPercentage: number;
 };
 
-export type RespondToRushUpgradeInput = {
+type RespondToRushUpgradeInput = {
   requestId: string;
   action: 'accept' | 'decline' | 'counter_offer';
   counterPercentage?: number;
 };
 
-export type RushUpgradeWithContract = {
+type RushUpgradeWithContract = {
   request: RushUpgradeRequest;
   contract: Contract;
 };

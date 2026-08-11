@@ -176,11 +176,6 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendDisputeCreatedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
-const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: mockPoolObj,
-}));
-
 // Import after mocking
 const {
   createDispute,
@@ -197,46 +192,6 @@ describe('Dispute Service - Property-Based Tests', () => {
     mockContractRepo.clear();
     mockProjectRepo.clear();
     mockNotificationRepo.clear();
-
-    // Mock pool.connect for transaction support in createDispute
-    const mockClientQuery = jest.fn<any>().mockImplementation(async (text: string, params?: any[]) => {
-      if (typeof text === 'string' && text.includes('SELECT id FROM project_milestones')) {
-        return { rows: [{ id: params?.[0] || 'm-1' }], rowCount: 1 };
-      }
-      if (typeof text === 'string' && text.includes('SELECT id FROM disputes WHERE milestone_id')) {
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-    const mockClient = {
-      query: mockClientQuery,
-      release: jest.fn(),
-    };
-    mockPoolObj.connect.mockResolvedValue(mockClient);
-
-    // Mock pool.query for evidence submission and dispute lock queries
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('append_dispute_evidence')) {
-        const disputeId = params?.[0];
-        const dispute = disputeStore.get(disputeId) as any;
-        if (!dispute) {
-          return { rows: [], rowCount: 0 };
-        }
-        
-        const newEvidence = params?.[1] ? JSON.parse(params[1]) : [];
-        const updatedEvidence = [...(dispute.evidence || []), ...newEvidence];
-        dispute.evidence = updatedEvidence;
-        disputeStore.set(dispute.id, dispute);
-        
-        return { rows: [{ result: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT * FROM disputes') && text.includes('FOR UPDATE')) {
-        const disputeId = params?.[0];
-        const dispute = disputeStore.get(disputeId);
-        return { rows: dispute ? [dispute] : [], rowCount: dispute ? 1 : 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   /**
@@ -401,46 +356,6 @@ describe('Dispute Service - Unit Tests', () => {
     mockContractRepo.clear();
     mockProjectRepo.clear();
     mockNotificationRepo.clear();
-
-    // Mock pool.connect for transaction support in createDispute
-    const mockClientQuery = jest.fn<any>().mockImplementation(async (text: string, params?: any[]) => {
-      if (typeof text === 'string' && text.includes('SELECT id FROM project_milestones')) {
-        return { rows: [{ id: params?.[0] || 'm-1' }], rowCount: 1 };
-      }
-      if (typeof text === 'string' && text.includes('SELECT id FROM disputes WHERE milestone_id')) {
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-    const mockClient = {
-      query: mockClientQuery,
-      release: jest.fn(),
-    };
-    mockPoolObj.connect.mockResolvedValue(mockClient);
-
-    // Mock pool.query for evidence submission and dispute lock queries
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('append_dispute_evidence')) {
-        const disputeId = params?.[0];
-        const dispute = disputeStore.get(disputeId) as any;
-        if (!dispute) {
-          return { rows: [], rowCount: 0 };
-        }
-        
-        const newEvidence = params?.[1] ? JSON.parse(params[1]) : [];
-        const updatedEvidence = [...(dispute.evidence || []), ...newEvidence];
-        dispute.evidence = updatedEvidence;
-        disputeStore.set(dispute.id, dispute);
-        
-        return { rows: [{ result: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT * FROM disputes') && text.includes('FOR UPDATE')) {
-        const disputeId = params?.[0];
-        const dispute = disputeStore.get(disputeId);
-        return { rows: dispute ? [dispute] : [], rowCount: dispute ? 1 : 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   it('should create dispute with valid data', async () => {

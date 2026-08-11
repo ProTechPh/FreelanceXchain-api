@@ -20,7 +20,7 @@ export interface Transaction {
   updated_at: string;
 }
 
-export interface TransactionOptions {
+interface TransactionOptions {
   page?: number;
   limit?: number;
   type?: string;

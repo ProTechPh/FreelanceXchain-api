@@ -17,7 +17,7 @@ import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { generateId } from '../utils/id.js';
 
-export interface PlatformStats {
+interface PlatformStats {
   totalUsers: number;
   totalFreelancers: number;
   totalEmployers: number;
@@ -37,7 +37,7 @@ export interface UserFilters {
   search?: string;
 }
 
-export interface UserManagementData {
+interface UserManagementData {
   users: Array<UserEntity & {
     kyc_status: KycVerification['status'] | 'not_started';
     kyc_verified: boolean;
@@ -50,14 +50,14 @@ export interface DisputeFilters {
   priority?: string;
 }
 
-export interface DisputeManagementData {
+interface DisputeManagementData {
   disputes: DisputeEntity[];
   total: number;
   pendingCount: number;
   resolvedCount: number;
 }
 
-export interface SystemHealth {
+interface SystemHealth {
   database: 'healthy' | 'unhealthy';
   storage: 'healthy' | 'unhealthy';
   uptime: number;

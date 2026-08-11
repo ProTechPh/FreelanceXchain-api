@@ -54,7 +54,6 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       password: undefined,
       tls: false,
     },
-    database: { url: 'postgresql://localhost/test' },
   },
 }));
 

@@ -48,11 +48,7 @@ export type SubmitMilestoneInput = {
   notes?: string;
 };
 
-export type ApproveMilestoneInput = {
-  milestoneId: string;
-  employerId: string;
-  feedback?: string;
-};
+
 
 export type RejectMilestoneInput = {
   milestoneId: string;

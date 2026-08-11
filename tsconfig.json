@@ -33,9 +33,7 @@
       "jest",
       "express",
       "cors",
-      "bcrypt",
       "jsonwebtoken",
-      "swagger-jsdoc",
       "swagger-ui-express",
       "uuid"
     ]

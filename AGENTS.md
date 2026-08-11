@@ -2,7 +2,7 @@
 
 ## Project
 
-Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized freelance marketplace. PostgreSQL + Appwrite (auth/storage), Solidity smart contracts (Hardhat), AI skill matching via LLM, Didit KYC.
+Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized freelance marketplace. Appwrite (auth/database/storage), Solidity smart contracts (Hardhat), AI skill matching via LLM, Didit KYC.
 
 ## Essential commands
 
@@ -21,7 +21,6 @@ Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized
 | Compile contracts | `pnpm run compile` |
 | Deploy (Ganache) | `pnpm run deploy:contracts:dev` |
 | Deploy (Polygon Amoy) | `pnpm run deploy:contracts:prod` |
-| OpenAPI spec | `pnpm run openapi:generate` |
 | Deploy local Hardhat | `pnpm run deploy:local` |
 
 Test invocations must always use `node --experimental-vm-modules` (it's in the npm script, but not in `jest` directly).
@@ -38,7 +37,7 @@ Local verification order (mirrors what CI checks): `compile` → `tsc --noEmit` 
 
 ## Architecture
 
-Layered: `routes/` → `services/` → `repositories/` → PostgreSQL / Appwrite.
+Layered: `routes/` → `services/` → `repositories/` → Appwrite.
 Entry point: `src/index.ts` calls `createApp()` from `src/app.ts`.
 Routes barrel: `src/routes/index.ts` mounts 30+ route modules under `/api`.
 

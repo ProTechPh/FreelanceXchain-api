@@ -20,8 +20,9 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   authRateLimiter: (_req: any, _res: any, next: any) => next(),
   registerRateLimiter: (_req: any, _res: any, next: any) => next(),
   passwordResetRateLimiter: (_req: any, _res: any, next: any) => next(),
-    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
-  }));
+  mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+  fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
+}));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'test-req-id',
@@ -108,17 +109,23 @@ jest.unstable_mockModule(resolveModule('src/services/matching-service.ts'), () =
   isMatchingError: jest.fn<any>(),
 }));
 
-// ===== File service mocks =====
-jest.unstable_mockModule(resolveModule('src/services/file-service.ts'), () => ({
-  getUserFiles: jest.fn<any>(),
+// ===== Storage uploader mocks (file-upload router) =====
+jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
+  uploadFile: jest.fn<any>(),
   deleteFile: jest.fn<any>(),
+  getSignedUrl: jest.fn<any>(),
+  listUserFiles: jest.fn<any>(),
   getFileQuota: jest.fn<any>(),
+}));
+
+jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
+  createFileUploadMiddleware: () => [],
 }));
 
 const skillRouter = (await import('../../routes/skill-routes.js')).default;
 const reputationRouter = (await import('../../routes/reputation-routes.js')).default;
 const matchingRouter = (await import('../../routes/matching-routes.js')).default;
-const fileRouter = (await import('../../routes/file-routes.js')).default;
+const fileRouter = (await import('../../routes/file-upload.js')).default;
 
 describe('Defensive Guards - Skill Routes', () => {
   let app: express.Express;
@@ -322,29 +329,41 @@ describe('Defensive Guards - File Routes', () => {
     app.use('/api/files', fileRouter);
   });
 
-  describe('DELETE /:bucket/:path - !bucket||!path guard (lines 58-64)', () => {
-    it('returns 400 when bucket is empty', async () => {
+  describe('DELETE /:bucket/* - invalid bucket guard', () => {
+    it('returns 400 when bucket is not in the allowlist', async () => {
       mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
         req.user = { userId: 'user-1', role: 'freelancer' };
-        req.params.bucket = '';
-        req.params.path = 'test.pdf';
+        req.params.bucket = 'invalid-bucket';
         next();
       });
       const res = await request(app).delete('/api/files/docs/test.pdf');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_BUCKET');
+    });
+  });
+
+  describe('DELETE /:bucket/* - path traversal guard', () => {
+    it('returns 400 when the file path contains ..', async () => {
+      mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
+        req.user = { userId: 'user-1', role: 'freelancer' };
+        req.params[0] = '../secret.txt';
+        next();
+      });
+      const res = await request(app).delete('/api/files/profile-images/test.pdf');
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
     });
+  });
 
-    it('returns 400 when path is empty', async () => {
+  describe('GET /quota - !userId guard', () => {
+    it('returns 401 when userId is undefined', async () => {
       mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
-        req.user = { userId: 'user-1', role: 'freelancer' };
-        req.params.bucket = 'docs';
-        req.params.path = '';
+        req.user = undefined;
         next();
       });
-      const res = await request(app).delete('/api/files/docs/test.pdf');
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      const res = await request(app).get('/api/files/quota');
+      expect(res.status).toBe(401);
+      expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
     });
   });
 });

@@ -279,7 +279,7 @@ router.patch('/read-all', authMiddleware, apiRateLimiter, async (req: Request, r
  *         description: Unauthorized
  */
 router.get('/stream', authMiddleware, (req: Request, res: Response) => {
-  const userId = req.user?.id ?? '';
+  const userId = req.user?.userId ?? '';
   
   if (!userId) {
     sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));

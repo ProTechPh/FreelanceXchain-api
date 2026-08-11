@@ -32,15 +32,4 @@ export type ReviewEntity = {
   updated_at: string;
 };
 
-export type SubmitReviewInput = {
-  contractId: string;
-  reviewerId: string;
-  rateeId?: string;
-  rating: number;
-  comment?: string;
-  reviewerRole?: string;
-  workQuality?: number;
-  communication?: number;
-  professionalism?: number;
-  wouldWorkAgain?: boolean;
-};
+

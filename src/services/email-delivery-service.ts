@@ -9,7 +9,7 @@ import { userRepository } from '../repositories/user-repository.js';
 import { shouldSendEmail } from './email-preference-service.js';
 import type { EmailType } from '../models/email-preference.js';
 
-export type EmailTemplate =
+type EmailTemplate =
   | 'proposal_accepted'
   | 'milestone_approved'
   | 'payment_released'
@@ -21,7 +21,7 @@ export type EmailTemplate =
   | 'kyc_rejected'
   | 'weekly_digest';
 
-export type EmailData = {
+type EmailData = {
   to: string;
   subject: string;
   template: EmailTemplate;
@@ -247,7 +247,7 @@ export async function sendWeeklyDigestEmail(
   });
 }
 
-export type EmailRecipient = { email: string; name: string };
+type EmailRecipient = { email: string; name: string };
 
 /**
  * Send an email to a user, gated by their email preferences.

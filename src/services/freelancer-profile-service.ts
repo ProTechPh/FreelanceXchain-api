@@ -6,30 +6,30 @@ import { getProfileDataFromKyc } from './didit-kyc-service.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
-export type CreateFreelancerProfileInput = {
+type CreateFreelancerProfileInput = {
   bio: string;
   hourlyRate: number;
   availability?: 'available' | 'busy' | 'unavailable';
 };
 
-export type CreateProfileFromKycInput = {
+type CreateProfileFromKycInput = {
   bio?: string;
   hourlyRate?: number;
   availability?: 'available' | 'busy' | 'unavailable';
 };
 
-export type UpdateFreelancerProfileInput = {
+type UpdateFreelancerProfileInput = {
   bio?: string;
   hourlyRate?: number;
   availability?: 'available' | 'busy' | 'unavailable';
 };
 
-export type AddSkillInput = {
+type AddSkillInput = {
   name: string;
   yearsOfExperience: number;
 };
 
-export type AddExperienceInput = {
+type AddExperienceInput = {
   title: string;
   company: string;
   description: string;

@@ -6,12 +6,12 @@ import { platformMetricsCache, skillTrendsCache } from '../utils/cache.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
-export interface DateRangeOptions {
+interface DateRangeOptions {
   startDate?: string;
   endDate?: string;
 }
 
-export interface FreelancerAnalytics {
+interface FreelancerAnalytics {
   totalEarnings: number;
   projectsCompleted: number;
   averageRating: number;
@@ -20,7 +20,7 @@ export interface FreelancerAnalytics {
   proposalAcceptanceRate: number;
 }
 
-export interface EmployerAnalytics {
+interface EmployerAnalytics {
   totalSpent: number;
   projectsPosted: number;
   projectsCompleted: number;
@@ -29,7 +29,7 @@ export interface EmployerAnalytics {
   topHiredSkills: { skill: string; projectCount: number }[];
 }
 
-export interface SkillTrend {
+interface SkillTrend {
   skillId: string;
   skillName: string;
   demandLevel: 'high' | 'medium' | 'low';
@@ -38,7 +38,7 @@ export interface SkillTrend {
   growthRate: number;
 }
 
-export interface PlatformMetrics {
+interface PlatformMetrics {
   totalUsers: number;
   totalProjects: number;
   totalContracts: number;
@@ -47,7 +47,7 @@ export interface PlatformMetrics {
   completionRate: number;
 }
 
-export interface AdminAnalytics {
+interface AdminAnalytics {
   totalUsers: number;
   totalProjects: number;
   totalRevenue: number;

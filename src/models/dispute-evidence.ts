@@ -1,4 +1,4 @@
-export type EvidenceType = 'document' | 'screenshot' | 'message' | 'contract' | 'other';
+type EvidenceType = 'document' | 'screenshot' | 'message' | 'contract' | 'other';
 
 export type DisputeEvidence = {
   id: string;

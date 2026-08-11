@@ -70,13 +70,13 @@ const {
   uploadFileToStorage,
   uploadMultipleFiles,
   deleteFileFromStorage,
-  extractFilePathFromUrl,
   extractFileIdFromUrl,
   cleanupUploadedFiles,
   uploadFile,
   deleteFile,
   getSignedUrl,
   listUserFiles,
+  getFileQuota,
 } = await import('../../utils/storage-uploader.js');
 
 const { logger } = await import('../../config/logger.js');
@@ -127,17 +127,6 @@ describe('storage-uploader', () => {
         'Failed to extract file ID from URL',
         { url: 'not-a-url' }
       );
-    });
-  });
-
-  describe('extractFilePathFromUrl', () => {
-    it('is an alias for extractFileIdFromUrl', () => {
-      const url = `${APPWRITE_ENDPOINT}/storage/buckets/proposal-attachments/files/file-abc-123/view?project=${APPWRITE_PROJECT_ID}`;
-      expect(extractFilePathFromUrl(url)).toBe(extractFileIdFromUrl(url));
-    });
-
-    it('returns null for invalid URL', () => {
-      expect(extractFilePathFromUrl('not-a-url')).toBeNull();
     });
   });
 
@@ -210,7 +199,6 @@ describe('storage-uploader', () => {
         'evidence.pdf',
         'application/pdf',
         'dispute-evidence',
-        undefined,
         'user-123'
       );
 
@@ -230,7 +218,6 @@ describe('storage-uploader', () => {
         'deliverable.pdf',
         'application/pdf',
         'milestone-deliverables',
-        undefined,
         'user-456'
       );
 
@@ -504,9 +491,6 @@ describe('Storage Uploader - Extended Coverage', () => {
       expect(result).toBe('xyz789');
     });
 
-    it('extractFilePathFromUrl should be an alias for extractFileIdFromUrl', () => {
-      expect(extractFilePathFromUrl).toBe(extractFileIdFromUrl);
-    });
   });
 
   describe('cleanupUploadedFiles', () => {
@@ -791,7 +775,6 @@ describe('Storage Uploader - generateUniqueFilename edge case', () => {
       'document.pdf',
       'application/pdf',
       'proposal-attachments',
-      undefined,
       'user-123'
     );
 
@@ -809,5 +792,87 @@ describe('Storage Uploader - generateUniqueFilename edge case', () => {
 
     expect(result.success).toBe(true);
     expect(result.metadata?.filename).toBe('README');
+  });
+});
+
+describe('Storage Uploader - getFileQuota', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockListFiles.mockReset();
+  });
+
+  it('should sum usage across both personal buckets', async () => {
+    mockListFiles
+      .mockResolvedValueOnce({
+        files: [
+          { name: 'user-1_a.png', $id: 'f1', sizeOriginal: 1000 },
+          { name: 'user-1_b.png', $id: 'f2', sizeOriginal: 2000 },
+        ],
+      })
+      .mockResolvedValueOnce({
+        files: [{ name: 'user-1_c.pdf', $id: 'f3', sizeOriginal: 7000 }],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.used).toBe(10000);
+      expect(result.files).toBe(3);
+      expect(result.limit).toBe(100 * 1024 * 1024);
+      expect(result.percentage).toBeCloseTo((10000 / (100 * 1024 * 1024)) * 100, 5);
+    }
+    // One listFiles call per personal bucket
+    expect(mockListFiles).toHaveBeenCalledTimes(2);
+  });
+
+  it('should ignore files that are not owned by the user', async () => {
+    mockListFiles
+      .mockResolvedValueOnce({
+        files: [{ name: 'user-2_other.png', $id: 'f1', sizeOriginal: 999999 }],
+      })
+      .mockResolvedValueOnce({
+        files: [],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.used).toBe(0);
+      expect(result.files).toBe(0);
+    }
+  });
+
+  it('should cap the percentage at 100', async () => {
+    mockListFiles
+      .mockResolvedValueOnce({
+        files: [{ name: 'user-1_big.bin', $id: 'f1', sizeOriginal: 200 * 1024 * 1024 }],
+      })
+      .mockResolvedValueOnce({
+        files: [],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.percentage).toBe(100);
+    }
+  });
+
+  it('should return a failure when a bucket listing fails', async () => {
+    mockListFiles
+      .mockRejectedValueOnce(new Error('storage down'))
+      .mockResolvedValueOnce({
+        files: [],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBe('storage down');
+    }
   });
 });

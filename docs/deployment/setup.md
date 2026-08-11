@@ -59,7 +59,7 @@ cd FreelanceXchain
 pnpm install --frozen-lockfile
 ```
 
-This command will read the package.json file and install all dependencies listed in both the dependencies and devDependencies sections. The package.json file reveals that the project uses Node.js with TypeScript, Express for the backend framework, Appwrite for the PostgreSQL database, and Hardhat for Ethereum development.
+This command will read the package.json file and install all dependencies listed in both the dependencies and devDependencies sections. The package.json file reveals that the project uses Node.js with TypeScript, Express for the backend framework, Appwrite (Backend-as-a-Service) for data storage and auth, and Hardhat for Ethereum development.
 
 The project structure follows a modular architecture with distinct directories for contracts, scripts, source code, and documentation. The src directory contains the main application code organized into config, middleware, models, repositories, routes, services, and utils subdirectories.
 
@@ -115,7 +115,7 @@ Setting up the Appwrite database involves creating a project, applying the schem
 
 1. Create a new project at <https://appwrite.com/dashboard>
 
-2. Apply the database schema by running the SQL commands from appwrite/schema.sql in the Appwrite SQL Editor. This schema file creates all necessary tables for the application, including:
+2. Apply the database schema by running `npx tsx scripts/setup-appwrite-db.ts`. This idempotent script creates the database, collections, attributes, and indexes for the application, including:
    - Users and profile management
    - Projects and proposals
    - Contracts and payments
@@ -130,11 +130,11 @@ APPWRITE_URL=https://your-project.appwrite.co
 APPWRITE_ANON_KEY=your-anon-key
 ```
 
-1. Seed the database with initial skill data by running the commands from appwrite/seed-skills.sql in the SQL Editor. This script inserts predefined skill categories (Web Development, Mobile Development, Data Science, DevOps, Design, Blockchain) and associated skills into the database.
+1. Create the Appwrite schema (database, collections, attributes, indexes) by running `npx tsx scripts/setup-appwrite-db.ts`. This is idempotent and safe to re-run.
 
-2. Enable Row Level Security (RLS) on all tables as defined in the schema.sql file, which includes policies for public read access and service role full access.
+2. Skill categories and skills are managed through the API (admin `createCategory`/`createSkill` endpoints in `src/services/skill-service.ts`); the setup script creates the schema only — it does not seed taxonomy.
 
-The schema includes comprehensive indexes for optimal query performance and uses UUIDs for primary keys with the uuid-ossp extension.
+Collections are created with default Appwrite permissions (public read, authenticated create/update/delete); ownership rules are enforced in application middleware.
 
 ## Blockchain Development Environment
 
@@ -233,7 +233,7 @@ http://localhost:7860/api-docs
    - Reputation and disputes
    - Skill management and AI matching
 
-The Swagger specification is generated from JSDoc comments in the source code and configured in src/config/swagger.ts, which dynamically sets the server URL based on environment variables.
+The Swagger specification is served from the checked-in `openapi.json` file (generated at the repo root); `src/app.ts` reads it and dynamically sets the server URL based on environment variables.
 
 ## Testing and Code Quality
 
@@ -273,8 +273,8 @@ This section addresses common setup issues and their solutions.
 **Database Connection Errors**
 
 - Verify Appwrite URL and keys are correctly copied to .env
-- Ensure the schema.sql has been executed in the Appwrite SQL Editor
-- Check that Row Level Security (RLS) policies are properly configured
+- Ensure `npx tsx scripts/setup-appwrite-db.ts` has been run to create the schema
+- Check that collection permissions and auth middleware rules are configured correctly
 - Verify network connectivity to Appwrite
 
 **Missing Dependencies**

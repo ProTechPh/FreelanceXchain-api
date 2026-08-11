@@ -15,11 +15,6 @@ import { blockchainTransactionRepository, type BlockchainTransactionEntity } fro
 import {
   Transaction,
   TransactionInput,
-  TransactionReceipt,
-  TransactionPollResult,
-  SerializedTransaction,
-  PaymentTransaction,
-  SerializedPaymentTransaction,
   BlockchainConfig,
 } from './blockchain-types.js';
 
@@ -29,75 +24,6 @@ const defaultConfig: BlockchainConfig = {
   privateKey: config.blockchain.privateKey ?? '',
   chainId: 1,
 };
-
-/**
- * Serialize a Transaction to JSON-compatible format
- * Converts bigint values to strings for JSON encoding
- */
-export function serializeTransaction(tx: Transaction): SerializedTransaction {
-  return {
-    id: tx.id,
-    type: tx.type,
-    from: tx.from,
-    to: tx.to,
-    amount: tx.amount.toString(),
-    data: tx.data,
-    timestamp: tx.timestamp,
-    status: tx.status,
-    hash: tx.hash,
-    blockNumber: tx.blockNumber,
-    gasUsed: tx.gasUsed?.toString(),
-  };
-}
-
-/**
- * Deserialize a JSON object back to Transaction
- * Converts string values back to bigint
- */
-export function deserializeTransaction(json: SerializedTransaction): Transaction {
-  return {
-    id: json.id,
-    type: json.type,
-    from: json.from,
-    to: json.to,
-    amount: BigInt(json.amount),
-    data: json.data,
-    timestamp: json.timestamp,
-    status: json.status,
-    hash: json.hash,
-    blockNumber: json.blockNumber,
-    gasUsed: json.gasUsed ? BigInt(json.gasUsed) : undefined,
-  };
-}
-
-
-/**
- * Serialize a PaymentTransaction to JSON-compatible format
- */
-export function serializePaymentTransaction(tx: PaymentTransaction): SerializedPaymentTransaction {
-  return {
-    escrowAddress: tx.escrowAddress,
-    milestoneId: tx.milestoneId,
-    amount: tx.amount.toString(),
-    recipient: tx.recipient,
-    timestamp: tx.timestamp,
-    transactionHash: tx.transactionHash,
-  };
-}
-
-/**
- * Deserialize a JSON object back to PaymentTransaction
- */
-export function deserializePaymentTransaction(json: SerializedPaymentTransaction): PaymentTransaction {
-  return {
-    escrowAddress: json.escrowAddress,
-    milestoneId: json.milestoneId,
-    amount: BigInt(json.amount),
-    recipient: json.recipient,
-    timestamp: json.timestamp,
-    transactionHash: json.transactionHash,
-  };
-}
 
 /**
  * Generate a mock transaction hash
@@ -181,85 +107,6 @@ export async function getTransaction(txId: string): Promise<Transaction | null> 
 }
 
 /**
- * Get transaction by hash
- */
-export async function getTransactionByHash(hash: string): Promise<Transaction | null> {
-  const entity = await blockchainTransactionRepository.findByHash(hash);
-  if (!entity) return null;
-  return {
-    id: entity.id,
-    type: entity.type as Transaction['type'],
-    from: entity.from_address,
-    to: entity.to_address,
-    amount: BigInt(entity.amount),
-    data: safeJsonParse<Record<string, unknown>>(entity.data),
-    timestamp: entity.timestamp,
-    status: entity.status as Transaction['status'],
-    hash: entity.hash ?? undefined,
-    blockNumber: entity.block_number ?? undefined,
-    gasUsed: entity.gas_used ? BigInt(entity.gas_used) : undefined,
-  };
-}
-
-/**
- * Poll transaction status until confirmed or failed
- */
-export async function pollTransactionStatus(
-  txId: string,
-  maxAttempts: number = 10,
-  intervalMs: number = 1000
-): Promise<TransactionPollResult> {
-  let attempts = 0;
-
-  while (attempts < maxAttempts) {
-    const tx = await getTransaction(txId);
-    if (!tx) {
-      return { status: 'failed', error: 'Transaction not found' };
-    }
-
-    // Check if transaction should be confirmed (simulation)
-    const confirmable = await blockchainTransactionRepository.findConfirmable(txId);
-
-    const confirmAt = confirmable?.confirm_at;
-    if (confirmAt && Date.now() >= confirmAt) {
-      // Confirm the transaction
-      const confirmed = await confirmTransaction(txId);
-      if (confirmed) {
-        const receipt: TransactionReceipt = {
-          transactionHash: confirmed.hash!,
-          blockNumber: confirmed.blockNumber!,
-          status: 'success',
-          gasUsed: confirmed.gasUsed!,
-          timestamp: Date.now(),
-        };
-        return { status: 'confirmed', receipt };
-      }
-    }
-
-    if (tx.status === 'confirmed') {
-      const receipt: TransactionReceipt = {
-        transactionHash: tx.hash!,
-        blockNumber: tx.blockNumber!,
-        status: 'success',
-        gasUsed: tx.gasUsed!,
-        timestamp: tx.timestamp,
-      };
-      return { status: 'confirmed', receipt };
-    }
-
-    if (tx.status === 'failed') {
-      return { status: 'failed', error: 'Transaction failed on chain' };
-    }
-
-    // Wait before next poll
-    await new Promise(resolve => setTimeout(resolve, intervalMs));
-    attempts++;
-  }
-
-  return { status: 'pending' };
-}
-
-/**
  * Confirm a transaction immediately (for testing/simulation)
  */
 export async function confirmTransaction(txId: string): Promise<Transaction | null> {
@@ -289,50 +136,4 @@ export async function confirmTransaction(txId: string): Promise<Transaction | nu
   };
 }
 
-/**
- * Fail a transaction (for testing)
- */
-export async function failTransaction(txId: string): Promise<Transaction | null> {
-  const failUpdates: Partial<BlockchainTransactionEntity> = {
-    status: 'failed',
-  };
-  const entity = await blockchainTransactionRepository.updateTransaction(txId, failUpdates);
 
-  if (!entity) return null;
-  return {
-    id: entity.id,
-    type: entity.type as Transaction['type'],
-    from: entity.from_address,
-    to: entity.to_address,
-    amount: BigInt(entity.amount),
-    data: safeJsonParse<Record<string, unknown>>(entity.data),
-    timestamp: entity.timestamp,
-    status: entity.status as Transaction['status'],
-    hash: entity.hash ?? undefined,
-    blockNumber: entity.block_number ?? undefined,
-    gasUsed: entity.gas_used ? BigInt(entity.gas_used) : undefined,
-  };
-}
-
-/**
- * Clear all transactions (for testing)
- */
-export async function clearTransactions(): Promise<void> {
-  if (process.env['NODE_ENV'] !== 'test') return;
-  const all = await blockchainTransactionRepository.queryAll('timestamp');
-  await Promise.all(all.map(tx => blockchainTransactionRepository.delete(tx.id)));
-}
-
-/**
- * Get the current blockchain configuration
- */
-export function getBlockchainConfig(): BlockchainConfig {
-  return { ...defaultConfig };
-}
-
-/**
- * Check if blockchain is configured and available
- */
-export function isBlockchainAvailable(): boolean {
-  return Boolean(defaultConfig.rpcUrl && defaultConfig.privateKey);
-}

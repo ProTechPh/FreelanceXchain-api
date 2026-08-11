@@ -11,12 +11,12 @@ import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import type { PaginatedResult } from '../repositories/types.js';
 
-export interface PaginationOptions {
+interface PaginationOptions {
   page?: number;
   limit?: number;
 }
 
-export interface ConversationWithDetails extends ConversationEntity {
+interface ConversationWithDetails extends ConversationEntity {
   otherUser: {
     id: string;
     name: string;

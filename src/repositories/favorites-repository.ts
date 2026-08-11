@@ -1,7 +1,7 @@
 import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
-export type FavoriteTargetType = 'project' | 'freelancer';
+type FavoriteTargetType = 'project' | 'freelancer';
 
 export type FavoriteEntity = {
   id: string;

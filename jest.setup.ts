@@ -23,9 +23,6 @@ BigInt.prototype.toJSON = function() {
   return this.toString();
 };
 
-// Export to global for use in tests
-global.mockPool = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
-
 /**
  * Mock helper for Appwrite database results
  * Usage: mockAppwriteResult({ data: [...] }) for success
@@ -183,15 +180,6 @@ jest.unstable_mockModule('jsonwebtoken', () => ({
   sign: jest.fn().mockReturnValue('mock-jwt-token'),
 }));
 
-// Mock the database pool and query functions
-jest.unstable_mockModule('./src/config/database.js', () => ({
-  pool: new Proxy({}, { get: () => { throw new Error('Database not available'); } }),
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: jest.fn().mockRejectedValue(new Error('Database not available')),
-  queryOne: jest.fn().mockRejectedValue(new Error('Database not available')),
-  initializeDatabase: jest.fn().mockResolvedValue(undefined),
-}));
-
 // Mock file-type (ESM-only module)
 jest.unstable_mockModule('file-type', () => ({
   fileTypeFromBuffer: jest.fn().mockResolvedValue({ ext: 'png', mime: 'image/png' }),
@@ -317,6 +305,7 @@ jest.unstable_mockModule('./src/config/appwrite.js', () => ({
     cursorAfter: jest.fn((id: string) => `cursorAfter(${id})`),
     greaterThanEqual: jest.fn((attr: string, val: unknown) => `greaterThanEqual(${attr},${val})`),
     lessThanEqual: jest.fn((attr: string, val: unknown) => `lessThanEqual(${attr},${val})`),
+    or: jest.fn((queries: unknown[]) => `or(${queries.map(q => `(${String(q)})`).join(',')})`),
   },
   ID: { unique: () => 'unique-id' },
   Permission: { read: 'read', write: 'write', create: 'create', update: 'update', delete: 'delete' },
@@ -355,7 +344,6 @@ global.createMockBuilder = (result) => {
 declare global {
   function mockAppwriteResult(result: any): void;
   function createMockBuilder(result: any): any;
-  var mockPool: any;
   var mockAppwriteClient: any;
   var mockAppwriteAccount: any;
   var mockAppwriteUsers: any;

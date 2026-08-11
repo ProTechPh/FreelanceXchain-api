@@ -30,7 +30,7 @@ A decentralized freelance marketplace that combines AI-powered skill matching wi
 | Layer | Technology |
 | --- | --- |
 | **Backend** | Node.js, Express, TypeScript |
-| **Database** | PostgreSQL, Appwrite |
+| **Database** | Appwrite |
 | **Blockchain** | Ethereum / Polygon (Solidity, Hardhat, Ethers.js) |
 | **AI/ML** | LLM-powered skill matching |
 | **Auth** | JWT + KYC via Didit (220+ countries) |
@@ -42,7 +42,6 @@ A decentralized freelance marketplace that combines AI-powered skill matching wi
 
 - **Node.js** 20+
 - **pnpm** 8+
-- **PostgreSQL** database
 - **Appwrite** account ([appwrite.io](https://appwrite.io))
 - **Ethereum wallet** (for blockchain features)
 - **LLM API key** (for AI features)
@@ -86,7 +85,6 @@ docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 | --- | --- |
 | `PORT` | Server port (default: `7860`) |
 | `NODE_ENV` | `development` / `production` / `test` |
-| `DATABASE_URL` | PostgreSQL connection string |
 | `APPWRITE_ENDPOINT` | Appwrite API endpoint |
 | `APPWRITE_PROJECT_ID` | Appwrite project ID |
 | `APPWRITE_API_KEY` | Appwrite API key |
@@ -171,7 +169,7 @@ pnpm run test:ci     # CI mode with coverage
 │   └── FreelanceReputation.sol# On-chain reputation system
 ├── scripts/                   # Deployment & utility scripts
 ├── src/
-│   ├── config/                # Configuration (env, database, swagger)
+│   ├── config/                # Configuration (env, appwrite, contracts, redis)
 │   ├── middleware/             # Express middleware
 │   ├── models/                # Data models & types
 │   ├── repositories/          # Data access layer

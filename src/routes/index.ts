@@ -27,7 +27,6 @@ import analyticsRoutes from './analytics-routes.js';
 import portfolioRoutes from './portfolio-routes.js';
 import emailPreferenceRoutes from './email-preference-routes.js';
 import savedSearchRoutes from './saved-search-routes.js';
-import fileRoutes from './file-routes.js';
 import milestoneRoutes from './milestone-routes.js';
 import disputeEvidenceRoutes from './dispute-evidence-routes.js';
 import escrowRefundRoutes from './escrow-refund-routes.js';
@@ -117,9 +116,6 @@ router.use('/email-preferences', emailPreferenceRoutes);
 
 // Saved search routes
 router.use('/saved-searches', savedSearchRoutes);
-
-// File management routes
-router.use('/file-management', fileRoutes);
 
 // Milestone routes
 router.use('/milestones', milestoneRoutes);

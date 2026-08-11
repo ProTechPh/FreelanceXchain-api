@@ -16,7 +16,7 @@ import { blockchainMilestoneRecordRepository, type BlockchainMilestoneRecordEnti
 
 export type BlockchainMilestoneStatus = 'submitted' | 'approved' | 'rejected' | 'disputed';
 
-export type BlockchainMilestoneRecord = {
+type BlockchainMilestoneRecord = {
   milestoneIdHash: string;
   contractIdHash: string;
   workHash: string;
@@ -31,7 +31,7 @@ export type BlockchainMilestoneRecord = {
   blockNumber: number;
 };
 
-export type FreelancerStats = {
+type FreelancerStats = {
   completedCount: number;
   totalEarned: number;
   totalMilestones: number;

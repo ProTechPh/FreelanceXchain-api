@@ -1,7 +1,7 @@
 // Didit KYC API types — https://docs.didit.me/reference/
 // Didit handles verification data; we store session info and final decision locally.
 
-export type DiditSessionStatus = 
+type DiditSessionStatus = 
   | 'Not Started'
   | 'In Progress'
   | 'Awaiting User'
@@ -15,7 +15,7 @@ export type DiditSessionStatus =
   | 'Completed'
   | 'Cancelled';
 
-export type DiditVerificationDecision = 'approved' | 'declined' | 'review';
+type DiditVerificationDecision = 'approved' | 'declined' | 'review';
 
 export type DiditCreateSessionRequest = {
   workflow_id: string;
@@ -75,7 +75,7 @@ export type DiditWebhookPayload = {
 };
 
 // Included when status is Approved/Declined/In Review
-export type DiditDecisionData = {
+type DiditDecisionData = {
   session_id: string;
   session_number: number;
   session_url: string;
@@ -91,7 +91,7 @@ export type DiditDecisionData = {
   created_at: string;
 };
 
-export type DiditIdVerification = {
+type DiditIdVerification = {
   node_id: string;
   status: string;
   document_type: string;
@@ -110,7 +110,7 @@ export type DiditIdVerification = {
   warnings?: DiditWarning[];
 };
 
-export type DiditLivenessCheck = {
+type DiditLivenessCheck = {
   node_id: string;
   status: string;
   method: string;
@@ -120,7 +120,7 @@ export type DiditLivenessCheck = {
   warnings?: DiditWarning[];
 };
 
-export type DiditFaceMatch = {
+type DiditFaceMatch = {
   node_id: string;
   status: string;
   score: number;
@@ -129,7 +129,7 @@ export type DiditFaceMatch = {
   warnings?: DiditWarning[];
 };
 
-export type DiditIpAnalysis = {
+type DiditIpAnalysis = {
   node_id: string;
   status: string;
   ip_address: string;
@@ -143,7 +143,7 @@ export type DiditIpAnalysis = {
   warnings?: DiditWarning[];
 };
 
-export type DiditWarning = {
+type DiditWarning = {
   feature: string;
   risk: string;
   short_description: string;

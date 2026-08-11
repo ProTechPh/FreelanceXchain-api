@@ -29,15 +29,6 @@ mockContractRepo.getUserContracts = jest.fn<any>(async (userId: string) => {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Override database mock with controllable pool
-const mockQuery = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -116,21 +107,6 @@ describe('Reputation Service - Property-Based Tests', () => {
     projectStore.clear();
     await clearBlockchainRatings();
     jest.clearAllMocks();
-    mockQuery.mockReset();
-    
-    // Mock reviews table for duplicate check - return empty (no duplicates)
-    mockQuery.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('reviews') && text.includes('SELECT') && text.includes('contract_id') && text.includes('reviewer_id')) {
-        return { rows: [], rowCount: 0 };
-      }
-      if (text.includes('INSERT INTO reviews')) {
-        return { rows: [{ id: generateId(), contract_id: params?.[0], reviewer_id: params?.[2], reviewee_id: params?.[3], rating: params?.[4], comment: params?.[5], reviewer_role: params?.[6], created_at: new Date().toISOString() }], rowCount: 1 };
-      }
-      if (text.includes('users') && text.includes('wallet_address')) {
-        return { rows: [{ id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) }, { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) }], rowCount: 2 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   /**
@@ -435,21 +411,6 @@ describe('Reputation Service - Unit Tests', () => {
     projectStore.clear();
     await clearBlockchainRatings();
     jest.clearAllMocks();
-    mockQuery.mockReset();
-    
-    // Mock pool.query for various reputation operations
-    mockQuery.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('reviews') && text.includes('SELECT') && text.includes('contract_id') && text.includes('reviewer_id')) {
-        return { rows: [], rowCount: 0 };
-      }
-      if (text.includes('INSERT INTO reviews')) {
-        return { rows: [{ id: generateId(), contract_id: params?.[0], reviewer_id: params?.[2], reviewee_id: params?.[3], rating: params?.[4], comment: params?.[5], reviewer_role: params?.[6], created_at: new Date().toISOString() }], rowCount: 1 };
-      }
-      if (text.includes('users') && text.includes('wallet_address')) {
-        return { rows: [{ id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) }, { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) }], rowCount: 2 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   it('should submit valid rating successfully', async () => {

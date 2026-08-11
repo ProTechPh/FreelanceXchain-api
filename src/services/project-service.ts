@@ -7,7 +7,7 @@ import { FileAttachment, validateAttachments } from '../utils/file-validator.js'
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
-export type CreateProjectInput = {
+type CreateProjectInput = {
   title: string;
   description: string;
   requiredSkills: { skillId: string }[];
@@ -20,7 +20,7 @@ export type CreateProjectInput = {
   attachments?: FileAttachment[];
 };
 
-export type UpdateProjectInput = {
+type UpdateProjectInput = {
   title?: string;
   description?: string;
   requiredSkills?: { skillId: string }[];
@@ -34,14 +34,14 @@ export type UpdateProjectInput = {
   attachments?: FileAttachment[];
 };
 
-export type AddMilestoneInput = {
+type AddMilestoneInput = {
   title: string;
   description: string;
   amount: number;
   dueDate: string;
 };
 
-export type ProjectWithProposalCount = ProjectEntity & {
+type ProjectWithProposalCount = ProjectEntity & {
   proposalCount: number;
 };
 
@@ -364,14 +364,6 @@ export async function listOpenProjects(
   options?: QueryOptions
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getAllOpenProjects(options);
-  return successResult(await addProposalCounts(result));
-}
-
-export async function listProjectsByStatus(
-  status: ProjectStatus,
-  options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
-  const result = await projectRepository.getProjectsByStatus(status, options);
   return successResult(await addProposalCounts(result));
 }
 

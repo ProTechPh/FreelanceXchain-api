@@ -9,18 +9,6 @@ import { UserRole } from '../../models/user.js';
 import { RegisterInput, LoginInput, AuthResult, AuthError } from '../../services/auth-types.js';
 import { generateId } from '../../utils/id.js';
 
-// Mock bcrypt to avoid native module issues with pnpm
-const bcrypt = {
-  hashSync: (password: string, _rounds: number): string => {
-    // Simple mock hash - just prefix with "hashed_" for testing
-    return `hashed_${password}`;
-  },
-  compareSync: (password: string, hash: string): boolean => {
-    // Compare against our mock hash format
-    return hash === `hashed_${password}`;
-  },
-};
-
 // In-memory user store for testing - uses entity type with snake_case
 let userStore: Map<string, UserEntity> = new Map();
 // Password store to verify login (email -> plain password)

@@ -6,7 +6,6 @@
   "type": "module",
   "scripts": {
     "build": "tsc",
-    "openapi:generate": "tsx scripts/generate-openapi.ts",
     "start": "node dist/index.js",
     "start:prod": "tsx src/index.ts",
     "dev": "cross-env NODE_ENV=development BLOCKCHAIN_MODE=real BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545 tsx watch src/index.ts",
@@ -42,7 +41,6 @@
   "license": "ISC",
   "dependencies": {
     "@opencoredev/email-sdk": "^0.6.5",
-    "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",
     "csrf-csrf": "^4.0.3",
@@ -61,10 +59,8 @@
     "uuid": "^14.0.1"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "3.3.6",
     "@eslint/js": "^10.0.1",
     "@jest/globals": "29.7.0",
-    "@types/bcrypt": "^6.0.0",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
     "@types/express": "^4.17.25",
@@ -74,7 +70,6 @@
     "@types/node": "^26.1.1",
     "@types/node-cron": "^3.0.11",
     "@types/supertest": "^7.2.1",
-    "@types/swagger-jsdoc": "^6.0.4",
     "@types/swagger-ui-express": "^4.1.8",
     "@typescript-eslint/eslint-plugin": "^8.64.0",
     "@typescript-eslint/parser": "^8.64.0",
@@ -86,7 +81,6 @@
     "hardhat": "^3.10.0",
     "jest": "^29.7.0",
     "minimatch": "^10.2.5",
-    "solc": "0.8.36",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.11",
     "tsx": "^4.23.1",

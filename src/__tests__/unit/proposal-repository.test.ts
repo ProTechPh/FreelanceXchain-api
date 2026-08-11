@@ -1094,7 +1094,7 @@ describe('Payment Repository — branch coverage', () => {
   });
 
   it('should handle findByTxHash with error', async () => {
-    const { PaymentRepository } = await import('../../repositories/payment-repository.js');
+    const { paymentRepository: PaymentRepository } = await import('../../repositories/payment-repository.js');
 
     mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
@@ -1103,7 +1103,7 @@ describe('Payment Repository — branch coverage', () => {
   });
 
   it('should handle getTotalEarnings with error', async () => {
-    const { PaymentRepository } = await import('../../repositories/payment-repository.js');
+    const { paymentRepository: PaymentRepository } = await import('../../repositories/payment-repository.js');
 
     mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
@@ -1112,7 +1112,7 @@ describe('Payment Repository — branch coverage', () => {
   });
 
   it('should handle getTotalSpent with error', async () => {
-    const { PaymentRepository } = await import('../../repositories/payment-repository.js');
+    const { paymentRepository: PaymentRepository } = await import('../../repositories/payment-repository.js');
 
     mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
@@ -1121,7 +1121,7 @@ describe('Payment Repository — branch coverage', () => {
   });
 
   it('should handle findByUserId with hasMore=true', async () => {
-    const { PaymentRepository } = await import('../../repositories/payment-repository.js');
+    const { paymentRepository: PaymentRepository } = await import('../../repositories/payment-repository.js');
 
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [], total: 5 })

@@ -21,7 +21,7 @@ OWASP Top 10 security validation and penetration testing.
 #### A02:2021 - Cryptographic Failures
 
 - ✅ Sensitive data encryption
-- ✅ Password hashing (bcrypt)
+- ✅ Secure authentication (Appwrite account sessions)
 - ✅ Secure token generation
 - ✅ Data in transit protection (HTTPS)
 - ✅ Log sanitization (no sensitive data in logs)

@@ -5,7 +5,7 @@
 1. [API Security Measures](#api-security-measures)
 2. [Authentication Security](#authentication-security)
 3. [CSRF Protection](#csrf-protection)
-4. [Database Security & Row Level Security](#database-security--row-level-security)
+4. [Database Security & Access Control](#database-security--access-control)
 5. [Data Privacy & KYC Protection](#data-privacy--kyc-protection)
 6. [Role-Based Access Control](#role-based-access-control)
 7. [Smart Contract Security](#smart-contract-security)
@@ -341,40 +341,34 @@ curl -X POST https://api.freelancexchain.com/api/contracts \
 
 ---
 
-## Database Security & Row Level Security
+## Database Security & Access Control
 
-### RLS Overview
+### Appwrite Collection Permissions
 
-All tables have Row Level Security (RLS) enabled via `ALTER TABLE ... ENABLE ROW LEVEL SECURITY`. Access is denied by default and only granted through explicit policies. The system uses Appwrite's `auth.uid()` to extract the authenticated user's ID from JWT tokens for policy evaluation.
+Collections are created by `scripts/setup-appwrite-db.ts` with default Appwrite permissions: public read (`Role.any()`), authenticated create/update/delete (`Role.users()`). These form a baseline security boundary only — the application enforces fine-grained rules.
 
-### Policy Patterns
+### Application-Level Access Patterns
 
-- **User-owned resources** (projects, contracts, payments): Access restricted by user ID matching owner column
-- **Shared resources** (contracts): Access for both freelancer and employer parties
-- **Public read** (skills, categories): SELECT allowed for all users
-- **Open discovery** (projects with `status = 'open'`): Publicly readable; drafts and completed projects are private
-
-### Service Role Bypass
-
-Backend operations requiring broader access use service role policies with `USING (true)`, bypassing RLS. Used for administrative functions, batch operations, and cross-user business logic. The service role has elevated privileges in Appwrite but is only used in controlled circumstances.
+- **User-owned resources** (profiles, notifications): Repository/service queries filter by user ID (e.g. `Query.equal('user_id', ...)`)
+- **Shared resources** (contracts): Access checked for both freelancer and employer parties in the service layer
+- **Public read** (skills, categories): Readable by anyone per collection permissions
+- **Open discovery** (projects with `status = 'open'`): Publicly readable; drafts and completed projects are gated by owner checks
 
 ### Defense in Depth
 
-RLS operates alongside application-level security:
+Appwrite permissions operate alongside application-level security:
 
 1. **Transport**: HTTPS/TLS
-2. **Authentication**: JWT Bearer tokens
-3. **Authorization**: Role-based access control middleware
-4. **Database**: Row Level Security policies
+2. **Authentication**: Bearer token validation (`authMiddleware`, `validateToken`)
+3. **Authorization**: Role-based access control middleware (`requireRole`)
+4. **Database**: Appwrite collection permissions
 5. **Repository layer**: Explicit user ID filtering as fallback
 
-### Testing RLS
+### Testing Access Control
 
-- Simulate different user contexts during development
-- Use Appwrite dashboard to test queries as different users
-- Unit tests verify repository methods for different roles
+- Unit tests verify repository/service methods for different roles
 - Integration tests validate full auth-to-data-access flows
-- Temporarily disable RLS only for local debugging, never in production
+- Route tests assert `401`/`403` behavior via mocked middleware
 
 ---
 
@@ -460,34 +454,19 @@ Additional protections: rate limiting, idempotency handling for duplicate webhoo
 
 ### Database Schema
 
-```sql
-CREATE TABLE kyc_verifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    status VARCHAR(20) NOT NULL CHECK (status IN (
-        'pending', 'in_progress', 'completed',
-        'approved', 'rejected', 'expired'
-    )),
-    didit_session_id VARCHAR(255) UNIQUE NOT NULL,
-    didit_session_token VARCHAR(255) NOT NULL,
-    didit_session_url TEXT NOT NULL,
-    didit_workflow_id VARCHAR(255) NOT NULL,
-    decision VARCHAR(20) CHECK (decision IN ('approved', 'declined', 'review')),
-    reviewed_by UUID REFERENCES users(id),
-    reviewed_at TIMESTAMPTZ,
-    admin_notes TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW(),
-    completed_at TIMESTAMPTZ,
-    expires_at TIMESTAMPTZ
-);
+The `kyc_verifications` Appwrite collection stores only session info and the final decision (see `scripts/setup-appwrite-db.ts` for the full attribute list):
 
--- RLS: Users see only their own; service role has full access
-CREATE POLICY "Users can view own KYC" ON kyc_verifications
-    FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Service role full access" ON kyc_verifications
-    FOR ALL USING (auth.role() = 'service_role');
-```
+| Attribute | Type | Notes |
+| --------- | ---- | ----- |
+| `user_id` | string(36) | required |
+| `status` | string(20) | default `'pending'` |
+| `didit_session_id` / `didit_session_token` / `didit_session_url` | string | Didit session details |
+| `didit_workflow_id` | string(255) | required |
+| `decision` | string(20) | optional (e.g. `approved`, `declined`, `review`) |
+| `reviewed_by` / `admin_notes` | string | admin review fields |
+| `document_verified` / `liveness_passed` / `face_matched` | boolean | Didit outcome flags |
+
+Users can only read their own verification via service-level filtering; admin review endpoints are gated by the `admin` role (`requireRole('admin')`).
 
 ### Status Values
 
@@ -629,7 +608,7 @@ Networks supported: Hardhat local, Ganache, Sepolia testnet, Polygon.
 Transport Security (HTTPS/TLS)
   -> Authentication (JWT Bearer Tokens)
     -> Authorization (Role-Based Access Control)
-      -> Database Security (Appwrite Row Level Security)
+      -> Database Security (Appwrite collection permissions)
         -> Smart Contract Security
 ```
 

@@ -112,11 +112,6 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   ID: mockID,
 }));
 
-// Also mock database.ts since it re-exports from appwrite.ts
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  databases: mockDatabases,
-  DATABASE_ID: 'test-db',
-}));
 
 const {
   deployEscrow,
@@ -126,10 +121,7 @@ const {
   resolveDisputeSplit,
   getEscrowBalance,
   getEscrowState,
-  getMilestoneStatus,
-  areAllMilestonesReleased,
   getEscrowByContractId,
-  clearEscrows,
 } = await import('../../services/escrow-contract.js');
 
 const ESCROW_ADDR = '0xAddr1';
@@ -428,77 +420,6 @@ describe('Escrow Contract - Appwrite', () => {
     });
   });
 
-  describe('getMilestoneStatus', () => {
-    it('should return null when escrow not found', async () => {
-      const status = await getMilestoneStatus('0xNonExistent', 'm-1');
-      expect(status).toBeNull();
-    });
-
-    it('should return null when milestone not found', async () => {
-      await deployEscrow({
-        contractId: 'c-1',
-        employerAddress: EMPLOYER,
-        freelancerAddress: FREELANCER,
-        totalAmount: BigInt(1000),
-        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
-      });
-
-      const status = await getMilestoneStatus(ESCROW_ADDR, 'm-nonexistent');
-      expect(status).toBeNull();
-    });
-
-    it('should return milestone status', async () => {
-      await deployEscrow({
-        contractId: 'c-1',
-        employerAddress: EMPLOYER,
-        freelancerAddress: FREELANCER,
-        totalAmount: BigInt(1000),
-        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
-      });
-
-      const status = await getMilestoneStatus(ESCROW_ADDR, 'm-1');
-      expect(status).not.toBeNull();
-      expect(status?.id).toBe('m-1');
-      expect(status?.status).toBe('pending');
-    });
-  });
-
-  describe('areAllMilestonesReleased', () => {
-    it('should return false when escrow not found', async () => {
-      const result = await areAllMilestonesReleased('0xNonExistent');
-      expect(result).toBe(false);
-    });
-
-    it('should return false when not all released', async () => {
-      await deployEscrow({
-        contractId: 'c-1',
-        employerAddress: EMPLOYER,
-        freelancerAddress: FREELANCER,
-        totalAmount: BigInt(1000),
-        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
-      });
-
-      const result = await areAllMilestonesReleased(ESCROW_ADDR);
-      expect(result).toBe(false);
-    });
-
-    it('should return true when all released', async () => {
-      await deployEscrow({
-        contractId: 'c-1',
-        employerAddress: EMPLOYER,
-        freelancerAddress: FREELANCER,
-        totalAmount: BigInt(1000),
-        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
-      });
-
-      await depositToEscrow(ESCROW_ADDR, BigInt(500), EMPLOYER);
-      await releaseMilestone(ESCROW_ADDR, 'm-1', EMPLOYER);
-
-      const result = await areAllMilestonesReleased(ESCROW_ADDR);
-      expect(result).toBe(true);
-    });
-  });
-
   describe('getEscrowByContractId', () => {
     it('should return null when not found', async () => {
       const escrow = await getEscrowByContractId('c-nonexistent');
@@ -517,23 +438,6 @@ describe('Escrow Contract - Appwrite', () => {
       const escrow = await getEscrowByContractId('c-1');
       expect(escrow).not.toBeNull();
       expect(escrow?.address).toBe(ESCROW_ADDR);
-    });
-  });
-
-  describe('clearEscrows', () => {
-    it('should clear all escrows', async () => {
-      await deployEscrow({
-        contractId: 'c-1',
-        employerAddress: EMPLOYER,
-        freelancerAddress: FREELANCER,
-        totalAmount: BigInt(1000),
-        milestones: [{ id: 'm-1', amount: BigInt(500), status: 'pending' as const }],
-      });
-
-      await clearEscrows();
-
-      const state = await getEscrowState(ESCROW_ADDR);
-      expect(state).toBeNull();
     });
   });
 

@@ -14,9 +14,9 @@ import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
 import { blockchainDisputeRecordRepository, type BlockchainDisputeRecordEntity } from '../repositories/blockchain-dispute-record-repository.js';
 
-export type BlockchainDisputeOutcome = 'pending' | 'freelancer_favor' | 'employer_favor' | 'split' | 'cancelled';
+type BlockchainDisputeOutcome = 'pending' | 'freelancer_favor' | 'employer_favor' | 'split' | 'cancelled';
 
-export type BlockchainDisputeRecord = {
+type BlockchainDisputeRecord = {
   disputeIdHash: string;
   contractIdHash: string;
   milestoneIdHash: string;
@@ -32,12 +32,6 @@ export type BlockchainDisputeRecord = {
   resolvedAt: number | null;
   transactionHash: string;
   blockNumber: number;
-};
-
-export type UserDisputeStats = {
-  won: number;
-  lost: number;
-  total: number;
 };
 
 export type CreateDisputeInput = {
@@ -278,43 +272,6 @@ export async function resolveDisputeOnBlockchain(
       timestamp: now,
     },
   };
-}
-
-/**
- * Get dispute from blockchain
- */
-export async function getDisputeFromBlockchain(disputeId: string): Promise<BlockchainDisputeRecord | null> {
-  const disputeIdHash = generateHash(disputeId);
-  const entity = await blockchainDisputeRecordRepository.findByDisputeIdHash(disputeIdHash);
-
-  if (!entity) return null;
-  return entityToRecord(entity);
-}
-
-/**
- * Get user dispute stats (derived from DB queries)
- */
-export async function getUserDisputeStats(walletAddress: string): Promise<UserDisputeStats> {
-  const allDisputes = await blockchainDisputeRecordRepository.findByWallet(walletAddress);
-
-  let won = 0;
-  let lost = 0;
-  for (const d of allDisputes) {
-    if (d.outcome === 'freelancer_favor' && d.freelancer_wallet === walletAddress) won++;
-    else if (d.outcome === 'employer_favor' && d.employer_wallet === walletAddress) won++;
-    else if (d.outcome === 'freelancer_favor' && d.employer_wallet === walletAddress) lost++;
-    else if (d.outcome === 'employer_favor' && d.freelancer_wallet === walletAddress) lost++;
-  }
-
-  return { won, lost, total: allDisputes.length };
-}
-
-/**
- * Get user's disputes
- */
-export async function getUserDisputes(walletAddress: string): Promise<BlockchainDisputeRecord[]> {
-  const entities = await blockchainDisputeRecordRepository.findByWallet(walletAddress);
-  return entities.map(entityToRecord);
 }
 
 export async function clearDisputeRegistry(): Promise<void> {

@@ -2,29 +2,29 @@ import { EmployerProfile, mapEmployerProfileFromEntity } from '../utils/entity-m
 import { employerProfileRepository, EmployerProfileEntity } from '../repositories/employer-profile-repository.js';
 import { generateId } from '../utils/id.js';
 import { getProfileDataFromKyc } from './didit-kyc-service.js';
-import type { ServiceResult, ServiceError } from '../types/service-result.js';
+import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
-export type CreateEmployerProfileInput = {
+type CreateEmployerProfileInput = {
   companyName: string;
   description: string;
   industry: string;
 };
 
-export type CreateEmployerProfileFromKycInput = {
+type CreateEmployerProfileFromKycInput = {
   companyName?: string;
   description?: string;
   industry?: string;
 };
 
-export type UpdateEmployerProfileInput = {
+type UpdateEmployerProfileInput = {
   companyName?: string;
   description?: string;
   industry?: string;
 };
 
-export type EmployerProfileServiceResult<T> = ServiceResult<T>;
-export type EmployerProfileServiceError = ServiceError;
+type EmployerProfileServiceResult<T> = ServiceResult<T>;
+
 
 // Profile Operations
 
