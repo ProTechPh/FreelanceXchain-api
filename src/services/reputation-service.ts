@@ -18,6 +18,7 @@ import { notifyRatingReceived } from './notification-service.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
+import { withLock } from '../utils/async-lock.js';
 import type { Review, ReviewEntity } from '../models/review.js';
 
 
@@ -76,6 +77,13 @@ export type RatingResult = {
 export async function submitRating(
   input: RatingInput
 ): Promise<ServiceResult<RatingResult>> {
+  // BLF-9.1: Serialize the duplicate-review check-then-insert per (contract, rater)
+  // so concurrent parallel submissions cannot both pass the duplicate check and
+  // create two reviews (which would double-count the rating). The app-level lock
+  // is per-process; the durable backstop is the UNIQUE index on
+  // (contract_id, reviewer_id) created by scripts/setup-appwrite-db.ts, which
+  // rejects the duplicate write even across server instances.
+  return withLock(`rating:${input.contractId}:${input.raterId}`, async () => {
   if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
     return errorResult('INVALID_RATING', 'Rating must be an integer between 1 and 5');
   }
@@ -236,6 +244,7 @@ try {
     rating,
     transactionHash,
   });
+  }); // BLF-9.1: end withLock
   }
 
 /**

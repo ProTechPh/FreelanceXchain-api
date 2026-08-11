@@ -9,6 +9,8 @@ const mockGetByAction = jest.fn() as any;
 const mockGetByDateRange = jest.fn() as any;
 const mockGetFailedActions = jest.fn() as any;
 const mockGetById = jest.fn() as any;
+const mockSearch = jest.fn() as any;
+const mockListForRange = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
   AuditLogRepository: jest.fn().mockImplementation(() => ({
@@ -18,10 +20,14 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
     getByDateRange: mockGetByDateRange,
     getFailedActions: mockGetFailedActions,
     getById: mockGetById,
+    search: mockSearch,
+    listForRange: mockListForRange,
   })),
   AuditLogEntry: {},
   CreateAuditLogEntry: {},
   AuditLogStatus: {},
+  AuditLogSearchFilters: {},
+  AuditLogSearchResult: {},
 }));
 
 const { AuditLogService } = await import('../../services/audit-log-service.js');
@@ -151,6 +157,59 @@ describe('AuditLogService', () => {
       mockGetById.mockResolvedValue(null);
       const result = await service.getAuditLogById('nonexistent');
       expect(result).toBeNull();
+    });
+  });
+
+  describe('searchAuditLogs', () => {
+    it('should return paginated filtered results', async () => {
+      const result = { items: [sampleLog()], total: 1, hasMore: false };
+      mockSearch.mockResolvedValue(result);
+
+      const filters = { actorId: 'admin-1', action: 'kyc.approved', limit: 25 };
+      const res = await service.searchAuditLogs(filters);
+
+      expect(res).toEqual(result);
+      expect(mockSearch).toHaveBeenCalledWith(filters);
+    });
+
+    it('should default filters to empty object', async () => {
+      mockSearch.mockResolvedValue({ items: [], total: 0, hasMore: false });
+
+      await service.searchAuditLogs();
+
+      expect(mockSearch).toHaveBeenCalledWith({});
+    });
+  });
+
+  describe('getAdminActivitySummary', () => {
+    it('should aggregate actions per admin per day', async () => {
+      const logs = [
+        sampleLog({ actor_id: 'admin-1', action: 'kyc.approved', created_at: '2025-06-01T10:00:00Z' }),
+        sampleLog({ id: 'log-2', actor_id: 'admin-1', action: 'kyc.approved', created_at: '2025-06-01T11:00:00Z' }),
+        sampleLog({ id: 'log-3', actor_id: 'admin-1', action: 'dispute.resolved', created_at: '2025-06-02T09:00:00Z' }),
+        sampleLog({ id: 'log-4', actor_id: 'admin-2', action: 'kyc.rejected', created_at: '2025-06-01T08:00:00Z' }),
+        sampleLog({ id: 'log-5', actor_id: null, action: 'system.job', created_at: '2025-06-01T07:00:00Z' }),
+      ];
+      mockListForRange.mockResolvedValue(logs);
+
+      const summary = await service.getAdminActivitySummary(new Date('2025-06-01'), new Date('2025-06-30'));
+
+      expect(mockListForRange).toHaveBeenCalledWith(new Date('2025-06-01'), new Date('2025-06-30'));
+      expect(summary.totalActions).toBe(4); // system entry (no actor) excluded
+      expect(summary.activeAdmins).toBe(2);
+      expect(summary.items).toEqual([
+        { actor_id: 'admin-1', date: '2025-06-01', actions: { 'kyc.approved': 2 }, total: 2 },
+        { actor_id: 'admin-2', date: '2025-06-01', actions: { 'kyc.rejected': 1 }, total: 1 },
+        { actor_id: 'admin-1', date: '2025-06-02', actions: { 'dispute.resolved': 1 }, total: 1 },
+      ]);
+    });
+
+    it('should return empty summary when no logs', async () => {
+      mockListForRange.mockResolvedValue([]);
+
+      const summary = await service.getAdminActivitySummary(new Date('2025-06-01'), new Date('2025-06-30'));
+
+      expect(summary).toEqual({ items: [], totalActions: 0, activeAdmins: 0 });
     });
   });
 

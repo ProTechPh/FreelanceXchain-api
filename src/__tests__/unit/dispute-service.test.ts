@@ -161,6 +161,12 @@ jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), ()
   disputeAgreement: mockDisputeAgreement,
 }));
 
+// Mock audit-log repository (admin dispute-resolution audit trail, BLF-12.2)
+const mockAuditLogRepo = { create: jest.fn<any>() };
+jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
+  auditLogRepository: mockAuditLogRepo,
+}));
+
 const mockPoolObj = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
 jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
   pool: mockPoolObj,
@@ -655,6 +661,19 @@ describe('Dispute Service - Unit Tests', () => {
       expect(resolved.resolution).toBeDefined();
       expect(resolved.resolution?.decision).toBe('employer_favor');
     }
+    // BLF-12.2: the resolution is persisted to the durable audit log with full context
+    expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      actor_id: resolution.resolvedBy,
+      action: 'dispute.resolved',
+      resource_type: 'dispute',
+      resource_id: dispute.id,
+      payload: expect.objectContaining({
+        decision: resolution.decision,
+        reasoning: resolution.reasoning,
+        contractId: contract.id,
+        milestoneId: milestone.id,
+      }),
+    }));
   });
 
   it('should update contract status when resolving dispute', async () => {
@@ -715,6 +734,54 @@ describe('Dispute Service - Unit Tests', () => {
     const notifications = Array.from(notificationStore.values());
     expect(notifications.length).toBeGreaterThan(0);
     expect(notifications.some((n: any) => n.type === 'dispute_created')).toBe(true);
+  });
+
+  it('should serialize concurrent dispute creation on the same milestone (M9 pay + dispute race)', async () => {
+    const freelancerId = generateId();
+    const employerId = generateId();
+
+    const contract = createTestContract({
+      freelancer_id: freelancerId,
+      employer_id: employerId,
+      status: 'active',
+    });
+    contractStore.set(contract.id, contract);
+
+    const milestone = createTestMilestone({ status: 'submitted' });
+    const project = createTestProject({
+      id: contract.project_id,
+      milestones: [milestone],
+    });
+    projectStore.set(project.id, project);
+
+    const attempt = () => createDispute({
+      contractId: contract.id,
+      milestoneId: milestone.id,
+      initiatorId: freelancerId,
+      reason: 'Race condition test',
+    });
+
+    // Fire both concurrently. The shared milestone-approve lock serializes them
+    // (the same key approveMilestone uses), so exactly one dispute is created and
+    // the second is rejected as a duplicate — no double-commit possible.
+    const [first, second] = await Promise.all([attempt(), attempt()]);
+
+    expect(first.success || second.success).toBe(true);
+    expect(first.success && second.success).toBe(false);
+
+    // The losing call must be rejected by the serialization (proving the lock let
+    // the winner fully commit before the loser re-ran its checks): it either trips
+    // the duplicate-dispute check, or — because the winner flips the contract to
+    // 'disputed' — the contract-status gate that now precedes it.
+    const loser = first.success ? second : first;
+    expect(loser.success).toBe(false);
+    if (!loser.success) {
+      expect(['DUPLICATE_DISPUTE', 'INVALID_CONTRACT_STATUS']).toContain(loser.error.code);
+    }
+
+    const disputes = Array.from(disputeStore.values())
+      .filter((d: any) => d.milestone_id === milestone.id);
+    expect(disputes).toHaveLength(1);
   });
 });
 

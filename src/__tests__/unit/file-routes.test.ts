@@ -168,6 +168,9 @@ describe('file-upload branch coverage', () => {
   });
 
   it('DELETE /:bucket/* with path owned by other user', async () => {
+    // BLF-11.2: ownership is verified server-side — the route maps a FORBIDDEN
+    // result from the storage layer to 403.
+    mockStorageUploader.deleteFile.mockResolvedValue({ success: false, error: 'FORBIDDEN' });
     const res = await request(app).delete('/api/files/profile-images/other-user/file.txt');
     expect(res.status).toBe(403);
   });
@@ -205,6 +208,8 @@ describe('file-upload branch coverage', () => {
   });
 
   it('GET /signed-url/:bucket/* with path owned by other user', async () => {
+    // BLF-11.2: server-side ownership verification maps FORBIDDEN to 403.
+    mockStorageUploader.getSignedUrl.mockResolvedValue({ success: false, error: 'FORBIDDEN' });
     const res = await request(app).get('/api/files/signed-url/profile-images/other-user/file.txt');
     expect(res.status).toBe(403);
   });

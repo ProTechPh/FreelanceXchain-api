@@ -7,6 +7,7 @@ import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
+import { persistAuditEntry } from '../utils/admin-audit.js';
 
 export type ContractServiceResult<T> = ServiceResult<T>;
 export type ContractServiceError = ServiceError;
@@ -195,6 +196,26 @@ export async function cancelPendingContract(contractId: string, userId: string):
     logger.error('Failed to cancel pending contract');
     return errorResult('UPDATE_FAILED', 'Failed to cancel contract');
   }
+
+  // BLF-12.2: durable audit trail — contract cancellations are recorded with the
+  // cancelling party as actor and the other contract party as target user.
+  // Best-effort by design (a failed audit write never breaks the cancellation).
+  const otherPartyId = contract.freelancer_id === userId ? contract.employer_id : contract.freelancer_id;
+  await persistAuditEntry({
+    user_id: otherPartyId,
+    actor_id: userId,
+    action: 'contract.cancelled',
+    resource_type: 'contract',
+    resource_id: contractId,
+    payload: {
+      projectId: contract.project_id,
+      totalAmount: contract.total_amount ?? null,
+    },
+    ip_address: null,
+    user_agent: null,
+    status: 'success',
+    error_message: null,
+  });
 
   return { success: true };
   }); // BLF-5.4: end withLock

@@ -25,7 +25,8 @@ import { disputeAgreement } from './agreement-contract.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
-import { withLock } from '../utils/async-lock.js';
+import { withLock, milestoneLockKey } from '../utils/async-lock.js';
+import { persistAuditEntry } from '../utils/admin-audit.js';
 
 export type DisputeServiceResult<T> = ServiceResult<T>;
 export type DisputeServiceError = ServiceError;
@@ -64,6 +65,12 @@ export type ResolveDisputeInput = {
 export async function createDispute(
   input: CreateDisputeInput
 ): Promise<DisputeServiceResult<Dispute>> {
+  // M9: Serialize dispute creation against approveMilestone (and the reject path)
+  // using the shared `milestone-approve:{milestoneId}` lock key, so a concurrent
+  // approval cannot release funds for the same milestone while this dispute is
+  // being opened — this prevents the pay + dispute double-commit (the duplicate
+  // dispute check below and the milestone status write both happen under the lock).
+  return withLock(milestoneLockKey(input.milestoneId), async () => {
   const { contractId, milestoneId, initiatorId, reason } = input;
 
   // Validate contract exists
@@ -110,7 +117,9 @@ export async function createDispute(
     return errorResult('INVALID_STATUS', message);
   }
 
-  // Check for existing active dispute on this milestone (M9: use lock to prevent race)
+  // Check for existing active dispute on this milestone. Serialized under the
+  // milestone-approve lock acquired at the top of createDispute, so the
+  // check-then-insert cannot race a concurrent dispute or approval.
   const existingDispute = await disputeRepository.getDisputeByMilestone(milestoneId);
   if (existingDispute) {
     return errorResult('DUPLICATE_DISPUTE', 'An active dispute already exists for this milestone');
@@ -233,6 +242,7 @@ export async function createDispute(
   }
 
   return successResult(createdDispute);
+  }); // M9: end withLock
 }
 
 
@@ -573,6 +583,28 @@ export async function resolveDispute(
       contract, project, projectEntity, milestone, resolutionEntity,
     );
     if ('error' in statusResult) return statusResult.error;
+
+    // BLF-12.2: durable audit trail — every admin dispute-resolution decision is
+    // recorded (deciding admin, outcome, and escrow context) for accountability.
+    // Written only after the resolution fully commits; best-effort by design.
+    await persistAuditEntry({
+      user_id: null,
+      actor_id: resolvedBy,
+      action: 'dispute.resolved',
+      resource_type: 'dispute',
+      resource_id: disputeId,
+      payload: {
+        decision,
+        reasoning,
+        contractId: disputeEntity.contract_id,
+        milestoneId: disputeEntity.milestone_id,
+        ...(input.freelancerBps !== undefined ? { freelancerBps: input.freelancerBps } : {}),
+      },
+      ip_address: null,
+      user_agent: null,
+      status: 'success',
+      error_message: null,
+    });
 
     return successResult(statusResult.dispute);
   });

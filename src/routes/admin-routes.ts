@@ -124,8 +124,14 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
  */
 router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
+  const adminUserId = req.user?.userId;
   const { name, role, isActive } = req.body;
   const requestId = getRequestId(req);
+
+  if (!adminUserId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    return;
+  }
 
   const validRoles = ['freelancer', 'employer'];
   if (role !== undefined && !validRoles.includes(role)) {
@@ -133,7 +139,7 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
     return;
   }
 
-  const result = await updateUser(userId, { name, role, isActive });
+  const result = await updateUser(userId, { name, role, isActive }, adminUserId);
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
@@ -155,10 +161,16 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
  */
 router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
+  const adminUserId = req.user?.userId;
   const { reason } = req.body;
   const requestId = getRequestId(req);
 
-  const result = await suspendUser(userId, reason);
+  if (!adminUserId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    return;
+  }
+
+  const result = await suspendUser(userId, reason, adminUserId);
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
@@ -179,9 +191,15 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
  */
 router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
+  const adminUserId = req.user?.userId;
   const requestId = getRequestId(req);
 
-  const result = await unsuspendUser(userId);
+  if (!adminUserId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    return;
+  }
+
+  const result = await unsuspendUser(userId, adminUserId);
 
   if (!result.success) {
     sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);

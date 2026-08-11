@@ -472,6 +472,62 @@ describe('Reputation Service - Unit Tests', () => {
     }
   });
 
+  // BLF-9.1: concurrent duplicate submissions for the same (contract, rater) must
+  // be serialized — exactly one review is created, the loser hits the duplicate check.
+  it('should serialize concurrent duplicate rating submissions', async () => {
+    const freelancerId = generateId();
+    const employerId = generateId();
+
+    const project = createTestProject({ employer_id: employerId });
+    const contract = createTestContract({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      employer_id: employerId,
+      status: 'completed'
+    });
+    contractStore.set(contract.id, contract);
+    projectStore.set(project.id, project);
+
+    // Stateful Appwrite mock: listDocuments reflects previously created reviews so
+    // the serialized duplicate check can observe the winner's insert.
+    const db = (globalThis as any).__mockDatabases;
+    const createdReviews: any[] = [];
+    const origList = db.listDocuments.getMockImplementation();
+    const origCreate = db.createDocument.getMockImplementation();
+    db.listDocuments.mockImplementation(async () => {
+      return { documents: createdReviews, total: createdReviews.length };
+    });
+    db.createDocument.mockImplementation(async (_dbId: string, _coll: string, _id: string, data: any) => {
+      const doc = { $id: `review-${createdReviews.length + 1}`, ...data };
+      createdReviews.push(doc);
+      return doc;
+    });
+
+    try {
+      const input = {
+        contractId: contract.id,
+        raterId: employerId,
+        rateeId: freelancerId,
+        rating: 5,
+      };
+      const [first, second] = await Promise.all([
+        submitRating(input),
+        submitRating(input),
+      ]);
+
+      // Exactly one review is created; the loser is rejected by the duplicate check
+      expect(createdReviews).toHaveLength(1);
+      expect(first.success === second.success).toBe(false);
+      const failed = first.success ? second : first;
+      if (!failed.success) expect(failed.error.code).toBe('DUPLICATE_RATING');
+    } finally {
+      if (origList) db.listDocuments.mockImplementation(origList);
+      else db.listDocuments.mockReset();
+      if (origCreate) db.createDocument.mockImplementation(origCreate);
+      else db.createDocument.mockReset();
+    }
+  });
+
   it('should reject rating for non-completed contract', async () => {
     const freelancerId = generateId();
     const employerId = generateId();

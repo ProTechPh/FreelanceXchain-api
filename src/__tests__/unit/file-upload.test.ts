@@ -194,11 +194,24 @@ describe('File Upload Routes', () => {
     });
 
     it('should return 403 when deleting another users file', async () => {
+      // BLF-11.2: ownership is verified server-side (userId prefix on the stored name)
+      mockDeleteFile.mockResolvedValue({ success: false, error: 'FORBIDDEN' });
+
       const res = await request(app)
         .delete('/api/files/profile-images/other-user/photo.png');
 
       expect(res.status).toBe(403);
-      expect(res.body.error.message).toContain('Unauthorized');
+      expect(res.body.error.code).toBe('FORBIDDEN');
+      expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'other-user/photo.png', 'user-123');
+    });
+
+    it('should return 404 when the file does not exist', async () => {
+      mockDeleteFile.mockResolvedValue({ success: false, error: 'FILE_NOT_FOUND' });
+
+      const res = await request(app)
+        .delete('/api/files/profile-images/user-123/ghost.png');
+
+      expect(res.status).toBe(404);
     });
 
     it('should return 400 when deleteFile fails', async () => {
@@ -264,10 +277,14 @@ describe('File Upload Routes', () => {
     });
 
     it('should return 403 for accessing another users file', async () => {
+      // BLF-11.2: ownership is verified server-side from the stored file name
+      mockGetSignedUrl.mockResolvedValue({ success: false, error: 'FORBIDDEN' });
+
       const res = await request(app)
         .get('/api/files/signed-url/contract-documents/other-user/doc.pdf');
 
       expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
     });
 
     it('should clamp expiresIn to valid range', async () => {
@@ -277,7 +294,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/signed-url/contract-documents/user-123/doc.pdf?expiresIn=999999');
 
       expect(res.status).toBe(200);
-      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf');
+      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf', 'user-123');
     });
 
     it('should clamp negative expiresIn to 60', async () => {
@@ -287,7 +304,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/signed-url/contract-documents/user-123/doc.pdf?expiresIn=-100');
 
       expect(res.status).toBe(200);
-      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf');
+      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf', 'user-123');
     });
 
     it('should return 400 when getSignedUrl fails', async () => {
@@ -456,7 +473,7 @@ describe('File Upload - ?? and || fallback branches', () => {
     const res = await request(app)
       .delete('/api/files/profile-images/user-123/photo.png');
     expect(res.status).toBe(200);
-    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123');
+    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123', 'user-123');
   });
 
   it('L102: DELETE should use filePath || userId fallback when filePath is empty', async () => {
@@ -464,7 +481,7 @@ describe('File Upload - ?? and || fallback branches', () => {
     const res = await request(app)
       .delete('/api/files/profile-images/user-123/photo.png');
     expect(res.status).toBe(200);
-    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123');
+    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123', 'user-123');
   });
 
   it('L121: GET signed-url should use ?? fallback when filePath param is undefined', async () => {
@@ -472,7 +489,7 @@ describe('File Upload - ?? and || fallback branches', () => {
     const res = await request(app)
       .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
     expect(res.status).toBe(200);
-    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123');
+    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123', 'user-123');
   });
 
   it('L140: GET signed-url should use filePath || userId fallback when filePath is empty', async () => {
@@ -480,6 +497,6 @@ describe('File Upload - ?? and || fallback branches', () => {
     const res = await request(app)
       .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
     expect(res.status).toBe(200);
-    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123');
+    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123', 'user-123');
   });
 });

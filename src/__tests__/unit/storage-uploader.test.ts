@@ -7,6 +7,7 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 const mockCreateFile = jest.fn() as any;
 const mockDeleteFile = jest.fn() as any;
 const mockListFiles = jest.fn() as any;
+const mockGetFile = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     DATABASE_ID: 'freelancexchain',
@@ -14,6 +15,13 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     createFile: mockCreateFile,
     deleteFile: mockDeleteFile,
     listFiles: mockListFiles,
+    getFile: mockGetFile,
+  },
+  // Query helpers used by listUserFiles pagination
+  Query: {
+    limit: (n: number) => `limit(${n})`,
+    cursorAfter: (id: string) => `cursorAfter("${id}")`,
+    orderDesc: (attr: string) => `orderDesc("${attr}")`,
   },
   BUCKETS: {
     PROPOSAL_ATTACHMENTS: 'proposal-attachments',
@@ -84,6 +92,7 @@ beforeEach(() => {
   mockCreateFile.mockReset();
   mockDeleteFile.mockReset();
   mockListFiles.mockReset();
+  mockGetFile.mockReset();
   process.env['APPWRITE_ENDPOINT'] = APPWRITE_ENDPOINT;
   process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
 });
@@ -668,6 +677,101 @@ describe('Storage Uploader - Compatibility Wrappers', () => {
       expect(result.files).toEqual([]);
       expect(result.error).toBe('Permission denied');
     });
+
+    it('should page through every page so files beyond the first page are not dropped', async () => {
+      // Page 1 is exactly PAGE_SIZE files (triggers a cursor-based follow-up call)
+      const page1Files = Array.from({ length: 100 }, (_, i) => ({
+        name: `user-1_file_${i}.pdf`,
+        $id: `f${i}`,
+      }));
+      // Page 2 has fewer files (terminates the loop) and includes a foreign file
+      const page2Files = [
+        { name: 'user-1_file_100.pdf', $id: 'f100' },
+        { name: 'user-2_other.pdf', $id: 'f101' },
+      ];
+      mockListFiles
+        .mockResolvedValueOnce({ files: page1Files })
+        .mockResolvedValueOnce({ files: page2Files });
+
+      const result = await listUserFiles('proposal-attachments', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.files).toHaveLength(101);
+      expect(result.files.every(f => f.name.startsWith('user-1_'))).toBe(true);
+      expect(mockListFiles).toHaveBeenCalledTimes(2);
+      // Second call continues after the last file id of the first page
+      const secondCallQueries = mockListFiles.mock.calls[1]?.[1] ?? [];
+      expect(secondCallQueries.some((q: string) => q.includes('cursorAfter("f99")'))).toBe(true);
+    });
+  });
+
+  describe('ownership verification (BLF-11.2)', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockGetFile.mockReset();
+      mockDeleteFile.mockReset().mockResolvedValue({});
+      process.env['APPWRITE_ENDPOINT'] = APPWRITE_ENDPOINT;
+      process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
+    });
+
+    it('should delete a file owned by the user (userId prefix match)', async () => {
+      mockGetFile.mockResolvedValue({ $id: 'f1', name: 'user-123_photo.png' });
+
+      const result = await deleteFile('profile-images', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: true });
+      expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'f1');
+    });
+
+    it('should refuse to delete another user file', async () => {
+      mockGetFile.mockResolvedValue({ $id: 'f1', name: 'user-999_photo.png' });
+
+      const result = await deleteFile('profile-images', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: false, error: 'FORBIDDEN' });
+      expect(mockDeleteFile).not.toHaveBeenCalled();
+    });
+
+    it('should return FILE_NOT_FOUND when the stored file cannot be fetched', async () => {
+      mockGetFile.mockRejectedValue(new Error('Not found'));
+
+      const result = await deleteFile('profile-images', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: false, error: 'FILE_NOT_FOUND' });
+      expect(mockDeleteFile).not.toHaveBeenCalled();
+    });
+
+    it('should skip the ownership check when no userId is provided', async () => {
+      const result = await deleteFile('profile-images', 'f1');
+
+      expect(result).toEqual({ success: true });
+      expect(mockGetFile).not.toHaveBeenCalled();
+    });
+
+    it('should return a signed URL only for files owned by the user', async () => {
+      mockGetFile.mockResolvedValue({ $id: 'f1', name: 'user-123_doc.pdf' });
+
+      const result = await getSignedUrl('contract-documents', 'f1', 'user-123');
+
+      expect(result.success).toBe(true);
+      expect(result.url).toContain('/contract-documents/files/f1/view');
+    });
+
+    it('should refuse a signed URL for another user file', async () => {
+      mockGetFile.mockResolvedValue({ $id: 'f1', name: 'user-999_doc.pdf' });
+
+      const result = await getSignedUrl('contract-documents', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: false, error: 'FORBIDDEN' });
+    });
+
+    it('should return FILE_NOT_FOUND when the file is missing for a signed URL', async () => {
+      mockGetFile.mockResolvedValue(null);
+
+      const result = await getSignedUrl('contract-documents', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: false, error: 'FILE_NOT_FOUND' });
+    });
   });
 });
 
@@ -677,6 +781,24 @@ describe('Storage Uploader - generateUniqueFilename edge case', () => {
     mockCreateFile.mockReset();
     process.env['APPWRITE_ENDPOINT'] = APPWRITE_ENDPOINT;
     process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
+  });
+
+  it('should prefix the stored filename with the userId for ownership verification', async () => {
+    mockCreateFile.mockResolvedValue({ $id: 'file-owner-prefix' });
+
+    await uploadFileToStorage(
+      Buffer.from('data'),
+      'document.pdf',
+      'application/pdf',
+      'proposal-attachments',
+      undefined,
+      'user-123'
+    );
+
+    // storage.createFile(bucket, fileId, inputFile, permissions) — the stored
+    // name lives on the InputFile (third argument).
+    const storedInputFile = mockCreateFile.mock.calls[0][2] as any;
+    expect(storedInputFile.name).toMatch(/^user-123_.+document\.pdf$/);
   });
 
   it('should handle filename without extension', async () => {
