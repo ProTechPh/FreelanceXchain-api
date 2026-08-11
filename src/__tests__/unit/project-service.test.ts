@@ -1129,3 +1129,97 @@ describe('Project Service - Extended Coverage (setMilestones, search/filter)', (
     });
   });
 });
+
+
+describe('Project Service - getProjectCategoryStats', () => {
+  beforeEach(() => {
+    projectStore.clear();
+    proposalStore.clear();
+    skillStore.clear();
+  });
+
+  it('should aggregate open projects by skill category', async () => {
+    const { getProjectCategoryStats } = await import('../../services/project-service.js');
+
+    const catJs = 'cat-js';
+    const catPy = 'cat-py';
+
+    const project1 = createTestProject({
+      required_skills: [
+        { skill_id: 's1', skill_name: 'JavaScript', category_id: catJs },
+        { skill_id: 's2', skill_name: 'Python', category_id: catPy },
+      ],
+      budget: 1000,
+    });
+    projectStore.set(project1.id, project1);
+
+    const project2 = createTestProject({
+      required_skills: [{ skill_id: 's1', skill_name: 'JavaScript', category_id: catJs }],
+      budget: 2000,
+    });
+    projectStore.set(project2.id, project2);
+
+    const result = await getProjectCategoryStats();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.categories).toHaveLength(2);
+      const catJsStat = result.data.categories.find((c: any) => c.categoryId === catJs);
+      expect(catJsStat).toBeDefined();
+      expect(catJsStat.projectCount).toBe(2);
+      expect(catJsStat.totalBudget).toBe(3000);
+      const catPyStat = result.data.categories.find((c: any) => c.categoryId === catPy);
+      expect(catPyStat.projectCount).toBe(1);
+      expect(catPyStat.totalBudget).toBe(1000);
+    }
+  });
+
+  it('should fall back to category_id when skill_name is empty', async () => {
+    const { getProjectCategoryStats } = await import('../../services/project-service.js');
+
+    const project = createTestProject({
+      required_skills: [{ skill_id: 's1', skill_name: '', category_id: 'cat-x' }],
+      budget: 500,
+    });
+    projectStore.set(project.id, project);
+
+    const result = await getProjectCategoryStats();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.categories[0].categoryName).toBe('cat-x');
+    }
+  });
+
+  it('should return empty categories when there are no open projects', async () => {
+    const { getProjectCategoryStats } = await import('../../services/project-service.js');
+
+    const result = await getProjectCategoryStats();
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.categories).toEqual([]);
+    }
+  });
+
+  it('should clamp the limit passed to listOpenProjects', async () => {
+    const { getProjectCategoryStats } = await import('../../services/project-service.js');
+
+    await getProjectCategoryStats(0);
+
+    expect(mockProjectRepo.getAllOpenProjects).toHaveBeenCalledWith({ limit: 1, offset: 0 });
+  });
+
+  it('should return INTERNAL_ERROR when the underlying query fails', async () => {
+    const { getProjectCategoryStats } = await import('../../services/project-service.js');
+
+    mockProjectRepo.getAllOpenProjects.mockRejectedValueOnce(new Error('DB connection lost'));
+
+    const result = await getProjectCategoryStats();
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.code).toBe('INTERNAL_ERROR');
+    }
+  });
+});

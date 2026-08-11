@@ -71,6 +71,7 @@ const {
   acceptCounterOffer,
   declineCounterOffer,
   getRushUpgradeRequestsByContract,
+  getRushUpgradeRequestsForContract,
   getRushUpgradeRequestById,
 } = await import('../../services/rush-upgrade-service.js');
 
@@ -511,6 +512,69 @@ describe('getRushUpgradeRequestsByContract', () => {
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.data.length).toBe(0);
+  });
+});
+
+// ─── getRushUpgradeRequestsForContract ─────────────────────────────────
+describe('getRushUpgradeRequestsForContract', () => {
+  it('should return requests for a contract party', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id });
+    seedRushUpgradeRequest({ contract_id: contract.id, status: 'pending' });
+
+    const result = await getRushUpgradeRequestsForContract(contract.id, freelancer.id);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]?.status).toBe('pending');
+    }
+  });
+
+  it('should return requests when the employer is the caller', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const freelancer = seedUser({ role: 'freelancer' });
+    const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id });
+    seedRushUpgradeRequest({ contract_id: contract.id, status: 'pending' });
+
+    const result = await getRushUpgradeRequestsForContract(contract.id, employer.id);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toHaveLength(1);
+    }
+  });
+
+  it('should allow admins to view requests for any contract', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const contract = seedContract({ employer_id: employer.id });
+    seedRushUpgradeRequest({ contract_id: contract.id, status: 'declined' });
+
+    const result = await getRushUpgradeRequestsForContract(contract.id, 'admin-1', true);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toHaveLength(1);
+    }
+  });
+
+  it('should return NOT_FOUND when the contract does not exist', async () => {
+    const result = await getRushUpgradeRequestsForContract('nonexistent', 'user-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('NOT_FOUND');
+  });
+
+  it('should return UNAUTHORIZED when the user is not a party', async () => {
+    const employer = seedUser({ role: 'employer' });
+    const contract = seedContract({ employer_id: employer.id });
+    seedRushUpgradeRequest({ contract_id: contract.id, status: 'pending' });
+
+    const result = await getRushUpgradeRequestsForContract(contract.id, 'outsider-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.error.code).toBe('UNAUTHORIZED');
   });
 });
 

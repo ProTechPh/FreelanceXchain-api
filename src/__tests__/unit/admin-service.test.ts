@@ -51,6 +51,10 @@ const mockAuditLogRepo = {
   create: jest.fn<any>(),
 };
 
+const mockReviewRepo = {
+  getAllReviews: jest.fn<any>(),
+};
+
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: mockUserRepo,
 }));
@@ -75,6 +79,10 @@ jest.unstable_mockModule(resolveModule('src/repositories/didit-kyc-repository.ts
 
 jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
   auditLogRepository: mockAuditLogRepo,
+}));
+
+jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
+  reviewRepository: mockReviewRepo,
 }));
 
 describe('Admin Service', () => {
@@ -1098,5 +1106,40 @@ describe('Admin Service - Coverage Gaps', () => {
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('INTERNAL_ERROR');
     });
+  });
+});
+
+describe('Admin Service - getSatisfactionRate', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  const importModule = async () => {
+    return await import('../../services/admin-service.js');
+  };
+
+  it('should compute the satisfaction rate from review ratings', async () => {
+    const { getSatisfactionRate } = await importModule();
+    mockReviewRepo.getAllReviews.mockResolvedValueOnce([
+      { rating: 5 },
+      { rating: 3 },
+      { rating: 4 },
+    ]);
+
+    await expect(getSatisfactionRate()).resolves.toBe(67);
+  });
+
+  it('should return 0 when there are no reviews', async () => {
+    const { getSatisfactionRate } = await importModule();
+    mockReviewRepo.getAllReviews.mockResolvedValueOnce([]);
+
+    await expect(getSatisfactionRate()).resolves.toBe(0);
+  });
+
+  it('should return 0 when the reviews read fails', async () => {
+    const { getSatisfactionRate } = await importModule();
+    mockReviewRepo.getAllReviews.mockRejectedValueOnce(new Error('DB error'));
+
+    await expect(getSatisfactionRate()).resolves.toBe(0);
   });
 });

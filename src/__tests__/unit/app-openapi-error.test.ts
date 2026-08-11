@@ -54,6 +54,10 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       tls: false,
     },
   },
+  getCorsOrigin: () => process.env['CORS_ORIGIN'],
+  getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
+  getCsrfSecret: () => process.env['CSRF_SECRET'],
+  getBlockchainWebhookSecret: () => process.env['BLOCKCHAIN_WEBHOOK_SECRET'],
 }));
 
 // Mock node:fs/promises to make readFile throw for openapi.json

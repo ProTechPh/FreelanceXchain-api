@@ -41,15 +41,6 @@ export type Milestone = {
   updatedAt: string;
 };
 
-export type SubmitMilestoneInput = {
-  milestoneId: string;
-  freelancerId: string;
-  deliverables: FileAttachment[];
-  notes?: string;
-};
-
-
-
 export type RejectMilestoneInput = {
   milestoneId: string;
   employerId: string;

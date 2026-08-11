@@ -12,6 +12,7 @@ import {
   getUnreadCount,
 } from '../services/notification-service.js';
 import { initializeSSEConnection, getSSEStats } from '../services/notification-delivery-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -85,7 +86,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -112,7 +113,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -138,7 +139,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
  *       401:
  *         description: Unauthorized
  */
-router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/unread-count', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -155,7 +156,7 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request,
   }
 
   res.status(200).json({ count: result.data });
-});
+}));
 
 
 /**
@@ -190,7 +191,7 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request,
  *       404:
  *         description: Notification not found
  */
-router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const notificationId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -212,7 +213,7 @@ router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async 
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -239,7 +240,7 @@ router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), async 
  *       401:
  *         description: Unauthorized
  */
-router.patch('/read-all', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.patch('/read-all', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -256,7 +257,7 @@ router.patch('/read-all', authMiddleware, apiRateLimiter, async (req: Request, r
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -307,7 +308,7 @@ router.get('/stream', authMiddleware, (req: Request, res: Response) => {
  *       200:
  *         description: SSE statistics
  */
-router.get('/sse-stats', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/sse-stats', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const result = getSSEStats();
   
   if (!result.success) {
@@ -315,6 +316,6 @@ router.get('/sse-stats', authMiddleware, requireRole('admin'), apiRateLimiter, a
   }
   
   return res.json(result.data);
-});
+}));
 
 export default router;

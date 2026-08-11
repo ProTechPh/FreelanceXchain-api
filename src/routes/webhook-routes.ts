@@ -1,11 +1,13 @@
 import { Router, type Request, type Response } from 'express';
 import { logger } from '../config/logger.js';
+import { getBlockchainWebhookSecret } from '../config/env.js';
 import crypto from 'crypto';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
 export function verifyBlockchainSignature(payload: string, signature: string): boolean {
-  const secret = process.env['BLOCKCHAIN_WEBHOOK_SECRET'];
+  const secret = getBlockchainWebhookSecret();
   if (!secret) {
     logger.warn('BLOCKCHAIN_WEBHOOK_SECRET not configured - all blockchain webhook requests will be rejected. Set BLOCKCHAIN_WEBHOOK_SECRET to enable this endpoint.');
     return false;
@@ -48,7 +50,7 @@ export function verifyBlockchainSignature(payload: string, signature: string): b
  *       401:
  *         description: Invalid signature
  */
-router.post('/blockchain', async (req: Request, res: Response) => {
+router.post('/blockchain', asyncHandler(async (req: Request, res: Response) => {
   try {
     const signature = req.headers['x-blockchain-signature'] as string | undefined;
     const payload = req.rawBody ?? JSON.stringify(req.body);
@@ -89,6 +91,6 @@ router.post('/blockchain', async (req: Request, res: Response) => {
     logger.error('Failed to process blockchain webhook:', error);
     return res.status(500).json({ error: 'Webhook processing failed' });
   }
-});
+}));
 
 export default router;

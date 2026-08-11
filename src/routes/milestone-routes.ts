@@ -7,94 +7,19 @@ import { uploadFile } from '../utils/storage-uploader.js';
 import { logger } from '../config/logger.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
-import { contractRepository } from '../repositories/contract-repository.js';
-import { projectRepository, type MilestoneEntity, type ProjectEntity } from '../repositories/project-repository.js';
 import {
   rejectMilestone,
   getMilestoneById,
   getContractMilestones,
+  findFreelancerMilestoneContext,
+  submitMilestoneFromProjectContext,
+  findEmployerMilestoneContractId,
+  type MilestoneDeliverable,
 } from '../services/milestone-service.js';
-import { requestMilestoneCompletion, approveMilestone as approveMilestoneWithPayment } from '../services/payment-service.js';
+import { approveMilestone as approveMilestoneWithPayment } from '../services/payment-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
-
-type MilestoneContext = {
-  contractId: string;
-  project: ProjectEntity;
-  milestone: MilestoneEntity;
-  milestoneIndex: number;
-};
-
-async function findFreelancerMilestoneContext(
-  freelancerId: string,
-  milestoneId: string
-): Promise<MilestoneContext | null> {
-  const contractsResult = await contractRepository.getContractsByFreelancer(freelancerId, { limit: 1000, offset: 0 });
-
-  // Prefer active contracts first, then fall back to others.
-  const contracts = [...contractsResult.items].sort((a, b) => {
-    if (a.status === 'active' && b.status !== 'active') return -1;
-    if (a.status !== 'active' && b.status === 'active') return 1;
-    return b.created_at.localeCompare(a.created_at);
-  });
-
-  for (const contract of contracts) {
-    const project = await projectRepository.findProjectById(contract.project_id);
-    if (!project) continue;
-
-    const milestoneIndex = (project.milestones || []).findIndex((m) => m.id === milestoneId);
-    if (milestoneIndex === -1) continue;
-
-    const milestone = project.milestones[milestoneIndex];
-    if (!milestone) continue;
-
-    return {
-      contractId: contract.id,
-      project,
-      milestone,
-      milestoneIndex,
-    };
-  }
-
-  return null;
-}
-
-function mapMilestoneResponse(
-  milestone: MilestoneEntity,
-  contractId: string,
-  project: ProjectEntity,
-  submittedAtIso?: string
-) {
-  const deliverableFiles = milestone.deliverableFiles || milestone.deliverable_files || [];
-  const revisionCount = milestone.revisionCount ?? milestone.revision_count ?? 0;
-  const submittedAt = milestone.submittedAt || milestone.submitted_at || submittedAtIso;
-  const approvedAt = milestone.approvedAt || milestone.approved_at;
-  const rejectedAt = milestone.rejectedAt || milestone.rejected_at;
-  const completedAt = milestone.completedAt || milestone.completed_at;
-  const rejectionReason = milestone.rejectionReason || milestone.rejection_reason;
-
-  return {
-    id: milestone.id,
-    contractId,
-    title: milestone.title,
-    description: milestone.description,
-    amount: milestone.amount,
-    dueDate: milestone.dueDate || milestone.due_date,
-    status: milestone.status,
-    submittedAt,
-    approvedAt,
-    rejectedAt,
-    completedAt,
-    deliverableFiles,
-    rejectionReason,
-    revisionCount,
-    notes: milestone.notes,
-    createdAt: project.created_at,
-    updatedAt: project.updated_at,
-  };
-}
-
-type MilestoneDeliverable = { filename: string; url: string; size: number; mimeType: string };
 
 async function uploadMilestoneDeliverables(
   files: Express.Multer.File[],
@@ -134,63 +59,6 @@ function sendMilestoneSubmitError(
   sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, requestId);
 }
 
-async function submitMilestoneFromProjectContext(
-  milestoneId: string,
-  freelancerId: string,
-  deliverables: MilestoneDeliverable[],
-  notes?: string
-): Promise<{ success: true; data: ReturnType<typeof mapMilestoneResponse> } | { success: false; error: { code: string; message: string } }> {
-  const context = await findFreelancerMilestoneContext(freelancerId, milestoneId);
-  if (!context) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-    };
-  }
-
-  const completion = await requestMilestoneCompletion(context.contractId, milestoneId, freelancerId, {
-    deliverables,
-    ...(notes !== undefined ? { notes } : {}),
-  });
-  if (!completion.success) {
-    const completionError = 'error' in completion
-      ? completion.error
-      : { code: 'SUBMIT_FAILED', message: 'Failed to submit milestone' };
-    return { success: false, error: completionError };
-  }
-
-  const updatedProject = await projectRepository.findProjectById(context.project.id);
-  if (!updatedProject) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Project not found' },
-    };
-  }
-
-  const milestoneIndex = (updatedProject.milestones || []).findIndex((m) => m.id === milestoneId);
-  if (milestoneIndex === -1) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-    };
-  }
-
-  const updatedMilestone = updatedProject.milestones[milestoneIndex];
-  if (!updatedMilestone) {
-    return {
-      success: false,
-      error: { code: 'NOT_FOUND', message: 'Milestone not found' },
-    };
-  }
-
-  const now = new Date().toISOString();
-
-  return {
-    success: true,
-    data: mapMilestoneResponse(updatedMilestone, context.contractId, updatedProject, now),
-  };
-}
-
 /**
  * @swagger
  * /api/milestones/{id}:
@@ -210,7 +78,7 @@ async function submitMilestoneFromProjectContext(
  *       404:
  *         description: Milestone not found
  */
-router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -227,7 +95,7 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: R
     logger.error('Error getting milestone', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestone', getRequestId(req));
   }
-});
+}));
 
 /**
  * @swagger
@@ -246,7 +114,7 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: R
  *       200:
  *         description: List of milestones
  */
-router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const contractId = req.params['contractId'] ?? '';
     // BLF-9.1: Pass userId to enforce ownership check
@@ -262,7 +130,7 @@ router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId'])
     logger.error('Error getting contract milestones', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestones', getRequestId(req));
   }
-});
+}));
 
 // Create file upload middleware for milestone deliverables
 const milestoneFileUpload = createFileUploadMiddleware('files', {
@@ -308,7 +176,7 @@ router.post('/:id/upload-deliverables',
   validateUUID(), 
   fileUploadRateLimiter, 
   ...milestoneFileUpload, 
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     try {
       const milestoneId = req.params['id'] ?? '';
       const userId = req.user?.userId ?? '';
@@ -336,7 +204,7 @@ router.post('/:id/upload-deliverables',
       logger.error('Error uploading milestone deliverables', error);
       return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to upload files', getRequestId(req));
     }
-  }
+  })
 );
 
 /**
@@ -378,7 +246,7 @@ router.post('/:id/upload-deliverables',
  *       200:
  *         description: Milestone submitted successfully
  */
-router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUUID(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.userId ?? '';
@@ -398,7 +266,7 @@ router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUU
     logger.error('Error submitting milestone', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit milestone', getRequestId(req));
   }
-});
+}));
 
 /**
  * @swagger
@@ -440,7 +308,7 @@ router.post('/:id/submit-with-files',
   validateUUID(), 
   fileUploadRateLimiter, 
   ...milestoneFileUpload, 
-  async (req: Request, res: Response) => {
+  asyncHandler(async (req: Request, res: Response) => {
     try {
       const milestoneId = req.params['id'] ?? '';
       const userId = req.user?.userId ?? '';
@@ -492,7 +360,7 @@ router.post('/:id/submit-with-files',
       logger.error('Error submitting milestone with files', error);
       return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit milestone with files', getRequestId(req));
     }
-  }
+  })
 );
 
 /**
@@ -520,24 +388,13 @@ router.post('/:id/submit-with-files',
  *       200:
  *         description: Milestone approved successfully
  */
-router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUID(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.userId ?? '';
 
     // Find the contract containing this milestone by scanning employer's contracts
-    const contractsResult = await contractRepository.getContractsByEmployer(userId, { limit: 1000, offset: 0 });
-    let contractId: string | null = null;
-
-    for (const contract of contractsResult.items) {
-      const project = await projectRepository.findProjectById(contract.project_id);
-      if (!project) continue;
-      const found = (project.milestones || []).some((m) => m.id === milestoneId);
-      if (found) {
-        contractId = contract.id;
-        break;
-      }
-    }
+    const contractId = await findEmployerMilestoneContractId(userId, milestoneId);
 
     if (!contractId) {
       return sendErrorResponse(res, 404, 'NOT_FOUND', 'Milestone not found in any of your contracts', getRequestId(req));
@@ -559,7 +416,7 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
     logger.error('Error approving milestone', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to approve milestone', getRequestId(req));
   }
-});
+}));
 
 /**
  * @swagger
@@ -591,7 +448,7 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
  *       200:
  *         description: Milestone rejected successfully
  */
-router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID(), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID(), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const milestoneId = req.params['id'] ?? '';
     const userId = req.user?.userId ?? '';
@@ -618,6 +475,6 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID
     logger.error('Error rejecting milestone', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject milestone', getRequestId(req));
   }
-});
+}));
 
 export default router;

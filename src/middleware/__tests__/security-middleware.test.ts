@@ -16,6 +16,8 @@ jest.unstable_mockModule('helmet', () => {
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   config: { server: { baseUrl: 'https://configured.example.com' } },
+  getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
+  getCorsOrigin: () => process.env['CORS_ORIGIN'],
 }));
 
 const {

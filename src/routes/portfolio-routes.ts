@@ -14,10 +14,11 @@ import {
   getFreelancerPortfolio,
   getPortfolioItem,
 } from '../services/portfolio-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
-router.post('/', authMiddleware, requireRole('freelancer'), fileUploadRateLimiter, async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('freelancer'), fileUploadRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const contentType = req.headers['content-type'] || '';
   
   if (contentType.includes('multipart/form-data')) {
@@ -25,7 +26,7 @@ router.post('/', authMiddleware, requireRole('freelancer'), fileUploadRateLimite
   } else {
     return handleJsonPortfolio(req, res);
   }
-});
+}));
 
 async function handleMultipartPortfolio(req: Request, res: Response) {
   const middleware = uploadPortfolioImages;
@@ -124,7 +125,7 @@ async function handleJsonPortfolio(req: Request, res: Response) {
   return res.status(201).json(result.data);
 }
 
-router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelancerId']), async (req: Request, res: Response) => {
+router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelancerId']), asyncHandler(async (req: Request, res: Response) => {
   const freelancerId = req.params['freelancerId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -136,9 +137,9 @@ router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelance
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -151,9 +152,9 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -173,9 +174,9 @@ router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, 
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const portfolioId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -194,6 +195,6 @@ router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter,
   }
 
   sendSuccessResponse(res, 200, { message: 'Portfolio item deleted' }, requestId);
-});
+}));
 
 export default router;

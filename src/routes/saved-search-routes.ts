@@ -11,10 +11,11 @@ import {
   deleteSavedSearch,
   executeSavedSearch,
 } from '../services/saved-search-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
-router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const { name, searchType, filters, notifyOnNew } = req.body;
@@ -37,9 +38,9 @@ router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respo
   }
 
   res.status(201).json(result.data);
-});
+}));
 
-router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const searchType = req.query['searchType'] as 'project' | 'freelancer' | undefined;
@@ -57,9 +58,9 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.patch('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const searchId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -79,9 +80,9 @@ router.patch('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req:
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.delete('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.delete('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const searchId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -100,9 +101,9 @@ router.delete('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req
   }
 
   sendSuccessResponse(res, 200, { message: 'Saved search deleted' }, requestId);
-});
+}));
 
-router.post('/:id/execute', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/execute', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const searchId = req.params['id'] ?? '';
   const requestId = getRequestId(req);
@@ -121,6 +122,6 @@ router.post('/:id/execute', authMiddleware, apiRateLimiter, validateUUID(), asyn
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

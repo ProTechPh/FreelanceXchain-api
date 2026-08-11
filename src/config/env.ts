@@ -49,6 +49,7 @@ export const config = {
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     baseUrl: getBaseUrl(),
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
+    logLevel: getEnvVar('LOG_LEVEL', 'info'),
     // Number of trusted reverse-proxy hops. Keeps req.ip (used by rate limiters and
     // audit logging) pointing at the real client instead of the proxy when deployed
     // behind nginx/Cloudflare/HF Spaces. Set 0 to disable and always use the socket
@@ -107,3 +108,28 @@ export const config = {
 } as const;
 
 export type Config = typeof config;
+
+/**
+ * Lazily-resolved environment values.
+ *
+ * These are read at call time rather than module load so that middleware that
+ * must react to environment switches (e.g. NODE_ENV toggled between test
+ * cases) keeps working, and so secrets like the webhook HMAC key are picked up
+ * whenever a request arrives. Centralizing them here means no module outside
+ * of config/ touches process.env directly.
+ */
+export function getNodeEnv(): string {
+  return getEnvVar('NODE_ENV', 'development');
+}
+
+export function getCsrfSecret(): string | undefined {
+  return getEnvVarOptional('CSRF_SECRET');
+}
+
+export function getCorsOrigin(): string | undefined {
+  return getEnvVarOptional('CORS_ORIGIN');
+}
+
+export function getBlockchainWebhookSecret(): string | undefined {
+  return getEnvVarOptional('BLOCKCHAIN_WEBHOOK_SECRET');
+}

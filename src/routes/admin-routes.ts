@@ -4,7 +4,6 @@ import { validateAppwriteDocumentId } from '../middleware/validation-middleware.
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
-import { reviewRepository } from '../repositories/review-repository.js';
 
 import {
   getPlatformStats,
@@ -15,11 +14,13 @@ import {
   updateUser,
   getDisputeManagement,
   getSystemHealth,
+  getSatisfactionRate,
   type UserFilters,
   type DisputeFilters,
 } from '../services/admin-service.js';
 import type { UserEntity } from '../repositories/user-repository.js';
 import { getAdminAnalytics } from '../services/analytics-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -47,7 +48,7 @@ function mapAdminUser(user: (UserEntity & { kyc_verified?: boolean }) | null | u
  *     security:
  *       - bearerAuth: []
  */
-router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   const result = await getPlatformStats();
@@ -58,7 +59,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -69,7 +70,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async
  *     security:
  *       - bearerAuth: []
  */
-router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   const result = await getAdminAnalytics();
@@ -80,7 +81,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, a
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -91,7 +92,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, a
  *     security:
  *       - bearerAuth: []
  */
-router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
   const role = req.query['role'] as string | undefined;
@@ -111,7 +112,7 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
     users: result.data.users.map(mapAdminUser),
     total: result.data.total,
   });
-});
+}));
 
 /**
  * @swagger
@@ -122,7 +123,7 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
+router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const { name, role, isActive } = req.body;
@@ -148,7 +149,7 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
 
   // Transform to frontend format
   res.status(200).json(mapAdminUser(result.data));
-});
+}));
 
 /**
  * @swagger
@@ -159,7 +160,7 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
  *     security:
  *       - bearerAuth: []
  */
-router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
+router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const { reason } = req.body;
@@ -178,7 +179,7 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -189,7 +190,7 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
  *     security:
  *       - bearerAuth: []
  */
-router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
+router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const adminUserId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -207,7 +208,7 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -230,7 +231,7 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
  *                 maxLength: 500
  *                 description: Audit reason for the manual KYC approval
  */
-router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), async (req: Request, res: Response) => {
+router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
   const adminUserId = req.user?.userId;
@@ -272,7 +273,7 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -283,7 +284,7 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
  *     security:
  *       - bearerAuth: []
  */
-router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const status = req.query['status'] as string | undefined;
 
@@ -297,7 +298,7 @@ router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, as
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -308,7 +309,7 @@ router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, as
  *     security:
  *       - bearerAuth: []
  */
-router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   const result = await getSystemHealth();
@@ -319,7 +320,7 @@ router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimite
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -329,7 +330,7 @@ router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimite
  *     tags: [Admin]
  *     description: Used on the landing page and admin dashboard to show aggregate platform statistics. Open to public.
  */
-router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   const result = await getPlatformStats();
@@ -339,21 +340,13 @@ router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimit
     return;
   }
 
-  let satisfactionRate = 0;
-  try {
-    const reviews = await reviewRepository.getAllReviews();
-    const positive = reviews.filter(r => r.rating >= 4.0).length;
-    const total = reviews.length;
-    satisfactionRate = total > 0 ? Math.round((positive / total) * 100) : 0;
-  } catch {
-    satisfactionRate = 0;
-  }
+  const satisfactionRate = await getSatisfactionRate();
 
   res.status(200).json({
     ...result.data,
     totalPaidOut: result.data.totalTransactionVolume.toFixed(2),
     satisfactionRate,
   });
-});
+}));
 
 export default router;

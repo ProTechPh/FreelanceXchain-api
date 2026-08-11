@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
-import { config } from '../config/env.js';
+import { config, getCorsOrigin, getNodeEnv } from '../config/env.js';
 
 // NodeNext CJS/ESM interop: some bundlers wrap the default export under `.default`.
 // The double cast is only to reach that optional property — never to escape type checks.
@@ -47,7 +47,7 @@ export function requestIdMiddleware(req: Request, _res: Response, next: NextFunc
 }
 
 export function httpsEnforcement(req: Request, res: Response, next: NextFunction): void {
-    if (process.env['NODE_ENV'] !== 'production') {
+    if (getNodeEnv() !== 'production') {
         next();
         return;
     }
@@ -118,10 +118,10 @@ export function validateCorsOrigin(origin: string | undefined, allowedOrigins: s
 }
 
 export function getAllowedOrigins(): string[] {
-    const corsOrigin = process.env['CORS_ORIGIN'];
+    const corsOrigin = getCorsOrigin();
 
     if (!corsOrigin) {
-        if (process.env['NODE_ENV'] !== 'production') {
+        if (getNodeEnv() !== 'production') {
             return [
                 'http://localhost:3000',
                 'http://localhost:3001',

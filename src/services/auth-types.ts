@@ -61,7 +61,9 @@ export type AuthError = {
   | 'MFA_DISABLE_FAILED'
   | 'MFA_REQUIRED'
   | 'MFA_CODE_REQUIRED'
-  | 'MFA_VERIFY_FAILED';
+  | 'MFA_VERIFY_FAILED'
+  | 'UPDATE_FAILED'
+  | 'WALLET_LOCKED';
   message: string;
 };
 

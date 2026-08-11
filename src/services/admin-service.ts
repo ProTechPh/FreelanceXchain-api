@@ -5,6 +5,7 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { transactionRepository } from '../repositories/transaction-repository.js';
+import { reviewRepository } from '../repositories/review-repository.js';
 import { auditLogRepository, CreateAuditLogEntry } from '../repositories/audit-log-repository.js';
 import {
   createKycVerification,
@@ -421,6 +422,23 @@ export async function getDisputeManagement(filters?: DisputeFilters): Promise<Se
       logger.error('Failed to fetch dispute management data', { error, filters });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
     }
+}
+
+/**
+ * Compute the platform satisfaction rate from review ratings.
+ * Best-effort: any failure (or absence of reviews) yields 0 so the admin
+ * dashboard never breaks because of the reviews read.
+ */
+export async function getSatisfactionRate(): Promise<number> {
+  try {
+    const reviews = await reviewRepository.getAllReviews();
+    const positive = reviews.filter(r => r.rating >= 4.0).length;
+    const total = reviews.length;
+    return total > 0 ? Math.round((positive / total) * 100) : 0;
+  } catch (error) {
+    logger.error('Failed to compute satisfaction rate', { error });
+    return 0;
+  }
 }
 
 /**

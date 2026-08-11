@@ -56,6 +56,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
     getUserByEmail: jest.fn().mockResolvedValue(null),
     getUserById: jest.fn().mockResolvedValue(null),
     update: jest.fn().mockResolvedValue({}),
+    updateUser: jest.fn().mockResolvedValue({}),
   },
   UserRepository: jest.fn(),
   UserEntity: {} as UserEntity,
@@ -84,6 +85,7 @@ const {
   validateTokenAndGetUser,
   requestPasswordReset,
   updatePassword,
+  updateUserWallet,
   isAuthError,
   logout,
   getCurrentUserWithKyc,
@@ -1983,5 +1985,65 @@ describe('auth-service - Additional Branch Coverage', () => {
       code: 'INTERNAL_ERROR',
       message: 'Failed to create user',
     });
+  });
+});
+
+describe('auth-service - updateUserWallet', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should update the wallet address successfully when none is set', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: null });
+    userRepository.updateUser.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0x123' });
+
+    const result = await updateUserWallet('u-1', '0x123');
+
+    expect(userRepository.updateUser).toHaveBeenCalledWith('u-1', { wallet_address: '0x123' });
+    expect(result).toEqual({ walletAddress: '0x123' });
+  });
+
+  it('should fall back to the requested address when the stored value is empty', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '' });
+    userRepository.updateUser.mockResolvedValueOnce({ id: 'u-1', wallet_address: null });
+
+    const result = await updateUserWallet('u-1', '0x123');
+
+    expect(result).toEqual({ walletAddress: '0x123' });
+  });
+
+  it('should return WALLET_LOCKED when a different wallet is already set', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0xOLD' });
+
+    const result = await updateUserWallet('u-1', '0xNEW');
+
+    expect(result).toEqual({ code: 'WALLET_LOCKED', message: 'Wallet address is already set and cannot be changed' });
+    expect(userRepository.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('should accept the same wallet in different casing without a write', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0xAbC' });
+
+    const result = await updateUserWallet('u-1', '0xabc');
+
+    expect(result).toEqual({ walletAddress: '0xAbC' });
+    expect(userRepository.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('should return USER_NOT_FOUND when the user does not exist', async () => {
+    userRepository.getUserById.mockResolvedValueOnce(null);
+
+    const result = await updateUserWallet('missing', '0x123');
+
+    expect(result).toEqual({ code: 'USER_NOT_FOUND', message: 'User not found' });
+  });
+
+  it('should return UPDATE_FAILED when the update throws', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: null });
+    userRepository.updateUser.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await updateUserWallet('u-1', '0x123');
+
+    expect(result).toEqual({ code: 'UPDATE_FAILED', message: 'Failed to update wallet address' });
   });
 });

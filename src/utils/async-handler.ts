@@ -5,7 +5,7 @@ import { Request, Response, NextFunction } from 'express';
  * Express 4 does not catch rejected promises from async handlers.
  */
 export function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<void>
+  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
 ) {
   return (req: Request, res: Response, next: NextFunction): void => {
     fn(req, res, next).catch(next);
