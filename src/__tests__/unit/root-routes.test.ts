@@ -118,5 +118,30 @@ describe('Root Routes', () => {
         delete process.env['APP_BUILD_SHA'];
       }
     });
+
+    it('should fall back to SPACE_REVISION when APP_BUILD_SHA is unset', async () => {
+      const originalVersion = process.env['npm_package_version'];
+      const originalBuildSha = process.env['APP_BUILD_SHA'];
+      const originalSpaceRevision = process.env['SPACE_REVISION'];
+      delete process.env['npm_package_version'];
+      delete process.env['APP_BUILD_SHA'];
+      process.env['SPACE_REVISION'] = 'fedcba9876543210';
+      const res = await request(app).get('/');
+      expect(res.status).toBe(200);
+      expect(res.body.version).toBe('1.0.0+build.fedcba9');
+      if (originalVersion !== undefined) {
+        process.env['npm_package_version'] = originalVersion;
+      }
+      if (originalBuildSha !== undefined) {
+        process.env['APP_BUILD_SHA'] = originalBuildSha;
+      } else {
+        delete process.env['APP_BUILD_SHA'];
+      }
+      if (originalSpaceRevision !== undefined) {
+        process.env['SPACE_REVISION'] = originalSpaceRevision;
+      } else {
+        delete process.env['SPACE_REVISION'];
+      }
+    });
   });
 });
