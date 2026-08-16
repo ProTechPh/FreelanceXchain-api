@@ -55,13 +55,17 @@ At runtime, `getApiVersion()` in `src/utils/version.ts` combines the
 `package.json` version (already bumped at build time) with the baked-in
 SHA (first 7 characters) using semver build metadata:
 
-| Environment | `APP_BUILD_SHA` | Reported version |
+| Environment | Build SHA source | Reported version |
 | --- | --- | --- |
 | Local dev (`pnpm run dev`) | unset | current `package.json` version (e.g. `1.0.1`) |
-| Docker image from push to `main` | `4671a01c...` | `1.0.1+build.4671a01` |
+| Docker image from push to `main` | `APP_BUILD_SHA` = `4671a01c...` | `1.0.1+build.4671a01` |
+| Hugging Face Space (builds the repo Dockerfile) | `SPACE_REVISION` (auto-set, falls back) | `1.0.1+build.<revision>` |
 
 The fallback base version comes from `npm_package_version` (the version in
-`package.json`), or `1.0.0` if that is not set.
+`package.json`), or `1.0.0` if that is not set. When `APP_BUILD_SHA` is
+unset, the runtime falls back to the Hugging Face `SPACE_REVISION` variable
+— so platforms that build the repo directly (without Docker build args)
+still report a real commit instead of `build.dev`.
 
 > Note: `APP_BUILD_SHA` is set by CI only — it should not be committed to
 > `.env`. See `.env.example` for the documented variable.
