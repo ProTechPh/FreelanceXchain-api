@@ -6,8 +6,11 @@ API documentation for project management in FreelanceXchain. All protected endpo
 
 - [Endpoints](#endpoints)
   - [GET /api/projects](#get-apiprojects)
+  - [GET /api/projects/my-projects](#get-apiprojectsmy-projects)
+  - [GET /api/projects/stats/categories](#get-apiprojectsstatscategories)
   - [GET /api/projects/{id}](#get-apiprojectsid)
   - [POST /api/projects](#post-apiprojects)
+  - [POST /api/projects/with-attachments](#post-apiprojectswith-attachments)
   - [PATCH /api/projects/{id}](#patch-apiprojectsid)
   - [POST /api/projects/{id}/milestones](#post-apiprojectsidmilestones)
   - [GET /api/projects/{id}/proposals](#get-apiprojectsidproposals)
@@ -48,6 +51,59 @@ List projects with optional filters and pagination.
 
 ---
 
+### GET /api/projects/my-projects
+
+List the authenticated employer's own projects (including drafts and non-open statuses), enriched with proposal counts.
+
+**Auth:** Bearer token required. **Role:** employer
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| limit | integer | Page size (default 20, max 100) |
+| offset | integer | Offset for pagination (default 0) |
+
+**Response:** `200 OK`
+
+```json
+{
+  "items": [/* Project objects, each with a proposalCount field */],
+  "hasMore": true,
+  "continuationToken": "..."
+}
+```
+
+**Errors:** `400` Service error, `401` Unauthorized, `403` Forbidden (non-employer).
+
+---
+
+### GET /api/projects/stats/categories
+
+Get project counts and total budgets grouped by skill category, computed from open projects.
+
+**Auth:** Not required (public)
+
+**Query Parameters:**
+
+| Parameter | Type | Description |
+| --- | --- | --- |
+| limit | integer | Max projects scanned (default 100, max 10000) |
+
+**Response:** `200 OK`
+
+```json
+{
+  "categories": [
+    { "categoryId": "uuid", "categoryName": "string", "projectCount": 3, "totalBudget": 4500 }
+  ]
+}
+```
+
+**Errors:** `500` Internal error.
+
+---
+
 ### GET /api/projects/{id}
 
 Retrieve a specific project by ID.
@@ -84,7 +140,7 @@ Create a new project.
 **Response:** `201 Created` -- Project object.
 
 ```bash
-curl -X POST http://localhost:7860/api/projects \
+curl -X POST http://localhost:3000/api/projects \
   -H "Authorization: Bearer YOUR_JWT_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -97,6 +153,32 @@ curl -X POST http://localhost:7860/api/projects \
 ```
 
 **Errors:** `400` Validation error (including `INVALID_SKILL`), `401` Unauthorized, `403` Forbidden (non-employer).
+
+---
+
+### POST /api/projects/with-attachments
+
+Create a project with optional reference-material file attachments, submitted as `multipart/form-data`. Requires KYC verification and is subject to the file-upload rate limiter.
+
+**Auth:** Bearer token required. **Role:** employer (KYC verified)
+
+**Form Data Fields:**
+
+| Field | Type | Required | Constraints |
+| --- | --- | --- | --- |
+| title | string | yes | Min length 5 |
+| description | string | yes | Min length 20 |
+| requiredSkills | string (JSON) | yes | JSON array of `{ "skillId": "uuid" }` objects |
+| budget | number | yes | Must be > 0 |
+| deadline | string | yes | ISO date-time |
+| tags | string (JSON) | no | JSON array of strings |
+| isRush | boolean | no | Rush-delivery flag |
+| rushFeePercentage | number | no | 0–100 |
+| files | file[] | no | 0–10 files, max 10 MB each |
+
+**Response:** `201 Created` -- Project object (same shape as `POST /api/projects`, with `attachments` populated when files were uploaded).
+
+**Errors:** `400` Validation error (including file-count violations), `401` Unauthorized, `403` Forbidden (non-employer or unverified KYC), `429` File-upload rate limit, `500` Upload failure (`FILE_UPLOAD_ERROR`).
 
 ---
 
@@ -210,7 +292,12 @@ List proposals submitted for a specific project.
 | budget | number | Project budget |
 | deadline | date-time | Project deadline |
 | status | enum | See [Project Status Lifecycle](#project-status-lifecycle) |
+| isRush | boolean | Rush-delivery flag (default false) |
+| rushFeePercentage | number | Rush fee percentage (default 25) |
+| tags | array | Array of tag strings |
+| attachments | array | Array of attachment file metadata (name, size, url) |
 | milestones | array | Array of `Milestone` objects |
+| proposalCount | integer | Number of proposals (populated on employer listing) |
 | createdAt | date-time | Creation timestamp |
 | updatedAt | date-time | Last update timestamp |
 

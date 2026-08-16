@@ -1,7 +1,5 @@
 # Product Overview
 
-> **Quick Reference**: For a concise product overview, see [Product Documentation](../../.kiro/steering/product.md)
-
 ## FreelanceXchain - Blockchain Freelance Marketplace
 
 FreelanceXchain is a decentralized freelance marketplace that combines AI-powered skill matching with blockchain-based secure payments. The platform addresses key challenges in the gig economy through innovative technology solutions.
@@ -72,8 +70,8 @@ The platform supports UN Sustainable Development Goals:
 - [Detailed Project Overview](overview.md) - Comprehensive technical overview
 - [Technology Stack](tech-stack.md) - Technologies and tools used
 - [Developer Setup Guide](setup.md) - Step-by-step setup instructions
-- [API Overview](../architecture/api-overview.md) - API architecture and endpoints
+- [API Reference](../api/README.md) - REST API documentation
 - [Blockchain Integration](../blockchain/integration.md) - Smart contract setup
-- [Security Overview](../security/overview.md) - Security architecture
+- [Security Documentation](../database/security.md) - Security architecture
 
 [← Back to Deployment](README.md)

@@ -97,4 +97,4 @@ beforeEach(() => {
 
 ---
 
-For questions about mocking, see the [Testing Strategy](../../../docs/guides/testing.md).
+For questions about mocking, see the [Testing Strategy](../../../docs/deployment/testing.md).

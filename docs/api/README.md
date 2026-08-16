@@ -51,10 +51,15 @@ Authorization: Bearer <your_jwt_token>
 
 ### Error Response Format
 
+All error responses share a single envelope (validation errors also include a `details` array):
+
 ```json
 {
-  "error": "ERROR_CODE",
-  "message": "Human-readable description",
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable description",
+    "details": [ { "field": "milestones", "message": "..." } ]
+  },
   "timestamp": "2024-01-01T00:00:00.000Z",
   "requestId": "uuid"
 }

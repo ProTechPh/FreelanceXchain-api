@@ -33,6 +33,7 @@ Development tools and utilities.
 
 - **[generate-openapi.ts](generate-openapi.ts)** - Regenerate `openapi.json` from the canonical base spec
 - **[check-openapi.ts](check-openapi.ts)** - CI drift check: fail when committed `openapi.json` differs from the regenerated spec
+- **[check-markdown-links.ts](check-markdown-links.ts)** - CI link check: fail on any broken internal relative link in markdown files
 
 **Usage:**
 
@@ -44,6 +45,9 @@ tsx scripts/generate-openapi.ts
 
 # Verify the committed spec is in sync (runs in CI)
 pnpm run openapi:check
+
+# Verify no markdown file links to a missing file/directory (runs in CI)
+pnpm run docs:check
 ```
 
 ### 🧪 Testing Scripts
@@ -109,8 +113,8 @@ Before running scripts, ensure you have:
 ## 🔗 Related Documentation
 
 - [Blockchain Integration](../docs/blockchain/integration.md) - Blockchain setup and configuration
-- [Deployment Configuration](../docs/guides/deployment.md) - Deployment guidelines
-- [Developer Setup Guide](../docs/getting-started/setup.md) - Development environment setup
+- [Deployment Configuration](../docs/deployment/configuration.md) - Deployment guidelines
+- [Developer Setup Guide](../docs/deployment/setup.md) - Development environment setup
 
 ## 📦 Adding New Scripts
 

@@ -181,9 +181,7 @@ npm audit --audit-level=high
 **Schedule**: Quarterly (Next review: May 18, 2026)  
 **Documents to Update**:
 
-- `docs/IAS.md` - STRIDE analysis
-- `docs/security/overview.md` - Security controls
-- `docs/IAS-Checklist.md` - Compliance checklist
+- [Security Documentation](../database/security.md) - Security controls, OWASP, RBAC
 
 **Procedure**:
 

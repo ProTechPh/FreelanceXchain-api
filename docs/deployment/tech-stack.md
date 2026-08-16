@@ -87,9 +87,9 @@ The combination of these technologies creates a robust foundation for a decentra
 
 FreelanceXchain employs a multi-stage Docker build process to create optimized production containers while maintaining development efficiency. The Dockerfile implements a two-stage build strategy that separates development dependencies from production requirements.
 
-The first stage, labeled "builder," uses the Node.js 20 Alpine image as its base. This stage installs pnpm 10.28.1 and all dependencies using `pnpm install --frozen-lockfile`, including development packages required for TypeScript compilation. It copies the source code, compiles smart contracts with Hardhat, and compiles TypeScript to JavaScript, producing the transpiled output in the dist directory.
+The first stage, labeled "builder," uses the Node.js 22 Alpine image as its base. This stage installs pnpm 10.28.1 and all dependencies using `pnpm install --frozen-lockfile`, including development packages required for TypeScript compilation. It copies the source code, compiles smart contracts with Hardhat (skipped if solc is unavailable), and compiles TypeScript to JavaScript, producing the transpiled output in the dist directory.
 
-The second stage, labeled "production," creates a minimal runtime environment by again using the Node.js 20 Alpine image with pnpm 10.28.1. This stage installs only production dependencies by using `pnpm install --frozen-lockfile --prod`, significantly reducing the container size and attack surface. It then copies the compiled JavaScript files from the builder stage, sets environment variables (NODE_ENV=production, PORT=7860), and configures the application to run on port 7860.
+The second stage, labeled "production," creates a minimal runtime environment by again using the Node.js 22 Alpine image with pnpm 10.28.1. This stage installs only production dependencies by using `pnpm install --frozen-lockfile --prod`, significantly reducing the container size and attack surface. It then copies the compiled JavaScript files from the builder stage, sets environment variables (NODE_ENV=production, PORT=7860), and configures the application to run on port 7860.
 
 This multi-stage approach provides several benefits:
 
@@ -103,15 +103,13 @@ The containerization strategy ensures that the application can be deployed consi
 
 ## Third-Party Integrations
 
-FreelanceXchain integrates with external services to enhance functionality, particularly in the area of artificial intelligence. The most significant third-party integration is with the Google Gemini API, which powers the AI matching system.
+FreelanceXchain integrates with external services to enhance functionality, particularly in the area of artificial intelligence. The AI matching system uses an Anthropic-compatible LLM API (`messages`-format requests to `LLM_API_URL` + `/FreelanceXchain/AI/Recommendations`, configured via `LLM_API_URL`/`LLM_MODEL`, defaulting to `claude-haiku-4.5`).
 
 The AI integration is implemented through the ai-client.ts service, which handles communication with the LLM API. This service includes robust error handling, retry logic, and timeout management to ensure reliable operation despite network conditions. The integration supports AI-powered skill matching between freelancers and projects, proposal generation, project description enhancement, and dispute analysis.
 
 The architecture includes fallback mechanisms when the AI service is unavailable. For skill matching, the system implements keyword-based matching as a fallback to the AI-powered analysis. Similarly, skill extraction includes a keyword-based fallback when the AI service cannot be reached. This ensures that core functionality remains available even when external services experience outages.
 
-The integration with Appwrite extends beyond basic database operations to leverage its real-time capabilities. The application can subscribe to database changes, enabling features like instant notifications and live updates without requiring constant polling. This real-time functionality enhances the user experience by providing immediate feedback on actions taken within the platform.
-
-The blockchain integration through ethers.js connects to Ethereum networks via Infura or Alchemy, allowing the application to interact with smart contracts on various networks including mainnet, testnets, and local development chains. This flexibility supports development, testing, and production deployment across different environments.
+The blockchain integration through ethers.js connects to EVM networks via RPC endpoints, allowing the application to interact with smart contracts on Polygon Amoy (the production testnet target), Polygon mainnet, Sepolia, and local development chains (Hardhat/Ganache). This flexibility supports development, testing, and production deployment across different environments.
 
 ## Dependency Management
 

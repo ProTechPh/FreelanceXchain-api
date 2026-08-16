@@ -20,7 +20,7 @@ We take the security of FreelanceXchain API seriously. If you believe you have f
 Instead, please use one of the following methods:
 
 1. **GitHub Private Vulnerability Reporting** (Recommended)
-   - Go to the [Security tab](../../security)
+   - Go to the [Security tab](https://github.com/ProTechPh/FreelanceXchain-api/security)
    - Click "Report a vulnerability"
    - Provide detailed information about the vulnerability
 
@@ -150,10 +150,11 @@ This project aims to comply with:
 
 ## Security Resources
 
-- [Security Setup Guide](docs/security/overview.md)
-- [OWASP Validation Report](docs/security/overview.md)
-- [Security Implementation Details](docs/security/overview.md)
+- [Security Setup Guide](docs/database/security.md)
+- [OWASP Validation Report](docs/database/security.md)
+- [Security Implementation Details](docs/database/security.md)
 - [Blockchain Security](docs/blockchain/integration.md)
+- [License](LICENSE)
 
 ## Contact
 

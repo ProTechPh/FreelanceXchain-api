@@ -334,10 +334,10 @@ route-name.test.ts
 ## 🔗 Related Documentation
 
 - [Architecture Documentation](../docs/architecture/) - Detailed architecture docs
-- [API Endpoints Reference](../docs/architecture/api-overview.md) - API documentation
-- [Business Logic Layer](../docs/architecture/services-overview.md) - Service layer details
-- [Data Models](../docs/architecture/models-overview.md) - Model documentation
-- [Testing Strategy](../docs/guides/testing.md) - Testing guidelines
+- [API Reference](../docs/api/README.md) - REST API documentation
+- [Business Logic Layer](../docs/architecture/business-logic.md) - Service layer details
+- [Data Models](../docs/architecture/data-models.md) - Model documentation
+- [Testing Strategy](../docs/deployment/testing.md) - Testing guidelines
 
 ## 🚀 Quick Start for Developers
 

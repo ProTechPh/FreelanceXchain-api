@@ -94,7 +94,7 @@ Thank you for your interest in contributing to FreelanceXchain! This guide will 
 
 Before contributing, familiarize yourself with:
 
-- [Developer Setup Guide](docs/getting-started/setup.md)
+- [Developer Setup Guide](docs/deployment/setup.md)
 - [Architecture Documentation](docs/architecture/)
 - [Source Code Structure](src/README.md)
 
@@ -508,8 +508,8 @@ describe('UserService', () => {
 
 ### Documentation Locations
 
-- **API Changes:** Update OpenAPI spec and [API docs](docs/architecture/api-overview.md)
-- **Features:** Add to [features documentation](docs/features/)
+- **API Changes:** Update the middleware validation schemas and regenerate the [OpenAPI spec](docs/api/README.md) (`pnpm run openapi:generate`)
+- **Features:** Update the relevant [API docs](docs/api/)
 - **Configuration:** Update [CONFIGURATION.md](CONFIGURATION.md)
 - **Architecture:** Update [architecture docs](docs/architecture/)
 - **README:** Update if setup process changes

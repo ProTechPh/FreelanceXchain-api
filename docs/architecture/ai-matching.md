@@ -15,7 +15,7 @@
 
 ## Introduction
 
-This document explains the AI-powered skill matching system in FreelanceXchain. The platform integrates Google Gemini-compatible LLM APIs to extract skills from project descriptions and freelancer profiles, compute compatibility scores, and generate intelligent recommendations. It also includes an AI assistant that enhances user interactions through natural language processing for proposals, project descriptions, and dispute analysis. The system emphasizes robust error handling, fallbacks, and performance characteristics such as retries, timeouts, and rate limiting.
+This document explains the AI-powered skill matching system in FreelanceXchain. The platform integrates OpenAI-compatible LLM APIs (default provider: Anthropic Claude, via `LLM_API_URL`/`LLM_MODEL`) to extract skills from project descriptions and freelancer profiles, compute compatibility scores, and generate intelligent recommendations. It also includes an AI assistant that enhances user interactions through natural language processing for proposals, project descriptions, and dispute analysis. The system emphasizes robust error handling, fallbacks, and performance characteristics such as retries, timeouts, and rate limiting.
 
 ## Project Structure
 
@@ -44,7 +44,7 @@ EM["entity-mapper.ts"]
 end
 subgraph "External"
 CFG["env.ts (LLM config)"]
-LLM["LLM API (Gemini-compatible)"]
+LLM["LLM API (OpenAI-compatible)"]
 end
 R --> MS
 MS --> AC
@@ -282,7 +282,7 @@ Operational checks:
 
 ## Conclusion
 
-The AI-powered matching system in FreelanceXchain integrates Google Gemini-compatible LLM APIs to enhance skill matching, extraction, and gap analysis. It provides robust fallbacks, structured error handling, and clear separation of concerns across routes, services, and clients. With rate limiting and timeouts, the system balances reliability and responsiveness. Extending caching strategies for taxonomy and extraction results would further improve performance and reduce LLM usage costs.
+The AI-powered matching system in FreelanceXchain integrates OpenAI-compatible LLM APIs (default provider: Anthropic Claude) to enhance skill matching, extraction, and gap analysis. It provides robust fallbacks, structured error handling, and clear separation of concerns across routes, services, and clients. With rate limiting and timeouts, the system balances reliability and responsiveness. Extending caching strategies for taxonomy and extraction results would further improve performance and reduce LLM usage costs.
 
 ## Appendices
 

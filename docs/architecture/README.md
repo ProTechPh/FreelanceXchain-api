@@ -5,7 +5,6 @@ FreelanceXchain is a decentralized freelance marketplace with AI skill matching 
 ## Documentation
 
 - [AI-Powered Matching System](ai-matching.md) - LLM integration, skill matching, and recommendation algorithms
-- [API Endpoints Reference](api-endpoints.md) - Complete REST API documentation with examples
 - [Middleware & Interceptors](middleware.md) - Request processing pipeline and security layers
 - [Data Models](data-models.md) - Appwrite collections and TypeScript model mapping
 - [Business Logic Layer](business-logic.md) - Service layer architecture and domain logic
@@ -21,7 +20,7 @@ Routes → Services → Repositories → Appwrite
          ↓
     Blockchain (Solidity contracts via Hardhat)
          ↓
-    AI Services (Gemini-compatible LLM APIs)
+    AI Services (OpenAI-compatible LLM APIs)
 ```
 
 ### Key Components

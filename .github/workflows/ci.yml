@@ -174,3 +174,42 @@ jobs:
         run: pnpm run build
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
+
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Harden-Runner
+        uses: step-security/harden-runner@v2.20.1
+        with:
+          egress-policy: audit
+          allowed-endpoints: >
+            github.com:443
+            objects.githubusercontent.com:443
+            registry.npmjs.org:443
+            nodejs.org:443
+
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check markdown links
+        run: pnpm run docs:check
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+
+      - name: Lint markdown formatting
+        run: pnpm run docs:lint
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'

@@ -597,10 +597,10 @@ The system automatically detects the network from `BLOCKCHAIN_RPC_URL`:
 - `http://127.0.0.1:7545` → Ganache (local)
 - `http://127.0.0.1:8545` → Hardhat (local)
 - `sepolia.infura.io` → Sepolia testnet
-- `polygon-mumbai.infura.io` → Mumbai testnet
+- `rpc-amoy.polygon.technology` → Polygon Amoy testnet (production target)
 - `polygon-mainnet.infura.io` → Polygon mainnet
 
-Contract addresses are managed per network in `src/config/contracts.ts`.
+Contract addresses are managed per network in `src/config/contracts.ts` (populated from the `HARDHAT_*` / `AMOY_*` / `POLYGON_*` / `MAINNET_*` env vars).
 
 ### Configuration Details
 
@@ -612,7 +612,7 @@ The network configuration is managed through environment variables and the Hardh
 | Ganache | <http://127.0.0.1:7545> | 1337 | hardhat.config.cjs |
 | Sepolia | Infura/Alchemy URL | 11155111 | hardhat.config.cjs |
 | Polygon | Infura/Alchemy URL | 137 | hardhat.config.cjs |
-| Mumbai | Infura/Alchemy URL | 80001 | hardhat.config.cjs |
+| Amoy (testnet) | <https://rpc-amoy.polygon.technology> | 80002 | hardhat.config.cjs |
 
 ## Security Considerations
 
