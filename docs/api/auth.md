@@ -260,6 +260,29 @@ Complete OAuth registration by selecting a role and optionally providing profile
 
 ---
 
+### Additional Authentication Endpoints
+
+These endpoints are part of the authentication module; request/response schemas are in the OpenAPI spec (Swagger UI at `/api-docs`).
+
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/api/auth/login/mfa-verify` | No | Complete login with an MFA code |
+| POST | `/api/auth/login/email-otp` | No | Request an email OTP login code |
+| POST | `/api/auth/login/magic-url` | No | Request a magic-link login email |
+| POST | `/api/auth/login/verify-token` | No | Verify a magic-link/OTP login token |
+| POST | `/api/auth/logout` | JWT | Invalidate the session |
+| POST | `/api/auth/csrf-token` | No | Issue a CSRF token (signed cookie) |
+| POST | `/api/auth/mfa/enroll` | JWT | Enroll an MFA factor |
+| POST | `/api/auth/mfa/verify-enrollment` | JWT | Confirm MFA enrollment |
+| POST | `/api/auth/mfa/challenge` | JWT | Start an MFA challenge |
+| POST | `/api/auth/mfa/verify` | JWT | Verify an MFA challenge code |
+| GET | `/api/auth/mfa/factors` | JWT | List enrolled MFA factors |
+| POST | `/api/auth/mfa/disable` | JWT | Disable MFA |
+| GET | `/api/auth/me` | JWT | Get the current user |
+| PATCH | `/api/auth/wallet` | JWT | Update the current user's wallet address |
+
+---
+
 ## Schemas
 
 ### AuthResult

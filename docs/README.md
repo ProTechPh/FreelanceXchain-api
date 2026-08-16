@@ -6,7 +6,6 @@ System design, middleware, data models, and business logic.
 
 - [Architecture Overview](architecture/README.md)
 - [AI-Powered Matching](architecture/ai-matching.md) - LLM-based skill matching, extraction, gap analysis
-- [API Endpoints Reference](architecture/api-endpoints.md) - All REST endpoints with examples
 - [Middleware & Interceptors](architecture/middleware.md) - Auth, validation, rate limiting, security
 - [Data Models](architecture/data-models.md) - Appwrite collections and TypeScript model mapping
 - [Business Logic Layer](architecture/business-logic.md) - Service layer architecture

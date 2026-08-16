@@ -215,14 +215,14 @@ await contract.depositFunds({ value: ethers.parseEther("1.0") });
 - **Reentrancy Protection:** Critical functions use reentrancy guards
 - **Input Validation:** All inputs are validated before processing
 - **Event Logging:** All state changes emit events for transparency
-- **Upgrade Strategy:** Contracts use proxy pattern for upgradeability
+- **Upgrade Strategy:** Contracts are non-upgradeable (immutable after deployment); a future arbiter-replacement mechanism is noted in NatSpec
 
 ## 📚 Related Documentation
 
 - [Blockchain Integration Guide](../docs/blockchain/integration.md)
 - [Blockchain Testing Guide](../docs/blockchain/testing.md)
 - [Deployment Scripts](../scripts/deployment/)
-- [Smart Contract Security](../docs/security/smart-contracts.md)
+- [Smart Contract Security](../docs/database/security.md#smart-contract-security)
 
 ## 🛠️ Development
 

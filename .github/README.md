@@ -361,9 +361,9 @@ actionlint .github/workflows/*.yml
 ## 📚 Related Documentation
 
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [CI/CD Best Practices](../docs/guides/deployment.md)
-- [Security Implementation](../docs/security/overview.md)
-- [Testing Strategy](../docs/guides/testing.md)
+- [CI/CD Pipeline](./workflows/ci.yml)
+- [Security Implementation](../docs/database/security.md)
+- [Testing Strategy](../docs/deployment/testing.md)
 
 ---
 

@@ -476,7 +476,7 @@ Tests run automatically on:
 - Push to main/develop
 - Before deployment
 
-See [GitHub Workflows](../.github/README.md) for CI configuration.
+See [GitHub Workflows](../../.github/README.md) for CI configuration.
 
 ---
 
@@ -511,9 +511,9 @@ pnpm test -- --verbose
 
 ## 📚 Related Documentation
 
-- [Testing Strategy](../../docs/guides/testing.md) - Overall testing approach
+- [Testing Strategy](../../docs/deployment/testing.md) - Overall testing approach
 - [Blockchain Testing](../../docs/blockchain/testing.md) - Smart contract testing
-- [Security Testing](../../docs/security/MFA_TESTING_GUIDE.md) - Security test guidelines
+- [Security Testing](../../docs/database/security.md) - Security test guidelines
 - [CI/CD Workflows](../../.github/README.md) - Automated testing
 
 ---

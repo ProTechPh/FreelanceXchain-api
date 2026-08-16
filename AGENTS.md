@@ -23,19 +23,22 @@ Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized
 | Deploy (Polygon Amoy) | `pnpm run deploy:contracts:prod` |
 | OpenAPI spec (regenerate from base) | `pnpm run openapi:generate` |
 | OpenAPI spec (drift check, runs in CI) | `pnpm run openapi:check` |
+| Markdown links (broken internal link check, runs in CI) | `pnpm run docs:check` |
+| Markdown lint (formatting, runs in CI) | `pnpm run docs:lint` |
 | Deploy local Hardhat | `pnpm run deploy:local` |
 
 Test invocations must always use `node --experimental-vm-modules` (it's in the npm script, but not in `jest` directly).
 
 ## CI pipeline (`.github/workflows/ci.yml`)
 
-Three **parallel** jobs, each independently installing and compiling:
+Four **parallel** jobs, each independently installing and compiling:
 
 - **typecheck**: `compile` → `tsc --noEmit` → `lint`
 - **test**: `compile` → `test:ci` + coverage upload
 - **build**: `compile` → `build`
+- **docs**: install → `docs:check` (fails on any broken internal markdown link in `docs/` and README files; CHANGELOG.md is excluded as intentionally historical) → `docs:lint` (markdownlint formatting, configured in `.markdownlint-cli2.jsonc`)
 
-Local verification order (mirrors what CI checks): `compile` → `tsc --noEmit` → `lint` → `test` → `build`
+Local verification order (mirrors what CI checks): `compile` → `tsc --noEmit` → `lint` → `test` → `build` → `docs:check` → `docs:lint`
 
 ## Architecture
 

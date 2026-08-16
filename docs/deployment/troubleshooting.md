@@ -34,7 +34,7 @@ Centralized index for troubleshooting resources and feature documentation for th
 | Component | Guide | Common Issues |
 | --- | --- | --- |
 | Blockchain Client | [client.md](../blockchain/client.md) | Misconfigured env vars, invalid private keys, network connectivity, transaction failures |
-| Contract Agreement | [contracts.md](../blockchain/contracts.md) | Creation failures, status transition errors, sync issues |
+| Contract Agreement | [agreements.md](../blockchain/agreements.md) | Creation failures, status transition errors, sync issues |
 | Escrow System | [escrow.md](../blockchain/escrow.md) | Fund deposit failures, release/refund errors, balance sync |
 | KYC Verification | [kyc.md](../blockchain/kyc.md) | Submission failures, status update delays, document validation |
 | Milestone Registry | [milestones.md](../blockchain/milestones.md) | Creation failures, status update problems, payment release errors |
@@ -43,37 +43,27 @@ Centralized index for troubleshooting resources and feature documentation for th
 
 ### Authentication & Security
 
-- **Authentication Service** - [service-auth.md](../architecture/service-auth.md): Login failures, token validation, OAuth issues, session expiry
+- **Authentication** - [Authentication API](../api/auth.md): Login failures, token validation, OAuth issues, session expiry
 - **Appwrite Permissions** - [database-schema.md](../architecture/database-schema.md): Permission denied errors, collection access rules, role-based access
 
 ### Business Logic Services
 
 | Service | Guide | Common Issues |
 | --- | --- | --- |
-| Matching | [service-matching.md](../architecture/service-matching.md) | AI matching failures, score calculation errors, performance |
-| Notification | [service-notification.md](../architecture/service-notification.md) | Delivery failures, template rendering, batch problems |
-| Payment | [service-payment.md](../architecture/service-payment.md) | Processing failures, escrow sync errors, status mismatches |
-| Project | [service-project.md](../architecture/service-project.md) | Creation failures, status transitions, search/filter problems |
-| Proposal | [service-proposal.md](../architecture/service-proposal.md) | Submission failures, accept/reject errors, status sync |
-| Reputation | [service-reputation.md](../architecture/service-reputation.md) | Score calculation errors, rating submission, blockchain sync |
+| Matching | [Matching API](../api/matching.md) | AI matching failures, score calculation errors, performance |
+| Notification | [Notifications API](../api/notifications.md) | Delivery failures, template rendering, batch problems |
+| Payment | [Payments API](../api/payments.md) | Processing failures, escrow sync errors, status mismatches |
+| Project | [Projects API](../api/projects.md) | Creation failures, status transitions, search/filter problems |
+| Proposal | [Proposals API](../api/proposals.md) | Submission failures, accept/reject errors, status sync |
+| Reputation | [Reputation API](../api/reputation.md) | Score calculation errors, rating submission, blockchain sync |
 
 ### Data Models
 
-| Model | Guide | Common Issues |
-| --- | --- | --- |
-| Contract | [model-contract.md](../architecture/model-contract.md) | Validation errors, FK violations, status transitions |
-| Dispute | [model-dispute.md](../architecture/model-dispute.md) | Creation failures, evidence submission, resolution workflow |
-| KYC | [model-kyc.md](../architecture/model-kyc.md) | Sync errors, status updates, document URL validation |
-| Notification | [model-notification.md](../architecture/model-notification.md) | Persistence errors, read status sync, batch operations |
-| Project | [model-project.md](../architecture/model-project.md) | Creation validation, skill associations, status workflow |
-| Proposal | [model-proposal.md](../architecture/model-proposal.md) | Validation failures, milestone structure, status transitions |
-| Skill | [model-skill.md](../architecture/model-skill.md) | Seeding failures, category hierarchy, association errors |
+- [Data Models](../architecture/data-models.md): Appwrite collections, TypeScript model mapping, and common model-level issues (validation, status transitions, associations)
 
 ### AI Matching System
 
-- **AI Client** - [ai-client.md](../architecture/ai-client.md): API connection failures, rate limiting, response parsing
-- **Matching Service** - [service-matching.md](../architecture/service-matching.md): Calculation failures, performance, score normalization
-- **AI Overview** - [ai-overview.md](../architecture/ai-overview.md): System integration, data pipeline, algorithm tuning
+- [AI-Powered Matching](../architecture/ai-matching.md): LLM integration, API connection failures, rate limiting, response parsing, score normalization, and fallback behavior
 
 ### Common Issues
 
@@ -117,7 +107,7 @@ Centralized index for troubleshooting resources and feature documentation for th
 
 ### Debugging Tools
 
-- **Logging**: Correlation IDs per request, structured JSON logs, appropriate log levels. See [middleware-logging.md](../architecture/middleware-logging.md) and [middleware-errors.md](../architecture/middleware-errors.md).
+- **Logging**: Correlation IDs per request, structured JSON logs, appropriate log levels. See [Middleware & Interceptors](../architecture/middleware.md).
 - **Testing**: `pnpm test` for unit tests, integration tests for full workflows, blockchain-specific tests. See [testing.md](testing.md) and [blockchain/testing.md](../blockchain/testing.md).
 - **Monitoring**: `/health` endpoint, centralized error tracking with stack traces, request duration metrics.
 

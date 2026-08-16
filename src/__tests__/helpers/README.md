@@ -336,4 +336,4 @@ describe('Authorization', () => {
 
 ---
 
-For questions about test helpers, see the [Testing Strategy](../../../docs/guides/testing.md).
+For questions about test helpers, see the [Testing Strategy](../../../docs/deployment/testing.md).

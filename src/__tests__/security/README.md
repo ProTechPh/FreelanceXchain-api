@@ -297,8 +297,8 @@ If security tests fail:
 ## 📚 Related Documentation
 
 - [Testing Guide](../README.md) - Main testing documentation
-- [Security Implementation](../../../docs/security/overview.md) - Security architecture
-- [OWASP Validation Report](../../../docs/security/OWASP_TOP_10_VALIDATION_REPORT.md) - Compliance report
+- [Security Implementation](../../../docs/database/security.md) - Security architecture
+- [OWASP Validation Report](../../../docs/database/security.md) - Compliance report
 - [Security Policy](../../../SECURITY.md) - Security policy
 
 ---

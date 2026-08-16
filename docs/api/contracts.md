@@ -8,6 +8,8 @@
    - [Get Contract Details](#get-contract-details)
    - [Fund Contract Escrow](#fund-contract-escrow)
    - [Get Contract Funding Info](#get-contract-funding-info)
+   - [Get Pending Escrow Withdrawals](#get-pending-escrow-withdrawals)
+   - [Withdraw from Escrow](#withdraw-from-escrow)
    - [Cancel Contract](#cancel-contract)
    - [List Contract Disputes](#list-contract-disputes)
 3. [Contract Schema](#contract-schema)
@@ -19,7 +21,7 @@
 
 ## Introduction
 
-The Contract API provides access to contract data and lifecycle management within the FreelanceXchain system. Contracts are created when a proposal is accepted and represent formal agreements between freelancers and employers for project work. This API allows users to retrieve their contract history, view detailed contract information, fund escrow, cancel pending contracts, and view associated disputes. All endpoints require JWT authentication, with contract creation handled through the proposal acceptance workflow.
+The Contract API provides access to contract data and lifecycle management within the FreelanceXchain system. Contracts are created when a proposal is accepted and represent formal agreements between freelancers and employers for project work. This API allows users to retrieve their contract history, view detailed contract information, fund escrow, check and claim pending escrow withdrawals, cancel pending contracts, and view associated disputes. All endpoints require JWT authentication, with contract creation handled through the proposal acceptance workflow.
 
 ## API Endpoints
 
@@ -201,6 +203,78 @@ Returns the data needed by the frontend to deploy the escrow contract via MetaMa
 - 401: Unauthorized (missing or invalid JWT)
 - 403: Forbidden (only the employer can view fund info)
 - 404: Contract not found
+
+### Get Pending Escrow Withdrawals
+
+Returns the amounts credited to each party's pending withdrawals on the escrow contract after a dispute resolution (pull-payment pattern). Only meaningful when `BLOCKCHAIN_MODE=real`; otherwise returns `422`.
+
+**HTTP Method**: GET  
+**URL Pattern**: `/api/contracts/{id}/escrow/withdrawable`  
+**Authentication**: JWT (Bearer token)  
+**Path Parameters**:
+
+- `id` (string, required): Contract ID (UUID)
+
+**Response** (200):
+
+```json
+{
+  "contractId": "string",
+  "escrowAddress": "string",
+  "pendingWithdrawals": {
+    "platformWallet": "string",
+    "platformAmount": "0",
+    "freelancerWallet": "string",
+    "freelancerAmount": "0"
+  }
+}
+```
+
+Amounts are returned as wei strings. The platform amount is claimable via `POST /api/contracts/{id}/escrow/withdraw`; the freelancer claims their own allocation directly from their wallet against the escrow contract.
+
+**Status Codes**:
+
+- 200: Pending withdrawal amounts retrieved
+- 400: Contract has no escrow address (`ESCROW_NOT_FOUND`)
+- 401: Unauthorized (missing or invalid JWT)
+- 403: User is not a party to the contract
+- 404: Contract not found
+- 422: Only available in real blockchain mode (`ESCROW_WITHDRAW_UNAVAILABLE`)
+- 500: Failed to fetch pending withdrawals
+
+### Withdraw from Escrow
+
+Claims the platform's pending escrow allocation after a dispute resolution. The server wallet is the on-chain employer/platform, so only the employer (or an admin) can trigger this — freelancers must claim their allocation from their own wallet via the escrow contract's `withdraw()`. Requires KYC verification and `BLOCKCHAIN_MODE=real`.
+
+**HTTP Method**: POST  
+**URL Pattern**: `/api/contracts/{id}/escrow/withdraw`  
+**Authentication**: JWT (Bearer token), KYC verified  
+**Path Parameters**:
+
+- `id` (string, required): Contract ID (UUID)
+
+**Request Body**: none (an empty body is enforced; stray request bodies are rejected with `400 VALIDATION_ERROR`)
+
+**Response** (200):
+
+```json
+{
+  "message": "Escrow withdrawal processed",
+  "transactionHash": "string",
+  "timestamp": "string",
+  "requestId": "string"
+}
+```
+
+**Status Codes**:
+
+- 200: Withdrawal processed (transaction hash returned)
+- 400: Contract has no escrow address (`ESCROW_NOT_FOUND`), or non-empty request body
+- 401: Unauthorized (missing or invalid JWT)
+- 403: Only the employer (or an admin) can trigger the platform withdrawal
+- 404: Contract not found
+- 422: Only available in real blockchain mode (`ESCROW_WITHDRAW_UNAVAILABLE`)
+- 500: Withdrawal failed (`WITHDRAW_FAILED`)
 
 ### Cancel Contract
 

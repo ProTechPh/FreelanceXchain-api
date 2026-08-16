@@ -87,27 +87,27 @@
 
 ### Main Test File
 
-- **[`blockchain-services.test.ts`](../src/services/__tests__/blockchain-services.test.ts)** - Comprehensive integration tests for all blockchain services
+- **[`blockchain-services.test.ts`](../../src/__tests__/unit/blockchain-services.test.ts)** - Comprehensive integration tests for all blockchain services
 
 ### Additional Test Files (Created but not yet fully functional)
 
-- [`web3-client.test.ts`](../src/services/__tests__/web3-client.test.ts) - Web3 client unit tests (requires mock improvements)
-- [`reputation-blockchain.test.ts`](../src/services/__tests__/reputation-blockchain.test.ts) - Reputation service tests
-- [`escrow-blockchain.test.ts`](../src/services/__tests__/escrow-blockchain.test.ts) - Escrow service tests
-- [`agreement-blockchain.test.ts`](../src/services/__tests__/agreement-blockchain.test.ts) - Agreement service tests
+- [`web3-client.test.ts`](../../src/__tests__/unit/web3-client.test.ts) - Web3 client unit tests (requires mock improvements)
+- [`reputation-blockchain.test.ts`](../../src/__tests__/unit/reputation-blockchain.test.ts) - Reputation service tests
+- [`escrow-blockchain.test.ts`](../../src/__tests__/unit/escrow-blockchain.test.ts) - Escrow service tests
+- [`agreement-contract.test.ts`](../../src/__tests__/unit/agreement-contract.test.ts) - Agreement contract tests
 
 ## Running the Tests
 
 ### Run All Blockchain Tests
 
 ```bash
-pnpm test -- src/services/__tests__/blockchain-services.test.ts
+pnpm test -- src/__tests__/unit/blockchain-services.test.ts
 ```
 
 ### Run with Verbose Output
 
 ```bash
-pnpm test -- src/services/__tests__/blockchain-services.test.ts --verbose
+pnpm test -- src/__tests__/unit/blockchain-services.test.ts --verbose
 ```
 
 ### Run All Tests
@@ -182,11 +182,11 @@ Time:        1.336 s
 The blockchain tests are organized in the following structure:
 
 ```
-src/services/__tests__/
-├── web3-client.test.ts           # Web3/Ethereum client tests
+src/__tests__/unit/
+├── web3-client.test.ts            # Web3/Ethereum client tests
 ├── reputation-blockchain.test.ts  # Reputation system tests
-├── escrow-blockchain.test.ts     # Escrow contract tests
-└── agreement-blockchain.test.ts  # Agreement contract tests
+├── escrow-blockchain.test.ts      # Escrow contract tests
+└── agreement-contract.test.ts     # Agreement contract tests
 ```
 
 ## Test Coverage

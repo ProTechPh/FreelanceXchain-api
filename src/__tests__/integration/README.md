@@ -216,4 +216,4 @@ Integration tests should:
 
 ---
 
-For questions about integration testing, see the [Testing Strategy](../../../docs/guides/testing.md).
+For questions about integration testing, see the [Testing Strategy](../../../docs/deployment/testing.md).

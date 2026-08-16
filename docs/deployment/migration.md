@@ -279,7 +279,7 @@ For issues or questions:
 
 1. Check application logs
 2. Review Appwrite logs
-3. Consult [new-features-implementation.md](../features/new-features-implementation.md)
+3. Consult the [Troubleshooting Guide](troubleshooting.md) and the [Documentation Index](../README.md)
 4. Contact development team
 
 ---

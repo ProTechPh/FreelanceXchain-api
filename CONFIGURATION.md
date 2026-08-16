@@ -626,9 +626,9 @@ nano .env
 
 ## 📚 Related Documentation
 
-- [Developer Setup Guide](docs/getting-started/setup.md)
-- [Deployment Configuration](docs/guides/deployment.md)
-- [Security Setup Guide](docs/security/overview.md)
+- [Developer Setup Guide](docs/deployment/setup.md)
+- [Deployment Configuration](docs/deployment/configuration.md)
+- [Security Setup Guide](docs/database/security.md)
 - [Blockchain Integration](docs/blockchain/integration.md)
 
 ---
@@ -657,4 +657,4 @@ nano .env
 
 ---
 
-For additional help, see [Troubleshooting Guide](docs/guides/TROUBLESHOOTING.md).
+For additional help, see [Troubleshooting Guide](docs/deployment/troubleshooting.md).

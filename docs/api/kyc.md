@@ -143,7 +143,7 @@ Get full verification details for a specific record.
   - `400` - Invalid ID
   - `404` - Verification not found
 
-#### POST /api/kyc/admin/manual-verify
+#### POST /api/kyc/admin/review/:verificationId
 
 Upload user documents for manual verification via Didit standalone APIs.
 
@@ -225,7 +225,7 @@ Upload user documents for manual verification via Didit standalone APIs.
 4. Didit processes the verification and sends webhook updates to `POST /api/kyc/webhook`.
 5. The webhook handler updates local verification records with results.
 6. If configured, Didit auto-approves/declines; otherwise the verification goes to admin review.
-7. Admins can review via `POST /api/kyc/admin/review/:id` or run manual verification via `POST /api/kyc/admin/manual-verify`.
+7. Admins can review/verify via `POST /api/kyc/admin/review/:verificationId`.
 
 ### Webhook Events
 

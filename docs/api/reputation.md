@@ -109,7 +109,7 @@ Check if the authenticated user can rate another user for a specific contract.
 - **Auth:** JWT Bearer token required
 - **Query params:**
   - `contractId` — UUID, required
-  - `rateeId` — UUID, required
+  - `rateeId` — Appwrite document ID, required
 - **Success response (200):**
 
   ```json
@@ -136,7 +136,7 @@ Submit a rating for another user after contract completion. Rating must be an in
   ```json
   {
     "contractId": "uuid",
-    "rateeId": "uuid",
+    "rateeId": "appwrite-doc-id",
     "rating": 5,
     "comment": "Great work"
   }
@@ -144,7 +144,7 @@ Submit a rating for another user after contract completion. Rating must be an in
 
 - **Validations:**
   - `contractId`, `rateeId`, `rating` are required
-  - `contractId` and `rateeId` must be valid UUIDs
+  - `contractId` must be a valid UUID; `rateeId` must be a valid Appwrite document ID
   - `rating` must be an integer 1-5
   - Rater and ratee must be contract participants
   - Cannot rate yourself
@@ -173,8 +173,8 @@ Submit a rating for another user after contract completion. Rating must be an in
 |------------------|---------|--------------------------------------|
 | `id`             | string  | Rating UUID                          |
 | `contractId`     | string  | UUID of the associated contract      |
-| `raterId`        | string  | UUID of the user who submitted rating|
-| `rateeId`        | string  | UUID of the user being rated         |
+| `raterId`        | string  | Appwrite document ID of the user who submitted rating|
+| `rateeId`        | string  | Appwrite document ID of the user being rated         |
 | `rating`         | integer | 1-5                                  |
 | `comment`        | string  | Optional comment                     |
 | `timestamp`      | integer | Unix timestamp                       |
@@ -206,8 +206,8 @@ Submit a rating for another user after contract completion. Rating must be an in
 
 | Field        | Type    | Required | Description               |
 |--------------|---------|----------|---------------------------|
-| `contractId` | string  | Yes      | UUID of the contract      |
-| `rateeId`    | string  | Yes      | UUID of the user to rate  |
+| `contractId` | string  | Yes      | UUID of the contract               |
+| `rateeId`    | string  | Yes      | Appwrite document ID of the user to rate |
 | `rating`     | integer | Yes      | 1-5                       |
 | `comment`    | string  | No       | Optional feedback         |
 

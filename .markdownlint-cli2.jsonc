@@ -1,0 +1,15 @@
+{
+  "config": {
+    "default": true
+  },
+  "ignores": [
+    "**/node_modules/**",
+    ".git/**",
+    ".zcode/**",
+    ".bug-hunter/**",
+    "dist/**",
+    "coverage/**",
+    "artifacts/**",
+    "CHANGELOG.md"
+  ]
+}

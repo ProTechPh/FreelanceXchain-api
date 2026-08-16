@@ -20,13 +20,15 @@ The following environment variables are essential for FreelanceXchain operation:
 
 ```env
 # Server Configuration
-PORT=7860
+PORT=3000
 NODE_ENV=development
+ENABLE_API_DOCS=false
+BASE_URL=http://localhost:3000
 
-# Appwrite Configuration
-APPWRITE_URL=https://your-project.appwrite.co
-APPWRITE_ANON_KEY=your-anon-key
-APPWRITE_SERVICE_ROLE_KEY=your-service-role-key
+# Appwrite Configuration (required)
+APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
+APPWRITE_PROJECT_ID=your-project-id
+APPWRITE_API_KEY=your-api-key
 
 # JWT Configuration
 JWT_SECRET=your-jwt-secret-key-min-32-chars-change-this
@@ -35,16 +37,22 @@ JWT_EXPIRES_IN=1h
 JWT_REFRESH_EXPIRES_IN=7d
 
 # CORS Configuration
-CORS_ORIGIN=http://localhost:7860,https://your-frontend.com
+CORS_ORIGIN=http://localhost:3000,https://your-frontend.com
 
 # LLM Configuration
-LLM_API_KEY=your-llm-api-key
-LLM_API_URL=https://your-llm-api-endpoint
+LLM_API_URL=https://api.anthropic.com
+LLM_MODEL=claude-haiku-4.5
+# LLM_API_KEY=your-llm-api-key
 
 # Blockchain Configuration
-BLOCKCHAIN_RPC_URL=https://sepolia.infura.io/v3/your-infura-project-id
-POLYGON_API_KEY=your-infura-project-id
+BLOCKCHAIN_MODE=simulated
+BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545
+# BLOCKCHAIN_PRIVATE_KEY=your-private-key-hex
+# PLATFORM_ARBITER_ADDRESS=0x...
+# PLATFORM_ARBITER_PRIVATE_KEY=your-arbiter-key-hex
 ```
+
+The full authoritative list (including Redis, Didit KYC, Cloudflare email, CSRF/MFA secrets, and per-network contract addresses) lives in `.env.example`.
 
 ### Configuration Validation
 
@@ -67,12 +75,12 @@ The Dockerfile implements a two-stage build process:
 
 ```mermaid
 graph TD
-A[Builder Stage] --> B[Node:20-alpine Base]
+A[Builder Stage] --> B[Node:22-alpine Base]
 B --> C[Copy package.json]
 C --> D[Install All Dependencies]
 D --> E[Copy Source Code]
-E --> F[Build TypeScript]
-G[Production Stage] --> H[Node:20-alpine Base]
+E --> F[Compile Contracts + Build TypeScript]
+G[Production Stage] --> H[Node:22-alpine Base]
 H --> I[Copy package.json]
 I --> J[Install Production Dependencies Only]
 J --> K[Copy Built Files from Builder]
@@ -142,33 +150,40 @@ FreelanceXchain supports multiple blockchain networks through configurable RPC e
 
 The application can connect to:
 
-- **Ethereum Mainnet**: Production blockchain transactions
-- **Sepolia Testnet**: Testing with real blockchain behavior
-- **Local Hardhat Network**: Development and testing
-- **Ganache**: Local blockchain for development
+- **Polygon Amoy (testnet)**: Production network for the deployed contracts
+- **Polygon Mainnet**: Production blockchain transactions
+- **Sepolia**: Legacy testnet (still configured in `hardhat.config.cjs`)
+- **Local Hardhat Network**: Development and testing (`http://127.0.0.1:8545`)
+- **Ganache**: Local blockchain for development (`http://127.0.0.1:7545`)
 
 ```mermaid
 graph TD
 A[Blockchain Client] --> B{Network Configuration}
-B --> C[Ethereum Mainnet]
-B --> D[Sepolia Testnet]
-B --> E[Hardhat Network]
-B --> F[Ganache]
-C --> G[Infura/Alchemy RPC]
-D --> G
-E --> H[http://127.0.0.1:8545]
-F --> I[http://127.0.0.1:7545]
+B --> C[Polygon Amoy Testnet]
+B --> D[Polygon Mainnet]
+B --> E[Sepolia]
+B --> F[Local Hardhat Network]
+B --> G[Ganache]
+C --> H[AMOY_RPC_URL / rpc-amoy.polygon.technology]
+D --> I[POLYGON_RPC_URL / Infura]
+E --> J[BLOCKCHAIN_RPC_URL / Infura]
+F --> K[http://127.0.0.1:8545]
+G --> L[http://127.0.0.1:7545]
 ```
 
 ### Network Configuration
 
 Blockchain settings are configured through environment variables:
 
+- `BLOCKCHAIN_MODE`: `simulated` (default) or `real` — `dev`/`prod` npm scripts force `real`
 - `BLOCKCHAIN_RPC_URL`: RPC endpoint for the blockchain network
 - `BLOCKCHAIN_PRIVATE_KEY`: Private key for transaction signing (required for write operations)
-- `POLYGON_API_KEY`: Infura project ID for accessing Ethereum networks
+- `PLATFORM_ARBITER_ADDRESS` / `PLATFORM_ARBITER_PRIVATE_KEY`: On-chain dispute arbiter (real mode)
+- Per-network contract addresses: `HARDHAT_*`, `AMOY_*`, `POLYGON_*`, `MAINNET_*` (see `.env.example`)
 
-The `hardhat.config.cjs` file defines network configurations for deployment scripts, including Sepolia, Polygon, and Mumbai testnet.
+(`POLYGON_API_KEY`/`POLYGON_RPC_URL`/`AMOY_RPC_URL` are consumed by `hardhat.config.cjs` only, not by the API runtime.)
+
+The `hardhat.config.cjs` file defines network configurations for deployment scripts, including Sepolia, Polygon mainnet, and Amoy (Polygon testnet). The production deploy scripts (`deploy:contracts:prod`, `deploy:reputation`, `deploy:escrow`) target Amoy.
 
 ## Secret Management
 

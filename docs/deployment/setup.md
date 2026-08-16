@@ -77,21 +77,28 @@ cp .env.example .env
 
 **Server Configuration**
 
-- `PORT`: Server port (default: 7860)
-- `NODE_ENV`: Environment mode (development/production/test)
+- `PORT`: HTTP listen port (default: 3000)
+- `NODE_ENV`: Environment mode (development/test/production)
+- `BASE_URL`: Overrides the auto-detected base URL (auto-detected from `SPACE_ID` or `localhost:<PORT>` otherwise)
+- `ENABLE_API_DOCS`: Set `true` to serve the Swagger UI at `/api-docs` (disabled by default)
+- `LOG_LEVEL`: Log verbosity (debug/info/warn/error)
 
 **Appwrite Configuration**
 
-- `APPWRITE_URL`: Your Appwrite project URL
-- `APPWRITE_ANON_KEY`: Your Appwrite anonymous key
-- `APPWRITE_SERVICE_ROLE_KEY`: Your Appwrite service role key (optional)
+- `APPWRITE_ENDPOINT`: Appwrite API endpoint (e.g., `https://cloud.appwrite.io/v1`) — required
+- `APPWRITE_PROJECT_ID`: Appwrite project ID — required
+- `APPWRITE_API_KEY`: Appwrite service-role API key — required
+- `APPWRITE_DATABASE_ID`: Database ID (default: `freelancexchain`)
+- Storage buckets: `APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET`, `APPWRITE_PROJECT_ATTACHMENTS_BUCKET`, `APPWRITE_DISPUTE_EVIDENCE_BUCKET`, `APPWRITE_PORTFOLIO_IMAGES_BUCKET`, `APPWRITE_MILESTONE_DELIVERABLES_BUCKET` (defaults shown in `.env.example`)
 
 **JWT Configuration**
 
-- `JWT_SECRET`: Secret key for JWT signing (minimum 32 characters)
-- `JWT_REFRESH_SECRET`: Secret key for refresh tokens
-- `JWT_EXPIRES_IN`: Access token expiration time (e.g., 1h)
-- `JWT_REFRESH_EXPIRES_IN`: Refresh token expiration time (e.g., 7d)
+- `JWT_SECRET`: Secret key for JWT signing (minimum 32 characters) — required
+- `JWT_REFRESH_SECRET`: Separate secret for refresh tokens (required in production; falls back to `JWT_SECRET` in non-prod)
+- `JWT_EXPIRES_IN`: Access token expiration time (default: 1h)
+- `JWT_REFRESH_EXPIRES_IN`: Refresh token expiration time (default: 7d)
+- `CSRF_SECRET`: CSRF signing secret (required in production, separate from `JWT_SECRET`)
+- `MFA_ENCRYPTION_KEY`: Encryption key for MFA sessions (required in production)
 
 **CORS Configuration**
 
@@ -99,15 +106,29 @@ cp .env.example .env
 
 **LLM Configuration**
 
-- `LLM_API_KEY`: API key for LLM services (AI skill matching)
-- `LLM_API_URL`: Base URL for LLM API
+- `LLM_API_URL`: Base URL for the LLM API (Anthropic-compatible; default `https://api.anthropic.com`) — required
+- `LLM_MODEL`: Model name (default: `claude-haiku-4.5`)
+- `LLM_API_KEY`: API key for LLM services (optional)
 
 **Blockchain Configuration**
 
-- `BLOCKCHAIN_RPC_URL`: Ethereum RPC endpoint URL
-- `POLYGON_API_KEY`: Infura project ID for blockchain access
+- `BLOCKCHAIN_MODE`: `simulated` (default) or `real`
+- `BLOCKCHAIN_RPC_URL`: RPC endpoint (Ganache `http://127.0.0.1:7545` for dev, Polygon Amoy for prod)
+- `BLOCKCHAIN_PRIVATE_KEY`: Private key for transaction signing (required when `BLOCKCHAIN_MODE=real`)
+- `BLOCKCHAIN_WEBHOOK_SECRET`: HMAC secret for blockchain webhook verification
+- `PLATFORM_ARBITER_ADDRESS` / `PLATFORM_ARBITER_PRIVATE_KEY`: On-chain dispute arbiter (required in real mode)
+- Contract addresses per network: `HARDHAT_*`, `AMOY_*`, `POLYGON_*`, `MAINNET_*` (see `.env.example`)
 
-The src/config/env.ts file contains validation logic that ensures required environment variables are present and properly formatted, throwing errors if any required variables are missing.
+**Didit KYC**
+
+- `DIDIT_API_KEY`, `DIDIT_API_URL`, `DIDIT_WEBHOOK_SECRET`, `DIDIT_WORKFLOW_ID`; `ALLOW_INSECURE_DIDIT_WEBHOOKS=false` in shared/prod
+
+**Email & Redis**
+
+- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, `EMAIL_FROM`, `EMAIL_WEBHOOK_SECRET`
+- `REDIS_HOST` (default `localhost`), `REDIS_PORT` (default 6379), `REDIS_PASSWORD`, `REDIS_TLS`
+
+The src/config/env.ts file contains validation logic that ensures required environment variables are present and properly formatted, throwing errors if any required variables are missing. The authoritative list lives in `.env.example`.
 
 ## Appwrite Database Setup
 
@@ -115,7 +136,15 @@ Setting up the Appwrite database involves creating a project, applying the schem
 
 1. Create a new project at <https://appwrite.com/dashboard>
 
-2. Apply the database schema by running `npx tsx scripts/setup-appwrite-db.ts`. This idempotent script creates the database, collections, attributes, and indexes for the application, including:
+2. Copy your Appwrite endpoint, project ID, and API key from the Appwrite dashboard to your .env file:
+
+    ```bash
+    APPWRITE_ENDPOINT=https://cloud.appwrite.io/v1
+    APPWRITE_PROJECT_ID=your-project-id
+    APPWRITE_API_KEY=your-api-key
+    ```
+
+3. Apply the database schema by running `npx tsx scripts/setup-appwrite-db.ts`. This idempotent script creates the database, collections, attributes, and indexes for the application, including:
    - Users and profile management
    - Projects and proposals
    - Contracts and payments
@@ -123,18 +152,9 @@ Setting up the Appwrite database involves creating a project, applying the schem
    - Notifications and messages
    - KYC verifications and disputes
 
-3. Copy your project URL and anon key from the Appwrite dashboard to your .env file:
+4. Skill categories and skills are managed through the API (admin `createCategory`/`createSkill` endpoints in `src/services/skill-service.ts`); the setup script creates the schema only — it does not seed taxonomy.
 
-```bash
-APPWRITE_URL=https://your-project.appwrite.co
-APPWRITE_ANON_KEY=your-anon-key
-```
-
-1. Create the Appwrite schema (database, collections, attributes, indexes) by running `npx tsx scripts/setup-appwrite-db.ts`. This is idempotent and safe to re-run.
-
-2. Skill categories and skills are managed through the API (admin `createCategory`/`createSkill` endpoints in `src/services/skill-service.ts`); the setup script creates the schema only — it does not seed taxonomy.
-
-Collections are created with default Appwrite permissions (public read, authenticated create/update/delete); ownership rules are enforced in application middleware.
+5. Collections are created with default Appwrite permissions (public read, authenticated create/update/delete); ownership rules are enforced in application middleware.
 
 ## Blockchain Development Environment
 
@@ -142,32 +162,32 @@ The blockchain development environment is configured using Hardhat, a developmen
 
 1. Ensure Hardhat is installed as a devDependency in the project (specified in package.json):
 
-```bash
-pnpm install --frozen-lockfile
-```
+    ```bash
+    pnpm install --frozen-lockfile
+    ```
 
-1. Review the Hardhat configuration in hardhat.config.cjs, which defines:
+2. Review the Hardhat configuration in hardhat.config.cjs, which defines:
    - Solidity compiler version (0.8.26) with optimizer enabled (1000 runs) and IR-based code generation
    - Network configurations for hardhat, ganache, sepolia, polygon, and amoy (Polygon testnet)
    - Source, test, cache, and artifacts paths
 
-2. Configure blockchain network settings in your .env file:
+3. Configure blockchain network settings in your .env file:
    - For Sepolia testnet: Set BLOCKCHAIN_RPC_URL to your Infura endpoint
    - For local testing with Ganache: Uncomment the Ganache configuration lines
 
-3. Compile the smart contracts:
+4. Compile the smart contracts:
 
-```bash
-pnpm run compile
-```
+    ```bash
+    pnpm run compile
+    ```
 
-This command runs `pnpm dlx hardhat compile` and generates artifacts in the artifacts directory.
+    This command runs `hardhat compile --config hardhat.config.cjs` and generates artifacts in the artifacts directory.
 
-1. Deploy contracts to various networks using the predefined pnpm scripts:
-   - Local development: `pnpm run deploy:contracts:dev`
-   - Production network: `pnpm run deploy:contracts:prod`
+5. Deploy contracts to various networks using the predefined pnpm scripts:
+   - Local development (Ganache): `pnpm run deploy:contracts:dev`
+   - Production network (Polygon Amoy): `pnpm run deploy:contracts:prod`
    - General deployment: `pnpm run deploy:contracts`
-   - Legacy Sepolia: `pnpm run deploy:reputation` and `pnpm run deploy:escrow`
+   - Single-contract deploys (Amoy): `pnpm run deploy:reputation` and `pnpm run deploy:escrow`
 
 The contracts directory contains Solidity smart contracts including FreelanceEscrow.sol for milestone-based payments and FreelanceReputation.sol for immutable on-chain ratings.
 
@@ -204,28 +224,34 @@ pnpm run prod
 1. Verify the server is running by accessing the health check endpoint:
 
 ```bash
-curl http://localhost:7860/
+curl http://localhost:3000/
 ```
 
-The application will be available at <http://localhost:7860>. The src/app.ts file configures the Express server with middleware for security, CORS, request logging, and error handling, and mounts the API routes under the /api path.
+The application will be available at <http://localhost:3000> (or whatever `PORT` is set to — 7860 is the Hugging Face Spaces convention). The src/app.ts file configures the Express server with middleware for security, CORS, request logging, and error handling, and mounts the API routes under the /api path.
 
 ## API Documentation Access
 
 Interactive API documentation is available through Swagger UI, providing a comprehensive interface for exploring and testing API endpoints.
 
-1. Access the Swagger UI documentation at:
+1. Enable the docs (disabled by default):
 
-```
-http://localhost:7860/api-docs
-```
+    ```bash
+    ENABLE_API_DOCS=true
+    ```
 
-1. The documentation includes detailed information about:
+2. Access the Swagger UI documentation at:
+
+    ```
+    http://localhost:3000/api-docs
+    ```
+
+3. The documentation includes detailed information about:
    - Authentication requirements (Bearer tokens)
    - All API endpoints with request/response examples
    - Parameter descriptions and validation rules
    - Error response formats
 
-2. The API endpoints are organized into modules including:
+4. The API endpoints are organized into modules including:
    - Authentication (register, login, token refresh)
    - User profiles (freelancer and employer)
    - Projects and proposals
@@ -233,7 +259,7 @@ http://localhost:7860/api-docs
    - Reputation and disputes
    - Skill management and AI matching
 
-The Swagger specification is served from the checked-in `openapi.json` file (generated at the repo root); `src/app.ts` reads it and dynamically sets the server URL based on environment variables.
+The Swagger specification is served from the generated `openapi.json` file at the repo root. It is regenerated from `openapi.base.json` plus the route validation schemas via `pnpm run openapi:generate` (CI enforces drift with `pnpm run openapi:check`); `src/config/swagger.ts` loads it and dynamically sets the server URL based on environment variables.
 
 ## Testing and Code Quality
 
