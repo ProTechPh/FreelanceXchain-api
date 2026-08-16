@@ -2,14 +2,16 @@ import { Router } from 'express';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { asyncHandler } from '../utils/async-handler.js';
+import { getApiVersion } from '../utils/version.js';
 
 const router = Router();
 
 router.get('/', (_req, res) => {
+  const version = getApiVersion();
   res.status(200).json({
     status: 'success',
     message: 'FreelanceXchain API is running',
-    version: process.env.npm_package_version || '1.0.0'
+    version
   });
 });
 

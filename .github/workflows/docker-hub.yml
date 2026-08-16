@@ -5,11 +5,16 @@ on:
     branches:
       - main
 
+# Serialize deploys so two rapid pushes each bump and build cleanly.
+concurrency:
+  group: deploy-docker-hub
+  cancel-in-progress: false
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       security-events: write
       actions: read
     environment:
@@ -44,6 +49,19 @@ jobs:
           node-version: 22
           cache: 'pnpm'
 
+      - name: Bump patch version
+        id: bump
+        shell: bash
+        run: |
+          git checkout -B main origin/main
+          NEW_VERSION="$(node scripts/bump-version.cjs)"
+          echo "Bumped version to ${NEW_VERSION}"
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json openapi.base.json openapi.json
+          git commit -m "chore(version): bump to ${NEW_VERSION}"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -74,11 +92,48 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            APP_BUILD_SHA=${{ github.sha }}
+            APP_VERSION=${{ steps.bump.outputs.version }}
+            APP_REVISION=${{ github.sha }}
           tags: |
             jericko134/freelancexchain-api:latest
             jericko134/freelancexchain-api:${{ github.sha }}
+            jericko134/freelancexchain-api:${{ steps.bump.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Push the version bump only after the image was built and pushed, so a
+      # failed build never leaves an unreleased version bump on main. The
+      # commit is made with GITHUB_TOKEN, which does not re-trigger workflows.
+      - name: Push version bump
+        shell: bash
+        run: |
+          git pull --rebase --quiet origin main
+          git push --quiet origin main
+          echo "Pushed version bump to main"
+
+      - name: Post deployment summary comment
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          cat > /tmp/deploy-summary.md <<EOF
+          Deployment summary — **FreelanceXchain API** 🚀
+
+          | | |
+          | --- | --- |
+          | **Version** | \`${VERSION}\` |
+          | **Commit** | \`${DEPLOY_SHA}\` |
+          | **Image tags** | \`jericko134/freelancexchain-api:latest\` · \`jericko134/freelancexchain-api:${VERSION}\` · \`jericko134/freelancexchain-api:${DEPLOY_SHA}\` |
+          | **Docker Hub** | https://hub.docker.com/r/jericko134/freelancexchain-api |
+
+          Check the live version via \`GET /api/health\` (e.g. \`${VERSION}+build.${DEPLOY_SHA:0:7}\`).
+          EOF
+          gh api -X POST \
+            "repos/${GITHUB_REPOSITORY}/commits/${DEPLOY_SHA}/comments" \
+            -F "body=@/tmp/deploy-summary.md"
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master

@@ -51,6 +51,20 @@ COPY --from=builder /app/artifacts ./artifacts
 ENV NODE_ENV=production
 ENV PORT=7860
 
+# Commit SHA of the build — surfaced as version metadata by GET /
+ARG APP_BUILD_SHA=dev
+ENV APP_BUILD_SHA=$APP_BUILD_SHA
+
+# OCI image metadata. APP_VERSION / APP_REVISION are injected by the deploy
+# workflow (bumped version + commit SHA); local builds default to "dev".
+ARG APP_VERSION=dev
+ARG APP_REVISION=dev
+LABEL org.opencontainers.image.title="FreelanceXchain API" \
+      org.opencontainers.image.description="Decentralized freelance marketplace API" \
+      org.opencontainers.image.source=https://github.com/ProTechPh/FreelanceXchain-api \
+      org.opencontainers.image.version=$APP_VERSION \
+      org.opencontainers.image.revision=$APP_REVISION
+
 EXPOSE 7860
 
 # Start the application

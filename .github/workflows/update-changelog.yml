@@ -1,0 +1,87 @@
+name: Update Changelog
+
+on:
+  workflow_run:
+    workflows: ["Build and Push to Docker Hub"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  record-deployment:
+    name: Record deployment in CHANGELOG.md
+    runs-on: ubuntu-latest
+    # Only after a successful image build — that is when a new deployment
+    # version (1.0.0+build.<sha7>) actually exists.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Harden-Runner
+        uses: step-security/harden-runner@v2.20.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Record deployment version in CHANGELOG.md
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          git checkout -B main origin/main
+
+          sha7="${DEPLOY_SHA:0:7}"
+          version="$(node -p "require('./package.json').version")+build.${sha7}"
+          today="$(date -u +%Y-%m-%d)"
+          message="$(git log -1 --format=%s "${DEPLOY_SHA}")"
+
+          # Idempotent: never duplicate an already-recorded deployment.
+          if grep -qF "build.${sha7}" CHANGELOG.md; then
+            echo "CHANGELOG.md already records build.${sha7}; nothing to do"
+            exit 0
+          fi
+
+          export VERSION="$version" TODAY="$today" SHA7="$sha7" MESSAGE="$message"
+
+          # Insert a "## Deployments" section before "## [Unreleased]" (newest
+          # bullet first), or append it if the file has no Unreleased heading.
+          node -e '
+            const fs = require("fs");
+            const p = "CHANGELOG.md";
+            let s = fs.readFileSync(p, "utf8");
+            const entry = `- **${process.env.VERSION}** (${process.env.TODAY}) - commit \`${process.env.SHA7}\`: ${process.env.MESSAGE}`;
+            const marker = "## Deployments";
+            if (s.includes(marker)) {
+              s = s.replace(marker + "\n\n", marker + "\n\n" + entry + "\n");
+            } else {
+              const anchor = "## [Unreleased]";
+              if (s.includes(anchor)) {
+                s = s.replace(anchor, marker + "\n\n" + entry + "\n\n" + anchor);
+              } else {
+                s += "\n" + marker + "\n\n" + entry + "\n";
+              }
+            }
+            fs.writeFileSync(p, s);
+          '
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "chore(changelog): record deployment build.${sha7}"
+
+          # Retry to survive a concurrent push to main (two deployments in a row).
+          for attempt in 1 2 3; do
+            if git pull --rebase --quiet origin main && git push --quiet origin main; then
+              echo "Recorded deployment ${version} in CHANGELOG.md"
+              exit 0
+            fi
+            echo "push attempt ${attempt}/3 failed; retrying in 5s..."
+            sleep 5
+          done
+          echo "ERROR: could not push CHANGELOG.md update" >&2
+          exit 1

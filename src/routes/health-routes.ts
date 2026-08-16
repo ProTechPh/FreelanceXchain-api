@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { databases, DATABASE_ID } from '../config/appwrite.js';
 import { asyncHandler } from '../utils/async-handler.js';
+import { getApiVersion } from '../utils/version.js';
 
 const router = Router();
 
@@ -14,6 +15,7 @@ const router = Router();
 router.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const health = {
     status: 'ok',
+    version: getApiVersion(),
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     services: {

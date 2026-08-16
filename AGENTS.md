@@ -26,6 +26,7 @@ Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized
 | Markdown links (broken internal link check, runs in CI) | `pnpm run docs:check` |
 | Markdown lint (formatting, runs in CI) | `pnpm run docs:lint` |
 | Deploy local Hardhat | `pnpm run deploy:local` |
+| Dependabot alerts (exit 1 if any open) | `pnpm run security:alerts` |
 
 Test invocations must always use `node --experimental-vm-modules` (it's in the npm script, but not in `jest` directly).
 

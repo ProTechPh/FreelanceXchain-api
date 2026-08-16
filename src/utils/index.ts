@@ -4,6 +4,7 @@
 export { generateId } from './id.js';
 export { asyncHandler } from './async-handler.js';
 export { sendValidationError, sendErrorResponse } from './response-helpers.js';
+export { getApiVersion } from './version.js';
 
 /**
  * Safely extract a message string from an unknown thrown value.

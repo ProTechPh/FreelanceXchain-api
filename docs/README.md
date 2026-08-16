@@ -69,6 +69,7 @@ Setup, configuration, maintenance, testing, and troubleshooting.
 - [Developer Setup](deployment/setup.md) - Environment configuration
 - [Technology Stack](deployment/tech-stack.md) - Dependencies and rationale
 - [Deployment Configuration](deployment/configuration.md) - Docker, env vars, secrets
+- [Deployment Versioning & Monitoring](deployment/versioning.md) - Build version reporting, health checks, monitoring
 - [Maintenance Runbook](deployment/maintenance.md) - Operational procedures
 - [Migration Guide](deployment/migration.md) - New features deployment
 - [Testing Strategy](deployment/testing.md) - Unit, integration, E2E testing

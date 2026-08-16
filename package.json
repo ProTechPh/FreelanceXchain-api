@@ -21,6 +21,7 @@
     "test:plat": "node PLAT/run-plat-test-cases.cjs",
     "lint": "eslint src/**/*.ts",
     "security:audit": "pnpm audit --audit-level=moderate",
+    "security:alerts": "bash scripts/check-dependabot-alerts.sh",
     "security:audit:fix": "pnpm audit --fix",
     "security:check": "pnpm audit --audit-level=high --prod",
     "compile": "hardhat compile --config hardhat.config.cjs",
