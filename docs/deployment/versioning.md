@@ -26,11 +26,13 @@ workflow, which:
 1. **Bumps the patch version** in `package.json` (and mirrors it into the
    OpenAPI spec) via `scripts/bump-version.cjs` — `1.0.0` → `1.0.1` → `1.0.2`
 2. **Builds a fresh image** tagged `latest`, the commit SHA, and the bumped
-   version, passing the commit SHA as the `APP_BUILD_SHA` build argument:
+   version, passing the commit SHA and version as build arguments:
 
    ```yaml
    build-args: |
      APP_BUILD_SHA=${{ github.sha }}
+     APP_VERSION=${{ steps.bump.outputs.version }}
+     APP_REVISION=${{ github.sha }}
    ```
 
 3. **Pushes the version bump** to `main` only after the image was built and
@@ -126,6 +128,18 @@ After a push to `main`, verify the live deployment picked up the new build:
    ```
 
    The suffix after `+build.` should match the short SHA from step 1.
+
+   The image itself also carries OCI metadata labels, so a deployment can be
+   identified even without running it:
+
+   ```bash
+   docker inspect jericko134/freelancexchain-api:1.0.1 \
+     --format '{{json .Config.Labels}}'
+   ```
+
+   → `org.opencontainers.image.version` = `1.0.1`,
+   `org.opencontainers.image.revision` = full commit SHA, and
+   `org.opencontainers.image.source` = the repository URL.
 
 ## Verifying the Deployment in CI
 
