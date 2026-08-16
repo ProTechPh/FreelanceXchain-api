@@ -6,7 +6,7 @@
 **Blockchain-Based Freelance Marketplace with AI Skill Matching**
 
 [![CodeRabbit Reviews](https://img.shields.io/coderabbit/prs/github/ProTechPh/FreelanceXchain-api?utm_source=oss&utm_medium=github&utm_campaign=ProTechPh%2FFreelanceXchain-api&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
-[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](../LICENSE)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org)
 
@@ -126,7 +126,7 @@ docker build -t freelancexchain-api:latest .
 docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```
 
-> 📖 Detailed setup: [Developer Setup Guide](docs/deployment/setup.md) · [Deployment Configuration](docs/deployment/configuration.md)
+> 📖 Detailed setup: [Developer Setup Guide](../docs/deployment/setup.md) · [Deployment Configuration](../docs/deployment/configuration.md)
 
 ## 🔑 Environment Variables
 
@@ -175,7 +175,7 @@ All routes are prefixed with `/api`. Full interactive docs at `/api-docs` (set `
 
 ## ⛓️ Smart Contracts
 
-Five non-upgradeable Solidity contracts in [`contracts/`](contracts/README.md):
+Five non-upgradeable Solidity contracts in [`contracts/`](../contracts/README.md):
 
 | Contract | Purpose |
 | --- | --- |
@@ -224,17 +224,17 @@ pnpm run build         # Production build
 
 | Topic | Link |
 | --- | --- |
-| Full Documentation Index | [docs/README.md](docs/README.md) |
-| API Reference | [docs/api/](docs/api/) |
-| Architecture | [docs/architecture/](docs/architecture/) |
-| Blockchain Integration | [docs/blockchain/](docs/blockchain/) |
-| Database & Security | [docs/database/](docs/database/) |
-| Deployment & Setup | [docs/deployment/](docs/deployment/) |
-| Smart Contracts | [contracts/README.md](contracts/README.md) |
+| Full Documentation Index | [docs/README.md](../docs/README.md) |
+| API Reference | [docs/api/](../docs/api/) |
+| Architecture | [docs/architecture/](../docs/architecture/) |
+| Blockchain Integration | [docs/blockchain/](../docs/blockchain/) |
+| Database & Security | [docs/database/](../docs/database/) |
+| Deployment & Setup | [docs/deployment/](../docs/deployment/) |
+| Smart Contracts | [contracts/README.md](../contracts/README.md) |
 
 ## 🤝 Contributing
 
-We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a PR.
+We welcome contributions! Please read our [Contributing Guide](../CONTRIBUTING.md) before submitting a PR.
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -244,10 +244,10 @@ We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) 
 
 ## 📜 License
 
-This project is licensed under the [ISC License](LICENSE).
+This project is licensed under the [ISC License](../LICENSE).
 
 ## 🆘 Support
 
 - **Bug Reports & Feature Requests:** [GitHub Issues](https://github.com/ProTechPh/FreelanceXchain-api/issues)
-- **Documentation:** [docs/](docs/)
-- **Troubleshooting:** [docs/deployment/troubleshooting.md](docs/deployment/troubleshooting.md)
+- **Documentation:** [docs/](../docs/)
+- **Troubleshooting:** [docs/deployment/troubleshooting.md](../docs/deployment/troubleshooting.md)
