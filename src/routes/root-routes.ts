@@ -6,10 +6,13 @@ import { asyncHandler } from '../utils/async-handler.js';
 const router = Router();
 
 router.get('/', (_req, res) => {
+  const baseVersion = process.env.npm_package_version || '1.0.0';
+  const buildSha = process.env.APP_BUILD_SHA;
+  const version = buildSha ? `${baseVersion}+build.${buildSha.slice(0, 7)}` : baseVersion;
   res.status(200).json({
     status: 'success',
     message: 'FreelanceXchain API is running',
-    version: process.env.npm_package_version || '1.0.0'
+    version
   });
 });
 

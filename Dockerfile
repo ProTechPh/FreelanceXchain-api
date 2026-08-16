@@ -51,6 +51,10 @@ COPY --from=builder /app/artifacts ./artifacts
 ENV NODE_ENV=production
 ENV PORT=7860
 
+# Commit SHA of the build — surfaced as version metadata by GET /
+ARG APP_BUILD_SHA=dev
+ENV APP_BUILD_SHA=$APP_BUILD_SHA
+
 EXPOSE 7860
 
 # Start the application

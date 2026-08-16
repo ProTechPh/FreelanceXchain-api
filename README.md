@@ -126,6 +126,8 @@ docker build -t freelancexchain-api:latest .
 docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```
 
+> 🏷️ **Versioning:** every push to `main` rebuilds the Docker image with the commit SHA baked in, so `GET /` returns a fresh version like `1.0.0+build.4671a01`.
+>
 > 📖 Detailed setup: [Developer Setup Guide](docs/deployment/setup.md) · [Deployment Configuration](docs/deployment/configuration.md)
 
 ## 🔑 Environment Variables
@@ -145,6 +147,7 @@ Curated list — the **authoritative, complete list is `.env.example`**. Require
 | `DIDIT_API_KEY` · `DIDIT_API_URL` · `DIDIT_WEBHOOK_SECRET` · `DIDIT_WORKFLOW_ID` | Didit KYC |
 | `REDIS_HOST` · `REDIS_PORT` · `REDIS_PASSWORD` · `REDIS_TLS` | Rate limiting / cache |
 | `PORT` · `NODE_ENV` · `BASE_URL` · `ENABLE_API_DOCS` · `LOG_LEVEL` | Server behavior |
+| `APP_BUILD_SHA` | Commit SHA baked into the Docker image on push to `main`; `GET /` reports it as version metadata (`1.0.0+build.<sha>`) |
 | `APPWRITE_*_BUCKET` | Storage bucket names (proposals, project attachments, dispute evidence, portfolio, deliverables) |
 
 ## 📡 API Modules
@@ -153,6 +156,7 @@ All routes are prefixed with `/api`. Full interactive docs at `/api-docs` (set `
 
 | Module | Path | Description |
 | --- | --- | --- |
+| Root / Version | `/` | Health check — reports the live build version (e.g. `1.0.0+build.abc1234`) |
 | Health | `/api/health` | Liveness & readiness probes |
 | Auth | `/api/auth` | Register, login, OAuth, MFA, tokens, password recovery |
 | Skills | `/api/skills` | Skill taxonomy + custom skills + suggestions |
@@ -199,6 +203,7 @@ pnpm run test:coverage # With coverage thresholds
 pnpm exec tsc --noEmit # Type check
 pnpm run lint          # ESLint
 pnpm run openapi:check # Verify the OpenAPI spec hasn't drifted from the code
+pnpm run security:alerts # Fails (exit 1) if any Dependabot alerts are open (needs gh CLI)
 pnpm run build         # Production build
 ```
 

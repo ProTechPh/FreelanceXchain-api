@@ -71,15 +71,20 @@ describe('Root Routes', () => {
     });
   });
 
-  describe('GET / - version fallback (line 12)', () => {
+  describe('GET / - version', () => {
     it('should return default version 1.0.0 when npm_package_version is not set', async () => {
       const originalVersion = process.env['npm_package_version'];
+      const originalBuildSha = process.env['APP_BUILD_SHA'];
       delete process.env['npm_package_version'];
+      delete process.env['APP_BUILD_SHA'];
       const res = await request(app).get('/');
       expect(res.status).toBe(200);
       expect(res.body.version).toBe('1.0.0');
       if (originalVersion !== undefined) {
         process.env['npm_package_version'] = originalVersion;
+      }
+      if (originalBuildSha !== undefined) {
+        process.env['APP_BUILD_SHA'] = originalBuildSha;
       }
     });
 
@@ -93,6 +98,24 @@ describe('Root Routes', () => {
         process.env['npm_package_version'] = originalVersion;
       } else {
         delete process.env['npm_package_version'];
+      }
+    });
+
+    it('should append build metadata when APP_BUILD_SHA is set', async () => {
+      const originalVersion = process.env['npm_package_version'];
+      const originalBuildSha = process.env['APP_BUILD_SHA'];
+      delete process.env['npm_package_version'];
+      process.env['APP_BUILD_SHA'] = '0123456789abcdef';
+      const res = await request(app).get('/');
+      expect(res.status).toBe(200);
+      expect(res.body.version).toBe('1.0.0+build.0123456');
+      if (originalVersion !== undefined) {
+        process.env['npm_package_version'] = originalVersion;
+      }
+      if (originalBuildSha !== undefined) {
+        process.env['APP_BUILD_SHA'] = originalBuildSha;
+      } else {
+        delete process.env['APP_BUILD_SHA'];
       }
     });
   });
