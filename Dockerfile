@@ -70,5 +70,7 @@ LABEL org.opencontainers.image.title="FreelanceXchain API" \
 
 EXPOSE 7860
 
-# Start the application
-CMD ["node", "dist/index.js"]
+# Start the application via npm so `npm_package_version` is set from the
+# image's package.json — otherwise GET / and /api/health always fall back
+# to the hardcoded 1.0.0 base version.
+CMD ["npm", "run", "start"]

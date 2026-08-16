@@ -68,10 +68,14 @@ build SHA from the first available source, ignoring the `dev` placeholder:
 | Render.com (builds the repo Dockerfile) | `RENDER_GIT_COMMIT` (auto-set) | `1.0.1+build.<commit>` |
 | Hugging Face Space (builds the repo Dockerfile) | `SPACE_REVISION` (auto-set) | `1.0.1+build.<revision>` |
 
-The fallback base version comes from `npm_package_version` (the version in
-`package.json`), or `1.0.0` if that is not set. Because the `dev`
-placeholder is ignored, platforms that build the repo directly (without
-Docker build args) still report a real commit instead of `build.dev`.
+The base version comes from `npm_package_version` (the version in
+`package.json`), or `1.0.0` if that is not set. The Docker image starts the
+app via `npm run start` (not `node dist/index.js`) precisely so that npm
+sets `npm_package_version` — otherwise a container running node directly
+would always report the hardcoded `1.0.0` base even after a version bump.
+Because the `dev` placeholder is ignored, platforms that build the repo
+directly (without Docker build args) still report a real commit instead of
+`build.dev`.
 
 > Note: `APP_BUILD_SHA` is set by CI only — it should not be committed to
 > `.env`. See `.env.example` for the documented variable.
