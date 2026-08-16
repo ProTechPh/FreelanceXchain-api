@@ -31,6 +31,27 @@ describe('Health Routes Unit Tests', () => {
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('ok');
     expect(response.body.services.database).toBe('ok');
+    expect(typeof response.body.version).toBe('string');
+  });
+
+  it('should report build metadata in version when APP_BUILD_SHA is set', async () => {
+    const originalVersion = process.env['npm_package_version'];
+    const originalBuildSha = process.env['APP_BUILD_SHA'];
+    delete process.env['npm_package_version'];
+    process.env['APP_BUILD_SHA'] = '0123456789abcdef';
+    mockListDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+    const response = await request(app).get('/api/health');
+    expect(response.status).toBe(200);
+    expect(response.body.version).toBe('1.0.0+build.0123456');
+    if (originalVersion !== undefined) {
+      process.env['npm_package_version'] = originalVersion;
+    }
+    if (originalBuildSha !== undefined) {
+      process.env['APP_BUILD_SHA'] = originalBuildSha;
+    } else {
+      delete process.env['APP_BUILD_SHA'];
+    }
   });
 
   it('should return 503 when database query throws on /api/health', async () => {
