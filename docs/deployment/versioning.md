@@ -44,28 +44,34 @@ Runs are serialized (`concurrency` group), so rapid pushes each bump and
 build cleanly.
 
 The `Dockerfile` bakes `APP_BUILD_SHA` into the image as an environment
-variable:
+variable, but only when CI passes it — otherwise it stays empty so the
+runtime can fall back to the platform's own commit variable:
 
 ```dockerfile
-ARG APP_BUILD_SHA=dev
-ENV APP_BUILD_SHA=$APP_BUILD_SHA
+ARG APP_BUILD_SHA
+ENV APP_BUILD_SHA=${APP_BUILD_SHA:-}
 ```
 
 At runtime, `getApiVersion()` in `src/utils/version.ts` combines the
-`package.json` version (already bumped at build time) with the baked-in
-SHA (first 7 characters) using semver build metadata:
+`package.json` version (already bumped at build time) with the commit
+SHA (first 7 characters) using semver build metadata. It resolves the
+build SHA from the first available source, ignoring the `dev` placeholder:
+
+1. `APP_BUILD_SHA` — baked in by the Docker build (docker-hub.yml)
+2. `RENDER_GIT_COMMIT` — set by Render.com at runtime (deployed commit)
+3. `SPACE_REVISION` — set by Hugging Face Spaces at runtime (space build)
 
 | Environment | Build SHA source | Reported version |
 | --- | --- | --- |
 | Local dev (`pnpm run dev`) | unset | current `package.json` version (e.g. `1.0.1`) |
 | Docker image from push to `main` | `APP_BUILD_SHA` = `4671a01c...` | `1.0.1+build.4671a01` |
-| Hugging Face Space (builds the repo Dockerfile) | `SPACE_REVISION` (auto-set, falls back) | `1.0.1+build.<revision>` |
+| Render.com (builds the repo Dockerfile) | `RENDER_GIT_COMMIT` (auto-set) | `1.0.1+build.<commit>` |
+| Hugging Face Space (builds the repo Dockerfile) | `SPACE_REVISION` (auto-set) | `1.0.1+build.<revision>` |
 
 The fallback base version comes from `npm_package_version` (the version in
-`package.json`), or `1.0.0` if that is not set. When `APP_BUILD_SHA` is
-unset, the runtime falls back to the Hugging Face `SPACE_REVISION` variable
-— so platforms that build the repo directly (without Docker build args)
-still report a real commit instead of `build.dev`.
+`package.json`), or `1.0.0` if that is not set. Because the `dev`
+placeholder is ignored, platforms that build the repo directly (without
+Docker build args) still report a real commit instead of `build.dev`.
 
 > Note: `APP_BUILD_SHA` is set by CI only — it should not be committed to
 > `.env`. See `.env.example` for the documented variable.

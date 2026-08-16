@@ -51,9 +51,12 @@ COPY --from=builder /app/artifacts ./artifacts
 ENV NODE_ENV=production
 ENV PORT=7860
 
-# Commit SHA of the build — surfaced as version metadata by GET /
-ARG APP_BUILD_SHA=dev
-ENV APP_BUILD_SHA=$APP_BUILD_SHA
+# Commit SHA of the build — surfaced as version metadata by GET /.
+# Only set when CI passes it; otherwise left empty so the runtime falls
+# back to the platform's own commit env var (RENDER_GIT_COMMIT on Render,
+# SPACE_REVISION on Hugging Face Spaces) instead of a stale placeholder.
+ARG APP_BUILD_SHA
+ENV APP_BUILD_SHA=${APP_BUILD_SHA:-}
 
 # OCI image metadata. APP_VERSION / APP_REVISION are injected by the deploy
 # workflow (bumped version + commit SHA); local builds default to "dev".

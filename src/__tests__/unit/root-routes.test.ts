@@ -143,5 +143,55 @@ describe('Root Routes', () => {
         delete process.env['SPACE_REVISION'];
       }
     });
+
+    it('should fall back to RENDER_GIT_COMMIT when APP_BUILD_SHA is unset', async () => {
+      const originalVersion = process.env['npm_package_version'];
+      const originalBuildSha = process.env['APP_BUILD_SHA'];
+      const originalRenderCommit = process.env['RENDER_GIT_COMMIT'];
+      delete process.env['npm_package_version'];
+      delete process.env['APP_BUILD_SHA'];
+      process.env['RENDER_GIT_COMMIT'] = 'abc1234def567890';
+      const res = await request(app).get('/');
+      expect(res.status).toBe(200);
+      expect(res.body.version).toBe('1.0.0+build.abc1234');
+      if (originalVersion !== undefined) {
+        process.env['npm_package_version'] = originalVersion;
+      }
+      if (originalBuildSha !== undefined) {
+        process.env['APP_BUILD_SHA'] = originalBuildSha;
+      } else {
+        delete process.env['APP_BUILD_SHA'];
+      }
+      if (originalRenderCommit !== undefined) {
+        process.env['RENDER_GIT_COMMIT'] = originalRenderCommit;
+      } else {
+        delete process.env['RENDER_GIT_COMMIT'];
+      }
+    });
+
+    it('should ignore the dev placeholder and use the platform fallback', async () => {
+      const originalVersion = process.env['npm_package_version'];
+      const originalBuildSha = process.env['APP_BUILD_SHA'];
+      const originalRenderCommit = process.env['RENDER_GIT_COMMIT'];
+      delete process.env['npm_package_version'];
+      process.env['APP_BUILD_SHA'] = 'dev';
+      process.env['RENDER_GIT_COMMIT'] = 'fedcba9876543210';
+      const res = await request(app).get('/');
+      expect(res.status).toBe(200);
+      expect(res.body.version).toBe('1.0.0+build.fedcba9');
+      if (originalVersion !== undefined) {
+        process.env['npm_package_version'] = originalVersion;
+      }
+      if (originalBuildSha !== undefined) {
+        process.env['APP_BUILD_SHA'] = originalBuildSha;
+      } else {
+        delete process.env['APP_BUILD_SHA'];
+      }
+      if (originalRenderCommit !== undefined) {
+        process.env['RENDER_GIT_COMMIT'] = originalRenderCommit;
+      } else {
+        delete process.env['RENDER_GIT_COMMIT'];
+      }
+    });
   });
 });
