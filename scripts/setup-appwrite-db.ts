@@ -12,7 +12,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { Client, Databases, ID, Permission, Role, Query } from 'node-appwrite';
+import { Client, Databases, ID, Permission, Role, Query, DatabasesIndexType, OrderBy } from 'node-appwrite';
 
 const ENDPOINT = process.env['APPWRITE_ENDPOINT']!;
 const PROJECT_ID = process.env['APPWRITE_PROJECT_ID']!;
@@ -44,6 +44,10 @@ const COLLECTIONS = [
       { name: 'suspension_reason', type: 'string', size: 1000, required: false },
       { name: 'mfa_enabled', type: 'boolean', required: false, default: false },
     ],
+    indexes: [
+      { key: 'unique_email', type: DatabasesIndexType.Unique, attributes: ['email'] },
+      { key: 'role_createdAt', type: DatabasesIndexType.Key, attributes: ['role', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
   },
   {
     id: 'skill_categories',
@@ -52,6 +56,9 @@ const COLLECTIONS = [
       { name: 'name', type: 'string', size: 100, required: true },
       { name: 'description', type: 'string', size: 1000, required: false, default: '' },
       { name: 'is_active', type: 'boolean', required: false, default: true },
+    ],
+    indexes: [
+      { key: 'is_active_name', type: DatabasesIndexType.Key, attributes: ['is_active', 'name'], orders: [OrderBy.Asc, OrderBy.Asc] },
     ],
   },
   {
@@ -62,6 +69,11 @@ const COLLECTIONS = [
       { name: 'name', type: 'string', size: 100, required: true },
       { name: 'description', type: 'string', size: 1000, required: false, default: '' },
       { name: 'is_active', type: 'boolean', required: false, default: true },
+    ],
+    indexes: [
+      { key: 'category_id_name', type: DatabasesIndexType.Key, attributes: ['category_id', 'name'], orders: [OrderBy.Asc, OrderBy.Asc] },
+      { key: 'category_id_is_active_name', type: DatabasesIndexType.Key, attributes: ['category_id', 'is_active', 'name'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Asc] },
+      { key: 'name', type: DatabasesIndexType.Key, attributes: ['name'], orders: [OrderBy.Asc] },
     ],
   },
   {
@@ -77,6 +89,10 @@ const COLLECTIONS = [
       { name: 'experience', type: 'string', size: 50000, required: false, default: '[]' }, // JSON array
       { name: 'availability', type: 'string', size: 20, required: false, default: 'available' },
     ],
+    indexes: [
+      { key: 'user_id', type: DatabasesIndexType.Key, attributes: ['user_id'] },
+      { key: 'availability_createdAt', type: DatabasesIndexType.Key, attributes: ['availability', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
   },
   {
     id: 'employer_profiles',
@@ -89,6 +105,9 @@ const COLLECTIONS = [
       { name: 'description', type: 'string', size: 5000, required: false, default: '' },
       { name: 'industry', type: 'string', size: 100, required: false, default: '' },
     ],
+    indexes: [
+      { key: 'user_id', type: DatabasesIndexType.Key, attributes: ['user_id'] },
+    ],
   },
   {
     id: 'projects',
@@ -98,6 +117,7 @@ const COLLECTIONS = [
       { name: 'title', type: 'string', size: 255, required: true },
       { name: 'description', type: 'string', size: 50000, required: false, default: '' },
       { name: 'required_skills', type: 'string', size: 50000, required: false, default: '[]' },
+      { name: 'required_skill_ids', type: 'string', size: 36, required: false, array: true },
       { name: 'budget', type: 'double', required: false, default: 0 },
       { name: 'deadline', type: 'string', size: 30, required: true },
       { name: 'is_rush', type: 'boolean', required: false, default: false },
@@ -107,6 +127,15 @@ const COLLECTIONS = [
       { name: 'freelancer_limit', type: 'integer', required: false, default: 1 },
       { name: 'tags', type: 'string', size: 5000, required: false, default: '[]' },
       { name: 'attachments', type: 'string', size: 50000, required: false, default: '[]' },
+    ],
+    indexes: [
+      { key: 'employer_id', type: DatabasesIndexType.Key, attributes: ['employer_id'] },
+      { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      // Marketplace search hot paths: keyword (contains on title), budget range,
+      // and skills (equal on the required_skill_ids array attribute).
+      { key: 'status_title', type: DatabasesIndexType.Key, attributes: ['status', 'title'] },
+      { key: 'status_budget', type: DatabasesIndexType.Key, attributes: ['status', 'budget'] },
+      { key: 'status_required_skill_ids', type: DatabasesIndexType.Key, attributes: ['status', 'required_skill_ids'] },
     ],
   },
   {
@@ -120,6 +149,12 @@ const COLLECTIONS = [
       { name: 'proposed_rate', type: 'double', required: true },
       { name: 'estimated_duration', type: 'integer', required: true },
       { name: 'status', type: 'string', size: 20, required: false, default: 'pending' },
+    ],
+    indexes: [
+      { key: 'project_id_createdAt', type: DatabasesIndexType.Key, attributes: ['project_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'freelancer_id_createdAt', type: DatabasesIndexType.Key, attributes: ['freelancer_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'project_id_status', type: DatabasesIndexType.Key, attributes: ['project_id', 'status'] },
+      { key: 'project_id_freelancer_id', type: DatabasesIndexType.Key, attributes: ['project_id', 'freelancer_id'] },
     ],
   },
   {
@@ -135,6 +170,14 @@ const COLLECTIONS = [
       { name: 'rush_fee', type: 'double', required: false, default: 0 },
       { name: 'total_amount', type: 'double', required: false, default: 0 },
       { name: 'status', type: 'string', size: 20, required: false, default: 'pending' },
+    ],
+    indexes: [
+      { key: 'freelancer_id_createdAt', type: DatabasesIndexType.Key, attributes: ['freelancer_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'employer_id_createdAt', type: DatabasesIndexType.Key, attributes: ['employer_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'project_id_createdAt', type: DatabasesIndexType.Key, attributes: ['project_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'freelancer_id_status', type: DatabasesIndexType.Key, attributes: ['freelancer_id', 'status'] },
+      { key: 'proposal_id', type: DatabasesIndexType.Key, attributes: ['proposal_id'] },
+      { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
     ],
   },
   {
@@ -156,6 +199,10 @@ const COLLECTIONS = [
       { name: 'revision_count', type: 'integer', required: false, default: 0 },
       { name: 'notes', type: 'string', size: 5000, required: false },
     ],
+    indexes: [
+      { key: 'contract_id_due_date', type: DatabasesIndexType.Key, attributes: ['contract_id', 'due_date'], orders: [OrderBy.Asc, OrderBy.Asc] },
+      { key: 'project_id', type: DatabasesIndexType.Key, attributes: ['project_id'] },
+    ],
   },
   {
     id: 'reviews',
@@ -173,6 +220,12 @@ const COLLECTIONS = [
       { name: 'professionalism', type: 'double', required: false },
       { name: 'would_work_again', type: 'boolean', required: false },
     ],
+    indexes: [
+      { key: 'contract_id_createdAt', type: DatabasesIndexType.Key, attributes: ['contract_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'reviewee_id_createdAt', type: DatabasesIndexType.Key, attributes: ['reviewee_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'project_id_createdAt', type: DatabasesIndexType.Key, attributes: ['project_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'contract_id_reviewer_id', type: DatabasesIndexType.Key, attributes: ['contract_id', 'reviewer_id'] },
+    ],
   },
   {
     id: 'disputes',
@@ -186,6 +239,12 @@ const COLLECTIONS = [
       { name: 'status', type: 'string', size: 20, required: false, default: 'open' },
       { name: 'resolution', type: 'string', size: 50000, required: false },
     ],
+    indexes: [
+      { key: 'contract_id_createdAt', type: DatabasesIndexType.Key, attributes: ['contract_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'milestone_id', type: DatabasesIndexType.Key, attributes: ['milestone_id'] },
+      { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'initiator_id_createdAt', type: DatabasesIndexType.Key, attributes: ['initiator_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
   },
   {
     id: 'dispute_evidence',
@@ -198,6 +257,9 @@ const COLLECTIONS = [
       { name: 'description', type: 'string', size: 10000, required: true },
       { name: 'verified_by', type: 'string', size: 36, required: false },
       { name: 'verified_at', type: 'string', size: 30, required: false },
+    ],
+    indexes: [
+      { key: 'dispute_id_createdAt', type: DatabasesIndexType.Key, attributes: ['dispute_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc] },
     ],
   },
   {
@@ -214,6 +276,13 @@ const COLLECTIONS = [
       { name: 'status', type: 'string', size: 20, required: false, default: 'pending' },
       { name: 'payment_type', type: 'string', size: 30, required: true },
     ],
+    indexes: [
+      { key: 'contract_id_createdAt', type: DatabasesIndexType.Key, attributes: ['contract_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'unique_tx_hash', type: DatabasesIndexType.Unique, attributes: ['tx_hash'] },
+      { key: 'payee_id_status', type: DatabasesIndexType.Key, attributes: ['payee_id', 'status'] },
+      { key: 'payer_id_status', type: DatabasesIndexType.Key, attributes: ['payer_id', 'status'] },
+    ],
   },
   {
     id: 'conversations',
@@ -225,6 +294,11 @@ const COLLECTIONS = [
       { name: 'last_message_preview', type: 'string', size: 255, required: false },
       { name: 'unread_count_1', type: 'integer', required: false, default: 0 },
       { name: 'unread_count_2', type: 'integer', required: false, default: 0 },
+    ],
+    indexes: [
+      { key: 'participant1_id_last_message_at', type: DatabasesIndexType.Key, attributes: ['participant1_id', 'last_message_at'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'participant2_id_last_message_at', type: DatabasesIndexType.Key, attributes: ['participant2_id', 'last_message_at'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'participant1_participant2', type: DatabasesIndexType.Key, attributes: ['participant1_id', 'participant2_id'] },
     ],
   },
   {
@@ -238,6 +312,11 @@ const COLLECTIONS = [
       { name: 'is_read', type: 'boolean', required: false, default: false },
       { name: 'attachments', type: 'string', size: 50000, required: false, default: '[]' },
     ],
+    indexes: [
+      { key: 'conversation_id_createdAt', type: DatabasesIndexType.Key, attributes: ['conversation_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'conversation_receiver_read', type: DatabasesIndexType.Key, attributes: ['conversation_id', 'receiver_id', 'is_read'] },
+      { key: 'receiver_id_is_read', type: DatabasesIndexType.Key, attributes: ['receiver_id', 'is_read'] },
+    ],
   },
   {
     id: 'notifications',
@@ -249,6 +328,11 @@ const COLLECTIONS = [
       { name: 'message', type: 'string', size: 10000, required: true },
       { name: 'data', type: 'string', size: 50000, required: false, default: '{}' },
       { name: 'is_read', type: 'boolean', required: false, default: false },
+    ],
+    indexes: [
+      { key: 'user_id_is_read_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', 'is_read', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'is_read_createdAt', type: DatabasesIndexType.Key, attributes: ['is_read', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
     ],
   },
   {
@@ -275,6 +359,12 @@ const COLLECTIONS = [
       { name: 'reviewed_by', type: 'string', size: 36, required: false },
       { name: 'admin_notes', type: 'string', size: 5000, required: false },
     ],
+    indexes: [
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'didit_session_id', type: DatabasesIndexType.Key, attributes: ['didit_session_id'] },
+      { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'status_createdAt_asc', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc] },
+    ],
   },
   {
     id: 'email_preferences',
@@ -289,6 +379,10 @@ const COLLECTIONS = [
       { name: 'marketing_emails', type: 'boolean', required: false, default: false },
       { name: 'weekly_digest', type: 'boolean', required: false, default: true },
     ],
+    indexes: [
+      { key: 'user_id', type: DatabasesIndexType.Key, attributes: ['user_id'] },
+      { key: 'weekly_digest', type: DatabasesIndexType.Key, attributes: ['weekly_digest'] },
+    ],
   },
   {
     id: 'pending_mfa_sessions',
@@ -299,6 +393,9 @@ const COLLECTIONS = [
       { name: 'user_id', type: 'string', size: 36, required: true },
       { name: 'factor_id', type: 'string', size: 255, required: true },
       { name: 'expires_at', type: 'integer', required: true },
+    ],
+    indexes: [
+      { key: 'user_id_expires_at', type: DatabasesIndexType.Key, attributes: ['user_id', 'expires_at'] },
     ],
   },
   {
@@ -316,6 +413,10 @@ const COLLECTIONS = [
       { name: 'rejection_reason', type: 'string', size: 5000, required: false },
       { name: 'transaction_hash', type: 'string', size: 66, required: false },
     ],
+    indexes: [
+      { key: 'contract_id_status', type: DatabasesIndexType.Key, attributes: ['contract_id', 'status'] },
+      { key: 'contract_id_createdAt', type: DatabasesIndexType.Key, attributes: ['contract_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
   },
   {
     id: 'favorites',
@@ -324,6 +425,10 @@ const COLLECTIONS = [
       { name: 'user_id', type: 'string', size: 36, required: true },
       { name: 'target_type', type: 'string', size: 20, required: true },
       { name: 'target_id', type: 'string', size: 36, required: true },
+    ],
+    indexes: [
+      { key: 'user_id_target_type_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', 'target_type', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
+      { key: 'unique_user_target', type: DatabasesIndexType.Unique, attributes: ['user_id', 'target_type', 'target_id'] },
     ],
   },
   {
@@ -338,6 +443,9 @@ const COLLECTIONS = [
       { name: 'skills', type: 'string', size: 5000, required: false, default: '[]' },
       { name: 'completed_at', type: 'string', size: 30, required: false },
     ],
+    indexes: [
+      { key: 'freelancer_id_createdAt', type: DatabasesIndexType.Key, attributes: ['freelancer_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
   },
   {
     id: 'saved_searches',
@@ -348,6 +456,10 @@ const COLLECTIONS = [
       { name: 'search_type', type: 'string', size: 20, required: true },
       { name: 'filters', type: 'string', size: 50000, required: false, default: '{}' },
       { name: 'notify_on_new', type: 'boolean', required: false, default: false },
+    ],
+    indexes: [
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'notify_on_new', type: DatabasesIndexType.Key, attributes: ['notify_on_new'] },
     ],
   },
   {
@@ -362,6 +474,9 @@ const COLLECTIONS = [
       { name: 'is_approved', type: 'boolean', required: false, default: false },
       { name: 'suggested_for_global', type: 'boolean', required: false, default: false },
     ],
+    indexes: [
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
   },
   {
     id: 'skill_suggestions',
@@ -375,6 +490,9 @@ const COLLECTIONS = [
       { name: 'times_requested', type: 'integer', required: false, default: 1 },
       { name: 'status', type: 'string', size: 20, required: false, default: 'pending' },
     ],
+    indexes: [
+      { key: 'status_times_requested', type: DatabasesIndexType.Key, attributes: ['status', 'times_requested'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
   },
   {
     id: 'rush_upgrade_requests',
@@ -386,6 +504,10 @@ const COLLECTIONS = [
       { name: 'counter_percentage', type: 'double', required: false },
       { name: 'status', type: 'string', size: 20, required: false, default: 'pending' },
       { name: 'responded_by', type: 'string', size: 36, required: false },
+    ],
+    indexes: [
+      { key: 'contract_id_createdAt', type: DatabasesIndexType.Key, attributes: ['contract_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'contract_id_status_createdAt', type: DatabasesIndexType.Key, attributes: ['contract_id', 'status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
     ],
   },
   {
@@ -402,6 +524,12 @@ const COLLECTIONS = [
       { name: 'user_agent', type: 'string', size: 2000, required: false },
       { name: 'status', type: 'string', size: 20, required: false, default: 'success' },
       { name: 'error_message', type: 'string', size: 5000, required: false },
+    ],
+    indexes: [
+      { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'action_createdAt', type: DatabasesIndexType.Key, attributes: ['action', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'resource_type_resource_id_createdAt', type: DatabasesIndexType.Key, attributes: ['resource_type', 'resource_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
+      { key: 'status_createdAt', type: DatabasesIndexType.Key, attributes: ['status', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
     ],
   },
   {
@@ -420,18 +548,29 @@ const COLLECTIONS = [
       { name: 'gas_used', type: 'string', size: 50, required: false, default: '0' },
       { name: 'confirm_at', type: 'integer', required: false },
     ],
+    indexes: [
+      { key: 'unique_hash', type: DatabasesIndexType.Unique, attributes: ['hash'] },
+      { key: 'type_timestamp', type: DatabasesIndexType.Key, attributes: ['type', 'timestamp'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'status_timestamp', type: DatabasesIndexType.Key, attributes: ['status', 'timestamp'], orders: [OrderBy.Asc, OrderBy.Desc] },
+    ],
   },
   {
     id: 'blockchain_escrows',
     name: 'Blockchain Escrows',
     attributes: [
       { name: 'contract_id', type: 'string', size: 255, required: true },
+      { name: 'address', type: 'string', size: 42, required: false, default: '' },
+      { name: 'escrow_address', type: 'string', size: 42, required: false, default: '' },
       { name: 'employer_address', type: 'string', size: 42, required: true },
       { name: 'freelancer_address', type: 'string', size: 42, required: true },
       { name: 'total_amount', type: 'string', size: 50, required: true },
       { name: 'balance', type: 'string', size: 50, required: false, default: '0' },
       { name: 'deployed_at', type: 'integer', required: true },
       { name: 'deployment_tx_hash', type: 'string', size: 66, required: true },
+    ],
+    indexes: [
+      { key: 'address', type: DatabasesIndexType.Key, attributes: ['address'] },
+      { key: 'escrow_address', type: DatabasesIndexType.Key, attributes: ['escrow_address'] },
     ],
   },
   {
@@ -447,6 +586,11 @@ const COLLECTIONS = [
       { name: 'status', type: 'string', size: 20, required: false, default: 'pending' },
       { name: 'transaction_hash', type: 'string', size: 66, required: false },
       { name: 'metadata', type: 'string', size: 100000, required: false },
+    ],
+    indexes: [
+      { key: 'contract_id_createdAt', type: DatabasesIndexType.Key, attributes: ['contract_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'from_user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['from_user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
+      { key: 'to_user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['to_user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
     ],
   },
   {
@@ -467,6 +611,11 @@ const COLLECTIONS = [
       { name: 'in_reply_to', type: 'string', size: 255, required: false },
       { name: 'references', type: 'string', size: 2000, required: false },
       { name: 'received_at', type: 'string', size: 30, required: true },
+    ],
+    indexes: [
+      { key: 'unique_message_id', type: DatabasesIndexType.Unique, attributes: ['message_id'] },
+      { key: 'user_id_folder_received_at', type: DatabasesIndexType.Key, attributes: ['user_id', 'folder', 'received_at'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
+      { key: 'user_id_is_read', type: DatabasesIndexType.Key, attributes: ['user_id', 'is_read'] },
     ],
   },
 ];
@@ -502,6 +651,28 @@ async function createCollection(colDef: typeof COLLECTIONS[0]): Promise<void> {
       ]
     );
     console.log(`  ✓ Collection "${colDef.name}" created`);
+  }
+}
+
+async function createIndexes(colDef: typeof COLLECTIONS[0]): Promise<void> {
+  for (const index of colDef.indexes ?? []) {
+    try {
+      await db.createIndex(
+        DATABASE_ID,
+        colDef.id,
+        index.key,
+        index.type,
+        index.attributes,
+        index.orders
+      );
+      console.log(`    ✓ Index "${index.key}" (${index.attributes.join(', ')})`);
+    } catch (e: any) {
+      if (e?.code === 409) {
+        console.log(`    ⊘ Index "${index.key}" already exists`);
+      } else {
+        console.error(`    ✗ Failed to create index "${index.key}":`, e?.message || e);
+      }
+    }
   }
 }
 
@@ -577,6 +748,7 @@ async function main(): Promise<void> {
     console.log(`[${colDef.id}]`);
     await createCollection(colDef);
     await createAttributes(colDef);
+    await createIndexes(colDef);
     console.log('');
   }
 

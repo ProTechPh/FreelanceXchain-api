@@ -1428,7 +1428,16 @@
             "format": "date-time"
           }
         },
-        "required": ["id", "conversation_id", "sender_id", "receiver_id", "content", "is_read", "created_at", "updated_at"]
+        "required": [
+          "id",
+          "conversation_id",
+          "sender_id",
+          "receiver_id",
+          "content",
+          "is_read",
+          "created_at",
+          "updated_at"
+        ]
       },
       "MessageAttachment": {
         "type": "object",
@@ -1447,7 +1456,12 @@
             "type": "string"
           }
         },
-        "required": ["url", "filename", "size", "mimeType"]
+        "required": [
+          "url",
+          "filename",
+          "size",
+          "mimeType"
+        ]
       },
       "Conversation": {
         "type": "object",
@@ -1487,7 +1501,16 @@
             "format": "date-time"
           }
         },
-        "required": ["id", "participant1_id", "participant2_id", "last_message_at", "unread_count_1", "unread_count_2", "created_at", "updated_at"]
+        "required": [
+          "id",
+          "participant1_id",
+          "participant2_id",
+          "last_message_at",
+          "unread_count_1",
+          "unread_count_2",
+          "created_at",
+          "updated_at"
+        ]
       },
       "ConversationWithDetails": {
         "allOf": [
@@ -1512,10 +1535,16 @@
                     "format": "email"
                   }
                 },
-                "required": ["id", "name", "email"]
+                "required": [
+                  "id",
+                  "name",
+                  "email"
+                ]
               }
             },
-            "required": ["otherUser"]
+            "required": [
+              "otherUser"
+            ]
           }
         ]
       },
@@ -1536,7 +1565,10 @@
             }
           }
         },
-        "required": ["receiverId", "content"]
+        "required": [
+          "receiverId",
+          "content"
+        ]
       },
       "PaginatedMessages": {
         "type": "object",
@@ -1554,7 +1586,11 @@
             "type": "boolean"
           }
         },
-        "required": ["items", "total", "hasMore"]
+        "required": [
+          "items",
+          "total",
+          "hasMore"
+        ]
       },
       "PaginatedConversations": {
         "type": "object",
@@ -1572,7 +1608,11 @@
             "type": "boolean"
           }
         },
-        "required": ["items", "total", "hasMore"]
+        "required": [
+          "items",
+          "total",
+          "hasMore"
+        ]
       },
       "UnreadCountResponse": {
         "type": "object",
@@ -1581,36 +1621,100 @@
             "type": "number"
           }
         },
-        "required": ["count"]
+        "required": [
+          "count"
+        ]
       },
       "RushUpgradeRequest": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "format": "uuid" },
-          "contractId": { "type": "string", "format": "uuid" },
-          "requestedBy": { "type": "string", "format": "uuid" },
-          "proposedPercentage": { "type": "number", "minimum": 0.01, "maximum": 100 },
-          "counterPercentage": { "type": "number", "minimum": 0.01, "maximum": 100, "nullable": true },
-          "status": { "type": "string", "enum": ["pending", "accepted", "declined", "counter_offered", "expired"] },
-          "respondedBy": { "type": "string", "format": "uuid", "nullable": true },
-          "respondedAt": { "type": "string", "format": "date-time", "nullable": true },
-          "createdAt": { "type": "string", "format": "date-time" },
-          "updatedAt": { "type": "string", "format": "date-time" }
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contractId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "requestedBy": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "proposedPercentage": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 100
+          },
+          "counterPercentage": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 100,
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "accepted",
+              "declined",
+              "counter_offered",
+              "expired"
+            ]
+          },
+          "respondedBy": {
+            "type": "string",
+            "format": "uuid",
+            "nullable": true
+          },
+          "respondedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
         }
       },
       "RequestRushUpgradeInput": {
         "type": "object",
-        "required": ["proposedPercentage"],
+        "required": [
+          "proposedPercentage"
+        ],
         "properties": {
-          "proposedPercentage": { "type": "number", "minimum": 0.01, "maximum": 100, "description": "Proposed rush fee percentage" }
+          "proposedPercentage": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 100,
+            "description": "Proposed rush fee percentage"
+          }
         }
       },
       "RespondToRushUpgradeInput": {
         "type": "object",
-        "required": ["action"],
+        "required": [
+          "action"
+        ],
         "properties": {
-          "action": { "type": "string", "enum": ["accept", "decline", "counter_offer"] },
-          "counterPercentage": { "type": "number", "minimum": 0.01, "maximum": 100, "description": "Required when action is counter_offer" }
+          "action": {
+            "type": "string",
+            "enum": [
+              "accept",
+              "decline",
+              "counter_offer"
+            ]
+          },
+          "counterPercentage": {
+            "type": "number",
+            "minimum": 0.01,
+            "maximum": 100,
+            "description": "Required when action is counter_offer"
+          }
         }
       }
     }
@@ -3855,32 +3959,6 @@
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "bio": {
-                    "type": "string"
-                  },
-                  "hourlyRate": {
-                    "type": "number"
-                  },
-                  "availability": {
-                    "type": "string",
-                    "enum": [
-                      "available",
-                      "busy",
-                      "unavailable"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Profile updated successfully",
@@ -3900,6 +3978,35 @@
           },
           "404": {
             "description": "Profile not found"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "bio": {
+                    "type": "string",
+                    "minLength": 10
+                  },
+                  "hourlyRate": {
+                    "type": "number",
+                    "minimum": 1
+                  },
+                  "availability": {
+                    "type": "string",
+                    "enum": [
+                      "available",
+                      "busy",
+                      "unavailable"
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -4877,12 +4984,31 @@
             "bearerAuth": []
           }
         ],
+        "responses": {
+          "201": {
+            "description": "Project created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          }
+        },
         "requestBody": {
           "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
+                "additionalProperties": false,
                 "required": [
                   "title",
                   "description",
@@ -4901,45 +5027,33 @@
                   },
                   "requiredSkills": {
                     "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "skillId": {
-                          "type": "string"
-                        }
-                      }
-                    }
+                    "minItems": 1
                   },
                   "budget": {
                     "type": "number",
-                    "minimum": 0,
-                    "exclusiveMinimum": true
+                    "exclusiveMinimum": 0
                   },
                   "deadline": {
-                    "type": "string",
-                    "format": "date-time"
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "isRush": {
+                    "type": "boolean"
+                  },
+                  "rushFeePercentage": {
+                    "type": "number",
+                    "maximum": 100,
+                    "exclusiveMinimum": 0
                   }
                 }
               }
             }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Project created successfully",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Project"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Validation error"
-          },
-          "401": {
-            "description": "Unauthorized"
           }
         }
       }
@@ -5067,52 +5181,6 @@
             "description": "Project ID (UUID)"
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "title": {
-                    "type": "string"
-                  },
-                  "description": {
-                    "type": "string"
-                  },
-                  "requiredSkills": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "properties": {
-                        "skillId": {
-                          "type": "string"
-                        }
-                      }
-                    }
-                  },
-                  "budget": {
-                    "type": "number"
-                  },
-                  "deadline": {
-                    "type": "string",
-                    "format": "date-time"
-                  },
-                  "status": {
-                    "type": "string",
-                    "enum": [
-                      "draft",
-                      "open",
-                      "in_progress",
-                      "completed",
-                      "cancelled"
-                    ]
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Project updated successfully",
@@ -5135,6 +5203,57 @@
           },
           "409": {
             "description": "Project locked (has accepted proposals)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 5
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 20
+                  },
+                  "requiredSkills": {
+                    "type": "array",
+                    "minItems": 1
+                  },
+                  "budget": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "deadline": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "open",
+                      "in_progress",
+                      "completed",
+                      "cancelled",
+                      "disputed"
+                    ]
+                  },
+                  "isRush": {
+                    "type": "boolean"
+                  },
+                  "rushFeePercentage": {
+                    "type": "number",
+                    "maximum": 100,
+                    "exclusiveMinimum": 0
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -5163,48 +5282,6 @@
             "description": "Project ID (UUID)"
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "milestones"
-                ],
-                "properties": {
-                  "milestones": {
-                    "type": "array",
-                    "items": {
-                      "type": "object",
-                      "required": [
-                        "title",
-                        "description",
-                        "amount",
-                        "dueDate"
-                      ],
-                      "properties": {
-                        "title": {
-                          "type": "string"
-                        },
-                        "description": {
-                          "type": "string"
-                        },
-                        "amount": {
-                          "type": "number"
-                        },
-                        "dueDate": {
-                          "type": "string",
-                          "format": "date-time"
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
           "200": {
             "description": "Milestones added successfully",
@@ -5227,6 +5304,44 @@
           },
           "409": {
             "description": "Project locked (has accepted proposals)"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "milestones"
+                ],
+                "properties": {
+                  "milestones": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "amount": {
+                          "type": "number",
+                          "exclusiveMinimum": 0
+                        },
+                        "dueDate": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -5380,81 +5495,6 @@
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "multipart/form-data": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "projectId",
-                  "proposedRate",
-                  "estimatedDuration",
-                  "files"
-                ],
-                "properties": {
-                  "projectId": {
-                    "type": "string",
-                    "format": "uuid"
-                  },
-                  "proposedRate": {
-                    "type": "number",
-                    "minimum": 1
-                  },
-                  "estimatedDuration": {
-                    "type": "number",
-                    "minimum": 1,
-                    "description": "Duration in days"
-                  },
-                  "files": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "format": "binary"
-                    },
-                    "minItems": 1,
-                    "maxItems": 5,
-                    "description": "File attachments (1-5 files, max 10MB each, 25MB total)"
-                  }
-                }
-              }
-            },
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "projectId",
-                  "attachments",
-                  "proposedRate",
-                  "estimatedDuration"
-                ],
-                "properties": {
-                  "projectId": {
-                    "type": "string"
-                  },
-                  "attachments": {
-                    "type": "array",
-                    "minItems": 1,
-                    "maxItems": 5,
-                    "items": {
-                      "$ref": "#/components/schemas/FileAttachment"
-                    },
-                    "description": "File attachments (URL-reference pattern for backward compatibility)"
-                  },
-                  "proposedRate": {
-                    "type": "number",
-                    "minimum": 1
-                  },
-                  "estimatedDuration": {
-                    "type": "number",
-                    "minimum": 1,
-                    "description": "Duration in days"
-                  }
-                }
-              }
-            }
-          }
-        },
         "responses": {
           "201": {
             "description": "Proposal submitted successfully",
@@ -5477,6 +5517,75 @@
           },
           "409": {
             "description": "Duplicate proposal"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "projectId",
+                  "attachments",
+                  "proposedRate",
+                  "estimatedDuration"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array",
+                    "minItems": 1
+                  },
+                  "proposedRate": {
+                    "type": "number",
+                    "minimum": 1
+                  },
+                  "estimatedDuration": {
+                    "type": "number",
+                    "minimum": 1
+                  }
+                }
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "projectId",
+                  "proposedRate",
+                  "estimatedDuration",
+                  "files"
+                ],
+                "properties": {
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "proposedRate": {
+                    "type": "number",
+                    "minimum": 1
+                  },
+                  "estimatedDuration": {
+                    "type": "number",
+                    "minimum": 1
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "minItems": 1,
+                    "maxItems": 5,
+                    "description": "File attachments (1-5 files, max 10MB each, 25MB total)"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -5778,16 +5887,6 @@
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RatingInput"
-              }
-            }
-          }
-        },
         "responses": {
           "201": {
             "description": "Rating submitted successfully",
@@ -5818,6 +5917,40 @@
           },
           "409": {
             "description": "Duplicate rating"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "contractId",
+                  "rateeId",
+                  "rating"
+                ],
+                "properties": {
+                  "contractId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "rateeId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "rating": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "comment": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -6318,7 +6451,9 @@
       "get": {
         "summary": "Get user conversations",
         "description": "Retrieve a paginated list of conversations for the authenticated user",
-        "tags": ["Messages"],
+        "tags": [
+          "Messages"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -6375,22 +6510,14 @@
       "post": {
         "summary": "Send a message",
         "description": "Send a message to another user",
-        "tags": ["Messages"],
+        "tags": [
+          "Messages"
+        ],
         "security": [
           {
             "bearerAuth": []
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SendMessageRequest"
-              }
-            }
-          }
-        },
         "responses": {
           "201": {
             "description": "Message sent successfully",
@@ -6422,6 +6549,32 @@
               }
             }
           }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "receiverId",
+                  "content"
+                ],
+                "properties": {
+                  "receiverId": {
+                    "type": "string"
+                  },
+                  "content": {
+                    "type": "string"
+                  },
+                  "attachments": {
+                    "type": "array"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     },
@@ -6429,7 +6582,9 @@
       "get": {
         "summary": "Get conversation messages",
         "description": "Retrieve messages from a specific conversation",
-        "tags": ["Messages"],
+        "tags": [
+          "Messages"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -6526,7 +6681,9 @@
       "patch": {
         "summary": "Mark conversation as read",
         "description": "Mark all messages in a conversation as read for the authenticated user",
-        "tags": ["Messages"],
+        "tags": [
+          "Messages"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -6588,7 +6745,9 @@
       "get": {
         "summary": "Get unread message count",
         "description": "Get the total number of unread messages for the authenticated user",
-        "tags": ["Messages"],
+        "tags": [
+          "Messages"
+        ],
         "security": [
           {
             "bearerAuth": []
@@ -6617,105 +6776,583 @@
           }
         }
       }
-    }
-  },
-  "/api/contracts/{id}/rush-upgrade": {
-    "post": {
-      "summary": "Request rush upgrade",
-      "description": "Employer requests a rush upgrade on an active contract with a proposed rush fee percentage",
-      "tags": ["Rush Upgrade"],
-      "security": [{ "bearerAuth": [] }],
-      "parameters": [
-        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract ID" }
-      ],
-      "requestBody": {
-        "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RequestRushUpgradeInput" } } }
-      },
-      "responses": {
-        "201": { "description": "Rush upgrade request created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RushUpgradeRequest" } } } },
-        "400": { "description": "Validation error or invalid status" },
-        "401": { "description": "Unauthorized" },
-        "403": { "description": "Not the contract employer" },
-        "404": { "description": "Contract not found" },
-        "409": { "description": "Pending request already exists or contract already rush" }
+    },
+    "/api/reviews": {
+      "post": {
+        "summary": "Submit a review",
+        "description": "Submit a review for a contract. Rating must be between 1 and 5.",
+        "tags": [
+          "Reviews"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Review submitted successfully"
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "KYC verification required"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "contractId",
+                  "rating",
+                  "comment"
+                ],
+                "properties": {
+                  "contractId": {
+                    "type": "string"
+                  },
+                  "rating": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "comment": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "workQuality": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "communication": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "professionalism": {
+                    "type": "number",
+                    "minimum": 1,
+                    "maximum": 5
+                  },
+                  "wouldWorkAgain": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects/with-attachments": {
+      "post": {
+        "summary": "Create project with attachments",
+        "description": "Creates a new project (employer only), uploading reference attachments as multipart/form-data.",
+        "tags": [
+          "Projects"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Project created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "KYC verification required"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "title",
+                  "description",
+                  "requiredSkills",
+                  "budget",
+                  "deadline"
+                ],
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "minLength": 5
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 20
+                  },
+                  "requiredSkills": {
+                    "type": "string"
+                  },
+                  "budget": {
+                    "type": "number",
+                    "exclusiveMinimum": 0
+                  },
+                  "deadline": {
+                    "type": "string"
+                  },
+                  "tags": {
+                    "type": "string"
+                  },
+                  "isRush": {
+                    "type": "boolean"
+                  },
+                  "rushFeePercentage": {
+                    "type": "number",
+                    "maximum": 100,
+                    "exclusiveMinimum": 0
+                  },
+                  "files": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "binary"
+                    },
+                    "minItems": 0,
+                    "maxItems": 10,
+                    "description": "Optional reference materials (0-10 files, max 10MB each)"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/rush-upgrade": {
+      "post": {
+        "summary": "Request rush upgrade",
+        "description": "Employer requests a rush upgrade on an active contract with a proposed rush fee percentage",
+        "tags": [
+          "Rush Upgrade"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Contract ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestRushUpgradeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Rush upgrade request created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RushUpgradeRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or invalid status"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Not the contract employer"
+          },
+          "404": {
+            "description": "Contract not found"
+          },
+          "409": {
+            "description": "Pending request already exists or contract already rush"
+          }
+        }
+      }
+    },
+    "/api/rush-upgrade-requests/{id}/respond": {
+      "post": {
+        "summary": "Respond to rush upgrade request",
+        "description": "Freelancer responds to a rush upgrade request (accept, decline, or counter-offer)",
+        "tags": [
+          "Rush Upgrade"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Rush upgrade request ID"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RespondToRushUpgradeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Response recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RushUpgradeRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error or invalid status"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Not the contract freelancer"
+          },
+          "404": {
+            "description": "Request not found"
+          }
+        }
+      }
+    },
+    "/api/rush-upgrade-requests/{id}/accept-counter": {
+      "post": {
+        "summary": "Accept counter-offer",
+        "description": "Employer accepts freelancer's counter-offer for rush upgrade",
+        "tags": [
+          "Rush Upgrade"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Rush upgrade request ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Counter-offer accepted and rush upgrade applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "request": {
+                      "$ref": "#/components/schemas/RushUpgradeRequest"
+                    },
+                    "contract": {
+                      "$ref": "#/components/schemas/Contract"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status or no counter percentage"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Not the employer"
+          },
+          "404": {
+            "description": "Request not found"
+          }
+        }
+      }
+    },
+    "/api/rush-upgrade-requests/{id}/decline-counter": {
+      "post": {
+        "summary": "Decline counter-offer",
+        "description": "Employer declines freelancer's counter-offer for rush upgrade",
+        "tags": [
+          "Rush Upgrade"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Rush upgrade request ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Counter-offer declined",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RushUpgradeRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid status"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Not the employer"
+          },
+          "404": {
+            "description": "Request not found"
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/rush-upgrade-requests": {
+      "get": {
+        "summary": "List rush upgrade requests for a contract",
+        "description": "Get all rush upgrade requests for a specific contract (contract parties only)",
+        "tags": [
+          "Rush Upgrade"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Contract ID"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rush upgrade requests retrieved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RushUpgradeRequest"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a contract party"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Contract not found"
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/fund": {
+      "post": {
+        "summary": "Fund contract escrow",
+        "description": "Employer funds the escrow for a pending contract, activating it",
+        "tags": [
+          "Contracts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Contract ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Escrow funded and contract activated"
+          },
+          "400": {
+            "description": "Contract not in pending status or missing wallet addresses"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Only the employer can fund the escrow"
+          },
+          "404": {
+            "description": "Contract not found"
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/escrow/withdraw": {
+      "post": {
+        "summary": "Withdraw the employer's pending escrow allocation (real blockchain mode)",
+        "description": "The server wallet is the on-chain employer/platform, so this claims its allocation credited by a dispute resolution.",
+        "tags": [
+          "Contracts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Contract ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Withdrawal processed"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "403": {
+            "description": "Only the employer or an admin can trigger the platform withdrawal"
+          },
+          "422": {
+            "description": "Only available in real blockchain mode"
+          }
+        }
+      }
+    },
+    "/api/contracts/{id}/cancel": {
+      "post": {
+        "summary": "Cancel a pending contract",
+        "description": "Cancel a contract that is still in pending status",
+        "tags": [
+          "Contracts"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Contract ID (UUID)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Contract cancelled successfully"
+          },
+          "400": {
+            "description": "Contract cannot be cancelled"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Contract not found"
+          }
+        }
       }
     }
   },
-  "/api/rush-upgrade-requests/{id}/respond": {
-    "post": {
-      "summary": "Respond to rush upgrade request",
-      "description": "Freelancer responds to a rush upgrade request (accept, decline, or counter-offer)",
-      "tags": ["Rush Upgrade"],
-      "security": [{ "bearerAuth": [] }],
-      "parameters": [
-        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Rush upgrade request ID" }
-      ],
-      "requestBody": {
-        "required": true,
-        "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RespondToRushUpgradeInput" } } }
-      },
-      "responses": {
-        "200": { "description": "Response recorded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RushUpgradeRequest" } } } },
-        "400": { "description": "Validation error or invalid status" },
-        "401": { "description": "Unauthorized" },
-        "403": { "description": "Not the contract freelancer" },
-        "404": { "description": "Request not found" }
-      }
-    }
-  },
-  "/api/rush-upgrade-requests/{id}/accept-counter": {
-    "post": {
-      "summary": "Accept counter-offer",
-      "description": "Employer accepts freelancer's counter-offer for rush upgrade",
-      "tags": ["Rush Upgrade"],
-      "security": [{ "bearerAuth": [] }],
-      "parameters": [
-        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Rush upgrade request ID" }
-      ],
-      "responses": {
-        "200": { "description": "Counter-offer accepted and rush upgrade applied", "content": { "application/json": { "schema": { "type": "object", "properties": { "request": { "$ref": "#/components/schemas/RushUpgradeRequest" }, "contract": { "$ref": "#/components/schemas/Contract" } } } } } },
-        "400": { "description": "Invalid status or no counter percentage" },
-        "401": { "description": "Unauthorized" },
-        "403": { "description": "Not the employer" },
-        "404": { "description": "Request not found" }
-      }
-    }
-  },
-  "/api/rush-upgrade-requests/{id}/decline-counter": {
-    "post": {
-      "summary": "Decline counter-offer",
-      "description": "Employer declines freelancer's counter-offer for rush upgrade",
-      "tags": ["Rush Upgrade"],
-      "security": [{ "bearerAuth": [] }],
-      "parameters": [
-        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Rush upgrade request ID" }
-      ],
-      "responses": {
-        "200": { "description": "Counter-offer declined", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RushUpgradeRequest" } } } },
-        "400": { "description": "Invalid status" },
-        "401": { "description": "Unauthorized" },
-        "403": { "description": "Not the employer" },
-        "404": { "description": "Request not found" }
-      }
-    }
-  },
-  "/api/contracts/{id}/rush-upgrade-requests": {
-    "get": {
-      "summary": "List rush upgrade requests for a contract",
-      "description": "Get all rush upgrade requests for a specific contract (contract parties only)",
-      "tags": ["Rush Upgrade"],
-      "security": [{ "bearerAuth": [] }],
-      "parameters": [
-        { "in": "path", "name": "id", "required": true, "schema": { "type": "string", "format": "uuid" }, "description": "Contract ID" }
-      ],
-      "responses": {
-        "200": { "description": "Rush upgrade requests retrieved", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/RushUpgradeRequest" } } } } },
-        "400": { "description": "Not a contract party" },
-        "401": { "description": "Unauthorized" },
-        "404": { "description": "Contract not found" }
-      }
-    }
-  },
-  "tags": ["Messages"]
+  "tags": [
+    "Messages"
+  ]
 }

@@ -1,5 +1,5 @@
 import { BaseRepository, type QueryOptions, type PaginatedResult, fromAppwriteDoc } from './base-repository.js';
-import { Query } from '../config/appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { parseField } from '../utils/index.js';
 import type { MilestoneStatus, FileAttachment } from '../models/milestone.js';
 export type { MilestoneStatus } from '../models/milestone.js';
@@ -54,6 +54,11 @@ export type ProjectEntity = {
 
 const COLLECTION_ID = 'projects';
 
+/** Extract the skill IDs from a project's required_skills for the indexed array attribute. */
+function toSkillIds(requiredSkills: ProjectEntity['required_skills'] | undefined): string[] {
+  return (requiredSkills ?? []).map(s => s.skill_id).filter(Boolean);
+}
+
 function normalizeProject(project: ProjectEntity): ProjectEntity {
   return {
     ...project,
@@ -79,6 +84,9 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     if (data.milestones) data.milestones = JSON.stringify(data.milestones);
     if (data.tags) data.tags = JSON.stringify(data.tags);
     if (data.attachments) data.attachments = JSON.stringify(data.attachments);
+    // Parallel array attribute so skills can be filtered at the DB level
+    // (Query.equal on array attributes) instead of scanning the collection.
+    data.required_skill_ids = toSkillIds(project.required_skills);
     return this.create(data as Omit<ProjectEntity, 'created_at' | 'updated_at'>);
   }
 
@@ -93,6 +101,7 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
     if (data.milestones) data.milestones = JSON.stringify(data.milestones);
     if (data.tags) data.tags = JSON.stringify(data.tags);
     if (data.attachments) data.attachments = JSON.stringify(data.attachments);
+    if (updates.required_skills) data.required_skill_ids = toSkillIds(updates.required_skills);
     const doc = await this.update(id, data as Partial<ProjectEntity>);
     return doc ? normalizeProject(doc) : null;
   }
@@ -139,60 +148,38 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
   }
 
   async getProjectsBySkills(skillIds: string[], options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
-    // Appwrite doesn't support JSONB contains; filter in-memory
-    const all = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.limit(1000)],
-      1000,
-      0,
-      mapDoc
-    );
-    const filtered = all.items.filter(p =>
-      skillIds.some(id => p.required_skills?.some(s => s.skill_id === id))
-    );
+    // required_skill_ids is an array attribute kept in sync on write, so skill
+    // filtering happens in the database (Query.equal on arrays) with pagination.
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-    return {
-      items: filtered.slice(offset, offset + limit),
-      hasMore: offset + limit < filtered.length,
-      total: filtered.length,
-    };
+    return this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open'), Query.equal('required_skill_ids', skillIds)],
+      limit,
+      offset,
+      mapDoc
+    );
   }
 
   async getProjectsByBudgetRange(minBudget: number, maxBudget: number, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-    const all = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.limit(1000)],
-      1000,
-      0,
+    return this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open'), Query.between('budget', minBudget, maxBudget)],
+      limit,
+      offset,
       mapDoc
     );
-    const filtered = all.items.filter(p => p.budget >= minBudget && p.budget <= maxBudget);
-    return {
-      items: filtered.slice(offset, offset + limit),
-      hasMore: offset + limit < filtered.length,
-      total: filtered.length,
-    };
   }
 
   async searchProjects(keyword: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
     const limit = options?.limit ?? 20;
     const offset = options?.offset ?? 0;
-    const all = await this.paginatedWithQueries<ProjectEntity>(
-      [Query.equal('status', 'open'), Query.limit(1000)],
-      1000,
-      0,
+    return this.paginatedWithQueries<ProjectEntity>(
+      [Query.equal('status', 'open'), Query.contains('title', keyword)],
+      limit,
+      offset,
       mapDoc
     );
-    const kw = keyword.toLowerCase();
-    const filtered = all.items.filter(p =>
-      p.title.toLowerCase().includes(kw) || p.description.toLowerCase().includes(kw)
-    );
-    return {
-      items: filtered.slice(offset, offset + limit),
-      hasMore: offset + limit < filtered.length,
-      total: filtered.length,
-    };
   }
 
   async getProjectsByCategory(categoryId: string, options?: QueryOptions): Promise<PaginatedResult<ProjectEntity>> {
@@ -232,6 +219,73 @@ export class ProjectRepository extends BaseRepository<ProjectEntity> {
       hasMore: offset + limit < filtered.length,
       total: filtered.length,
     };
+  }
+
+  /**
+   * Open projects, capped at `limit`. Errors propagate to the caller (scheduler job).
+   */
+  async listOpenProjects(limit: number): Promise<ProjectEntity[]> {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_ID,
+      [
+        Query.equal('status', 'open'),
+        Query.limit(limit),
+      ]
+    );
+    return response.documents.map(mapDoc);
+  }
+
+  /**
+   * Every project, capped at `limit`. Errors propagate to the caller.
+   */
+  async listAllProjects(limit: number): Promise<ProjectEntity[]> {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_ID,
+      [Query.limit(limit)]
+    );
+    return response.documents.map(mapDoc);
+  }
+
+  /**
+   * Most recently created open projects. Errors propagate to the caller.
+   */
+  async listRecentOpenProjects(limit: number): Promise<ProjectEntity[]> {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_ID,
+      [
+        Query.equal('status', 'open'),
+        Query.orderDesc('created_at'),
+        Query.limit(limit),
+      ]
+    );
+    return response.documents.map(mapDoc);
+  }
+
+  /**
+   * Filtered project search for saved-search notifications.
+   * Only query-able primitive values are passed to Appwrite's Query.equal.
+   * Errors propagate to the caller.
+   */
+  async findByFilters(filters: Record<string, unknown>, limit: number): Promise<ProjectEntity[]> {
+    const queries: string[] = [Query.limit(limit)];
+    const ALLOWED_COLUMNS = new Set(['status', 'budget', 'category', 'title']);
+
+    for (const [key, value] of Object.entries(filters)) {
+      if (!ALLOWED_COLUMNS.has(key)) continue;
+      if (
+        value !== undefined &&
+        value !== null &&
+        (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value))
+      ) {
+        queries.push(Query.equal(key, value));
+      }
+    }
+
+    const response = await databases.listDocuments(DATABASE_ID, COLLECTION_ID, queries);
+    return response.documents.map(mapDoc);
   }
 }
 

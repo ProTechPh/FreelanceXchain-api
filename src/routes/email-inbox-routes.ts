@@ -25,12 +25,12 @@ router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
   const secret = process.env['EMAIL_WEBHOOK_SECRET'];
 
   if (!secret) {
-    sendErrorResponse(res, 500, 'CONFIG_ERROR', 'Webhook secret not configured', requestId);
+    sendErrorResponse(res, 500, 'CONFIG_ERROR', 'Webhook secret not configured', { requestId });
     return;
   }
 
   if (!signature) {
-    sendErrorResponse(res, 401, 'AUTH_MISSING_SIGNATURE', 'Missing webhook signature', requestId);
+    sendErrorResponse(res, 401, 'AUTH_MISSING_SIGNATURE', 'Missing webhook signature', { requestId });
     return;
   }
 
@@ -38,11 +38,11 @@ router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
   try {
     const valid = verifyWebhookSignature(rawBody, signature, secret);
     if (!valid) {
-      sendErrorResponse(res, 401, 'AUTH_INVALID_SIGNATURE', 'Invalid webhook signature', requestId);
+      sendErrorResponse(res, 401, 'AUTH_INVALID_SIGNATURE', 'Invalid webhook signature', { requestId });
       return;
     }
   } catch {
-    sendErrorResponse(res, 401, 'AUTH_INVALID_SIGNATURE', 'Invalid webhook signature', requestId);
+    sendErrorResponse(res, 401, 'AUTH_INVALID_SIGNATURE', 'Invalid webhook signature', { requestId });
     return;
   }
 
@@ -50,7 +50,7 @@ router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
   const result = await processInboundEmail(payload);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -68,10 +68,10 @@ router.get('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (req
     ? req.query['isRead'] === 'true'
     : undefined;
 
-  const result = await listEmails(userId, folder, limit, offset, isRead);
+  const result = await listEmails(userId, { folder, limit, offset, ...(isRead !== undefined ? { isRead } : {}) });
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -86,7 +86,7 @@ router.get('/unread-count', authMiddleware, requireRole('admin'), apiRateLimiter
   const result = await getUnreadCount(userId, folder);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -102,7 +102,7 @@ router.get('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async (
 
   if (!result.success) {
     const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, status, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, status, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -124,7 +124,7 @@ router.patch('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async
 
   if (!result.success) {
     const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, status, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, status, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -140,7 +140,7 @@ router.delete('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, asyn
 
   if (!result.success) {
     const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, status, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, status, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -154,14 +154,14 @@ router.post('/send', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const { to, subject, text, html } = req.body;
 
   if (!to || !subject) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'to and subject are required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'to and subject are required', { requestId });
     return;
   }
 
-  const result = await sendNewEmail(userId, to, subject, text || '', html || text || '');
+  const result = await sendNewEmail({ userId, to, subject, textBody: text || '', htmlBody: html || text || '' });
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -176,7 +176,7 @@ router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, 
   const { text, html } = req.body;
 
   if (!text && !html) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'text or html body is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'text or html body is required', { requestId });
     return;
   }
 
@@ -185,7 +185,7 @@ router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, 
 
   if (!result.success) {
     const status = result.error.code === 'EMAIL_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, status, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, status, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 

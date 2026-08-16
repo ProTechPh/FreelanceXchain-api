@@ -108,7 +108,7 @@ describe('response-helpers', () => {
   describe('sendErrorResponse', () => {
     it('calls res.status with the given statusCode and sends correct JSON', () => {
       const res = mockRes();
-      sendErrorResponse(res, 404, 'NOT_FOUND', 'User not found', 'req-2');
+      sendErrorResponse(res, 404, 'NOT_FOUND', 'User not found', { requestId: 'req-2' });
 
       expect(res.status).toHaveBeenCalledWith(404);
       expect(res.json).toHaveBeenCalledWith({
@@ -132,9 +132,9 @@ describe('response-helpers', () => {
       const res2 = mockRes();
       const res3 = mockRes();
 
-      sendErrorResponse(res1, 401, 'UNAUTHORIZED', 'No auth', 'r1');
-      sendErrorResponse(res2, 403, 'FORBIDDEN', 'Denied', 'r2');
-      sendErrorResponse(res3, 503, 'BLOCKCHAIN_ERROR', 'Down', 'r3');
+      sendErrorResponse(res1, 401, 'UNAUTHORIZED', 'No auth', { requestId: 'r1' });
+      sendErrorResponse(res2, 403, 'FORBIDDEN', 'Denied', { requestId: 'r2' });
+      sendErrorResponse(res3, 503, 'BLOCKCHAIN_ERROR', 'Down', { requestId: 'r3' });
 
       expect(res1.status).toHaveBeenCalledWith(401);
       expect(res2.status).toHaveBeenCalledWith(403);
@@ -143,7 +143,7 @@ describe('response-helpers', () => {
 
     it('includes a top-level success flag when provided', () => {
       const res = mockRes();
-      sendErrorResponse(res, 400, 'OAUTH_ERROR', 'User denied access', 'req-3', undefined, false);
+      sendErrorResponse(res, 400, 'OAUTH_ERROR', 'User denied access', { requestId: 'req-3', success: false });
 
       expect(res.json).toHaveBeenCalledWith({
         success: false,
@@ -155,7 +155,7 @@ describe('response-helpers', () => {
 
     it('includes a top-level retryAfter field when provided', () => {
       const res = mockRes();
-      sendErrorResponse(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many requests', 'req-4', undefined, undefined, 30);
+      sendErrorResponse(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many requests', { requestId: 'req-4', retryAfter: 30 });
 
       expect(res.json).toHaveBeenCalledWith({
         error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
@@ -167,7 +167,7 @@ describe('response-helpers', () => {
 
     it('omits retryAfter when not provided', () => {
       const res = mockRes();
-      sendErrorResponse(res, 404, 'NOT_FOUND', 'Missing', 'req-5');
+      sendErrorResponse(res, 404, 'NOT_FOUND', 'Missing', { requestId: 'req-5' });
 
       const body = res.json.mock.calls[0]![0] as Record<string, unknown>;
       expect('retryAfter' in body).toBe(false);
@@ -175,7 +175,7 @@ describe('response-helpers', () => {
 
     it('includes details inside the error object when provided', () => {
       const res = mockRes();
-      sendErrorResponse(res, 422, 'INVALID_INPUT', 'Bad data', 'req-9', ['email required']);
+      sendErrorResponse(res, 422, 'INVALID_INPUT', 'Bad data', { requestId: 'req-9', details: ['email required'] });
 
       expect(res.json).toHaveBeenCalledWith({
         error: { code: 'INVALID_INPUT', message: 'Bad data', details: ['email required'] },
@@ -194,7 +194,7 @@ describe('response-helpers', () => {
 
     it('supports a success: true flag', () => {
       const res = mockRes();
-      sendErrorResponse(res, 200, 'OAUTH_OK', 'All good', 'req-10', undefined, true);
+      sendErrorResponse(res, 200, 'OAUTH_OK', 'All good', { requestId: 'req-10', success: true });
 
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -206,7 +206,7 @@ describe('response-helpers', () => {
 
     it('omits the success key when not provided', () => {
       const res = mockRes();
-      sendErrorResponse(res, 404, 'NOT_FOUND', 'Missing', 'req-11');
+      sendErrorResponse(res, 404, 'NOT_FOUND', 'Missing', { requestId: 'req-11' });
 
       const body = res.json.mock.calls[0]![0] as Record<string, unknown>;
       expect('success' in body).toBe(false);
@@ -214,7 +214,7 @@ describe('response-helpers', () => {
 
     it('supports retryAfter as an ISO date string', () => {
       const res = mockRes();
-      sendErrorResponse(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many requests', 'req-12', undefined, undefined, '2030-01-01T00:00:00.000Z');
+      sendErrorResponse(res, 429, 'RATE_LIMIT_EXCEEDED', 'Too many requests', { requestId: 'req-12', retryAfter: '2030-01-01T00:00:00.000Z' });
 
       expect(res.json).toHaveBeenCalledWith({
         error: { code: 'RATE_LIMIT_EXCEEDED', message: 'Too many requests' },
@@ -231,10 +231,7 @@ describe('response-helpers', () => {
         429,
         'RATE_LIMIT_EXCEEDED',
         'Too many requests',
-        'req-13',
-        { limit: 5, window: '1m' },
-        false,
-        30
+        { requestId: 'req-13', details: { limit: 5, window: '1m' }, success: false, retryAfter: 30 }
       );
 
       expect(res.json).toHaveBeenCalledWith({

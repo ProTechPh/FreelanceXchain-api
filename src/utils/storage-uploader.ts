@@ -49,23 +49,20 @@ function generateUniqueFilename(originalFilename: string): string {
   return `${uuid}_${name}${ext}`;
 }
 
+export type UploadFileOptions = {
+  buffer: Buffer;
+  originalFilename: string;
+  mimeType: string;
+  bucket?: BucketId;
+  userId?: string;
+};
+
 /**
  * Upload a file buffer to Appwrite Storage
- * @param buffer - File buffer from multer
- * @param originalFilename - Original filename
- * @param mimeType - MIME type of the file
- * @param bucket - Storage bucket ID
- * @param folder - Optional folder path within bucket (not used in Appwrite, kept for compatibility)
  * @returns Upload result with file metadata or error
  */
-export async function uploadFileToStorage(
-  buffer: Buffer,
-  originalFilename: string,
-  mimeType: string,
-  bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS,
-  _folder?: string,
-  userId?: string
-): Promise<UploadResult> {
+export async function uploadFileToStorage(options: UploadFileOptions): Promise<UploadResult> {
+  const { buffer, originalFilename, mimeType, bucket = BUCKETS.PROPOSAL_ATTACHMENTS, userId } = options;
   try {
     // Generate unique filename
     const uniqueFilename = generateUniqueFilename(originalFilename);
@@ -149,14 +146,13 @@ export async function uploadMultipleFiles(
     // Use detected MIME type from magic number validation if available
     const mimeType = (file as UploadedFile).detectedMimeType || file.mimetype;
 
-    return uploadFileToStorage(
-      file.buffer,
-      file.originalname,
+    return uploadFileToStorage({
+      buffer: file.buffer,
+      originalFilename: file.originalname,
       mimeType,
       bucket,
-      folder,
-      userId
-    );
+      ...(userId !== undefined ? { userId } : {}),
+    });
   });
   
   return Promise.all(uploadPromises);
@@ -266,14 +262,13 @@ export async function uploadFile(options: {
   mimetype?: string;
   folder?: string;
 }): Promise<UploadResult> {
-  const result = await uploadFileToStorage(
-    options.file,
-    options.filename,
-    options.mimetype || 'application/octet-stream',
-    options.bucket,
-    options.folder,
-    options.userId
-  );
+  const result = await uploadFileToStorage({
+    buffer: options.file,
+    originalFilename: options.filename,
+    mimeType: options.mimetype || 'application/octet-stream',
+    bucket: options.bucket,
+    userId: options.userId,
+  });
 
   const finalResult: UploadResult = {
     success: result.success,

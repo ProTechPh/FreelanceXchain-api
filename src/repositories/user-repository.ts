@@ -9,6 +9,8 @@ export type UserEntity = {
   role: 'freelancer' | 'employer' | 'admin';
   wallet_address: string;
   name: string;
+  /** Legacy display-name field some documents carry; falls back to `name`. */
+  full_name?: string;
   is_suspended: boolean;
   suspension_reason: string | null;
   mfa_enabled: boolean;
@@ -29,6 +31,30 @@ export class UserRepository extends BaseRepository<UserEntity> {
 
   async getUserById(id: string): Promise<UserEntity | null> {
     return this.getById(id);
+  }
+
+  /**
+   * Batch-fetch users by id. Appwrite caps `equal` at 100 values per query,
+   * so ids are chunked. Returns an id → user map for O(1) lookups.
+   */
+  async getUsersByIds(ids: string[]): Promise<Map<string, UserEntity>> {
+    const usersById = new Map<string, UserEntity>();
+
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        COLLECTION_ID,
+        [Query.equal('$id', chunk), Query.limit(chunk.length)]
+      );
+
+      for (const doc of response.documents) {
+        const user = fromAppwriteDoc<UserEntity>(doc);
+        usersById.set(user.id, user);
+      }
+    }
+
+    return usersById;
   }
 
   async getUserByEmail(email: string): Promise<UserEntity | null> {

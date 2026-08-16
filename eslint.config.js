@@ -45,6 +45,10 @@ export default [
             '@typescript-eslint/explicit-module-boundary-types': 'off',
             '@typescript-eslint/no-explicit-any': 'off',
             '@typescript-eslint/no-namespace': 'off', // Allow namespaces for Express augmentation
+            // Clean-code guardrails: cap function length and argument count
+            // so regressions fail CI (see AGENTS.md local verification order).
+            'max-lines-per-function': ['error', 100],
+            'max-params': ['error', 4],
             'no-console': ['error', { allow: ['warn', 'error'] }],
             'no-unused-vars': 'off', // Use TypeScript's rule instead
             'preserve-caught-error': 'off', // Disabled: pre-existing patterns

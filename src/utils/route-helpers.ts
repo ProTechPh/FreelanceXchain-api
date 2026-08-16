@@ -12,7 +12,10 @@ export function sendError(
   error: { code: string; message: string; details?: unknown },
   requestId?: string
 ): void {
-  sendErrorResponse(res, statusCode, error.code, error.message, requestId, error.details);
+  sendErrorResponse(res, statusCode, error.code, error.message, {
+    ...(requestId !== undefined ? { requestId } : {}),
+    ...(error.details !== undefined ? { details: error.details } : {}),
+  });
 }
 
 export function sendServiceError<T>(

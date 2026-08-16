@@ -118,15 +118,20 @@ export async function processInboundEmail(
   }
 }
 
+export type ListEmailsOptions = {
+  folder?: EmailFolder;
+  limit?: number;
+  offset?: number;
+  isRead?: boolean;
+};
+
 export async function listEmails(
   userId: string,
-  folder: EmailFolder = 'inbox',
-  limit: number = 20,
-  offset: number = 0,
-  isRead?: boolean
+  options: ListEmailsOptions = {}
 ): Promise<ServiceResult<PaginatedResult<EmailListItem>>> {
+  const { folder = 'inbox', limit = 20, offset = 0, isRead } = options;
   try {
-    const result = await emailInboxRepository.listByUserFolder(userId, folder, limit, offset, isRead);
+    const result = await emailInboxRepository.listByUserFolder(userId, { folder, limit, offset, ...(isRead !== undefined ? { isRead } : {}) });
     return successResult(result);
   } catch (error) {
     logger.error('Failed to list emails:', error);
@@ -203,13 +208,18 @@ export async function deleteEmail(
   }
 }
 
+export type SendNewEmailInput = {
+  userId: string;
+  to: string;
+  subject: string;
+  textBody: string;
+  htmlBody: string;
+};
+
 export async function sendNewEmail(
-  userId: string,
-  to: string,
-  subject: string,
-  textBody: string,
-  htmlBody: string
+  input: SendNewEmailInput
 ): Promise<ServiceResult<{ emailId: string }>> {
+  const { userId, to, subject, textBody, htmlBody } = input;
   try {
     const user = await userRepository.getUserById(userId);
     if (!user) {

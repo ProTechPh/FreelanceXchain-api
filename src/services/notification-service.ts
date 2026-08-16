@@ -144,155 +144,189 @@ export async function getUnreadCount(
 
 // Helper functions for creating specific notification types
 
+export type NotifyProposalReceivedInput = {
+  employerId: string;
+  proposalId: string;
+  projectId: string;
+  projectTitle: string;
+  freelancerId: string;
+};
+
 export async function notifyProposalReceived(
-  employerId: string,
-  proposalId: string,
-  projectId: string,
-  projectTitle: string,
-  freelancerId: string
+  input: NotifyProposalReceivedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId: employerId,
+    userId: input.employerId,
     type: 'proposal_received',
     title: 'New Proposal Received',
-    message: `A freelancer has submitted a proposal for your project "${projectTitle}"`,
-    data: { proposalId, projectId, projectTitle, freelancerId },
+    message: `A freelancer has submitted a proposal for your project "${input.projectTitle}"`,
+    data: { proposalId: input.proposalId, projectId: input.projectId, projectTitle: input.projectTitle, freelancerId: input.freelancerId },
   });
 }
+
+export type NotifyProposalAcceptedInput = {
+  freelancerId: string;
+  proposalId: string;
+  projectId: string;
+  projectTitle: string;
+  contractId: string;
+};
 
 export async function notifyProposalAccepted(
-  freelancerId: string,
-  proposalId: string,
-  projectId: string,
-  projectTitle: string,
-  contractId: string
+  input: NotifyProposalAcceptedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId: freelancerId,
+    userId: input.freelancerId,
     type: 'proposal_accepted',
     title: 'Proposal Accepted',
-    message: `Your proposal for "${projectTitle}" has been accepted!`,
-    data: { proposalId, projectId, projectTitle, contractId },
+    message: `Your proposal for "${input.projectTitle}" has been accepted!`,
+    data: { proposalId: input.proposalId, projectId: input.projectId, projectTitle: input.projectTitle, contractId: input.contractId },
   });
 }
+
+export type NotifyProposalRejectedInput = {
+  freelancerId: string;
+  proposalId: string;
+  projectId: string;
+  projectTitle: string;
+};
 
 export async function notifyProposalRejected(
-  freelancerId: string,
-  proposalId: string,
-  projectId: string,
-  projectTitle: string
+  input: NotifyProposalRejectedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId: freelancerId,
+    userId: input.freelancerId,
     type: 'proposal_rejected',
     title: 'Proposal Rejected',
-    message: `Your proposal for "${projectTitle}" was not accepted.`,
-    data: { proposalId, projectId, projectTitle },
+    message: `Your proposal for "${input.projectTitle}" was not accepted.`,
+    data: { proposalId: input.proposalId, projectId: input.projectId, projectTitle: input.projectTitle },
   });
 }
 
+export type NotifyMilestoneSubmittedInput = {
+  employerId: string;
+  milestoneId: string;
+  milestoneTitle: string;
+  projectId: string;
+  projectTitle: string;
+  contractId: string;
+};
 
 export async function notifyMilestoneSubmitted(
-  employerId: string,
-  milestoneId: string,
-  milestoneTitle: string,
-  projectId: string,
-  projectTitle: string,
-  contractId: string
+  input: NotifyMilestoneSubmittedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId: employerId,
+    userId: input.employerId,
     type: 'milestone_submitted',
     title: 'Milestone Submitted for Review',
-    message: `Milestone "${milestoneTitle}" for project "${projectTitle}" has been submitted for your approval.`,
-    data: { milestoneId, milestoneTitle, projectId, projectTitle, contractId },
+    message: `Milestone "${input.milestoneTitle}" for project "${input.projectTitle}" has been submitted for your approval.`,
+    data: { milestoneId: input.milestoneId, milestoneTitle: input.milestoneTitle, projectId: input.projectId, projectTitle: input.projectTitle, contractId: input.contractId },
   });
 }
+
+export type NotifyMilestoneApprovedInput = {
+  freelancerId: string;
+  milestoneId: string;
+  milestoneTitle: string;
+  projectId: string;
+  projectTitle: string;
+  contractId: string;
+};
 
 export async function notifyMilestoneApproved(
-  freelancerId: string,
-  milestoneId: string,
-  milestoneTitle: string,
-  projectId: string,
-  projectTitle: string,
-  contractId: string
+  input: NotifyMilestoneApprovedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId: freelancerId,
+    userId: input.freelancerId,
     type: 'milestone_approved',
     title: 'Milestone Approved',
-    message: `Milestone "${milestoneTitle}" for project "${projectTitle}" has been approved.`,
-    data: { milestoneId, milestoneTitle, projectId, projectTitle, contractId },
+    message: `Milestone "${input.milestoneTitle}" for project "${input.projectTitle}" has been approved.`,
+    data: { milestoneId: input.milestoneId, milestoneTitle: input.milestoneTitle, projectId: input.projectId, projectTitle: input.projectTitle, contractId: input.contractId },
   });
 }
+
+export type NotifyPaymentReleasedInput = {
+  userId: string;
+  amount: number;
+  milestoneId: string;
+  milestoneTitle: string;
+  projectId: string;
+  projectTitle: string;
+  contractId: string;
+};
 
 export async function notifyPaymentReleased(
-  userId: string,
-  amount: number,
-  milestoneId: string,
-  milestoneTitle: string,
-  projectId: string,
-  projectTitle: string,
-  contractId: string
+  input: NotifyPaymentReleasedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId,
+    userId: input.userId,
     type: 'payment_released',
     title: 'Payment Released',
-    message: `Payment of $${amount} for milestone "${milestoneTitle}" has been released.`,
-    data: { amount, milestoneId, milestoneTitle, projectId, projectTitle, contractId },
+    message: `Payment of $${input.amount} for milestone "${input.milestoneTitle}" has been released.`,
+    data: { amount: input.amount, milestoneId: input.milestoneId, milestoneTitle: input.milestoneTitle, projectId: input.projectId, projectTitle: input.projectTitle, contractId: input.contractId },
   });
 }
 
+export type NotifyDisputeCreatedInput = {
+  userId: string;
+  disputeId: string;
+  milestoneId: string;
+  milestoneTitle: string;
+  projectId: string;
+  projectTitle: string;
+  contractId: string;
+};
 
 export async function notifyDisputeCreated(
-  userId: string,
-  disputeId: string,
-  milestoneId: string,
-  milestoneTitle: string,
-  projectId: string,
-  projectTitle: string,
-  contractId: string
+  input: NotifyDisputeCreatedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId,
+    userId: input.userId,
     type: 'dispute_created',
     title: 'Dispute Created',
-    message: `A dispute has been created for milestone "${milestoneTitle}" in project "${projectTitle}".`,
-    data: { disputeId, milestoneId, milestoneTitle, projectId, projectTitle, contractId },
+    message: `A dispute has been created for milestone "${input.milestoneTitle}" in project "${input.projectTitle}".`,
+    data: { disputeId: input.disputeId, milestoneId: input.milestoneId, milestoneTitle: input.milestoneTitle, projectId: input.projectId, projectTitle: input.projectTitle, contractId: input.contractId },
   });
 }
+
+export type NotifyDisputeResolvedInput = {
+  userId: string;
+  disputeId: string;
+  resolution: string;
+  milestoneId: string;
+  milestoneTitle: string;
+  projectId: string;
+  projectTitle: string;
+  contractId: string;
+};
 
 export async function notifyDisputeResolved(
-  userId: string,
-  disputeId: string,
-  resolution: string,
-  milestoneId: string,
-  milestoneTitle: string,
-  projectId: string,
-  projectTitle: string,
-  contractId: string
+  input: NotifyDisputeResolvedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId,
+    userId: input.userId,
     type: 'dispute_resolved',
     title: 'Dispute Resolved',
-    message: `The dispute for milestone "${milestoneTitle}" in project "${projectTitle}" has been resolved.`,
-    data: { disputeId, resolution, milestoneId, milestoneTitle, projectId, projectTitle, contractId },
+    message: `The dispute for milestone "${input.milestoneTitle}" in project "${input.projectTitle}" has been resolved.`,
+    data: { disputeId: input.disputeId, resolution: input.resolution, milestoneId: input.milestoneId, milestoneTitle: input.milestoneTitle, projectId: input.projectId, projectTitle: input.projectTitle, contractId: input.contractId },
   });
 }
 
+export type NotifyRatingReceivedInput = {
+  userId: string;
+  rating: number;
+  contractId: string;
+  projectTitle: string;
+};
+
 export async function notifyRatingReceived(
-  userId: string,
-  rating: number,
-  contractId: string,
-  projectTitle: string
+  input: NotifyRatingReceivedInput
 ): Promise<ServiceResult<Notification>> {
   return createNotification({
-    userId,
+    userId: input.userId,
     type: 'rating_received',
     title: 'New Rating Received',
-    message: `You received a ${rating}-star rating for project "${projectTitle}".`,
-    data: { rating, contractId, projectTitle },
+    message: `You received a ${input.rating}-star rating for project "${input.projectTitle}".`,
+    data: { rating: input.rating, contractId: input.contractId, projectTitle: input.projectTitle },
   });
 }

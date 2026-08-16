@@ -71,12 +71,12 @@ router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validate
     const { evidenceType, fileUrl, description } = req.body;
 
     if (!evidenceType || !description) {
-      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Evidence type and description are required', requestId);
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Evidence type and description are required', { requestId });
     }
 
     // M13: Validate fileUrl scheme to prevent SSRF
     if (!isValidFileUrl(fileUrl)) {
-      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid file URL. Only HTTPS URLs are allowed.', requestId);
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid file URL. Only HTTPS URLs are allowed.', { requestId });
     }
 
     const result = await submitEvidence({
@@ -88,13 +88,13 @@ router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validate
     });
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_SUBMIT_FAILED', result.error.message, requestId);
+      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_SUBMIT_FAILED', result.error.message, { requestId });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error submitting evidence', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit evidence', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit evidence', { requestId: getRequestId(req) });
   }
 });
 
@@ -124,13 +124,13 @@ router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateU
     const result = await getDisputeEvidence(disputeId, userId);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_FETCH_FAILED', result.error.message, requestId);
+      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_FETCH_FAILED', result.error.message, { requestId });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting evidence', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get evidence', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get evidence', { requestId: getRequestId(req) });
   }
 });
 
@@ -165,13 +165,13 @@ router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifie
     const result = await deleteEvidence(evidenceId, userId);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_DELETE_FAILED', result.error.message, requestId);
+      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_DELETE_FAILED', result.error.message, { requestId });
     }
 
     return sendSuccessResponse(res, 200, { message: 'Evidence deleted successfully' }, requestId);
   } catch (error) {
     logger.error('Error deleting evidence', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to delete evidence', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to delete evidence', { requestId: getRequestId(req) });
   }
 });
 
@@ -209,13 +209,13 @@ router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, requireVe
     });
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_VERIFY_FAILED', result.error.message, requestId);
+      return sendErrorResponse(res, 400, result.error.code ?? 'EVIDENCE_VERIFY_FAILED', result.error.message, { requestId });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error verifying evidence', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to verify evidence', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to verify evidence', { requestId: getRequestId(req) });
   }
 });
 

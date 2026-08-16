@@ -23,7 +23,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       ip: req.ip,
     });
 
-    sendErrorResponse(res, 401, 'AUTH_MISSING_TOKEN', 'Authorization header is required', requestId);
+    sendErrorResponse(res, 401, 'AUTH_MISSING_TOKEN', 'Authorization header is required', { requestId });
     return;
   }
 
@@ -36,7 +36,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       ip: req.ip,
     });
 
-    sendErrorResponse(res, 401, 'AUTH_INVALID_FORMAT', 'Authorization header must be in format: Bearer <token>', requestId);
+    sendErrorResponse(res, 401, 'AUTH_INVALID_FORMAT', 'Authorization header must be in format: Bearer <token>', { requestId });
     return;
   }
 
@@ -55,7 +55,7 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
       errorCode: result.code,
     });
 
-    sendErrorResponse(res, 401, result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN', result.message, requestId);
+    sendErrorResponse(res, 401, result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN', result.message, { requestId });
     return;
   }
 
@@ -79,7 +79,7 @@ export async function requireAuthentication(req: Request, res: Response, next: N
   const requestId = getRequestId(req);
 
   if (!req.user) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
     return;
   }
 
@@ -99,7 +99,7 @@ export function requireRole(...roles: UserRole[]) {
         ip: req.ip,
       });
       
-      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', requestId);
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
       return;
     }
 
@@ -111,7 +111,7 @@ export function requireRole(...roles: UserRole[]) {
         ip: req.ip,
       });
       
-      sendErrorResponse(res, 403, 'AUTH_FORBIDDEN', 'Insufficient permissions', requestId);
+      sendErrorResponse(res, 403, 'AUTH_FORBIDDEN', 'Insufficient permissions', { requestId });
       return;
     }
 
@@ -123,7 +123,7 @@ export async function requireVerifiedKyc(req: Request, res: Response, next: Next
   const requestId = getRequestId(req);
 
   if (!req.user) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
     return;
   }
 
@@ -140,7 +140,7 @@ export async function requireVerifiedKyc(req: Request, res: Response, next: Next
         reason: 'KYC_NOT_VERIFIED',
       });
 
-      sendErrorResponse(res, 403, 'KYC_REQUIRED', 'Identity verification is required for this operation', requestId);
+      sendErrorResponse(res, 403, 'KYC_REQUIRED', 'Identity verification is required for this operation', { requestId });
       return;
     }
   } catch (error) {
@@ -149,7 +149,7 @@ export async function requireVerifiedKyc(req: Request, res: Response, next: Next
       userId: req.user.userId,
     });
 
-    sendErrorResponse(res, 500, 'KYC_CHECK_FAILED', 'Failed to verify KYC status', requestId);
+    sendErrorResponse(res, 500, 'KYC_CHECK_FAILED', 'Failed to verify KYC status', { requestId });
     return;
   }
 

@@ -93,7 +93,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
         error: getErrorMessage(err),
       });
 
-      sendErrorResponse(res, 403, 'CSRF_VALIDATION_FAILED', 'Invalid or missing CSRF token', requestId);
+      sendErrorResponse(res, 403, 'CSRF_VALIDATION_FAILED', 'Invalid or missing CSRF token', { requestId });
       return;
     }
 
@@ -131,6 +131,6 @@ export function generateCsrfToken(req: Request, res: Response): void {
       stack: error instanceof Error ? error.stack : undefined,
     });
 
-    sendErrorResponse(res, 500, 'CSRF_TOKEN_GENERATION_FAILED', 'Failed to generate CSRF token', requestId);
+    sendErrorResponse(res, 500, 'CSRF_TOKEN_GENERATION_FAILED', 'Failed to generate CSRF token', { requestId });
   }
 }

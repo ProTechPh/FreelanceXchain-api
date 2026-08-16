@@ -35,16 +35,10 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
 
   async findByContractId(contractId: string): Promise<PaymentEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('contract_id', contractId),
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(mapPayment);
+      return await this.fetchAll([
+        Query.equal('contract_id', contractId),
+        Query.orderDesc('$createdAt'),
+      ]);
     } catch (error) {
       throw new Error(`Failed to find payments: ${getErrorMessageOr(error, 'Unknown error')}`);
     }
@@ -106,16 +100,11 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
 
   async getTotalEarnings(userId: string): Promise<number> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('payee_id', userId),
-          Query.equal('status', 'completed'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.reduce((sum, doc) => sum + Number(doc.amount ?? 0), 0);
+      const payments = await this.fetchAll([
+        Query.equal('payee_id', userId),
+        Query.equal('status', 'completed'),
+      ]);
+      return payments.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
     } catch {
       return 0;
     }
@@ -123,16 +112,11 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
 
   async getTotalSpent(userId: string): Promise<number> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('payer_id', userId),
-          Query.equal('status', 'completed'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.reduce((sum, doc) => sum + Number(doc.amount ?? 0), 0);
+      const payments = await this.fetchAll([
+        Query.equal('payer_id', userId),
+        Query.equal('status', 'completed'),
+      ]);
+      return payments.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
     } catch {
       return 0;
     }

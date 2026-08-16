@@ -55,9 +55,15 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
   }));
 
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  // Run the real validation middleware (including emptyBodySchema); only
+  // validateUUID is mocked so non-UUID ids pass.
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  };
+});
 
 jest.unstable_mockModule(resolveModule('src/utils/index.ts'), () => ({
   clampLimit: (v: any) => v || 20,
@@ -164,16 +170,17 @@ describe('Contract Routes', () => {
       expect(res.body.error.code).toBe('INVALID_STATUS');
     });
 
-    it('should ignore frontend escrow address and deploy server-side', async () => {
+    it('should reject a request body on fund and deploy server-side', async () => {
       mockGetContractById.mockResolvedValue({ success: true, data: { id: 'c-1', employerId: 'user-1', status: 'pending', projectId: 'p-1', totalAmount: 1000 } });
-      mockGetProjectById.mockResolvedValue({ success: true, data: { id: 'p-1', title: 'Test' } });
-      mockGetContractWalletAddresses.mockResolvedValue({ success: true, data: { employerWallet: '0xemp', freelancerWallet: '0xfl' } });
-      mockInitializeContractEscrow.mockResolvedValue({ success: true, data: { escrowAddress: '0xserver' } });
-      mockUpdateContractStatus.mockResolvedValue({ success: true, data: { status: 'active' } });
 
       const res = await request(app).post('/api/contracts/c-1/fund').send({ escrowAddress: '0xfrontend', transactionHash: '0xtx' });
-      expect(res.status).toBe(200);
-      expect(mockInitializeContractEscrow).toHaveBeenCalled();
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details).toEqual([
+        { field: 'escrowAddress', message: '"escrowAddress" is not an allowed field' },
+        { field: 'transactionHash', message: '"transactionHash" is not an allowed field' },
+      ]);
+      expect(mockInitializeContractEscrow).not.toHaveBeenCalled();
     });
   });
 
@@ -463,7 +470,7 @@ describe('contract-routes.ts - Branch Coverage', () => {
     mockInitializeContractEscrow.mockResolvedValueOnce({ success: true, data: { escrowAddress: '0xESC' } });
     mockUpdateContractStatus.mockResolvedValueOnce({ success: true });
     const request = (await import('supertest')).default;
-    const res = await request(app).post('/api/contracts/c1/fund').send({ escrowAddress: '0xFRONT' });
+    const res = await request(app).post('/api/contracts/c1/fund');
     expect(res.status).toBe(200);
   });
 
@@ -541,10 +548,13 @@ describe('contract-routes - fund endpoint error branches and fund-info', () => {
       fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));
@@ -660,10 +670,13 @@ describe('contract-routes - fund endpoint error branches and fund-info', () => {
       fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));
@@ -785,9 +798,13 @@ describe('contract-routes - ?? nullish fallback branches', () => {
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));
@@ -938,9 +955,13 @@ describe('contract-routes - remaining branch coverage', () => {
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));
@@ -1081,9 +1102,13 @@ describe('contract-routes - escrow withdraw endpoints', () => {
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));
@@ -1160,9 +1185,13 @@ describe('contract-routes - escrow withdraw endpoints', () => {
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));
@@ -1301,9 +1330,13 @@ describe('contract-routes - escrow withdraw endpoints', () => {
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));
@@ -1357,9 +1390,13 @@ describe('contract-routes - escrow withdraw endpoints', () => {
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));
@@ -1409,9 +1446,13 @@ describe('contract-routes - escrow withdraw endpoints', () => {
       apiRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));

@@ -43,7 +43,7 @@ function extractBearerToken(req: Request, res: Response): string | null {
   const authHeader = req.headers.authorization;
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : authHeader?.split(' ')[1];
   if (!token) {
-    sendErrorResponse(res, 401, 'AUTH_MISSING_TOKEN', 'Authorization token is required', getRequestId(req));
+    sendErrorResponse(res, 401, 'AUTH_MISSING_TOKEN', 'Authorization token is required', { requestId: getRequestId(req) });
     return null;
   }
   return token;
@@ -268,7 +268,7 @@ router.post('/register', registerRateLimiter, asyncHandler(async (req: Request, 
     const message = result.code === 'DUPLICATE_EMAIL'
       ? 'Registration failed. Please try again or use a different email.'
       : result.message;
-    sendErrorResponse(res, 400, 'REGISTRATION_FAILED', message, requestId);
+    sendErrorResponse(res, 400, 'REGISTRATION_FAILED', message, { requestId });
     return;
   }
 
@@ -331,7 +331,7 @@ router.post('/login', authRateLimiter, asyncHandler(async (req: Request, res: Re
       return;
     }
 
-    sendErrorResponse(res, 401, 'AUTH_INVALID_CREDENTIALS', result.message, requestId);
+    sendErrorResponse(res, 401, 'AUTH_INVALID_CREDENTIALS', result.message, { requestId });
     return;
   }
 
@@ -382,28 +382,28 @@ router.post('/login/mfa-verify', authRateLimiter, asyncHandler(async (req: Reque
   const requestId = getRequestId(req);
 
   if (!sessionToken || !factorId || !code) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'mfaSessionToken, factorId, and code are required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'mfaSessionToken, factorId, and code are required', { requestId });
     return;
   }
 
   const challengeResult = await challengeMFA(sessionToken, factorId);
 
   if (isAuthError(challengeResult)) {
-    sendErrorResponse(res, 400, challengeResult.code, challengeResult.message, requestId);
+    sendErrorResponse(res, 400, challengeResult.code, challengeResult.message, { requestId });
     return;
   }
 
   const verifyResult = await verifyMFAChallenge(sessionToken, factorId, challengeResult.challengeId, code);
 
   if (isAuthError(verifyResult)) {
-    sendErrorResponse(res, 400, verifyResult.code, verifyResult.message, requestId);
+    sendErrorResponse(res, 400, verifyResult.code, verifyResult.message, { requestId });
     return;
   }
 
   const authResult = await validateTokenAndGetUser(sessionToken);
 
   if (isAuthError(authResult)) {
-    sendErrorResponse(res, 401, authResult.code, authResult.message, requestId);
+    sendErrorResponse(res, 401, authResult.code, authResult.message, { requestId });
     return;
   }
 
@@ -459,7 +459,7 @@ router.post('/refresh', authRateLimiter, asyncHandler(async (req: Request, res: 
   if (isAuthError(result)) {
     const statusCode = result.code === 'TOKEN_EXPIRED' ? 401 : 400;
     const code = result.code === 'TOKEN_EXPIRED' ? 'AUTH_TOKEN_EXPIRED' : 'AUTH_INVALID_TOKEN';
-    sendErrorResponse(res, statusCode, code, result.message, requestId);
+    sendErrorResponse(res, statusCode, code, result.message, { requestId });
     return;
   }
 
@@ -500,7 +500,7 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
   const requestId = getRequestId(req);
 
   if (error) {
-    sendErrorResponse(res, 400, 'OAUTH_ERROR', String(error_description || error), requestId, undefined, false);
+    sendErrorResponse(res, 400, 'OAUTH_ERROR', String(error_description || error), { requestId, success: false });
     return;
   }
 
@@ -508,7 +508,7 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
     const sessionResult = await exchangeCodeForSession(code);
 
     if ('code' in sessionResult) {
-      sendErrorResponse(res, 401, 'AUTH_EXCHANGE_FAILED', sessionResult.message, requestId, undefined, false);
+      sendErrorResponse(res, 401, 'AUTH_EXCHANGE_FAILED', sessionResult.message, { requestId, success: false });
       return;
     }
 
@@ -525,7 +525,7 @@ router.get('/callback', authRateLimiter, asyncHandler(async (req: Request, res: 
         return;
       }
 
-      sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message, requestId, undefined, false);
+      sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message, { requestId, success: false });
       return;
     }
 
@@ -592,11 +592,11 @@ router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Req
   const requestId = getRequestId(req);
 
   if (!accessToken || typeof accessToken !== 'string') {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'accessToken is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'accessToken is required', { requestId });
     return;
   }
   if (!validateRole(role)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid role is required (freelancer or employer)', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid role is required (freelancer or employer)', { requestId });
     return;
   }
 
@@ -604,7 +604,7 @@ router.post('/oauth/register', registerRateLimiter, asyncHandler(async (req: Req
 
   if (isAuthError(result)) {
     const status = result.code === 'AUTH_INVALID_TOKEN' ? 401 : 400;
-    sendErrorResponse(res, status, result.code, result.message, requestId);
+    sendErrorResponse(res, status, result.code, result.message, { requestId });
     return;
   }
 
@@ -622,12 +622,12 @@ router.post('/login/email-otp', authRateLimiter, asyncHandler(async (req: Reques
   const { email } = req.body;
   const requestId = getRequestId(req);
   if (!email || !validateEmail(email)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid email is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid email is required', { requestId });
     return;
   }
   const result = await requestEmailOtp(email);
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
   res.status(200).json(result);
@@ -644,12 +644,12 @@ router.post('/login/magic-url', authRateLimiter, asyncHandler(async (req: Reques
   const { email } = req.body;
   const requestId = getRequestId(req);
   if (!email || !validateEmail(email)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid email is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid email is required', { requestId });
     return;
   }
   const result = await requestMagicUrl(email);
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
   res.status(200).json(result);
@@ -666,7 +666,7 @@ router.post('/login/verify-token', authRateLimiter, asyncHandler(async (req: Req
   const { userId, secret } = req.body;
   const requestId = getRequestId(req);
   if (!userId || !secret) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'userId and secret are required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'userId and secret are required', { requestId });
     return;
   }
   const result = await verifyAuthToken(userId, secret);
@@ -680,7 +680,7 @@ router.post('/login/verify-token', authRateLimiter, asyncHandler(async (req: Req
       }, requestId);
       return;
     }
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
   res.status(200).json(result);
@@ -740,7 +740,7 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
 
   try {
     if (!['google', 'github'].includes(provider)) {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid provider', requestId);
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid provider', { requestId });
       return;
     }
 
@@ -748,7 +748,7 @@ router.get('/oauth/:provider', authRateLimiter, asyncHandler(async (req: Request
     const url = await getOAuthUrl(provider);
     res.redirect(url);
   } catch {
-    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to initiate OAuth flow', requestId);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to initiate OAuth flow', { requestId });
   }
 }));
 
@@ -792,7 +792,7 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
 
   if (!access_token || typeof access_token !== 'string') {
     logger.warn('OAuth callback missing access_token', { requestId });
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'access_token is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'access_token is required', { requestId });
     return;
   }
 
@@ -830,7 +830,7 @@ router.post('/oauth/callback', authRateLimiter, asyncHandler(async (req: Request
       errorCode: result.code,
     });
 
-    sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message || 'Invalid token', requestId);
+    sendErrorResponse(res, 401, 'AUTH_INVALID_TOKEN', result.message || 'Invalid token', { requestId });
     return;
   }
 
@@ -874,14 +874,14 @@ router.post('/resend-confirmation', passwordResetRateLimiter, asyncHandler(async
   const requestId = getRequestId(req);
 
   if (!email || typeof email !== 'string' || !email.includes('@')) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid email is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid email is required', { requestId });
     return;
   }
 
   const result = await resendConfirmationEmail(email);
 
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
 
@@ -919,7 +919,7 @@ router.post('/forgot-password', passwordResetRateLimiter, asyncHandler(async (re
   const requestId = getRequestId(req);
 
   if (!email || typeof email !== 'string' || !email.includes('@')) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid email is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Valid email is required', { requestId });
     return;
   }
 
@@ -1011,7 +1011,7 @@ router.post('/reset-password', passwordResetRateLimiter, asyncHandler(async (req
 
   if (isAuthError(result)) {
     const statusCode = result.code === 'INVALID_TOKEN' ? 401 : 500;
-    sendErrorResponse(res, statusCode, result.code, result.message, requestId);
+    sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
     return;
   }
 
@@ -1057,7 +1057,7 @@ router.post('/logout', authMiddleware, authRateLimiter, asyncHandler(async (req:
 
   if (isAuthError(result)) {
     logger.error('Logout failed', { userId, requestId, error: result.message });
-    sendErrorResponse(res, 500, result.code, result.message, requestId);
+    sendErrorResponse(res, 500, result.code, result.message, { requestId });
     return;
   }
 
@@ -1096,7 +1096,7 @@ router.post('/mfa/enroll', authMiddleware, authRateLimiter, asyncHandler(async (
   const result = await enrollMFA(token);
 
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
 
@@ -1143,14 +1143,14 @@ router.post('/mfa/verify-enrollment', authMiddleware, authRateLimiter, asyncHand
   if (!token) return;
 
   if (!factorId || !code) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'factorId and code are required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'factorId and code are required', { requestId });
     return;
   }
 
   const result = await verifyMFAEnrollment(token, factorId, code);
 
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
 
@@ -1198,14 +1198,14 @@ router.post('/mfa/challenge', authMiddleware, authRateLimiter, asyncHandler(asyn
   if (!token) return;
 
   if (!factorId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'factorId is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'factorId is required', { requestId });
     return;
   }
 
   const result = await challengeMFA(token, factorId);
 
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
 
@@ -1255,14 +1255,14 @@ router.post('/mfa/verify', authMiddleware, mfaVerifyRateLimiter, asyncHandler(as
   if (!token) return;
 
   if (!factorId || !challengeId || !code) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'factorId, challengeId, and code are required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'factorId, challengeId, and code are required', { requestId });
     return;
   }
 
   const result = await verifyMFAChallenge(token, factorId, challengeId, code);
 
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
 
@@ -1302,7 +1302,7 @@ router.get('/mfa/factors', authMiddleware, authRateLimiter, asyncHandler(async (
   const result = await getMFAFactors(token);
 
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
 
@@ -1347,19 +1347,19 @@ router.post('/mfa/disable', authMiddleware, authRateLimiter, asyncHandler(async 
   if (!token) return;
 
   if (!factorId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'factorId is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'factorId is required', { requestId });
     return;
   }
 
   if (!otpCode || typeof otpCode !== 'string') {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'otpCode is required for re-authentication', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'otpCode is required for re-authentication', { requestId });
     return;
   }
 
   const result = await disableMFA(token, factorId, otpCode);
 
   if (isAuthError(result)) {
-    sendErrorResponse(res, 400, result.code, result.message, requestId);
+    sendErrorResponse(res, 400, result.code, result.message, { requestId });
     return;
   }
 
@@ -1408,14 +1408,14 @@ router.get('/me', authMiddleware, authRateLimiter, asyncHandler(async (req: Requ
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'Authentication required', { requestId });
     return;
   }
 
   const result = await getCurrentUserWithKyc(userId);
 
   if (isAuthError(result)) {
-    sendErrorResponse(res, 404, result.code, result.message, requestId);
+    sendErrorResponse(res, 404, result.code, result.message, { requestId });
     return;
   }
 
@@ -1474,17 +1474,17 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   if (!walletAddress || typeof walletAddress !== 'string' || walletAddress.trim() === '') {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Wallet address is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Wallet address is required', { requestId });
     return;
   }
 
   if (!WALLET_REGEX.test(walletAddress)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid Ethereum wallet address format', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid Ethereum wallet address format', { requestId });
     return;
   }
 
@@ -1492,7 +1492,7 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
     const updatedUser = await userRepository.updateUser(userId, { wallet_address: walletAddress });
 
     if (!updatedUser) {
-      sendErrorResponse(res, 404, 'USER_NOT_FOUND', 'User not found', requestId);
+      sendErrorResponse(res, 404, 'USER_NOT_FOUND', 'User not found', { requestId });
       return;
     }
 
@@ -1502,7 +1502,7 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
     }, requestId);
   } catch (error) {
     logger.error('Failed to update wallet address:', error);
-    sendErrorResponse(res, 500, 'UPDATE_FAILED', 'Failed to update wallet address', requestId);
+    sendErrorResponse(res, 500, 'UPDATE_FAILED', 'Failed to update wallet address', { requestId });
   }
 }));
 

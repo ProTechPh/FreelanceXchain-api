@@ -141,6 +141,31 @@ export class NotificationRepository extends BaseRepository<NotificationEntity> {
       return 0;
     }
   }
+
+  /**
+   * Delete read notifications created before `threshold` and report how many
+   * were removed. Per-delete failures are counted as not deleted; the initial
+   * read query error propagates to the caller (scheduler job).
+   */
+  async deleteReadBefore(threshold: Date): Promise<number> {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_ID,
+      [
+        Query.equal('is_read', true),
+        Query.limit(1000),
+      ]
+    );
+
+    const oldNotifications = response.documents.filter(
+      n => new Date(n.created_at) < threshold
+    );
+
+    const deleteResults = await Promise.all(
+      oldNotifications.map(async (notification) => (await this.delete(notification.$id)) ? 1 : 0)
+    );
+    return deleteResults.reduce<number>((sum, n) => sum + n, 0);
+  }
 }
 
 export const notificationRepository = new NotificationRepository();

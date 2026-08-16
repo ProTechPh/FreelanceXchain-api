@@ -207,6 +207,34 @@ describe('ContractRepository', () => {
     });
   });
 
+  describe('findAllByFreelancers', () => {
+    it('should group contracts by freelancer id', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [
+          toAppwriteDoc({ id: 'c1', project_id: 'p1', freelancer_id: 'u1' }),
+          toAppwriteDoc({ id: 'c2', project_id: 'p2', freelancer_id: 'u1' }),
+          toAppwriteDoc({ id: 'c3', project_id: 'p3', freelancer_id: 'u2' }),
+        ],
+        total: 3,
+      });
+
+      const result = await repo.findAllByFreelancers(['u1', 'u2']);
+      expect(result.get('u1')).toHaveLength(2);
+      expect(result.get('u2')).toHaveLength(1);
+      expect(mockListDocuments).toHaveBeenCalledTimes(1);
+      expect(mockListDocuments.mock.calls[0][2][0]).toEqual({
+        type: 'equal',
+        args: ['freelancer_id', ['u1', 'u2']],
+      });
+    });
+
+    it('should return an empty map when no freelancer ids are given', async () => {
+      const result = await repo.findAllByFreelancers([]);
+      expect(result.size).toBe(0);
+      expect(mockListDocuments).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getContractByIdWithRelations - catch paths', () => {
     it('should handle getDocument failure for project', async () => {
       const contract = { id: 'c1', project_id: 'p1', freelancer_id: 'f1', employer_id: 'e1', status: 'active' };

@@ -24,7 +24,11 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     orderDesc: jest.fn((...args: any[]) => ({ type: 'orderDesc', args })),
     limit: jest.fn((...args: any[]) => ({ type: 'limit', args })),
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
+    contains: jest.fn((...args: any[]) => ({ type: 'contains', args })),
+    between: jest.fn((...args: any[]) => ({ type: 'between', args })),
   },
+  DatabasesIndexType: { Key: 'key', Unique: 'unique', Fulltext: 'fulltext' },
+  OrderBy: { Asc: 'asc', Desc: 'desc' },
   ID: { unique: jest.fn(() => 'unique-id') },
 }));
 
@@ -145,18 +149,14 @@ describe('ProjectRepository', () => {
   });
 
   describe('getProjectsBySkills', () => {
-    it('should filter by skills', async () => {
+    it('should filter by skills at the database level', async () => {
       const projects = [toAppwriteDoc({ id: 'p1', required_skills: [{ skill_id: 's1' }] })];
       mockListDocuments.mockResolvedValueOnce({ documents: projects, total: 1 });
       const result = await repo.getProjectsBySkills(['s1']);
       expect(result.items).toHaveLength(1);
-    });
-
-    it('should return empty when no skills match', async () => {
-      const projects = [toAppwriteDoc({ id: 'p1', required_skills: [{ skill_id: 's2' }] })];
-      mockListDocuments.mockResolvedValueOnce({ documents: projects, total: 1 });
-      const result = await repo.getProjectsBySkills(['s1']);
-      expect(result.items).toHaveLength(0);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[0] === 'required_skill_ids')).toBe(true);
+      expect(queries.some(q => q.type === 'equal' && q.args[0] === 'status' && q.args[1] === 'open')).toBe(true);
     });
   });
 });
@@ -226,12 +226,17 @@ describe('Project Repository - Extended Coverage', () => {
           milestones: '[]', tags: '[]', attachments: '[]',
         });
       }
+      // Pagination is pushed to the DB: the mock returns one page of 5.
       mockListDocuments.mockResolvedValueOnce({
-        documents: projects,
+        documents: projects.slice(0, 5),
         total: 15,
       });
       const result = await repo_ext.getProjectsBySkills(['skill-1'], { limit: 5, offset: 0 });
+      expect(result.items).toHaveLength(5);
       expect(result.hasMore).toBe(true);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'limit' && q.args[0] === 5)).toBe(true);
+      expect(queries.some(q => q.type === 'offset' && q.args[0] === 0)).toBe(true);
     });
 
     it('should return empty results on query error', async () => {
@@ -254,6 +259,10 @@ describe('Project Repository - Extended Coverage', () => {
       const result = await repo_ext.getProjectsByBudgetRange(500, 3000);
       expect(result.items).toHaveLength(2);
       expect(result.total).toBe(2);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      const between = queries.find(q => q.type === 'between');
+      expect(between).toBeDefined();
+      expect(between.args).toEqual(['budget', 500, 3000]);
     });
 
     it('should return empty results for no matches', async () => {
@@ -491,7 +500,7 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
   });
 
   describe('searchProjects', () => {
-    it('should filter projects by keyword matching title', async () => {
+    it('should search titles at the database level with the status filter', async () => {
       mockListDocuments.mockResolvedValueOnce({
         documents: [
           {
@@ -508,87 +517,25 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
             tags: '[]',
             attachments: '[]',
           },
-          {
-            $id: 'p2',
-            $createdAt: '2025-01-01',
-            $updatedAt: '2025-01-01',
-            title: 'Mobile App Development',
-            description: 'iOS and Android app',
-            status: 'open',
-            employer_id: 'e2',
-            budget: 8000,
-            required_skills: '[]',
-            milestones: '[]',
-            tags: '[]',
-            attachments: '[]',
-          },
         ],
-        total: 2,
+        total: 1,
       });
 
       const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
       const result = await projectRepository.searchProjects('react');
       expect(result.items).toHaveLength(1);
       expect(result.items[0]!.title).toBe('Build a React Website');
-      expect(result.total).toBe(1);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      const contains = queries.find(q => q.type === 'contains');
+      expect(contains).toBeDefined();
+      expect(contains.args).toEqual(['title', 'react']);
+      expect(queries.some(q => q.type === 'equal' && q.args[0] === 'status' && q.args[1] === 'open')).toBe(true);
     });
 
-    it('should filter projects by keyword matching description', async () => {
+    it('should return empty when the database returns no matches', async () => {
       mockListDocuments.mockResolvedValueOnce({
-        documents: [
-          {
-            $id: 'p3',
-            $createdAt: '2025-01-01',
-            $updatedAt: '2025-01-01',
-            title: 'Web Project',
-            description: 'Python backend needed',
-            status: 'open',
-            employer_id: 'e3',
-            budget: 4000,
-            required_skills: '[]',
-            milestones: '[]',
-            tags: '[]',
-            attachments: '[]',
-          },
-          {
-            $id: 'p4',
-            $createdAt: '2025-01-01',
-            $updatedAt: '2025-01-01',
-            title: 'Design Work',
-            description: 'Logo and branding',
-            status: 'open',
-            employer_id: 'e4',
-            budget: 1000,
-            required_skills: '[]',
-            milestones: '[]',
-            tags: '[]',
-            attachments: '[]',
-          },
-        ],
-        total: 2,
-      });
-
-      const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
-      const result = await projectRepository.searchProjects('python');
-      expect(result.items).toHaveLength(1);
-      expect(result.items[0]!.description).toBe('Python backend needed');
-    });
-
-    it('should return empty when no projects match keyword', async () => {
-      mockListDocuments.mockResolvedValueOnce({
-        documents: [
-          {
-            $id: 'p5',
-            $createdAt: '2025-01-01',
-            $updatedAt: '2025-01-01',
-            title: 'Web Project',
-            description: 'Frontend work',
-            status: 'open',
-            employer_id: 'e5',
-            budget: 2000,
-          },
-        ],
-        total: 1,
+        documents: [],
+        total: 0,
       });
 
       const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
@@ -597,7 +544,7 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
       expect(result.total).toBe(0);
     });
 
-    it('should handle case-insensitive search', async () => {
+    it('should pass the keyword through as-is (case handling is Appwrite\'s)', async () => {
       mockListDocuments.mockResolvedValueOnce({
         documents: [
           {
@@ -617,7 +564,7 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
       const { projectRepository } = await import(resolveModule('src/repositories/project-repository.ts'));
       const result = await projectRepository.searchProjects('react');
       expect(result.items).toHaveLength(1);
-      expect(result.items[0]!.title).toBe('REACT Native App');
+      expect(mockListDocuments.mock.calls[0][2].some((q: any) => q.type === 'contains' && q.args[1] === 'react')).toBe(true);
     });
 
     it('should respect limit and offset in search results', async () => {
@@ -632,8 +579,9 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
         budget: 1000 * (i + 1),
       }));
 
+      // Pagination is pushed to the DB: the mock returns one page of 2.
       mockListDocuments.mockResolvedValueOnce({
-        documents: docs,
+        documents: docs.slice(1, 3),
         total: 5,
       });
 
@@ -642,6 +590,9 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
       expect(result.items).toHaveLength(2);
       expect(result.hasMore).toBe(true);
       expect(result.total).toBe(5);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'limit' && q.args[0] === 2)).toBe(true);
+      expect(queries.some(q => q.type === 'offset' && q.args[0] === 1)).toBe(true);
     });
 
     it('should return empty on database error', async () => {

@@ -59,3 +59,4 @@ docker-compose*.yml
 jest.config.js
 jest.setup.js
 eslint.config.js
+.freebuff/

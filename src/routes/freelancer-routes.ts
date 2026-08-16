@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validate, validateUUID, updateFreelancerProfileSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
@@ -125,7 +125,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -150,7 +150,7 @@ router.post('/profile', authMiddleware, requireRole('freelancer'), apiRateLimite
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_EXISTS' ? 409 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -186,14 +186,14 @@ router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await getProfileByUserId(userId);
 
   if (!result.success) {
-    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 404, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -239,39 +239,23 @@ router.get('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireRole('freelancer'), apiRateLimiter, validate(updateFreelancerProfileSchema), async (req: Request, res: Response) => {
   const { bio, hourlyRate, availability } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
-  // Validate input
-  const errors: { field: string; message: string }[] = [];
-  if (bio !== undefined && (typeof bio !== 'string' || bio.trim().length < 10)) {
-    errors.push({ field: 'bio', message: 'Bio must be at least 10 characters' });
-  }
-  if (hourlyRate !== undefined && (typeof hourlyRate !== 'number' || hourlyRate < 1)) {
-    errors.push({ field: 'hourlyRate', message: 'Hourly rate must be a positive number' });
-  }
-  if (availability !== undefined && !['available', 'busy', 'unavailable'].includes(availability)) {
-    errors.push({ field: 'availability', message: 'Invalid availability value' });
-  }
-
-  if (errors.length > 0) {
-    sendValidationError(res, errors, requestId);
-    return;
-  }
-
+  // Field validation is handled by the middleware (updateFreelancerProfileSchema).
   const result = await updateProfile(userId, { bio, hourlyRate, availability });
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -340,13 +324,13 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   // Validate input
   if (!Array.isArray(skills) || skills.length === 0) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Skills array is required', requestId, [{ field: 'skills', message: 'Skills must be a non-empty array' }]);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Skills array is required', { requestId, details: [{ field: 'skills', message: 'Skills must be a non-empty array' }] });
     return;
   }
 
@@ -370,7 +354,7 @@ router.post('/profile/skills', authMiddleware, requireRole('freelancer'), apiRat
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -414,12 +398,12 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   if (!skillName || skillName.trim().length === 0) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Skill name is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Skill name is required', { requestId });
     return;
   }
 
@@ -427,7 +411,7 @@ router.delete('/profile/skills/:name', authMiddleware, requireRole('freelancer')
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -491,7 +475,7 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -519,7 +503,7 @@ router.post('/profile/experience', authMiddleware, requireRole('freelancer'), ap
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -585,7 +569,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -593,7 +577,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
 
   // Validate at least one field is provided
   if (title === undefined && company === undefined && description === undefined && startDate === undefined && endDate === undefined) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'At least one field must be provided for update', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'At least one field must be provided for update', { requestId });
     return;
   }
 
@@ -619,7 +603,7 @@ router.patch('/profile/experience/:id', authMiddleware, requireRole('freelancer'
   if (!result.success) {
     const statusCode =
       result.error.code === 'PROFILE_NOT_FOUND' || result.error.code === 'EXPERIENCE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -663,7 +647,7 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -671,7 +655,7 @@ router.delete('/profile/experience/:id', authMiddleware, requireRole('freelancer
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -714,7 +698,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   const result = await getProfileByUserId(id);
 
   if (!result.success) {
-    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 404, result.error.code, result.error.message, { requestId });
     return;
   }
 

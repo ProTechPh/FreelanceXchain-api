@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import { validate, validateUUID, submitRatingSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -152,7 +152,7 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -160,14 +160,14 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
   const rateeId = req.query['rateeId'] as string | undefined;
 
   if (!contractId || !rateeId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId and rateeId are required query parameters', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId and rateeId are required query parameters', { requestId });
     return;
   }
 
   const result = await canUserRate(userId, rateeId, contractId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -211,47 +211,24 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
  *       409:
  *         description: Duplicate rating
  */
-router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/rate', authMiddleware, apiRateLimiter, validate(submitRatingSchema), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
+  // Required fields, UUID formats, and rating bounds are handled by the
+  // middleware (submitRatingSchema); the service enforces the business rules.
   const { contractId, rateeId, rating, comment } = req.body as {
     contractId?: string;
     rateeId?: string;
     rating?: number;
     comment?: string;
   };
-
-  // Validate required fields
-  const missingFields: string[] = [];
-  if (!contractId) missingFields.push('contractId');
-  if (!rateeId) missingFields.push('rateeId');
-  if (rating === undefined || rating === null) missingFields.push('rating');
-
-  if (missingFields.length > 0) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Missing required fields', requestId);
-    return;
-  }
-
-  // Validate UUID format
-  const uuidErrors: { field: string; message: string }[] = [];
-  if (contractId && !isValidUUID(contractId)) {
-    uuidErrors.push({ field: 'contractId', message: 'contractId must be a valid UUID' });
-  }
-  if (rateeId && !isValidUUID(rateeId)) {
-    uuidErrors.push({ field: 'rateeId', message: 'rateeId must be a valid UUID' });
-  }
-
-  if (uuidErrors.length > 0) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid UUID format', requestId);
-    return;
-  }
 
   const ratingInput: Parameters<typeof submitRating>[0] = {
     contractId: contractId!,
@@ -268,7 +245,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, async (req: Request, res: R
     if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
     if (result.error.code === 'DUPLICATE_RATING') statusCode = 409;
 
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -304,13 +281,13 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
     const result = await getReputationLeaderboard(limit);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting reputation leaderboard', { error });
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get leaderboard', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get leaderboard', { requestId: getRequestId(req) });
   }
 });
 
@@ -353,14 +330,14 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'User ID is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'User ID is required', { requestId });
     return;
   }
 
   const result = await getReputation(userId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -403,14 +380,14 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'User ID is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'User ID is required', { requestId });
     return;
   }
 
   const result = await getWorkHistory(userId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -441,13 +418,13 @@ router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, async (re
     const result = await getAggregatedScore(userId);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting reputation score', { error });
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation score', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation score', { requestId: getRequestId(req) });
   }
 });
 
@@ -475,13 +452,13 @@ router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async
     const result = await getReputationBreakdown(userId);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting reputation breakdown', { error });
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation breakdown', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation breakdown', { requestId: getRequestId(req) });
   }
 });
 
@@ -515,13 +492,13 @@ router.get('/:userId/reputation-history', validateUUID(['userId']), apiRateLimit
     const result = await getReputationHistory(userId, months);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting reputation history', { error });
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation history', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation history', { requestId: getRequestId(req) });
   }
 });
 

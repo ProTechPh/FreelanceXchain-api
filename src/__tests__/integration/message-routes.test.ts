@@ -60,6 +60,23 @@ describe('Message Routes Integration Tests', () => {
 
       expect([400, 401]).toContain(response.status);
     });
+
+    it('should reject undeclared fields', async () => {
+      const response = await request(app)
+        .post('/api/messages/send')
+        .set('Authorization', `Bearer ${authToken}`)
+        .send({
+          receiverId: 'receiver-user-id',
+          content: 'Hello',
+          extraField: 'not allowed',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+      expect(response.body.error.details).toEqual([
+        { field: 'extraField', message: '"extraField" is not an allowed field' },
+      ]);
+    });
   });
 
   describe('GET /api/messages/conversations', () => {

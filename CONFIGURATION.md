@@ -14,7 +14,8 @@ Complete guide to all configuration files in the FreelanceXchain API project.
 | `eslint.config.js` | ESLint code linting | [ESLint Configuration](#eslintconfigjs) |
 | `hardhat.config.cjs` | Hardhat blockchain development | [Hardhat Configuration](#hardhatconfigcjs) |
 | `deployment.json` | Deployment configuration | [Deployment Config](#deploymentjson) |
-| `openapi.json` | OpenAPI/Swagger specification | [API Specification](#openapijson) |
+| `openapi.json` | Generated OpenAPI/Swagger specification (artifact of `openapi.base.json` + middleware schemas) | [API Specification](#openapijson) |
+| `openapi.base.json` | Canonical hand-maintained OpenAPI base spec | [API Specification](#openapijson) |
 | `Dockerfile` | Docker container configuration | [Docker Configuration](#dockerfile) |
 | `.env` | Environment variables | [Environment Variables](#environment-variables) |
 
@@ -43,6 +44,7 @@ Complete guide to all configuration files in the FreelanceXchain API project.
     "compile": "hardhat compile --config hardhat.config.cjs",
     "deploy:contracts": "tsx scripts/deploy-contracts.ts",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
+    "openapi:check": "tsx scripts/check-openapi.ts",
     "lint": "eslint src/**/*.ts",
     "security:audit": "pnpm audit --audit-level=moderate"
   }
@@ -429,10 +431,17 @@ pnpm run deploy:contracts:prod   # Production network
 
 ### Generation
 
+`openapi.json` is a **generated artifact**: `scripts/generate-openapi.ts` reads the canonical hand-maintained `openapi.base.json`, applies the request-body schemas derived from the validation middleware (`src/config/swagger.ts` → `VALIDATED_ENDPOINTS`), and writes the result to `openapi.json`. Do not hand-edit `openapi.json` — make changes in `openapi.base.json` and regenerate.
+
 ```bash
-# Generate from code
+# Regenerate from the base spec + middleware schemas
 pnpm run openapi:generate
+
+# Verify the committed spec is in sync (runs in CI; fails on any semantic drift)
+pnpm run openapi:check
 ```
+
+CI runs `openapi:check` in the typecheck job: if the committed `openapi.json` differs from the regenerated spec (a middleware schema changed without regenerating, or a hand-edit slipped into `openapi.json`), the pipeline fails.
 
 ### Usage
 

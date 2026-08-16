@@ -19,7 +19,7 @@ router.get('/freelancer', authMiddleware, apiRateLimiter, async (req: Request, r
   const endDate = req.query['endDate'] as string | undefined;
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -29,7 +29,7 @@ router.get('/freelancer', authMiddleware, apiRateLimiter, async (req: Request, r
   });
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -43,7 +43,7 @@ router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res
   const endDate = req.query['endDate'] as string | undefined;
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -53,7 +53,7 @@ router.get('/employer', authMiddleware, apiRateLimiter, async (req: Request, res
   });
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -65,7 +65,7 @@ router.get('/skill-trends', authMiddleware, apiRateLimiter, async (req: Request,
   const result = await getSkillTrends();
   
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -77,7 +77,7 @@ router.get('/platform', authMiddleware, apiRateLimiter, async (req: Request, res
   const result = await getPlatformMetrics();
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 

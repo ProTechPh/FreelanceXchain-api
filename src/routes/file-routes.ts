@@ -18,14 +18,14 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await getUserFiles(userId, bucket);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -39,12 +39,12 @@ router.delete('/:bucket/:path', authMiddleware, apiRateLimiter, async (req: Requ
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   if (!bucket || !path) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'bucket and path are required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'bucket and path are required', { requestId });
     return;
   }
 
@@ -52,7 +52,7 @@ router.delete('/:bucket/:path', authMiddleware, apiRateLimiter, async (req: Requ
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -65,14 +65,14 @@ router.get('/quota', authMiddleware, apiRateLimiter, async (req: Request, res: R
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await getFileQuota(userId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 

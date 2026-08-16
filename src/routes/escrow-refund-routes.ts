@@ -51,7 +51,7 @@ router.post('/:contractId/refund-request', authMiddleware, requireVerifiedKyc, v
     const { amount, reason } = req.body;
 
     if (!reason) {
-      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Refund reason is required', getRequestId(req));
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Refund reason is required', { requestId: getRequestId(req) });
     }
 
     const result = await createRefundRequest({
@@ -62,13 +62,13 @@ router.post('/:contractId/refund-request', authMiddleware, requireVerifiedKyc, v
     });
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error creating refund request:', { error: error instanceof Error ? error.message : String(error) });
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to create refund request', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to create refund request', { requestId: getRequestId(req) });
   }
 });
 
@@ -97,13 +97,13 @@ router.get('/:contractId/refunds', authMiddleware, validateUUID(['contractId']),
     const result = await getContractRefunds(contractId, userId);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting refunds', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get refunds', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get refunds', { requestId: getRequestId(req) });
   }
 });
 
@@ -135,13 +135,13 @@ router.post('/refunds/:refundId/approve', authMiddleware, requireVerifiedKyc, re
     });
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error approving refund:', { error: error instanceof Error ? error.message : String(error) });
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to approve refund', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to approve refund', { requestId: getRequestId(req) });
   }
 });
 
@@ -180,7 +180,7 @@ router.post('/refunds/:refundId/reject', authMiddleware, requireVerifiedKyc, req
     const { reason } = req.body;
 
     if (!reason) {
-      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Rejection reason is required', getRequestId(req));
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Rejection reason is required', { requestId: getRequestId(req) });
     }
 
     const result = await rejectRefund({
@@ -190,13 +190,13 @@ router.post('/refunds/:refundId/reject', authMiddleware, requireVerifiedKyc, req
     });
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error rejecting refund:', { error: error instanceof Error ? error.message : String(error) });
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject refund', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject refund', { requestId: getRequestId(req) });
   }
 });
 

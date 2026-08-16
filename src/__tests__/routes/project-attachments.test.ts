@@ -160,13 +160,17 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
 }));
 
 // Mock validation middleware
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: () => (req: any, res: any, next: any) => next(),
-  validateAppwriteDocumentId: () => (req: any, res: any, next: any) => next(),
-  validate: () => (req: any, res: any, next: any) => next(),
-  validateRequest: jest.fn((req: any, res: any, next: any) => next()),
-  isValidUUID: jest.fn((value: string) => true),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  // Run the real validation middleware; only the UUID/document-id helpers are
+  // mocked so non-UUID test ids pass.
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: () => (_req: any, _res: any, next: any) => next(),
+    validateAppwriteDocumentId: () => (_req: any, _res: any, next: any) => next(),
+    isValidUUID: jest.fn((value: string) => true),
+  };
+});
 
 // Mock rate limiter middleware
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
@@ -651,12 +655,13 @@ describe('Project Attachments API', () => {
         .field('budget', '0') // Invalid budget
         .expect(400);
 
+      // The middleware rejects the shape fields; the handler rejects the
+      // unparseable requiredSkills JSON string (its deep check).
       expect(response.body.error.code).toBe('VALIDATION_ERROR');
       expect(response.body.error.details).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ field: 'title' }),
           expect.objectContaining({ field: 'description' }),
-          expect.objectContaining({ field: 'requiredSkills' }),
           expect.objectContaining({ field: 'budget' }),
           expect.objectContaining({ field: 'deadline' })
         ])

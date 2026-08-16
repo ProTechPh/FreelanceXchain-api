@@ -20,19 +20,19 @@ router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respo
   const { name, searchType, filters, notifyOnNew } = req.body;
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   if (!name || !searchType || !filters) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'name, searchType, and filters are required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'name, searchType, and filters are required', { requestId });
     return;
   }
 
   const result = await createSavedSearch(userId, { name, searchType, filters, notifyOnNew });
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, 400, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -45,14 +45,14 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const searchType = req.query['searchType'] as 'project' | 'freelancer' | undefined;
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await getUserSavedSearches(userId, searchType);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, 400, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -66,7 +66,7 @@ router.patch('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req:
   const updates = req.body;
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -74,7 +74,7 @@ router.patch('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req:
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -87,7 +87,7 @@ router.delete('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -95,7 +95,7 @@ router.delete('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -108,7 +108,7 @@ router.post('/:id/execute', authMiddleware, apiRateLimiter, validateUUID(), asyn
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -116,7 +116,7 @@ router.post('/:id/execute', authMiddleware, apiRateLimiter, validateUUID(), asyn
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, { requestId });
     return;
   }
 

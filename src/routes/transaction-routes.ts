@@ -22,7 +22,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const status = req.query['status'] as string | undefined;
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -34,7 +34,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   });
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, 400, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -47,7 +47,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -55,7 +55,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -68,7 +68,7 @@ router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -76,7 +76,7 @@ router.get('/contract/:contractId', authMiddleware, apiRateLimiter, validateUUID
 
   if (!result.success) {
     const statusCode = result.error?.code === 'CONTRACT_NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, statusCode, result.error?.code, result.error?.message, { requestId });
     return;
   }
 

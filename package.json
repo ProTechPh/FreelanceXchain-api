@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc",
     "openapi:generate": "tsx scripts/generate-openapi.ts",
+    "openapi:check": "tsx scripts/check-openapi.ts",
     "start": "node dist/index.js",
     "start:prod": "tsx src/index.ts",
     "dev": "cross-env NODE_ENV=development BLOCKCHAIN_MODE=real BLOCKCHAIN_RPC_URL=http://127.0.0.1:7545 tsx watch src/index.ts",

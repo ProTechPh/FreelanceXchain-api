@@ -1,0 +1,27 @@
+{
+  "note": "Framework-overhead baseline only: Express + auth + real validation middleware + serialization. Appwrite/Redis/service I/O excluded — production latency will be higher.",
+  "results": [
+    {
+      "path": "/api/projects",
+      "requests": 1000,
+      "concurrency": 25,
+      "rps": 153.37246181804056,
+      "p50Ms": "156.13",
+      "p95Ms": "297.19",
+      "p99Ms": "340.67",
+      "maxMs": "370.29",
+      "errors": 0
+    },
+    {
+      "path": "/api/proposals",
+      "requests": 1000,
+      "concurrency": 25,
+      "rps": 214.07826174616912,
+      "p50Ms": "103.29",
+      "p95Ms": "174.22",
+      "p99Ms": "199.91",
+      "maxMs": "211.67",
+      "errors": 0
+    }
+  ]
+}

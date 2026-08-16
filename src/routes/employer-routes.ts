@@ -92,7 +92,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -103,7 +103,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
   const result = await listProjectsByEmployer(userId, options);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -139,14 +139,14 @@ router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, 
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await getEmployerProfileByUserId(userId);
 
   if (!result.success) {
-    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 404, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -198,7 +198,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -223,7 +223,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
 
   if (!result.success) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -265,7 +265,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   const result = await getEmployerProfileByUserId(id);
 
   if (!result.success) {
-    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 404, result.error.code, result.error.message, { requestId });
     return;
   }
 

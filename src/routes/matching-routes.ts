@@ -159,7 +159,7 @@ router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res
   if (limitParam) {
     limit = Number(limitParam);
     if (isNaN(limit) || limit < 1) {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'limit must be a positive integer', requestId);
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'limit must be a positive integer', { requestId });
       return;
     }
     limit = Math.min(limit, 50); // Cap at 50
@@ -169,7 +169,7 @@ router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res
 
   if (isMatchingError(result)) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -224,7 +224,7 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
 
   /* istanbul ignore next */
   if (!projectId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'projectId is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'projectId is required', { requestId });
     return;
   }
 
@@ -234,7 +234,7 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
   if (limitParam) {
     limit = Number(limitParam);
     if (isNaN(limit) || limit < 1) {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'limit must be a positive integer', requestId);
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'limit must be a positive integer', { requestId });
       return;
     }
     limit = Math.min(limit, 50); // Cap at 50
@@ -244,7 +244,7 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
 
   if (isMatchingError(result)) {
     const statusCode = result.error.code === 'PROJECT_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -286,14 +286,14 @@ router.post('/extract-skills', authMiddleware, apiRateLimiter, async (req: Reque
   const { text } = req.body as { text?: string };
 
   if (!text || typeof text !== 'string') {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'text is required and must be a string', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'text is required and must be a string', { requestId });
     return;
   }
 
   const result = await extractSkillsFromText(text);
 
   if (isMatchingError(result)) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -331,7 +331,7 @@ router.get('/skill-gaps', authMiddleware, apiRateLimiter, async (req: Request, r
 
   if (isMatchingError(result)) {
     const statusCode = result.error.code === 'PROFILE_NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 

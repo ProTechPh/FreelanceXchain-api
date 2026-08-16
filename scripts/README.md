@@ -50,15 +50,19 @@ Development tools and utilities.
 
 **Location:** `dev/`
 
-- **[generate-openapi.ts](dev/generate-openapi.ts)** - Generate OpenAPI specification from Swagger config
+- **[generate-openapi.ts](generate-openapi.ts)** - Regenerate `openapi.json` from the canonical base spec
+- **[check-openapi.ts](check-openapi.ts)** - CI drift check: fail when committed `openapi.json` differs from the regenerated spec
 
 **Usage:**
 
 ```bash
-# Generate OpenAPI spec
+# Regenerate the served OpenAPI spec (reads openapi.base.json + middleware schemas)
 pnpm run openapi:generate
 # or
-tsx scripts/dev/generate-openapi.ts
+tsx scripts/generate-openapi.ts
+
+# Verify the committed spec is in sync (runs in CI)
+pnpm run openapi:check
 ```
 
 ### 🧪 Testing Scripts
@@ -122,7 +126,9 @@ Before running scripts, ensure you have:
 ### Development Scripts
 
 - OpenAPI generation should be run after API changes
-- Commit generated `openapi.json` to version control
+- `openapi.base.json` is the canonical, hand-maintained spec; `openapi.json` is a generated artifact of it plus the validation-middleware schemas
+- Commit both `openapi.base.json` and the generated `openapi.json` to version control
+- CI runs `pnpm run openapi:check`, which fails on any semantic drift — make hand-edits in the base and regenerate, never edit `openapi.json` directly
 
 ## 🔗 Related Documentation
 
@@ -159,4 +165,4 @@ When adding new scripts:
 **TypeScript script won't run**
 
 - Use `tsx` or `ts-node` to run TypeScript files directly
-- Or compile first: `tsc scripts/dev/generate-openapi.ts`
+- Or compile first: `tsc scripts/generate-openapi.ts`

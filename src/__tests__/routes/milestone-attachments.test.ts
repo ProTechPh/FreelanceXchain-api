@@ -70,6 +70,17 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
   validate: () => (req: any, res: any, next: any) => next(),
   validateRequest: jest.fn((req: any, res: any, next: any) => next()),
   isValidUUID: jest.fn((value: string) => true),
+  submitReviewSchema: {},
+  submitRatingSchema: {},
+  updateFreelancerProfileSchema: {},
+  createProjectSchema: {},
+  updateProjectSchema: {},
+  addMilestonesSchema: {},
+  submitProposalSchema: {},
+  submitProposalMultipartSchema: {},
+  createProjectWithAttachmentsSchema: {},
+  sendMessageSchema: {},
+  emptyBodySchema: {},
 }));
 
 // Mock milestone service

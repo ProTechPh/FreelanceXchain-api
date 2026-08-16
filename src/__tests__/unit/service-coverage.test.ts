@@ -51,6 +51,7 @@ const mockNotificationRepo = {
   markAsRead: jest.fn(),
   markAllAsRead: jest.fn(),
   getUnreadCount: jest.fn(),
+  deleteReadBefore: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/notification-repository.ts'), () => ({
   notificationRepository: mockNotificationRepo,
@@ -78,6 +79,10 @@ jest.unstable_mockModule(resolveModule('src/repositories/milestone-repository.ts
 const mockContractRepo = {
   getContractById: jest.fn(),
   updateContract: jest.fn(),
+  findAllByFreelancer: jest.fn(),
+  findAllByFreelancers: jest.fn(),
+  countCompletedByFreelancer: jest.fn(),
+  findActiveContracts: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepo,
@@ -107,6 +112,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/dispute-evidence-reposi
 // User repository
 const mockUserRepo = {
   getUserById: jest.fn(),
+  getUsersByIds: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
   userRepository: mockUserRepo,
@@ -119,6 +125,10 @@ const mockProjectRepo = {
   searchProjects: jest.fn(),
   getProjectsBySkills: jest.fn(),
   getProjectsByBudgetRange: jest.fn(),
+  listOpenProjects: jest.fn(),
+  listAllProjects: jest.fn(),
+  listRecentOpenProjects: jest.fn(),
+  findByFilters: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: mockProjectRepo,
@@ -129,6 +139,7 @@ const mockFreelancerProfileRepo = {
   getProfileByUserId: jest.fn(),
   getAvailableProfiles: jest.fn(),
   getById: jest.fn(),
+  findByFilters: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
   freelancerProfileRepository: mockFreelancerProfileRepo,
@@ -217,6 +228,8 @@ const mockMessageRepo = {
   getConversationMessages: jest.fn(),
   markMessagesAsRead: jest.fn(),
   getUnreadCount: jest.fn(),
+  getUnreadMessageCountForUser: jest.fn(),
+  getUnreadMessageCountsForUsers: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/message-repository.ts'), () => ({
   messageRepository: mockMessageRepo,
@@ -291,6 +304,20 @@ function resetAllMocks() {
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }));
+  mockNotificationRepo.deleteReadBefore.mockReset().mockResolvedValue(0);
+  mockUserRepo.getUserById.mockReset().mockResolvedValue(null);
+  mockUserRepo.getUsersByIds.mockReset().mockResolvedValue(new Map());
+  mockProjectRepo.listOpenProjects.mockReset().mockResolvedValue([]);
+  mockProjectRepo.listAllProjects.mockReset().mockResolvedValue([]);
+  mockProjectRepo.listRecentOpenProjects.mockReset().mockResolvedValue([]);
+  mockProjectRepo.findByFilters.mockReset().mockResolvedValue([]);
+  mockContractRepo.findAllByFreelancer.mockReset().mockResolvedValue([]);
+  mockContractRepo.findAllByFreelancers.mockReset().mockResolvedValue(new Map());
+  mockContractRepo.countCompletedByFreelancer.mockReset().mockResolvedValue(0);
+  mockContractRepo.findActiveContracts.mockReset().mockResolvedValue([]);
+  mockMessageRepo.getUnreadMessageCountForUser.mockReset().mockResolvedValue(0);
+  mockMessageRepo.getUnreadMessageCountsForUsers.mockReset().mockResolvedValue(new Map());
+  mockFreelancerProfileRepo.findByFilters.mockReset().mockResolvedValue([]);
   mockSendNotificationToUser.mockReset().mockReturnValue({ success: true });
   mockSendWeeklyDigestEmail.mockReset().mockResolvedValue(undefined);
 }
@@ -343,12 +370,10 @@ describe('scheduler-service: per-user error in sendWeeklyDigests (line 158)', ()
       })
       .mockResolvedValue({ documents: [], total: 0 });
 
-    // getDocument for USERS → returns valid user
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'user-1',
-      email: 'user@test.com',
-      full_name: 'Test User',
-    });
+    // Batch user lookup returns the recipient
+    mockUserRepo.getUsersByIds.mockResolvedValueOnce(
+      new Map([['user-1', { id: 'user-1', email: 'user@test.com', full_name: 'Test User' }]])
+    );
 
     // sendWeeklyDigestEmail throws
     mockSendWeeklyDigestEmail.mockRejectedValueOnce(new Error('Email service down'));
@@ -484,12 +509,12 @@ describe('search-service: multi-filter budget with default maxBudget (line 138)'
   beforeEach(() => resetAllMocks());
 
   it('should use Number.MAX_SAFE_INTEGER when maxBudget is not set in multi-filter', async () => {
-    // Multi-filter: keyword + budget (no skills)
+    // Multi-filter: keyword + budget (no skills) — keyword is the DB-level filter now
     const projects = [
       { id: 'p1', title: 'Node API', description: 'Build API', budget: 500, status: 'open', required_skills: [] },
       { id: 'p2', title: 'Node Frontend', description: 'Build UI', budget: 5000, status: 'open', required_skills: [] },
     ];
-    mockProjectRepo.getAllOpenProjects.mockResolvedValueOnce({
+    mockProjectRepo.searchProjects.mockResolvedValueOnce({
       items: projects,
       hasMore: false,
       total: 2,
@@ -503,6 +528,7 @@ describe('search-service: multi-filter budget with default maxBudget (line 138)'
     if (result.success) {
       expect(result.data.items).toHaveLength(2);
     }
+    expect(mockProjectRepo.searchProjects).toHaveBeenCalledWith('Node', expect.any(Object));
   });
 });
 

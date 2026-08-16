@@ -224,6 +224,58 @@ export class ContractRepository extends BaseRepository<ContractEntity> {
       total,
     };
   }
+
+  /**
+   * Number of completed contracts for a freelancer. Errors propagate to the caller.
+   */
+  async countCompletedByFreelancer(freelancerId: string): Promise<number> {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_ID,
+      [
+        Query.equal('freelancer_id', freelancerId),
+        Query.equal('status', 'completed'),
+        Query.limit(1),
+      ]
+    );
+    return response.total;
+  }
+
+  /**
+   * All contracts where the user is the freelancer. Errors propagate to the caller.
+   */
+  async findAllByFreelancer(freelancerId: string): Promise<ContractEntity[]> {
+    return this.fetchAll([Query.equal('freelancer_id', freelancerId)]);
+  }
+
+  /**
+   * Contracts for many freelancers in one query per 100-user chunk
+   * (Appwrite caps `equal` at 100 values), grouped by freelancer_id.
+   * Errors propagate to the caller (scheduler job).
+   */
+  async findAllByFreelancers(freelancerIds: string[]): Promise<Map<string, ContractEntity[]>> {
+    const contractsByFreelancer = new Map<string, ContractEntity[]>();
+
+    for (let i = 0; i < freelancerIds.length; i += 100) {
+      const chunk = freelancerIds.slice(i, i + 100);
+      const contracts = await this.fetchAll([Query.equal('freelancer_id', chunk)]);
+
+      for (const contract of contracts) {
+        const contractsForUser = contractsByFreelancer.get(contract.freelancer_id) ?? [];
+        contractsForUser.push(contract);
+        contractsByFreelancer.set(contract.freelancer_id, contractsForUser);
+      }
+    }
+
+    return contractsByFreelancer;
+  }
+
+  /**
+   * All active contracts. Errors propagate to the caller (scheduler job).
+   */
+  async findActiveContracts(): Promise<ContractEntity[]> {
+    return this.fetchAll([Query.equal('status', 'active')]);
+  }
 }
 
 export const contractRepository = new ContractRepository();

@@ -28,19 +28,19 @@ router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respo
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   if (!targetType || !targetId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'targetType and targetId are required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'targetType and targetId are required', { requestId });
     return;
   }
 
   const result = await addFavorite(userId, targetType, targetId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, 400, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -63,14 +63,14 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await getUserFavorites(userId, targetType);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, 400, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -92,14 +92,14 @@ router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validate
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await removeFavorite(userId, targetType as 'project' | 'freelancer', targetId ?? '');
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, 400, result.error?.code, result.error?.message, { requestId });
     return;
   }
 
@@ -121,14 +121,14 @@ router.get('/check/:targetType/:targetId', authMiddleware, apiRateLimiter, valid
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await isFavorited(userId, targetType as 'project' | 'freelancer', targetId ?? '');
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code, result.error?.message, requestId);
+    sendErrorResponse(res, 400, result.error?.code, result.error?.message, { requestId });
     return;
   }
 

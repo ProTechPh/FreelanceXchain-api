@@ -133,7 +133,7 @@ function sendMilestoneSubmitError(
 ): void {
   const statusCode = errorResult.code === 'NOT_FOUND' ? 404 :
     errorResult.code === 'UNAUTHORIZED' ? 403 : 400;
-  sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, requestId);
+  sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, { requestId });
 }
 
 async function submitMilestoneFromProjectContext(
@@ -221,13 +221,13 @@ router.get('/:id', authMiddleware, validateUUID(), apiRateLimiter, async (req: R
 
     if (!result.success) {
       const errorResult = 'error' in result ? result.error : { code: 'NOT_FOUND', message: 'Milestone not found' };
-      return sendErrorResponse(res, 404, errorResult.code, errorResult.message, getRequestId(req));
+      return sendErrorResponse(res, 404, errorResult.code, errorResult.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data.milestone);
   } catch (error) {
     logger.error('Error getting milestone', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestone', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestone', { requestId: getRequestId(req) });
   }
 });
 
@@ -256,13 +256,13 @@ router.get('/contract/:contractId', authMiddleware, validateUUID(['contractId'])
 
     if (!result.success) {
       const errorResult = 'error' in result ? result.error : { code: 'FETCH_FAILED', message: 'Failed to get milestones' };
-      return sendErrorResponse(res, 400, errorResult.code, errorResult.message, getRequestId(req));
+      return sendErrorResponse(res, 400, errorResult.code, errorResult.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error getting contract milestones', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestones', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get milestones', { requestId: getRequestId(req) });
   }
 });
 
@@ -317,13 +317,13 @@ router.post('/:id/upload-deliverables',
       const files = req.files as Express.Multer.File[] | undefined;
 
       if (!files || files.length === 0) {
-        return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'No files provided', getRequestId(req));
+        return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'No files provided', { requestId: getRequestId(req) });
       }
 
       // Verify milestone ownership via freelancer's contracts/projects
       const context = await findFreelancerMilestoneContext(userId, milestoneId);
       if (!context) {
-        return sendErrorResponse(res, 404, 'NOT_FOUND', 'Milestone not found', getRequestId(req));
+        return sendErrorResponse(res, 404, 'NOT_FOUND', 'Milestone not found', { requestId: getRequestId(req) });
       }
 
       // Upload files to milestone-deliverables bucket
@@ -336,7 +336,7 @@ router.post('/:id/upload-deliverables',
       }, getRequestId(req));
     } catch (error) {
       logger.error('Error uploading milestone deliverables', error);
-      return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to upload files', getRequestId(req));
+      return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to upload files', { requestId: getRequestId(req) });
     }
   }
 );
@@ -398,7 +398,7 @@ router.post('/:id/submit', authMiddleware, requireRole('freelancer'), validateUU
     return res.json(result.data);
   } catch (error) {
     logger.error('Error submitting milestone', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit milestone', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit milestone', { requestId: getRequestId(req) });
   }
 });
 
@@ -455,7 +455,7 @@ router.post('/:id/submit-with-files',
         try {
           existingFiles = JSON.parse(existingDeliverables);
         } catch {
-          return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid existingDeliverables format', getRequestId(req));
+          return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid existingDeliverables format', { requestId: getRequestId(req) });
         }
       }
 
@@ -482,7 +482,7 @@ router.post('/:id/submit-with-files',
           : { code: 'SUBMIT_FAILED', message: 'Failed to submit milestone' };
         const statusCode = errorResult.code === 'NOT_FOUND' ? 404 :
           errorResult.code === 'UNAUTHORIZED' ? 403 : 400;
-        return sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, getRequestId(req));
+        return sendErrorResponse(res, statusCode, errorResult.code, errorResult.message, { requestId: getRequestId(req) });
       }
 
       return res.json({
@@ -492,7 +492,7 @@ router.post('/:id/submit-with-files',
       });
     } catch (error) {
       logger.error('Error submitting milestone with files', error);
-      return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit milestone with files', getRequestId(req));
+      return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit milestone with files', { requestId: getRequestId(req) });
     }
   }
 );
@@ -542,7 +542,7 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
     }
 
     if (!contractId) {
-      return sendErrorResponse(res, 404, 'NOT_FOUND', 'Milestone not found in any of your contracts', getRequestId(req));
+      return sendErrorResponse(res, 404, 'NOT_FOUND', 'Milestone not found in any of your contracts', { requestId: getRequestId(req) });
     }
 
     // Use payment-service approveMilestone which handles blockchain escrow release + project milestone update
@@ -553,13 +553,13 @@ router.post('/:id/approve', authMiddleware, requireRole('employer'), validateUUI
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
         result.error.code === 'UNAUTHORIZED' ? 403 :
         result.error.code === 'ESCROW_NOT_FOUND' || result.error.code === 'MISSING_WALLET' ? 422 : 400;
-      return sendErrorResponse(res, statusCode, result.error.code, message, getRequestId(req));
+      return sendErrorResponse(res, statusCode, result.error.code, message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error approving milestone', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to approve milestone', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to approve milestone', { requestId: getRequestId(req) });
   }
 });
 
@@ -600,7 +600,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID
     const { reason, requestRevision } = req.body;
 
     if (!reason) {
-      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Rejection reason is required', getRequestId(req));
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Rejection reason is required', { requestId: getRequestId(req) });
     }
 
     const result = await rejectMilestone({
@@ -612,13 +612,13 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), validateUUID
 
     if (!result.success) {
       const errorResult = 'error' in result ? result.error : { code: 'REJECT_FAILED', message: 'Failed to reject milestone' };
-      return sendErrorResponse(res, 400, errorResult.code, errorResult.message, getRequestId(req));
+      return sendErrorResponse(res, 400, errorResult.code, errorResult.message, { requestId: getRequestId(req) });
     }
 
     return res.json(result.data);
   } catch (error) {
     logger.error('Error rejecting milestone', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject milestone', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject milestone', { requestId: getRequestId(req) });
   }
 });
 

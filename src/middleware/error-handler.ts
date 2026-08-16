@@ -72,7 +72,7 @@ export function errorHandler(
       });
     }
 
-    sendErrorResponse(res, err.statusCode, err.code, err.message, requestId, err.details);
+    sendErrorResponse(res, err.statusCode, err.code, err.message, { requestId, details: err.details });
     return;
   }
 
@@ -83,5 +83,5 @@ export function errorHandler(
     statusCode: 500,
   });
 
-  sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred', requestId);
+  sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An unexpected error occurred', { requestId });
 }

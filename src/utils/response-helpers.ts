@@ -48,22 +48,27 @@ export function sendSuccessResponse(
  * Pass `retryAfter` to include a top-level `retryAfter` field — either a delta-seconds
  * number (e.g. 429 rate-limit responses) or an ISO date string (RFC 7231 Retry-After).
  */
+export type ErrorResponseOptions = {
+  requestId?: string;
+  details?: unknown;
+  success?: boolean;
+  retryAfter?: number | string;
+};
+
+// eslint-disable-next-line max-params -- res/statusCode/code/message are the required positional contract; optional extras live in `options`
 export function sendErrorResponse(
   res: Response,
   statusCode: number,
   code: string | undefined,
   message: string | undefined,
-  requestId?: string,
-  details?: unknown,
-  success?: boolean,
-  retryAfter?: number | string
+  options: ErrorResponseOptions = {}
 ): void {
   res.status(statusCode).json({
-    ...(success === undefined ? {} : { success }),
-    error: details === undefined ? { code, message } : { code, message, details },
-    ...(retryAfter === undefined ? {} : { retryAfter }),
+    ...(options.success === undefined ? {} : { success: options.success }),
+    error: options.details === undefined ? { code, message } : { code, message, details: options.details },
+    ...(options.retryAfter === undefined ? {} : { retryAfter: options.retryAfter }),
     timestamp: new Date().toISOString(),
-    requestId: requestId ?? 'unknown',
+    requestId: options.requestId ?? 'unknown',
   });
 }
 

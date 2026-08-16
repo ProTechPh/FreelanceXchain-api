@@ -73,11 +73,11 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
     /* istanbul ignore next */
 
     if (!userId) {
-      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     }
 
     if (!proposedPercentage || typeof proposedPercentage !== 'number' || proposedPercentage <= 0 || proposedPercentage > 100) {
-      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Proposed percentage must be between 0.01 and 100', requestId);
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Proposed percentage must be between 0.01 and 100', { requestId });
     }
 
     const result = await requestRushUpgrade(userId, { contractId, proposedPercentage });
@@ -88,14 +88,14 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
       if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
       if (result.error.code === 'PENDING_REQUEST_EXISTS' || result.error.code === 'ALREADY_RUSH') statusCode = 409;
 
-      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     }
 
     return res.status(201).json(result.data);
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Error requesting rush upgrade', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to request rush upgrade', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to request rush upgrade', { requestId: getRequestId(req) });
   }
 });
 
@@ -156,15 +156,15 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
     /* istanbul ignore next */
 
     if (!userId) {
-      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', xRequestId);
+      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
     }
 
     if (!action || !['accept', 'decline', 'counter_offer'].includes(action)) {
-      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Action must be accept, decline, or counter_offer', xRequestId);
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Action must be accept, decline, or counter_offer', { requestId: xRequestId });
     }
 
     if (action === 'counter_offer' && (!counterPercentage || typeof counterPercentage !== 'number' || counterPercentage <= 0 || counterPercentage > 100)) {
-      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Counter percentage must be between 0.01 and 100', xRequestId);
+      return sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Counter percentage must be between 0.01 and 100', { requestId: xRequestId });
     }
 
     const result = await respondToRushUpgrade(userId, {
@@ -178,7 +178,7 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
       if (result.error.code === 'NOT_FOUND') statusCode = 404;
       if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
 
-      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, xRequestId);
+      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: xRequestId });
     }
 
     // If accepted, the result includes both request and contract
@@ -193,7 +193,7 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Error responding to rush upgrade', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to respond to rush upgrade', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to respond to rush upgrade', { requestId: getRequestId(req) });
   }
 });
 
@@ -236,7 +236,7 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
     /* istanbul ignore next */
 
     if (!userId) {
-      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', xRequestId);
+      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
     }
 
     const result = await acceptCounterOffer(userId, requestIdParam);
@@ -246,14 +246,14 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
       if (result.error.code === 'NOT_FOUND') statusCode = 404;
       if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
 
-      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, xRequestId);
+      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: xRequestId });
     }
 
     return res.status(200).json(result.data);
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Error accepting counter-offer', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to accept counter-offer', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to accept counter-offer', { requestId: getRequestId(req) });
   }
 });
 
@@ -296,7 +296,7 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
     /* istanbul ignore next */
 
     if (!userId) {
-      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', xRequestId);
+      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
     }
 
     const result = await declineCounterOffer(userId, requestIdParam);
@@ -306,14 +306,14 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
       if (result.error.code === 'NOT_FOUND') statusCode = 404;
       if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
 
-      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, xRequestId);
+      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: xRequestId });
     }
 
     return res.status(200).json(result.data);
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Error declining counter-offer', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to decline counter-offer', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to decline counter-offer', { requestId: getRequestId(req) });
   }
 });
 
@@ -351,29 +351,29 @@ router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimite
 
     // M11: Verify the user is a party to the contract before returning rush upgrade requests
     if (!userId) {
-      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', xRequestId);
+      return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
     }
 
     const contract = await contractRepository.getContractById(contractId);
     if (!contract) {
-      return sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', xRequestId);
+      return sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId: xRequestId });
     }
 
     if (contract.employer_id !== userId && contract.freelancer_id !== userId && req.user?.role !== 'admin') {
-      return sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view rush upgrade requests for this contract', xRequestId);
+      return sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view rush upgrade requests for this contract', { requestId: xRequestId });
     }
 
     const result = await getRushUpgradeRequestsByContract(contractId);
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, xRequestId);
+      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: xRequestId });
     }
 
     return res.status(200).json(result.data);
   } catch (error) {
     /* istanbul ignore next */
     logger.error('Error getting rush upgrade requests', error);
-    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get rush upgrade requests', getRequestId(req));
+    return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get rush upgrade requests', { requestId: getRequestId(req) });
   }
 });
 

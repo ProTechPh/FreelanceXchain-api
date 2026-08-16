@@ -1,9 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validate, validateUUID, submitReviewSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
-import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
+import { sendErrorResponse } from '../utils/response-helpers.js';
 import {
   submitRating as submitReview,
   getReviewById,
@@ -14,26 +14,17 @@ import {
 
 const router = Router();
 
-router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, validate(submitReviewSchema), async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const { contractId, rating, comment, workQuality, communication, professionalism, wouldWorkAgain } = req.body;
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
-  const errors: { field: string; message: string }[] = [];
-  if (!contractId) errors.push({ field: 'contractId', message: 'Contract ID is required' });
-  if (!rating || rating < 1 || rating > 5) errors.push({ field: 'rating', message: 'Rating must be between 1 and 5' });
-  if (!comment) errors.push({ field: 'comment', message: 'Comment is required' });
-
-  if (errors.length > 0) {
-    sendValidationError(res, errors, requestId);
-    return;
-  }
-
+  // Field validation is handled by the middleware (submitReviewSchema).
   const result = await submitReview({
     contractId,
     raterId: userId,
@@ -47,7 +38,7 @@ router.post('/', authMiddleware, requireVerifiedKyc, apiRateLimiter, async (req:
 
   if (!result.success) {
     const statusCode = result.error.code === 'NOT_FOUND' ? 404 : result.error.code === 'UNAUTHORIZED' ? 403 : result.error.code === 'DUPLICATE_RATING' ? 409 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -62,7 +53,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
 
   if (!result.success) {
     const statusCode = result.error.code === 'NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -76,7 +67,7 @@ router.get('/user/:userId', apiRateLimiter, validateUUID(['userId']), async (req
   const result = await getUserReviews(userId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -90,7 +81,7 @@ router.get('/project/:projectId', apiRateLimiter, validateUUID(['projectId']), a
   const result = await getProjectReviews(projectId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -104,19 +95,19 @@ router.get('/can-review/:contractId', authMiddleware, apiRateLimiter, validateUU
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   if (!rateeId) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'rateeId query parameter is required', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'rateeId query parameter is required', { requestId });
     return;
   }
 
   const result = await canUserReview(userId, rateeId, contractId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
