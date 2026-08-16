@@ -116,6 +116,7 @@ jobs:
       - name: Post deployment summary comment
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
           DEPLOY_SHA: ${{ github.sha }}
           VERSION: ${{ steps.bump.outputs.version }}
         run: |
