@@ -14,7 +14,7 @@ jobs:
   build-and-push:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       security-events: write
       actions: read
     environment:
@@ -112,6 +112,28 @@ jobs:
           git pull --rebase --quiet origin main
           git push --quiet origin main
           echo "Pushed version bump to main"
+
+      - name: Post deployment summary comment
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.sha }}
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          cat > /tmp/deploy-summary.md <<EOF
+          Deployment summary — **FreelanceXchain API** 🚀
+
+          | | |
+          | --- | --- |
+          | **Version** | \`${VERSION}\` |
+          | **Commit** | \`${DEPLOY_SHA}\` |
+          | **Image tags** | \`jericko134/freelancexchain-api:latest\` · \`jericko134/freelancexchain-api:${VERSION}\` · \`jericko134/freelancexchain-api:${DEPLOY_SHA}\` |
+          | **Docker Hub** | https://hub.docker.com/r/jericko134/freelancexchain-api |
+
+          Check the live version via \`GET /api/health\` (e.g. \`${VERSION}+build.${DEPLOY_SHA:0:7}\`).
+          EOF
+          gh api -X POST \
+            "repos/${GITHUB_REPOSITORY}/commits/${DEPLOY_SHA}/comments" \
+            -F "body=@/tmp/deploy-summary.md"
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master

@@ -37,6 +37,8 @@ workflow, which:
 
 3. **Pushes the version bump** to `main` only after the image was built and
    pushed, so a failed build never leaves an unreleased version bump behind
+4. **Posts a deployment summary comment** on the pushed commit with the
+   version, commit SHA, image tags, and a Docker Hub link
 
 Runs are serialized (`concurrency` group), so rapid pushes each bump and
 build cleanly.
