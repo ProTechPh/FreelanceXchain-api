@@ -33,7 +33,12 @@ jobs:
           echo "Expected live version suffix: +build.${expected}"
           for i in $(seq 1 30); do
             body="$(curl -fsS --max-time 10 "${DEPLOYED_URL%/}/api/health" 2>/dev/null || true)"
-            version="$(printf '%s' "${body}" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{console.log(JSON.parse(d).version||'')}catch{console.log('')}})" 2>/dev/null || true)"
+            version="$(printf '%s' "${body}" | node -e "
+              let d = '';
+              process.stdin.on('data', c => d += c).on('end', () => {
+                try { console.log(JSON.parse(d).version || '') } catch { console.log('') }
+              });
+            " 2>/dev/null || true)"
             if [[ "${version}" == *"+build.${expected}" ]]; then
               echo "OK: live version ${version} matches pushed commit ${expected}"
               exit 0
