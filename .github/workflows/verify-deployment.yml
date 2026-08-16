@@ -1,0 +1,45 @@
+name: Verify Deployed Version
+
+on:
+  workflow_run:
+    workflows: ["Build and Push to Docker Hub"]
+    types: [completed]
+    branches: [main]
+
+jobs:
+  verify-live-version:
+    name: Verify live version matches the pushed commit
+    runs-on: ubuntu-latest
+    # Only runs after a successful image build, and only when the
+    # DEPLOYED_URL repository variable is configured (Settings > Variables).
+    # Without it, the job is skipped, so CI never fails unconfigured.
+    if: ${{ github.event.workflow_run.conclusion == 'success' && vars.DEPLOYED_URL != '' }}
+    permissions:
+      contents: read
+    steps:
+      - name: Harden-Runner
+        uses: step-security/harden-runner@v2.20.1
+        with:
+          egress-policy: audit
+
+      - name: Wait for deployed version to match
+        shell: bash
+        env:
+          DEPLOYED_URL: ${{ vars.DEPLOYED_URL }}
+          EXPECTED_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          expected="${EXPECTED_SHA:0:7}"
+          echo "Expected live version suffix: +build.${expected}"
+          for i in $(seq 1 30); do
+            body="$(curl -fsS --max-time 10 "${DEPLOYED_URL%/}/api/health" 2>/dev/null || true)"
+            version="$(printf '%s' "${body}" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{console.log(JSON.parse(d).version||'')}catch{console.log('')}})" 2>/dev/null || true)"
+            if [[ "${version}" == *"+build.${expected}" ]]; then
+              echo "OK: live version ${version} matches pushed commit ${expected}"
+              exit 0
+            fi
+            echo "attempt ${i}/30: live version is '${version}', expected +build.${expected}; retrying in 10s..."
+            sleep 10
+          done
+          echo "ERROR: deployed version never matched +build.${expected}" >&2
+          exit 1

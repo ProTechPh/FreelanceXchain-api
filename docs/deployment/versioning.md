@@ -8,6 +8,7 @@ How the API reports its build version, how it changes on every push to
 - [How Versioning Works](#how-versioning-works)
 - [Where the Version Is Reported](#where-the-version-is-reported)
 - [Confirming a Deployment](#confirming-a-deployment)
+- [Verifying the Deployment in CI](#verifying-the-deployment-in-ci)
 - [Monitoring a Live Deployment](#monitoring-a-live-deployment)
 - [Dependency Monitoring](#dependency-monitoring)
 - [Rolling Back](#rolling-back)
@@ -113,6 +114,27 @@ After a push to `main`, verify the live deployment picked up the new build:
    ```
 
    The suffix after `+build.` should match the short SHA from step 1.
+
+## Verifying the Deployment in CI
+
+The repository ships a ready-to-use workflow,
+`.github/workflows/verify-deployment.yml`, that automatically verifies the
+live version after every Docker image build:
+
+- **Trigger:** runs whenever the *Build and Push to Docker Hub* workflow
+  finishes successfully on `main`
+- **Behavior:** polls `DEPLOYED_URL/api/health` every 10 seconds (up to 30
+  attempts) until the reported `version` ends with `+build.<sha7>` of the
+  pushed commit; it fails if the deployment never catches up
+- **Enabled by:** setting a repository **variable** named `DEPLOYED_URL`
+  (Settings → Secrets and variables → Actions → Variables) to the public
+  base URL of the API, e.g. `https://your-api-domain.com`
+- **Safety:** until `DEPLOYED_URL` is set, the job is skipped — the workflow
+  never fails CI while unconfigured
+
+This catches stale deployments automatically: if the version stays on an old
+SHA after a push (image build failed, or the deployment target did not pull
+the new `latest` image), the check fails and alerts the team.
 
 ## Monitoring a Live Deployment
 
