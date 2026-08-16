@@ -21,16 +21,26 @@ How the API reports its build version, how it changes on every push to
 
 Every push to `main` triggers the
 [Build and Push to Docker Hub](../../.github/workflows/docker-hub.yml)
-workflow, which builds a fresh image and tags it with both `latest` and the
-commit SHA. The workflow passes the commit SHA into the build as the
-`APP_BUILD_SHA` build argument:
+workflow, which:
 
-```yaml
-build-args: |
-  APP_BUILD_SHA=${{ github.sha }}
-```
+1. **Bumps the patch version** in `package.json` (and mirrors it into the
+   OpenAPI spec) via `scripts/bump-version.cjs` — `1.0.0` → `1.0.1` → `1.0.2`
+2. **Builds a fresh image** tagged `latest`, the commit SHA, and the bumped
+   version, passing the commit SHA as the `APP_BUILD_SHA` build argument:
 
-The `Dockerfile` bakes it into the image as an environment variable:
+   ```yaml
+   build-args: |
+     APP_BUILD_SHA=${{ github.sha }}
+   ```
+
+3. **Pushes the version bump** to `main` only after the image was built and
+   pushed, so a failed build never leaves an unreleased version bump behind
+
+Runs are serialized (`concurrency` group), so rapid pushes each bump and
+build cleanly.
+
+The `Dockerfile` bakes `APP_BUILD_SHA` into the image as an environment
+variable:
 
 ```dockerfile
 ARG APP_BUILD_SHA=dev
@@ -38,13 +48,13 @@ ENV APP_BUILD_SHA=$APP_BUILD_SHA
 ```
 
 At runtime, `getApiVersion()` in `src/utils/version.ts` combines the
-`package.json` version with the baked-in SHA (first 7 characters) using
-semver build metadata:
+`package.json` version (already bumped at build time) with the baked-in
+SHA (first 7 characters) using semver build metadata:
 
 | Environment | `APP_BUILD_SHA` | Reported version |
 | --- | --- | --- |
-| Local dev (`pnpm run dev`) | unset | `1.0.0` |
-| Docker image from push to `main` | `4671a01c...` | `1.0.0+build.4671a01` |
+| Local dev (`pnpm run dev`) | unset | current `package.json` version (e.g. `1.0.1`) |
+| Docker image from push to `main` | `4671a01c...` | `1.0.1+build.4671a01` |
 
 The fallback base version comes from `npm_package_version` (the version in
 `package.json`), or `1.0.0` if that is not set.
@@ -225,8 +235,9 @@ It reports open alerts with severity, package, and patched version. See
 
 ## Rolling Back
 
-Docker Hub keeps a tag per commit SHA
-(`jericko134/freelancexchain-api:<full-sha>`), so the previous build can
+Docker Hub keeps a tag per commit SHA and per version
+(`jericko134/freelancexchain-api:<full-sha>` and
+`jericko134/freelancexchain-api:<version>`), so the previous build can
 always be redeployed. The `version` field makes it easy to confirm the
 rollback took effect — the reported SHA should match the previous commit
 rather than the latest one.

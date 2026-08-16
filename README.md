@@ -126,7 +126,7 @@ docker build -t freelancexchain-api:latest .
 docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```
 
-> 🏷️ **Versioning:** every push to `main` rebuilds the Docker image with the commit SHA baked in, so `GET /` returns a fresh version like `1.0.0+build.4671a01`.
+> 🏷️ **Versioning:** every push to `main` bumps the patch version (1.0.0 → 1.0.1 → 1.0.2), rebuilds the Docker image, and bakes the commit SHA in — so `GET /` returns a fresh version like `1.0.1+build.4671a01`.
 >
 > 📖 Detailed setup: [Developer Setup Guide](docs/deployment/setup.md) · [Deployment Configuration](docs/deployment/configuration.md)
 
