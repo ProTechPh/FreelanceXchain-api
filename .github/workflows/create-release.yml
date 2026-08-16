@@ -1,0 +1,59 @@
+name: Create Release
+
+on:
+  workflow_run:
+    workflows: ["Update Changelog"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: Publish GitHub release notes
+    runs-on: ubuntu-latest
+    # Only when the deployment was actually recorded in CHANGELOG.md.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    steps:
+      - name: Harden-Runner
+        uses: step-security/harden-runner@v2.20.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Create release for the deployment
+        shell: bash
+        env:
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          sha7="${DEPLOY_SHA:0:7}"
+          version="$(node -p "require('./package.json').version")+build.${sha7}"
+          tag="${version}"
+          message="$(git log -1 --format=%s "${DEPLOY_SHA}")"
+
+          # Idempotent: never publish the same deployment twice.
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release ${tag} already exists; nothing to do"
+            exit 0
+          fi
+
+          # The tag intentionally has no "v" prefix, so it never triggers the
+          # tag-based release.yml workflow (which builds its own Docker image).
+          notes="## Deployment ${version}
+
+          Deployed commit \`${sha7}\`: ${message}
+
+          Recorded in [CHANGELOG.md](https://github.com/ProTechPh/FreelanceXchain-api/blob/main/CHANGELOG.md#deployments)."
+
+          gh release create "${tag}" \
+            --target "${DEPLOY_SHA}" \
+            --title "Deployment ${version}" \
+            --notes "${notes}"
+
+          echo "Created release ${tag}"

@@ -10,6 +10,7 @@ How the API reports its build version, how it changes on every push to
 - [Confirming a Deployment](#confirming-a-deployment)
 - [Verifying the Deployment in CI](#verifying-the-deployment-in-ci)
 - [Recording Deployments in CHANGELOG.md](#recording-deployments-in-changelogmd)
+- [Publishing GitHub Release Notes](#publishing-github-release-notes)
 - [Monitoring a Live Deployment](#monitoring-a-live-deployment)
 - [Dependency Monitoring](#dependency-monitoring)
 - [Rolling Back](#rolling-back)
@@ -161,6 +162,21 @@ successful deployment in `CHANGELOG.md`:
   made with `GITHUB_TOKEN` do not re-trigger the build workflows
 - **Resilient:** the push retries, so two deployments in a row both get
   recorded
+
+## Publishing GitHub Release Notes
+
+The `.github/workflows/create-release.yml` workflow publishes a GitHub
+Release for every deployment, right after it is recorded in `CHANGELOG.md`:
+
+- **Trigger:** runs after the *Update Changelog* workflow succeeds
+- **Tag:** `1.0.0+build.<sha7>` (no `v` prefix, so the tag-based
+  `release.yml` workflow is never triggered by it)
+- **Notes:** deployment version, deployed commit, commit message, and a
+  link to the `#deployments` section of `CHANGELOG.md`
+- **Idempotent:** a deployment that already has a release is skipped
+- **Manual releases unchanged:** pushing a `v*` tag still goes through
+  `release.yml`, which builds a versioned Docker image and publishes its
+  own release notes
 
 ## Monitoring a Live Deployment
 
