@@ -9,6 +9,7 @@ How the API reports its build version, how it changes on every push to
 - [Where the Version Is Reported](#where-the-version-is-reported)
 - [Confirming a Deployment](#confirming-a-deployment)
 - [Verifying the Deployment in CI](#verifying-the-deployment-in-ci)
+- [Recording Deployments in CHANGELOG.md](#recording-deployments-in-changelogmd)
 - [Monitoring a Live Deployment](#monitoring-a-live-deployment)
 - [Dependency Monitoring](#dependency-monitoring)
 - [Rolling Back](#rolling-back)
@@ -135,6 +136,31 @@ live version after every Docker image build:
 This catches stale deployments automatically: if the version stays on an old
 SHA after a push (image build failed, or the deployment target did not pull
 the new `latest` image), the check fails and alerts the team.
+
+## Recording Deployments in CHANGELOG.md
+
+The `.github/workflows/update-changelog.yml` workflow records every
+successful deployment in `CHANGELOG.md`:
+
+- **Trigger:** runs after the *Build and Push to Docker Hub* workflow
+  succeeds, so an entry is only added when a deployment version actually
+  exists
+- **Entry:** a `## Deployments` section is kept right before
+  `## [Unreleased]`, with one bullet per deployment, newest first:
+
+  ```text
+  ## Deployments
+
+  - **1.0.0+build.def4567** (2026-08-16) - commit `def4567`: fix: another thing
+  - **1.0.0+build.abc1234** (2026-08-16) - commit `abc1234`: feat: something
+  ```
+
+- **Idempotent:** a commit SHA already present in `CHANGELOG.md` is never
+  recorded twice
+- **No loop:** the update is committed with `github-actions[bot]`; commits
+  made with `GITHUB_TOKEN` do not re-trigger the build workflows
+- **Resilient:** the push retries, so two deployments in a row both get
+  recorded
 
 ## Monitoring a Live Deployment
 
