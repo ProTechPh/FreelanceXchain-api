@@ -9,9 +9,13 @@
 # (`gh auth login`).
 #
 # Exit codes:
-#   0 — no open alerts
-#   1 — open alerts were found (a summary is printed)
+#   0 — no open security alerts
+#   1 — open security alerts were found (a summary is printed)
 #   2 — could not determine the repo or the API call failed
+#
+# Only SECURITY alerts are counted and reported. Dependabot also returns
+# version-update alerts, which have no security_advisory/security_vulnerability
+# fields — those are filtered out so the jq never crashes on them.
 #
 # NOTE: reports up to 100 alerts (GitHub's per-page cap). If you ever have
 # more than that open, page through the API with `gh api --paginate`.
@@ -34,14 +38,14 @@ if ! gh api "${API}" >/dev/null 2>&1; then
   exit 2
 fi
 
-COUNT="$(gh api "${API}" --jq 'length')"
+COUNT="$(gh api "${API}" --jq '[.[] | select(.security_advisory != null)] | length')"
 
 if [[ "${COUNT}" -eq 0 ]]; then
-  echo "No open Dependabot alerts for ${REPO}."
+  echo "No open Dependabot security alerts for ${REPO}."
   exit 0
 fi
 
-echo "${COUNT} open Dependabot alert(s) for ${REPO}:"
-gh api "${API}" --jq '.[] | "  [#\(.number)] \(.security_advisory.severity | ascii_upcase) \(.dependency.package.name) (\(.dependency.relationship)) | fixed in \(.security_vulnerability.first_patched_version.identifier // "unpublished") | \(.html_url)"'
+echo "${COUNT} open Dependabot security alert(s) for ${REPO}:"
+gh api "${API}" --jq '.[] | select(.security_advisory != null) | "  [#\(.number)] \(.security_advisory.severity | ascii_upcase) \(.dependency.package.name) (\(.dependency.relationship)) | fixed in \(.security_vulnerability.first_patched_version.identifier // "unpublished") | \(.html_url)"'
 
 exit 1
