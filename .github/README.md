@@ -1,435 +1,253 @@
-# GitHub Workflows & CI/CD
+<!-- markdownlint-disable-next-line MD041 -->
+<div align="center">
 
-Automated workflows for continuous integration, deployment, and quality assurance.
+# 🔗 FreelanceXchain API
 
-## 📁 Workflow Files
+**Blockchain-Based Freelance Marketplace with AI Skill Matching**
 
-Located in `.github/workflows/`
+[![CodeRabbit Reviews](https://img.shields.io/coderabbit/prs/github/ProTechPh/FreelanceXchain-api?utm_source=oss&utm_medium=github&utm_campaign=ProTechPh%2FFreelanceXchain-api&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/Node.js-20+-green.svg)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.x-blue.svg)](https://www.typescriptlang.org)
 
-### 🔄 Continuous Integration
+A decentralized freelance marketplace API where employers post projects, freelancers get matched by AI and hired on-chain, and payments are held in smart-contract escrow and released milestone-by-milestone — no 20% platform fees, no fake reviews, no payment disputes that favor the house.
 
-#### ci.yml
-
-**Purpose:** Main CI pipeline for code quality and testing
-
-**Triggers:**
-
-- Push to `main` and `develop` branches
-- Pull requests to `main` and `develop`
-
-**Jobs:**
-
-- **Type Check** - TypeScript type checking with smart contract compilation
-- **Test** - Run unit tests with coverage reporting
-- **Build** - Build production artifacts
-
-**Environment:** Node.js 20.x with pnpm
+</div>
 
 ---
 
-#### pr-checks.yml
-
-**Purpose:** Additional checks for pull requests
-
-**Triggers:**
-
-- Pull request opened, synchronized, reopened, labeled, or unlabeled
-
-**Jobs:**
-
-- **Labeler** - Auto-label PRs based on changed files
-- **Size Check** - Warn on large PRs (>1000 lines)
-
----
-
-### 🔒 Security
-
-#### security.yml
-
-**Purpose:** Security scanning and vulnerability detection
-
-**Triggers:**
-
-- Push to `main`
-- Pull requests to `main`
-- Scheduled (weekly on Sunday)
-
-**Jobs:**
-
-- **Dependency Audit** - Run pnpm audit for vulnerable dependencies
-- **Secrets Scan** - TruffleHog OSS for exposed secrets
-
-**Tools:**
-
-- pnpm audit
-- TruffleHog
-
----
-
-#### megalinter.yml
-
-**Purpose:** Comprehensive code quality and security linting
-
-**Triggers:**
-
-- Push to `main` and `develop` branches
-- Pull requests to `main` and `develop`
-
-**Jobs:**
-
-- Run MegaLinter with enabled linters
-- Upload MegaLinter reports as artifacts
-
-**Linters Enabled:**
-
-- TypeScript ESLint
-- JSON Lint
-- YAML Lint
-- Markdown Lint
-- Dockerfile Hadolint
-- Solidity Solhint
-
----
-
-### ⛓️ Blockchain
-
-#### smart-contracts.yml
-
-**Purpose:** Smart contract compilation, testing, and security analysis
-
-**Triggers:**
-
-- Push to `main` and `develop` affecting `contracts/` or `hardhat.config.cjs`
-- Pull requests to `main` affecting `contracts/` or `hardhat.config.cjs`
-
-**Jobs:**
-
-- **Compile and Test** - Compile contracts and run Hardhat tests
-- **Slither** - Static analysis for security vulnerabilities
-
-**Environment:**
-
-- Node.js 20.x with pnpm
-- Hardhat
-- Slither
-
----
-
-### 🚀 Deployment
-
-#### docker-hub.yml
-
-**Purpose:** Build and push Docker images to Docker Hub
-
-**Triggers:**
-
-- Push to `main` branch
-
-**Jobs:**
-
-- Build Docker image with Buildx
-- Tag images (latest and commit SHA)
-- Push to Docker Hub
-- Run Trivy vulnerability scanner
-
-**Tags:**
-
-- `latest` - Latest main branch
-- `<commit-sha>` - Specific commit
-
----
-
-#### sync-huggingface.yml
-
-**Purpose:** Deploy to Hugging Face Spaces
-
-**Triggers:**
-
-- Push to `main` branch
-
-**Jobs:**
-
-- Checkout repository with LFS
-- Push to Hugging Face Space repository
-
-**Environment:** production (<https://protechph-freelancexchain.hf.space>)
-
----
-
-#### release.yml
-
-**Purpose:** Automated release creation and Docker image publishing
-
-**Triggers:**
-
-- Push tags matching `v*`
-
-**Jobs:**
-
-- Build production artifacts
-- Generate changelog
-- Create GitHub release with release notes
-- Build and push versioned Docker image
-- Run Trivy vulnerability scanner on image
-
-**Artifacts:**
-
-- GitHub release with changelog
-- Docker image tagged with version
-
----
-
-## 🔧 Workflow Configuration
-
-### Secrets Required
-
-Configure these in GitHub Settings → Secrets:
-
-| Secret | Description | Used In |
-| -------- | ------------- | ------ |
-| `DOCKERHUB_USERNAME` | Docker Hub username | docker-hub.yml, release.yml |
-| `DOCKERHUB_TOKEN` | Docker Hub access token | docker-hub.yml, release.yml |
-| `HF_TOKEN` | Hugging Face access token | sync-huggingface.yml |
-| `GITHUB_TOKEN` | GitHub token (auto-provided) | All workflows |
-| `HF_TOKEN` | Hugging Face token | sync-huggingface.yml |
-
-### Environment Variables
-
-Set in workflow files or GitHub Environments:
-
-```yaml
-env:
-  NODE_VERSION: '20.x'
-  BLOCKCHAIN_RPC_URL: 'https://sepolia.infura.io/v3/...'
-  DOCKER_IMAGE: 'freelancexchain/api'
+## 📖 What is this?
+
+FreelanceXchain is a **backend API** (Node.js + Express + TypeScript) for a freelance marketplace built on three pillars:
+
+1. **Appwrite** — users, profiles, projects, and data persistence
+2. **Ethereum smart contracts** (Solidity/Hardhat) — escrow, agreements, disputes, and reputation, deployed on **Polygon Amoy** in production
+3. **LLM-powered AI matching** — skill extraction and project↔freelancer recommendations (OpenAI-compatible, Claude by default)
+
+**Who it's for:** freelancers who want guaranteed, on-time payment; employers who want vetted, well-matched talent; and anyone tired of platforms that take a cut of every payment.
+
+## 🔄 How it works
+
+```
+Employer posts a project  →  AI matches freelancers  →  Freelancer submits a proposal
+        ↓
+Contract is created & employer funds the escrow (ETH)
+        ↓
+Work is split into milestones → freelancer submits → employer approves
+        ↓
+Payment is released from escrow on each approval
+        ↓
+Contract completes → both parties rate each other (on-chain reputation)
+        ↓
+Disputes (if any) are resolved by an arbiter, or partially refunded
 ```
 
----
+- **Escrow** — funds are locked in the `FreelanceEscrow` contract until work is approved; nobody can run away with the money.
+- **Reputation** — ratings live on-chain in `FreelanceReputation`, so history is portable and can't be scrubbed.
+- **Disputes** — milestone-level disputes with evidence, arbiter resolution, and milestone-granular partial refunds.
 
-## 📊 Status Badges
+## ✨ Key features
 
-Add to README.md:
+| Problem | Solution |
+| --- | --- |
+| High platform fees (up to 20%) | Decentralized escrow with minimal fees |
+| Delayed & unfair payments | Smart-contract escrow, milestone-based release |
+| Fake reviews & opaque ratings | Immutable on-chain reputation |
+| Mismatched hires | AI skill extraction & project matching |
+| Unvetted users | KYC via Didit (220+ countries) |
+| Deadlocked payments | Arbiter disputes + milestone-granular partial refunds |
 
-```markdown
-![CI](https://github.com/username/repo/workflows/CI/badge.svg)
-![Security](https://github.com/username/repo/workflows/Security/badge.svg)
-![Docker](https://github.com/username/repo/workflows/Docker%20Hub/badge.svg)
-[![codecov](https://codecov.io/gh/username/repo/branch/main/graph/badge.svg)](https://codecov.io/gh/username/repo)
+## 🏗️ Architecture
+
+```
+Routes → Services → Repositories → Appwrite (database, auth, storage)
+            ↓
+      Blockchain adapter (real EVM ↔ simulated ledger)
+            ↓
+      AI services (OpenAI-compatible LLM API)
 ```
 
----
+The blockchain layer uses an adapter pattern: set `BLOCKCHAIN_MODE=simulated` (the default) to emulate escrow in Appwrite with zero setup — great for local dev and the test suite — or `real` to talk to actual contracts on Ganache / Polygon Amoy.
 
-## 🛠️ Local Testing
+## 🚀 Tech Stack
 
-### Test Workflows Locally
+| Layer | Technology |
+| --- | --- |
+| **Backend** | Node.js 20+, Express, TypeScript (ESM) |
+| **Database / Auth** | Appwrite (schema versioned in `scripts/setup-appwrite-db.ts`) |
+| **Blockchain** | Solidity 0.8.26, Hardhat, Ethers.js — Polygon Amoy (prod), Ganache (dev) |
+| **AI/ML** | OpenAI-compatible LLM API (default: Anthropic Claude) |
+| **Auth** | JWT (access + refresh), MFA, CSRF, role-based access, Didit KYC |
+| **Infra** | Redis (rate limiting), Docker (multi-stage), Swagger/OpenAPI |
 
-Use [act](https://github.com/nektos/act) to run workflows locally:
+## 📦 Getting Started
+
+### Prerequisites
+
+- **Node.js** 20+ and **pnpm** 8+
+- An **Appwrite** project ([appwrite.io](https://appwrite.io)) — the only hard requirement
+- A wallet / Ganache node — only if you want **real** blockchain mode
+- An **LLM API key** — only for AI matching features (skill matching falls back to keyword matching without it)
+
+### Quick Setup
 
 ```bash
-# Install act
-brew install act  # macOS
-# or
-choco install act  # Windows
+# 1. Clone & install
+git clone https://github.com/ProTechPh/FreelanceXchain-api.git
+cd FreelanceXchain-api
+pnpm install --frozen-lockfile
 
-# Run CI workflow
-act -j ci
+# 2. Configure environment (see .env.example for the full list)
+cp .env.example .env
+# At minimum: APPWRITE_ENDPOINT, APPWRITE_PROJECT_ID, APPWRITE_API_KEY, JWT_SECRET
 
-# Run specific job
-act -j test
+# 3. Compile smart contracts (required — the runtime loads ABIs from artifacts/)
+pnpm run compile
 
-# List available workflows
-act -l
+# 4. Apply the Appwrite schema (idempotent, safe to re-run)
+pnpm run setup:appwrite-db
+
+# 5. Run the dev server
+pnpm run dev
 ```
 
-### Validate Workflow Syntax
+The API listens on **`http://localhost:3000`** by default (set `PORT` to change it). Enable the interactive docs with `ENABLE_API_DOCS=true`, then open **`http://localhost:3000/api-docs`**.
+
+> ⚠️ **Blockchain mode gotcha:** `pnpm run dev` forces `BLOCKCHAIN_MODE=real` and expects a **Ganache node at `http://127.0.0.1:7545`** (start it with `pnpm run deploy:local`, or run your own). Without a node, either start Ganache or run in simulated mode instead:
+>
+> ```bash
+> BLOCKCHAIN_MODE=simulated pnpm exec tsx src/index.ts
+> ```
+
+### Docker
 
 ```bash
-# Install actionlint
-brew install actionlint
-
-# Validate all workflows
-actionlint .github/workflows/*.yml
+docker build -t freelancexchain-api:latest .
+docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```
 
----
+> 📖 Detailed setup: [Developer Setup Guide](docs/deployment/setup.md) · [Deployment Configuration](docs/deployment/configuration.md)
 
-## 🔄 Workflow Best Practices
+## 🔑 Environment Variables
 
-### 1. Fast Feedback
+Curated list — the **authoritative, complete list is `.env.example`**. Required variables crash the server at startup if missing.
 
-- Run quick checks first (linting, type checking)
-- Parallel jobs when possible
-- Cache dependencies
+| Variable | Description |
+| --- | --- |
+| `APPWRITE_ENDPOINT` · `APPWRITE_PROJECT_ID` · `APPWRITE_API_KEY` | Appwrite connection (**required**) |
+| `JWT_SECRET` | JWT signing secret, min 32 chars (**required**) |
+| `JWT_REFRESH_SECRET` | Refresh-token secret (**required in production**) |
+| `CSRF_SECRET` · `MFA_ENCRYPTION_KEY` | CSRF signing & MFA encryption (**required in production**) |
+| `LLM_API_URL` · `LLM_MODEL` · `LLM_API_KEY` | AI matching (default: `https://api.anthropic.com`, `claude-haiku-4.5`) |
+| `BLOCKCHAIN_MODE` | `simulated` (default) or `real` |
+| `BLOCKCHAIN_RPC_URL` · `BLOCKCHAIN_PRIVATE_KEY` | RPC endpoint & wallet key for real mode |
+| `PLATFORM_ARBITER_ADDRESS` · `PLATFORM_ARBITER_PRIVATE_KEY` | On-chain dispute arbiter (real mode) |
+| `DIDIT_API_KEY` · `DIDIT_API_URL` · `DIDIT_WEBHOOK_SECRET` · `DIDIT_WORKFLOW_ID` | Didit KYC |
+| `REDIS_HOST` · `REDIS_PORT` · `REDIS_PASSWORD` · `REDIS_TLS` | Rate limiting / cache |
+| `PORT` · `NODE_ENV` · `BASE_URL` · `ENABLE_API_DOCS` · `LOG_LEVEL` | Server behavior |
+| `APPWRITE_*_BUCKET` | Storage bucket names (proposals, project attachments, dispute evidence, portfolio, deliverables) |
 
-### 2. Security
+## 📡 API Modules
 
-- Never commit secrets
-- Use GitHub Secrets
-- Scan for vulnerabilities
-- Verify dependencies
+All routes are prefixed with `/api`. Full interactive docs at `/api-docs` (set `ENABLE_API_DOCS=true`).
 
-### 3. Reliability
+| Module | Path | Description |
+| --- | --- | --- |
+| Health | `/api/health` | Liveness & readiness probes |
+| Auth | `/api/auth` | Register, login, OAuth, MFA, tokens, password recovery |
+| Skills | `/api/skills` | Skill taxonomy + custom skills + suggestions |
+| Freelancers / Employers | `/api/freelancers` · `/api/employers` | Profiles, experience, skills |
+| Projects | `/api/projects` | CRUD, milestones, attachments, listing |
+| Search / Matching | `/api/search` · `/api/matching` | Filtered search + AI recommendations |
+| Proposals | `/api/proposals` | Submit, accept, reject, withdraw (JSON or multipart) |
+| Contracts | `/api/contracts` | Lifecycle, funding, escrow, cancellation |
+| Payments / Milestones | `/api/payments` · `/api/milestones` | Milestone submission, approval, deliverables |
+| Escrow Refunds | `/api/escrow` | Partial-refund requests & approvals |
+| Disputes | `/api/disputes` | Create, evidence, resolve |
+| KYC | `/api/kyc` | Didit verification + admin review + webhook |
+| Reputation / Reviews | `/api/reputation` · `/api/reviews` | Ratings, scores, leaderboard |
+| Notifications / Messages | `/api/notifications` · `/api/messages` | In-app + email + SSE stream |
+| Email | `/api/inbox` · `/api/email-preferences` | Email delivery, inbound webhook, preferences |
+| Saved searches / Favorites / Portfolio | `/api/saved-searches` · `/api/favorites` · `/api/portfolio` | Discovery & profile extras |
+| Admin / Audit / Files | `/api/admin` · `/api/audit-logs` · `/api/files` | Administration, audit trail, uploads |
+| Webhooks | `/api/webhooks` · `/api/inbox/webhook` · `/api/kyc/webhook` | Blockchain / email / Didit events |
+| Dashboard / Metrics | `/api/dashboard` · `/api/metrics` | Summary + SLI metrics |
 
-- Use specific action versions (not @latest)
-- Add timeout limits
-- Handle failures gracefully
-- Retry flaky tests
+## ⛓️ Smart Contracts
 
-### 4. Efficiency
+Five non-upgradeable Solidity contracts in [`contracts/`](contracts/README.md):
 
-- Cache node_modules
-- Cache Docker layers
-- Skip unnecessary jobs
-- Use matrix builds
+| Contract | Purpose |
+| --- | --- |
+| **FreelanceEscrow** | Milestone escrow: deposit, submit, approve, dispute, refund, withdraw |
+| **ContractAgreement** | On-chain agreement terms, multi-party signing, lifecycle |
+| **MilestoneRegistry** | Verifiable milestone history and stats |
+| **DisputeResolution** | Evidence submission and arbiter resolution |
+| **FreelanceReputation** | On-chain 1–5 star ratings with anti-duplication |
 
----
-
-## 📝 Adding New Workflows
-
-1. **Create workflow file**
-
-   ```bash
-   touch .github/workflows/new-workflow.yml
-   ```
-
-2. **Define workflow**
-
-   ```yaml
-   name: New Workflow
-   
-   on:
-     push:
-       branches: [main]
-   
-   jobs:
-     build:
-       runs-on: ubuntu-latest
-       steps:
-         - uses: actions/checkout@v3
-         - name: Run task
-           run: echo "Hello"
-   ```
-
-3. **Test locally**
-
-   ```bash
-   act -j build
-   ```
-
-4. **Commit and push**
-
-   ```bash
-   git add .github/workflows/new-workflow.yml
-   git commit -m "Add new workflow"
-   git push
-   ```
-
----
-
-## 🐛 Troubleshooting
-
-### Workflow Fails
-
-1. **Check logs** - View detailed logs in GitHub Actions tab
-2. **Run locally** - Use `act` to reproduce
-3. **Check secrets** - Verify all required secrets are set
-4. **Review changes** - Check recent commits for breaking changes
-
-### Common Issues
-
-**"Secret not found"**
-
-- Add secret in GitHub Settings → Secrets
-
-**"Permission denied"**
-
-- Check repository permissions
-- Verify token scopes
-
-**"Timeout"**
-
-- Increase timeout in workflow
-- Optimize slow steps
-
-**"Cache miss"**
-
-- Check cache key
-- Verify cache paths
-
----
-
-## 📚 Related Documentation
-
-- [GitHub Actions Documentation](https://docs.github.com/en/actions)
-- [CI/CD Pipeline](./workflows/ci.yml)
-- [Security Implementation](../docs/database/security.md)
-- [Testing Strategy](../docs/deployment/testing.md)
-
----
-
-## 🔗 Additional Files
-
-### CODEOWNERS
-
-Defines code ownership for automatic PR reviewer assignment.
-
-```
-# Backend
-/src/**/*.ts @backend-team
-
-# Smart Contracts
-/contracts/**/*.sol @blockchain-team
-
-# Documentation
-/docs/** @docs-team
+```bash
+pnpm run deploy:local            # Local Hardhat node
+pnpm run deploy:contracts:dev    # Ganache
+pnpm run deploy:contracts:prod   # Polygon Amoy testnet
 ```
 
-### dependabot.yml
+## 🧪 Testing & Quality
 
-Automated dependency updates.
-
-```yaml
-version: 2
-updates:
-  - package-ecosystem: "npm"
-    directory: "/"
-    schedule:
-      interval: "weekly"
+```bash
+pnpm test              # Full test suite (Jest, 5,400+ tests)
+pnpm run test:coverage # With coverage thresholds
+pnpm exec tsc --noEmit # Type check
+pnpm run lint          # ESLint
+pnpm run openapi:check # Verify the OpenAPI spec hasn't drifted from the code
+pnpm run build         # Production build
 ```
 
-### labeler.yml
+## 🗂️ Project Structure
 
-Automatic PR labeling based on changed files.
-
-```yaml
-backend:
-  - src/**/*
-
-blockchain:
-  - contracts/**/*
-
-documentation:
-  - docs/**/*
+```
+├── contracts/                 # Solidity smart contracts (5 contracts)
+├── scripts/                   # Deploy, setup-appwrite-db, OpenAPI generation
+├── src/
+│   ├── config/                # Env, Appwrite, Redis, contracts, Swagger
+│   ├── middleware/            # Auth, validation, rate limiting, CSRF, uploads
+│   ├── models/ · types/ · validators/
+│   ├── repositories/          # Data access layer (Appwrite)
+│   ├── routes/                # Express route handlers (30+ modules)
+│   ├── services/              # Business logic (incl. blockchain adapter)
+│   └── utils/                 # Shared helpers (responses, schemas, storage)
+├── docs/                      # Full documentation suite
+├── artifacts/                 # Compiled contract artifacts (gitignored, via `pnpm run compile`)
+└── dist/                      # Compiled TypeScript (gitignored)
 ```
 
----
+## 📚 Documentation
 
-## 📊 Monitoring
+| Topic | Link |
+| --- | --- |
+| Full Documentation Index | [docs/README.md](docs/README.md) |
+| API Reference | [docs/api/](docs/api/) |
+| Architecture | [docs/architecture/](docs/architecture/) |
+| Blockchain Integration | [docs/blockchain/](docs/blockchain/) |
+| Database & Security | [docs/database/](docs/database/) |
+| Deployment & Setup | [docs/deployment/](docs/deployment/) |
+| Smart Contracts | [contracts/README.md](contracts/README.md) |
 
-### Workflow Metrics
+## 🤝 Contributing
 
-- Success rate
-- Average duration
-- Failure patterns
-- Resource usage
+We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a PR.
 
-### Alerts
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-- Failed deployments
-- Security vulnerabilities
-- Test failures
-- Performance degradation
+## 📜 License
 
----
+This project is licensed under the [ISC License](LICENSE).
 
-For questions or issues with workflows, contact the DevOps team or open an issue.
+## 🆘 Support
+
+- **Bug Reports & Feature Requests:** [GitHub Issues](https://github.com/ProTechPh/FreelanceXchain-api/issues)
+- **Documentation:** [docs/](docs/)
+- **Troubleshooting:** [docs/deployment/troubleshooting.md](docs/deployment/troubleshooting.md)
