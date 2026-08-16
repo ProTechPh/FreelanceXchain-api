@@ -25,25 +25,6 @@ node scripts/deployment/deploy-all.cjs
 node scripts/deployment/deploy-escrow.cjs
 ```
 
-### 👥 Admin Scripts
-
-Administrative tools for user management and system administration.
-
-**Location:** `admin/`
-
-- **[list-admin-users.js](admin/list-admin-users.js)** - List all admin users in the system
-- **[reset-admin-password.js](admin/reset-admin-password.js)** - Reset admin user password
-
-**Usage:**
-
-```bash
-# List admin users
-node scripts/admin/list-admin-users.js
-
-# Reset admin password
-node scripts/admin/reset-admin-password.js
-```
-
 ### 🛠️ Development Scripts
 
 Development tools and utilities.
@@ -85,8 +66,9 @@ node scripts/testing/test-workflow.cjs
 Before running scripts, ensure you have:
 
 1. **Environment Variables** - Copy `.env.example` to `.env` and configure:
-   - `APPWRITE_URL` - Appwrite project URL
-   - `APPWRITE_SERVICE_ROLE_KEY` - Service role key for admin operations
+   - `APPWRITE_ENDPOINT` - Appwrite API endpoint
+   - `APPWRITE_PROJECT_ID` - Appwrite project ID
+   - `APPWRITE_API_KEY` - Appwrite API key
    - `BLOCKCHAIN_RPC_URL` - Blockchain RPC endpoint (default: <http://127.0.0.1:7545>)
    - `BLOCKCHAIN_PRIVATE_KEY` - Private key for contract deployment
 
@@ -116,12 +98,6 @@ Before running scripts, ensure you have:
 - Always test on local blockchain (Ganache) before deploying to testnet/mainnet
 - Keep private keys secure and never commit them to version control
 - Verify contract addresses after deployment
-
-### Admin Scripts
-
-- Admin scripts require `APPWRITE_SERVICE_ROLE_KEY` for elevated permissions
-- Use with caution in production environments
-- Always backup data before running admin operations
 
 ### Development Scripts
 
@@ -156,11 +132,6 @@ When adding new scripts:
 
 - Ensure your wallet has enough ETH/tokens for gas fees
 - Check blockchain connection and RPC URL
-
-**Admin script fails with "permission denied"**
-
-- Verify `APPWRITE_SERVICE_ROLE_KEY` is set correctly
-- Check user permissions in Appwrite dashboard
 
 **TypeScript script won't run**
 

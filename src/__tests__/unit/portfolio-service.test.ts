@@ -184,6 +184,7 @@ describe('Portfolio Service', () => {
       const { updatePortfolioItem } = await importModule();
 
       mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSkillRepository.getAllSkills.mockResolvedValueOnce([{ name: 'Node.js' }]);
       const updated = { id: 'pi-1', title: 'New', description: 'Desc', project_url: 'https://new.com', images: '["new.jpg"]', skills: '["Node.js"]', completed_at: '2025-06-01', created_at: '2025-01-01', updated_at: '2025-06-01' };
       mockPortfolioRepository.update.mockResolvedValueOnce(updated);
 
@@ -197,6 +198,42 @@ describe('Portfolio Service', () => {
       });
 
       expect(result.success).toBe(true);
+    });
+
+    it('should reject invalid skills on update (same validation as create)', async () => {
+      const { updatePortfolioItem } = await importModule();
+
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSkillRepository.getAllSkills.mockResolvedValueOnce([{ name: 'React' }]);
+
+      const result = await updatePortfolioItem('pi-1', 'user-1', {
+        skills: ['React', 'InvalidSkill'],
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+      expect(result.error.message).toContain('InvalidSkill');
+      expect(mockPortfolioRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('should canonicalize and dedupe skill variants on update', async () => {
+      const { updatePortfolioItem } = await importModule();
+
+      mockPortfolioRepository.findOwnerById.mockResolvedValueOnce('user-1');
+      mockSkillRepository.getAllSkills.mockResolvedValueOnce([{ name: 'React' }]);
+      mockPortfolioRepository.update.mockResolvedValueOnce({
+        id: 'pi-1', created_at: '2025-01-01', updated_at: '2025-01-02',
+      });
+
+      const result = await updatePortfolioItem('pi-1', 'user-1', {
+        skills: ['react', 'React', ' REACT '],
+      });
+
+      expect(result.success).toBe(true);
+      expect(mockPortfolioRepository.update).toHaveBeenCalledWith(
+        'pi-1',
+        expect.objectContaining({ skills: '["React"]' })
+      );
     });
 
     it('should handle database errors', async () => {
@@ -538,6 +575,24 @@ describe('Portfolio Service - Direct Branch Coverage', () => {
       title: 'T', description: 'D', images: ['img.jpg'], skills: ['React'],
     });
     expect(result.success).toBe(true);
+  });
+
+  it('should canonicalize and dedupe case/padding variants on create', async () => {
+    const { createPortfolioItem } = await importModule();
+    mockSkillRepository.getAllSkills.mockResolvedValueOnce([{ name: 'React' }]);
+    mockPortfolioRepository.create.mockResolvedValueOnce({
+      id: 'pi-1', freelancer_id: 'user-1', title: 'T', description: 'D',
+      images: '["img.jpg"]', skills: '["React"]', completed_at: null,
+      created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    const result = await createPortfolioItem('user-1', {
+      title: 'T', description: 'D', images: ['img.jpg'], skills: ['React', 'react', '  REACT '],
+    });
+    expect(result.success).toBe(true);
+    expect(mockPortfolioRepository.create).toHaveBeenCalledWith(
+      expect.objectContaining({ skills: '["React"]' })
+    );
   });
 
   it('should handle updatePortfolioItem when not found', async () => {

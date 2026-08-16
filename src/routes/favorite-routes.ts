@@ -10,6 +10,7 @@ import {
   getUserFavorites,
   isFavorited,
 } from '../services/favorite-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -22,7 +23,7 @@ const router = Router();
  *     security:
  *       - bearerAuth: []
  */
-router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { targetType, targetId } = req.body;
   const requestId = getRequestId(req);
@@ -45,7 +46,7 @@ router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respo
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 
 /**
@@ -57,7 +58,7 @@ router.post('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respo
  *     security:
  *       - bearerAuth: []
  */
-router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const targetType = req.query['targetType'] as 'project' | 'freelancer' | undefined;
   const requestId = getRequestId(req);
@@ -75,7 +76,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -86,7 +87,7 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
  *     security:
  *       - bearerAuth: []
  */
-router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validateUUID(['targetId']), async (req: Request, res: Response) => {
+router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validateUUID(['targetId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { targetType, targetId } = req.params;
   const requestId = getRequestId(req);
@@ -104,7 +105,7 @@ router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validate
   }
 
   sendSuccessResponse(res, 200, { message: 'Favorite removed' }, requestId);
-});
+}));
 
 /**
  * @swagger
@@ -115,7 +116,7 @@ router.delete('/:targetType/:targetId', authMiddleware, apiRateLimiter, validate
  *     security:
  *       - bearerAuth: []
  */
-router.get('/check/:targetType/:targetId', authMiddleware, apiRateLimiter, validateUUID(['targetId']), async (req: Request, res: Response) => {
+router.get('/check/:targetType/:targetId', authMiddleware, apiRateLimiter, validateUUID(['targetId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { targetType, targetId } = req.params;
   const requestId = getRequestId(req);
@@ -133,6 +134,6 @@ router.get('/check/:targetType/:targetId', authMiddleware, apiRateLimiter, valid
   }
 
   res.status(200).json({ isFavorited: result.data });
-});
+}));
 
 export default router;

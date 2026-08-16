@@ -102,10 +102,13 @@ export const apiRateLimiter = rateLimiter('api', {
   message: 'Too many requests, please slow down',
 });
 
+// Fail closed: sensitive operations (manual KYC approval, admin overrides) must
+// not lose their brute-force/abuse protection during a Redis outage.
 export const sensitiveRateLimiter = rateLimiter('sensitive', {
   windowMs: 60 * 60 * 1000,
   maxRequests: 5,
   message: 'Too many attempts for this sensitive operation',
+  failOpen: false,
 });
 
 export const fileUploadRateLimiter = rateLimiter('file-upload', {
@@ -114,10 +117,26 @@ export const fileUploadRateLimiter = rateLimiter('file-upload', {
   message: 'Too many file uploads, please try again later',
 });
 
+// Dedicated per-IP limiter for unauthenticated webhook endpoints (email inbox,
+// Didit KYC, blockchain). Kept separate from the general API limiter so spikes
+// from webhook providers can't exhaust the shared per-user budget, and so the
+// webhook endpoints aren't stuck behind a single shared counter. Fail-open on
+// Redis errors (matching apiRateLimiter): signature verification is the real
+// authz boundary, and blocking providers during a Redis outage would drop
+// KYC/email events that the senders retry only slowly.
+export const webhookRateLimiter = rateLimiter('webhook', {
+  windowMs: 60 * 1000,
+  maxRequests: 60,
+  message: 'Too many webhook requests, please try again later',
+});
+
+// Fail closed: money-movement endpoints (proposal withdrawal, refund flows) must
+// block during a Redis outage rather than allow unlimited attempts.
 export const withdrawalRateLimiter = rateLimiter('withdrawal', {
   windowMs: 60 * 60 * 1000,
   maxRequests: 10,
   message: 'Too many withdrawal attempts, please try again later',
+  failOpen: false,
 });
 
 export const mfaVerifyRateLimiter = rateLimiter('mfa-verify', {

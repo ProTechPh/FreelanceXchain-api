@@ -19,11 +19,17 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: mockLogger,
 }));
 
-// Config/Env (for file-service)
+// Config/Env (for async-lock's redis import)
 const mockConfig = {
   appwrite: {
     endpoint: 'https://mock.appwrite.io/v1',
     projectId: 'mock-project',
+  },
+  redis: {
+    host: 'localhost',
+    port: 6379,
+    password: undefined,
+    tls: false,
   },
 };
 jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
@@ -64,15 +70,11 @@ jest.unstable_mockModule(resolveModule('src/services/notification-delivery-servi
   notificationEmitter: { emitToUser: jest.fn() },
 }));
 
-// Milestone repository
-const mockMilestoneRepo = {
-  getById: jest.fn(),
-  update: jest.fn(),
-  findByContract: jest.fn(),
-  create: jest.fn(),
-};
-jest.unstable_mockModule(resolveModule('src/repositories/milestone-repository.ts'), () => ({
-  milestoneRepository: mockMilestoneRepo,
+// milestone-service imports requestMilestoneCompletion from payment-service;
+// the real payment-service pulls in blockchain/web3 deps that this suite does
+// not mock, so isolate it here.
+jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
+  requestMilestoneCompletion: jest.fn(async () => ({ success: true, data: {} })),
 }));
 
 // Contract repository
@@ -83,6 +85,7 @@ const mockContractRepo = {
   findAllByFreelancers: jest.fn(),
   countCompletedByFreelancer: jest.fn(),
   findActiveContracts: jest.fn(),
+  getUserContracts: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
   contractRepository: mockContractRepo,
@@ -181,6 +184,8 @@ const mockSkillRepo = {
   getActiveSkillsByCategory: jest.fn(),
   searchSkillsByKeyword: jest.fn(),
   getSkillByNameInCategory: jest.fn(),
+  getSkillByNameNormalized: jest.fn(),
+  findSkillsByIds: jest.fn(),
 };
 jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
   skillRepository: mockSkillRepo,
@@ -246,7 +251,7 @@ const mockUserCustomSkillRepo = {
 };
 const mockSkillSuggestionRepo = {
   getSkillSuggestionByName: jest.fn(),
-  incrementSkillSuggestionCount: jest.fn(),
+  recordSuggestionRequest: jest.fn(),
   createSkillSuggestion: jest.fn(),
   getPendingSkillSuggestions: jest.fn(),
   updateSkillSuggestionStatus: jest.fn(),
@@ -266,10 +271,21 @@ jest.unstable_mockModule('node-cron', () => ({
   },
 }));
 
-// Email delivery service (for scheduler-service)
+// Email delivery service (for scheduler-service + BLF-13 transactional wiring)
 const mockSendWeeklyDigestEmail = jest.fn();
+const mockSendGatedEmail = jest.fn();
 jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
   sendWeeklyDigestEmail: mockSendWeeklyDigestEmail,
+  sendGatedEmail: mockSendGatedEmail,
+  sendMessageReceivedEmail: jest.fn(),
+  sendProposalAcceptedEmail: jest.fn(),
+  sendContractCreatedEmail: jest.fn(),
+  sendMilestoneApprovedEmail: jest.fn(),
+  sendPaymentReleasedEmail: jest.fn(),
+  sendDisputeCreatedEmail: jest.fn(),
+  sendReviewReceivedEmail: jest.fn(),
+  sendKycApprovedEmail: jest.fn(),
+  sendKycRejectedEmail: jest.fn(),
 }));
 
 // ═══════════════════════════════════════════════════════════════
@@ -306,7 +322,7 @@ function resetAllMocks() {
   }));
   mockNotificationRepo.deleteReadBefore.mockReset().mockResolvedValue(0);
   mockUserRepo.getUserById.mockReset().mockResolvedValue(null);
-  mockUserRepo.getUsersByIds.mockReset().mockResolvedValue(new Map());
+  mockUserRepo.getUsersByIds.mockReset().mockResolvedValue([]);
   mockProjectRepo.listOpenProjects.mockReset().mockResolvedValue([]);
   mockProjectRepo.listAllProjects.mockReset().mockResolvedValue([]);
   mockProjectRepo.listRecentOpenProjects.mockReset().mockResolvedValue([]);
@@ -371,9 +387,9 @@ describe('scheduler-service: per-user error in sendWeeklyDigests (line 158)', ()
       .mockResolvedValue({ documents: [], total: 0 });
 
     // Batch user lookup returns the recipient
-    mockUserRepo.getUsersByIds.mockResolvedValueOnce(
-      new Map([['user-1', { id: 'user-1', email: 'user@test.com', full_name: 'Test User' }]])
-    );
+    mockUserRepo.getUsersByIds.mockResolvedValueOnce([
+      { id: 'user-1', email: 'user@test.com', full_name: 'Test User' },
+    ]);
 
     // sendWeeklyDigestEmail throws
     mockSendWeeklyDigestEmail.mockRejectedValueOnce(new Error('Email service down'));
@@ -598,26 +614,12 @@ describe('skill-service: updateSkill field mapping (lines 173-174)', () => {
 // TESTS: milestone-service
 // ═══════════════════════════════════════════════════════════════
 
-describe('milestone-service: unauthorized user in getMilestoneById (lines 32-34)', () => {
+describe('milestone-service: missing userId in getMilestoneById', () => {
   beforeEach(() => resetAllMocks());
 
-  it('should return UNAUTHORIZED when userId is not a party to the contract', async () => {
-    mockMilestoneRepo.getById.mockResolvedValueOnce({
-      id: 'ms-1',
-      title: 'Design',
-      status: 'pending',
-      contract_id: 'c-1',
-      revision_count: 0,
-    });
-    mockContractRepo.getContractById.mockResolvedValueOnce({
-      id: 'c-1',
-      employer_id: 'employer-1',
-      freelancer_id: 'freelancer-1',
-      status: 'active',
-    });
-
+  it('should return UNAUTHORIZED when no userId is provided', async () => {
     const { getMilestoneById } = await import(resolveModule('src/services/milestone-service.ts'));
-    const result = await getMilestoneById('ms-1', 'unauthorized-user');
+    const result = await getMilestoneById('ms-1');
 
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -626,55 +628,17 @@ describe('milestone-service: unauthorized user in getMilestoneById (lines 32-34)
   });
 });
 
-describe('milestone-service: non-active contract in submitMilestone (line 88)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should reject submission when contract is not active', async () => {
-    mockMilestoneRepo.getById.mockResolvedValueOnce({
-      id: 'ms-1',
-      title: 'Design',
-      status: 'pending',
-      contract_id: 'c-1',
-      revision_count: 0,
-    });
-    mockContractRepo.getContractById.mockResolvedValueOnce({
-      id: 'c-1',
-      freelancer_id: 'fl-1',
-      employer_id: 'em-1',
-      status: 'completed',
-    });
-
-    const { submitMilestone } = await import(resolveModule('src/services/milestone-service.ts'));
-    const result = await submitMilestone({
-      milestoneId: 'ms-1',
-      freelancerId: 'fl-1',
-      deliverables: [],
-    });
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INVALID_STATUS');
-      expect(result.error.message).toContain('completed');
-    }
-  });
-});
-
-describe('milestone-service: max revisions in rejectMilestone (line 198)', () => {
+describe('milestone-service: max revisions in rejectMilestone', () => {
   beforeEach(() => resetAllMocks());
 
   it('should reject when revision_count >= MAX_REVISIONS (5)', async () => {
-    mockMilestoneRepo.getById.mockResolvedValueOnce({
-      id: 'ms-1',
-      title: 'Design',
-      status: 'submitted',
-      contract_id: 'c-1',
-      revision_count: 5,
+    mockContractRepo.getUserContracts.mockResolvedValueOnce({
+      items: [{ id: 'c-1', project_id: 'p-1', freelancer_id: 'fl-1', employer_id: 'em-1', status: 'active' }],
+      total: 1,
     });
-    mockContractRepo.getContractById.mockResolvedValueOnce({
-      id: 'c-1',
-      freelancer_id: 'fl-1',
-      employer_id: 'em-1',
-      status: 'active',
+    mockProjectRepo.findProjectById.mockResolvedValueOnce({
+      id: 'p-1',
+      milestones: [{ id: 'ms-1', title: 'Design', status: 'submitted', revision_count: 5 }],
     });
 
     const { rejectMilestone } = await import(resolveModule('src/services/milestone-service.ts'));
@@ -820,91 +784,6 @@ describe('employer-profile-service: update fails (line 144)', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// TESTS: file-service
-// ═══════════════════════════════════════════════════════════════
-
-describe('file-service: no permissions (line 34)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should exclude files without $permissions from results', async () => {
-    mockAppwriteStorage.listFiles.mockResolvedValueOnce({
-      files: [
-        { $id: 'file-1', name: 'no-perms.txt', sizeOriginal: 100, $createdAt: '2024-01-01', $updatedAt: '2024-01-01' },
-      ],
-      total: 1,
-    });
-
-    const { getUserFiles } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await getUserFiles('user-1', 'portfolio-images');
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toHaveLength(0);
-    }
-  });
-});
-
-describe('file-service: outer catch in getUserFiles (lines 80-81)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should return INTERNAL_ERROR when inner catch logger throws', async () => {
-    // storage.listFiles throws → enters inner catch
-    mockAppwriteStorage.listFiles.mockRejectedValueOnce(new Error('storage error'));
-    // logger.error in inner catch throws → propagates to outer catch
-    mockLogger.error.mockImplementationOnce(() => { throw new Error('logger exploded'); });
-
-    const { getUserFiles } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await getUserFiles('user-1');
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INTERNAL_ERROR');
-    }
-  });
-});
-
-describe('file-service: outer catch in deleteFile (lines 131-132)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should return INTERNAL_ERROR when deleteFile storage call fails after ownership check', async () => {
-    // getFile succeeds with correct ownership
-    mockAppwriteStorage.getFile.mockResolvedValueOnce({
-      $id: 'file-1',
-      name: 'test.txt',
-      $permissions: ['write("user:user-1")'],
-    });
-    // deleteFile throws
-    mockAppwriteStorage.deleteFile.mockRejectedValueOnce(new Error('delete failed'));
-
-    const { deleteFile } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await deleteFile('user-1', 'portfolio-images', 'file-1');
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INTERNAL_ERROR');
-    }
-  });
-});
-
-describe('file-service: getUserFiles fails in getFileQuota (line 150)', () => {
-  beforeEach(() => resetAllMocks());
-
-  it('should propagate error when getUserFiles fails', async () => {
-    // Make getUserFiles fail by triggering its outer catch
-    mockAppwriteStorage.listFiles.mockRejectedValueOnce(new Error('storage error'));
-    mockLogger.error.mockImplementationOnce(() => { throw new Error('logger exploded'); });
-
-    const { getFileQuota } = await import(resolveModule('src/services/file-service.ts'));
-    const result = await getFileQuota('user-1');
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.code).toBe('INTERNAL_ERROR');
-    }
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════
 // TESTS: email-preference-service
 // ═══════════════════════════════════════════════════════════════
 
@@ -980,9 +859,8 @@ describe('user-custom-skill-service: create catch block (line 118)', () => {
   beforeEach(() => resetAllMocks());
 
   it('should return CREATE_FAILED when repository throws during creation', async () => {
-    // searchSkills → returns empty (no global match)
-    mockSkillRepo.searchSkillsByKeyword.mockResolvedValueOnce([]);
-    mockSkillCategoryRepo.getAllCategories.mockResolvedValueOnce([]);
+    // getSkillByNameNormalized → returns null (no global match)
+    mockSkillRepo.getSkillByNameNormalized.mockResolvedValueOnce(null);
     // getUserCustomSkills → returns empty (no duplicate)
     mockUserCustomSkillRepo.getUserCustomSkills.mockResolvedValueOnce([]);
     // createUserCustomSkill → throws

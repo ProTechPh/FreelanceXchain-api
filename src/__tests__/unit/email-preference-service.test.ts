@@ -376,6 +376,10 @@ describe('Email Preference Service', () => {
         'milestone_updates',
         'payment_notifications',
         'dispute_notifications',
+        'contract_created',
+        'message_received',
+        'review_received',
+        'kyc_notifications',
       ];
 
       for (const emailType of criticalTypes) {
@@ -397,6 +401,54 @@ describe('Email Preference Service', () => {
         const result = await shouldSendEmail('user-1', emailType as any);
         expect(result).toBe(false);
       }
+    });
+
+    it('should honor the contract_notifications flag', async () => {
+      const doc = toAppwriteDoc({
+        id: 'pref-1',
+        user_id: 'user-1',
+        contract_notifications: false,
+      });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+      const result = await shouldSendEmail('user-1', 'contract_created');
+      expect(result).toBe(false);
+    });
+
+    it('should honor the message_notifications flag', async () => {
+      const doc = toAppwriteDoc({
+        id: 'pref-1',
+        user_id: 'user-1',
+        message_notifications: false,
+      });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+      const result = await shouldSendEmail('user-1', 'message_received');
+      expect(result).toBe(false);
+    });
+
+    it('should honor the review_notifications flag', async () => {
+      const doc = toAppwriteDoc({
+        id: 'pref-1',
+        user_id: 'user-1',
+        review_notifications: false,
+      });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+      const result = await shouldSendEmail('user-1', 'review_received');
+      expect(result).toBe(false);
+    });
+
+    it('should honor the kyc_notifications flag', async () => {
+      const doc = toAppwriteDoc({
+        id: 'pref-1',
+        user_id: 'user-1',
+        kyc_notifications: false,
+      });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+      const result = await shouldSendEmail('user-1', 'kyc_notifications');
+      expect(result).toBe(false);
     });
 
     it('should fall back to true when preference value is null', async () => {

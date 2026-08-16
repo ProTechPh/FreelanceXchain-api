@@ -3,6 +3,7 @@ import { searchProjects, searchFreelancers } from '../services/search-service.js
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -95,7 +96,7 @@ const router = Router();
  *       400:
  *         description: Invalid request parameters
  */
-router.get('/projects', apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/projects', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   // Parse query parameters
@@ -154,7 +155,7 @@ router.get('/projects', apiRateLimiter, async (req: Request, res: Response) => {
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -199,7 +200,7 @@ router.get('/projects', apiRateLimiter, async (req: Request, res: Response) => {
  *       400:
  *         description: Invalid request parameters
  */
-router.get('/freelancers', apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/freelancers', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
   // Parse query parameters
@@ -240,6 +241,6 @@ router.get('/freelancers', apiRateLimiter, async (req: Request, res: Response) =
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

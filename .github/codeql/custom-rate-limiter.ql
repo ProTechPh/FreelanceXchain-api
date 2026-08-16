@@ -25,7 +25,8 @@ class CustomRateLimiterCall extends CallExpr {
     this.getCalleeName() = "registerRateLimiter" or
     this.getCalleeName() = "passwordResetRateLimiter" or
     this.getCalleeName() = "authRateLimiter" or
-    this.getCalleeName() = "sensitiveRateLimiter"
+    this.getCalleeName() = "sensitiveRateLimiter" or
+    this.getCalleeName() = "webhookRateLimiter"
   }
 }
 

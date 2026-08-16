@@ -28,16 +28,6 @@ let skillStore: Map<string, Skill> = new Map();
 let skillCategoryStore: Map<string, SkillCategory> = new Map();
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Override database mock with controllable pool
-const mockQuery = jest.fn<any>();
-const mockConnect = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: mockConnect, on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 
 // Mock all repositories
 jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), () => ({
@@ -650,6 +640,19 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), 
           updated_at: skill.updatedAt,
         }));
     }),
+    findSkillsByIds: jest.fn(async (ids: string[]) => {
+      return ids.map(id => skillStore.get(id))
+        .filter((s): s is Skill => s !== undefined)
+        .map(skill => ({
+          id: skill.id,
+          category_id: skill.categoryId,
+          name: skill.name,
+          description: skill.description,
+          is_active: skill.isActive,
+          created_at: skill.createdAt,
+          updated_at: skill.updatedAt,
+        }));
+    }),
   },
   SkillRepository: jest.fn(),
 }));
@@ -813,7 +816,7 @@ const { createProfile: createFreelancerProfile, addSkillsToProfile } = await imp
 const { createEmployerProfile } = await import('../../services/employer-profile-service.js');
 const { createProject, addMilestones } = await import('../../services/project-service.js');
 const { submitProposal, acceptProposal } = await import('../../services/proposal-service.js');
-const { requestMilestoneCompletion, approveMilestone, clearDisputes } = await import('../../services/payment-service.js');
+const { requestMilestoneCompletion, approveMilestone } = await import('../../services/payment-service.js');
 const { createDispute, submitEvidence, resolveDispute } = await import('../../services/dispute-service.js');
 // Helper to clear all stores
 function clearAllStores(): void {
@@ -827,7 +830,6 @@ function clearAllStores(): void {
   notificationStore.clear();
   skillStore.clear();
   skillCategoryStore.clear();
-  clearDisputes();
 }
 // Helper to create test skill
 function createTestSkill(categoryId: string): Skill {
@@ -861,67 +863,6 @@ function createTestSkillCategory(): SkillCategory {
 describe('Integration Tests - Critical Flows', () => {
   beforeEach(() => {
     clearAllStores();
-    mockQuery.mockImplementation((text: string, params?: any[]) => {
-      if (text && text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerIdArg = params?.[1];
-        const contractId = `contract-${proposalId}`;
-        const proposal = proposalStore.get(proposalId);
-        const now = new Date().toISOString();
-        const contractEntity = {
-          id: contractId,
-          project_id: (proposal as any)?.project_id || (proposal as any)?.projectId,
-          proposal_id: proposalId,
-          freelancer_id: (proposal as any)?.freelancer_id || (proposal as any)?.freelancerId,
-          employer_id: employerIdArg,
-          escrow_address: '',
-          base_amount: (proposal as any)?.proposed_rate ?? (proposal as any)?.proposedRate ?? 0,
-          rush_fee: 0,
-          total_amount: (proposal as any)?.proposed_rate ?? (proposal as any)?.proposedRate ?? 0,
-          status: 'active',
-          created_at: now,
-          updated_at: now,
-        };
-        contractStore.set(contractId, contractEntity as any);
-        if (proposal) {
-          (proposal as any).status = 'accepted';
-        }
-        const queryResult: any = {
-          rows: [{ result: true, contract_id: contractId }],
-          rowCount: 1,
-          contract_id: contractId,
-          limit_reached: true,
-        };
-        return Promise.resolve(queryResult);
-      }
-      if (text && text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalIdParam = params?.[0];
-        const contract = Array.from(contractStore.values()).find(
-          (c: any) => c.proposal_id === proposalIdParam
-        );
-        return Promise.resolve({ rows: contract ? [{ id: contract.id }] : [], rowCount: contract ? 1 : 0 });
-      }
-      if (text && text.includes('append_dispute_evidence')) {
-        const disputeId = params?.[0];
-        const evidenceJson = params?.[1];
-        if (disputeId && evidenceJson) {
-          try {
-            const evidenceItems = JSON.parse(evidenceJson);
-            const dispute = disputeStore.get(disputeId);
-            if (dispute) {
-              const existingEvidence = (dispute as any).evidence || [];
-              (dispute as any).evidence = [...existingEvidence, ...evidenceItems];
-              (dispute as any).status = 'under_review';
-            }
-          } catch (_e) { /* ignore */ }
-        }
-        return Promise.resolve({
-          rows: [{ result: true }],
-          rowCount: 1,
-        });
-      }
-      return Promise.resolve({ rows: [], rowCount: 0 });
-    });
   });
   /**
    * Flow 1: Registration → Profile → Project → Proposal → Contract
@@ -1186,43 +1127,6 @@ describe('Integration Tests - Critical Flows', () => {
    */
   describe('Flow 3: Dispute Creation → Evidence → Resolution', () => {
     it('should complete the full dispute resolution workflow', async () => {
-      // Track disputes in a map that pool mock can access
-      const disputeDb = new Map<string, any>();
-
-      // Mock pool.connect() for dispute transactions
-      const mockClient = {
-        query: jest.fn<any>().mockImplementation((text: string, params?: any[]) => {
-          if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') {
-            return Promise.resolve({ rows: [], rowCount: 0 });
-          }
-          if (text.includes('project_milestones') && text.includes('FOR UPDATE')) {
-            return Promise.resolve({ rows: [{ id: params?.[0] }], rowCount: 1 });
-          }
-          if (text.includes('FROM disputes WHERE milestone_id')) {
-            return Promise.resolve({ rows: [], rowCount: 0 });
-          }
-          return Promise.resolve({ rows: [], rowCount: 0 });
-        }),
-        release: jest.fn(),
-      };
-      mockConnect.mockResolvedValue(mockClient);
-
-      // Also handle dispute queries in the main pool.query mock
-      const origQueryImpl = mockQuery.getMockImplementation();
-      mockQuery.mockImplementation((text: string, params?: any[]) => {
-        if (text && text.includes('SELECT * FROM disputes WHERE id') && text.includes('FOR UPDATE')) {
-          const disputeId = params?.[0];
-          const row = disputeDb.get(disputeId);
-          return Promise.resolve({ rows: row ? [row] : [], rowCount: row ? 1 : 0 });
-        }
-        if (text && text.includes('INSERT INTO disputes')) {
-          return Promise.resolve({ rows: [], rowCount: 1 });
-        }
-        if (text && text.includes('UPDATE disputes SET')) {
-          return Promise.resolve({ rows: [], rowCount: 1 });
-        }
-        return origQueryImpl ? origQueryImpl(text, params) : Promise.resolve({ rows: [], rowCount: 0 });
-      });
 
       // Setup: Create users, project, and contract
       const freelancerId = generateId();
@@ -1312,17 +1216,6 @@ describe('Integration Tests - Critical Flows', () => {
       expect(disputeResult.success).toBe(true);
       if (!disputeResult.success) return;
       const dispute = disputeResult.data;
-      // Track dispute in the pool mock's disputeDb
-      disputeDb.set(dispute.id, {
-        id: dispute.id,
-        contract_id: dispute.contractId,
-        milestone_id: dispute.milestoneId,
-        initiator_id: dispute.initiatorId,
-        reason: dispute.reason,
-        evidence: JSON.stringify(dispute.evidence || []),
-        status: dispute.status,
-        resolution: dispute.resolution ? JSON.stringify(dispute.resolution) : null,
-      });
       expect(dispute.contractId).toBe(contract.id);
       expect(dispute.milestoneId).toBe(milestone.id);
       expect(dispute.initiatorId).toBe(employerId);
@@ -1383,43 +1276,6 @@ describe('Integration Tests - Critical Flows', () => {
       expect(finalDispute?.resolution?.decision).toBe('freelancer_favor');
     });
     it('should handle dispute resolution in favor of employer', async () => {
-      // Track disputes in a map that pool mock can access
-      const disputeDb = new Map<string, any>();
-
-      // Mock pool.connect() for dispute transactions
-      const mockClient = {
-        query: jest.fn<any>().mockImplementation((text: string, params?: any[]) => {
-          if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') {
-            return Promise.resolve({ rows: [], rowCount: 0 });
-          }
-          if (text.includes('project_milestones') && text.includes('FOR UPDATE')) {
-            return Promise.resolve({ rows: [{ id: params?.[0] }], rowCount: 1 });
-          }
-          if (text.includes('FROM disputes WHERE milestone_id')) {
-            return Promise.resolve({ rows: [], rowCount: 0 });
-          }
-          return Promise.resolve({ rows: [], rowCount: 0 });
-        }),
-        release: jest.fn(),
-      };
-      mockConnect.mockResolvedValue(mockClient);
-
-      // Also handle dispute queries in the main pool.query mock
-      const origQueryImpl = mockQuery.getMockImplementation();
-      mockQuery.mockImplementation((text: string, params?: any[]) => {
-        if (text && text.includes('SELECT * FROM disputes WHERE id') && text.includes('FOR UPDATE')) {
-          const disputeId = params?.[0];
-          const row = disputeDb.get(disputeId);
-          return Promise.resolve({ rows: row ? [row] : [], rowCount: row ? 1 : 0 });
-        }
-        if (text && text.includes('INSERT INTO disputes')) {
-          return Promise.resolve({ rows: [], rowCount: 1 });
-        }
-        if (text && text.includes('UPDATE disputes SET')) {
-          return Promise.resolve({ rows: [], rowCount: 1 });
-        }
-        return origQueryImpl ? origQueryImpl(text, params) : Promise.resolve({ rows: [], rowCount: 0 });
-      });
 
       // Setup
       const freelancerId = generateId();
@@ -1494,17 +1350,6 @@ describe('Integration Tests - Critical Flows', () => {
       });
       expect(disputeResult.success).toBe(true);
       if (!disputeResult.success) return;
-      // Track dispute in the pool mock's disputeDb
-      disputeDb.set(disputeResult.data.id, {
-        id: disputeResult.data.id,
-        contract_id: disputeResult.data.contractId,
-        milestone_id: disputeResult.data.milestoneId,
-        initiator_id: disputeResult.data.initiatorId,
-        reason: disputeResult.data.reason,
-        evidence: JSON.stringify(disputeResult.data.evidence || []),
-        status: disputeResult.data.status,
-        resolution: disputeResult.data.resolution ? JSON.stringify(disputeResult.data.resolution) : null,
-      });
       // Resolve in favor of employer
       const resolveResult = await resolveDispute({
         disputeId: disputeResult.data.id,

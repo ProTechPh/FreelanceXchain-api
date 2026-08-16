@@ -11,9 +11,9 @@ import {
   respondToRushUpgrade,
   acceptCounterOffer,
   declineCounterOffer,
-  getRushUpgradeRequestsByContract,
+  getRushUpgradeRequestsForContract,
 } from '../services/rush-upgrade-service.js';
-import { contractRepository } from '../repositories/contract-repository.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -63,7 +63,7 @@ const router = Router();
  *       409:
  *         description: Pending request already exists or contract already rush
  */
-router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const contractId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -97,7 +97,7 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
     logger.error('Error requesting rush upgrade', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to request rush upgrade', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -146,7 +146,7 @@ router.post('/contracts/:id/rush-upgrade', authMiddleware, requireRole('employer
  *       404:
  *         description: Request not found
  */
-router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -195,7 +195,7 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
     logger.error('Error responding to rush upgrade', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to respond to rush upgrade', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -227,7 +227,7 @@ router.post('/rush-upgrade-requests/:id/respond', authMiddleware, requireRole('f
  *       404:
  *         description: Request not found
  */
-router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -255,7 +255,7 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
     logger.error('Error accepting counter-offer', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to accept counter-offer', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -287,7 +287,7 @@ router.post('/rush-upgrade-requests/:id/accept-counter', authMiddleware, require
  *       404:
  *         description: Request not found
  */
-router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestIdParam = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -315,7 +315,7 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
     logger.error('Error declining counter-offer', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to decline counter-offer', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -343,7 +343,7 @@ router.post('/rush-upgrade-requests/:id/decline-counter', authMiddleware, requir
  *       404:
  *         description: Contract not found
  */
-router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const contractId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -354,19 +354,12 @@ router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimite
       return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: xRequestId });
     }
 
-    const contract = await contractRepository.getContractById(contractId);
-    if (!contract) {
-      return sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId: xRequestId });
-    }
-
-    if (contract.employer_id !== userId && contract.freelancer_id !== userId && req.user?.role !== 'admin') {
-      return sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view rush upgrade requests for this contract', { requestId: xRequestId });
-    }
-
-    const result = await getRushUpgradeRequestsByContract(contractId);
+    const result = await getRushUpgradeRequestsForContract(contractId, userId, req.user?.role === 'admin');
 
     if (!result.success) {
-      return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: xRequestId });
+      const statusCode = result.error.code === 'NOT_FOUND' ? 404 : result.error.code === 'UNAUTHORIZED' ? 403 : 400;
+      return sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: xRequestId });
+
     }
 
     return res.status(200).json(result.data);
@@ -375,6 +368,6 @@ router.get('/contracts/:id/rush-upgrade-requests', authMiddleware, apiRateLimite
     logger.error('Error getting rush upgrade requests', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get rush upgrade requests', { requestId: getRequestId(req) });
   }
-});
+}));
 
 export default router;

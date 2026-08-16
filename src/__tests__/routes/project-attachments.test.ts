@@ -176,6 +176,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
 jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => ({
   rateLimiter: jest.fn(() => (req: any, res: any, next: any) => next()),
   apiRateLimiter: (req: any, res: any, next: any) => next(),
+  webhookRateLimiter: (req: any, res: any, next: any) => next(),
   fileUploadRateLimiter: (req: any, res: any, next: any) => next(),
   loginRateLimiter: (req: any, res: any, next: any) => next(),
   registerRateLimiter: (req: any, res: any, next: any) => next(),
@@ -183,8 +184,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
   authRateLimiter: (req: any, res: any, next: any) => next(),
   sensitiveRateLimiter: (req: any, res: any, next: any) => next(),
   withdrawalRateLimiter: (req: any, res: any, next: any) => next(),
-    mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
-  }));
+  mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
+}));
 
 // Mock milestone service
 jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () => ({
@@ -199,23 +200,6 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () 
       dueDate: new Date('2026-12-31'),
       status: 'pending',
       deliverableFiles: [],
-      revisionCount: 0,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    },
-  })),
-  submitMilestone: jest.fn(async (input: any) => ({
-    success: true,
-    data: {
-      id: input.milestoneId,
-      contractId: 'mock-contract-id',
-      title: 'Test Milestone',
-      description: 'Test milestone description',
-      amount: 1000,
-      dueDate: new Date('2026-12-31'),
-      status: 'submitted',
-      submittedAt: new Date(),
-      deliverableFiles: input.deliverables,
       revisionCount: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -239,6 +223,27 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-service.ts'), () 
     success: true,
     data: [],
   })),
+  findFreelancerMilestoneContext: jest.fn(async () => ({
+    contractId: 'mock-contract-id',
+  })),
+  submitMilestoneFromProjectContext: jest.fn(async (milestoneId: string, _freelancerId: string, deliverables: any[], _notes?: string) => ({
+    success: true,
+    data: {
+      id: milestoneId,
+      contractId: 'mock-contract-id',
+      title: 'Test Milestone',
+      description: 'Test milestone description',
+      amount: 1000,
+      dueDate: new Date('2026-12-31'),
+      status: 'submitted',
+      submittedAt: new Date(),
+      deliverableFiles: deliverables,
+      revisionCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  })),
+  findEmployerMilestoneContractId: jest.fn(async () => 'mock-contract-id'),
 }));
 
 const storageUploaderMocks = {
@@ -275,6 +280,13 @@ const storageUploaderMocks = {
   listUserFiles: jest.fn(async (bucket: string, userId: string, folder?: string) => ({
     success: true,
     files: [],
+  })),
+  getFileQuota: jest.fn(async (userId: string) => ({
+    success: true,
+    used: 0,
+    limit: 104857600,
+    percentage: 0,
+    files: 0,
   })),
   extractFileIdFromUrl: jest.fn((url: string) => 'test-file-id'),
 };

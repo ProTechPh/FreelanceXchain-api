@@ -8,10 +8,11 @@ import {
   updateEmailPreferences,
   unsubscribeAll,
 } from '../services/email-preference-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
-router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -28,9 +29,9 @@ router.get('/', authMiddleware, apiRateLimiter, async (req: Request, res: Respon
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.patch('/', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.patch('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const preferences = req.body;
@@ -48,9 +49,9 @@ router.patch('/', authMiddleware, apiRateLimiter, async (req: Request, res: Resp
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.post('/unsubscribe-all', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/unsubscribe-all', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -67,6 +68,6 @@ router.post('/unsubscribe-all', authMiddleware, apiRateLimiter, async (req: Requ
   }
 
   sendSuccessResponse(res, 200, { message: 'Unsubscribed from all emails' }, requestId);
-});
+}));
 
 export default router;

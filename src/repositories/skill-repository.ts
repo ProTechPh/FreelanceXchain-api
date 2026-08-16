@@ -1,5 +1,6 @@
-import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
-import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
+import { BaseRepository } from './base-repository.js';
+import { Query } from '../config/appwrite.js';
+import { normalizeSkillName } from '../utils/skill-utils.js';
 
 export type SkillCategoryEntity = {
   id: string;
@@ -41,15 +42,7 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
 
   async getAllSkills(): Promise<SkillEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.orderAsc('name'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
+      return await this.fetchAll([Query.orderAsc('name')]);
     } catch {
       return [];
     }
@@ -57,16 +50,10 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
 
   async getActiveSkills(): Promise<SkillEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('is_active', true),
-          Query.orderAsc('name'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
+      return await this.fetchAll([
+        Query.equal('is_active', true),
+        Query.orderAsc('name'),
+      ]);
     } catch {
       return [];
     }
@@ -74,16 +61,10 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
 
   async getSkillsByCategory(categoryId: string): Promise<SkillEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('category_id', categoryId),
-          Query.orderAsc('name'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
+      return await this.fetchAll([
+        Query.equal('category_id', categoryId),
+        Query.orderAsc('name'),
+      ]);
     } catch {
       return [];
     }
@@ -91,64 +72,73 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
 
   async getActiveSkillsByCategory(categoryId: string): Promise<SkillEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('category_id', categoryId),
-          Query.equal('is_active', true),
-          Query.orderAsc('name'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<SkillEntity>(doc));
+      return await this.fetchAll([
+        Query.equal('category_id', categoryId),
+        Query.equal('is_active', true),
+        Query.orderAsc('name'),
+      ]);
     } catch {
       return [];
     }
   }
 
+  /**
+   * Search active skills by keyword in name or description.
+   * Uses cursor pagination so results are not silently truncated at 1000 rows.
+   */
   async searchSkillsByKeyword(keyword: string): Promise<SkillEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('is_active', true),
-          Query.orderAsc('name'),
-          Query.limit(1000),
-        ]
-      );
+      const all = await this.fetchAll([
+        Query.equal('is_active', true),
+        Query.orderAsc('name'),
+      ]);
       const lowerKeyword = keyword.toLowerCase();
-      return response.documents.reduce<SkillEntity[]>((acc, doc) => {
-        const skill = fromAppwriteDoc<SkillEntity>(doc);
-        if (skill.name.toLowerCase().includes(lowerKeyword) ||
-          skill.description.toLowerCase().includes(lowerKeyword)) {
-          acc.push(skill);
-        }
-        return acc;
-      }, []);
+      return all.filter(
+        (skill) =>
+          skill.name.toLowerCase().includes(lowerKeyword) ||
+          skill.description.toLowerCase().includes(lowerKeyword)
+      );
     } catch {
       return [];
     }
   }
 
+  /**
+   * Find a skill by name within a category, comparing with the canonical
+   * normalized form so padding/casing/unicode variants resolve to the same skill.
+   */
   async getSkillByNameInCategory(name: string, categoryId: string): Promise<SkillEntity | null> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('category_id', categoryId),
-          Query.limit(1000),
-        ]
-      );
-      const doc = response.documents.find(
-        d => typeof d.name === 'string' && d.name.toLowerCase() === name.toLowerCase()
-      );
-      if (!doc) return null;
-      return fromAppwriteDoc<SkillEntity>(doc);
+      const all = await this.fetchAll([Query.equal('category_id', categoryId)]);
+      const normalized = normalizeSkillName(name);
+      return all.find((s) => normalizeSkillName(s.name) === normalized) ?? null;
     } catch {
       return null;
+    }
+  }
+
+  /**
+   * Fail-closed exact-name lookup for the global-taxonomy duplicate check.
+   * Unlike searchSkillsByKeyword (which swallows DB errors and returns []),
+   * this method PROPAGATES read failures so a DB hiccup can never make a
+   * duplicate check silently pass.
+   */
+  async getSkillByNameNormalized(name: string): Promise<SkillEntity | null> {
+    const all = await this.fetchAll([Query.equal('is_active', true)]);
+    const normalized = normalizeSkillName(name);
+    return all.find((s) => normalizeSkillName(s.name) === normalized) ?? null;
+  }
+
+  /**
+   * Batch-fetch skills by their document IDs in a single query.
+   * Used by validateSkillIds to avoid an N+1 query per ID.
+   */
+  async findSkillsByIds(ids: string[]): Promise<SkillEntity[]> {
+    if (ids.length === 0) return [];
+    try {
+      return await this.listWithQueries([Query.equal('$id', ids)]);
+    } catch {
+      return [];
     }
   }
 }

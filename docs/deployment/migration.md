@@ -11,239 +11,54 @@ This guide provides step-by-step instructions for deploying the new features to 
 
 ---
 
+## Step 0: Appwrite Schema Migration (re-run `setup-appwrite-db.ts`)
+
+The runtime database is Appwrite, not Postgres. The single source of truth for the
+schema is `scripts/setup-appwrite-db.ts` — re-running it is idempotent and applies
+any missing collections, attributes, and indexes:
+
+```bash
+npx tsx scripts/setup-appwrite-db.ts
+```
+
+### 0.1 New attributes (idempotent — safe to re-run)
+
+- **`email_preferences`**: `contract_notifications`, `message_notifications`,
+  `review_notifications`, `kyc_notifications` (all `boolean`, default `true`).
+  These back the newly-wired transactional emails (contract created, message
+  received, review received, KYC approved/rejected). Users can opt out via
+  `PATCH /api/email-preferences`; `unsubscribe-all` keeps them enabled since
+  they are account-critical.
+- **`skill_suggestions`**: `requester_ids` (string array). Anti-spam: the
+  suggestion `times_requested` counter now only increments when a *new* user
+  requests a skill, so one account cannot inflate popularity by deleting and
+  re-creating the same custom skill.
+- **`saved_searches`**: `last_notified_at` (string ISO timestamp). Dedup
+  watermark for the saved-search notify job — results are surfaced only once.
+- **`freelancer_profiles`**: the scheduler's saved-search notify job reads
+  freelancer profiles from this collection (`FREELANCER_PROFILES`).
+
+### 0.2 Unique indexes (see `INDEXES` in the script)
+
+- `reviews (contract_id, reviewer_id)` — **unique**. Global backstop for the
+  duplicate-review race (BLF-9.1). NOTE: de-duplicate existing rows first or
+  creation fails.
+- `user_custom_skills (user_id, name)` — **unique**. Anti-spam backstop so two
+  racing requests cannot both insert the same custom skill (BLF-skill.1).
+- `skill_suggestions (skill_name)` — **unique**. Backstop for the suggestion
+  queue dedup (BLF-skill.2).
+- `favorites (user_id, target_type, target_id)` — **unique**. Backstop for the
+  `addFavorite` check-then-insert race.
+
+---
+
 ## Step 1: Database Migration
 
-### 1.1 Create New Tables
-
-Execute the following SQL in your Appwrite SQL Editor:
-
-```sql
--- 1. Conversations table
-CREATE TABLE IF NOT EXISTS conversations (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  participant1_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  participant2_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  last_message_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  last_message_preview TEXT,
-  unread_count_1 INTEGER DEFAULT 0,
-  unread_count_2 INTEGER DEFAULT 0,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- Ensure unique conversation pairs
-CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_participants 
-ON conversations (LEAST(participant1_id, participant2_id), GREATEST(participant1_id, participant2_id));
-
--- 2. Messages table
-CREATE TABLE IF NOT EXISTS messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-  sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  receiver_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  content TEXT NOT NULL,
-  is_read BOOLEAN DEFAULT FALSE,
-  attachments JSONB,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- 3. Reviews table
-CREATE TABLE IF NOT EXISTS reviews (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  contract_id UUID NOT NULL REFERENCES contracts(id) ON DELETE CASCADE,
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  reviewer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  reviewee_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
-  comment TEXT NOT NULL,
-  work_quality INTEGER CHECK (work_quality >= 1 AND work_quality <= 5),
-  communication INTEGER CHECK (communication >= 1 AND communication <= 5),
-  professionalism INTEGER CHECK (professionalism >= 1 AND professionalism <= 5),
-  would_work_again BOOLEAN,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(contract_id, reviewer_id)
-);
-
--- 4. Favorites table
-CREATE TABLE IF NOT EXISTS favorites (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  target_type VARCHAR(20) NOT NULL CHECK (target_type IN ('project', 'freelancer')),
-  target_id UUID NOT NULL,
-  created_at TIMESTAMP DEFAULT NOW(),
-  UNIQUE(user_id, target_type, target_id)
-);
-
--- 5. Portfolio items table
-CREATE TABLE IF NOT EXISTS portfolio_items (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  freelancer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  title VARCHAR(200) NOT NULL,
-  description TEXT NOT NULL,
-  project_url TEXT,
-  images JSONB NOT NULL,
-  skills TEXT[],
-  completed_at TIMESTAMP,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- 6. Email preferences table
-CREATE TABLE IF NOT EXISTS email_preferences (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE UNIQUE,
-  proposal_received BOOLEAN DEFAULT TRUE,
-  proposal_accepted BOOLEAN DEFAULT TRUE,
-  milestone_updates BOOLEAN DEFAULT TRUE,
-  payment_notifications BOOLEAN DEFAULT TRUE,
-  dispute_notifications BOOLEAN DEFAULT TRUE,
-  marketing_emails BOOLEAN DEFAULT FALSE,
-  weekly_digest BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- 7. Saved searches table
-CREATE TABLE IF NOT EXISTS saved_searches (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  name VARCHAR(100) NOT NULL,
-  search_type VARCHAR(20) NOT NULL CHECK (search_type IN ('project', 'freelancer')),
-  filters JSONB NOT NULL,
-  notify_on_new BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-
--- 8. Transactions table (if not exists)
-CREATE TABLE IF NOT EXISTS transactions (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  contract_id UUID REFERENCES contracts(id) ON DELETE SET NULL,
-  milestone_id UUID,
-  from_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  to_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
-  amount DECIMAL(20, 2) NOT NULL,
-  type VARCHAR(50) NOT NULL,
-  status VARCHAR(50) NOT NULL,
-  transaction_hash TEXT,
-  metadata JSONB,
-  created_at TIMESTAMP DEFAULT NOW(),
-  updated_at TIMESTAMP DEFAULT NOW()
-);
-```
-
-### 1.2 Create Indexes for Performance
-
-```sql
--- Conversations indexes
-CREATE INDEX IF NOT EXISTS idx_conversations_participant1 ON conversations(participant1_id);
-CREATE INDEX IF NOT EXISTS idx_conversations_participant2 ON conversations(participant2_id);
-CREATE INDEX IF NOT EXISTS idx_conversations_last_message ON conversations(last_message_at DESC);
-
--- Messages indexes
-CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
-CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages(receiver_id);
-CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages(receiver_id, is_read) WHERE is_read = FALSE;
-
--- Reviews indexes
-CREATE INDEX IF NOT EXISTS idx_reviews_reviewee ON reviews(reviewee_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_reviews_project ON reviews(project_id);
-CREATE INDEX IF NOT EXISTS idx_reviews_contract ON reviews(contract_id);
-
--- Favorites indexes
-CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id, target_type);
-CREATE INDEX IF NOT EXISTS idx_favorites_target ON favorites(target_type, target_id);
-
--- Portfolio indexes
-CREATE INDEX IF NOT EXISTS idx_portfolio_freelancer ON portfolio_items(freelancer_id, created_at DESC);
-
--- Saved searches indexes
-CREATE INDEX IF NOT EXISTS idx_saved_searches_user ON saved_searches(user_id, search_type);
-
--- Transactions indexes
-CREATE INDEX IF NOT EXISTS idx_transactions_contract ON transactions(contract_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_transactions_from_user ON transactions(from_user_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_transactions_to_user ON transactions(to_user_id, created_at DESC);
-```
-
-### 1.3 Set Up Row Level Security (RLS)
-
-```sql
--- Enable RLS on all new tables
-ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE reviews ENABLE ROW LEVEL SECURITY;
-ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
-ALTER TABLE portfolio_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE email_preferences ENABLE ROW LEVEL SECURITY;
-ALTER TABLE saved_searches ENABLE ROW LEVEL SECURITY;
-ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
-
--- Conversations policies
-CREATE POLICY "Users can view their own conversations"
-  ON conversations FOR SELECT
-  USING (auth.uid() = participant1_id OR auth.uid() = participant2_id);
-
-CREATE POLICY "Users can create conversations"
-  ON conversations FOR INSERT
-  WITH CHECK (auth.uid() = participant1_id OR auth.uid() = participant2_id);
-
--- Messages policies
-CREATE POLICY "Users can view messages in their conversations"
-  ON messages FOR SELECT
-  USING (
-    EXISTS (
-      SELECT 1 FROM conversations
-      WHERE conversations.id = messages.conversation_id
-      AND (conversations.participant1_id = auth.uid() OR conversations.participant2_id = auth.uid())
-    )
-  );
-
-CREATE POLICY "Users can send messages"
-  ON messages FOR INSERT
-  WITH CHECK (auth.uid() = sender_id);
-
--- Reviews policies
-CREATE POLICY "Anyone can view reviews"
-  ON reviews FOR SELECT
-  USING (true);
-
-CREATE POLICY "Users can create reviews for their contracts"
-  ON reviews FOR INSERT
-  WITH CHECK (auth.uid() = reviewer_id);
-
--- Favorites policies
-CREATE POLICY "Users can manage their own favorites"
-  ON favorites FOR ALL
-  USING (auth.uid() = user_id);
-
--- Portfolio policies
-CREATE POLICY "Anyone can view portfolio items"
-  ON portfolio_items FOR SELECT
-  USING (true);
-
-CREATE POLICY "Freelancers can manage their own portfolio"
-  ON portfolio_items FOR ALL
-  USING (auth.uid() = freelancer_id);
-
--- Email preferences policies
-CREATE POLICY "Users can manage their own email preferences"
-  ON email_preferences FOR ALL
-  USING (auth.uid() = user_id);
-
--- Saved searches policies
-CREATE POLICY "Users can manage their own saved searches"
-  ON saved_searches FOR ALL
-  USING (auth.uid() = user_id);
-
--- Transactions policies
-CREATE POLICY "Users can view their own transactions"
-  ON transactions FOR SELECT
-  USING (auth.uid() = from_user_id OR auth.uid() = to_user_id);
-```
+No Postgres migration is required — the runtime database is **Appwrite**. All
+collections, attributes, and indexes are declared in
+`scripts/setup-appwrite-db.ts` and applied by re-running it (Step 0). This
+covers messaging (`messages`, `conversations`), reviews, favorites, portfolio,
+email preferences, saved searches, and transactions.
 
 ---
 
@@ -261,31 +76,6 @@ In Appwrite Dashboard → Storage:
 2. Verify `proposal-attachments` bucket exists (should already exist)
 
 3. Verify `dispute-evidence` bucket exists (should already exist)
-
-### 2.2 Set Storage Policies
-
-```sql
--- Portfolio images policies
-CREATE POLICY "Anyone can view portfolio images"
-  ON storage.objects FOR SELECT
-  USING (bucket_id = 'portfolio-images');
-
-CREATE POLICY "Authenticated users can upload portfolio images"
-  ON storage.objects FOR INSERT
-  WITH CHECK (
-    bucket_id = 'portfolio-images' 
-    AND auth.role() = 'authenticated'
-  );
-
-CREATE POLICY "Users can delete their own portfolio images"
-  ON storage.objects FOR DELETE
-  USING (
-    bucket_id = 'portfolio-images' 
-    AND auth.uid()::text = (storage.foldername(name))[1]
-  );
-```
-
----
 
 ## Step 3: Application Deployment
 
@@ -376,36 +166,9 @@ curl -X GET https://your-api-domain.com/api/analytics/platform \
 
 ## Step 5: Data Migration (Optional)
 
-### 5.1 Create Default Email Preferences for Existing Users
-
-```sql
-INSERT INTO email_preferences (user_id)
-SELECT id FROM users
-WHERE id NOT IN (SELECT user_id FROM email_preferences);
-```
-
-### 5.2 Migrate Existing Transaction Data
-
-If you have transaction data in other tables, migrate it:
-
-```sql
--- Example: Migrate from payment logs
-INSERT INTO transactions (contract_id, from_user_id, to_user_id, amount, type, status, transaction_hash, created_at)
-SELECT 
-  contract_id,
-  employer_id as from_user_id,
-  freelancer_id as to_user_id,
-  amount,
-  'milestone_payment' as type,
-  'completed' as status,
-  blockchain_tx_hash as transaction_hash,
-  created_at
-FROM milestone_payments
-WHERE NOT EXISTS (
-  SELECT 1 FROM transactions t 
-  WHERE t.contract_id = milestone_payments.contract_id
-);
-```
+No SQL data migration is required. Re-run `npx tsx scripts/setup-appwrite-db.ts`
+to apply the schema; any new attributes default appropriately for existing
+documents.
 
 ---
 
@@ -436,9 +199,7 @@ Ensure logs are being collected for:
 
 ### 7.1 Update API Documentation
 
-```bash
-pnpm run openapi:generate
-```
+The OpenAPI spec is served from the checked-in `openapi.json` file. After route changes, update `openapi.json` (the docs are static — there is no code generation script).
 
 ### 7.2 Verify Swagger UI
 
@@ -460,20 +221,7 @@ pnpm run build
 pm2 restart freelancexchain-api
 ```
 
-### 2. Drop New Tables (if needed)
-
-```sql
-DROP TABLE IF EXISTS saved_searches CASCADE;
-DROP TABLE IF EXISTS email_preferences CASCADE;
-DROP TABLE IF EXISTS portfolio_items CASCADE;
-DROP TABLE IF EXISTS favorites CASCADE;
-DROP TABLE IF EXISTS reviews CASCADE;
-DROP TABLE IF EXISTS messages CASCADE;
-DROP TABLE IF EXISTS conversations CASCADE;
-DROP TABLE IF EXISTS transactions CASCADE;
-```
-
-### 3. Remove Storage Buckets
+### 2. Remove Storage Buckets
 
 In Appwrite Dashboard → Storage, delete:
 
@@ -483,13 +231,15 @@ In Appwrite Dashboard → Storage, delete:
 
 ## Troubleshooting
 
-### Issue: "Table does not exist"
+### Issue: "Collection does not exist"
 
-**Solution**: Ensure all SQL migration scripts ran successfully. Check Appwrite logs.
+**Solution**: Re-run `npx tsx scripts/setup-appwrite-db.ts` to create missing
+collections/attributes, or create the collection in the Appwrite Console.
 
-### Issue: "Permission denied for table"
+### Issue: "Permission denied for collection"
 
-**Solution**: Verify RLS policies are correctly set up. Check user authentication.
+**Solution**: Verify the Appwrite API key has the required scopes and that
+per-document permissions are set correctly.
 
 ### Issue: "File upload fails"
 
@@ -512,11 +262,8 @@ In Appwrite Dashboard → Storage, delete:
 
 ## Post-Deployment Checklist
 
-- [ ] All database tables created
-- [ ] All indexes created
-- [ ] RLS policies enabled and tested
-- [ ] Storage buckets created
-- [ ] Storage policies set
+- [ ] Appwrite collections, attributes, and indexes applied (`setup-appwrite-db.ts`)
+- [ ] Storage buckets created with correct file-size/MIME limits
 - [ ] Application deployed
 - [ ] Health checks passing
 - [ ] API documentation updated
@@ -551,7 +298,7 @@ After successful deployment:
 
 ## Estimated Timeline
 
-- Database Migration: 30 minutes
+- Appwrite Schema Setup: 10 minutes
 - Storage Setup: 15 minutes
 - Application Deployment: 30 minutes
 - Verification: 30 minutes

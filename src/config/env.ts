@@ -49,6 +49,13 @@ export const config = {
     nodeEnv: getEnvVar('NODE_ENV', 'development'),
     baseUrl: getBaseUrl(),
     enableApiDocs: getEnvVarBoolean('ENABLE_API_DOCS', false),
+    logLevel: getEnvVar('LOG_LEVEL', 'info'),
+    // Number of trusted reverse-proxy hops. Keeps req.ip (used by rate limiters and
+    // audit logging) pointing at the real client instead of the proxy when deployed
+    // behind nginx/Cloudflare/HF Spaces. Set 0 to disable and always use the socket
+    // address. Express `trust proxy` semantics: a positive N trusts N hops from the
+    // socket connection (the rightmost N entries of X-Forwarded-For).
+    trustProxyHops: getEnvVarNumber('TRUST_PROXY_HOPS', 1),
   },
   appwrite: {
     endpoint: getEnvVar('APPWRITE_ENDPOINT'),
@@ -88,6 +95,12 @@ export const config = {
   blockchain: {
     rpcUrl: getEnvVarOptional('BLOCKCHAIN_RPC_URL'),
     privateKey: getEnvVarOptional('BLOCKCHAIN_PRIVATE_KEY'),
+    // BLOCKCHAIN_MODE switches the blockchain backend: 'real' talks to actual
+    // EVM contracts (dev → Ganache, prod → Polygon Amoy), 'simulated' emulates
+    // the ledger in Appwrite for tests/CI and as a no-config fallback. The
+    // `dev` and `prod` npm scripts force 'real' explicitly — the 'simulated'
+    // default ONLY applies when BLOCKCHAIN_MODE is unset. See
+    // src/services/blockchain/README.md for the parity notes between modes.
     mode: getEnvVar('BLOCKCHAIN_MODE', 'simulated') as 'real' | 'simulated',
     arbiterAddress: getEnvVarOptional('PLATFORM_ARBITER_ADDRESS'),
     arbiterPrivateKey: getEnvVarOptional('PLATFORM_ARBITER_PRIVATE_KEY'),
@@ -101,3 +114,32 @@ export const config = {
 } as const;
 
 export type Config = typeof config;
+
+/**
+ * Lazily-resolved environment values.
+ *
+ * These are read at call time rather than module load so that middleware that
+ * must react to environment switches (e.g. NODE_ENV toggled between test
+ * cases) keeps working, and so secrets like the webhook HMAC key are picked up
+ * whenever a request arrives. Centralizing them here means no module outside
+ * of config/ touches process.env directly.
+ */
+export function getNodeEnv(): string {
+  return getEnvVar('NODE_ENV', 'development');
+}
+
+export function getCsrfSecret(): string | undefined {
+  return getEnvVarOptional('CSRF_SECRET');
+}
+
+export function getCorsOrigin(): string | undefined {
+  return getEnvVarOptional('CORS_ORIGIN');
+}
+
+export function getBlockchainWebhookSecret(): string | undefined {
+  return getEnvVarOptional('BLOCKCHAIN_WEBHOOK_SECRET');
+}
+
+export function getEmailWebhookSecret(): string | undefined {
+  return getEnvVarOptional('EMAIL_WEBHOOK_SECRET');
+}

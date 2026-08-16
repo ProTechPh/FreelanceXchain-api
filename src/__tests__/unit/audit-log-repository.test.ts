@@ -123,6 +123,90 @@ describe('AuditLogRepository', () => {
       expect(result).toEqual([]);
     });
   });
+
+  describe('search', () => {
+    it('should return paginated results with all optional filters combined', async () => {
+      const entries = [
+        { $id: 'a1', actor_id: 'admin-1', user_id: 'u1', action: 'user.suspended', status: 'success', $createdAt: '2025-06-01', $updatedAt: '2025-06-01' },
+        { $id: 'a2', actor_id: 'admin-1', user_id: 'u1', action: 'user.suspended', status: 'success', $createdAt: '2025-06-02', $updatedAt: '2025-06-02' },
+        { $id: 'a3', actor_id: 'admin-1', user_id: 'u1', action: 'user.suspended', status: 'success', $createdAt: '2025-06-03', $updatedAt: '2025-06-03' },
+      ];
+      // limit=2 => fetch limit+1 = 3 => hasMore true, page = first 2, nextCursor = a2
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: entries, total: 7 });
+
+      const result = await repo.search({
+        actorId: 'admin-1',
+        userId: 'u1',
+        action: 'user.suspended',
+        resourceType: 'user',
+        resourceId: 'u1',
+        status: 'success',
+        startDate: new Date('2025-06-01'),
+        endDate: new Date('2025-06-30'),
+        limit: 2,
+      });
+
+      expect(result.items).toHaveLength(2);
+      expect(result.items[0]!.id).toBe('a1');
+      expect(result.items[1]!.id).toBe('a2');
+      expect(result.total).toBe(7);
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).toBe('a2');
+    });
+
+    it('should return hasMore false and null cursor when fewer docs than limit', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [{ $id: 'a1', $createdAt: '2025-06-01', $updatedAt: '2025-06-01' }], total: 1 });
+      const result = await repo.search({ limit: 20 });
+      expect(result.items).toHaveLength(1);
+      expect(result.hasMore).toBe(false);
+      expect(result.nextCursor).toBeNull();
+    });
+
+    it('should pass cursorAfter and clamp limit to 100 max', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      await repo.search({ limit: 500, cursor: 'a-42' });
+
+      const queries = mockDatabases.listDocuments.mock.calls[0]![2];
+      expect(queries).toContain('limit(101)'); // limit+1 for hasMore detection
+      expect(queries).toContain('cursorAfter(a-42)');
+    });
+
+    it('should return empty result on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.search({ action: 'login' });
+      expect(result).toEqual({ items: [], total: 0, hasMore: false, nextCursor: null });
+    });
+  });
+
+  describe('listForRange', () => {
+    it('should collect all entries across pages in a date range', async () => {
+      const page1 = [
+        { $id: 'a1', actor_id: 'admin-1', action: 'kyc.approved', $createdAt: '2025-06-01', $updatedAt: '2025-06-01' },
+        { $id: 'a2', actor_id: 'admin-1', action: 'kyc.rejected', $createdAt: '2025-06-02', $updatedAt: '2025-06-02' },
+      ];
+      const page2 = [
+        { $id: 'a3', actor_id: 'admin-2', action: 'dispute.resolved', $createdAt: '2025-06-03', $updatedAt: '2025-06-03' },
+      ];
+      // pageSize=2: first call returns 2 (== pageSize, keep paging), second returns 1 (< pageSize, stop)
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: page1, total: 3 })
+        .mockResolvedValueOnce({ documents: page2, total: 3 });
+
+      const result = await repo.listForRange(new Date('2025-06-01'), new Date('2025-06-30'), 2);
+
+      expect(result).toHaveLength(3);
+      expect(result[0]!.id).toBe('a1');
+      // second page request used the cursor
+      const secondQueries = mockDatabases.listDocuments.mock.calls[1]![2];
+      expect(secondQueries).toContain('cursorAfter(a2)');
+    });
+
+    it('should return empty array on database error', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      const result = await repo.listForRange(new Date(), new Date());
+      expect(result).toEqual([]);
+    });
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════

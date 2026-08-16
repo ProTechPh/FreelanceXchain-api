@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { AuditLogService } from '../services/audit-log-service.js';
+import type { AuditLogStatus } from '../repositories/audit-log-repository.js';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
 import { getRequestId, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 
@@ -98,6 +99,83 @@ router.get('/range', authMiddleware, requireRole('admin'), async (req: Request, 
 
     const logs = await auditLogService.getAuditLogsByDateRange(startDate, endDate);
     sendSuccessResponse(res, 200, { logs }, getRequestId(req));
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// Combined filtered search with pagination (admin only)
+router.get('/search', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { actor, user, action, resourceType, resourceId, status, startDate, endDate, limit, cursor } = req.query;
+
+    const filters: {
+      actorId?: string;
+      userId?: string;
+      action?: string;
+      resourceType?: string;
+      resourceId?: string;
+      status?: AuditLogStatus;
+      startDate?: Date;
+      endDate?: Date;
+      limit?: number;
+      cursor?: string;
+    } = {};
+
+    if (typeof actor === 'string' && actor) filters.actorId = actor;
+    if (typeof user === 'string' && user) filters.userId = user;
+    if (typeof action === 'string' && action) filters.action = action;
+    if (typeof resourceType === 'string' && resourceType) filters.resourceType = resourceType;
+    if (typeof resourceId === 'string' && resourceId) filters.resourceId = resourceId;
+    if (typeof status === 'string' && status) {
+      if (status !== 'success' && status !== 'failure' && status !== 'pending') {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid status. Must be one of: success, failure, pending', { requestId: getRequestId(req) });
+        return;
+      }
+      filters.status = status;
+    }
+
+    if (typeof startDate === 'string' && startDate) {
+      const parsed = new Date(startDate);
+      if (isNaN(parsed.getTime())) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid startDate format', { requestId: getRequestId(req) });
+        return;
+      }
+      filters.startDate = parsed;
+    }
+    if (typeof endDate === 'string' && endDate) {
+      const parsed = new Date(endDate);
+      if (isNaN(parsed.getTime())) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid endDate format', { requestId: getRequestId(req) });
+        return;
+      }
+      filters.endDate = parsed;
+    }
+
+    const parsedLimit = parseInt(limit as string, 10);
+    if (typeof limit === 'string' && !isNaN(parsedLimit) && parsedLimit > 0) filters.limit = parsedLimit;
+    if (typeof cursor === 'string' && cursor) filters.cursor = cursor;
+
+    const result = await auditLogService.searchAuditLogs(filters);
+    sendSuccessResponse(res, 200, { ...result }, getRequestId(req));
+  } catch (error) {
+    sendServerError(res, error);
+  }
+});
+
+// Per-admin, per-day activity summary (admin only)
+router.get('/summary/admin-activity', authMiddleware, requireRole('admin'), async (req: Request, res: Response): Promise<void> => {
+  try {
+    const startDate = new Date(req.query.startDate as string);
+    const endDate = new Date(req.query.endDate as string);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', { requestId: getRequestId(req) });
+      return;
+    }
+
+    const summary = await auditLogService.getAdminActivitySummary(startDate, endDate);
+    sendSuccessResponse(res, 200, { ...summary }, getRequestId(req));
   } catch (error) {
     sendServerError(res, error);
   }

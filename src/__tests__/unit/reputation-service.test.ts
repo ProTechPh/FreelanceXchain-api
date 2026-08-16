@@ -29,15 +29,6 @@ mockContractRepo.getUserContracts = jest.fn<any>(async (userId: string) => {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Override database mock with controllable pool
-const mockQuery = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 
 // Mock repositories
 jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'), () => ({
@@ -51,6 +42,15 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
 // Mock notification service
 jest.unstable_mockModule(resolveModule('src/services/notification-service.ts'), () => ({
   notifyRatingReceived: jest.fn<any>(async () => ({ success: true, data: {} })),
+}));
+
+// email-delivery-service (BLF-13 email wiring): mocked so the real
+// email-preference-service / user-repository do not consume queued
+// mockDatabases responses during submitRating.
+const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendReviewReceivedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
 // Import after mocking
@@ -107,21 +107,6 @@ describe('Reputation Service - Property-Based Tests', () => {
     projectStore.clear();
     await clearBlockchainRatings();
     jest.clearAllMocks();
-    mockQuery.mockReset();
-    
-    // Mock reviews table for duplicate check - return empty (no duplicates)
-    mockQuery.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('reviews') && text.includes('SELECT') && text.includes('contract_id') && text.includes('reviewer_id')) {
-        return { rows: [], rowCount: 0 };
-      }
-      if (text.includes('INSERT INTO reviews')) {
-        return { rows: [{ id: generateId(), contract_id: params?.[0], reviewer_id: params?.[2], reviewee_id: params?.[3], rating: params?.[4], comment: params?.[5], reviewer_role: params?.[6], created_at: new Date().toISOString() }], rowCount: 1 };
-      }
-      if (text.includes('users') && text.includes('wallet_address')) {
-        return { rows: [{ id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) }, { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) }], rowCount: 2 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   /**
@@ -426,21 +411,6 @@ describe('Reputation Service - Unit Tests', () => {
     projectStore.clear();
     await clearBlockchainRatings();
     jest.clearAllMocks();
-    mockQuery.mockReset();
-    
-    // Mock pool.query for various reputation operations
-    mockQuery.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('reviews') && text.includes('SELECT') && text.includes('contract_id') && text.includes('reviewer_id')) {
-        return { rows: [], rowCount: 0 };
-      }
-      if (text.includes('INSERT INTO reviews')) {
-        return { rows: [{ id: generateId(), contract_id: params?.[0], reviewer_id: params?.[2], reviewee_id: params?.[3], rating: params?.[4], comment: params?.[5], reviewer_role: params?.[6], created_at: new Date().toISOString() }], rowCount: 1 };
-      }
-      if (text.includes('users') && text.includes('wallet_address')) {
-        return { rows: [{ id: 'mock-freelancer-id', wallet_address: '0x' + 'a'.repeat(40) }, { id: 'mock-employer-id', wallet_address: '0x' + 'b'.repeat(40) }], rowCount: 2 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   it('should submit valid rating successfully', async () => {
@@ -469,6 +439,68 @@ describe('Reputation Service - Unit Tests', () => {
     if (result.success) {
       expect(result.data.rating.rating).toBe(5);
       expect(result.data.rating.contractId).toBe(contract.id);
+    }
+    // BLF-13: the ratee gets a preference-gated review-received email
+    expect(mockSendGatedEmail).toHaveBeenCalledWith(
+      freelancerId,
+      'review_received',
+      expect.any(Function)
+    );
+  });
+
+  // BLF-9.1: concurrent duplicate submissions for the same (contract, rater) must
+  // be serialized — exactly one review is created, the loser hits the duplicate check.
+  it('should serialize concurrent duplicate rating submissions', async () => {
+    const freelancerId = generateId();
+    const employerId = generateId();
+
+    const project = createTestProject({ employer_id: employerId });
+    const contract = createTestContract({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      employer_id: employerId,
+      status: 'completed'
+    });
+    contractStore.set(contract.id, contract);
+    projectStore.set(project.id, project);
+
+    // Stateful Appwrite mock: listDocuments reflects previously created reviews so
+    // the serialized duplicate check can observe the winner's insert.
+    const db = (globalThis as any).__mockDatabases;
+    const createdReviews: any[] = [];
+    const origList = db.listDocuments.getMockImplementation();
+    const origCreate = db.createDocument.getMockImplementation();
+    db.listDocuments.mockImplementation(async () => {
+      return { documents: createdReviews, total: createdReviews.length };
+    });
+    db.createDocument.mockImplementation(async (_dbId: string, _coll: string, _id: string, data: any) => {
+      const doc = { $id: `review-${createdReviews.length + 1}`, ...data };
+      createdReviews.push(doc);
+      return doc;
+    });
+
+    try {
+      const input = {
+        contractId: contract.id,
+        raterId: employerId,
+        rateeId: freelancerId,
+        rating: 5,
+      };
+      const [first, second] = await Promise.all([
+        submitRating(input),
+        submitRating(input),
+      ]);
+
+      // Exactly one review is created; the loser is rejected by the duplicate check
+      expect(createdReviews).toHaveLength(1);
+      expect(first.success === second.success).toBe(false);
+      const failed = first.success ? second : first;
+      if (!failed.success) expect(failed.error.code).toBe('DUPLICATE_RATING');
+    } finally {
+      if (origList) db.listDocuments.mockImplementation(origList);
+      else db.listDocuments.mockReset();
+      if (origCreate) db.createDocument.mockImplementation(origCreate);
+      else db.createDocument.mockReset();
     }
   });
 

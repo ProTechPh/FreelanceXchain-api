@@ -2,24 +2,25 @@ import { Request, Response, NextFunction } from 'express';
 import { randomBytes } from 'crypto';
 import { doubleCsrf } from 'csrf-csrf';
 import { logger } from '../config/logger.js';
+import { getCsrfSecret, getNodeEnv } from '../config/env.js';
 import { getErrorMessage } from '../utils/index.js';
 import { getRequestId, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 
-const csrfSecret = process.env['CSRF_SECRET'] ?? randomBytes(32).toString('hex');
-if (!process.env['CSRF_SECRET']) {
+const csrfSecret = getCsrfSecret() ?? randomBytes(32).toString('hex');
+if (!getCsrfSecret()) {
   const msg = 'CSRF_SECRET not set — generated random secret (will change on restart, set CSRF_SECRET env var for persistence)';
-  if (process.env['NODE_ENV'] === 'production') {
+  if (getNodeEnv() === 'production') {
     throw new Error(msg);
   }
   logger.warn(msg);
 }
 
 /* istanbul ignore next -- production-only config */
-const cookieName = process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
+const cookieName = getNodeEnv() === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
 /* istanbul ignore next */
-const sameSite: 'strict' | 'lax' = process.env.NODE_ENV === 'production' ? 'strict' : 'lax';
+const sameSite: 'strict' | 'lax' = getNodeEnv() === 'production' ? 'strict' : 'lax';
 /* istanbul ignore next */
-const secure = process.env.NODE_ENV === 'production';
+const secure = getNodeEnv() === 'production';
 
 const {
   generateCsrfToken: csrfTokenGenerator,
@@ -59,6 +60,7 @@ const CSRF_EXEMPT_PATHS = [
   '/api/auth/resend-confirmation',
   '/api/auth/csrf-token',
   '/api/kyc/webhook',
+  '/api/inbox/webhook', // Email inbox webhook (HMAC-verified, server-to-server)
 ];
 
 function isExemptPath(path: string): boolean {
@@ -68,7 +70,7 @@ function isExemptPath(path: string): boolean {
 export function csrfProtection(req: Request, res: Response, next: NextFunction): void {
   const requestId = getRequestId(req);
 
-  if (process.env.NODE_ENV === 'test') {
+  if (getNodeEnv() === 'test') {
     next();
     return;
   }
@@ -110,7 +112,7 @@ export function generateCsrfToken(req: Request, res: Response): void {
     }
 
     const token = csrfTokenGenerator(req, res);
-    const cookieName = process.env.NODE_ENV === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
+    const cookieName = getNodeEnv() === 'production' ? '__Host-psifi.x-csrf-token' : 'psifi.x-csrf-token';
 
     logger.info('CSRF token generated successfully', {
       requestId,

@@ -19,6 +19,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     orderDesc: (field: string) => ({ field, method: 'orderDesc' }),
     orderAsc: (field: string) => ({ field, method: 'orderAsc' }),
     limit: (value: number) => ({ value, method: 'limit' }),
+    cursorAfter: (id: string) => ({ id, method: 'cursorAfter' }),
   },
   ID: { unique: () => 'generated-id' },
 }));
@@ -65,10 +66,23 @@ describe('UserCustomSkillRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return empty array on database error (base repo catches)', async () => {
+    it('should reject on database error (fetchAll propagates)', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      await expect(userCustomSkillRepository.getUserCustomSkills('user-1'))
+        .rejects.toThrow('Failed to get user custom skills');
+    });
+
+    it('should keep paging with cursorAfter until a short page is returned', async () => {
+      const page1 = Array.from({ length: 100 }, (_, i) => ({ $id: `s${i}`, $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: `Skill ${i}` }));
+      const page2 = [{ $id: 's100', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', user_id: 'user-1', name: 'Skill 100' }];
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: page1, total: 101 })
+        .mockResolvedValueOnce({ documents: page2, total: 101 });
+
       const result = await userCustomSkillRepository.getUserCustomSkills('user-1');
-      expect(result).toEqual([]);
+      expect(result).toHaveLength(101);
+      const secondQueries = mockDatabases.listDocuments.mock.calls[1]![2];
+      expect(secondQueries).toEqual(expect.arrayContaining([{ id: 's99', method: 'cursorAfter' }]));
     });
   });
 
@@ -168,10 +182,10 @@ describe('UserCustomSkillRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return empty array on database error (base repo catches)', async () => {
+    it('should reject on database error (fetchAll propagates)', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('search failed'));
-      const result = await userCustomSkillRepository.searchUserCustomSkills('user-1', 'react');
-      expect(result).toEqual([]);
+      await expect(userCustomSkillRepository.searchUserCustomSkills('user-1', 'react'))
+        .rejects.toThrow('Failed to search user custom skills');
     });
 
     it('should match skill when keyword is in description but not name (|| branch)', async () => {
@@ -217,41 +231,97 @@ describe('SkillSuggestionRepository', () => {
       expect(result!.skill_name).toBe('Rust');
     });
 
+    it('should match casing/padding variants of the same suggestion name', async () => {
+      const doc = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', skill_name: 'React' };
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+      const result = await skillSuggestionRepository.getSkillSuggestionByName(' REACT ');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('sg1');
+    });
+
     it('should return null when not found', async () => {
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
       const result = await skillSuggestionRepository.getSkillSuggestionByName('Rust');
       expect(result).toBeNull();
     });
 
-    it('should return null on database error (base repo catches)', async () => {
+    it('should reject on database error (fetchAll propagates)', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('db error'));
-      const result = await skillSuggestionRepository.getSkillSuggestionByName('Rust');
-      expect(result).toBeNull();
+      await expect(skillSuggestionRepository.getSkillSuggestionByName('Rust'))
+        .rejects.toThrow('Failed to get skill suggestion');
     });
   });
 
-  describe('incrementSkillSuggestionCount', () => {
-    it('should increment and return updated suggestion', async () => {
-      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 5 };
-      const updated = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-02', times_requested: 6 };
+  describe('recordSuggestionRequest', () => {
+    it('should increment and return updated suggestion for a new requester', async () => {
+      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 5, requester_ids: ['user-a'] };
+      const updated = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-02', times_requested: 6, requester_ids: ['user-a', 'user-b'] };
       mockDatabases.getDocument.mockResolvedValueOnce(existing);
       mockDatabases.updateDocument.mockResolvedValueOnce(updated);
-      const result = await skillSuggestionRepository.incrementSkillSuggestionCount('sg1');
+      const result = await skillSuggestionRepository.recordSuggestionRequest('sg1', 'user-b');
       expect(result).not.toBeNull();
       expect(result!.times_requested).toBe(6);
+      expect(result!.requester_ids).toEqual(['user-a', 'user-b']);
+      expect(mockDatabases.updateDocument).toHaveBeenCalled();
+    });
+
+    // BLF-skill.3: repeat request from the SAME user must not inflate the counter.
+    it('should NOT increment when the same user requests again (anti-spam dedup)', async () => {
+      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 3, requester_ids: ['user-a', 'user-b'] };
+      mockDatabases.getDocument.mockResolvedValueOnce(existing);
+      const result = await skillSuggestionRepository.recordSuggestionRequest('sg1', 'user-b');
+      expect(result).not.toBeNull();
+      expect(result!.times_requested).toBe(3);
+      expect(result!.requester_ids).toEqual(['user-a', 'user-b']);
+      // No update issued: deleting/re-creating the same skill must not bump popularity.
+      expect(mockDatabases.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('should tolerate a suggestion whose requester_ids field is missing', async () => {
+      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 1 };
+      const updated = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-02', times_requested: 2, requester_ids: ['user-x'] };
+      mockDatabases.getDocument.mockResolvedValueOnce(existing);
+      mockDatabases.updateDocument.mockResolvedValueOnce(updated);
+      const result = await skillSuggestionRepository.recordSuggestionRequest('sg1', 'user-x');
+      expect(result).not.toBeNull();
+      expect(result!.times_requested).toBe(2);
+    });
+
+    // BLF-skill.3 race guard: the read-modify-write is serialized with withLock,
+    // so two concurrent requests from the same NEW user cannot both read
+    // requester_ids without that user and double-increment the counter.
+    it('should not double-increment on concurrent requests from the same new user', async () => {
+      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 1, requester_ids: [] };
+      const updated = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-02', times_requested: 2, requester_ids: ['user-b'] };
+      // First call reads the pristine doc; the serialized second call re-reads
+      // the committed state (already contains user-b) and must NOT update again.
+      mockDatabases.getDocument
+        .mockResolvedValueOnce(existing)
+        .mockResolvedValue(updated);
+      mockDatabases.updateDocument.mockResolvedValue(updated);
+
+      const [first, second] = await Promise.all([
+        skillSuggestionRepository.recordSuggestionRequest('sg1', 'user-b'),
+        skillSuggestionRepository.recordSuggestionRequest('sg1', 'user-b'),
+      ]);
+
+      expect(first!.times_requested).toBe(2);
+      expect(second!.times_requested).toBe(2);
+      // Exactly one increment: one update for the first caller, none for the second.
+      expect(mockDatabases.updateDocument).toHaveBeenCalledTimes(1);
     });
 
     it('should return null when suggestion not found', async () => {
       mockDatabases.getDocument.mockRejectedValueOnce(new Error('not found'));
-      const result = await skillSuggestionRepository.incrementSkillSuggestionCount('sg1');
+      const result = await skillSuggestionRepository.recordSuggestionRequest('sg1', 'user-a');
       expect(result).toBeNull();
     });
 
     it('should return null on update error (base repo catches)', async () => {
-      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 5 };
+      const existing = { $id: 'sg1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01', times_requested: 5, requester_ids: [] };
       mockDatabases.getDocument.mockResolvedValueOnce(existing);
       mockDatabases.updateDocument.mockRejectedValueOnce(new Error('update failed'));
-      const result = await skillSuggestionRepository.incrementSkillSuggestionCount('sg1');
+      const result = await skillSuggestionRepository.recordSuggestionRequest('sg1', 'user-z');
       expect(result).toBeNull();
     });
   });
@@ -271,10 +341,10 @@ describe('SkillSuggestionRepository', () => {
       expect(result).toEqual([]);
     });
 
-    it('should return empty array on database error (base repo catches)', async () => {
+    it('should reject on database error (fetchAll propagates)', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
-      const result = await skillSuggestionRepository.getPendingSkillSuggestions();
-      expect(result).toEqual([]);
+      await expect(skillSuggestionRepository.getPendingSkillSuggestions())
+        .rejects.toThrow('Failed to get pending skill suggestions');
     });
   });
 
@@ -304,8 +374,8 @@ describe('UserCustomSkillRepository - error handling (branch coverage)', () => {
     jest.clearAllMocks();
   });
 
-  it('should throw in getUserCustomSkills when listWithQueries fails (line 53)', async () => {
-    jest.spyOn(userCustomSkillRepository as any, 'listWithQueries')
+  it('should throw in getUserCustomSkills when fetchAll fails', async () => {
+    jest.spyOn(userCustomSkillRepository as any, 'fetchAll')
       .mockRejectedValueOnce(new Error('db connection lost'));
 
     await expect(userCustomSkillRepository.getUserCustomSkills('u1'))
@@ -336,8 +406,8 @@ describe('UserCustomSkillRepository - error handling (branch coverage)', () => {
       .rejects.toThrow('Failed to delete user custom skill: permission denied');
   });
 
-  it('should throw in searchUserCustomSkills when listWithQueries fails (line 103)', async () => {
-    jest.spyOn(userCustomSkillRepository as any, 'listWithQueries')
+  it('should throw in searchUserCustomSkills when fetchAll fails', async () => {
+    jest.spyOn(userCustomSkillRepository as any, 'fetchAll')
       .mockRejectedValueOnce(new Error('index error'));
 
     await expect(userCustomSkillRepository.searchUserCustomSkills('u1', 'react'))
@@ -350,24 +420,24 @@ describe('SkillSuggestionRepository - error handling (branch coverage)', () => {
     jest.clearAllMocks();
   });
 
-  it('should throw in getSkillSuggestionByName when findOne fails (line 125)', async () => {
-    jest.spyOn(skillSuggestionRepository, 'findOne' as any)
+  it('should throw in getSkillSuggestionByName when fetchAll fails', async () => {
+    jest.spyOn(skillSuggestionRepository, 'fetchAll' as any)
       .mockRejectedValueOnce(new Error('db error'));
 
     await expect(skillSuggestionRepository.getSkillSuggestionByName('TypeScript'))
       .rejects.toThrow('Failed to get skill suggestion: db error');
   });
 
-  it('should throw in incrementSkillSuggestionCount when getById fails (line 135)', async () => {
+  it('should throw in recordSuggestionRequest when getById fails', async () => {
     jest.spyOn(skillSuggestionRepository, 'getById' as any)
       .mockRejectedValueOnce(new Error('record not found'));
 
-    await expect(skillSuggestionRepository.incrementSkillSuggestionCount('ss1'))
-      .rejects.toThrow('Failed to increment skill suggestion count: record not found');
+    await expect(skillSuggestionRepository.recordSuggestionRequest('ss1', 'u1'))
+      .rejects.toThrow('Failed to record skill suggestion request: record not found');
   });
 
-  it('should throw in getPendingSkillSuggestions when listWithQueries fails (line 146)', async () => {
-    jest.spyOn(skillSuggestionRepository as any, 'listWithQueries')
+  it('should throw in getPendingSkillSuggestions when fetchAll fails', async () => {
+    jest.spyOn(skillSuggestionRepository as any, 'fetchAll')
       .mockRejectedValueOnce(new Error('table locked'));
 
     await expect(skillSuggestionRepository.getPendingSkillSuggestions())

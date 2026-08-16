@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../config/logger.js';
+import { classifyRouteClass, recordSliSample } from '../services/sli-metrics-service.js';
 
 export function requestLogger(
   req: Request,
@@ -27,6 +28,16 @@ export function requestLogger(
   // Log response when finished
   res.on('finish', () => {
     const duration = Date.now() - startTime;
+
+    // Feed the SLI aggregator (availability + latency budgets per endpoint
+    // class, per docs/reliability/slo.md). Best-effort and never throws:
+    // metrics must not break the request path they measure.
+    try {
+      recordSliSample(classifyRouteClass(req.path), res.statusCode, duration);
+    } catch {
+      // Ignored - observability must stay fail-open.
+    }
+
     const logLevel = res.statusCode >= 500 ? 'error' : res.statusCode >= 400 ? 'warn' : 'info';
     
     const logData = {

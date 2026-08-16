@@ -34,27 +34,28 @@ export class UserRepository extends BaseRepository<UserEntity> {
   }
 
   /**
-   * Batch-fetch users by id. Appwrite caps `equal` at 100 values per query,
-   * so ids are chunked. Returns an id → user map for O(1) lookups.
+   * Batch-fetch users by ID (kills the N+1 pattern used by favorites
+   * enrichment and the weekly digest). Appwrite caps `equal` at 100 values
+   * per query, so large batches are chunked. Users that no longer exist are
+   * simply absent.
    */
-  async getUsersByIds(ids: string[]): Promise<Map<string, UserEntity>> {
-    const usersById = new Map<string, UserEntity>();
-
+  async getUsersByIds(ids: string[]): Promise<UserEntity[]> {
+    if (ids.length === 0) return [];
+    const users: UserEntity[] = [];
     for (let i = 0; i < ids.length; i += 100) {
       const chunk = ids.slice(i, i + 100);
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [Query.equal('$id', chunk), Query.limit(chunk.length)]
-      );
-
-      for (const doc of response.documents) {
-        const user = fromAppwriteDoc<UserEntity>(doc);
-        usersById.set(user.id, user);
+      try {
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          COLLECTION_ID,
+          [Query.equal('$id', chunk), Query.limit(chunk.length)]
+        );
+        users.push(...response.documents.map(doc => fromAppwriteDoc<UserEntity>(doc)));
+      } catch (error) {
+        throw new Error(`Failed to get users by ids: ${getErrorMessageOr(error, 'Unknown error')}`);
       }
     }
-
-    return usersById;
+    return users;
   }
 
   async getUserByEmail(email: string): Promise<UserEntity | null> {
@@ -100,16 +101,9 @@ export class UserRepository extends BaseRepository<UserEntity> {
 
   async getUsersByRole(role: 'freelancer' | 'employer' | 'admin'): Promise<UserEntity[]> {
     try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [
-          Query.equal('role', role),
-          Query.orderDesc('created_at'),
-          Query.limit(1000),
-        ]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<UserEntity>(doc));
+      // Cursor pagination (fetchAll) instead of Query.limit(1000) so large
+      // user bases are not silently truncated at 1000 records.
+      return await this.fetchAll([Query.equal('role', role), Query.orderDesc('created_at')]);
     } catch (error) {
       throw new Error(`Failed to get users by role: ${getErrorMessageOr(error, 'Unknown error')}`);
     }

@@ -7,16 +7,17 @@ FreelanceXchain is a decentralized freelance marketplace with AI skill matching 
 - [AI-Powered Matching System](ai-matching.md) - LLM integration, skill matching, and recommendation algorithms
 - [API Endpoints Reference](api-endpoints.md) - Complete REST API documentation with examples
 - [Middleware & Interceptors](middleware.md) - Request processing pipeline and security layers
-- [Data Models & ORM Mapping](data-models.md) - TypeScript models and PostgreSQL schema mapping
+- [Data Models](data-models.md) - Appwrite collections and TypeScript model mapping
 - [Business Logic Layer](business-logic.md) - Service layer architecture and domain logic
-- [Database Schema Design](database-schema.md) - Tables, relationships, indexing, and RLS policies
+- [Appwrite Schema Design](database-schema.md) - Collections, attributes, indexes, and security model
+- [ADRs](adr/) - Architecture Decision Records (token sessions, partial refunds, etc.)
 
 ## Architecture Overview
 
 The system follows a layered architecture pattern:
 
 ```
-Routes → Services → Repositories → PostgreSQL / Appwrite
+Routes → Services → Repositories → Appwrite
          ↓
     Blockchain (Solidity contracts via Hardhat)
          ↓

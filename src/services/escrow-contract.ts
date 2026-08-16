@@ -547,41 +547,6 @@ export async function getEscrowState(escrowAddress: string): Promise<EscrowState
 }
 
 /**
- * Get milestone status from escrow
- */
-export async function getMilestoneStatus(
-  escrowAddress: string,
-  milestoneId: string
-): Promise<EscrowMilestone | null> {
-  const escrow = await loadEscrow(escrowAddress);
-  if (!escrow) {
-    return null;
-  }
-  return escrow.milestones.find(m => m.id === milestoneId) ?? null;
-}
-
-/**
- * Check if all milestones are released
- */
-export async function areAllMilestonesReleased(escrowAddress: string): Promise<boolean> {
-  const escrow = await loadEscrow(escrowAddress);
-  if (!escrow) {
-    return false;
-  }
-  return escrow.milestones.every(m => m.status === 'released');
-}
-
-/**
- * Clear all escrows (for testing)
- */
-export async function clearEscrows(): Promise<void> {
-  const escrows = await databases.listDocuments(DATABASE_ID, ESCROW_COLLECTION);
-  await Promise.all(escrows.documents.map(doc => databases.deleteDocument(DATABASE_ID, ESCROW_COLLECTION, doc.$id)));
-  const milestones = await databases.listDocuments(DATABASE_ID, MILESTONE_COLLECTION);
-  await Promise.all(milestones.documents.map(doc => databases.deleteDocument(DATABASE_ID, MILESTONE_COLLECTION, doc.$id)));
-}
-
-/**
  * Get escrow by contract ID
  */
 export async function getEscrowByContractId(contractId: string): Promise<EscrowState | null> {

@@ -16,6 +16,7 @@ import {
   getAllDisputes,
 } from '../services/dispute-service.js';
 import { getContractById } from '../services/contract-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -169,7 +170,7 @@ router.get(
   authMiddleware,
   requireVerifiedKyc,
   apiRateLimiter,
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const userRole = req.user?.role;
@@ -195,7 +196,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  })
 );
 
 /**
@@ -234,7 +235,7 @@ router.post(
   authMiddleware,
   requireVerifiedKyc,
   apiRateLimiter,
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const { contractId, milestoneId, reason } = req.body as {
@@ -293,7 +294,7 @@ router.post(
     } catch (error) {
       next(error);
     }
-  }
+  })
 );
 
 
@@ -334,7 +335,7 @@ router.get(
   requireVerifiedKyc,
   apiRateLimiter,
   validateUUID(['disputeId']),
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const disputeId = req.params['disputeId'] ?? '';
@@ -374,7 +375,7 @@ router.get(
     } catch (error) {
       next(error);
     }
-  }
+  })
 );
 
 /**
@@ -441,7 +442,7 @@ router.post(
   requireVerifiedKyc,
   apiRateLimiter,
   validateUUID(['disputeId']),
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const contentType = req.headers['content-type'] || '';
     
     // Route to appropriate handler based on Content-Type
@@ -452,7 +453,7 @@ router.post(
       // URL-reference pattern (backward compatibility)
       return handleJsonEvidenceSubmission(req, res, next);
     }
-  }
+  })
 );
 
 /**
@@ -532,6 +533,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
       originalFilename: file.originalname,
       mimeType,
       bucket: STORAGE_BUCKETS.DISPUTE_EVIDENCE,
+      userId,
     });
     
     if (!uploadResult.success) {
@@ -660,7 +662,7 @@ router.post(
   requireVerifiedKyc,
   apiRateLimiter,
   validateUUID(['disputeId']),
-  async (req: Request, res: Response, next: NextFunction) => {
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user?.userId;
       const userRole = req.user?.role;
@@ -735,7 +737,7 @@ router.post(
     } catch (error) {
       next(error);
     }
-  }
+  })
 );
 
 

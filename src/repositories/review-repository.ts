@@ -19,7 +19,7 @@ export type ReviewEntity = {
   updated_at: string;
 };
 
-export type CreateReviewInput = Omit<ReviewEntity, 'id' | 'created_at' | 'updated_at'>;
+
 
 const COLLECTION_ID = 'reviews';
 
@@ -145,5 +145,3 @@ class ReviewRepositoryClass extends BaseRepository<ReviewEntity> {
 }
 
 export const reviewRepository = new ReviewRepositoryClass();
-/** @deprecated Use `reviewRepository` (camelCase) instead. */
-export const ReviewRepository = reviewRepository;

@@ -19,6 +19,7 @@ import {
   withdrawProposal,
 } from '../services/proposal-service.js';
 import { getProjectById } from '../services/project-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -367,7 +368,7 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
     const requestId = getRequestId(req);
@@ -397,7 +398,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
     logger.error('Error fetching proposal', error);
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch proposal', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -458,7 +459,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), async (req: R
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const id = req.params['id'] ?? '';
     const requestId = getRequestId(req);
@@ -488,7 +489,7 @@ router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer
     logger.error('Error fetching proposal with employer history', error);
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch proposal with employer history', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -513,7 +514,7 @@ router.get('/:id/with-employer-history', authMiddleware, requireRole('freelancer
  *         description: Unauthorized
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -530,7 +531,7 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateL
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -571,7 +572,7 @@ router.get('/freelancer/me', authMiddleware, requireRole('freelancer'), apiRateL
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -601,7 +602,7 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
     logger.error('Error accepting proposal', error);
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to accept proposal', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -636,7 +637,7 @@ router.post('/:id/accept', authMiddleware, requireRole('employer'), requireVerif
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via apiRateLimiter middleware
-router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -663,7 +664,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
     logger.error('Error rejecting proposal', error);
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to reject proposal', { requestId: getRequestId(req) });
   }
-});
+}));
 
 
 /**
@@ -699,7 +700,7 @@ router.post('/:id/reject', authMiddleware, requireRole('employer'), requireVerif
  *         description: Proposal not found
  */
 // lgtm[js/missing-rate-limiting] - Rate limiting implemented via withdrawalRateLimiter middleware
-router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, withdrawalRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireVerifiedKyc, withdrawalRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   try {
     const proposalId = req.params['id'] ?? '';
     const userId = req.user?.userId;
@@ -726,6 +727,6 @@ router.post('/:id/withdraw', authMiddleware, requireRole('freelancer'), requireV
     logger.error('Error withdrawing proposal', error);
     sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to withdraw proposal', { requestId: getRequestId(req) });
   }
-});
+}));
 
 export default router;

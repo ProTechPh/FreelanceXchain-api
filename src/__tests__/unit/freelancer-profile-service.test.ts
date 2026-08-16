@@ -660,6 +660,25 @@ describe('Freelancer Profile Service - Direct Branch Coverage', () => {
     expect(result.success).toBe(true);
   });
 
+  it('should treat whitespace/casing variants of the same skill as duplicates', async () => {
+    const { addSkillsToProfile } = await importModule();
+    mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [{ name: 'Node JS', years_of_experience: 1 }], experience: [],
+    });
+    mockFreelancerProfileRepository.updateProfile.mockResolvedValueOnce({
+      id: 'p1', user_id: 'u1', skills: [{ name: 'Node JS', years_of_experience: 4 }],
+      experience: [], created_at: '2025-01-01', updated_at: '2025-01-01',
+    });
+
+    const result = await addSkillsToProfile('u1', [{ name: 'Node  JS', yearsOfExperience: 4 }]);
+
+    expect(result.success).toBe(true);
+    expect(mockFreelancerProfileRepository.updateProfile).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({ skills: [{ name: 'Node JS', years_of_experience: 4 }] })
+    );
+  });
+
   it('should handle removeSkillFromProfile with null skills', async () => {
     const { removeSkillFromProfile } = await importModule();
     mockFreelancerProfileRepository.getProfileByUserId.mockResolvedValueOnce({

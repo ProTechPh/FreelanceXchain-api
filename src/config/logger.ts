@@ -1,6 +1,7 @@
 // OWASP A02:2021 / A09:2021 — structured logging with automatic sanitization
 
 import { sanitizeLogData, sanitizeError } from '../utils/log-sanitizer.js';
+import { config } from './env.js';
 
 export enum LogLevel {
   DEBUG = 'debug',
@@ -16,7 +17,9 @@ const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
   [LogLevel.ERROR]: 3,
 };
 
-const CURRENT_LOG_LEVEL = (process.env.LOG_LEVEL?.toLowerCase() as LogLevel) || LogLevel.INFO;
+// Defensive read: env.ts is mocked in many test suites with partial config
+// shapes, and logging must never crash on bootstrap. Falls back to INFO.
+const CURRENT_LOG_LEVEL = (config.server?.logLevel?.toLowerCase() as LogLevel) || LogLevel.INFO;
 
 function shouldLog(level: LogLevel): boolean {
   return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[CURRENT_LOG_LEVEL];

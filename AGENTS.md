@@ -2,7 +2,7 @@
 
 ## Project
 
-Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized freelance marketplace. PostgreSQL + Appwrite (auth/storage), Solidity smart contracts (Hardhat), AI skill matching via LLM, Didit KYC.
+Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized freelance marketplace. Appwrite (auth/database/storage), Solidity smart contracts (Hardhat), AI skill matching via LLM, Didit KYC.
 
 ## Essential commands
 
@@ -39,13 +39,13 @@ Local verification order (mirrors what CI checks): `compile` → `tsc --noEmit` 
 
 ## Architecture
 
-Layered: `routes/` → `services/` → `repositories/` → PostgreSQL / Appwrite.
+Layered: `routes/` → `services/` → `repositories/` → Appwrite.
 Entry point: `src/index.ts` calls `createApp()` from `src/app.ts`.
 Routes barrel: `src/routes/index.ts` mounts 30+ route modules under `/api`.
 
 Blockchain uses an adapter pattern (`IBlockchainAdapter` in `src/services/blockchain/adapter.ts`). Switch modes via `BLOCKCHAIN_MODE=real|simulated` (default `simulated`). Dev targets Ganache at `http://127.0.0.1:7545`. Production targets Polygon Amoy testnet.
 
-Note: `pnpm run dev` overrides to `BLOCKCHAIN_MODE=real` with Ganache. If you need simulated mode locally, set `BLOCKCHAIN_MODE=simulated` explicitly.
+Note: `pnpm run dev` and `prod` override to `BLOCKCHAIN_MODE=real` — a normally-run server uses REAL blockchain. The `simulated` default is only a fallback for when `BLOCKCHAIN_MODE` is unset; its main consumers are the jest suite and local runs without a node. Even in real mode, the service mirrors escrow state into the Appwrite "simulated" ledger for status tracking (read-model only, not a second money path). If you need simulated mode locally, set `BLOCKCHAIN_MODE=simulated` explicitly.
 
 ## Testing quirks
 

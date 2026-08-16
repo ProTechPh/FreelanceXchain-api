@@ -10,6 +10,7 @@ import {
   updateEmployerProfile,
 } from '../services/employer-profile-service.js';
 import { listProjectsByEmployer } from '../services/project-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -84,7 +85,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
@@ -108,7 +109,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -133,7 +134,7 @@ router.get('/projects', authMiddleware, requireRole('employer'), apiRateLimiter,
  *       404:
  *         description: Profile not found
  */
-router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -151,7 +152,7 @@ router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, 
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -191,7 +192,7 @@ router.get('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, 
  *       404:
  *         description: Profile not found
  */
-router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { companyName, description, industry } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -228,7 +229,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -258,7 +259,7 @@ router.patch('/profile', authMiddleware, requireRole('employer'), apiRateLimiter
  *       404:
  *         description: Profile not found
  */
-router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -270,6 +271,6 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

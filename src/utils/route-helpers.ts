@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
-import type { ServiceResult } from '../types/service-result.js';
 import { sendErrorResponse } from './response-helpers.js';
+import type { ServiceResult } from '../types/service-result.js';
 
 export function getRequestId(req: Request): string {
   return (req.headers?.['x-request-id'] as string) ?? 'unknown';

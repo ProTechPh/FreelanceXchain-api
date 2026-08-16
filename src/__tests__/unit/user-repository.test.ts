@@ -62,7 +62,7 @@ describe('UserRepository', () => {
   });
 
   describe('getUsersByIds', () => {
-    it('should return a map of users by id', async () => {
+    it('should return an array of users by id', async () => {
       mockDatabases.listDocuments.mockResolvedValueOnce({
         documents: [
           { $id: 'u1', email: 'u1@test.com' },
@@ -72,15 +72,26 @@ describe('UserRepository', () => {
       });
 
       const result = await repo.getUsersByIds(['u1', 'u2']);
-      expect(result.size).toBe(2);
-      expect(result.get('u1').email).toBe('u1@test.com');
-      expect(result.get('u2').email).toBe('u2@test.com');
+      expect(result).toHaveLength(2);
+      expect(result[0].email).toBe('u1@test.com');
+      expect(result[1].email).toBe('u2@test.com');
       expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
     });
 
-    it('should return an empty map when no ids are given', async () => {
+    it('should chunk ids into batches of 100 for Appwrite equal cap', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'u1', email: 'u1@test.com' }],
+        total: 1,
+      });
+
+      const ids = Array.from({ length: 150 }, (_, i) => `u${i}`);
+      await repo.getUsersByIds(ids);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return an empty array when no ids are given', async () => {
       const result = await repo.getUsersByIds([]);
-      expect(result.size).toBe(0);
+      expect(result).toHaveLength(0);
       expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
     });
   });

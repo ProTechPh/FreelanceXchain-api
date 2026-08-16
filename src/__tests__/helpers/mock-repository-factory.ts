@@ -15,7 +15,7 @@ export function createInMemoryStore<T extends { id: string }>(): Map<string, T> 
 /**
  * Create a mock repository with common CRUD operations
  */
-export function createMockRepository<T extends { id: string; created_at: string; updated_at: string }>(
+function createMockRepository<T extends { id: string; created_at: string; updated_at: string }>(
   store: Map<string, T>
 ) {
   const now = () => new Date().toISOString();

@@ -35,8 +35,10 @@ import { completeAgreement } from './agreement-contract.js';
 import { approveMilestone as approveOnChainMilestone, deployEscrowContract as deployRealEscrow } from './escrow-blockchain.js';
 import { isWeb3Available } from './web3-client.js';
 import { getBlockchainMode } from './blockchain/factory.js';
-import { withLock } from '../utils/async-lock.js';
+import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { refundRequestRepository } from '../repositories/refund-request-repository.js';
+import { persistAuditEntry } from '../utils/admin-audit.js';
+import { sendGatedEmail, sendMilestoneApprovedEmail, sendPaymentReleasedEmail } from './email-delivery-service.js';
 
 const escrowOps = {
   deployEscrow,
@@ -187,6 +189,10 @@ async function validateMilestoneSubmission(
 
   if (milestone.status === 'submitted') {
     return { error: errorResult('INVALID_STATUS', 'Milestone already submitted for review') };
+  }
+
+  if (milestone.status === 'releasing') {
+    return { error: errorResult('INVALID_STATUS', 'Milestone payment is already being processed') };
   }
 
   return { contract, project, projectEntity, milestone, milestoneIndex };
@@ -644,6 +650,25 @@ async function finalizeMilestoneApproval(
     contractId,
   });
 
+  // Transactional emails gated by the freelancer's email preferences.
+  // Best-effort: a preference lookup or send failure must not break the approval.
+  await sendGatedEmail(contract.freelancerId, 'milestone_updates', (recipient) =>
+    sendMilestoneApprovedEmail(recipient.email, {
+      freelancerName: recipient.name,
+      milestoneTitle: milestone.title,
+      amount: `$${milestone.amount}`,
+      contractUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/contracts/${contractId}`,
+    })
+  );
+  await sendGatedEmail(contract.freelancerId, 'payment_notifications', (recipient) =>
+    sendPaymentReleasedEmail(recipient.email, {
+      recipientName: recipient.name,
+      amount: `$${milestone.amount}`,
+      contractTitle: project.title,
+      transactionHash,
+    })
+  );
+
   return { milestoneId, status: 'approved', paymentReleased: true, transactionHash, contractCompleted };
 }
 
@@ -661,7 +686,7 @@ export async function approveMilestone(
   employerId: string
 ): Promise<ServiceResult<MilestoneApprovalResult>> {
   // Serialize concurrent approval attempts for the same milestone to prevent double-spend
-  return withLock(`milestone-approve:${milestoneId}`, async () => {
+  return withLock(milestoneLockKey(milestoneId), async () => {
     const validated = await validateMilestoneApproval(contractId, milestoneId, employerId);
     if ('error' in validated) return validated.error;
 
@@ -697,6 +722,30 @@ export async function approveMilestone(
       employerId,
       releasingBaseEntity,
       transactionHash: released.transactionHash,
+    });
+
+    // BLF-12.2: durable audit trail — milestone approvals (escrow releases) are
+    // recorded with the employer as actor, the freelancer as target user, and the
+    // released amount + tx hash. Written only after the release fully commits;
+    // best-effort by design.
+    await persistAuditEntry({
+      user_id: contract.freelancerId,
+      actor_id: employerId,
+      action: 'milestone.approved',
+      resource_type: 'milestone',
+      resource_id: milestoneId,
+      payload: {
+        contractId,
+        projectId: project.id,
+        milestoneTitle: milestone.title ?? null,
+        amount: milestone.amount ?? null,
+        transactionHash: released.transactionHash ?? null,
+        contractCompleted: result.contractCompleted,
+      },
+      ip_address: null,
+      user_agent: null,
+      status: 'success',
+      error_message: null,
     });
 
     return successResult(result);
@@ -942,18 +991,6 @@ export async function getDisputeById(disputeId: string): Promise<Dispute | null>
 export async function getDisputesByContract(contractId: string): Promise<Dispute[]> {
   const entities = await disputeRepository.getAllDisputesByContract(contractId);
   return entities.map(mapDisputeFromEntity);
-}
-
-/**
- * @deprecated Disputes are now persisted in the database. Use direct repository calls
- * in tests. This function is a no-op in all environments and will throw in production
- * to prevent accidental calls that expect side effects.
- */
-export function clearDisputes(): void {
-  if (process.env['NODE_ENV'] === 'production') {
-    throw new Error('clearDisputes must not be called in production — disputes are persisted in the database');
-  }
-  // No-op in non-production environments: disputes are stored in the database
 }
 
 /**

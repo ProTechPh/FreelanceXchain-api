@@ -23,9 +23,6 @@ BigInt.prototype.toJSON = function() {
   return this.toString();
 };
 
-// Export to global for use in tests
-global.mockPool = { query: jest.fn(), connect: jest.fn(), on: jest.fn() };
-
 /**
  * Mock helper for Appwrite database results
  * Usage: mockAppwriteResult({ data: [...] }) for success
@@ -183,15 +180,6 @@ jest.unstable_mockModule('jsonwebtoken', () => ({
   sign: jest.fn().mockReturnValue('mock-jwt-token'),
 }));
 
-// Mock the database pool and query functions
-jest.unstable_mockModule('./src/config/database.js', () => ({
-  pool: new Proxy({}, { get: () => { throw new Error('Database not available'); } }),
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: jest.fn().mockRejectedValue(new Error('Database not available')),
-  queryOne: jest.fn().mockRejectedValue(new Error('Database not available')),
-  initializeDatabase: jest.fn().mockResolvedValue(undefined),
-}));
-
 // Mock file-type (ESM-only module)
 jest.unstable_mockModule('file-type', () => ({
   fileTypeFromBuffer: jest.fn().mockResolvedValue({ ext: 'png', mime: 'image/png' }),
@@ -307,7 +295,30 @@ jest.unstable_mockModule('./src/config/appwrite.js', () => ({
   users: mockAppwriteUsers,
   databases: mockDatabases,
   DATABASE_ID: 'freelancexchain',
-  Query: { equal: jest.fn(), notEqual: jest.fn(), orderDesc: jest.fn(), orderAsc: jest.fn(), limit: jest.fn(), offset: jest.fn(), cursorAfter: jest.fn(), cursorBefore: jest.fn(), between: jest.fn(), contains: jest.fn(), search: jest.fn(), greaterThan: jest.fn(), greaterThanEqual: jest.fn(), lessThan: jest.fn(), lessThanEqual: jest.fn(), startsWith: jest.fn(), endsWith: jest.fn(), select: jest.fn(), isNull: jest.fn(), isNotNull: jest.fn(), regex: jest.fn() },
+  Query: {
+    equal: jest.fn((attr: string, val: unknown) => `equal(${attr},${val})`),
+    notEqual: jest.fn((attr: string, val: unknown) => `notEqual(${attr},${val})`),
+    orderDesc: jest.fn((attr: string) => `orderDesc(${attr})`),
+    orderAsc: jest.fn((attr: string) => `orderAsc(${attr})`),
+    limit: jest.fn((n: number) => `limit(${n})`),
+    offset: jest.fn((n: number) => `offset(${n})`),
+    cursorAfter: jest.fn((id: string) => `cursorAfter(${id})`),
+    cursorBefore: jest.fn(),
+    between: jest.fn(),
+    contains: jest.fn(),
+    search: jest.fn(),
+    greaterThan: jest.fn(),
+    greaterThanEqual: jest.fn((attr: string, val: unknown) => `greaterThanEqual(${attr},${val})`),
+    lessThan: jest.fn(),
+    lessThanEqual: jest.fn((attr: string, val: unknown) => `lessThanEqual(${attr},${val})`),
+    startsWith: jest.fn(),
+    endsWith: jest.fn(),
+    select: jest.fn(),
+    isNull: jest.fn(),
+    isNotNull: jest.fn(),
+    regex: jest.fn(),
+    or: jest.fn((queries: unknown[]) => `or(${queries.map(q => `(${String(q)})`).join(',')})`),
+  },
   ID: { unique: () => 'unique-id' },
   Permission: { read: 'read', write: 'write', create: 'create', update: 'update', delete: 'delete' },
   Role: { any: () => 'any', user: (id: string) => `user:${id}` },
@@ -345,7 +356,6 @@ global.createMockBuilder = (result) => {
 declare global {
   function mockAppwriteResult(result: any): void;
   function createMockBuilder(result: any): any;
-  var mockPool: any;
   var mockAppwriteClient: any;
   var mockAppwriteAccount: any;
   var mockAppwriteUsers: any;

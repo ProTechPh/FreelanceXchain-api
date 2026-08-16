@@ -12,6 +12,7 @@ import {
   markConversationAsRead,
   getUnreadMessageCount,
 } from '../services/message-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -24,7 +25,7 @@ const router = Router();
  *     security:
  *       - bearerAuth: []
  */
-router.get('/conversations', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/conversations', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
@@ -43,7 +44,7 @@ router.get('/conversations', authMiddleware, apiRateLimiter, async (req: Request
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -54,7 +55,7 @@ router.get('/conversations', authMiddleware, apiRateLimiter, async (req: Request
  *     security:
  *       - bearerAuth: []
  */
-router.post('/send', authMiddleware, apiRateLimiter, validate(sendMessageSchema), async (req: Request, res: Response) => {
+router.post('/send', authMiddleware, apiRateLimiter, validate(sendMessageSchema), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -74,7 +75,7 @@ router.post('/send', authMiddleware, apiRateLimiter, validate(sendMessageSchema)
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -85,7 +86,7 @@ router.post('/send', authMiddleware, apiRateLimiter, validate(sendMessageSchema)
  *     security:
  *       - bearerAuth: []
  */
-router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['conversationId']), async (req: Request, res: Response) => {
+router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['conversationId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const conversationId = req.params['conversationId'] ?? '';
   const requestId = getRequestId(req);
@@ -106,7 +107,7 @@ router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, val
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -117,7 +118,7 @@ router.get('/conversations/:conversationId', authMiddleware, apiRateLimiter, val
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['conversationId']), async (req: Request, res: Response) => {
+router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimiter, validateAppwriteDocumentId(['conversationId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const conversationId = req.params['conversationId'] ?? '';
   const requestId = getRequestId(req);
@@ -135,7 +136,7 @@ router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimit
   }
 
   sendSuccessResponse(res, 200, { message: 'Conversation marked as read' }, requestId);
-});
+}));
 
 /**
  * @swagger
@@ -146,7 +147,7 @@ router.patch('/conversations/:conversationId/read', authMiddleware, apiRateLimit
  *     security:
  *       - bearerAuth: []
  */
-router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/unread-count', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -163,6 +164,6 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, async (req: Request,
   }
 
   res.status(200).json({ count: result.data });
-});
+}));
 
 export default router;

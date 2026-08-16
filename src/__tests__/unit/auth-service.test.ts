@@ -9,18 +9,6 @@ import { UserRole } from '../../models/user.js';
 import { RegisterInput, LoginInput, AuthResult, AuthError } from '../../services/auth-types.js';
 import { generateId } from '../../utils/id.js';
 
-// Mock bcrypt to avoid native module issues with pnpm
-const bcrypt = {
-  hashSync: (password: string, _rounds: number): string => {
-    // Simple mock hash - just prefix with "hashed_" for testing
-    return `hashed_${password}`;
-  },
-  compareSync: (password: string, hash: string): boolean => {
-    // Compare against our mock hash format
-    return hash === `hashed_${password}`;
-  },
-};
-
 // In-memory user store for testing - uses entity type with snake_case
 let userStore: Map<string, UserEntity> = new Map();
 // Password store to verify login (email -> plain password)
@@ -68,6 +56,7 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
     getUserByEmail: jest.fn().mockResolvedValue(null),
     getUserById: jest.fn().mockResolvedValue(null),
     update: jest.fn().mockResolvedValue({}),
+    updateUser: jest.fn().mockResolvedValue({}),
   },
   UserRepository: jest.fn(),
   UserEntity: {} as UserEntity,
@@ -79,6 +68,8 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
   users: {
     create: jest.fn().mockResolvedValue({ $id: 'test-appwrite-user-id' }),
     delete: jest.fn().mockResolvedValue({}),
+    createSession: jest.fn().mockResolvedValue({ $id: 'session-1', secret: 'test-session-secret' }),
+    deleteSession: jest.fn().mockResolvedValue({}),
   },
 }));
 
@@ -94,6 +85,7 @@ const {
   validateTokenAndGetUser,
   requestPasswordReset,
   updatePassword,
+  updateUserWallet,
   isAuthError,
   logout,
   getCurrentUserWithKyc,
@@ -683,10 +675,11 @@ describe('auth-service comprehensive coverage', () => {
     it('should return INTERNAL_ERROR for other registration failures', async () => {
       users.create.mockRejectedValueOnce(new Error('Service unavailable'));
 
+      // BUG-5 fix: raw upstream error details must NOT leak to the client (CWE-209).
       const result = await register(validInput);
       expect(result).toEqual({
         code: 'INTERNAL_ERROR',
-        message: 'Service unavailable',
+        message: 'Failed to create user',
       });
     });
 
@@ -1473,14 +1466,25 @@ describe('auth-service comprehensive coverage', () => {
       expect(result).toEqual({ userId: 'otp-user-123' });
     });
 
-    it('should return INTERNAL_ERROR on failure', async () => {
+    it('should return a generic INTERNAL_ERROR without leaking upstream error details', async () => {
       global.mockAppwriteAccount.createEmailToken.mockRejectedValueOnce(new Error('OTP send failed'));
 
       const result = await requestEmailOtp('test@example.com');
       expect(result).toEqual({
         code: 'INTERNAL_ERROR',
-        message: 'OTP send failed',
+        message: 'Failed to send OTP to email',
       });
+    });
+
+    it('should return the identical error for every upstream failure (no account-enumeration oracle)', async () => {
+      const upstreamErrors = [new Error('OTP send failed'), new Error('user_not_found')];
+      const results: unknown[] = [];
+      for (const error of upstreamErrors) {
+        global.mockAppwriteAccount.createEmailToken.mockRejectedValueOnce(error);
+        results.push(await requestEmailOtp('test@example.com'));
+      }
+      expect(results[0]).toEqual(results[1]);
+      expect(results[0]).toEqual({ code: 'INTERNAL_ERROR', message: 'Failed to send OTP to email' });
     });
   });
 
@@ -1495,14 +1499,25 @@ describe('auth-service comprehensive coverage', () => {
       expect(result).toEqual({ userId: 'magic-user-456' });
     });
 
-    it('should return INTERNAL_ERROR on failure', async () => {
+    it('should return a generic INTERNAL_ERROR without leaking upstream error details', async () => {
       global.mockAppwriteAccount.createMagicURLToken.mockRejectedValueOnce(new Error('Magic URL failed'));
 
       const result = await requestMagicUrl('test@example.com');
       expect(result).toEqual({
         code: 'INTERNAL_ERROR',
-        message: 'Magic URL failed',
+        message: 'Failed to send Magic URL',
       });
+    });
+
+    it('should return the identical error for every upstream failure (no account-enumeration oracle)', async () => {
+      const upstreamErrors = [new Error('Magic URL failed'), new Error('user_not_found')];
+      const results: unknown[] = [];
+      for (const error of upstreamErrors) {
+        global.mockAppwriteAccount.createMagicURLToken.mockRejectedValueOnce(error);
+        results.push(await requestMagicUrl('test@example.com'));
+      }
+      expect(results[0]).toEqual(results[1]);
+      expect(results[0]).toEqual({ code: 'INTERNAL_ERROR', message: 'Failed to send Magic URL' });
     });
   });
 
@@ -1950,13 +1965,14 @@ describe('auth-service - Additional Branch Coverage', () => {
   });
 
   // Helper coverage: getErrorMessage with a plain object that has a string message
-  it('helpers: should surface the message from a plain object error in register', async () => {
+  it('helpers: should surface a generic message from a plain object error in register', async () => {
     users.create.mockRejectedValueOnce({ message: 'Plain failure' });
 
+    // BUG-5 fix: raw upstream error details must NOT leak to the client (CWE-209).
     const result = await register({ email: 'test@example.com', password: 'Password1!', role: 'freelancer' });
     expect(result).toEqual({
       code: 'INTERNAL_ERROR',
-      message: 'Plain failure',
+      message: 'Failed to create user',
     });
   });
 
@@ -1991,5 +2007,65 @@ describe('auth-service - Additional Branch Coverage', () => {
       code: 'INTERNAL_ERROR',
       message: 'Failed to create user',
     });
+  });
+});
+
+describe('auth-service - updateUserWallet', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('should update the wallet address successfully when none is set', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: null });
+    userRepository.updateUser.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0x123' });
+
+    const result = await updateUserWallet('u-1', '0x123');
+
+    expect(userRepository.updateUser).toHaveBeenCalledWith('u-1', { wallet_address: '0x123' });
+    expect(result).toEqual({ walletAddress: '0x123' });
+  });
+
+  it('should fall back to the requested address when the stored value is empty', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '' });
+    userRepository.updateUser.mockResolvedValueOnce({ id: 'u-1', wallet_address: null });
+
+    const result = await updateUserWallet('u-1', '0x123');
+
+    expect(result).toEqual({ walletAddress: '0x123' });
+  });
+
+  it('should return WALLET_LOCKED when a different wallet is already set', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0xOLD' });
+
+    const result = await updateUserWallet('u-1', '0xNEW');
+
+    expect(result).toEqual({ code: 'WALLET_LOCKED', message: 'Wallet address is already set and cannot be changed' });
+    expect(userRepository.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('should accept the same wallet in different casing without a write', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: '0xAbC' });
+
+    const result = await updateUserWallet('u-1', '0xabc');
+
+    expect(result).toEqual({ walletAddress: '0xAbC' });
+    expect(userRepository.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('should return USER_NOT_FOUND when the user does not exist', async () => {
+    userRepository.getUserById.mockResolvedValueOnce(null);
+
+    const result = await updateUserWallet('missing', '0x123');
+
+    expect(result).toEqual({ code: 'USER_NOT_FOUND', message: 'User not found' });
+  });
+
+  it('should return UPDATE_FAILED when the update throws', async () => {
+    userRepository.getUserById.mockResolvedValueOnce({ id: 'u-1', wallet_address: null });
+    userRepository.updateUser.mockRejectedValueOnce(new Error('DB error'));
+
+    const result = await updateUserWallet('u-1', '0x123');
+
+    expect(result).toEqual({ code: 'UPDATE_FAILED', message: 'Failed to update wallet address' });
   });
 });

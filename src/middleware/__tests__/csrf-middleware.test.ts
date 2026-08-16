@@ -19,6 +19,8 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   config: {
     jwt: { secret: 'test-jwt-secret' },
   },
+  getCsrfSecret: () => process.env['CSRF_SECRET'],
+  getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
 }));
 
 const mockLoggerWarn = jest.fn();
@@ -745,6 +747,8 @@ describe('csrf-middleware', () => {
 
       jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
         config: { jwt: { secret: 'test-jwt-secret' } },
+        getCsrfSecret: () => process.env['CSRF_SECRET'],
+        getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
       }));
 
       jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
@@ -948,6 +952,8 @@ describe('CSRF Middleware - config callback (merged)', () => {
 
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       config: { jwt: { secret: 'test-jwt-secret' } },
+      getCsrfSecret: () => process.env['CSRF_SECRET'],
+      getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
     }));
 
     jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
@@ -1000,6 +1006,8 @@ describe('CSRF Middleware — coverage gaps', () => {
     jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       config: { jwt: { secret: 'test-secret' }, server: { nodeEnv: 'production' } },
+      getCsrfSecret: () => process.env['CSRF_SECRET'],
+      getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
     }));
     jest.unstable_mockModule('csrf-csrf', () => ({
       doubleCsrf: jest.fn(() => ({
@@ -1036,6 +1044,8 @@ describe('CSRF Middleware — coverage gaps', () => {
 
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       config: { jwt: { secret: 'jwt-fallback' }, server: { nodeEnv: 'test' } },
+      getCsrfSecret: () => process.env['CSRF_SECRET'],
+      getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
     }));
 
     await import('../../middleware/csrf-middleware.js');
@@ -1080,6 +1090,8 @@ describe('CSRF Middleware — coverage gaps', () => {
     jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       config: { jwt: { secret: 'test-secret' }, server: { nodeEnv: 'production' } },
+      getCsrfSecret: () => process.env['CSRF_SECRET'],
+      getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
     }));
     jest.unstable_mockModule('csrf-csrf', () => ({
       doubleCsrf: jest.fn(() => ({
@@ -1116,6 +1128,8 @@ describe('CSRF Middleware — coverage gaps', () => {
 
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       config: { jwt: { secret: 'jwt-fallback' }, server: { nodeEnv: 'test' } },
+      getCsrfSecret: () => process.env['CSRF_SECRET'],
+      getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
     }));
 
     await import('../../middleware/csrf-middleware.js');
@@ -1160,6 +1174,8 @@ describe('CSRF Middleware — coverage gaps', () => {
     jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({ logger: mockLogger }));
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       config: { jwt: { secret: 'test-secret' }, server: { nodeEnv: 'production' } },
+      getCsrfSecret: () => process.env['CSRF_SECRET'],
+      getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
     }));
     jest.unstable_mockModule('csrf-csrf', () => ({
       doubleCsrf: jest.fn(() => ({
@@ -1196,6 +1212,8 @@ describe('CSRF Middleware — coverage gaps', () => {
 
     jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       config: { jwt: { secret: 'jwt-fallback' }, server: { nodeEnv: 'test' } },
+      getCsrfSecret: () => process.env['CSRF_SECRET'],
+      getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
     }));
 
     await import('../../middleware/csrf-middleware.js');

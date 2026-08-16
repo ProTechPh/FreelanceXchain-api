@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole } from '../middleware/auth-middleware.js';
-import { apiRateLimiter } from '../middleware/rate-limiter.js';
+import { apiRateLimiter, webhookRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
+import { getEmailWebhookSecret } from '../config/env.js';
 import {
   processInboundEmail,
   verifyWebhookSignature,
@@ -16,13 +17,14 @@ import {
   type InboundEmailPayload,
 } from '../services/email-inbox-service.js';
 import type { EmailFolder } from '../repositories/email-inbox-repository.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
-router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/webhook', webhookRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const signature = req.headers['x-webhook-signature'] as string;
-  const secret = process.env['EMAIL_WEBHOOK_SECRET'];
+  const secret = getEmailWebhookSecret();
 
   if (!secret) {
     sendErrorResponse(res, 500, 'CONFIG_ERROR', 'Webhook secret not configured', { requestId });
@@ -34,7 +36,11 @@ router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
     return;
   }
 
-  const rawBody = JSON.stringify(req.body);
+  // Verify over the raw request bytes when available (captured by the
+  // express.json verify hook for webhook paths), falling back to a
+  // re-serialization. Re-serializing parsed JSON is not guaranteed to be
+  // byte-identical to what the sender signed (key order, escaping, whitespace).
+  const rawBody = typeof req.rawBody === 'string' ? req.rawBody : JSON.stringify(req.body ?? {});
   try {
     const valid = verifyWebhookSignature(rawBody, signature, secret);
     if (!valid) {
@@ -55,9 +61,9 @@ router.post('/webhook', apiRateLimiter, async (req: Request, res: Response) => {
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
 
@@ -76,9 +82,9 @@ router.get('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (req
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/unread-count', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/unread-count', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
 
@@ -91,9 +97,9 @@ router.get('/unread-count', authMiddleware, requireRole('admin'), apiRateLimiter
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.get('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
   const emailId = req.params['id'] as string;
@@ -107,9 +113,9 @@ router.get('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async (
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.patch('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
   const emailId = req.params['id'] as string;
@@ -129,9 +135,9 @@ router.patch('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.delete('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.delete('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
   const emailId = req.params['id'] as string;
@@ -145,9 +151,9 @@ router.delete('/:id', authMiddleware, requireRole('admin'), apiRateLimiter, asyn
   }
 
   res.status(200).json(result.data);
-});
+}));
 
-router.post('/send', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/send', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
 
@@ -166,9 +172,9 @@ router.post('/send', authMiddleware, requireRole('admin'), apiRateLimiter, async
   }
 
   res.status(201).json(result.data);
-});
+}));
 
-router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user!.userId;
   const requestId = getRequestId(req);
   const emailId = req.params['id'] as string;
@@ -190,6 +196,6 @@ router.post('/:id/reply', authMiddleware, requireRole('admin'), apiRateLimiter, 
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 export default router;

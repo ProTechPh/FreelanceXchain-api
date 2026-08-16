@@ -14,10 +14,10 @@ import { createHash } from 'crypto';
 import { blockchainAgreementRepository, type BlockchainAgreementEntity } from '../repositories/blockchain-agreement-repository.js';
 
 // Agreement status on blockchain
-export type BlockchainAgreementStatus = 'pending' | 'signed' | 'completed' | 'disputed' | 'cancelled';
+type BlockchainAgreementStatus = 'pending' | 'signed' | 'completed' | 'disputed' | 'cancelled';
 
 // On-chain agreement record
-export type BlockchainAgreement = {
+type BlockchainAgreement = {
   contractIdHash: string;
   termsHash: string;
   employerWallet: string;
@@ -33,7 +33,7 @@ export type BlockchainAgreement = {
 };
 
 // Input for creating agreement
-export type CreateAgreementInput = {
+type CreateAgreementInput = {
   contractId: string;
   employerWallet: string;
   freelancerWallet: string;

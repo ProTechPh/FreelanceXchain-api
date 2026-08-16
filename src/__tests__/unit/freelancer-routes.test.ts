@@ -346,6 +346,27 @@ describe('freelancer-routes branch coverage', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /profile/skills too many skills returns 400', async () => {
+    const skills = Array.from({ length: 51 }, (_, i) => ({ name: `Skill ${i}`, yearsOfExperience: 1 }));
+    const res = await request(app).post('/api/freelancers/profile/skills').send({ skills });
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST /profile/skills name too long returns 400', async () => {
+    const res = await request(app)
+      .post('/api/freelancers/profile/skills')
+      .send({ skills: [{ name: 'x'.repeat(101), yearsOfExperience: 1 }] });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /profile/skills yearsOfExperience too high returns 400', async () => {
+    const res = await request(app)
+      .post('/api/freelancers/profile/skills')
+      .send({ skills: [{ name: 'React', yearsOfExperience: 51 }] });
+    expect(res.status).toBe(400);
+  });
+
   it('POST /profile/skills PROFILE_NOT_FOUND returns 404', async () => {
     mockFreelancerProfileService.addSkillsToProfile.mockResolvedValue(fail('PROFILE_NOT_FOUND', 'No'));
     const res = await request(app).post('/api/freelancers/profile/skills').send({ skills: [{ name: 'React', yearsOfExperience: 3 }] });

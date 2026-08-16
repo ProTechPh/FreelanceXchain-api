@@ -14,8 +14,10 @@ import { FileAttachment, validateAttachments } from '../utils/file-validator.js'
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
+import { persistAuditEntry } from '../utils/admin-audit.js';
+import { sendGatedEmail, sendProposalAcceptedEmail, sendContractCreatedEmail } from './email-delivery-service.js';
 
-export type CreateProposalInput = {
+type CreateProposalInput = {
   projectId: string;
   attachments: FileAttachment[];
   proposedRate: number;
@@ -23,7 +25,7 @@ export type CreateProposalInput = {
 };
 
 
-export type ProposalWithNotification = {
+type ProposalWithNotification = {
   proposal: Proposal;
   notification: {
     userId: string;
@@ -31,12 +33,12 @@ export type ProposalWithNotification = {
   };
 };
 
-export type AcceptProposalResult = {
+type AcceptProposalResult = {
   proposal: Proposal;
   contract: Contract;
 };
 
-export type RejectProposalResult = {
+type RejectProposalResult = {
   proposal: Proposal;
 };
 
@@ -132,7 +134,7 @@ export async function getProposalById(proposalId: string): Promise<ServiceResult
 }
 
 // Get proposal by ID with employer history (rating and completed projects)
-export type EmployerHistory = {
+type EmployerHistory = {
   completedProjectsCount: number;
   averageRating: number;
   reviewCount: number;
@@ -140,7 +142,7 @@ export type EmployerHistory = {
   industry: string | null | undefined;
 };
 
-export type ProposalWithEmployerHistory = {
+type ProposalWithEmployerHistory = {
   proposal: Proposal;
   project: Project;
   employerHistory: EmployerHistory;
@@ -285,12 +287,19 @@ async function validateProposalAcceptance(
 }
 
 /**
- * Reject all other pending proposals for the same project.
+ * Reject other pending proposals for the same project when all freelancer
+ * slots are now filled. Multi-freelancer projects (freelancerLimit > 1) keep
+ * the remaining proposals pending so the employer can fill the other slots.
  * Non-critical: logs errors and continues.
  */
-async function rejectOtherProposals(projectId: string, acceptedProposalId: string): Promise<void> {
+async function rejectOtherProposals(projectId: string, acceptedProposalId: string, maxFreelancers: number): Promise<void> {
   try {
     const otherProposals = await proposalRepository.getProposalsByProject(projectId, { limit: 1000, offset: 0 });
+    const acceptedCount = otherProposals.items.filter(p => p.status === 'accepted').length;
+    if (acceptedCount < maxFreelancers) {
+      // More slots remain — leave other pending proposals open
+      return;
+    }
     const toReject = otherProposals.items.filter(p => p.id !== acceptedProposalId && p.status === 'pending');
     await Promise.all(toReject.map(p => proposalRepository.updateProposal(p.id, { status: 'rejected' })));
   } catch (error) {
@@ -451,6 +460,7 @@ async function initializeEscrowForContract(
 // - Uses freelancer's proposedRate for contract amount (not project.budget)
 // - Rejects all other pending proposals for the same project
 // - Checks that project has milestones before creating contract
+/* eslint-disable max-lines-per-function -- accept-proposal flow; refactor follow-up */
 export async function acceptProposal(
   proposalId: string,
   employerId: string
@@ -481,7 +491,11 @@ export async function acceptProposal(
     const { updatedProposalEntity, contractEntity } = created;
     const createdContract = mapContractFromEntity(contractEntity);
 
-    await rejectOtherProposals(project.id, proposalId);
+    // BLF-6.2: Only reject the remaining pending proposals once the project's
+    // freelancer slots are full; otherwise multi-freelancer projects could never
+    // fill their other slots.
+    const maxFreelancers = project.freelancerLimit != null ? project.freelancerLimit : 1;
+    await rejectOtherProposals(project.id, proposalId, maxFreelancers);
 
     // H12: Log non-critical failures but don't silently swallow them
     try {
@@ -521,6 +535,47 @@ export async function acceptProposal(
       logger.error('Failed to create notification', { error });
       // Continue - notification is secondary
     }
+
+    // Transactional emails gated by the freelancer's email preferences.
+    // Best-effort: a preference lookup or send failure must not roll back the acceptance.
+    await sendGatedEmail(validatedProposal.freelancer_id, 'proposal_accepted', (recipient) =>
+      sendProposalAcceptedEmail(recipient.email, {
+        freelancerName: recipient.name,
+        projectTitle: project.title,
+        projectUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${project.id}`,
+      })
+    );
+
+    // The accepted proposal also produced a contract record — tell the freelancer.
+    await sendGatedEmail(validatedProposal.freelancer_id, 'contract_created', (recipient) =>
+      sendContractCreatedEmail(recipient.email, {
+        recipientName: recipient.name,
+        projectTitle: project.title,
+        contractUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/contracts/${createdContract.id}`,
+      })
+    );
+
+    // BLF-12.2: durable audit trail — contract creation from an accepted proposal
+    // is recorded with the employer as actor and the freelancer as target user.
+    // Written after the contract record commits; best-effort by design.
+    await persistAuditEntry({
+      user_id: validatedProposal.freelancer_id,
+      actor_id: employerId,
+      action: 'contract.created',
+      resource_type: 'contract',
+      resource_id: createdContract.id,
+      payload: {
+        projectId: project.id,
+        proposalId: proposalEntity.id,
+        totalAmount,
+        rushFee,
+        isRush,
+      },
+      ip_address: null,
+      user_agent: null,
+      status: 'success',
+      error_message: null,
+    });
 
     return successResult({
       proposal: mapProposalFromEntity(updatedProposalEntity),

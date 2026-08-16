@@ -25,7 +25,7 @@ function mapDoc(doc: Record<string, unknown>): RefundRequestEntity {
   return fromAppwriteDoc<RefundRequestEntity>(doc);
 }
 
-export type RefundWithContract = RefundRequestEntity & { contract?: ContractEntity | null };
+type RefundWithContract = RefundRequestEntity & { contract?: ContractEntity | null };
 
 export class RefundRequestRepository extends BaseRepository<RefundRequestEntity> {
   constructor() {

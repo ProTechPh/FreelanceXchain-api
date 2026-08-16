@@ -104,6 +104,11 @@ function configureSwaggerDocs(app: Express, openApiSpec: Record<string, unknown>
 export async function createApp(): Promise<Express> {
   const app = express();
 
+  // Trust the configured number of reverse-proxy hops so req.ip reflects the real
+  // client IP (rate limiting, audit logs) behind nginx/Cloudflare/HF Spaces.
+  // See TRUST_PROXY_HOPS in config/env.ts.
+  app.set('trust proxy', config.server.trustProxyHops);
+
   // Security middleware (must be first)
   app.use(securityHeaders);
   app.use(requestIdMiddleware);
@@ -111,7 +116,7 @@ export async function createApp(): Promise<Express> {
 
   // Body parsing middleware
   // Only store rawBody for webhook paths to avoid doubling memory on every request
-  const WEBHOOK_PATHS = ['/api/kyc/webhook', '/api/webhooks'];
+  const WEBHOOK_PATHS = ['/api/kyc/webhook', '/api/webhooks', '/api/inbox/webhook'];
   app.use(express.json({
     limit: '10mb',
     verify: (req, _res, buf) => {

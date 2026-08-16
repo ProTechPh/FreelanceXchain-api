@@ -11,6 +11,7 @@ import {
 } from '../services/dispute-evidence-service.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 // M13: Validate fileUrl to prevent SSRF/XSS via malicious schemes
 const ALLOWED_URL_SCHEMES = ['https:'];
@@ -63,7 +64,7 @@ const router = Router();
  *       200:
  *         description: Evidence submitted successfully
  */
-router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const disputeId = req.params['disputeId'] ?? '';
@@ -96,7 +97,7 @@ router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validate
     logger.error('Error submitting evidence', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to submit evidence', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -115,7 +116,7 @@ router.post('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validate
  *       200:
  *         description: List of evidence
  */
-router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const disputeId = req.params['disputeId'] ?? '';
@@ -132,7 +133,7 @@ router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateU
     logger.error('Error getting evidence', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get evidence', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -156,7 +157,7 @@ router.get('/:disputeId/evidence', authMiddleware, requireVerifiedKyc, validateU
  *       200:
  *         description: Evidence deleted successfully
  */
-router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const evidenceId = req.params['evidenceId'] ?? '';
@@ -173,7 +174,7 @@ router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifie
     logger.error('Error deleting evidence', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to delete evidence', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -197,7 +198,7 @@ router.delete('/:disputeId/evidence/:evidenceId', authMiddleware, requireVerifie
  *       200:
  *         description: Evidence verified successfully
  */
-router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, requireVerifiedKyc, validateUUID(['disputeId', 'evidenceId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const requestId = getRequestId(req);
     const evidenceId = req.params['evidenceId'] ?? '';
@@ -217,6 +218,6 @@ router.post('/:disputeId/evidence/:evidenceId/verify', authMiddleware, requireVe
     logger.error('Error verifying evidence', error);
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to verify evidence', { requestId: getRequestId(req) });
   }
-});
+}));
 
 export default router;

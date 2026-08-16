@@ -7,7 +7,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { ID, type Models } from 'node-appwrite';
 import { InputFile } from 'node-appwrite/file';
-import { storage, BUCKETS, type BucketId } from '../config/appwrite.js';
+import { storage, BUCKETS, Query, type BucketId } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
 import { sanitizeFilename } from '../middleware/file-upload-middleware.js';
 
@@ -19,7 +19,7 @@ export type FileMetadata = {
   fileId?: string; // Appwrite file ID for deletion
 };
 
-export type UploadResult = {
+type UploadResult = {
   success: boolean;
   metadata?: FileMetadata;
   url?: string;
@@ -30,23 +30,26 @@ export type UploadResult = {
 type UploadedFile = Express.Multer.File & { detectedMimeType?: string };
 
 /**
- * Generate a unique filename with UUID prefix
- * Format: {uuid}_{sanitized_original_name}
+ * Generate a unique filename with owner + UUID prefix
+ * Format: {userId}_{uuid}_{sanitized_original_name}
+ * The userId prefix is the ownership key: list/delete/signed-url verify it to
+ * prevent cross-user access (BLF-11.2).
  */
-function generateUniqueFilename(originalFilename: string): string {
+function generateUniqueFilename(originalFilename: string, userId?: string): string {
   const sanitized = sanitizeFilename(originalFilename);
   const uuid = uuidv4();
+  const ownerPrefix = userId ? `${userId}_` : '';
   
   // Extract extension
   const lastDotIndex = sanitized.lastIndexOf('.');
   if (lastDotIndex === -1) {
-    return `${uuid}_${sanitized}`;
+    return `${ownerPrefix}${uuid}_${sanitized}`;
   }
   
   const name = sanitized.substring(0, lastDotIndex);
   const ext = sanitized.substring(lastDotIndex);
   
-  return `${uuid}_${name}${ext}`;
+  return `${ownerPrefix}${uuid}_${name}${ext}`;
 }
 
 export type UploadFileOptions = {
@@ -64,8 +67,8 @@ export type UploadFileOptions = {
 export async function uploadFileToStorage(options: UploadFileOptions): Promise<UploadResult> {
   const { buffer, originalFilename, mimeType, bucket = BUCKETS.PROPOSAL_ATTACHMENTS, userId } = options;
   try {
-    // Generate unique filename
-    const uniqueFilename = generateUniqueFilename(originalFilename);
+    // Generate unique filename (userId prefix enables ownership verification)
+    const uniqueFilename = generateUniqueFilename(originalFilename, userId);
 
     // Create InputFile from buffer
     const inputFile = InputFile.fromBuffer(buffer, uniqueFilename);
@@ -133,13 +136,12 @@ export async function uploadFileToStorage(options: UploadFileOptions): Promise<U
  * Upload multiple files to Appwrite Storage
  * @param files - Array of multer files
  * @param bucket - Storage bucket ID
- * @param folder - Optional folder path within bucket (not used in Appwrite, kept for compatibility)
+ * @param userId - Owner user ID (used for ownership prefix + permissions)
  * @returns Array of upload results
  */
 export async function uploadMultipleFiles(
   files: Express.Multer.File[],
   bucket: BucketId = BUCKETS.PROPOSAL_ATTACHMENTS,
-  folder?: string,
   userId?: string
 ): Promise<UploadResult[]> {
   const uploadPromises = files.map(file => {
@@ -218,11 +220,6 @@ export function extractFileIdFromUrl(url: string): string | null {
 }
 
 /**
- * Alias for extractFileIdFromUrl (backward compatibility)
- */
-export const extractFilePathFromUrl = extractFileIdFromUrl;
-
-/**
  * Cleanup uploaded files in case of transaction failure
  * @param fileMetadata - Array of file metadata to cleanup
  * @param bucket - Storage bucket ID
@@ -260,7 +257,6 @@ export async function uploadFile(options: {
   file: Buffer;
   filename: string;
   mimetype?: string;
-  folder?: string;
 }): Promise<UploadResult> {
   const result = await uploadFileToStorage({
     buffer: options.file,
@@ -282,16 +278,56 @@ export async function uploadFile(options: {
 }
 
 /**
- * Compatibility wrapper for legacy deleteFile calls
+ * Fetch a file's stored name so ownership can be verified server-side.
+ * Returns null when the file does not exist or is inaccessible.
  */
-export async function deleteFile(bucket: BucketId, path: string): Promise<{ success: boolean; error?: string }> {
+async function getStoredFileName(bucket: BucketId, fileId: string): Promise<string | null> {
+  try {
+    const file = await storage.getFile(bucket, fileId);
+    return file?.name ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Verify the file name carries the given userId owner prefix.
+ */
+async function isFileOwnedBy(bucket: BucketId, fileId: string, userId: string): Promise<'owned' | 'missing' | 'forbidden'> {
+  const name = await getStoredFileName(bucket, fileId);
+  if (!name) return 'missing';
+  return name.startsWith(`${userId}_`) ? 'owned' : 'forbidden';
+}
+
+/**
+ * Delete a file owned by the given user. When userId is provided, ownership is
+ * verified server-side from the stored file name before deletion (BLF-11.2).
+ * Error strings: 'FORBIDDEN' (another user's file), 'FILE_NOT_FOUND'.
+ */
+export async function deleteFile(
+  bucket: BucketId,
+  path: string,
+  userId?: string
+): Promise<{ success: boolean; error?: string }> {
+  if (userId) {
+    const ownership = await isFileOwnedBy(bucket, path, userId);
+    if (ownership === 'missing') return { success: false, error: 'FILE_NOT_FOUND' };
+    if (ownership === 'forbidden') return { success: false, error: 'FORBIDDEN' };
+  }
   return deleteFileFromStorage(path, bucket);
 }
 
 /**
- * Compatibility wrapper for legacy getSignedUrl calls
+ * Get a signed URL for a file owned by the given user. When userId is provided,
+ * ownership is verified server-side from the stored file name (BLF-11.2).
+ * Error strings: 'FORBIDDEN' (another user's file), 'FILE_NOT_FOUND'.
  */
-export async function getSignedUrl(bucket: BucketId, path: string): Promise<UploadResult> {
+export async function getSignedUrl(bucket: BucketId, path: string, userId?: string): Promise<UploadResult> {
+  if (userId) {
+    const ownership = await isFileOwnedBy(bucket, path, userId);
+    if (ownership === 'missing') return { success: false, error: 'FILE_NOT_FOUND' };
+    if (ownership === 'forbidden') return { success: false, error: 'FORBIDDEN' };
+  }
   // Appwrite doesn't have "signed URLs" in the same way Appwrite does for public view
   const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${bucket}/files/${path}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
   return {
@@ -301,13 +337,34 @@ export async function getSignedUrl(bucket: BucketId, path: string): Promise<Uplo
 }
 
 /**
- * Compatibility wrapper for legacy listUserFiles calls
+ * List files owned by the given user (matched by the userId filename prefix).
+ * Pages through Appwrite's cursor-based pagination so files beyond the first
+ * page are not silently dropped.
  */
 export async function listUserFiles(bucket: BucketId, userId: string): Promise<{ success: boolean; files: Models.File[]; error?: string }> {
   try {
-    const result = await storage.listFiles(bucket);
-    // Filter by userId in filename prefix
-    const userFiles = result.files.filter(f => f.name.includes(userId));
+    const PAGE_SIZE = 100;
+    const allFiles: Models.File[] = [];
+    let lastId: string | undefined;
+
+    for (;;) {
+      // Explicit ordering keeps the cursor stable across pages (default ordering
+      // is not guaranteed); matches base-repository.fetchAll's cursor pattern.
+      const queries = [Query.orderDesc('$createdAt'), Query.limit(PAGE_SIZE)];
+      if (lastId) {
+        queries.push(Query.cursorAfter(lastId));
+      }
+
+      const result = await storage.listFiles(bucket, queries);
+      allFiles.push(...result.files);
+
+      if (result.files.length < PAGE_SIZE) break;
+      lastId = result.files[result.files.length - 1]?.$id;
+      if (!lastId) break;
+    }
+
+    // Files uploaded via uploadFileToStorage carry a {userId}_ prefix (BLF-11.2)
+    const userFiles = allFiles.filter(f => f.name.startsWith(`${userId}_`));
     return {
       success: true,
       files: userFiles,
@@ -319,4 +376,50 @@ export async function listUserFiles(bucket: BucketId, userId: string): Promise<{
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/**
+ * Storage quota usage for a user (bytes used, limit, percentage, file count).
+ * The quota covers the user's personal upload buckets (portfolio + proposal).
+ */
+export async function getFileQuota(userId: string): Promise<{
+  success: boolean;
+  used: number;
+  limit: number;
+  percentage: number;
+  files: number;
+  error?: string;
+}> {
+  const DEFAULT_QUOTA_BYTES = 100 * 1024 * 1024;
+
+  const buckets: BucketId[] = [BUCKETS.PORTFOLIO_IMAGES, BUCKETS.PROPOSAL_ATTACHMENTS];
+  const results = await Promise.all(
+    buckets.map(bucket => listUserFiles(bucket, userId))
+  );
+
+  // listUserFiles never throws, but a bucket listing can fail — surface that
+  // instead of reporting a silently-undersized quota.
+  const failed = results.find(r => !r.success);
+  if (failed) {
+    return {
+      success: false,
+      used: 0,
+      limit: DEFAULT_QUOTA_BYTES,
+      percentage: 0,
+      files: 0,
+      error: failed.error ?? 'Failed to list files',
+    };
+  }
+
+  const files = results.flatMap(r => r.files);
+  const used = files.reduce((sum, f) => sum + (f.sizeOriginal || 0), 0);
+  const percentage = Math.min((used / DEFAULT_QUOTA_BYTES) * 100, 100);
+
+  return {
+    success: true,
+    used,
+    limit: DEFAULT_QUOTA_BYTES,
+    percentage,
+    files: files.length,
+  };
 }

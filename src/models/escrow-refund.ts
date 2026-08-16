@@ -1,4 +1,4 @@
-export type RefundStatus = 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled';
+type RefundStatus = 'pending' | 'approved' | 'rejected' | 'completed' | 'cancelled';
 
 export type RefundRequest = {
   id: string;

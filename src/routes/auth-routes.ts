@@ -3,7 +3,6 @@ import {
   register,
   login,
   refreshTokens,
-  validatePasswordStrength,
   loginWithAppwrite,
   registerWithAppwrite,
   getOAuthUrl,
@@ -23,21 +22,26 @@ import {
   requestEmailOtp,
   requestMagicUrl,
   verifyAuthToken,
+  updateUserWallet,
 } from '../services/auth-service.js';
-import { RegisterInput, LoginInput, MfaRequiredResult, isAuthError } from '../services/auth-types.js';
-import { UserRole } from '../models/user.js';
+import { MfaRequiredResult, isAuthError } from '../services/auth-types.js';
 import { authRateLimiter, registerRateLimiter, passwordResetRateLimiter, mfaVerifyRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { authMiddleware } from '../middleware/auth-middleware.js';
 import { logger } from '../config/logger.js';
 import { generateCsrfToken } from '../middleware/csrf-middleware.js';
-import { userRepository } from '../repositories/user-repository.js';
+import {
+  validateEmail,
+  validateRole,
+  validateRegisterInput,
+  validateLoginInput,
+  validatePasswordResetInput,
+  WALLET_REGEX,
+} from '../validators/auth.schema.js';
 import { asyncHandler } from '../utils/async-handler.js';
 import { sendValidationError, sendErrorResponse, sendSuccessResponse } from '../utils/response-helpers.js';
 
 const router = Router();
-
-const WALLET_REGEX = /^0x[a-fA-F0-9]{40}$/;
 
 function extractBearerToken(req: Request, res: Response): string | null {
   const authHeader = req.headers.authorization;
@@ -135,88 +139,6 @@ function extractBearerToken(req: Request, res: Response): string | null {
  *         requestId:
  *           type: string
  */
-
-/**
- * Validate email format
- * Now checks for proper local@domain.tld format with maximum length
- */
-function validateEmail(email: unknown): email is string {
-  if (typeof email !== 'string') return false;
-  if (email.length < 5 || email.length > 254) return false;
-  // RFC 5322 simplified: local-part@domain.tld
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return emailRegex.test(email);
-}
-
-function validateRole(role: unknown): role is UserRole {
-  return role === 'freelancer' || role === 'employer';
-}
-
-// ── Reusable validation helpers ────────────────────────────────
-
-type ValidationError = { field: string; message: string };
-
-function validateRegisterInput(body: unknown): { valid: boolean; errors: ValidationError[]; input?: RegisterInput } {
-  const { email, password, role } = body as Record<string, unknown>;
-  const errors: ValidationError[] = [];
-
-  if (!validateEmail(email)) {
-    errors.push({ field: 'email', message: 'Valid email is required' });
-  }
-
-  if (typeof password === 'string') {
-    const passwordValidation = validatePasswordStrength(password);
-    if (!passwordValidation.valid) {
-      passwordValidation.errors.forEach(err => errors.push({ field: 'password', message: err }));
-    }
-  } else {
-    errors.push({ field: 'password', message: 'Password is required' });
-  }
-
-  if (!validateRole(role)) {
-    errors.push({ field: 'role', message: 'Role must be freelancer or employer' });
-  }
-
-  if (errors.length > 0) return { valid: false, errors };
-  return { valid: true, errors: [], input: { email: email as string, password: password as string, role: role as UserRole } };
-}
-
-function validateLoginInput(body: unknown): { valid: boolean; errors: ValidationError[]; input?: LoginInput } {
-  const { email, password } = body as Record<string, unknown>;
-  const errors: ValidationError[] = [];
-
-  if (!validateEmail(email)) {
-    errors.push({ field: 'email', message: 'Valid email is required' });
-  }
-  if (!password || typeof password !== 'string') {
-    errors.push({ field: 'password', message: 'Password is required' });
-  }
-
-  if (errors.length > 0) return { valid: false, errors };
-  return { valid: true, errors: [], input: { email: email as string, password: password as string } };
-}
-
-function validatePasswordResetInput(body: unknown): { valid: boolean; errors: ValidationError[]; accessToken?: string; password?: string } {
-  const { accessToken, password } = body as Record<string, unknown>;
-  const errors: ValidationError[] = [];
-
-  if (!accessToken || typeof accessToken !== 'string') {
-    errors.push({ field: 'accessToken', message: 'Access token is required' });
-  }
-
-  if (typeof password === 'string') {
-    const passwordValidation = validatePasswordStrength(password);
-    if (!passwordValidation.valid) {
-      passwordValidation.errors.forEach(err => errors.push({ field: 'password', message: err }));
-    }
-  } else {
-    errors.push({ field: 'password', message: 'Password is required' });
-  }
-
-  if (errors.length > 0) return { valid: false, errors };
-  return { valid: true, errors: [], accessToken: accessToken as string, password: password as string };
-}
-
 
 /**
  * @swagger
@@ -1488,22 +1410,18 @@ router.patch('/wallet', authMiddleware, authRateLimiter, asyncHandler(async (req
     return;
   }
 
-  try {
-    const updatedUser = await userRepository.updateUser(userId, { wallet_address: walletAddress });
+  const result = await updateUserWallet(userId, walletAddress);
 
-    if (!updatedUser) {
-      sendErrorResponse(res, 404, 'USER_NOT_FOUND', 'User not found', { requestId });
-      return;
-    }
-
-    sendSuccessResponse(res, 200, {
-      message: 'Wallet address updated successfully',
-      walletAddress: updatedUser.wallet_address,
-    }, requestId);
-  } catch (error) {
-    logger.error('Failed to update wallet address:', error);
-    sendErrorResponse(res, 500, 'UPDATE_FAILED', 'Failed to update wallet address', { requestId });
+  if (isAuthError(result)) {
+    const statusCode = result.code === 'USER_NOT_FOUND' ? 404 : result.code === 'WALLET_LOCKED' ? 409 : 500;
+    sendErrorResponse(res, statusCode, result.code, result.message, { requestId });
+    return;
   }
+
+  sendSuccessResponse(res, 200, {
+    message: 'Wallet address updated successfully',
+    walletAddress: result.walletAddress,
+  }, requestId);
 }));
 
 export default router;

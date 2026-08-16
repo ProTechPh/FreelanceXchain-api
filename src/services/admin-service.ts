@@ -5,6 +5,8 @@ import { projectRepository } from '../repositories/project-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { disputeRepository } from '../repositories/dispute-repository.js';
 import { transactionRepository } from '../repositories/transaction-repository.js';
+import { reviewRepository } from '../repositories/review-repository.js';
+import { auditLogRepository, CreateAuditLogEntry } from '../repositories/audit-log-repository.js';
 import {
   createKycVerification,
   getKycVerificationByUserId,
@@ -16,7 +18,7 @@ import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { generateId } from '../utils/id.js';
 
-export interface PlatformStats {
+interface PlatformStats {
   totalUsers: number;
   totalFreelancers: number;
   totalEmployers: number;
@@ -36,7 +38,7 @@ export interface UserFilters {
   search?: string;
 }
 
-export interface UserManagementData {
+interface UserManagementData {
   users: Array<UserEntity & {
     kyc_status: KycVerification['status'] | 'not_started';
     kyc_verified: boolean;
@@ -49,18 +51,49 @@ export interface DisputeFilters {
   priority?: string;
 }
 
-export interface DisputeManagementData {
+interface DisputeManagementData {
   disputes: DisputeEntity[];
   total: number;
   pendingCount: number;
   resolvedCount: number;
 }
 
-export interface SystemHealth {
+interface SystemHealth {
   database: 'healthy' | 'unhealthy';
   storage: 'healthy' | 'unhealthy';
   uptime: number;
   timestamp: string;
+}
+
+/**
+ * Persist a durable audit log entry for a privileged admin action (BLF-12.2).
+ * Best-effort: a failed audit write must never break the admin action itself,
+ * so failures are logged (the structured logger already captured the event)
+ * and swallowed.
+ */
+async function recordAdminAudit(input: {
+  actorId: string;
+  targetUserId: string;
+  action: string;
+  payload?: Record<string, unknown>;
+}): Promise<void> {
+  const entry: CreateAuditLogEntry = {
+    user_id: input.targetUserId,
+    actor_id: input.actorId,
+    action: input.action,
+    resource_type: 'user',
+    resource_id: input.targetUserId,
+    payload: input.payload ?? {},
+    ip_address: null,
+    user_agent: null,
+    status: 'success',
+    error_message: null,
+  };
+  try {
+    await auditLogRepository.create(entry);
+  } catch (error) {
+    logger.error('Failed to persist admin audit log entry', { error, entry: input });
+  }
 }
 
 /**
@@ -168,7 +201,7 @@ export async function getUserManagement(filters?: UserFilters): Promise<ServiceR
 /**
  * Suspend a user
  */
-export async function suspendUser(userId: string, reason: string): Promise<ServiceResult<UserEntity>> {
+export async function suspendUser(userId: string, reason: string, actorId: string = 'system-admin'): Promise<ServiceResult<UserEntity>> {
   try {
     const existing = await userRepository.getUserById(userId);
 
@@ -181,7 +214,9 @@ export async function suspendUser(userId: string, reason: string): Promise<Servi
       suspension_reason: reason,
     } as Partial<UserEntity>);
 
-    logger.info('ADMIN ACTION: user suspended', { actor: 'admin', userId, reason });
+    // BLF-12.2: Attribute every privileged action to the acting admin for audit trail
+    logger.info('ADMIN ACTION: user suspended', { actor: actorId, userId, reason });
+    await recordAdminAudit({ actorId, targetUserId: userId, action: 'user.suspended', payload: { reason } });
 
     return successResult(updated as UserEntity);
   } catch (error) {
@@ -193,7 +228,7 @@ export async function suspendUser(userId: string, reason: string): Promise<Servi
 /**
  * Unsuspend a user
  */
-export async function unsuspendUser(userId: string): Promise<ServiceResult<UserEntity>> {
+export async function unsuspendUser(userId: string, actorId: string = 'system-admin'): Promise<ServiceResult<UserEntity>> {
   try {
     const existing = await userRepository.getUserById(userId);
 
@@ -206,7 +241,9 @@ export async function unsuspendUser(userId: string): Promise<ServiceResult<UserE
       suspension_reason: null,
     } as Partial<UserEntity>);
 
-    logger.info('ADMIN ACTION: user unsuspended', { actor: 'admin', userId });
+    // BLF-12.2: Attribute every privileged action to the acting admin for audit trail
+    logger.info('ADMIN ACTION: user unsuspended', { actor: actorId, userId });
+    await recordAdminAudit({ actorId, targetUserId: userId, action: 'user.unsuspended' });
 
     return successResult(updated as UserEntity);
   } catch (error) {
@@ -278,6 +315,12 @@ export async function verifyUser(
     }
 
     logger.info('ADMIN ACTION: user manually verified', { actor: adminUserId, userId });
+    await recordAdminAudit({
+      actorId: adminUserId,
+      targetUserId: userId,
+      action: 'user.verified',
+      payload: { reason: auditReason },
+    });
 
     return successResult(verification);
   } catch (error) {
@@ -291,7 +334,8 @@ export async function verifyUser(
  */
 export async function updateUser(
   userId: string,
-  updates: { name?: string; role?: string; isActive?: boolean }
+  updates: { name?: string; role?: string; isActive?: boolean },
+  actorId: string = 'system-admin'
 ): Promise<ServiceResult<UserEntity>> {
   try {
     const updatesObj: Partial<UserEntity> = {};
@@ -321,13 +365,29 @@ export async function updateUser(
       return errorResult('NOT_FOUND', 'User not found');
     }
 
+    // BLF-12.1: Last-admin guard — never demote/remove the final remaining admin,
+    // otherwise the platform can lock itself out of admin access.
+    if (existing.role === 'admin' && updatesObj.role !== undefined && updatesObj.role !== 'admin') {
+      const allUsers = await userRepository.queryAll();
+      const adminCount = allUsers.filter(u => u.role === 'admin').length;
+      if (adminCount <= 1) {
+        return errorResult('LAST_ADMIN', 'Cannot demote the last administrator');
+      }
+    }
+
     const updated = await userRepository.updateUser(userId, updatesObj);
 
-    // BUG-6: audit admin-initiated privilege/status changes for traceability.
+    // BLF-12.2: Attribute every privileged action to the acting admin for audit trail.
     logger.info('ADMIN ACTION: user updated', {
-      actor: 'admin',
+      actor: actorId,
       userId,
       changes: updatesObj,
+    });
+    await recordAdminAudit({
+      actorId,
+      targetUserId: userId,
+      action: 'user.updated',
+      payload: { changes: updatesObj },
     });
 
     return successResult(updated as UserEntity);
@@ -362,6 +422,23 @@ export async function getDisputeManagement(filters?: DisputeFilters): Promise<Se
       logger.error('Failed to fetch dispute management data', { error, filters });
       return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
     }
+}
+
+/**
+ * Compute the platform satisfaction rate from review ratings.
+ * Best-effort: any failure (or absence of reviews) yields 0 so the admin
+ * dashboard never breaks because of the reviews read.
+ */
+export async function getSatisfactionRate(): Promise<number> {
+  try {
+    const reviews = await reviewRepository.getAllReviews();
+    const positive = reviews.filter(r => r.rating >= 4.0).length;
+    const total = reviews.length;
+    return total > 0 ? Math.round((positive / total) * 100) : 0;
+  } catch (error) {
+    logger.error('Failed to compute satisfaction rate', { error });
+    return 0;
+  }
 }
 
 /**

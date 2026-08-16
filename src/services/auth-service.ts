@@ -54,7 +54,7 @@ function requireSessionSecret(session: { secret?: string }): string {
   return session.secret;
 }
 
-export type PasswordValidationResult = {
+type PasswordValidationResult = {
   valid: boolean;
   errors: string[];
 };
@@ -207,9 +207,11 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       };
     }
     
+    // CWE-209: never forward raw upstream error details to the client — log them
+    // server-side and return a generic message.
     return {
       code: 'INTERNAL_ERROR',
-      message: getErrorMessage(error) || '' || 'Failed to create user',
+      message: 'Failed to create user',
     };
   }
 }
@@ -512,6 +514,58 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
 }
 
 /**
+ * Update the authenticated user's wallet address
+ */
+export async function updateUserWallet(
+  userId: string,
+  walletAddress: string
+): Promise<{ walletAddress: string } | AuthError> {
+  try {
+    const existing = await userRepository.getUserById(userId);
+    if (!existing) {
+      return {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      };
+    }
+
+    // A wallet is set once (at registration / first connect) and cannot be silently
+    // overwritten — otherwise funds could be redirected on future escrow payouts.
+    // Ethereum addresses are EIP-55 checksummed but case-insensitive, so compare
+    // normalized forms to avoid false locks for the same address in a different case.
+    const normalizedExisting = existing.wallet_address?.toLowerCase();
+    const normalizedRequested = walletAddress.toLowerCase();
+    if (normalizedExisting && normalizedExisting !== normalizedRequested) {
+      return {
+        code: 'WALLET_LOCKED',
+        message: 'Wallet address is already set and cannot be changed',
+      };
+    }
+
+    // Idempotent: same address (any casing) — nothing to change.
+    if (normalizedExisting === normalizedRequested) {
+      return { walletAddress: existing.wallet_address ?? walletAddress };
+    }
+
+    const updated = await userRepository.updateUser(userId, { wallet_address: walletAddress });
+    if (!updated) {
+      return {
+        code: 'USER_NOT_FOUND',
+        message: 'User not found',
+      };
+    }
+
+    return { walletAddress: updated.wallet_address ?? walletAddress };
+  } catch (error: unknown) {
+    logger.error('Failed to update wallet address', { error: getErrorMessage(error), userId });
+    return {
+      code: 'UPDATE_FAILED',
+      message: 'Failed to update wallet address',
+    };
+  }
+}
+
+/**
  * Get OAuth login URL for Appwrite
  */
 export async function getOAuthUrl(provider: string): Promise<string> {
@@ -775,8 +829,6 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
  */
 export async function resendConfirmationEmail(email: string): Promise<{ success: boolean } | AuthError> {
   try {
-    // L3: Fix broken implementation — need an authenticated session to create verification.
-    // Look up the user, create a session for them, then request verification.
     const normalizedEmail = email.toLowerCase().trim();
     const user = await userRepository.getUserByEmail(normalizedEmail);
     if (!user) {
@@ -784,15 +836,34 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
       return { success: true };
     }
 
-    // Create a temporary session for the user to request verification
-    const userClient = createUserClient('');
-    const account = new Account(userClient);
+    // Appwrite's account.createVerification requires an authenticated session.
+    // Create a temporary server-side session for the user (admin Users API) so the
+    // verification email can actually be sent, then request the verification token
+    // through that session.
+    const session = await users.createSession(user.id);
+    const sessionSecret = requireSessionSecret(session);
 
-    const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+    try {
+      const userClient = createUserClient(sessionSecret);
+      const account = new Account(userClient);
 
-    // Use the user's ID to create a verification token
-    await account.createVerification(redirectUrl);
+      const frontendBaseUrl = process.env.PUBLIC_URL ?? process.env.FRONTEND_URL ?? 'http://localhost:5173';
+      const redirectUrl = `${frontendBaseUrl.replace(/\/+$/, '')}/verify-email`;
+
+      await account.createVerification(redirectUrl);
+    } finally {
+      // The session was created only to send the verification email — delete it so
+      // repeated resends do not accumulate long-lived server-side sessions.
+      // Best-effort: a failed cleanup must not fail the verification request.
+      try {
+        await users.deleteSession(user.id, session.$id);
+      } catch (cleanupError) {
+        logger.warn('Failed to clean up temporary session used for email verification', {
+          error: getErrorMessage(cleanupError),
+          email: normalizedEmail,
+        });
+      }
+    }
 
     logger.info('Confirmation email sent', { email: normalizedEmail });
     return { success: true };
@@ -889,7 +960,7 @@ export async function requestEmailOtp(email: string): Promise<{ userId: string }
     return { userId: token.userId };
   } catch (error: unknown) {
     logger.error('Email OTP request failed', { error: getErrorMessage(error), email });
-    return { code: 'INTERNAL_ERROR', message: getErrorMessage(error) || '' || 'Failed to send OTP to email' };
+    return { code: 'INTERNAL_ERROR', message: 'Failed to send OTP to email' };
   }
 }
 
@@ -908,7 +979,7 @@ export async function requestMagicUrl(email: string): Promise<{ userId: string }
     return { userId: token.userId };
   } catch (error: unknown) {
     logger.error('Magic URL request failed', { error: getErrorMessage(error), email });
-    return { code: 'INTERNAL_ERROR', message: getErrorMessage(error) || '' || 'Failed to send Magic URL' };
+    return { code: 'INTERNAL_ERROR', message: 'Failed to send Magic URL' };
   }
 }
 

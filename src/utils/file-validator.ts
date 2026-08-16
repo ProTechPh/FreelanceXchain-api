@@ -7,7 +7,7 @@ import type { FileAttachment } from '../models/milestone.js';
 import { isHostnameSsrfAllowed } from './url-validator.js';
 export type { FileAttachment } from '../models/milestone.js';
 
-export type FileValidationError = {
+type FileValidationError = {
   field: string;
   message: string;
 };
@@ -103,7 +103,7 @@ export function isAllowedMimeType(mimeType: string): boolean {
   return (ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType);
 }
 
-export type ValidationOptions = {
+type ValidationOptions = {
   maxFiles?: number;
   minFiles?: number;
   maxTotalSize?: number;

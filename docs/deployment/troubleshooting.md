@@ -44,7 +44,7 @@ Centralized index for troubleshooting resources and feature documentation for th
 ### Authentication & Security
 
 - **Authentication Service** - [service-auth.md](../architecture/service-auth.md): Login failures, token validation, OAuth issues, session expiry
-- **Row Level Security** - [database-rls.md](../architecture/database-rls.md): Permission denied errors, RLS policy conflicts, role-based access
+- **Appwrite Permissions** - [database-schema.md](../architecture/database-schema.md): Permission denied errors, collection access rules, role-based access
 
 ### Business Logic Services
 
@@ -86,10 +86,10 @@ Centralized index for troubleshooting resources and feature documentation for th
 
 **Database connection errors:**
 
-1. Verify `DATABASE_URL` or Appwrite credentials
+1. Verify Appwrite credentials
 2. Check network connectivity
-3. Ensure database migrations are applied
-4. Verify RLS policies are not blocking access
+3. Ensure `npx tsx scripts/setup-appwrite-db.ts` has been run to create the schema
+4. Verify Appwrite collection permissions are not blocking access
 
 **Blockchain transaction failures:**
 
@@ -377,21 +377,22 @@ Summary of all implemented platform features.
 
 ### Database Schema Summary
 
-Required tables: `conversations`, `messages`, `reviews`, `favorites`, `portfolio_items`, `email_preferences`, `saved_searches`, `transactions`. Run the SQL scripts in `appwrite/migrations/` to create them.
+Required collections: `conversations`, `messages`, `reviews`, `favorites`, `portfolio_items`, `email_preferences`, `saved_searches`, `transactions`. They are created by running `npx tsx scripts/setup-appwrite-db.ts` (idempotent).
 
 Required storage buckets: `portfolio-images`, `message-attachments`
 
 ### Recommended Indexes
 
-```sql
-CREATE INDEX idx_conversations_participants ON conversations(participant1_id, participant2_id);
-CREATE INDEX idx_messages_conversation ON messages(conversation_id, created_at);
-CREATE INDEX idx_reviews_reviewee ON reviews(reviewee_id, created_at);
-CREATE INDEX idx_favorites_user ON favorites(user_id, target_type);
-CREATE INDEX idx_portfolio_freelancer ON portfolio_items(freelancer_id);
-CREATE INDEX idx_saved_searches_user ON saved_searches(user_id, search_type);
-CREATE INDEX idx_transactions_contract ON transactions(contract_id, created_at);
-```
+The declared Appwrite indexes (see `scripts/setup-appwrite-db.ts`) back uniqueness invariants:
+
+| Collection | Index | Attributes |
+| ---------- | ----- | ---------- |
+| `reviews` | `unique_contract_reviewer` | `contract_id`, `reviewer_id` (unique) |
+| `user_custom_skills` | `unique_user_skill` | `user_id`, `name` (unique) |
+| `skill_suggestions` | `unique_suggestion_name` | `skill_name` (unique) |
+| `favorites` | `unique_user_target` | `user_id`, `target_type`, `target_id` (unique) |
+
+Frequently-queried attributes (e.g. `participant1_id`, `conversation_id`, `user_id`) are left to Appwrite's per-collection query optimization rather than manual index sprawl.
 
 ### Security
 
@@ -425,7 +426,7 @@ Authorization: Bearer <token>
 
 **Allowed types:** PDF, DOC, DOCX, TXT, PNG, JPG, JPEG, GIF
 
-**Database:** Added `attachments` JSONB column to `projects` table, created `project-attachments` storage bucket with RLS policies.
+**Database:** Added the `attachments` attribute to the `projects` collection (JSON string, see `scripts/setup-appwrite-db.ts`) and created the `project-attachments` Appwrite Storage bucket with private/authenticated permissions.
 
 ---
 
@@ -456,26 +457,13 @@ Content-Type: application/json
 - Empty/duplicate tags automatically removed
 - Tags trimmed of whitespace
 
-### Database Queries
+### Tag Queries
 
-```sql
--- Single tag
-SELECT * FROM projects WHERE 'react' = ANY(tags);
-
--- Multiple tags (OR)
-SELECT * FROM projects WHERE tags && ARRAY['react', 'nodejs'];
-
--- Multiple tags (AND)
-SELECT * FROM projects WHERE tags @> ARRAY['react', 'nodejs'];
-```
+`tags` is stored as a JSON string array on the `projects` collection. The service layer parses and filters tags in application code (see `src/services/project-service.ts`), e.g. matching when a project's parsed tags contain the requested tag(s).
 
 ### Migration
 
-```bash
-psql -d your_database -f appwrite/migrations/20260312000002_move_tags_to_projects.sql
-```
-
-This migration moves the `tags` column from `proposals` to `projects` and creates a GIN index for efficient searching.
+The `tags` attribute on the `projects` collection is defined in `scripts/setup-appwrite-db.ts` and applied by re-running it (idempotent). There is no SQL migration runner.
 
 ---
 
@@ -533,24 +521,21 @@ The `getProposalWithEmployerHistory()` function fetches the proposal, queries em
 
 Tracks all important platform actions for compliance, security, and debugging. Logs are immutable -- once created, they cannot be modified or deleted.
 
-### Database Schema
+### Collection Schema
 
-```sql
-CREATE TABLE audit_log_entries (
-    id UUID PRIMARY KEY,
-    user_id UUID REFERENCES users(id),
-    actor_id TEXT,
-    action TEXT NOT NULL,
-    resource_type TEXT NOT NULL,
-    resource_id UUID,
-    payload JSONB DEFAULT '{}',
-    ip_address INET,
-    user_agent TEXT,
-    status TEXT DEFAULT 'success',
-    error_message TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-```
+Audit entries are stored in the `audit_log_entries` Appwrite collection (see `scripts/setup-appwrite-db.ts`):
+
+| Attribute | Type | Notes |
+| --------- | ---- | ----- |
+| `user_id` / `actor_id` | string(36) | optional |
+| `action` | string(100) | required |
+| `resource_type` | string(50) | required |
+| `resource_id` | string(36) | optional |
+| `payload` | string(100000) | JSON string, default `'{}'` |
+| `ip_address` | string(45) | optional |
+| `user_agent` | string(2000) | optional |
+| `status` | string(20) | default `'success'` |
+| `error_message` | string(5000) | optional |
 
 ### Auditable Actions
 
@@ -625,9 +610,9 @@ router.post(
 
 ### Security
 
-- **RLS enabled**: Users see only their own logs; admins see all
-- **Immutable**: No UPDATE/DELETE on audit log entries
-- **Service role**: Used for logging to bypass RLS
+- **Access control**: Ownership filtering is applied in `src/repositories/audit-log-repository.ts` (`getByUserId`, `Query.equal('user_id', ...)`); admin queries can list across users
+- **Immutable**: The application never updates or deletes audit log entries
+- **Appwrite permissions**: Collections use default permissions; access rules are enforced in the repository layer
 
 ### Best Practices
 
@@ -645,7 +630,7 @@ Helps meet GDPR, SOC 2, PCI DSS, and HIPAA requirements.
 
 ### Troubleshooting
 
-- **Logs not appearing**: Check service role is used for logging, verify RLS policies, check app logs for audit errors
+- **Logs not appearing**: Verify the audit log repository is writing to the `audit_log_entries` collection, check collection permissions, and check app logs for audit errors
 - **Performance issues**: Add indexes for frequent queries, reduce date ranges, paginate large result sets
 - **Missing context**: Ensure middleware extracts user info, IP address, and user agent correctly
 
@@ -736,10 +721,10 @@ Authorization: Bearer <token>
 
 ### Deployment
 
-1. Run migration: `psql -d your_database -f appwrite/migrations/20260218000000_add_proposal_attachments.sql`
+1. The `attachments` attribute on the `proposals` collection is created by `scripts/setup-appwrite-db.ts` (idempotent)
 2. Create Appwrite Storage bucket: `proposal-attachments` (private, authenticated access)
 3. Set env var: `APPWRITE_PROPOSAL_ATTACHMENTS_BUCKET=proposal-attachments`
-4. Configure bucket RLS policies for access control
+4. Configure bucket permissions for access control
 
 ### Backward Compatibility
 
@@ -775,7 +760,7 @@ function validateFiles(files: File[]): string[] {
 - **"MIME type not allowed"** -- Check file type is in allowed list; ensure MIME type matches extension
 - **"Total file size exceeds limit"** -- Check individual (max 10MB) and total (max 25MB) sizes
 - **"Storage bucket not found"** -- Create bucket in Appwrite Dashboard; verify name matches config
-- **"Permission denied" when uploading** -- Check RLS policies, ensure user is authenticated
+- **"Permission denied" when uploading** -- Check Appwrite Storage bucket permissions, ensure user is authenticated
 - **Files upload but proposal fails** -- Verify metadata (URL, filename, size, mimeType); check all required fields present
 
 ### QA Test Cases

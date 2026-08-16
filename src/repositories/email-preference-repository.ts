@@ -9,6 +9,10 @@ export type EmailPreferenceEntity = {
   milestone_updates: boolean;
   payment_notifications: boolean;
   dispute_notifications: boolean;
+  contract_notifications: boolean;
+  message_notifications: boolean;
+  review_notifications: boolean;
+  kyc_notifications: boolean;
   marketing_emails: boolean;
   weekly_digest: boolean;
   created_at: string;
@@ -50,6 +54,10 @@ export class EmailPreferenceRepository extends BaseRepository<EmailPreferenceEnt
       milestone_updates: true,
       payment_notifications: true,
       dispute_notifications: true,
+      contract_notifications: true,
+      message_notifications: true,
+      review_notifications: true,
+      kyc_notifications: true,
       marketing_emails: false,
       weekly_digest: true,
     });

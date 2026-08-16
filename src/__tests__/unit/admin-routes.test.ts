@@ -14,6 +14,7 @@ const mockVerifyUser = jest.fn<any>();
 const mockUpdateUser = jest.fn<any>();
 const mockGetDisputeManagement = jest.fn<any>();
 const mockGetSystemHealth = jest.fn<any>();
+const mockGetSatisfactionRate = jest.fn<any>();
 
 const mockGetAllReviews = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => {
@@ -33,6 +34,7 @@ jest.unstable_mockModule(resolveModule('src/services/admin-service.ts'), () => (
   updateUser: mockUpdateUser,
   getDisputeManagement: mockGetDisputeManagement,
   getSystemHealth: mockGetSystemHealth,
+  getSatisfactionRate: mockGetSatisfactionRate,
 }));
 
 const mockGetAdminAnalytics = jest.fn<any>();
@@ -52,6 +54,7 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
 
 jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
   validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
 }));
 
 const adminRouter = (await import('../../routes/admin-routes.js')).default;
@@ -265,10 +268,7 @@ describe('Admin Routes', () => {
   describe('GET /platform-stats', () => {
     it('should return public platform stats', async () => {
       mockGetPlatformStats.mockResolvedValue({ success: true, data: { totalUsers: 100, totalTransactionVolume: 50000.5 } });
-      mockGetAllReviews.mockResolvedValue([
-        { id: 'r-1', rating: 5.0 },
-        { id: 'r-2', rating: 4.5 },
-      ]);
+      mockGetSatisfactionRate.mockResolvedValue(100);
       const res = await request(app).get('/api/admin/platform-stats');
       expect(res.status).toBe(200);
       expect(res.body.totalPaidOut).toBe('50000.50');
@@ -304,6 +304,7 @@ const mockAdminService = {
   updateUser: mockUpdateUser,
   getDisputeManagement: mockGetDisputeManagement,
   getSystemHealth: mockGetSystemHealth,
+  getSatisfactionRate: mockGetSatisfactionRate,
 };
 const mockReviewRepository = { getAllReviews: mockGetAllReviews };
 
@@ -386,7 +387,7 @@ describe('admin-routes branch coverage', () => {
   // GET /platform-stats — satisfactionRate branches
   it('GET /platform-stats with reviews', async () => {
     mockAdminService.getPlatformStats.mockResolvedValue(ok({ totalTransactionVolume: 1000 }));
-    mockReviewRepository.getAllReviews.mockResolvedValue([{ rating: 5 }, { rating: 3 }, { rating: 4 }]);
+    mockGetSatisfactionRate.mockResolvedValue(67);
     const res = await request(app).get('/api/admin/platform-stats');
     expect(res.status).toBe(200);
     expect(res.body.satisfactionRate).toBe(67);
@@ -394,7 +395,7 @@ describe('admin-routes branch coverage', () => {
 
   it('GET /platform-stats no reviews', async () => {
     mockAdminService.getPlatformStats.mockResolvedValue(ok({ totalTransactionVolume: 0 }));
-    mockReviewRepository.getAllReviews.mockResolvedValue([]);
+    mockGetSatisfactionRate.mockResolvedValue(0);
     const res = await request(app).get('/api/admin/platform-stats');
     expect(res.status).toBe(200);
     expect(res.body.satisfactionRate).toBe(0);
@@ -402,7 +403,7 @@ describe('admin-routes branch coverage', () => {
 
   it('GET /platform-stats review fetch throws', async () => {
     mockAdminService.getPlatformStats.mockResolvedValue(ok({ totalTransactionVolume: 0 }));
-    mockReviewRepository.getAllReviews.mockRejectedValue(new Error('DB error'));
+    mockGetSatisfactionRate.mockResolvedValue(0);
     const res = await request(app).get('/api/admin/platform-stats');
     expect(res.status).toBe(200);
     expect(res.body.satisfactionRate).toBe(0);
@@ -438,6 +439,7 @@ describe('admin-routes.ts - Branch Coverage', () => {
       updateUser: mockUpdateUser,
       getDisputeManagement: mockGetDisputeManagement2,
       getSystemHealth: mockGetSystemHealth2,
+      getSatisfactionRate: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
       getAdminAnalytics: mockGetAdminAnalytics2,
@@ -587,6 +589,7 @@ describe('admin-routes - error with null/undefined error object', () => {
       updateUser: mockUpdateUser2,
       getDisputeManagement: mockGetDisputeManagement3,
       getSystemHealth: mockGetSystemHealth3,
+      getSatisfactionRate: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
       getAdminAnalytics: mockGetAdminAnalytics3,
@@ -882,6 +885,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
       updateUser: mockUpdateUser,
       getDisputeManagement: jest.fn(),
       getSystemHealth: jest.fn(),
+      getSatisfactionRate: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
       getAdminAnalytics: jest.fn(),
@@ -904,6 +908,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
 
     const express = (await import('express')).default;
@@ -919,7 +924,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).patch('/api/admin/users/any-id').send({ name: 'Test' });
     expect(res.status).toBe(200);
-    expect(mockUpdateUser).toHaveBeenCalledWith('', { name: 'Test', role: undefined, isActive: undefined });
+    expect(mockUpdateUser).toHaveBeenCalledWith('', { name: 'Test', role: undefined, isActive: undefined }, 'admin-1');
   });
 
   it('L179: POST /users/:userId/suspend uses ?? "" fallback', async () => {
@@ -927,7 +932,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/admin/users/any-id/suspend').send({ reason: 'test' });
     expect(res.status).toBe(200);
-    expect(mockSuspendUser).toHaveBeenCalledWith('', 'test');
+    expect(mockSuspendUser).toHaveBeenCalledWith('', 'test', 'admin-1');
   });
 
   it('L207: POST /users/:userId/unsuspend uses ?? "" fallback', async () => {
@@ -935,7 +940,7 @@ describe('admin-routes - ?? "" param fallback coverage', () => {
     const request = (await import('supertest')).default;
     const res = await request(app).post('/api/admin/users/any-id/unsuspend');
     expect(res.status).toBe(200);
-    expect(mockUnsuspendUser).toHaveBeenCalledWith('');
+    expect(mockUnsuspendUser).toHaveBeenCalledWith('', 'admin-1');
   });
 
   it('L234: POST /users/:userId/verify uses ?? "" fallback', async () => {
@@ -963,6 +968,7 @@ describe('admin verification authentication coverage', () => {
       updateUser: jest.fn(),
       getDisputeManagement: jest.fn(),
       getSystemHealth: jest.fn(),
+      getSatisfactionRate: jest.fn(),
     }));
     jest.unstable_mockModule(resolveModule('src/services/analytics-service.ts'), () => ({
       getAdminAnalytics: jest.fn(),
@@ -981,6 +987,7 @@ describe('admin verification authentication coverage', () => {
     }));
     jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
       validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
     }));
 
     const express = (await import('express')).default;

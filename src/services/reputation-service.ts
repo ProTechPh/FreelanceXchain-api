@@ -9,15 +9,19 @@ import {
   submitRatingToBlockchain,
   BlockchainRating,
 } from './reputation-blockchain.js';
+import { databases, DATABASE_ID } from '../config/appwrite.js';
+import { COLLECTIONS } from '../config/collections.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
 import { reviewRepository, type ReviewEntity } from '../repositories/review-repository.js';
 import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
+import { sendGatedEmail, sendReviewReceivedEmail } from './email-delivery-service.js';
 import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
+import { withLock } from '../utils/async-lock.js';
 import type { Review } from '../models/review.js';
 
 
@@ -34,7 +38,7 @@ export type RatingInput = {
   wouldWorkAgain?: boolean;
 };
 
-export type RatingData = {
+type RatingData = {
   id: string;
   contractId: string;
   raterId: string;
@@ -63,7 +67,7 @@ export type WorkHistoryEntry = {
   ratingComment?: string;
 };
 
-export type RatingResult = {
+type RatingResult = {
   rating: RatingData;
   transactionHash: string;
 };
@@ -261,8 +265,16 @@ async function syncRatingToBlockchain(
 export async function submitRating(
   input: RatingInput
 ): Promise<ServiceResult<RatingResult>> {
+  // BLF-9.1: Serialize the duplicate-review check-then-insert per (contract, rater)
+  // so concurrent parallel submissions cannot both pass the duplicate check and
+  // create two reviews (which would double-count the rating). The app-level lock
+  // is per-process; the durable backstop is the UNIQUE index on
+  // (contract_id, reviewer_id) created by scripts/setup-appwrite-db.ts, which
+  // rejects the duplicate write even across server instances.
+  return withLock(`rating:${input.contractId}:${input.raterId}`, async () => {
   const validated = await validateRatingInput(input);
   if ('error' in validated) return validated.error;
+
 
   const { contract, rateeId, reviewerRole } = validated;
 
@@ -291,10 +303,30 @@ export async function submitRating(
     projectTitle,
   });
 
+  // Transactional email gated by the ratee's email preferences. Best-effort:
+  // a lookup/send failure must never break the rating submission.
+  try {
+    const reviewerDoc = await databases
+      .getDocument(DATABASE_ID, COLLECTIONS.USERS, input.raterId)
+      .catch(() => null);
+    await sendGatedEmail(rateeId, 'review_received', (recipient) =>
+      sendReviewReceivedEmail(recipient.email, {
+        recipientName: recipient.name,
+        reviewerName: reviewerDoc?.name || 'A user',
+        rating: input.rating,
+        projectTitle,
+        reviewUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/reviews/${review.id}`,
+      })
+    );
+  } catch (error) {
+    logger.error('Failed to send review-received email', { error, rateeId, raterId: input.raterId });
+  }
+
   return successResult({
     rating,
     transactionHash,
   });
+  }); // BLF-9.1: end withLock
 }
 
 /**

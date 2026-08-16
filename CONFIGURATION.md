@@ -53,7 +53,7 @@ Complete guide to all configuration files in the FreelanceXchain API project.
 
 #### Dependencies
 
-- **Production:** Express, Appwrite, PostgreSQL, Ethers.js, bcrypt, JWT, etc.
+- **Production:** Express, Appwrite, Ethers.js, JWT, Redis, etc.
 - **Development:** TypeScript, Jest, Hardhat, ESLint, tsx, etc.
 
 ### Common Commands
@@ -441,6 +441,8 @@ pnpm run openapi:generate
 pnpm run openapi:check
 ```
 
+The OpenAPI spec is checked in as `openapi.json` at the repo root and served by `src/app.ts` when `ENABLE_API_DOCS=true`.
+
 CI runs `openapi:check` in the typecheck job: if the committed `openapi.json` differs from the regenerated spec (a middleware schema changed without regenerating, or a hand-edit slipped into `openapi.json`), the pipeline fails.
 
 ### Usage
@@ -529,12 +531,11 @@ docker run -p 7860:7860 --env-file .env freelancexchain-api:latest
 ```env
 NODE_ENV=development
 PORT=7860
-```
-
-#### Database
-
-```env
-DATABASE_URL=postgresql://user:password@localhost:5432/freelancexchain
+# Number of trusted reverse-proxy hops (nginx/Cloudflare/HF Spaces). Keeps `req.ip`
+# (used by rate limiters and audit logs) pointing at the real client. Set to 0 when
+# the app is exposed directly (no proxy) — otherwise clients could spoof
+# X-Forwarded-For to bypass rate limits. Must equal your actual proxy hop count.
+TRUST_PROXY_HOPS=1
 ```
 
 #### Appwrite

@@ -26,6 +26,7 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
     contains: jest.fn((...args: any[]) => ({ type: 'contains', args })),
     between: jest.fn((...args: any[]) => ({ type: 'between', args })),
+    cursorAfter: jest.fn((...args: any[]) => ({ type: 'cursorAfter', args })),
   },
   DatabasesIndexType: { Key: 'key', Unique: 'unique', Fulltext: 'fulltext' },
   OrderBy: { Asc: 'asc', Desc: 'desc' },
@@ -109,6 +110,26 @@ describe('ProjectRepository', () => {
     });
   });
 
+  describe('countProjectsByEmployerAndStatus', () => {
+    it('should return the count of projects with the given status', async () => {
+      mockListDocuments.mockResolvedValueOnce({ documents: [], total: 4 });
+      const result = await repo.countProjectsByEmployerAndStatus('e1', 'open');
+      expect(result).toBe(4);
+    });
+
+    it('should return 0 when there are no matching projects', async () => {
+      mockListDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await repo.countProjectsByEmployerAndStatus('e1', 'open');
+      expect(result).toBe(0);
+    });
+
+    it('should return 0 on database error', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('DB down'));
+      const result = await repo.countProjectsByEmployerAndStatus('e1', 'open');
+      expect(result).toBe(0);
+    });
+  });
+
   describe('getAllOpenProjects', () => {
     it('should return open projects', async () => {
       const projects = [toAppwriteDoc({ id: 'p1', status: 'open' })];
@@ -157,6 +178,24 @@ describe('ProjectRepository', () => {
       const queries = mockListDocuments.mock.calls[0][2] as any[];
       expect(queries.some(q => q.type === 'equal' && q.args[0] === 'required_skill_ids')).toBe(true);
       expect(queries.some(q => q.type === 'equal' && q.args[0] === 'status' && q.args[1] === 'open')).toBe(true);
+    });
+
+    it('should paginate via limit/offset in a single database call', async () => {
+      // Skill filtering happens in the database (Query.equal on the
+      // required_skill_ids array attribute), so one call with limit/offset is
+      // all the hot path needs — no full scan per request.
+      const projects = Array.from({ length: 100 }, (_, i) =>
+        toAppwriteDoc({ id: `p-${i}`, required_skills: [{ skill_id: 's1' }], status: 'open' })
+      );
+      mockListDocuments.mockResolvedValueOnce({ documents: projects, total: 120 });
+
+      const result = await repo.getProjectsBySkills(['s1']);
+      expect(result.total).toBe(120);
+      expect(result.items).toHaveLength(100);
+      expect(mockListDocuments).toHaveBeenCalledTimes(1);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'limit' && q.args[0] === 20)).toBe(true); // default page limit
+      expect(queries.some(q => q.type === 'offset' && q.args[0] === 0)).toBe(true);
     });
   });
 });

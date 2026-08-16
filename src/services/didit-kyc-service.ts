@@ -37,6 +37,9 @@ import {
   KycStatus,
 } from '../models/didit-kyc.js';
 import { logger } from '../config/logger.js';
+import { withLock } from '../utils/async-lock.js';
+import { persistAuditEntry } from '../utils/admin-audit.js';
+import { sendGatedEmail, sendKycApprovedEmail, sendKycRejectedEmail } from './email-delivery-service.js';
 
 const DIDIT_WORKFLOW_ID = process.env['DIDIT_WORKFLOW_ID'];
 
@@ -246,6 +249,7 @@ async function handleDuplicateWebhookEvent(payload: DiditWebhookPayload): Promis
  */
 function buildWebhookUpdates(payload: DiditWebhookPayload): { updates: Partial<KycVerification> } & WebhookProfileData {
   const status = mapDiditStatusToKycStatus(payload.status);
+
   const updates: Partial<KycVerification> = { status };
 
   // Variables to store KYC data for profile creation
@@ -320,13 +324,35 @@ function buildWebhookUpdates(payload: DiditWebhookPayload): { updates: Partial<K
  * Process webhook from Didit
  */
 export async function processWebhook(payload: DiditWebhookPayload): Promise<ServiceResult<KycVerification>> {
-  // L4: Deduplicate webhook events — Didit uses at-least-once delivery.
+  // L4: Deduplicate webhook events — Didit uses at-least-once delivery. The event
+  // map is a per-process fast path; the per-session lock below makes the
+  // read-modify-write of status atomic within an instance, and the final-state
+  // guard makes cross-instance re-delivery safe (no regression out of a final
+  // state, so a stale duplicate cannot flip approved back to pending).
+  return withLock(`kyc-webhook:${payload.session_id}`, async () => {
   const duplicateResult = await handleDuplicateWebhookEvent(payload);
   if (duplicateResult) return duplicateResult;
 
   const verification = await getKycVerificationBySessionId(payload.session_id);
   if (!verification) {
     return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found for session');
+  }
+
+  // L4.1: Never regress a final KYC state (approved/rejected/expired) via a stale
+  // or out-of-order webhook delivery — that would corrupt verification integrity.
+  const FINAL_KYC_STATES: KycStatus[] = ['approved', 'rejected', 'expired'];
+  if (FINAL_KYC_STATES.includes(verification.status)) {
+    const status = mapDiditStatusToKycStatus(payload.status);
+    if (verification.status === status) {
+      // Same final state re-delivered — idempotent no-op.
+      return successResult(verification);
+    }
+    logger.warn('KYC webhook ignored: refusing to regress final state', {
+      sessionId: payload.session_id,
+      currentStatus: verification.status,
+      incomingStatus: status,
+    });
+    return successResult(verification);
   }
 
   const { updates, firstName, lastName, nationality } = buildWebhookUpdates(payload);
@@ -341,7 +367,34 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
     await autoCreateProfile(verification.user_id, firstName, lastName, nationality);
   }
 
+  // Transactional emails gated by the user's email preferences. Best-effort:
+  // a preference lookup or send failure must never break webhook processing.
+  if (payload.status === 'Approved') {
+    await sendGatedEmail(verification.user_id, 'kyc_notifications', (recipient) =>
+      sendKycApprovedEmail(recipient.email, { userName: recipient.name, tier: 'Verified' })
+    );
+  } else if (payload.status === 'Declined') {
+    await sendGatedEmail(verification.user_id, 'kyc_notifications', (recipient) =>
+      sendKycRejectedEmail(recipient.email, {
+        userName: recipient.name,
+        reason: 'Your submitted identity documents could not be verified.',
+      })
+    );
+  }
+
+  // L4: Mark the event only AFTER successful processing so a failed delivery
+  // (e.g. UPDATE_FAILED above) is not permanently swallowed — Didit uses
+  // at-least-once delivery, so a retry must be able to complete the work.
+  if (payload.event_id) {
+    processedWebhookEvents.set(payload.event_id, Date.now());
+    // Periodic cleanup
+    if (processedWebhookEvents.size > 1000) {
+      cleanupProcessedEvents();
+    }
+  }
+
   return successResult(updated);
+  }); // L4: end withLock
 }
 
 /**
@@ -499,6 +552,10 @@ export async function adminReviewVerification(
   decision: 'approved' | 'rejected',
   notes?: string
 ): Promise<ServiceResult<KycVerification>> {
+  // BLF-12.3: serialize admin reviews per verification so two concurrent submits
+  // cannot both pass the status gate and double-approve/double-audit. The status
+  // gate (verification.status !== 'completed') alone is not atomic.
+  return withLock(`kyc-review:${verificationId}`, async () => {
   const verification = await getKycVerificationById(verificationId);
   if (!verification) {
     return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found');
@@ -542,7 +599,34 @@ export async function adminReviewVerification(
     );
   }
 
+  // Transactional email gated by the user's email preferences. Best-effort:
+  // a preference lookup or send failure must never break the admin decision.
+  await sendGatedEmail(verification.user_id, 'kyc_notifications', (recipient) =>
+    decision === 'approved'
+      ? sendKycApprovedEmail(recipient.email, { userName: recipient.name, tier: 'Verified' })
+      : sendKycRejectedEmail(recipient.email, {
+          userName: recipient.name,
+          reason: notes?.trim() || 'Your submitted identity documents could not be verified.',
+        })
+  );
+
+  // BLF-12.2: durable audit trail — record every admin approve/reject decision
+  // (who decided, what outcome, on whose verification). Best-effort by design.
+  await persistAuditEntry({
+    user_id: verification.user_id,
+    actor_id: adminUserId,
+    action: decision === 'approved' ? 'kyc.approved' : 'kyc.rejected',
+    resource_type: 'kyc_verification',
+    resource_id: verificationId,
+    payload: { decision, ...(notes ? { notes } : {}) },
+    ip_address: null,
+    user_agent: null,
+    status: 'success',
+    error_message: null,
+  });
+
   return successResult(updated);
+  }); // BLF-12.3: end withLock
 }
 
 /**
@@ -801,52 +885,77 @@ async function persistManualVerification(
 export async function manualKycVerification(params: ManualKycParams): Promise<ServiceResult<KycVerification>> {
   const { userId } = params;
 
-  // Check if user exists
-  const user = await userRepository.getUserById(userId);
-  if (!user) {
-    return errorResult('USER_NOT_FOUND', 'User not found');
-  }
+  // BLF-12.3: serialize manual verifications per target user so two concurrent
+  // admin submissions cannot both pass the ALREADY_VERIFIED gate, create duplicate
+  // verification records, or write duplicate audit entries.
+  return withLock(`kyc-manual:${userId}`, async () => {
+    try {
+      // Check if user exists
+      const user = await userRepository.getUserById(userId);
+      if (!user) {
+        return errorResult('USER_NOT_FOUND', 'User not found');
+      }
 
-  // Check if user already has an active verification
-  const existingVerification = await getKycVerificationByUserId(userId);
-  if (existingVerification && existingVerification.status === 'approved') {
-    return errorResult('ALREADY_VERIFIED', 'User is already verified');
-  }
+      // Check if user already has an active verification
+      const existingVerification = await getKycVerificationByUserId(userId);
+      if (existingVerification && existingVerification.status === 'approved') {
+        return errorResult('ALREADY_VERIFIED', 'User is already verified');
+      }
 
-  try {
-    const checks = await runManualKycChecks(params);
-    if ('error' in checks) return checks.error;
+      const checks = await runManualKycChecks(params);
+      if ('error' in checks) return checks.error;
 
-    const amlClean = await runManualKycAmlScreening(checks.idData, userId);
+      const amlClean = await runManualKycAmlScreening(checks.idData, userId);
 
-    const verificationData = buildManualVerificationData(params, checks, amlClean);
+      const verificationData = buildManualVerificationData(params, checks, amlClean);
 
-    const verification = await persistManualVerification(existingVerification, verificationData);
-    if (!verification) {
-      /* istanbul ignore next */
-      return errorResult('DATABASE_ERROR', 'Failed to save verification');
-    }
+      const verification = await persistManualVerification(existingVerification, verificationData);
+      if (!verification) {
+        /* istanbul ignore next */
+        return errorResult('DATABASE_ERROR', 'Failed to save verification');
+      }
 
-    // Sync name to user and profiles if approved
-    if (amlClean) {
-      await syncKycNameToUserAndProfiles(
+      // Sync name to user and profiles if approved
+      if (amlClean) {
+        await syncKycNameToUserAndProfiles(
+          userId,
+          checks.idData.first_name || null,
+          checks.idData.last_name || null,
+          checks.idData.nationality || null
+        );
+
+        // Transactional email gated by the user's email preferences. Best-effort.
+        await sendGatedEmail(userId, 'kyc_notifications', (recipient) =>
+          sendKycApprovedEmail(recipient.email, { userName: recipient.name, tier: 'Verified' })
+        );
+      }
+
+      logger.info('Manual KYC verification completed', {
         userId,
-        checks.idData.first_name || null,
-        checks.idData.last_name || null,
-        checks.idData.nationality || null
-      );
+        verificationId: verification.id,
+        status: verification.status,
+        amlClean
+      });
+
+      // BLF-12.2: durable audit trail — record the admin-performed manual
+      // verification, including whether AML screening passed or needs review.
+      await persistAuditEntry({
+        user_id: userId,
+        actor_id: params.adminUserId,
+        action: 'kyc.manual_verified',
+        resource_type: 'kyc_verification',
+        resource_id: verification.id,
+        payload: { status: verification.status, amlClean },
+        ip_address: null,
+        user_agent: null,
+        status: 'success',
+        error_message: null,
+      });
+
+      return successResult(verification);
+    } catch (error) {
+      logger.error('Manual KYC verification error', error as Error, { userId });
+      return errorResult('VERIFICATION_ERROR', error instanceof Error ? error.message : 'Manual verification failed');
     }
-
-    logger.info('Manual KYC verification completed', {
-      userId,
-      verificationId: verification.id,
-      status: verification.status,
-      amlClean
-    });
-
-    return successResult(verification);
-  } catch (error) {
-    logger.error('Manual KYC verification error', error as Error, { userId });
-    return errorResult('VERIFICATION_ERROR', error instanceof Error ? error.message : 'Manual verification failed');
-  }
+  }); // BLF-12.3: end withLock
 }

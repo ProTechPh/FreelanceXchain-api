@@ -48,15 +48,6 @@ const mockDisputeRepo = {
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Override database mock with controllable pool
-const mockQuery = jest.fn<any>();
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 
 // Mock Appwrite client - return the global mock so beforeEach can modify it
 
@@ -79,6 +70,11 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
 
 jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
   disputeRepository: mockDisputeRepo,
+}));
+
+const mockAuditLogRepo = { create: jest.fn() };
+jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
+  auditLogRepository: mockAuditLogRepo,
 }));
 
 jest.unstable_mockModule(resolveModule('src/repositories/payment-repository.ts'), () => {
@@ -124,9 +120,17 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-registry.ts'), ()
   submitMilestoneToRegistry: jest.fn(),
 }));
 
+// Email delivery (preference-gated transactional emails). Mocked so the real
+// email-preference-service does not touch global mockDatabases during approval.
+const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendMilestoneApprovedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+  sendPaymentReleasedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+}));
+
 // Import after mocking
 const {
-  clearDisputes,
   getDisputeById,
   requestMilestoneCompletion,
   disputeMilestone,
@@ -136,8 +140,6 @@ const {
   setEscrowOpsForTesting,
 } = await import('../../services/payment-service.js');
 
-const { clearTransactions } = await import('../../services/blockchain-client.js');
-const escrowContract = await import('../../services/escrow-contract.js');
 
 describe('Payment Service - Property-Based Tests', () => {
   beforeEach(() => {
@@ -146,9 +148,7 @@ describe('Payment Service - Property-Based Tests', () => {
     userStore.clear();
     notificationStore.clear();
     disputeStore.clear();
-    clearTransactions();
-    escrowContract.clearEscrows();
-    clearDisputes();
+    mockAuditLogRepo.create.mockClear();
 
     // Setup Appwrite RPC mock for atomic milestone approval
     const mockAppwriteClient = (globalThis as any).mockAppwriteClient;
@@ -454,9 +454,6 @@ describe('Payment Service - Unit Tests', () => {
     userStore.clear();
     notificationStore.clear();
     disputeStore.clear();
-    clearTransactions();
-    escrowContract.clearEscrows();
-    clearDisputes();
 
     // Setup Appwrite RPC mock (same as property tests)
     const mockAppwriteClient = (globalThis as any).mockAppwriteClient;
@@ -703,6 +700,44 @@ describe('Payment Service - Unit Tests', () => {
 
     const updatedContract = contractStore.get(contract.id) as any;
     expect(updatedContract?.status).toBe('active');
+  });
+
+  it('should audit milestone approval with amount and tx hash (BLF-12.2)', async () => {
+    const freelancerId = generateId();
+    const employerId = generateId();
+
+    userStore.set(freelancerId, createTestUser({ id: freelancerId, wallet_address: '0x' + 'a'.repeat(40) }));
+    userStore.set(employerId, createTestUser({ id: employerId, wallet_address: '0x' + 'b'.repeat(40) }));
+
+    const milestone = createTestMilestone({ status: 'submitted', amount: 1000 });
+    const project = createTestProject({ employer_id: employerId, milestones: [milestone] });
+    const contract = createTestContract({
+      project_id: project.id,
+      freelancer_id: freelancerId,
+      employer_id: employerId,
+      status: 'active',
+      escrow_address: '0x' + 'c'.repeat(40),
+    });
+
+    contractStore.set(contract.id, contract);
+    projectStore.set(project.id, project);
+
+    const result = await approveMilestone(contract.id, milestone.id, employerId);
+
+    expect(result.success).toBe(true);
+    // BLF-12.2: milestone approval (escrow release) is persisted to the audit log
+    expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: freelancerId,
+      actor_id: employerId,
+      action: 'milestone.approved',
+      resource_type: 'milestone',
+      resource_id: milestone.id,
+      payload: expect.objectContaining({
+        contractId: contract.id,
+        amount: 1000,
+        transactionHash: expect.any(String),
+      }),
+    }));
   });
 
   it('should report last milestone approval as completing the contract', async () => {

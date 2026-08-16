@@ -12,6 +12,7 @@ import {
   analyzeSkillGaps,
   isMatchingError,
 } from '../services/matching-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 // Type for authenticated request
 type AuthenticatedRequest = Request & { user: TokenPayload };
@@ -148,7 +149,7 @@ const router = Router();
  *       404:
  *         description: Freelancer profile not found
  */
-router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/projects', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const requestId = getRequestId(req);
   const userId = authReq.user.userId;
@@ -174,7 +175,7 @@ router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -218,7 +219,7 @@ router.get('/projects', authMiddleware, apiRateLimiter, async (req: Request, res
  *       404:
  *         description: Project not found
  */
-router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUUID(['projectId']), async (req: Request, res: Response) => {
+router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUUID(['projectId']), asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const projectId = req.params['projectId'];
 
@@ -249,7 +250,7 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -281,7 +282,7 @@ router.get('/freelancers/:projectId', authMiddleware, apiRateLimiter, validateUU
  *       401:
  *         description: Unauthorized - Invalid or missing token
  */
-router.post('/extract-skills', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/extract-skills', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
   const { text } = req.body as { text?: string };
 
@@ -298,7 +299,7 @@ router.post('/extract-skills', authMiddleware, apiRateLimiter, async (req: Reque
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -322,7 +323,7 @@ router.post('/extract-skills', authMiddleware, apiRateLimiter, async (req: Reque
  *       404:
  *         description: Freelancer profile not found
  */
-router.get('/skill-gaps', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/skill-gaps', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
   const requestId = getRequestId(req);
   const userId = authReq.user.userId;
@@ -336,6 +337,6 @@ router.get('/skill-gaps', authMiddleware, apiRateLimiter, async (req: Request, r
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

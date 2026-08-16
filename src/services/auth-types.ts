@@ -11,22 +11,13 @@ export type LoginInput = {
   password: string;
 };
 
-export type PhoneLoginInput = {
-  phone: string;
-};
 
-export type EmailOtpLoginInput = {
-  email: string;
-};
 
-export type MagicUrlLoginInput = {
-  email: string;
-};
 
-export type VerifyOtpInput = {
-  userId: string;
-  secret: string;
-};
+
+
+
+
 
 export type TokenPayload = {
   userId: string;
@@ -70,7 +61,9 @@ export type AuthError = {
   | 'MFA_DISABLE_FAILED'
   | 'MFA_REQUIRED'
   | 'MFA_CODE_REQUIRED'
-  | 'MFA_VERIFY_FAILED';
+  | 'MFA_VERIFY_FAILED'
+  | 'UPDATE_FAILED'
+  | 'WALLET_LOCKED';
   message: string;
 };
 

@@ -60,7 +60,6 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
   }
 
   req.user = {
-    id: result.userId,
     userId: result.userId,
     email: result.email,
     role: result.role,

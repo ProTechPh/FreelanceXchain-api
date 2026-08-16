@@ -172,7 +172,7 @@ npm audit --audit-level=high
 - [ ] Check rate limiting effectiveness
 - [ ] Verify CORS configuration
 - [ ] Review API key usage and rotation
-- [ ] Validate RLS policies in database
+- [ ] Verify Appwrite collection permissions and auth middleware rules
 - [ ] Check for exposed secrets in logs
 - [ ] Review error messages for information disclosure
 
@@ -237,64 +237,22 @@ npm audit --audit-level=high
 
 ### Database Optimization
 
-#### Index Maintenance
+#### Index & Collection Maintenance
 
 **Schedule**: Monthly  
 **Procedure**:
 
-```sql
--- Analyze table statistics
-ANALYZE;
-
--- Reindex specific table
-REINDEX TABLE users;
-
--- Reindex all tables (during maintenance window)
-REINDEX DATABASE freelancexchain;
-
--- Check for missing indexes
-SELECT schemaname, tablename, attname, n_distinct, correlation
-FROM pg_stats
-WHERE schemaname = 'public'
-ORDER BY abs(correlation) DESC;
-```
-
-#### Vacuum Operations
-
-**Schedule**: Weekly (automated by PostgreSQL)  
-**Manual Vacuum** (if needed):
-
-```sql
--- Vacuum specific table
-VACUUM ANALYZE users;
-
--- Full vacuum (requires maintenance window)
-VACUUM FULL ANALYZE;
-
--- Check for bloat
-SELECT schemaname, tablename, 
-       pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS size
-FROM pg_tables
-WHERE schemaname = 'public'
-ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC;
-```
+- Review Appwrite collection indexes in the Console (Database → project → collection → Indexes).
+- `scripts/setup-appwrite-db.ts` is the single source of truth for the schema; re-run it to apply new attributes/indexes.
+- Appwrite manages storage and index housekeeping automatically; audit collection sizes from the Console.
 
 ### Migration Management
 
 #### Running Migrations
 
 ```bash
-# Check migration status
-pnpm run db:migrate:status
-
-# Run pending migrations
-pnpm run db:migrate
-
-# Rollback last migration
-pnpm run db:migrate:rollback
-
-# Create new migration
-pnpm run db:migrate:create <migration-name>
+# Apply the Appwrite schema (idempotent — safe to re-run)
+npx tsx scripts/setup-appwrite-db.ts
 ```
 
 #### Migration Best Practices
@@ -312,25 +270,8 @@ pnpm run db:migrate:create <migration-name>
 **Schedule**: Quarterly  
 **Procedure**:
 
-```sql
--- Archive old notifications (older than 90 days)
-DELETE FROM notifications 
-WHERE created_at < NOW() - INTERVAL '90 days' 
-AND is_read = true;
-
--- Archive completed contracts (older than 1 year)
--- Move to archive table instead of deleting
-INSERT INTO contracts_archive 
-SELECT * FROM contracts 
-WHERE status = 'completed' 
-AND updated_at < NOW() - INTERVAL '1 year';
-
--- Clean up expired sessions
-DELETE FROM sessions 
-WHERE expires_at < NOW();
-```
-
----
+- Use the Appwrite REST/Server SDK to query and purge old notifications (`notifications` collection, `created_at` older than 90 days, `is_read = true`).
+- Archive or delete stale contracts via the Appwrite Console or the server SDK.
 
 ## Blockchain Maintenance
 
@@ -408,10 +349,10 @@ pnpm run blockchain:balance
 
 #### Key Metrics
 
-- **Connection Pool**: Active/idle connections
-- **Query Performance**: Slow query count (>1s)
-- **Disk Usage**: Database size and growth rate
-- **Replication Lag**: For read replicas
+- **Appwrite Availability**: Console health / API error rates
+- **Query Performance**: Watch for slow collection queries in application logs
+- **Storage Usage**: Bucket size and growth rate
+- **Rate Limits**: Approaching Appwrite rate limits
 
 ### Blockchain Monitoring
 
@@ -443,13 +384,8 @@ pnpm run blockchain:balance
 
 **Manual Backup**:
 
-```bash
-# Create database backup
-pg_dump $DATABASE_URL > backup_$(date +%Y%m%d_%H%M%S).sql
-
-# Restore from backup
-psql $DATABASE_URL < backup_20260218_020000.sql
-```
+- Export collections from the Appwrite Console (or via the Appwrite REST API) as JSON.
+- Store backups off-site (object storage / encrypted vault) with a documented restore procedure.
 
 #### Configuration Backups
 
@@ -574,11 +510,10 @@ psql $DATABASE_URL < backup_20260218_020000.sql
 **Schedule**: Monthly review  
 **Procedure**:
 
-1. Identify slow queries using `pg_stat_statements`
-2. Add missing indexes
-3. Optimize query structure
-4. Consider materialized views for complex queries
-5. Review connection pool settings
+1. Review query patterns in application logs
+2. Add missing Appwrite collection indexes (via `setup-appwrite-db.ts`)
+3. Optimize repository queries and pagination
+4. Cache frequently accessed data (Redis)
 
 #### Caching Strategy
 

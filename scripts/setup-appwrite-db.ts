@@ -376,6 +376,10 @@ const COLLECTIONS = [
       { name: 'milestone_updates', type: 'boolean', required: false, default: true },
       { name: 'payment_notifications', type: 'boolean', required: false, default: true },
       { name: 'dispute_notifications', type: 'boolean', required: false, default: true },
+      { name: 'contract_notifications', type: 'boolean', required: false, default: true },
+      { name: 'message_notifications', type: 'boolean', required: false, default: true },
+      { name: 'review_notifications', type: 'boolean', required: false, default: true },
+      { name: 'kyc_notifications', type: 'boolean', required: false, default: true },
       { name: 'marketing_emails', type: 'boolean', required: false, default: false },
       { name: 'weekly_digest', type: 'boolean', required: false, default: true },
     ],
@@ -456,6 +460,10 @@ const COLLECTIONS = [
       { name: 'search_type', type: 'string', size: 20, required: true },
       { name: 'filters', type: 'string', size: 50000, required: false, default: '{}' },
       { name: 'notify_on_new', type: 'boolean', required: false, default: false },
+      // Dedup watermark for the saved-search notify job: only matches created
+      // after this timestamp trigger a notification, so a search is not
+      // re-notified about the same results on every 6-hour run.
+      { name: 'last_notified_at', type: 'string', size: 30, required: false },
     ],
     indexes: [
       { key: 'user_id_createdAt', type: DatabasesIndexType.Key, attributes: ['user_id', '$createdAt'], orders: [OrderBy.Asc, OrderBy.Desc] },
@@ -488,6 +496,9 @@ const COLLECTIONS = [
       { name: 'category_name', type: 'string', size: 100, required: false },
       { name: 'suggested_by', type: 'string', size: 255, required: true },
       { name: 'times_requested', type: 'integer', required: false, default: 1 },
+      // Anti-spam (BLF-skill.3): distinct user IDs who requested this suggestion,
+      // so times_requested cannot be inflated by one account re-requesting.
+      { name: 'requester_ids', type: 'string', size: 36, required: false, array: true },
       { name: 'status', type: 'string', size: 20, required: false, default: 'pending' },
     ],
     indexes: [
@@ -617,6 +628,61 @@ const COLLECTIONS = [
       { key: 'user_id_folder_received_at', type: DatabasesIndexType.Key, attributes: ['user_id', 'folder', 'received_at'], orders: [OrderBy.Asc, OrderBy.Asc, OrderBy.Desc] },
       { key: 'user_id_is_read', type: DatabasesIndexType.Key, attributes: ['user_id', 'is_read'] },
     ],
+  },
+];
+
+// ─── Index Definitions ───────────────────────────────────────────────────────
+// Database-level constraints that cannot be expressed as plain attributes.
+// The unique (contract_id, reviewer_id) index backs BLF-9.1: the reputation
+// service serializes the duplicate-review check-then-insert with an app-level
+// lock, but that lock is per-process — this index is the global backstop that
+// makes a double-submit fail even across server instances.
+// NOTE: on an existing `reviews` collection that already contains duplicate
+// (contract_id, reviewer_id) rows, creation will fail — de-duplicate first.
+const INDEXES = [
+  {
+    collectionId: 'reviews',
+    key: 'unique_contract_reviewer',
+    type: 'key',
+    attributes: ['contract_id', 'reviewer_id'],
+    indexes: ['unique'],
+  },
+  {
+    // Anti-spam backstop for custom skills (BLF-skill.1): even if two requests
+    // race past the app-level duplicate check, the DB rejects a second
+    // (user_id, name) row. NOTE: de-duplicate existing user_custom_skills rows
+    // before running on a populated collection.
+    collectionId: 'user_custom_skills',
+    key: 'unique_user_skill',
+    type: 'key',
+    attributes: ['user_id', 'name'],
+    indexes: ['unique'],
+  },
+  {
+    // Anti-spam backstop for the suggestion queue (BLF-skill.2): two concurrent
+    // suggestForGlobal requests with the same skill name can both pass the
+    // app-level lookup; this index makes the second create fail at the DB.
+    // NOTE: on an existing `skill_suggestions` collection that already contains
+    // duplicate skill_name rows, creation will fail — de-duplicate first.
+    collectionId: 'skill_suggestions',
+    key: 'unique_suggestion_name',
+    type: 'key',
+    attributes: ['skill_name'],
+    indexes: ['unique'],
+  },
+  {
+    // Race backstop for favorites: addFavorite does a check-then-insert, so two
+    // concurrent identical requests can both pass the check. This unique
+    // (user_id, target_type, target_id) index makes the second insert fail at
+    // the DB even across server instances (same pattern as reviews/skills).
+    // NOTE: on an existing `favorites` collection that already contains
+    // duplicate (user_id, target_type, target_id) rows, creation will fail —
+    // de-duplicate first.
+    collectionId: 'favorites',
+    key: 'unique_user_target',
+    type: 'key',
+    attributes: ['user_id', 'target_type', 'target_id'],
+    indexes: ['unique'],
   },
 ];
 
@@ -752,7 +818,7 @@ async function main(): Promise<void> {
     console.log('');
   }
 
-  console.log('=== Setup complete! ===');
+  console.log('\n=== Setup complete! ===');
 }
 
 main().catch((err) => {

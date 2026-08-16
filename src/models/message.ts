@@ -10,7 +10,7 @@ export type Message = {
   updatedAt: string;
 };
 
-export type MessageAttachment = {
+type MessageAttachment = {
   url: string;
   filename: string;
   size: number;

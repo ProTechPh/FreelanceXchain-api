@@ -654,7 +654,9 @@ export const submitRatingSchema: RequestSchema = {
     additionalProperties: false,
     properties: {
       contractId: { type: 'string', format: 'uuid', required: true },
-      rateeId: { type: 'string', format: 'uuid', required: true },
+      // Users are Appwrite documents, so rateeId is an Appwrite document ID,
+      // not a UUID.
+      rateeId: { type: 'string', required: true, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$' },
       rating: { type: 'number', minimum: 1, maximum: 5, required: true },
       comment: { type: 'string' },
     },

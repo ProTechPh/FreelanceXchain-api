@@ -15,9 +15,7 @@ import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
 import { uploadMultipleFiles, cleanupUploadedFiles, type FileMetadata } from '../utils/storage-uploader.js';
 import { BUCKETS as STORAGE_BUCKETS } from '../config/appwrite.js';
-import { generateId } from '../utils/id.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
-import { logger } from '../config/logger.js';
 import {
   createProject,
   getProjectById,
@@ -30,6 +28,7 @@ import {
   listProjectsByEmployer,
   listProjectsByCategory,
   listProjectsByMultipleCategories,
+  getProjectCategoryStats,
 } from '../services/project-service.js';
 import { getProposalsByProject } from '../services/proposal-service.js';
 import { mapProjectFromEntity } from '../utils/entity-mapper.js';
@@ -165,7 +164,7 @@ const router = Router();
  *                 continuationToken:
  *                   type: string
  */
-router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
    const keyword = req.query['keyword'] as string | undefined;
    const skillsParam = req.query['skills'] as string | undefined;
    const minBudget = req.query['minBudget'] ? Number(req.query['minBudget']) : undefined;
@@ -206,7 +205,7 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
     ...result.data,
     items: mappedItems
   });
-});
+}));
 
 
 /**
@@ -250,7 +249,7 @@ router.get('/', apiRateLimiter, async (req: Request, res: Response) => {
  *       401:
  *         description: Unauthorized
  */
-router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
   const limit = clampLimit(req.query['limit'] ? Number(req.query['limit']) : undefined);
@@ -277,7 +276,7 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
     ...result.data,
     items: mappedItems
   });
-});
+}));
 
 /**
  * @swagger
@@ -317,48 +316,21 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
  *                       totalBudget:
  *                         type: number
  */
-router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/stats/categories', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const requestId = getRequestId(req);
 
-  try {
-    const rawLimit = parseInt(String(req.query['limit'] ?? '100'), 10);
-    const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 10000) : 100;
+  const rawLimit = parseInt(String(req.query['limit'] ?? '100'), 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 10000) : 100;
 
-    const result = await listOpenProjects({ limit, offset: 0 });
-    
-    if (!result.success) {
-      sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve project statistics', { requestId });
-      return;
-    }
+  const result = await getProjectCategoryStats(limit);
 
-    const categoryStats = new Map<string, { categoryId: string; categoryName: string; projectCount: number; totalBudget: number }>();
-    
-    result.data.items.forEach(project => {
-      project.required_skills.forEach(skill => {
-        const key = skill.category_id;
-        if (!categoryStats.has(key)) {
-          categoryStats.set(key, {
-            categoryId: skill.category_id,
-            categoryName: skill.skill_name || skill.category_id,
-            projectCount: 0,
-            totalBudget: 0
-          });
-        }
-        
-        const stats = categoryStats.get(key)!;
-        stats.projectCount += 1;
-        stats.totalBudget += Number(project.budget);
-      });
-    });
-
-    res.status(200).json({
-      categories: Array.from(categoryStats.values()),
-    });
-  } catch (error) {
-    logger.error('Failed to get project category statistics', { error });
-    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to retrieve project statistics', { requestId });
+  if (!result.success) {
+    sendErrorResponse(res, 500, result.error.code, result.error.message, { requestId });
+    return;
   }
-});
+
+  res.status(200).json(result.data);
+}));
 
 /**
  * @swagger
@@ -388,7 +360,7 @@ router.get('/stats/categories', apiRateLimiter, async (req: Request, res: Respon
  *       404:
  *         description: Project not found
  */
-router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const id = req.params['id'] ?? '';
   const requestId = getRequestId(req);
 
@@ -402,7 +374,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), async (req: Request, res: Res
   // Map entity to API model (snake_case to camelCase)
   const projectModel = mapProjectFromEntity(result.data);
   res.status(200).json(projectModel);
-});
+}));
 
 /**
  * @swagger
@@ -638,8 +610,7 @@ function validateProjectWithAttachments(body: Record<string, unknown>): WithAtta
 async function uploadProjectFiles(files: Express.Multer.File[]): Promise<FileMetadata[]> {
   const uploadResults = await uploadMultipleFiles(
     files,
-    STORAGE_BUCKETS.PROJECT_ATTACHMENTS,
-    `projects/${generateId()}`
+    STORAGE_BUCKETS.PROJECT_ATTACHMENTS
   );
 
   const failedUploads = uploadResults.filter(result => !result.success);
@@ -782,7 +753,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(updateProjectSchema), async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(updateProjectSchema), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { title, description, requiredSkills, budget, deadline, status, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
@@ -812,7 +783,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -877,7 +848,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(addMilestonesSchema), async (req: Request, res: Response) => {
+router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(addMilestonesSchema), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { milestones } = req.body;
   const userId = req.user?.userId;
@@ -903,7 +874,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -958,7 +929,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
  *       404:
  *         description: Project not found
  */
-router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
@@ -993,6 +964,6 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

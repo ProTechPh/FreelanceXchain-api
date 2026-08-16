@@ -11,6 +11,7 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       nodeEnv: 'test',
       baseUrl: 'http://localhost:3000',
       enableApiDocs: true, // Enable API docs to trigger the code path
+      trustProxyHops: 0,
     },
     appwrite: {
       url: 'http://localhost:54321',
@@ -52,8 +53,12 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
       password: undefined,
       tls: false,
     },
-    database: { url: 'postgresql://localhost/test' },
   },
+  getCorsOrigin: () => process.env['CORS_ORIGIN'],
+  getNodeEnv: () => process.env['NODE_ENV'] ?? 'development',
+  getCsrfSecret: () => process.env['CSRF_SECRET'],
+  getBlockchainWebhookSecret: () => process.env['BLOCKCHAIN_WEBHOOK_SECRET'],
+  getEmailWebhookSecret: () => process.env['EMAIL_WEBHOOK_SECRET'],
 }));
 
 // Mock node:fs/promises to make readFile throw for openapi.json

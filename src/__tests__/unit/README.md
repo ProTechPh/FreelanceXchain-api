@@ -154,13 +154,12 @@ describe('ServiceName', () => {
 
 ### Mocking
 
-Use mocks from `../mocks/` folder:
+Use mocks from `../mocks/` folder (or the global mocks provided by `jest.setup.ts`):
 
 ```typescript
-import { mockAppwrite } from '../mocks/appwrite-mocks.js';
-import { mockBlockchain } from '../mocks/blockchain-mocks.js';
+import { mockEthers } from '../mocks/test-setup.js';
 
-jest.mock('../../config/database.js', () => mockAppwrite);
+jest.mock('ethers', () => mockEthers);
 ```
 
 ---

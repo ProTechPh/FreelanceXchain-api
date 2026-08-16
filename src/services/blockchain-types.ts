@@ -4,7 +4,7 @@
  */
 
 // Transaction types
-export type TransactionType =
+type TransactionType =
   | 'escrow_deploy'
   | 'escrow_deposit'
   | 'milestone_release'
@@ -20,7 +20,7 @@ export type TransactionType =
   | 'milestone_reject'
   | 'agreement_dispute';
 
-export type TransactionStatus = 'pending' | 'confirmed' | 'failed';
+type TransactionStatus = 'pending' | 'confirmed' | 'failed';
 
 // Base transaction structure
 export type Transaction = {
@@ -79,39 +79,13 @@ export type EscrowDeployment = {
 };
 
 // Payment transaction for milestone release
-export type PaymentTransaction = {
-  escrowAddress: string;
-  milestoneId: string;
-  amount: bigint;
-  recipient: string;
-  timestamp: number;
-  transactionHash: string;
-};
+
 
 // Serialized transaction for JSON encoding
-export type SerializedTransaction = {
-  id: string;
-  type: TransactionType;
-  from: string;
-  to: string;
-  amount: string; // bigint serialized as string
-  data: Record<string, unknown>;
-  timestamp: number;
-  status: TransactionStatus;
-  hash?: string | undefined;
-  blockNumber?: number | undefined;
-  gasUsed?: string | undefined; // bigint serialized as string
-};
+
 
 // Serialized payment transaction
-export type SerializedPaymentTransaction = {
-  escrowAddress: string;
-  milestoneId: string;
-  amount: string; // bigint serialized as string
-  recipient: string;
-  timestamp: number;
-  transactionHash: string;
-};
+
 
 // Blockchain client configuration
 export type BlockchainConfig = {
@@ -121,8 +95,4 @@ export type BlockchainConfig = {
 };
 
 // Transaction polling result
-export type TransactionPollResult = {
-  status: TransactionStatus;
-  receipt?: TransactionReceipt;
-  error?: string;
-};
+

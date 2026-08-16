@@ -1,13 +1,14 @@
 import { projectRepository, ProjectEntity, MilestoneEntity, ProjectStatus, MilestoneStatus } from '../repositories/project-repository.js';
 import { proposalRepository } from '../repositories/proposal-repository.js';
-import { skillRepository } from '../repositories/skill-repository.js';
+import { skillRepository, SkillEntity } from '../repositories/skill-repository.js';
 import { PaginatedResult, QueryOptions } from '../repositories/types.js';
 import { generateId } from '../utils/id.js';
 import { FileAttachment, validateAttachments } from '../utils/file-validator.js';
+import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
-export type CreateProjectInput = {
+type CreateProjectInput = {
   title: string;
   description: string;
   requiredSkills: { skillId: string }[];
@@ -20,7 +21,7 @@ export type CreateProjectInput = {
   attachments?: FileAttachment[];
 };
 
-export type UpdateProjectInput = {
+type UpdateProjectInput = {
   title?: string;
   description?: string;
   requiredSkills?: { skillId: string }[];
@@ -34,14 +35,14 @@ export type UpdateProjectInput = {
   attachments?: FileAttachment[];
 };
 
-export type AddMilestoneInput = {
+type AddMilestoneInput = {
   title: string;
   description: string;
   amount: number;
   dueDate: string;
 };
 
-export type ProjectWithProposalCount = ProjectEntity & {
+type ProjectWithProposalCount = ProjectEntity & {
   proposalCount: number;
 };
 
@@ -75,33 +76,34 @@ function validateMilestoneBudget(milestones: MilestoneEntity[], totalBudget: num
   return { valid: true };
 }
 
-async function validateSkills(skillIds: string[]): Promise<{ valid: boolean; invalidIds: string[] }> {
-  const results = await Promise.all(
-    skillIds.map(async (skillId) => {
-      const skill = await skillRepository.findSkillById(skillId);
-      return { skillId, valid: !!skill && skill.is_active };
-    })
-  );
-  const invalidIds = results.reduce<string[]>((acc, r) => { if (!r.valid) acc.push(r.skillId); return acc; }, []);
+// Batch skill lookups: a single query for all IDs instead of one query per ID
+// (previously validateSkills + buildSkillReferences issued 2N queries per
+// create/update — both walked the same list separately). The active list is
+// fetched ONCE and shared between validation and reference building, so a
+// second, independent query can never diverge from the validation result.
+async function fetchActiveSkillsByIds(skillIds: string[]): Promise<SkillEntity[]> {
+  const skills = await skillRepository.findSkillsByIds([...new Set(skillIds)]);
+  return skills.filter((s) => s.is_active);
+}
+
+async function validateSkills(
+  skillIds: string[],
+  activeSkills?: SkillEntity[]
+): Promise<{ valid: boolean; invalidIds: string[] }> {
+  const active = activeSkills ?? (await fetchActiveSkillsByIds(skillIds));
+  const activeIds = new Set(active.map((s) => s.id));
+  const invalidIds = skillIds.filter((skillId) => !activeIds.has(skillId));
   return { valid: invalidIds.length === 0, invalidIds };
 }
 
-async function buildSkillReferences(skillIds: string[]): Promise<SkillRef[]> {
-  const results = await Promise.all(
-    skillIds.map(async (skillId) => {
-      const skill = await skillRepository.findSkillById(skillId);
-      if (skill && skill.is_active) {
-        return {
-          skill_id: skill.id,
-          skill_name: skill.name,
-          category_id: skill.category_id,
-          years_of_experience: 0,
-        } as SkillRef;
-      }
-      return null;
-    })
-  );
-  return results.filter((r): r is SkillRef => r !== null);
+async function buildSkillReferences(skillIds: string[], activeSkills?: SkillEntity[]): Promise<SkillRef[]> {
+  const active = activeSkills ?? (await fetchActiveSkillsByIds(skillIds));
+  return active.map((skill) => ({
+    skill_id: skill.id,
+    skill_name: skill.name,
+    category_id: skill.category_id,
+    years_of_experience: 0,
+  }));
 }
 
 export async function createProject(
@@ -117,13 +119,15 @@ export async function createProject(
   }
 
   const skillIds = input.requiredSkills.map(s => s.skillId);
-  const skillValidation = await validateSkills(skillIds);
+  // Fetch once, share between validation and reference building
+  const activeSkills = await fetchActiveSkillsByIds(skillIds);
+  const skillValidation = await validateSkills(skillIds, activeSkills);
   
   if (!skillValidation.valid) {
     return errorResult('INVALID_SKILL', 'One or more skill IDs are invalid or inactive', skillValidation.invalidIds);
   }
 
-  const skillRefs = await buildSkillReferences(skillIds);
+  const skillRefs = await buildSkillReferences(skillIds, activeSkills);
 
   // Validate rush fee percentage if provided
   if (input.isRush && input.rushFeePercentage !== undefined) {
@@ -189,12 +193,14 @@ export async function updateProject(
   let skillRefs = existingProject.required_skills;
   if (input.requiredSkills) {
     const skillIds = input.requiredSkills.map(s => s.skillId);
-    const skillValidation = await validateSkills(skillIds);
+    // Fetch once, share between validation and reference building
+    const activeSkills = await fetchActiveSkillsByIds(skillIds);
+    const skillValidation = await validateSkills(skillIds, activeSkills);
     
     if (!skillValidation.valid) {
       return errorResult('INVALID_SKILL', 'One or more skill IDs are invalid or inactive', skillValidation.invalidIds);
     }
-    skillRefs = await buildSkillReferences(skillIds);
+    skillRefs = await buildSkillReferences(skillIds, activeSkills);
   }
 
   const newBudget = input.budget ?? existingProject.budget;
@@ -362,14 +368,6 @@ export async function listOpenProjects(
   return successResult(await addProposalCounts(result));
 }
 
-export async function listProjectsByStatus(
-  status: ProjectStatus,
-  options?: QueryOptions
-): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
-  const result = await projectRepository.getProjectsByStatus(status, options);
-  return successResult(await addProposalCounts(result));
-}
-
 export async function searchProjects(
   keyword: string,
   options?: QueryOptions
@@ -409,6 +407,56 @@ export async function listProjectsByMultipleCategories(
 ): Promise<ServiceResult<PaginatedResult<ProjectWithProposalCount>>> {
   const result = await projectRepository.getProjectsByMultipleCategories(categoryIds, options);
   return successResult(await addProposalCounts(result));
+}
+
+export type CategoryStat = {
+  categoryId: string;
+  categoryName: string;
+  projectCount: number;
+  totalBudget: number;
+};
+
+/**
+ * Aggregate open projects into per-category statistics (project count and total
+ * budget). Extracted from the route so the aggregation logic is testable and the
+ * route stays thin.
+ */
+export async function getProjectCategoryStats(
+  limit = 100
+): Promise<ServiceResult<{ categories: CategoryStat[] }>> {
+  try {
+    const clampedLimit = Math.max(1, Math.min(limit, 10000));
+    const result = await listOpenProjects({ limit: clampedLimit, offset: 0 });
+
+    if (!result.success) {
+      return errorResult('INTERNAL_ERROR', 'Failed to retrieve project statistics');
+    }
+
+    const categoryStats = new Map<string, CategoryStat>();
+
+    for (const project of result.data.items) {
+      for (const skill of project.required_skills ?? []) {
+        const key = skill.category_id;
+        if (!categoryStats.has(key)) {
+          categoryStats.set(key, {
+            categoryId: skill.category_id,
+            categoryName: skill.skill_name || skill.category_id,
+            projectCount: 0,
+            totalBudget: 0,
+          });
+        }
+
+        const stats = categoryStats.get(key)!;
+        stats.projectCount += 1;
+        stats.totalBudget += Number(project.budget) || 0;
+      }
+    }
+
+    return successResult({ categories: Array.from(categoryStats.values()) });
+  } catch (error) {
+    logger.error('Failed to get project category statistics', { error });
+    return errorResult('INTERNAL_ERROR', 'Failed to retrieve project statistics');
+  }
 }
 
 export async function deleteProject(

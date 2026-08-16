@@ -29,6 +29,7 @@ const mockCreateProject = jest.fn(async () => ({
 jest.unstable_mockModule(resolveModule('src/services/project-service.ts'), () => ({
   createProject: mockCreateProject,
   getProjectById: jest.fn(),
+  getProjectCategoryStats: jest.fn(),
   updateProject: jest.fn(),
   setMilestones: jest.fn(),
   listOpenProjects: jest.fn(),

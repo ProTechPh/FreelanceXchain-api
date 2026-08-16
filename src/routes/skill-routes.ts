@@ -24,6 +24,7 @@ import {
 import { CreateUserCustomSkillInput, UpdateUserCustomSkillInput } from '../models/user-custom-skill.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse, sendValidationError } from '../utils/response-helpers.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -105,10 +106,10 @@ const router = Router();
  *             schema:
  *               $ref: '#/components/schemas/SkillTaxonomy'
  */
-router.get('/', apiRateLimiter, async (_req: Request, res: Response) => {
+router.get('/', apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
   const taxonomy = await getFullTaxonomy();
   res.status(200).json(taxonomy);
-});
+}));
 
 /**
  * @swagger
@@ -141,7 +142,7 @@ router.get('/', apiRateLimiter, async (_req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/search', apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/search', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { keyword } = req.query;
   const requestId = getRequestId(req);
 
@@ -152,7 +153,7 @@ router.get('/search', apiRateLimiter, async (req: Request, res: Response) => {
 
   const results = await searchSkills(keyword);
   res.status(200).json(results);
-});
+}));
 
 /**
  * @swagger
@@ -186,7 +187,7 @@ router.get('/search', apiRateLimiter, async (req: Request, res: Response) => {
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.get('/categories/:categoryId/skills', apiRateLimiter, validateUUID(['categoryId']), async (req: Request, res: Response) => {
+router.get('/categories/:categoryId/skills', apiRateLimiter, validateUUID(['categoryId']), asyncHandler(async (req: Request, res: Response) => {
   const { categoryId } = req.params;
   
   /* istanbul ignore next */
@@ -198,7 +199,7 @@ router.get('/categories/:categoryId/skills', apiRateLimiter, validateUUID(['cate
   
   const skills = await getActiveSkillsByCategory(categoryId);
   res.status(200).json(skills);
-});
+}));
 
 
 /**
@@ -237,7 +238,7 @@ router.get('/categories/:categoryId/skills', apiRateLimiter, validateUUID(['cate
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { name, description } = req.body;
   const requestId = getRequestId(req);
 
@@ -266,7 +267,7 @@ router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter,
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 
 /**
@@ -305,7 +306,7 @@ router.post('/categories', authMiddleware, requireRole('admin'), apiRateLimiter,
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { categoryId, name, description } = req.body;
   const requestId = getRequestId(req);
 
@@ -343,7 +344,7 @@ router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (re
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 
 /**
@@ -380,7 +381,7 @@ router.post('/', authMiddleware, requireRole('admin'), apiRateLimiter, async (re
  *             schema:
  *               $ref: '#/components/schemas/Error'
  */
-router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(), async (req: Request, res: Response) => {
+router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const requestId = getRequestId(req);
 
@@ -400,7 +401,7 @@ router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimi
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 
 /**
@@ -480,6 +481,13 @@ router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimi
  *           type: string
  *         timesRequested:
  *           type: number
+ *           description: Number of distinct users who requested this suggestion
+ *         requesterIds:
+ *           type: array
+ *           items:
+ *             type: string
+ *             format: uuid
+ *           description: Distinct users who requested this suggestion (anti-spam)
  *         status:
  *           type: string
  *           enum: [pending, approved, rejected]
@@ -521,7 +529,7 @@ router.patch('/:id/deprecate', authMiddleware, requireRole('admin'), apiRateLimi
  *       409:
  *         description: Skill already exists globally or user already has this skill
  */
-router.post('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.post('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const userName = req.user?.email || 'Unknown User';
   const requestId = getRequestId(req);
@@ -569,7 +577,7 @@ router.post('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -587,7 +595,7 @@ router.post('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter
  *       401:
  *         description: Unauthorized
  */
-router.get('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -600,7 +608,7 @@ router.get('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter,
 
   const skills = await getUserCustomSkills(userId);
   res.status(200).json(skills);
-});
+}));
 
 /**
  * @swagger
@@ -623,7 +631,7 @@ router.get('/custom', authMiddleware, requireRole('freelancer'), apiRateLimiter,
  *       401:
  *         description: Unauthorized
  */
-router.get('/custom/search', authMiddleware, requireRole('freelancer'), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/custom/search', authMiddleware, requireRole('freelancer'), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { keyword } = req.query;
   const requestId = getRequestId(req);
@@ -642,7 +650,7 @@ router.get('/custom/search', authMiddleware, requireRole('freelancer'), apiRateL
 
   const results = await searchUserCustomSkills(userId, keyword);
   res.status(200).json(results);
-});
+}));
 
 /**
  * @swagger
@@ -668,7 +676,7 @@ router.get('/custom/search', authMiddleware, requireRole('freelancer'), apiRateL
  *       404:
  *         description: Custom skill not found
  */
-router.get('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUID(['id']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUID(['id']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { id } = req.params;
   const requestId = getRequestId(req);
@@ -695,7 +703,7 @@ router.get('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -738,7 +746,7 @@ router.get('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
  *       409:
  *         description: Duplicate skill name
  */
-router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUID(['id']), apiRateLimiter, async (req: Request, res: Response) => {
+router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUID(['id']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { id } = req.params;
   const requestId = getRequestId(req);
@@ -787,13 +795,16 @@ router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
   const result = await updateUserCustomSkill(id, userId, updateData);
 
   if (!result.success) {
-    const statusCode = result.error.code === 'SKILL_NOT_FOUND' ? 404 : result.error.code === 'DUPLICATE_USER_SKILL' ? 409 : 400;
+    const statusCode =
+      result.error.code === 'SKILL_NOT_FOUND' ? 404 :
+      result.error.code === 'DUPLICATE_USER_SKILL' || result.error.code === 'SKILL_EXISTS_GLOBALLY' ? 409 :
+      400;
     sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -819,7 +830,7 @@ router.put('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUI
  *       404:
  *         description: Custom skill not found
  */
-router.delete('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUID(['id']), apiRateLimiter, async (req: Request, res: Response) => {
+router.delete('/custom/:id', authMiddleware, requireRole('freelancer'), validateUUID(['id']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const { id } = req.params;
   const requestId = getRequestId(req);
@@ -847,7 +858,7 @@ router.delete('/custom/:id', authMiddleware, requireRole('freelancer'), validate
   }
 
   res.status(204).send();
-});
+}));
 
 /**
  * @swagger
@@ -862,10 +873,10 @@ router.delete('/custom/:id', authMiddleware, requireRole('freelancer'), validate
  *       200:
  *         description: Skill suggestions retrieved successfully
  */
-router.get('/suggestions', authMiddleware, requireRole('admin'), apiRateLimiter, async (_req: Request, res: Response) => {
+router.get('/suggestions', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHandler(async (_req: Request, res: Response) => {
   const suggestions = await getPendingSkillSuggestions();
   res.status(200).json(suggestions);
-});
+}));
 
 /**
  * @swagger
@@ -901,7 +912,7 @@ router.get('/suggestions', authMiddleware, requireRole('admin'), apiRateLimiter,
  *       404:
  *         description: Skill suggestion not found
  */
-router.put('/suggestions/:id/status', authMiddleware, requireRole('admin'), validateUUID(['id']), apiRateLimiter, async (req: Request, res: Response) => {
+router.put('/suggestions/:id/status', authMiddleware, requireRole('admin'), validateUUID(['id']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const { id } = req.params;
   const { status } = req.body;
   const requestId = getRequestId(req);
@@ -927,6 +938,6 @@ router.put('/suggestions/:id/status', authMiddleware, requireRole('admin'), vali
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 export default router;

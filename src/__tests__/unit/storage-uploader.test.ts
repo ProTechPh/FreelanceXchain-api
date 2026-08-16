@@ -7,6 +7,7 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 const mockCreateFile = jest.fn() as any;
 const mockDeleteFile = jest.fn() as any;
 const mockListFiles = jest.fn() as any;
+const mockGetFile = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     DATABASE_ID: 'freelancexchain',
@@ -14,6 +15,13 @@ jest.unstable_mockModule(resolveModule('src/config/appwrite.ts'), () => ({
     createFile: mockCreateFile,
     deleteFile: mockDeleteFile,
     listFiles: mockListFiles,
+    getFile: mockGetFile,
+  },
+  // Query helpers used by listUserFiles pagination
+  Query: {
+    limit: (n: number) => `limit(${n})`,
+    cursorAfter: (id: string) => `cursorAfter("${id}")`,
+    orderDesc: (attr: string) => `orderDesc("${attr}")`,
   },
   BUCKETS: {
     PROPOSAL_ATTACHMENTS: 'proposal-attachments',
@@ -62,13 +70,13 @@ const {
   uploadFileToStorage,
   uploadMultipleFiles,
   deleteFileFromStorage,
-  extractFilePathFromUrl,
   extractFileIdFromUrl,
   cleanupUploadedFiles,
   uploadFile,
   deleteFile,
   getSignedUrl,
   listUserFiles,
+  getFileQuota,
 } = await import('../../utils/storage-uploader.js');
 
 const { logger } = await import('../../config/logger.js');
@@ -84,6 +92,7 @@ beforeEach(() => {
   mockCreateFile.mockReset();
   mockDeleteFile.mockReset();
   mockListFiles.mockReset();
+  mockGetFile.mockReset();
   process.env['APPWRITE_ENDPOINT'] = APPWRITE_ENDPOINT;
   process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
 });
@@ -118,17 +127,6 @@ describe('storage-uploader', () => {
         'Failed to extract file ID from URL',
         { url: 'not-a-url' }
       );
-    });
-  });
-
-  describe('extractFilePathFromUrl', () => {
-    it('is an alias for extractFileIdFromUrl', () => {
-      const url = `${APPWRITE_ENDPOINT}/storage/buckets/proposal-attachments/files/file-abc-123/view?project=${APPWRITE_PROJECT_ID}`;
-      expect(extractFilePathFromUrl(url)).toBe(extractFileIdFromUrl(url));
-    });
-
-    it('returns null for invalid URL', () => {
-      expect(extractFilePathFromUrl('not-a-url')).toBeNull();
     });
   });
 
@@ -493,9 +491,6 @@ describe('Storage Uploader - Extended Coverage', () => {
       expect(result).toBe('xyz789');
     });
 
-    it('extractFilePathFromUrl should be an alias for extractFileIdFromUrl', () => {
-      expect(extractFilePathFromUrl).toBe(extractFileIdFromUrl);
-    });
   });
 
   describe('cleanupUploadedFiles', () => {
@@ -666,6 +661,101 @@ describe('Storage Uploader - Compatibility Wrappers', () => {
       expect(result.files).toEqual([]);
       expect(result.error).toBe('Permission denied');
     });
+
+    it('should page through every page so files beyond the first page are not dropped', async () => {
+      // Page 1 is exactly PAGE_SIZE files (triggers a cursor-based follow-up call)
+      const page1Files = Array.from({ length: 100 }, (_, i) => ({
+        name: `user-1_file_${i}.pdf`,
+        $id: `f${i}`,
+      }));
+      // Page 2 has fewer files (terminates the loop) and includes a foreign file
+      const page2Files = [
+        { name: 'user-1_file_100.pdf', $id: 'f100' },
+        { name: 'user-2_other.pdf', $id: 'f101' },
+      ];
+      mockListFiles
+        .mockResolvedValueOnce({ files: page1Files })
+        .mockResolvedValueOnce({ files: page2Files });
+
+      const result = await listUserFiles('proposal-attachments', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.files).toHaveLength(101);
+      expect(result.files.every(f => f.name.startsWith('user-1_'))).toBe(true);
+      expect(mockListFiles).toHaveBeenCalledTimes(2);
+      // Second call continues after the last file id of the first page
+      const secondCallQueries = mockListFiles.mock.calls[1]?.[1] ?? [];
+      expect(secondCallQueries.some((q: string) => q.includes('cursorAfter("f99")'))).toBe(true);
+    });
+  });
+
+  describe('ownership verification (BLF-11.2)', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockGetFile.mockReset();
+      mockDeleteFile.mockReset().mockResolvedValue({});
+      process.env['APPWRITE_ENDPOINT'] = APPWRITE_ENDPOINT;
+      process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
+    });
+
+    it('should delete a file owned by the user (userId prefix match)', async () => {
+      mockGetFile.mockResolvedValue({ $id: 'f1', name: 'user-123_photo.png' });
+
+      const result = await deleteFile('profile-images', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: true });
+      expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'f1');
+    });
+
+    it('should refuse to delete another user file', async () => {
+      mockGetFile.mockResolvedValue({ $id: 'f1', name: 'user-999_photo.png' });
+
+      const result = await deleteFile('profile-images', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: false, error: 'FORBIDDEN' });
+      expect(mockDeleteFile).not.toHaveBeenCalled();
+    });
+
+    it('should return FILE_NOT_FOUND when the stored file cannot be fetched', async () => {
+      mockGetFile.mockRejectedValue(new Error('Not found'));
+
+      const result = await deleteFile('profile-images', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: false, error: 'FILE_NOT_FOUND' });
+      expect(mockDeleteFile).not.toHaveBeenCalled();
+    });
+
+    it('should skip the ownership check when no userId is provided', async () => {
+      const result = await deleteFile('profile-images', 'f1');
+
+      expect(result).toEqual({ success: true });
+      expect(mockGetFile).not.toHaveBeenCalled();
+    });
+
+    it('should return a signed URL only for files owned by the user', async () => {
+      mockGetFile.mockResolvedValue({ $id: 'f1', name: 'user-123_doc.pdf' });
+
+      const result = await getSignedUrl('contract-documents', 'f1', 'user-123');
+
+      expect(result.success).toBe(true);
+      expect(result.url).toContain('/contract-documents/files/f1/view');
+    });
+
+    it('should refuse a signed URL for another user file', async () => {
+      mockGetFile.mockResolvedValue({ $id: 'f1', name: 'user-999_doc.pdf' });
+
+      const result = await getSignedUrl('contract-documents', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: false, error: 'FORBIDDEN' });
+    });
+
+    it('should return FILE_NOT_FOUND when the file is missing for a signed URL', async () => {
+      mockGetFile.mockResolvedValue(null);
+
+      const result = await getSignedUrl('contract-documents', 'f1', 'user-123');
+
+      expect(result).toEqual({ success: false, error: 'FILE_NOT_FOUND' });
+    });
   });
 });
 
@@ -677,6 +767,23 @@ describe('Storage Uploader - generateUniqueFilename edge case', () => {
     process.env['APPWRITE_PROJECT_ID'] = APPWRITE_PROJECT_ID;
   });
 
+  it('should prefix the stored filename with the userId for ownership verification', async () => {
+    mockCreateFile.mockResolvedValue({ $id: 'file-owner-prefix' });
+
+    await uploadFileToStorage({
+      buffer: Buffer.from('data'),
+      originalFilename: 'document.pdf',
+      mimeType: 'application/pdf',
+      bucket: 'proposal-attachments',
+      userId: 'user-123',
+    });
+
+    // storage.createFile(bucket, fileId, inputFile, permissions) — the stored
+    // name lives on the InputFile (third argument).
+    const storedInputFile = mockCreateFile.mock.calls[0][2] as any;
+    expect(storedInputFile.name).toMatch(/^user-123_.+document\.pdf$/);
+  });
+
   it('should handle filename without extension', async () => {
     mockCreateFile.mockResolvedValue({ $id: 'file-noext' });
 
@@ -685,5 +792,87 @@ describe('Storage Uploader - generateUniqueFilename edge case', () => {
 
     expect(result.success).toBe(true);
     expect(result.metadata?.filename).toBe('README');
+  });
+});
+
+describe('Storage Uploader - getFileQuota', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockListFiles.mockReset();
+  });
+
+  it('should sum usage across both personal buckets', async () => {
+    mockListFiles
+      .mockResolvedValueOnce({
+        files: [
+          { name: 'user-1_a.png', $id: 'f1', sizeOriginal: 1000 },
+          { name: 'user-1_b.png', $id: 'f2', sizeOriginal: 2000 },
+        ],
+      })
+      .mockResolvedValueOnce({
+        files: [{ name: 'user-1_c.pdf', $id: 'f3', sizeOriginal: 7000 }],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.used).toBe(10000);
+      expect(result.files).toBe(3);
+      expect(result.limit).toBe(100 * 1024 * 1024);
+      expect(result.percentage).toBeCloseTo((10000 / (100 * 1024 * 1024)) * 100, 5);
+    }
+    // One listFiles call per personal bucket
+    expect(mockListFiles).toHaveBeenCalledTimes(2);
+  });
+
+  it('should ignore files that are not owned by the user', async () => {
+    mockListFiles
+      .mockResolvedValueOnce({
+        files: [{ name: 'user-2_other.png', $id: 'f1', sizeOriginal: 999999 }],
+      })
+      .mockResolvedValueOnce({
+        files: [],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.used).toBe(0);
+      expect(result.files).toBe(0);
+    }
+  });
+
+  it('should cap the percentage at 100', async () => {
+    mockListFiles
+      .mockResolvedValueOnce({
+        files: [{ name: 'user-1_big.bin', $id: 'f1', sizeOriginal: 200 * 1024 * 1024 }],
+      })
+      .mockResolvedValueOnce({
+        files: [],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.percentage).toBe(100);
+    }
+  });
+
+  it('should return a failure when a bucket listing fails', async () => {
+    mockListFiles
+      .mockRejectedValueOnce(new Error('storage down'))
+      .mockResolvedValueOnce({
+        files: [],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBe('storage down');
+    }
   });
 });

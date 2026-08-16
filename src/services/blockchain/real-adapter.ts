@@ -18,6 +18,7 @@ import {
   approveMilestone as realApproveMilestone,
   disputeMilestone as realDisputeMilestone,
   resolveDispute as realResolveDispute,
+  refundMilestone as realRefundMilestone,
   cancelContract as realCancelContract,
   getMilestone as realGetMilestone,
   getEscrowBalance as realGetEscrowBalance,
@@ -92,6 +93,14 @@ export class RealBlockchainAdapter implements IBlockchainAdapter {
 
   async refundEscrow(escrowAddress: string): Promise<TransactionResult> {
     const result = await realCancelContract(escrowAddress);
+    return {
+      transactionHash: result.transactionHash,
+      receipt: result.receipt,
+    };
+  }
+
+  async refundMilestone(escrowAddress: string, milestoneIndex: number): Promise<TransactionResult> {
+    const result = await realRefundMilestone(escrowAddress, milestoneIndex);
     return {
       transactionHash: result.transactionHash,
       receipt: result.receipt,

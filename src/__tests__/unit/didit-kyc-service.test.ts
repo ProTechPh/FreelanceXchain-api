@@ -64,6 +64,23 @@ jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-reposi
   },
 }));
 
+// Mock audit-log repository (admin KYC action audit trail, BLF-12.2)
+const mockAuditLogRepo = { create: jest.fn() as jest.Mock<any> };
+jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
+  auditLogRepository: mockAuditLogRepo,
+}));
+
+// email-delivery-service (BLF-13 email wiring): mocked so the real
+// email-preference-service does not consume queued mockDatabases responses
+// in processWebhook / adminReviewVerification / manualKycVerification.
+const mockSendGatedEmail = jest.fn() as jest.Mock<any>;
+mockSendGatedEmail.mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendKycApprovedEmail: jest.fn() as jest.Mock<any>,
+  sendKycRejectedEmail: jest.fn() as jest.Mock<any>,
+}));
+
 const {
   initiateKycVerification,
   getKycStatus,
@@ -320,6 +337,12 @@ describe('didit-kyc-service', () => {
       } as any);
 
       expect(result.success).toBe(true);
+      // BLF-13: the verified user gets a preference-gated KYC-approved email
+      expect(mockSendGatedEmail).toHaveBeenCalledWith(
+        'user-1',
+        'kyc_notifications',
+        expect.any(Function)
+      );
     });
 
     it('should process Declined webhook without profile creation', async () => {
@@ -329,6 +352,12 @@ describe('didit-kyc-service', () => {
       const result = await processWebhook({ session_id: 'session-abc', status: 'Declined', timestamp: Date.now() / 1000 } as any);
       expect(result.success).toBe(true);
       expect(mockFreelancerCreateProfile).not.toHaveBeenCalled();
+      // BLF-13: the rejected user gets a preference-gated KYC-rejected email
+      expect(mockSendGatedEmail).toHaveBeenCalledWith(
+        'user-1',
+        'kyc_notifications',
+        expect.any(Function)
+      );
     });
 
     it('should process In Review webhook (maps to completed)', async () => {
@@ -366,6 +395,33 @@ describe('didit-kyc-service', () => {
 
       expect(result.success).toBe(true);
       expect(mockFreelancerUpdateProfile).toHaveBeenCalled();
+    });
+
+    // L4.1: Final-state regression guard — a stale/out-of-order webhook must never
+    // flip an approved/rejected/expired verification back to an earlier state.
+    it('should not regress an approved verification via a stale webhook', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc({ status: 'approved' }));
+
+      const result = await processWebhook({
+        session_id: 'session-abc', status: 'Declined', timestamp: Date.now() / 1000,
+      } as any);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.status).toBe('approved');
+      expect(mockUpdateKyc).not.toHaveBeenCalled();
+    });
+
+    it('should treat a same-state final webhook re-delivery as an idempotent no-op', async () => {
+      mockGetKycBySessionId.mockResolvedValue(makeKyc({ status: 'approved' }));
+
+      const result = await processWebhook({
+        session_id: 'session-abc', status: 'Approved', timestamp: Date.now() / 1000,
+      } as any);
+
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.status).toBe('approved');
+      expect(mockUpdateKyc).not.toHaveBeenCalled();
+      expect(mockFreelancerCreateProfile).not.toHaveBeenCalled();
     });
   });
 
@@ -450,6 +506,15 @@ describe('didit-kyc-service', () => {
       const result = await adminReviewVerification('kyc-1', 'admin-1', 'approved', 'Looks good');
       expect(result.success).toBe(true);
       expect(mockUpdateKyc).toHaveBeenCalledWith('kyc-1', expect.objectContaining({ status: 'approved', admin_notes: 'Looks good' }));
+      // BLF-12.2: the admin's approval decision is persisted to the durable audit log
+      expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        actor_id: 'admin-1',
+        user_id: 'user-1',
+        action: 'kyc.approved',
+        resource_type: 'kyc_verification',
+        resource_id: 'kyc-1',
+        payload: { decision: 'approved', notes: 'Looks good' },
+      }));
     });
 
     it('should reject verification without triggering profile sync', async () => {
@@ -458,16 +523,43 @@ describe('didit-kyc-service', () => {
       const result = await adminReviewVerification('kyc-1', 'admin-1', 'rejected');
       expect(result.success).toBe(true);
       expect(mockFreelancerCreateProfile).not.toHaveBeenCalled();
-    });
-
-    it('should not set expiry if already set on approval', async () => {
+      // BLF-12.2: rejections are audited too, with no notes in the payload
+      expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        action: 'kyc.rejected',
+        payload: { decision: 'rejected' },
+      }));
+    });    it('should not set expiry if already set on approval', async () => {
       const existingExpiry = new Date(Date.now() + 3600_000).toISOString();
       mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed', expires_at: existingExpiry }));
       mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved', expires_at: existingExpiry }));
+
       const result = await adminReviewVerification('kyc-1', 'admin-1', 'approved');
+
       expect(result.success).toBe(true);
       const updateArgs = mockUpdateKyc.mock.calls[0] as any[];
       expect(updateArgs[1]).not.toHaveProperty('expires_at');
+    });
+
+    // BLF-12.3: per-verification lock serializes concurrent submits — the second
+    // review re-reads AFTER the first committed, so its status gate rejects it
+    // instead of double-approving / double-auditing.
+    it('should serialize concurrent reviews under the per-verification lock (BLF-12.3)', async () => {
+      mockGetKycById
+        .mockResolvedValueOnce(makeKyc({ status: 'completed' })) // first call: reviewable
+        .mockResolvedValue(makeKyc({ status: 'approved' })); // after first commits
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
+
+      const [first, second] = await Promise.all([
+        adminReviewVerification('kyc-1', 'admin-1', 'approved'),
+        adminReviewVerification('kyc-1', 'admin-1', 'approved'),
+      ]);
+
+      expect(first.success).toBe(true);
+      // Serialized: the second review re-reads the committed state and is rejected
+      expect(second.success).toBe(false);
+      if (!second.success) expect(second.error.code).toBe('INVALID_STATUS');
+      // Only one approval + one audit entry
+      expect(mockAuditLogRepo.create).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -623,6 +715,15 @@ describe('didit-kyc-service', () => {
       mockCreateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
       const result = await manualKycVerification(params);
       expect(result.success).toBe(true);
+      // BLF-12.2: manual verification performed by the admin is persisted to the audit log
+      expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        actor_id: 'admin-1',
+        user_id: 'user-1',
+        action: 'kyc.manual_verified',
+        resource_type: 'kyc_verification',
+        resource_id: 'kyc-1',
+        payload: { status: 'approved', amlClean: true },
+      }));
     });
 
     it('should mark as needing review when AML screening finds hits', async () => {
@@ -661,15 +762,41 @@ describe('didit-kyc-service', () => {
       const result = await manualKycVerification(params);
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('VERIFICATION_ERROR');
-    });
-
-    it('should handle errors with non-Error thrown in manual KYC', async () => {
+    });    it('should handle errors with non-Error thrown in manual KYC', async () => {
       mockGetKycByUserId.mockResolvedValue(null);
       mockVerifyId.mockRejectedValue('string error');
 
       const result = await manualKycVerification(params);
+
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('VERIFICATION_ERROR');
+    });
+
+    // BLF-12.3: per-user lock serializes concurrent manual verifications — the
+    // second submission re-reads AFTER the first committed an approved KYC, so the
+    // ALREADY_VERIFIED gate rejects it instead of creating a duplicate record.
+    it('should serialize concurrent manual verifications under the per-user lock (BLF-12.3)', async () => {
+      mockGetKycByUserId
+        .mockResolvedValueOnce(null) // first call: no existing verification
+        .mockResolvedValue(makeKyc({ status: 'approved' })); // after first commits
+      mockVerifyId.mockResolvedValue(approvedIdResult);
+      mockCheckLiveness.mockResolvedValue(approvedLiveness);
+      mockMatchFaces.mockResolvedValue(approvedFaceMatch);
+      mockScreenAml.mockResolvedValue(approvedAml);
+      mockCreateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
+
+      const [first, second] = await Promise.all([
+        manualKycVerification(params),
+        manualKycVerification(params),
+      ]);
+
+      expect(first.success).toBe(true);
+      // Serialized: the second submission sees the committed approval and is rejected
+      expect(second.success).toBe(false);
+      if (!second.success) expect(second.error.code).toBe('ALREADY_VERIFIED');
+      // Only one verification record created + one audit entry
+      expect(mockCreateKyc).toHaveBeenCalledTimes(1);
+      expect(mockAuditLogRepo.create).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -1032,6 +1159,23 @@ describe('didit-kyc-service - Coverage Gaps', () => {
       const result = await manualKycVerification(params);
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('VERIFICATION_ERROR');
+    });
+  });
+
+  describe('admin audit persistence - best-effort (BLF-12.2)', () => {
+    it('should still succeed when the durable audit write fails', async () => {
+      mockGetKycById.mockResolvedValue(makeKyc({ status: 'completed' }));
+      mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved', expires_at: new Date().toISOString() }));
+      mockAuditLogRepo.create.mockRejectedValueOnce(new Error('audit db down'));
+
+      const result = await adminReviewVerification('kyc-1', 'admin-1', 'approved');
+
+      expect(result.success).toBe(true);
+      // The failed audit write is logged but never breaks the admin action
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to persist audit log entry',
+        expect.objectContaining({ error: expect.any(Error) })
+      );
     });
   });
 

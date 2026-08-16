@@ -69,6 +69,14 @@ jest.unstable_mockModule(resolveModule('src/services/notification-delivery-servi
   sendNotificationToUser: jest.fn(),
 }));
 
+// email-delivery-service (BLF-13 email wiring): mocked so the real
+// email-preference-service does not consume global mockDatabases responses.
+const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendMessageReceivedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+}));
+
 describe('Message Service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -105,6 +113,12 @@ describe('Message Service', () => {
       expect(result.success).toBe(true);
       expect(result.data).toEqual(message);
       expect(mockEmitToUser).toHaveBeenCalledWith('receiver-1', expect.any(Object));
+      // BLF-13: the receiver gets a preference-gated message-received email
+      expect(mockSendGatedEmail).toHaveBeenCalledWith(
+        'receiver-1',
+        'message_received',
+        expect.any(Function)
+      );
     });
 
     it('should create new conversation if none exists', async () => {

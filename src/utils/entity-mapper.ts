@@ -125,13 +125,6 @@ function mapSkillRefFromEntity(entity: SkillRefEntity): SkillReference {
   };
 }
 
-function mapSkillRefToEntity(ref: SkillReference): SkillRefEntity {
-  return {
-    name: ref.name,
-    years_of_experience: ref.yearsOfExperience,
-  };
-}
-
 function mapProjectSkillRefFromEntity(entity: ProjectSkillRefEntity): ProjectSkillReference {
   const result: ProjectSkillReference = {
     skillName: entity.skill_name,
@@ -309,7 +302,7 @@ export function mapContractFromEntity(entity: ContractEntity & ContractRelations
 }
 
 // Dispute mapping functions
-export function mapEvidenceFromEntity(entity: EvidenceEntity): Evidence {
+function mapEvidenceFromEntity(entity: EvidenceEntity): Evidence {
   return {
     id: entity.id,
     submitterId: entity.submitter_id,
@@ -354,8 +347,6 @@ export function mapNotificationFromEntity(entity: NotificationEntity): Notificat
   };
 }
 
-// Export skill ref mapper for use in services
-export { mapSkillRefToEntity };
 
 // RushUpgradeRequest mapping functions
 export function mapRushUpgradeRequestFromEntity(entity: RushUpgradeRequestEntity): RushUpgradeRequest {

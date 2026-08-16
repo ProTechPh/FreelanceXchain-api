@@ -2,10 +2,10 @@ import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import { getErrorMessageOr } from '../utils/index.js';
 
-export type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
+type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 export type PaymentType = 'escrow_deposit' | 'milestone_release' | 'refund' | 'dispute_resolution';
 
-export type PaymentEntity = {
+type PaymentEntity = {
   id: string;
   contract_id: string;
   milestone_id: string | null;
@@ -20,7 +20,7 @@ export type PaymentEntity = {
   updated_at: string;
 };
 
-export type CreatePaymentInput = Omit<PaymentEntity, 'id' | 'created_at' | 'updated_at'>;
+
 
 const COLLECTION_ID = 'payments';
 
@@ -50,11 +50,17 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
   ): Promise<{ items: PaymentEntity[]; total: number; hasMore: boolean }> {
     const { limit = 20, offset = 0 } = options;
     try {
+      // The payments collection has no `user_id` attribute — a payment
+      // involves a user as payer (money out) or payee (money in). Match both.
+      const userQuery = Query.or([
+        Query.equal('payer_id', userId),
+        Query.equal('payee_id', userId),
+      ]);
       const countResponse = await databases.listDocuments(
         DATABASE_ID,
         COLLECTION_ID,
         [
-          Query.equal('user_id', userId),
+          userQuery,
           Query.limit(1),
         ]
       );
@@ -64,7 +70,7 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
         DATABASE_ID,
         COLLECTION_ID,
         [
-          Query.equal('user_id', userId),
+          userQuery,
           Query.orderDesc('created_at'),
           Query.limit(limit),
           Query.offset(offset),
@@ -124,5 +130,3 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
 }
 
 export const paymentRepository = new PaymentRepositoryClass();
-/** @deprecated Use `paymentRepository` (camelCase) instead. */
-export const PaymentRepository = paymentRepository;

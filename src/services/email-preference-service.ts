@@ -8,6 +8,15 @@ import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 
 /**
+ * Account-critical email types: still delivered (fail-open) when the preference
+ * lookup itself fails. Marketing/digest/plain-notice types fail closed instead.
+ */
+const CRITICAL_EMAIL_TYPES: EmailType[] = [
+  'proposal_accepted', 'milestone_updates', 'payment_notifications', 'dispute_notifications',
+  'contract_created', 'message_received', 'review_received', 'kyc_notifications',
+];
+
+/**
  * Get user's email preferences (create default if doesn't exist)
  */
 export async function getEmailPreferences(userId: string): Promise<ServiceResult<EmailPreference>> {
@@ -28,7 +37,9 @@ export async function getEmailPreferences(userId: string): Promise<ServiceResult
 
 const PREFERENCE_COLUMNS = [
   'proposal_received', 'proposal_accepted', 'milestone_updates',
-  'payment_notifications', 'dispute_notifications', 'marketing_emails', 'weekly_digest',
+  'payment_notifications', 'dispute_notifications',
+  'contract_notifications', 'message_notifications', 'review_notifications', 'kyc_notifications',
+  'marketing_emails', 'weekly_digest',
 ] as const;
 
 const CAMEL_CASE_TO_COLUMN: Record<string, keyof EmailPreferenceEntity> = {
@@ -37,6 +48,10 @@ const CAMEL_CASE_TO_COLUMN: Record<string, keyof EmailPreferenceEntity> = {
   milestoneUpdates: 'milestone_updates',
   paymentNotifications: 'payment_notifications',
   disputeNotifications: 'dispute_notifications',
+  contractNotifications: 'contract_notifications',
+  messageNotifications: 'message_notifications',
+  reviewNotifications: 'review_notifications',
+  kycNotifications: 'kyc_notifications',
   marketingEmails: 'marketing_emails',
   weeklyDigest: 'weekly_digest',
 };
@@ -138,6 +153,10 @@ export async function unsubscribeAll(userId: string): Promise<ServiceResult<void
         milestone_updates: true,
         payment_notifications: true,
         dispute_notifications: true,
+        contract_notifications: true,
+        message_notifications: true,
+        review_notifications: true,
+        kyc_notifications: true,
         marketing_emails: false,
         weekly_digest: false,
       });
@@ -158,17 +177,23 @@ export async function shouldSendEmail(userId: string, emailType: EmailType): Pro
     const result = await getEmailPreferences(userId);
 
     if (!result.success || !result.data) {
-      return ['proposal_accepted', 'milestone_updates', 'payment_notifications', 'dispute_notifications'].includes(emailType);
+      // Critical/transactional types still send when the preference lookup fails
+      // (fail-open for account-critical notifications, fail-closed for marketing).
+      return CRITICAL_EMAIL_TYPES.includes(emailType);
     }
 
     const preferences = result.data;
 
-    const preferenceMap: Record<EmailType, keyof Pick<EmailPreference, 'proposalReceived' | 'proposalAccepted' | 'milestoneUpdates' | 'paymentNotifications' | 'disputeNotifications' | 'marketingEmails' | 'weeklyDigest'>> = {
+    const preferenceMap: Record<EmailType, keyof Pick<EmailPreference, 'proposalReceived' | 'proposalAccepted' | 'milestoneUpdates' | 'paymentNotifications' | 'disputeNotifications' | 'contractNotifications' | 'messageNotifications' | 'reviewNotifications' | 'kycNotifications' | 'marketingEmails' | 'weeklyDigest'>> = {
       proposal_received: 'proposalReceived',
       proposal_accepted: 'proposalAccepted',
       milestone_updates: 'milestoneUpdates',
       payment_notifications: 'paymentNotifications',
       dispute_notifications: 'disputeNotifications',
+      contract_created: 'contractNotifications',
+      message_received: 'messageNotifications',
+      review_received: 'reviewNotifications',
+      kyc_notifications: 'kycNotifications',
       marketing_emails: 'marketingEmails',
       weekly_digest: 'weeklyDigest',
     };
@@ -179,7 +204,7 @@ export async function shouldSendEmail(userId: string, emailType: EmailType): Pro
     /* istanbul ignore next -- getEmailPreferences never throws past its own catch */
     logger.error('Error checking email preference', { error, userId, emailType });
     /* istanbul ignore next */
-    return ['proposal_accepted', 'milestone_updates', 'payment_notifications', 'dispute_notifications'].includes(emailType);
+    return CRITICAL_EMAIL_TYPES.includes(emailType);
   }
 }
 
@@ -192,6 +217,10 @@ function mapEmailPreference(entity: EmailPreferenceEntity): EmailPreference {
     milestoneUpdates: entity.milestone_updates,
     paymentNotifications: entity.payment_notifications,
     disputeNotifications: entity.dispute_notifications,
+    contractNotifications: entity.contract_notifications,
+    messageNotifications: entity.message_notifications,
+    reviewNotifications: entity.review_notifications,
+    kycNotifications: entity.kyc_notifications,
     marketingEmails: entity.marketing_emails,
     weeklyDigest: entity.weekly_digest,
     createdAt: entity.created_at,

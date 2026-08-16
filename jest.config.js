@@ -34,7 +34,6 @@ export default {
     '!src/types/**',
     '!src/models/**',
     '!src/__tests__/**',
-    '!src/config/swagger.ts',
     '!src/config/index.ts',
     '!src/config/database.ts',
     '!src/config/appwrite.ts',

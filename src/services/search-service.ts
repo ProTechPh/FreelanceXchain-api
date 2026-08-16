@@ -34,7 +34,7 @@ export type SearchResultMetadata = {
   offset?: number;
 };
 
-export type SearchResult<T> = {
+type SearchResult<T> = {
   items: T[];
   metadata: SearchResultMetadata;
 };

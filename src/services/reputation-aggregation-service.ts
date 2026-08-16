@@ -18,7 +18,7 @@ export type ReputationScore = {
   onTimeDeliveryRate: number;
 };
 
-export type ReputationBreakdown = {
+type ReputationBreakdown = {
   fiveStars: number;
   fourStars: number;
   threeStars: number;

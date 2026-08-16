@@ -54,6 +54,9 @@ describe('Email Preference Routes Integration Tests', () => {
         success: true,
         data: { message: 'Unsubscribed from all emails' },
       })),
+      // email-delivery-service imports shouldSendEmail; keep it available so the
+      // mocked module still satisfies the import graph when createApp loads routes
+      shouldSendEmail: jest.fn(async () => true),
     }));
 
     const { createApp } = await import('../../app.js');

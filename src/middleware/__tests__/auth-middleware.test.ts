@@ -185,7 +185,6 @@ describe('authMiddleware', () => {
     await authMiddleware(req, res, next);
 
     expect(req.user).toEqual({
-      id: 'user-123',
       userId: 'user-123',
       email: 'test@example.com',
       role: 'freelancer',
@@ -228,7 +227,6 @@ describe('authMiddleware', () => {
 
     await authMiddleware(req, res, next);
 
-    expect(req.user.id).toBe('id-456');
     expect(req.user.userId).toBe('id-456');
   });
 

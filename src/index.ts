@@ -1,12 +1,10 @@
 import { createApp } from './app.js';
 import { config } from './config/index.js';
-import { initializeDatabase } from './config/database.js';
 import { initializeScheduler, stopScheduler } from './services/scheduler-service.js';
 import { stopHeartbeat } from './services/notification-delivery-service.js';
 import { logger } from './config/logger.js';
 
 async function main(): Promise<void> {
-  await initializeDatabase();
   initializeScheduler();
 
   const app = await createApp();
@@ -45,7 +43,7 @@ async function main(): Promise<void> {
 
 process.on('unhandledRejection', (reason: unknown) => {
   logger.error('Unhandled promise rejection:', reason);
-  if (process.env['NODE_ENV'] === 'production') {
+  if (config.server.nodeEnv === 'production') {
     process.exit(1);
   }
 });

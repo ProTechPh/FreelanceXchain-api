@@ -159,11 +159,12 @@ end
 
 The rate limiter middleware prevents abuse of the API by limiting the number of requests a client can make within a specified time window. It implements a memory-based rate limiting system using a Map to store request counts and reset times for each client.
 
-The middleware provides three preset rate limiters:
+The middleware provides preset rate limiters including:
 
 - `authRateLimiter`: Limits authentication attempts to 10 per 15 minutes
 - `apiRateLimiter`: Limits API requests to 100 per minute
 - `sensitiveRateLimiter`: Limits sensitive operations to 5 per hour
+- `webhookRateLimiter`: Limits unauthenticated webhook endpoints (email inbox, Didit KYC, blockchain) to 60 per minute per IP — kept separate from the general API budget so provider spikes can't exhaust a user's shared counter, while fail-open on Redis errors (signature verification remains the real authz boundary)
 
 The rate limiter identifies clients using the IP address from the `X-Forwarded-For` header (for requests behind proxies) or the direct IP address. When a client exceeds the rate limit, the middleware returns a 429 Too Many Requests response with a Retry-After header indicating when the client can try again.
 

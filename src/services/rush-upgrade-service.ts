@@ -11,18 +11,18 @@ import { successResult, errorResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
 
 
-export type RequestRushUpgradeInput = {
+type RequestRushUpgradeInput = {
   contractId: string;
   proposedPercentage: number;
 };
 
-export type RespondToRushUpgradeInput = {
+type RespondToRushUpgradeInput = {
   requestId: string;
   action: 'accept' | 'decline' | 'counter_offer';
   counterPercentage?: number;
 };
 
-export type RushUpgradeWithContract = {
+type RushUpgradeWithContract = {
   request: RushUpgradeRequest;
   contract: Contract;
 };
@@ -321,22 +321,33 @@ export async function respondToRushUpgrade(
   freelancerId: string,
   input: RespondToRushUpgradeInput
 ): Promise<RushUpgradeResponseResult> {
-  const validated = await validateRushUpgradeResponse(freelancerId, input);
-  if ('error' in validated) return validated.error;
-
-  if (input.action === 'accept') {
-    return acceptRushUpgrade(validated, freelancerId, input);
+  const initialRequest = await rushUpgradeRequestRepository.getRequestById(input.requestId);
+  if (!initialRequest) {
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
 
-  if (input.action === 'decline') {
-    return declineRushUpgrade(validated, freelancerId, input);
-  }
+  // M19: Serialize accept/decline/counter responses per contract — the same
+  // `rush-upgrade:{contractId}` key requestRushUpgrade uses — so a concurrent
+  // accept cannot double-apply the rush fee or race a counter-offer. The request
+  // is re-read under the lock so the status transition is atomic.
+  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
+    const validated = await validateRushUpgradeResponse(freelancerId, input);
+    if ('error' in validated) return validated.error;
 
-  if (input.action === 'counter_offer') {
-    return counterOfferRushUpgrade(validated, freelancerId, input);
-  }
+    if (input.action === 'accept') {
+      return acceptRushUpgrade(validated, freelancerId, input);
+    }
 
-  return errorResult('INVALID_ACTION', 'Invalid action. Must be accept, decline, or counter_offer');
+    if (input.action === 'decline') {
+      return declineRushUpgrade(validated, freelancerId, input);
+    }
+
+    if (input.action === 'counter_offer') {
+      return counterOfferRushUpgrade(validated, freelancerId, input);
+    }
+
+    return errorResult('INVALID_ACTION', 'Invalid action. Must be accept, decline, or counter_offer');
+  }); // M19: end withLock
 }
 
 // Employer accepts freelancer's counter-offer
@@ -344,6 +355,15 @@ export async function acceptCounterOffer(
   employerId: string,
   requestId: string
 ): Promise<ServiceResult<RushUpgradeWithContract>> {
+  const initialRequest = await rushUpgradeRequestRepository.getRequestById(requestId);
+  if (!initialRequest) {
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+  }
+
+  // M19: Serialize with respondToRushUpgrade (same lock key per contract). The
+  // request is re-read under the lock so accept and counter-offer cannot both
+  // apply the rush fee (double-apply) on the same contract.
+  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!requestEntity) {
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
@@ -408,6 +428,7 @@ export async function acceptCounterOffer(
   });
 
   return successResult({ request: updatedRequest, contract: updatedContract });
+  }); // M19: end withLock
 }
 
 // Employer declines freelancer's counter-offer
@@ -415,6 +436,13 @@ export async function declineCounterOffer(
   employerId: string,
   requestId: string
 ): Promise<ServiceResult<RushUpgradeRequest>> {
+  const initialRequest = await rushUpgradeRequestRepository.getRequestById(requestId);
+  if (!initialRequest) {
+    return errorResult('NOT_FOUND', 'Rush upgrade request not found');
+  }
+
+  // M19: Serialize with acceptCounterOffer and respondToRushUpgrade (same key).
+  return withLock(`rush-upgrade:${initialRequest.contract_id}`, async () => {
   const requestEntity = await rushUpgradeRequestRepository.getRequestById(requestId);
   if (!requestEntity) {
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
@@ -453,12 +481,33 @@ export async function declineCounterOffer(
   });
 
   return successResult(mapRushUpgradeRequestFromEntity(updatedEntity));
+  }); // M19: end withLock
 }
 
 // Get rush upgrade requests for a contract
 export async function getRushUpgradeRequestsByContract(
   contractId: string
 ): Promise<ServiceResult<RushUpgradeRequest[]>> {
+  const entities = await rushUpgradeRequestRepository.getRequestsByContract(contractId);
+  return successResult(entities.map(mapRushUpgradeRequestFromEntity));
+}
+
+// Get rush upgrade requests for a contract after verifying the caller is a party
+// (or an admin). Keeps contract authorization in the service layer (M11).
+export async function getRushUpgradeRequestsForContract(
+  contractId: string,
+  userId: string,
+  isAdmin = false
+): Promise<ServiceResult<RushUpgradeRequest[]>> {
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
+    return errorResult('NOT_FOUND', 'Contract not found');
+  }
+
+  if (contractEntity.employer_id !== userId && contractEntity.freelancer_id !== userId && !isAdmin) {
+    return errorResult('UNAUTHORIZED', 'You are not authorized to view rush upgrade requests for this contract');
+  }
+
   const entities = await rushUpgradeRequestRepository.getRequestsByContract(contractId);
   return successResult(entities.map(mapRushUpgradeRequestFromEntity));
 }

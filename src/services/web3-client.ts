@@ -8,13 +8,9 @@ import { ethers, JsonRpcProvider, Wallet, TransactionResponse, TransactionReceip
 import { config } from '../config/env.js';
 
 // Types
-export type Web3Config = {
-  rpcUrl: string;
-  privateKey: string;
-  chainId: number;
-};
 
-export type Web3TransactionResult = {
+
+type Web3TransactionResult = {
   hash: string;
   blockNumber: number | null;
   from: string;
@@ -24,7 +20,7 @@ export type Web3TransactionResult = {
   status: 'success' | 'failed' | 'pending';
 };
 
-export type WalletInfo = {
+type WalletInfo = {
   address: string;
   balance: bigint;
   chainId: number;
@@ -104,23 +100,6 @@ export function getArbiterWallet(): Wallet {
     }
   }
   return arbiterWallet;
-}
-
-/**
- * Get a fresh arbiter wallet instance (not cached).
- *
- * Like getFreshWallet, this avoids nonce collisions when multiple arbiter-signed
- * transactions (e.g. concurrent dispute resolutions on different escrows) would
- * otherwise be broadcast from the same cached wallet with the same nonce.
- */
-export function getFreshArbiterWallet(): Wallet {
-  if (!config.blockchain.arbiterPrivateKey) {
-    throw new Error('PLATFORM_ARBITER_PRIVATE_KEY is not configured');
-  }
-  if (!config.blockchain.rpcUrl) {
-    throw new Error('BLOCKCHAIN_RPC_URL is not configured');
-  }
-  return new Wallet(config.blockchain.arbiterPrivateKey, new JsonRpcProvider(config.blockchain.rpcUrl));
 }
 
 /**

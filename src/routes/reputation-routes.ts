@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth-middleware.js';
-import { validate, validateUUID, submitRatingSchema } from '../middleware/validation-middleware.js';
+import { validate, validateUUID, validateAppwriteDocumentId, submitRatingSchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { sendErrorResponse } from '../utils/response-helpers.js';
@@ -17,6 +17,7 @@ import {
   getReputationHistory,
   getReputationLeaderboard,
 } from '../services/reputation-aggregation-service.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -146,7 +147,7 @@ const router = Router();
  *       401:
  *         description: Unauthorized
  */
-router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/can-rate', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -172,7 +173,7 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -211,7 +212,7 @@ router.get('/can-rate', authMiddleware, apiRateLimiter, async (req: Request, res
  *       409:
  *         description: Duplicate rating
  */
-router.post('/rate', authMiddleware, apiRateLimiter, validate(submitRatingSchema), async (req: Request, res: Response) => {
+router.post('/rate', authMiddleware, apiRateLimiter, validate(submitRatingSchema), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
@@ -250,7 +251,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, validate(submitRatingSchema
   }
 
   res.status(201).json(result.data);
-});
+}));
 
 
 // ============================================================
@@ -274,7 +275,7 @@ router.post('/rate', authMiddleware, apiRateLimiter, validate(submitRatingSchema
  *       200:
  *         description: Top rated users
  */
-router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/leaderboard', apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const limit = parseInt(req.query['limit'] as string) || 10;
 
@@ -289,7 +290,7 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
     logger.error('Error getting reputation leaderboard', { error });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get leaderboard', { requestId: getRequestId(req) });
   }
-});
+}));
 
 
 // ============================================================
@@ -310,8 +311,7 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: User ID to get reputation for (UUID)
+ *         description: User ID to get reputation for (Appwrite document ID)
  *     responses:
  *       200:
  *         description: Reputation retrieved successfully
@@ -324,7 +324,7 @@ router.get('/leaderboard', apiRateLimiter, async (req: Request, res: Response) =
  *       404:
  *         description: User not found
  */
-router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
+router.get('/:userId', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -342,7 +342,7 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -358,8 +358,7 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
  *         required: true
  *         schema:
  *           type: string
- *           format: uuid
- *         description: User ID to get work history for (UUID)
+ *         description: User ID to get work history for (Appwrite document ID)
  *     responses:
  *       200:
  *         description: Work history retrieved successfully
@@ -374,7 +373,7 @@ router.get('/:userId', apiRateLimiter, validateUUID(['userId']), async (req: Req
  *       404:
  *         description: User not found
  */
-router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (req: Request, res: Response) => {
+router.get('/:userId/history', apiRateLimiter, validateAppwriteDocumentId(['userId']), asyncHandler(async (req: Request, res: Response) => {
   const userId = req.params['userId'] ?? '';
   const requestId = getRequestId(req);
 
@@ -392,7 +391,7 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (
   }
 
   res.status(200).json(result.data);
-});
+}));
 
 /**
  * @swagger
@@ -411,7 +410,7 @@ router.get('/:userId/history', apiRateLimiter, validateUUID(['userId']), async (
  *       200:
  *         description: Aggregated reputation score
  */
-router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/score', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -426,7 +425,7 @@ router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, async (re
     logger.error('Error getting reputation score', { error });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation score', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -445,7 +444,7 @@ router.get('/:userId/score', validateUUID(['userId']), apiRateLimiter, async (re
  *       200:
  *         description: Reputation breakdown by stars
  */
-router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/breakdown', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
 
@@ -460,7 +459,7 @@ router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async
     logger.error('Error getting reputation breakdown', { error });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation breakdown', { requestId: getRequestId(req) });
   }
-});
+}));
 
 /**
  * @swagger
@@ -484,7 +483,7 @@ router.get('/:userId/breakdown', validateUUID(['userId']), apiRateLimiter, async
  *       200:
  *         description: Reputation history
  */
-router.get('/:userId/reputation-history', validateUUID(['userId']), apiRateLimiter, async (req: Request, res: Response) => {
+router.get('/:userId/reputation-history', validateAppwriteDocumentId(['userId']), apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
   try {
     const userId = req.params['userId'] ?? '';
     const months = parseInt(req.query['months'] as string) || 12;
@@ -500,6 +499,6 @@ router.get('/:userId/reputation-history', validateUUID(['userId']), apiRateLimit
     logger.error('Error getting reputation history', { error });
     return sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to get reputation history', { requestId: getRequestId(req) });
   }
-});
+}));
 
 export default router;

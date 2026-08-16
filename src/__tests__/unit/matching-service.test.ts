@@ -31,13 +31,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { info: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() },
 }));
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: jest.fn(), connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: jest.fn(),
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 // Load real ai-client first to capture pure functions before mocking
 const realAiClient = await import(resolveModule('src/services/ai-client.ts'));
 

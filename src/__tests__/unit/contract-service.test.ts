@@ -47,6 +47,12 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
   UserRepository: jest.fn(),
 }));
 
+// Audit-log repository (BLF-12.2 contract-cancellation audit trail)
+const mockAuditLogRepo = { create: jest.fn<any>().mockResolvedValue(undefined) };
+jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
+  auditLogRepository: mockAuditLogRepo,
+}));
+
 // Import after mocking
 const {
   getContractById,
@@ -194,6 +200,7 @@ describe('Contract Service - Property-Based Tests', () => {
 describe('Contract Service - Unit Tests', () => {
   beforeEach(() => {
     mockContractRepo.clear();
+    mockAuditLogRepo.create.mockClear();
   });
 
   it('should get contract by ID', async () => {
@@ -349,6 +356,7 @@ describe('Contract Service - Coverage Tests', () => {
     mockContractRepo.clear();
     disputeStore.clear();
     userStore.clear();
+    mockAuditLogRepo.create.mockClear();
   });
 
   // --- updateContractStatus: role-based UNAUTHORIZED (line 126) ---
@@ -555,6 +563,16 @@ describe('Contract Service - Coverage Tests', () => {
     const result = await cancelPendingContract(contract.id, 'emp-1');
 
     expect(result.success).toBe(true);
+
+    // BLF-12.2: cancellation is audited with the cancelling party as actor
+    expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'fl-1',
+      actor_id: 'emp-1',
+      action: 'contract.cancelled',
+      resource_type: 'contract',
+      resource_id: contract.id,
+      payload: expect.objectContaining({ projectId: contract.project_id }),
+    }));
   });
 
   it('should allow freelancer to cancel a pending contract', async () => {
@@ -568,6 +586,14 @@ describe('Contract Service - Coverage Tests', () => {
     const result = await cancelPendingContract(contract.id, 'fl-1');
 
     expect(result.success).toBe(true);
+
+    // BLF-12.2: freelancer-initiated cancellation targets the employer
+    expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: 'emp-1',
+      actor_id: 'fl-1',
+      action: 'contract.cancelled',
+      resource_id: contract.id,
+    }));
   });
 
   // --- cancelPendingContract: NOT_FOUND ---

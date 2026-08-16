@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { databases, DATABASE_ID } from '../config/appwrite.js';
+import { asyncHandler } from '../utils/async-handler.js';
 
 const router = Router();
 
@@ -10,7 +11,7 @@ const router = Router();
  *     summary: Health check endpoint
  *     tags: [Health]
  */
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const health = {
     status: 'ok',
     timestamp: new Date().toISOString(),
@@ -30,7 +31,7 @@ router.get('/', async (_req: Request, res: Response) => {
 
   const statusCode = health.services.database === 'ok' ? 200 : 503;
   res.status(statusCode).json(health);
-});
+}));
 
 /**
  * @swagger
@@ -39,13 +40,13 @@ router.get('/', async (_req: Request, res: Response) => {
  *     summary: Readiness check
  *     tags: [Health]
  */
-router.get('/ready', async (_req: Request, res: Response) => {
+router.get('/ready', asyncHandler(async (_req: Request, res: Response) => {
   try {
     await databases.listDocuments(DATABASE_ID, 'users', []);
     res.status(200).json({ ready: true });
   } catch {
     res.status(503).json({ ready: false });
   }
-});
+}));
 
 export default router;

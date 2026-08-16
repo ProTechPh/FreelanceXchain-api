@@ -5,7 +5,7 @@ import { generateId } from '../utils/id.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
-export type CreateNotificationInput = {
+type CreateNotificationInput = {
   userId: string;
   type: NotificationType;
   title: string;

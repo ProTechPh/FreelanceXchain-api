@@ -88,15 +88,6 @@ jest.unstable_mockModule(resolveModule('src/services/agreement-contract.ts'), ()
   signAgreement: jest.fn<any>().mockResolvedValue(undefined),
 }));
 
-const mockQuery = jest.fn();
-(globalThis as any).mockPool = { query: mockQuery };
-jest.unstable_mockModule(resolveModule('src/config/database.ts'), () => ({
-  pool: { query: mockQuery, connect: jest.fn(), on: jest.fn() },
-  isPostgresAvailable: jest.fn().mockReturnValue(false),
-  query: mockQuery,
-  queryOne: jest.fn(),
-  initializeDatabase: jest.fn(),
-}));
 
 // Mock review repository
 jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'), () => ({
@@ -106,6 +97,21 @@ jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'),
 // Mock employer profile repository
 jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-repository.ts'), () => ({
   employerProfileRepository: mockEmployerProfileRepo,
+}));
+
+// Audit-log repository (BLF-12.2 contract-creation audit trail)
+const mockAuditLogRepo = { create: jest.fn<any>().mockResolvedValue(undefined) };
+jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts'), () => ({
+  auditLogRepository: mockAuditLogRepo,
+}));
+
+// Email delivery (preference-gated transactional emails). Mocked so the real
+// email-preference-service / user-repository do not touch global mockDatabases.
+const mockSendGatedEmail = jest.fn<any>().mockResolvedValue(true);
+jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts'), () => ({
+  sendGatedEmail: mockSendGatedEmail,
+  sendProposalAcceptedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
+  sendContractCreatedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
 // Import after mocking
@@ -131,64 +137,6 @@ describe('Proposal Service - Property-Based Tests', () => {
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
-    // Mock pool.query for atomic proposal acceptance
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('COUNT(*)') && text.includes('proposals')) {
-        return { rows: [{ count: '0' }], rowCount: 1 };
-      }
-      if (text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerId = params?.[1];
-        const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) {
-          return { rows: [], rowCount: 0 };
-        }
-        
-        proposal.status = 'accepted';
-        proposalStore.set(proposalId, proposal);
-        
-        const contractId = 'contract-' + Date.now();
-        const now = new Date().toISOString();
-        const contract = {
-          id: contractId,
-          proposal_id: proposalId,
-          project_id: proposal.project_id,
-          freelancer_id: proposal.freelancer_id,
-          employer_id: employerId,
-          total_amount: proposal.proposed_rate,
-          status: 'pending',
-          escrow_address: null,
-          created_at: now,
-          updated_at: now,
-        };
-        contractStore.set(contractId, contract);
-        
-        for (const [id, p] of proposalStore.entries()) {
-          const otherProposal = p as any;
-          if (otherProposal.project_id === proposal.project_id && 
-              otherProposal.id !== proposalId && 
-              otherProposal.status === 'pending') {
-            otherProposal.status = 'rejected';
-            proposalStore.set(id, otherProposal);
-          }
-        }
-        
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalId = params?.[0];
-        // Find the contract for this proposal
-        for (const [, c] of contractStore.entries()) {
-          const contract = c as any;
-          if (contract.proposal_id === proposalId) {
-            return { rows: [{ id: contract.id }], rowCount: 1 };
-          }
-        }
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   /**
@@ -430,64 +378,8 @@ describe('Proposal Service - Unit Tests', () => {
     mockReviewRepo.clear();
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
+    mockAuditLogRepo.create.mockClear();
 
-    // Mock pool.query for atomic proposal acceptance
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('COUNT(*)') && text.includes('proposals')) {
-        return { rows: [{ count: '0' }], rowCount: 1 };
-      }
-      if (text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerId = params?.[1];
-        const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) {
-          return { rows: [], rowCount: 0 };
-        }
-        
-        proposal.status = 'accepted';
-        proposalStore.set(proposalId, proposal);
-        
-        const contractId = 'contract-' + Date.now();
-        const now = new Date().toISOString();
-        const contract = {
-          id: contractId,
-          proposal_id: proposalId,
-          project_id: proposal.project_id,
-          freelancer_id: proposal.freelancer_id,
-          employer_id: employerId,
-          total_amount: proposal.proposed_rate,
-          status: 'pending',
-          escrow_address: null,
-          created_at: now,
-          updated_at: now,
-        };
-        contractStore.set(contractId, contract);
-        
-        for (const [id, p] of proposalStore.entries()) {
-          const otherProposal = p as any;
-          if (otherProposal.project_id === proposal.project_id && 
-              otherProposal.id !== proposalId && 
-              otherProposal.status === 'pending') {
-            otherProposal.status = 'rejected';
-            proposalStore.set(id, otherProposal);
-          }
-        }
-        
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalId = params?.[0];
-        for (const [, c] of contractStore.entries()) {
-          const contract = c as any;
-          if (contract.proposal_id === proposalId) {
-            return { rows: [{ id: contract.id }], rowCount: 1 };
-          }
-        }
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   it('should create proposal with valid data', async () => {
@@ -705,6 +597,22 @@ describe('Proposal Service - Unit Tests', () => {
       expect(updatedContractEntity?.status).toBe('active');
       expect(updatedContractEntity?.escrow_address).toBeDefined();
     }
+
+    // BLF-12.2: contract creation is audited with the employer as actor and freelancer as target
+    expect(mockAuditLogRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+      user_id: freelancerId,
+      actor_id: employerId,
+      action: 'contract.created',
+      resource_type: 'contract',
+      payload: expect.objectContaining({ projectId, proposalId: proposal.id }),
+    }));
+
+    // BLF-13: the freelancer gets a preference-gated contract-created email
+    expect(mockSendGatedEmail).toHaveBeenCalledWith(
+      freelancerId,
+      'contract_created',
+      expect.any(Function)
+    );
   });
 });
 
@@ -722,52 +630,6 @@ describe('Proposal Service - Coverage Tests', () => {
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('COUNT(*)') && text.includes('proposals')) {
-        return { rows: [{ count: '0' }], rowCount: 1 };
-      }
-      if (text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerId = params?.[1];
-        const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) {
-          return { rows: [], rowCount: 0 };
-        }
-        proposal.status = 'accepted';
-        proposalStore.set(proposalId, proposal);
-        const contractId = 'contract-' + Date.now();
-        const now = new Date().toISOString();
-        const contract = {
-          id: contractId, proposal_id: proposalId, project_id: proposal.project_id,
-          freelancer_id: proposal.freelancer_id, employer_id: employerId,
-          total_amount: proposal.proposed_rate, status: 'pending', escrow_address: null,
-          created_at: now, updated_at: now,
-        };
-        contractStore.set(contractId, contract);
-        for (const [id, p] of proposalStore.entries()) {
-          const otherProposal = p as any;
-          if (otherProposal.project_id === proposal.project_id &&
-              otherProposal.id !== proposalId &&
-              otherProposal.status === 'pending') {
-            otherProposal.status = 'rejected';
-            proposalStore.set(id, otherProposal);
-          }
-        }
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalId = params?.[0];
-        for (const [, c] of contractStore.entries()) {
-          const contract = c as any;
-          if (contract.proposal_id === proposalId) {
-            return { rows: [{ id: contract.id }], rowCount: 1 };
-          }
-        }
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   // --- submitProposal error paths ---
@@ -1186,6 +1048,67 @@ describe('Proposal Service - Coverage Tests', () => {
 
     expect(result.success).toBe(true);
     mockNotificationRepo.createNotification = origCreateNotification;
+  });
+
+  // BLF-6.2: Only reject the remaining pending proposals once the project's
+  // freelancer slots are full — multi-freelancer projects must be able to fill
+  // their other slots.
+  it('should keep other pending proposals open when freelancer slots remain', async () => {
+    const employerId = 'employer-slots-remain';
+    const milestones = [createTestMilestone({ id: 'ms-sr-1', title: 'M1', amount: 800, status: 'pending' })];
+    const project = createTestProject({
+      id: 'slots-remain-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 2,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id, freelancer_id: 'freelancer-sr-1', proposed_rate: 800, status: 'pending',
+    });
+    const otherProposal = createTestProposal({
+      project_id: project.id, freelancer_id: 'freelancer-sr-2', proposed_rate: 800, status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+    proposalStore.set(otherProposal.id, otherProposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    // One slot still open (limit 2, 1 accepted) → the other proposal is NOT auto-rejected
+    const otherAfter = proposalStore.get(otherProposal.id) as any;
+    expect(otherAfter?.status).toBe('pending');
+  });
+
+  it('should reject other pending proposals once the final slot is filled', async () => {
+    const employerId = 'employer-slots-full';
+    const milestones = [createTestMilestone({ id: 'ms-sf-1', title: 'M1', amount: 800, status: 'pending' })];
+    const project = createTestProject({
+      id: 'slots-full-project',
+      employer_id: employerId,
+      status: 'open',
+      milestones,
+      freelancer_limit: 1,
+    });
+    projectStore.set(project.id, project);
+
+    const proposal = createTestProposal({
+      project_id: project.id, freelancer_id: 'freelancer-sf-1', proposed_rate: 800, status: 'pending',
+    });
+    const otherProposal = createTestProposal({
+      project_id: project.id, freelancer_id: 'freelancer-sf-2', proposed_rate: 800, status: 'pending',
+    });
+    proposalStore.set(proposal.id, proposal);
+    proposalStore.set(otherProposal.id, otherProposal);
+
+    const result = await acceptProposal(proposal.id, employerId);
+
+    expect(result.success).toBe(true);
+    // Limit 1 reached → the remaining pending proposal is rejected
+    const otherAfter = proposalStore.get(otherProposal.id) as any;
+    expect(otherAfter?.status).toBe('rejected');
   });
 
   // --- rejectProposal error paths ---
@@ -1744,52 +1667,6 @@ describe('Proposal Service - Integration Coverage', () => {
     mockEmployerProfileRepo.clear();
     mockBlockchainService.deployEscrow.mockClear();
 
-    const mockPoolObj = (globalThis as any).mockPool;
-    mockPoolObj.query.mockImplementation(async (text: string, params?: any[]) => {
-      if (text.includes('COUNT(*)') && text.includes('proposals')) {
-        return { rows: [{ count: '0' }], rowCount: 1 };
-      }
-      if (text.includes('accept_proposal_atomic')) {
-        const proposalId = params?.[0];
-        const employerId = params?.[1];
-        const proposal = proposalStore.get(proposalId) as any;
-        if (!proposal) {
-          return { rows: [], rowCount: 0 };
-        }
-        proposal.status = 'accepted';
-        proposalStore.set(proposalId, proposal);
-        const contractId = 'contract-' + Date.now();
-        const now = new Date().toISOString();
-        const contract = {
-          id: contractId, proposal_id: proposalId, project_id: proposal.project_id,
-          freelancer_id: proposal.freelancer_id, employer_id: employerId,
-          total_amount: proposal.proposed_rate, status: 'pending', escrow_address: null,
-          created_at: now, updated_at: now,
-        };
-        contractStore.set(contractId, contract);
-        for (const [id, p] of proposalStore.entries()) {
-          const otherProposal = p as any;
-          if (otherProposal.project_id === proposal.project_id &&
-              otherProposal.id !== proposalId &&
-              otherProposal.status === 'pending') {
-            otherProposal.status = 'rejected';
-            proposalStore.set(id, otherProposal);
-          }
-        }
-        return { rows: [{ result: true, contract_id: contractId, limit_reached: true }], rowCount: 1 };
-      }
-      if (text.includes('SELECT id FROM contracts WHERE proposal_id')) {
-        const proposalId = params?.[0];
-        for (const [, c] of contractStore.entries()) {
-          const contract = c as any;
-          if (contract.proposal_id === proposalId) {
-            return { rows: [{ id: contract.id }], rowCount: 1 };
-          }
-        }
-        return { rows: [], rowCount: 0 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
   });
 
   // Lines 308-310: rush fee calculation with is_rush: true and rush_fee_percentage

@@ -1,8 +1,8 @@
 import { config } from './env.js';
 
-export type NetworkName = 'hardhat' | 'ganache' | 'sepolia' | 'polygon' | 'amoy' | 'mainnet';
+type NetworkName = 'hardhat' | 'ganache' | 'sepolia' | 'polygon' | 'amoy' | 'mainnet';
 
-export type ContractAddresses = {
+type ContractAddresses = {
   reputation?: string;
   escrow?: string;
   agreement?: string;

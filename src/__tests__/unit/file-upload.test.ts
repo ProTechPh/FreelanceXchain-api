@@ -9,12 +9,14 @@ const mockUploadFile = jest.fn() as any;
 const mockDeleteFile = jest.fn() as any;
 const mockGetSignedUrl = jest.fn() as any;
 const mockListUserFiles = jest.fn() as any;
+const mockGetFileQuota = jest.fn() as any;
 
 jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
   uploadFile: mockUploadFile,
   deleteFile: mockDeleteFile,
   getSignedUrl: mockGetSignedUrl,
   listUserFiles: mockListUserFiles,
+  getFileQuota: mockGetFileQuota,
 }));
 
 const mockAuthMiddleware = jest.fn((req: any, _res: any, next: any) => {
@@ -194,11 +196,24 @@ describe('File Upload Routes', () => {
     });
 
     it('should return 403 when deleting another users file', async () => {
+      // BLF-11.2: ownership is verified server-side (userId prefix on the stored name)
+      mockDeleteFile.mockResolvedValue({ success: false, error: 'FORBIDDEN' });
+
       const res = await request(app)
         .delete('/api/files/profile-images/other-user/photo.png');
 
       expect(res.status).toBe(403);
-      expect(res.body.error.message).toContain('Unauthorized');
+      expect(res.body.error.code).toBe('FORBIDDEN');
+      expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'other-user/photo.png', 'user-123');
+    });
+
+    it('should return 404 when the file does not exist', async () => {
+      mockDeleteFile.mockResolvedValue({ success: false, error: 'FILE_NOT_FOUND' });
+
+      const res = await request(app)
+        .delete('/api/files/profile-images/user-123/ghost.png');
+
+      expect(res.status).toBe(404);
     });
 
     it('should return 400 when deleteFile fails', async () => {
@@ -264,10 +279,14 @@ describe('File Upload Routes', () => {
     });
 
     it('should return 403 for accessing another users file', async () => {
+      // BLF-11.2: ownership is verified server-side from the stored file name
+      mockGetSignedUrl.mockResolvedValue({ success: false, error: 'FORBIDDEN' });
+
       const res = await request(app)
         .get('/api/files/signed-url/contract-documents/other-user/doc.pdf');
 
       expect(res.status).toBe(403);
+      expect(res.body.error.code).toBe('FORBIDDEN');
     });
 
     it('should clamp expiresIn to valid range', async () => {
@@ -277,7 +296,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/signed-url/contract-documents/user-123/doc.pdf?expiresIn=999999');
 
       expect(res.status).toBe(200);
-      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf');
+      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf', 'user-123');
     });
 
     it('should clamp negative expiresIn to 60', async () => {
@@ -287,7 +306,7 @@ describe('File Upload Routes', () => {
         .get('/api/files/signed-url/contract-documents/user-123/doc.pdf?expiresIn=-100');
 
       expect(res.status).toBe(200);
-      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf');
+      expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123/doc.pdf', 'user-123');
     });
 
     it('should return 400 when getSignedUrl fails', async () => {
@@ -352,13 +371,13 @@ describe('File Upload Routes', () => {
       expect(res.body.error.message).toContain('Invalid bucket');
     });
 
-    it('should pass folder query parameter', async () => {
+    it('should list files for the requesting user only', async () => {
       mockListUserFiles.mockResolvedValue({ success: true, files: [] });
 
       await request(app)
-        .get('/api/files/list/profile-images?folder=avatars');
+        .get('/api/files/list/profile-images');
 
-      expect(mockListUserFiles).toHaveBeenCalledWith('profile-images', 'user-123', 'avatars');
+      expect(mockListUserFiles).toHaveBeenCalledWith('profile-images', 'user-123');
     });
 
     it('should return 400 when listUserFiles fails', async () => {
@@ -379,6 +398,66 @@ describe('File Upload Routes', () => {
 
       expect(res.status).toBe(500);
       expect(res.body.error.message).toBe('Failed to list files');
+    });
+  });
+
+  describe('GET /quota', () => {
+    it('should return the storage quota for the user', async () => {
+      mockGetFileQuota.mockResolvedValue({
+        success: true,
+        used: 1024,
+        limit: 104857600,
+        percentage: 0.001,
+        files: 3,
+      });
+
+      const res = await request(app)
+        .get('/api/files/quota');
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.used).toBe(1024);
+      expect(res.body.limit).toBe(104857600);
+      expect(res.body.percentage).toBe(0.001);
+      expect(res.body.files).toBe(3);
+    });
+
+    it('should return 401 when user is not authenticated', async () => {
+      mockAuthMiddleware.mockImplementation((req: any, _res: any, next: any) => {
+        req.user = { id: undefined, userId: undefined, email: 'test@test.com', role: 'freelancer' };
+        next();
+      });
+
+      const res = await request(app)
+        .get('/api/files/quota');
+
+      expect(res.status).toBe(401);
+    });
+
+    it('should return 400 when getFileQuota fails', async () => {
+      mockGetFileQuota.mockResolvedValue({
+        success: false,
+        used: 0,
+        limit: 104857600,
+        percentage: 0,
+        files: 0,
+        error: 'quota error',
+      });
+
+      const res = await request(app)
+        .get('/api/files/quota');
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.message).toBe('quota error');
+    });
+
+    it('should handle unexpected errors', async () => {
+      mockGetFileQuota.mockRejectedValue(new Error('Unexpected'));
+
+      const res = await request(app)
+        .get('/api/files/quota');
+
+      expect(res.status).toBe(500);
     });
   });
 });
@@ -456,7 +535,7 @@ describe('File Upload - ?? and || fallback branches', () => {
     const res = await request(app)
       .delete('/api/files/profile-images/user-123/photo.png');
     expect(res.status).toBe(200);
-    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123');
+    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123', 'user-123');
   });
 
   it('L102: DELETE should use filePath || userId fallback when filePath is empty', async () => {
@@ -464,7 +543,7 @@ describe('File Upload - ?? and || fallback branches', () => {
     const res = await request(app)
       .delete('/api/files/profile-images/user-123/photo.png');
     expect(res.status).toBe(200);
-    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123');
+    expect(mockDeleteFile).toHaveBeenCalledWith('profile-images', 'user-123', 'user-123');
   });
 
   it('L121: GET signed-url should use ?? fallback when filePath param is undefined', async () => {
@@ -472,7 +551,7 @@ describe('File Upload - ?? and || fallback branches', () => {
     const res = await request(app)
       .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
     expect(res.status).toBe(200);
-    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123');
+    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123', 'user-123');
   });
 
   it('L140: GET signed-url should use filePath || userId fallback when filePath is empty', async () => {
@@ -480,6 +559,6 @@ describe('File Upload - ?? and || fallback branches', () => {
     const res = await request(app)
       .get('/api/files/signed-url/contract-documents/user-123/doc.pdf');
     expect(res.status).toBe(200);
-    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123');
+    expect(mockGetSignedUrl).toHaveBeenCalledWith('contract-documents', 'user-123', 'user-123');
   });
 });

@@ -3,7 +3,7 @@
  */
 
 // Request types
-export type AIContent = {
+type AIContent = {
   parts: Array<{ text: string }>;
 };
 
@@ -18,7 +18,7 @@ export type AIRequest = {
 };
 
 // Response types
-export type AICandidate = {
+type AICandidate = {
   content: {
     parts: Array<{ text: string }>;
     role: string;
