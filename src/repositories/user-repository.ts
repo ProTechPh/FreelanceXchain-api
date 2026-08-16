@@ -9,6 +9,8 @@ export type UserEntity = {
   role: 'freelancer' | 'employer' | 'admin';
   wallet_address: string;
   name: string;
+  /** Legacy display-name field some documents carry; falls back to `name`. */
+  full_name?: string;
   is_suspended: boolean;
   suspension_reason: string | null;
   mfa_enabled: boolean;
@@ -32,21 +34,28 @@ export class UserRepository extends BaseRepository<UserEntity> {
   }
 
   /**
-   * Batch-fetch users by ID in a single query (kills the N+1 pattern used by
-   * favorites enrichment). Users that no longer exist are simply absent.
+   * Batch-fetch users by ID (kills the N+1 pattern used by favorites
+   * enrichment and the weekly digest). Appwrite caps `equal` at 100 values
+   * per query, so large batches are chunked. Users that no longer exist are
+   * simply absent.
    */
   async getUsersByIds(ids: string[]): Promise<UserEntity[]> {
     if (ids.length === 0) return [];
-    try {
-      const response = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTION_ID,
-        [Query.equal('$id', ids), Query.limit(ids.length)]
-      );
-      return response.documents.map(doc => fromAppwriteDoc<UserEntity>(doc));
-    } catch (error) {
-      throw new Error(`Failed to get users by ids: ${getErrorMessageOr(error, 'Unknown error')}`);
+    const users: UserEntity[] = [];
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      try {
+        const response = await databases.listDocuments(
+          DATABASE_ID,
+          COLLECTION_ID,
+          [Query.equal('$id', chunk), Query.limit(chunk.length)]
+        );
+        users.push(...response.documents.map(doc => fromAppwriteDoc<UserEntity>(doc)));
+      } catch (error) {
+        throw new Error(`Failed to get users by ids: ${getErrorMessageOr(error, 'Unknown error')}`);
+      }
     }
+    return users;
   }
 
   async getUserByEmail(email: string): Promise<UserEntity | null> {

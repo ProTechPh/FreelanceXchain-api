@@ -59,11 +59,9 @@ export class EmailInboxRepository extends BaseRepository<EmailEntity> {
 
   async listByUserFolder(
     userId: string,
-    folder: EmailFolder,
-    limit: number = 20,
-    offset: number = 0,
-    isRead?: boolean
+    options: { folder: EmailFolder; limit?: number; offset?: number; isRead?: boolean }
   ): Promise<PaginatedResult<EmailListItem>> {
+    const { folder, limit = 20, offset = 0, isRead } = options;
     const queries: string[] = [
       Query.equal('user_id', userId),
       Query.equal('folder', folder),

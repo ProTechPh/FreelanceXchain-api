@@ -312,14 +312,18 @@ async function rejectOtherProposals(projectId: string, acceptedProposalId: strin
  * Accept the proposal and create the contract record.
  * Returns the created contract and updated proposal, or a ServiceResult error.
  */
+type CreateContractFromProposalInput = {
+  proposalId: string;
+  proposalEntity: ProposalEntity;
+  project: Project;
+  employerId: string;
+  proposalRate: number;
+  rushFee: number;
+  totalAmount: number;
+};
+
 async function createContractFromProposal(
-  proposalId: string,
-  proposalEntity: ProposalEntity,
-  project: Project,
-  employerId: string,
-  proposalRate: number,
-  rushFee: number,
-  totalAmount: number,
+  input: CreateContractFromProposalInput
 ): Promise<
   | { error: ServiceResult<AcceptProposalResult> }
   | {
@@ -327,6 +331,8 @@ async function createContractFromProposal(
       contractEntity: ContractEntity;
     }
 > {
+  const { proposalId, proposalEntity, project, employerId, proposalRate, rushFee, totalAmount } = input;
+
   const updatedProposalEntity = await proposalRepository.updateProposal(proposalId, {
     status: 'accepted',
   });
@@ -361,15 +367,20 @@ async function createContractFromProposal(
  * Also updates project status when all freelancer slots are filled.
  * Non-critical: logs errors and continues on blockchain failures.
  */
+type InitializeEscrowForContractInput = {
+  contract: Contract;
+  project: Project;
+  proposalEntity: ProposalEntity;
+  totalAmount: number;
+  rushFee: number;
+  isRush: boolean;
+  rushFeePercentage: number;
+};
+
 async function initializeEscrowForContract(
-  contract: Contract,
-  project: Project,
-  proposalEntity: ProposalEntity,
-  totalAmount: number,
-  rushFee: number,
-  isRush: boolean,
-  rushFeePercentage: number,
+  input: InitializeEscrowForContractInput
 ): Promise<void> {
+  const { contract, project, proposalEntity, totalAmount, rushFee, isRush, rushFeePercentage } = input;
   try {
     const employer = await userRepository.getUserById(project.employerId);
     const freelancer = await userRepository.getUserById(proposalEntity.freelancer_id);
@@ -449,6 +460,7 @@ async function initializeEscrowForContract(
 // - Uses freelancer's proposedRate for contract amount (not project.budget)
 // - Rejects all other pending proposals for the same project
 // - Checks that project has milestones before creating contract
+/* eslint-disable max-lines-per-function -- accept-proposal flow; refactor follow-up */
 export async function acceptProposal(
   proposalId: string,
   employerId: string
@@ -465,9 +477,15 @@ export async function acceptProposal(
 
     const { proposalEntity: validatedProposal, project, proposalRate, totalAmount, rushFee, isRush, rushFeePercentage } = validated;
 
-    const created = await createContractFromProposal(
-      proposalId, validatedProposal, project, employerId, proposalRate, rushFee, totalAmount,
-    );
+    const created = await createContractFromProposal({
+      proposalId,
+      proposalEntity: validatedProposal,
+      project,
+      employerId,
+      proposalRate,
+      rushFee,
+      totalAmount,
+    });
     if ('error' in created) return created.error;
 
     const { updatedProposalEntity, contractEntity } = created;
@@ -481,9 +499,15 @@ export async function acceptProposal(
 
     // H12: Log non-critical failures but don't silently swallow them
     try {
-      await initializeEscrowForContract(
-        createdContract, project, validatedProposal, totalAmount, rushFee, isRush, rushFeePercentage,
-      );
+      await initializeEscrowForContract({
+        contract: createdContract,
+        project,
+        proposalEntity: validatedProposal,
+        totalAmount,
+        rushFee,
+        isRush,
+        rushFeePercentage,
+      });
     } catch (escrowError) {
       logger.error('Escrow initialization failed after contract creation — contract remains pending', {
         contractId: createdContract.id,

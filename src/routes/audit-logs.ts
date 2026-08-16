@@ -13,7 +13,7 @@ function sendServerError(res: Response, error: unknown): void {
     500,
     'INTERNAL_ERROR',
     error instanceof Error ? error.message : 'Internal server error',
-    getRequestId(res.req)
+    { requestId: getRequestId(res.req) }
   );
 }
 
@@ -22,7 +22,7 @@ router.get('/me', authMiddleware, async (req: Request, res: Response): Promise<v
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      sendErrorResponse(res, 401, 'UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+      sendErrorResponse(res, 401, 'UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
       return;
     }
     
@@ -93,7 +93,7 @@ router.get('/range', authMiddleware, requireRole('admin'), async (req: Request, 
     const endDate = new Date(req.query.endDate as string);
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', getRequestId(req));
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', { requestId: getRequestId(req) });
       return;
     }
 
@@ -129,7 +129,7 @@ router.get('/search', authMiddleware, requireRole('admin'), async (req: Request,
     if (typeof resourceId === 'string' && resourceId) filters.resourceId = resourceId;
     if (typeof status === 'string' && status) {
       if (status !== 'success' && status !== 'failure' && status !== 'pending') {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid status. Must be one of: success, failure, pending', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid status. Must be one of: success, failure, pending', { requestId: getRequestId(req) });
         return;
       }
       filters.status = status;
@@ -138,7 +138,7 @@ router.get('/search', authMiddleware, requireRole('admin'), async (req: Request,
     if (typeof startDate === 'string' && startDate) {
       const parsed = new Date(startDate);
       if (isNaN(parsed.getTime())) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid startDate format', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid startDate format', { requestId: getRequestId(req) });
         return;
       }
       filters.startDate = parsed;
@@ -146,7 +146,7 @@ router.get('/search', authMiddleware, requireRole('admin'), async (req: Request,
     if (typeof endDate === 'string' && endDate) {
       const parsed = new Date(endDate);
       if (isNaN(parsed.getTime())) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid endDate format', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid endDate format', { requestId: getRequestId(req) });
         return;
       }
       filters.endDate = parsed;
@@ -170,7 +170,7 @@ router.get('/summary/admin-activity', authMiddleware, requireRole('admin'), asyn
     const endDate = new Date(req.query.endDate as string);
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', getRequestId(req));
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', { requestId: getRequestId(req) });
       return;
     }
 
@@ -189,7 +189,7 @@ router.get('/report/user/:userId', authMiddleware, requireRole('admin'), async (
     const endDate = new Date(req.query.endDate as string);
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', getRequestId(req));
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', { requestId: getRequestId(req) });
       return;
     }
 
@@ -207,7 +207,7 @@ router.get('/report/system', authMiddleware, requireRole('admin'), async (req: R
     const endDate = new Date(req.query.endDate as string);
 
     if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', getRequestId(req));
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Invalid date format', { requestId: getRequestId(req) });
       return;
     }
 
@@ -225,7 +225,7 @@ router.get('/:id', authMiddleware, requireRole('admin'), async (req: Request, re
 
     const log = await auditLogService.getAuditLogById(id);
     if (!log) {
-      sendErrorResponse(res, 404, 'NOT_FOUND', 'Audit log not found', getRequestId(req));
+      sendErrorResponse(res, 404, 'NOT_FOUND', 'Audit log not found', { requestId: getRequestId(req) });
       return;
     }
 

@@ -9,10 +9,12 @@ import {
   submitRatingToBlockchain,
   BlockchainRating,
 } from './reputation-blockchain.js';
-import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
+import { databases, DATABASE_ID } from '../config/appwrite.js';
 import { COLLECTIONS } from '../config/collections.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository } from '../repositories/project-repository.js';
+import { reviewRepository, type ReviewEntity } from '../repositories/review-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import { mapContractFromEntity } from '../utils/entity-mapper.js';
 import { notifyRatingReceived } from './notification-service.js';
 import { sendGatedEmail, sendReviewReceivedEmail } from './email-delivery-service.js';
@@ -20,7 +22,7 @@ import { logger } from '../config/logger.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 import { withLock } from '../utils/async-lock.js';
-import type { Review, ReviewEntity } from '../models/review.js';
+import type { Review } from '../models/review.js';
 
 
 export type RatingInput = {
@@ -70,6 +72,191 @@ type RatingResult = {
   transactionHash: string;
 };
 
+type RatingValidation = {
+  contract: ReturnType<typeof mapContractFromEntity>;
+  rateeId: string;
+  reviewerRole: string;
+};
+
+/**
+ * Validate that a rating can be submitted for the contract.
+ * Returns the resolved ratee/reviewer role or a ServiceResult error.
+ */
+async function validateRatingInput(input: RatingInput): Promise<
+  | { error: ServiceResult<RatingResult> }
+  | RatingValidation
+> {
+  if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
+    return { error: errorResult('INVALID_RATING', 'Rating must be an integer between 1 and 5') };
+  }
+
+  const contractEntity = await contractRepository.getContractById(input.contractId);
+  if (!contractEntity) {
+    return { error: errorResult('NOT_FOUND', 'Contract not found') };
+  }
+  const contract = mapContractFromEntity(contractEntity);
+
+  if (contract.status !== 'completed') {
+    return { error: errorResult('INVALID_CONTRACT_STATUS', `Can only submit ratings for completed contracts (current status: ${contract.status})`) };
+  }
+
+  if (contract.freelancerId !== input.raterId && contract.employerId !== input.raterId) {
+    return { error: errorResult('UNAUTHORIZED', 'Only contract participants can submit ratings') };
+  }
+
+  const rateeId = input.rateeId ?? (input.raterId === contract.freelancerId ? contract.employerId : contract.freelancerId);
+
+  if (contract.freelancerId !== rateeId && contract.employerId !== rateeId) {
+    return { error: errorResult('INVALID_RATEE', 'Ratee must be a contract participant') };
+  }
+
+  if (input.raterId === rateeId) {
+    return { error: errorResult('SELF_RATING', 'Users cannot rate themselves') };
+  }
+
+  if (await reviewRepository.hasReviewed(input.contractId, input.raterId)) {
+    return { error: errorResult('DUPLICATE_RATING', 'You have already rated this user for this contract') };
+  }
+
+  const reviewerRole = input.reviewerRole ?? (contract.employerId === input.raterId ? 'employer' : 'freelancer');
+
+  return { contract, rateeId, reviewerRole };
+}
+
+/**
+ * Build the review document payload from the rating input.
+ */
+function buildReviewDocument(
+  input: RatingInput,
+  contract: ReturnType<typeof mapContractFromEntity>,
+  rateeId: string,
+  reviewerRole: string,
+): Record<string, unknown> {
+  const reviewData: Record<string, unknown> = {
+    contract_id: input.contractId,
+    project_id: contract.projectId,
+    reviewer_id: input.raterId,
+    reviewee_id: rateeId,
+    rating: input.rating,
+    comment: input.comment || null,
+    reviewer_role: reviewerRole,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+
+  if (input.workQuality !== undefined) {
+    reviewData.work_quality = input.workQuality;
+  }
+  if (input.communication !== undefined) {
+    reviewData.communication = input.communication;
+  }
+  if (input.professionalism !== undefined) {
+    reviewData.professionalism = input.professionalism;
+  }
+  if (input.wouldWorkAgain !== undefined) {
+    reviewData.would_work_again = input.wouldWorkAgain;
+  }
+
+  return reviewData;
+}
+
+type ReviewRecord = {
+  id: string;
+  contract_id: string;
+  project_id?: string;
+  reviewer_id: string;
+  reviewee_id: string;
+  rating: number;
+  comment: string | null;
+  reviewer_role: string;
+  work_quality?: unknown;
+  communication?: unknown;
+  professionalism?: unknown;
+  would_work_again?: unknown;
+  created_at: string;
+  updated_at: string;
+};
+
+/**
+ * Persist the review document and return the stored record.
+ */
+async function createReviewDocument(reviewData: Record<string, unknown>): Promise<ReviewRecord> {
+  const reviewDoc = await reviewRepository.create(reviewData as unknown as Parameters<typeof reviewRepository.create>[0]);
+
+  const record: ReviewRecord = {
+    id: reviewDoc.id,
+    contract_id: reviewDoc.contract_id,
+    reviewer_id: reviewDoc.reviewer_id,
+    reviewee_id: reviewDoc.reviewee_id,
+    rating: reviewDoc.rating,
+    comment: reviewDoc.comment,
+    reviewer_role: reviewDoc.reviewer_role,
+    work_quality: reviewDoc.work_quality,
+    communication: reviewDoc.communication,
+    professionalism: reviewDoc.professionalism,
+    would_work_again: reviewDoc.would_work_again,
+    created_at: reviewDoc.created_at,
+    updated_at: reviewDoc.updated_at,
+  };
+  if (reviewDoc.project_id) {
+    record.project_id = reviewDoc.project_id;
+  }
+  return record;
+}
+
+/**
+ * Sync the rating to the blockchain (best-effort).
+ * Returns the transaction hash, or '' when sync is skipped or fails.
+ */
+async function syncRatingToBlockchain(
+  input: RatingInput,
+  reviewId: string,
+  rateeId: string,
+): Promise<string> {
+  let transactionHash = '';
+  try {
+    // Look up ratee wallet address for blockchain sync
+    const rateeDoc = await userRepository.getUserById(rateeId);
+    const rateeWallet = rateeDoc?.wallet_address;
+
+    if (!rateeWallet) {
+      logger.warn('Ratee has no wallet address, skipping blockchain sync', { rateeId });
+      return transactionHash;
+    }
+
+    const { isWeb3Available } = await import('./web3-client.js');
+    if (!isWeb3Available()) {
+      logger.warn('Web3 not available, skipping blockchain sync', { reviewId });
+      return transactionHash;
+    }
+
+    const { getContractAddress } = await import('../config/contracts.js');
+    const reputationAddress = getContractAddress('reputation');
+    logger.info('Attempting blockchain sync', {
+      reviewId,
+      rateeWallet,
+      reputationAddress,
+      web3Available: true,
+    });
+
+    // isEmployerRating is derived on-chain from msg.sender — not passed here.
+    const result = await submitRatingToBlockchain({
+      contractId: input.contractId,
+      rateeAddress: rateeWallet,
+      rating: input.rating,
+      comment: input.comment || '',
+    });
+    transactionHash = result.transactionHash;
+    logger.info('Rating synced to blockchain', { reviewId, transactionHash });
+  } catch (blockchainError: unknown) {
+    logger.error('Failed to sync rating to blockchain', {
+      error: blockchainError instanceof Error ? blockchainError.message : String(blockchainError),
+      reviewId,
+    });
+  }
+  return transactionHash;
+}
+
 /**
  * Submit a rating/review for a completed contract
  * Stores in Appwrite reviews table, syncs to blockchain best-effort
@@ -85,140 +272,15 @@ export async function submitRating(
   // (contract_id, reviewer_id) created by scripts/setup-appwrite-db.ts, which
   // rejects the duplicate write even across server instances.
   return withLock(`rating:${input.contractId}:${input.raterId}`, async () => {
-  if (!Number.isInteger(input.rating) || input.rating < 1 || input.rating > 5) {
-    return errorResult('INVALID_RATING', 'Rating must be an integer between 1 and 5');
-  }
+  const validated = await validateRatingInput(input);
+  if ('error' in validated) return validated.error;
 
-  const contractEntity = await contractRepository.getContractById(input.contractId);
-  if (!contractEntity) {
-    return errorResult('NOT_FOUND', 'Contract not found');
-  }
-  const contract = mapContractFromEntity(contractEntity);
 
-  if (contract.status !== 'completed') {
-    return errorResult('INVALID_CONTRACT_STATUS', `Can only submit ratings for completed contracts (current status: ${contract.status})`);
-  }
+  const { contract, rateeId, reviewerRole } = validated;
 
-  if (contract.freelancerId !== input.raterId && contract.employerId !== input.raterId) {
-    return errorResult('UNAUTHORIZED', 'Only contract participants can submit ratings');
-  }
+  const review = await createReviewDocument(buildReviewDocument(input, contract, rateeId, reviewerRole));
 
-  const rateeId = input.rateeId ?? (input.raterId === contract.freelancerId ? contract.employerId : contract.freelancerId);
-
-  if (contract.freelancerId !== rateeId && contract.employerId !== rateeId) {
-    return errorResult('INVALID_RATEE', 'Ratee must be a contract participant');
-  }
-
-  if (input.raterId === rateeId) {
-    return errorResult('SELF_RATING', 'Users cannot rate themselves');
-}
-
-// Check for duplicate review
-const existingReviewResponse = await databases.listDocuments(
-  DATABASE_ID,
-  COLLECTIONS.REVIEWS,
-  [
-    Query.equal('contract_id', input.contractId),
-    Query.equal('reviewer_id', input.raterId),
-    Query.limit(1),
-  ]
-);
-
-if (existingReviewResponse.total > 0) {
-  return errorResult('DUPLICATE_RATING', 'You have already rated this user for this contract');
-}
-
-const reviewerRole = input.reviewerRole ?? (contract.employerId === input.raterId ? 'employer' : 'freelancer');
-
-const reviewData: Record<string, any> = {
-  contract_id: input.contractId,
-  project_id: contract.projectId,
-  reviewer_id: input.raterId,
-  reviewee_id: rateeId,
-  rating: input.rating,
-  comment: input.comment || null,
-  reviewer_role: reviewerRole,
-  created_at: new Date().toISOString(),
-  updated_at: new Date().toISOString(),
-};
-
-if (input.workQuality !== undefined) {
-  reviewData.work_quality = input.workQuality;
-}
-if (input.communication !== undefined) {
-  reviewData.communication = input.communication;
-}
-if (input.professionalism !== undefined) {
-  reviewData.professionalism = input.professionalism;
-}
-if (input.wouldWorkAgain !== undefined) {
-  reviewData.would_work_again = input.wouldWorkAgain;
-}
-
-const reviewDoc = await databases.createDocument(
-  DATABASE_ID,
-  COLLECTIONS.REVIEWS,
-  ID.unique(),
-  reviewData
-);
-
-const reviewAttrs = reviewDoc;
-const review = {
-  id: reviewAttrs.$id,
-  contract_id: reviewAttrs.contract_id,
-  project_id: reviewAttrs.project_id,
-  reviewer_id: reviewAttrs.reviewer_id,
-  reviewee_id: reviewAttrs.reviewee_id,
-  rating: reviewAttrs.rating,
-  comment: reviewAttrs.comment,
-  reviewer_role: reviewAttrs.reviewer_role,
-  work_quality: reviewAttrs.work_quality,
-  communication: reviewAttrs.communication,
-  professionalism: reviewAttrs.professionalism,
-  would_work_again: reviewAttrs.would_work_again,
-  created_at: reviewAttrs.created_at,
-  updated_at: reviewAttrs.updated_at,
-};
-
-let transactionHash = '';
-try {
-  // Look up ratee wallet address for blockchain sync
-  const rateeDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, rateeId).catch(() => null);
-  const rateeWallet = rateeDoc?.wallet_address;
-
-  if (rateeWallet) {
-    const { isWeb3Available } = await import('./web3-client.js');
-    if (!isWeb3Available()) {
-      logger.warn('Web3 not available, skipping blockchain sync', { reviewId: review.id });
-    } else {
-      const { getContractAddress } = await import('../config/contracts.js');
-        const reputationAddress = getContractAddress('reputation');
-        logger.info('Attempting blockchain sync', {
-          reviewId: review.id,
-          rateeWallet,
-          reputationAddress,
-          web3Available: true,
-        });
-
-        // isEmployerRating is derived on-chain from msg.sender — not passed here.
-        const result = await submitRatingToBlockchain({
-          contractId: input.contractId,
-          rateeAddress: rateeWallet,
-          rating: input.rating,
-          comment: input.comment || '',
-        });
-        transactionHash = result.transactionHash;
-        logger.info('Rating synced to blockchain', { reviewId: review.id, transactionHash });
-      }
-    } else {
-      logger.warn('Ratee has no wallet address, skipping blockchain sync', { rateeId });
-    }
-  } catch (blockchainError: unknown) {
-    logger.error('Failed to sync rating to blockchain', {
-      error: blockchainError instanceof Error ? blockchainError.message : String(blockchainError),
-      reviewId: review.id,
-    });
-  }
+  const transactionHash = await syncRatingToBlockchain(input, review.id, rateeId);
 
   const rating: RatingData = {
     id: review.id,
@@ -234,12 +296,12 @@ try {
   const projectEntity = await projectRepository.getProjectById(contract.projectId);
   const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
-  await notifyRatingReceived(
-    rateeId,
-    input.rating,
-    input.contractId,
-    projectTitle
-  );
+  await notifyRatingReceived({
+    userId: rateeId,
+    rating: input.rating,
+    contractId: input.contractId,
+    projectTitle,
+  });
 
   // Transactional email gated by the ratee's email preferences. Best-effort:
   // a lookup/send failure must never break the rating submission.
@@ -265,7 +327,7 @@ try {
     transactionHash,
   });
   }); // BLF-9.1: end withLock
-  }
+}
 
 /**
  * Get reputation score for a user
@@ -275,18 +337,10 @@ export async function getReputation(
   decayLambda: number = 0.01
 ): Promise<ServiceResult<ReputationScore>> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('reviewee_id', userId),
-        Query.orderDesc('created_at'),
-        Query.limit(1000),
-      ]
-    );
+    const reviews = await reviewRepository.findAllByRevieweeId(userId);
 
-    const ratings: RatingData[] = response.documents.map((r) => ({
-      id: r.$id,
+    const ratings: RatingData[] = reviews.map((r) => ({
+      id: r.id,
       contractId: r.contract_id,
       raterId: r.reviewer_id,
       rateeId: r.reviewee_id,
@@ -309,10 +363,10 @@ export async function getReputation(
       averageRating,
       ratings,
     });
-      } catch (error) {
-      logger.error('Failed to get reputation', { error, userId });
-      return errorResult('DATABASE_ERROR', 'Failed to get reputation');
-    }
+  } catch (error) {
+    logger.error('Failed to get reputation', { error, userId });
+    return errorResult('DATABASE_ERROR', 'Failed to get reputation');
+  }
 }
 
 /**
@@ -348,16 +402,8 @@ export async function getWorkHistory(
 
     const completedContracts = contractEntities.filter(c => c.status === 'completed');
 
-    const reviewsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('reviewee_id', userId),
-        Query.limit(1000),
-      ]
-    );
-
-    const reviewsByContractId = new Map(reviewsResponse.documents.map((r) => [r.contract_id, r]));
+    const reviews = await reviewRepository.findAllByRevieweeId(userId);
+    const reviewsByContractId = new Map(reviews.map((r) => [r.contract_id, r]));
 
     const workHistory: WorkHistoryEntry[] = await Promise.all(
       completedContracts.map(async (contractEntity) => {
@@ -370,16 +416,20 @@ export async function getWorkHistory(
         const projectTitle = projectEntity?.title ?? 'Unknown Project';
 
         const receivedRating = reviewsByContractId.get(contract.id);
-
-        return {
+        const workEntry: WorkHistoryEntry = {
           contractId: contract.id,
           projectId: contract.projectId,
           projectTitle,
           role,
           completedAt: contract.updatedAt,
-          rating: receivedRating?.rating,
-          ratingComment: receivedRating?.comment,
         };
+        if (receivedRating) {
+          workEntry.rating = receivedRating.rating;
+          if (receivedRating.comment) {
+            workEntry.ratingComment = receivedRating.comment;
+          }
+        }
+        return workEntry;
       })
     );
 
@@ -401,17 +451,10 @@ export async function getContractRatings(
   contractId: string
 ): Promise<ServiceResult<RatingData[]>> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('contract_id', contractId),
-        Query.limit(1000),
-      ]
-    );
+    const reviews = await reviewRepository.findByContractId(contractId);
 
-    const ratings: RatingData[] = response.documents.map((r) => ({
-      id: r.$id,
+    const ratings: RatingData[] = reviews.map((r) => ({
+      id: r.id,
       contractId: r.contract_id,
       raterId: r.reviewer_id,
       rateeId: r.reviewee_id,
@@ -459,17 +502,7 @@ export async function canUserRate(
     return successResult({ canRate: false, reason: 'You cannot rate yourself' });
   }
 
-  const existingReviewResponse = await databases.listDocuments(
-    DATABASE_ID,
-    COLLECTIONS.REVIEWS,
-    [
-      Query.equal('contract_id', contractId),
-      Query.equal('reviewer_id', raterId),
-      Query.limit(1),
-    ]
-  );
-
-  if (existingReviewResponse.total > 0) {
+  if (await reviewRepository.hasReviewed(contractId, raterId)) {
     return successResult({ canRate: false, reason: 'You have already rated this user for this contract' });
   }
 
@@ -487,9 +520,12 @@ export async function canUserRate(
  */
 export async function getReviewById(reviewId: string): Promise<ServiceResult<Review>> {
   try {
-    const doc = await databases.getDocument(DATABASE_ID, COLLECTIONS.REVIEWS, reviewId);
+    const doc = await reviewRepository.getById(reviewId);
+    if (!doc) {
+      return errorResult('NOT_FOUND', 'Review not found');
+    }
 
-    return successResult(mapReviewFromEntity(doc as unknown as ReviewEntity));
+    return successResult(mapReviewFromEntity(doc));
   } catch (error) {
     logger.error('Failed to get review by ID', { error, reviewId });
     return errorResult('NOT_FOUND', 'Review not found');
@@ -501,17 +537,9 @@ export async function getReviewById(reviewId: string): Promise<ServiceResult<Rev
  */
 export async function getUserReviews(userId: string): Promise<ServiceResult<Review[]>> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('reviewee_id', userId),
-        Query.orderDesc('created_at'),
-        Query.limit(1000),
-      ]
-    );
+    const reviews = await reviewRepository.findAllByRevieweeId(userId);
 
-    return successResult(response.documents.map((r) => mapReviewFromEntity(r as unknown as ReviewEntity)));
+    return successResult(reviews.map((r) => mapReviewFromEntity(r)));
   } catch (error) {
     logger.error('Failed to get user reviews', { error, userId });
     return errorResult('DATABASE_ERROR', 'Failed to fetch reviews');
@@ -523,17 +551,9 @@ export async function getUserReviews(userId: string): Promise<ServiceResult<Revi
  */
 export async function getProjectReviews(projectId: string): Promise<ServiceResult<Review[]>> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('project_id', projectId),
-        Query.orderDesc('created_at'),
-        Query.limit(1000),
-      ]
-    );
+    const reviews = await reviewRepository.findAllByProjectId(projectId);
 
-    return successResult(response.documents.map((r) => mapReviewFromEntity(r as unknown as ReviewEntity)));
+    return successResult(reviews.map((r) => mapReviewFromEntity(r)));
   } catch (error) {
     logger.error('Failed to get project reviews', { error, projectId });
     return errorResult('DATABASE_ERROR', 'Failed to fetch reviews');
@@ -548,12 +568,13 @@ function mapReviewFromEntity(entity: ReviewEntity): Review {
     reviewerId: entity.reviewer_id,
     revieweeId: entity.reviewee_id,
     rating: entity.rating,
-    comment: entity.comment,
+    // Appwrite stores missing comments as null; the API model has no null.
+    comment: entity.comment as unknown as string | undefined,
     reviewerRole: entity.reviewer_role,
-    workQuality: entity.work_quality,
-    communication: entity.communication,
-    professionalism: entity.professionalism,
-    wouldWorkAgain: entity.would_work_again,
+    workQuality: entity.work_quality as unknown as number | undefined,
+    communication: entity.communication as unknown as number | undefined,
+    professionalism: entity.professionalism as unknown as number | undefined,
+    wouldWorkAgain: entity.would_work_again as unknown as boolean | undefined,
     createdAt: entity.created_at,
     updatedAt: entity.updated_at,
   };

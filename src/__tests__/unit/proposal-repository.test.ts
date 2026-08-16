@@ -811,22 +811,16 @@ describe('Project Repository — parse & branch coverage', () => {
   it('should handle getProjectsByBudgetRange out of range', async () => {
     const { projectRepository } = await import('../../repositories/project-repository.js');
 
+    // The range filter is pushed to the DB: a non-matching doc would never be
+    // returned, so the repository maps whatever the database returns as-is.
     mockDatabases.listDocuments.mockResolvedValueOnce({
-      documents: [{
-        $id: 'p1',
-        title: 'Project 1',
-        status: 'open',
-        budget: 500,
-        required_skills: '[]',
-        milestones: '[]',
-        tags: '[]',
-        attachments: '[]',
-      }],
-      total: 1,
+      documents: [],
+      total: 0,
     });
 
     const result = await projectRepository.getProjectsByBudgetRange(1000, 10000);
     expect(result.items).toHaveLength(0);
+    expect(result.total).toBe(0);
   });
 });
 
@@ -1606,6 +1600,8 @@ describe('Analytics Service — branch coverage', () => {
         orderAsc: jest.fn((...args: any[]) => ({ type: 'orderAsc', args })),
         limit: jest.fn((...args: any[]) => ({ type: 'limit', args })),
         offset: jest.fn((...args: any[]) => ({ type: 'offset', args })),
+        contains: jest.fn((...args: any[]) => ({ type: 'contains', args })),
+        between: jest.fn((...args: any[]) => ({ type: 'between', args })),
       },
     }));
 

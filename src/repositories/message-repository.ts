@@ -180,6 +180,48 @@ export const messageRepository = {
     }
   },
 
+  async getUnreadMessageCountForUser(receiverId: string): Promise<number> {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      MESSAGES_COLLECTION,
+      [
+        Query.equal('receiver_id', receiverId),
+        Query.equal('is_read', false),
+        Query.limit(1),
+      ]
+    );
+    return response.total;
+  },
+
+  /**
+   * Unread message counts for many receivers in one query per 100-user chunk
+   * (Appwrite caps `equal` at 100 values). Counts are tallied in memory from
+   * the returned documents.
+   */
+  async getUnreadMessageCountsForUsers(receiverIds: string[]): Promise<Map<string, number>> {
+    const countsByReceiver = new Map<string, number>();
+
+    for (let i = 0; i < receiverIds.length; i += 100) {
+      const chunk = receiverIds.slice(i, i + 100);
+      const response = await databases.listDocuments(
+        DATABASE_ID,
+        MESSAGES_COLLECTION,
+        [
+          Query.equal('receiver_id', chunk),
+          Query.equal('is_read', false),
+          Query.limit(1000),
+        ]
+      );
+
+      for (const doc of response.documents) {
+        const receiverId = doc.receiver_id as string;
+        countsByReceiver.set(receiverId, (countsByReceiver.get(receiverId) ?? 0) + 1);
+      }
+    }
+
+    return countsByReceiver;
+  },
+
   async getUnreadCount(userId: string): Promise<number> {
     try {
       const response1 = await databases.listDocuments(

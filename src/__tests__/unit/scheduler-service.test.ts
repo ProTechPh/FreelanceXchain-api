@@ -109,32 +109,28 @@ describe('Scheduler Service', () => {
           documents: [{ $id: 'ep1', user_id: 'u1' }],
           total: 1,
         })
-        // projects
+        // projects snapshot (scanned once for the whole run)
         .mockResolvedValueOnce({
-          documents: [],
-          total: 0,
-        })
-        // messages
-        .mockResolvedValueOnce({ documents: [], total: 2 })
-        // contracts
-        .mockResolvedValueOnce({ documents: [], total: 0 })
-        // top projects
-        .mockResolvedValueOnce({
-          documents: [{ $id: 'proj1', title: 'Top Project', budget: 1000 }],
+          documents: [{ $id: 'proj1', title: 'Top Project', budget: 1000, status: 'open' }],
           total: 1,
-        });
-
-      // getDocument for user info
-      mockDatabases.getDocument.mockResolvedValueOnce({
-        $id: 'u1',
-        email: 'u1@test.com',
-        full_name: 'User 1',
-      });
+        })
+        // users batch
+        .mockResolvedValueOnce({
+          documents: [{ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' }],
+          total: 1,
+        })
+        // contracts batch
+        .mockResolvedValueOnce({ documents: [], total: 0 })
+        // messages batch
+        .mockResolvedValueOnce({ documents: [], total: 0 });
 
       if (callback) {
         callback();
         await new Promise(resolve => setTimeout(resolve, 10));
         expect(mockSendWeeklyDigestEmail).toHaveBeenCalled();
+        // One project scan + one batch query each for users/contracts/messages,
+        // no per-user getDocument reads.
+        expect(mockDatabases.getDocument).not.toHaveBeenCalled();
       }
     });
   });
@@ -372,20 +368,116 @@ describe('Scheduler Service - Uncovered Lines', () => {
     }
   });
 
-  // Line 76: sendWeeklyDigests continue when user fetch fails
-  it('should skip user when getDocument fails', async () => {
+  // Core batching behavior: one project scan shared by all recipients; per-user
+  // enrichment (users, contracts, unread counts) comes from batch queries.
+  it('should scan the projects collection once and batch per-user enrichment', async () => {
     const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
-    // email prefs with one user
-    mockDatabases.listDocuments.mockResolvedValueOnce({
-      documents: [{ $id: 'ep1', user_id: 'u1' }],
-      total: 1,
-    });
+    mockDatabases.listDocuments
+      // email prefs — two recipients
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'ep1', user_id: 'u1' },
+          { $id: 'ep2', user_id: 'u2' },
+        ],
+        total: 2,
+      })
+      // projects snapshot — scanned once for the whole run
+      .mockResolvedValueOnce({
+        documents: [
+          {
+            $id: 'proj1',
+            $createdAt: new Date().toISOString(),
+            title: 'Shared Project',
+            budget: 500,
+            status: 'open',
+            milestones: JSON.stringify([{ title: 'M1', status: 'pending' }]),
+          },
+          {
+            $id: 'proj2',
+            $createdAt: new Date(Date.now() - 3600000).toISOString(),
+            title: 'Older Open Project',
+            budget: 250,
+            status: 'open',
+          },
+          {
+            $id: 'proj3',
+            $createdAt: new Date().toISOString(),
+            title: 'Completed Project',
+            budget: 999,
+            status: 'completed',
+          },
+        ],
+        total: 3,
+      })
+      // users batch — both recipients in one query
+      .mockResolvedValueOnce({
+        documents: [
+          { $id: 'u1', email: 'u1@test.com', full_name: 'User 1' },
+          { $id: 'u2', email: 'u2@test.com', full_name: 'User 2' },
+        ],
+        total: 2,
+      })
+      // contracts batch — u1 has a contract on proj1, u2 has none
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'c1', project_id: 'proj1', freelancer_id: 'u1' }],
+        total: 1,
+      })
+      // messages batch — one unread for u2
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'm1', receiver_id: 'u2', is_read: false }],
+        total: 1,
+      });
 
-    // getDocument for user info throws
-    mockDatabases.getDocument.mockRejectedValueOnce(new Error('User not found'));
+    if (callback) {
+      callback();
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      // Projects collection hit exactly once (the snapshot), not once per user.
+      const projectsScanCalls = mockDatabases.listDocuments.mock.calls
+        .filter((call: any[]) => call[1] === 'projects');
+      expect(projectsScanCalls).toHaveLength(1);
+
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledTimes(2);
+      // top projects exclude the completed project and sort open ones by recency
+      const topProjectTitles = mockSendWeeklyDigestEmail.mock.calls[0][1].topProjects.map((p: any) => p.title);
+      expect(topProjectTitles).toEqual(['Shared Project', 'Older Open Project']);
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledWith('u1@test.com', expect.objectContaining({
+        newProjects: 3,
+        pendingMilestones: 1,
+        newMessages: 0,
+      }));
+      expect(mockSendWeeklyDigestEmail).toHaveBeenCalledWith('u2@test.com', expect.objectContaining({
+        newProjects: 3,
+        pendingMilestones: 0,
+        newMessages: 1,
+      }));
+      expect(mockDatabases.getDocument).not.toHaveBeenCalled();
+    }
+  });
+
+  // sendWeeklyDigests skips recipients whose user is missing from the batch fetch
+  it('should skip user when the user is not found in the batch fetch', async () => {
+    const { initializeScheduler } = await importScheduler();
+    initializeScheduler();
+    const callback = scheduledCallbacks.get('0 9 * * 1');
+
+    mockDatabases.listDocuments
+      // email prefs with one user
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'ep1', user_id: 'u1' }],
+        total: 1,
+      })
+      // projects snapshot
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // users batch — user not found
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // contracts batch
+      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // messages batch
+      .mockResolvedValueOnce({ documents: [], total: 0 });
 
     if (callback) {
       callback();
@@ -407,7 +499,7 @@ describe('Scheduler Service - Uncovered Lines', () => {
     mockDatabases.listDocuments
       // email prefs
       .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
-      // projects — mix of recent and old
+      // projects snapshot — mix of recent and old
       .mockResolvedValueOnce({
         documents: [
           { $id: 'p1', created_at: recentDate },
@@ -415,16 +507,12 @@ describe('Scheduler Service - Uncovered Lines', () => {
         ],
         total: 2,
       })
-      // messages
+      // users batch
+      .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' }], total: 1 })
+      // contracts batch
       .mockResolvedValueOnce({ documents: [], total: 0 })
-      // contracts
-      .mockResolvedValueOnce({ documents: [], total: 0 })
-      // top projects
+      // messages batch
       .mockResolvedValueOnce({ documents: [], total: 0 });
-
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'u1', email: 'u1@test.com', full_name: 'User 1',
-    });
 
     if (callback) {
       callback();
@@ -444,30 +532,27 @@ describe('Scheduler Service - Uncovered Lines', () => {
     mockDatabases.listDocuments
       // email prefs
       .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
-      // projects
-      .mockResolvedValueOnce({ documents: [], total: 0 })
-      // messages
-      .mockResolvedValueOnce({ documents: [], total: 0 })
-      // contracts
+      // projects snapshot — proj1 with milestones as JSON string
       .mockResolvedValueOnce({
-        documents: [{ $id: 'c1', project_id: 'proj1' }],
+        documents: [{
+          $id: 'proj1',
+          milestones: JSON.stringify([
+            { title: 'M1', status: 'pending' },
+            { title: 'M2', status: 'approved' },
+            { title: 'M3', status: 'pending' },
+          ]),
+        }],
         total: 1,
       })
-      // top projects
-      .mockResolvedValueOnce({ documents: [], total: 0 });
-
-    mockDatabases.getDocument
-      // user info
-      .mockResolvedValueOnce({ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' })
-      // project doc with milestones as JSON string
+      // users batch
+      .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' }], total: 1 })
+      // contracts batch
       .mockResolvedValueOnce({
-        $id: 'proj1',
-        milestones: JSON.stringify([
-          { title: 'M1', status: 'pending' },
-          { title: 'M2', status: 'approved' },
-          { title: 'M3', status: 'pending' },
-        ]),
-      });
+        documents: [{ $id: 'c1', project_id: 'proj1', freelancer_id: 'u1' }],
+        total: 1,
+      })
+      // messages batch
+      .mockResolvedValueOnce({ documents: [], total: 0 });
 
     if (callback) {
       callback();
@@ -478,23 +563,29 @@ describe('Scheduler Service - Uncovered Lines', () => {
     }
   });
 
-  // Lines 158-162: per-user error handler in sendWeeklyDigests
-  it('should log error when sending digest to individual user fails', async () => {
+  // Per-user error handler in sendWeeklyDigests (email delivery failure)
+  it('should log error when sending digest to an individual user fails', async () => {
     const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
 
     mockDatabases.listDocuments
-      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 });
+      .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      .mockResolvedValueOnce({ documents: [], total: 0 }) // projects snapshot
+      .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' }], total: 1 }) // users batch
+      .mockResolvedValueOnce({ documents: [], total: 0 }) // contracts batch
+      .mockResolvedValueOnce({ documents: [], total: 0 }); // messages batch
 
-    mockDatabases.getDocument.mockRejectedValueOnce(new Error('User fetch failed'));
+    mockSendWeeklyDigestEmail.mockRejectedValueOnce(new Error('Email send failed'));
 
     if (callback) {
       callback();
       await new Promise(resolve => setTimeout(resolve, 10));
-      // The continue in catch block prevents the error from propagating
-      // The per-user catch is at line 157-158
-      expect(mockSendWeeklyDigestEmail).not.toHaveBeenCalled();
+      // The per-user catch prevents the error from propagating
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Failed to send weekly digest to user:',
+        expect.any(Error)
+      );
     }
   });
 
@@ -659,20 +750,20 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
-      .mockResolvedValueOnce({ documents: [], total: 0 })
-      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // projects snapshot — proj1 with milestones as array
       .mockResolvedValueOnce({
-        documents: [{ $id: 'c1', project_id: 'proj1' }],
+        documents: [{ $id: 'proj1', milestones: [{ title: 'M1', status: 'pending' }] }],
         total: 1,
       })
-      .mockResolvedValueOnce({ documents: [], total: 0 });
-
-    mockDatabases.getDocument
-      .mockResolvedValueOnce({ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' })
+      // users batch
+      .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' }], total: 1 })
+      // contracts batch
       .mockResolvedValueOnce({
-        $id: 'proj1',
-        milestones: [{ title: 'M1', status: 'pending' }], // Array, not string
-      });
+        documents: [{ $id: 'c1', project_id: 'proj1', freelancer_id: 'u1' }],
+        total: 1,
+      })
+      // messages batch
+      .mockResolvedValueOnce({ documents: [], total: 0 });
 
     if (callback) {
       callback();
@@ -691,17 +782,17 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
-      .mockResolvedValueOnce({ documents: [], total: 0 })
-      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // projects snapshot — no milestones field
+      .mockResolvedValueOnce({ documents: [{ $id: 'proj1' }], total: 1 })
+      // users batch
+      .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' }], total: 1 })
+      // contracts batch
       .mockResolvedValueOnce({
-        documents: [{ $id: 'c1', project_id: 'proj1' }],
+        documents: [{ $id: 'c1', project_id: 'proj1', freelancer_id: 'u1' }],
         total: 1,
       })
+      // messages batch
       .mockResolvedValueOnce({ documents: [], total: 0 });
-
-    mockDatabases.getDocument
-      .mockResolvedValueOnce({ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' })
-      .mockResolvedValueOnce({ $id: 'proj1' }); // No milestones field
 
     if (callback) {
       callback();
@@ -712,8 +803,8 @@ describe('Scheduler Service - Uncovered Lines', () => {
     }
   });
 
-  // Line 133: milestone count catch returns 0 when the project fetch fails
-  it('should count 0 pending milestones when the contract project fetch fails', async () => {
+  // Contracts whose project is missing from the snapshot contribute 0
+  it('should count 0 pending milestones for contracts whose project is missing from the snapshot', async () => {
     const { initializeScheduler } = await importScheduler();
     initializeScheduler();
     const callback = scheduledCallbacks.get('0 9 * * 1');
@@ -721,31 +812,23 @@ describe('Scheduler Service - Uncovered Lines', () => {
     mockDatabases.listDocuments
       // email prefs
       .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
-      // projects
-      .mockResolvedValueOnce({ documents: [], total: 0 })
-      // messages
-      .mockResolvedValueOnce({ documents: [], total: 0 })
-      // contracts — two contracts, one project fetch succeeds, one fails
+      // projects snapshot — proj1 present, 'missing' absent
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'proj1', milestones: JSON.stringify([{ title: 'M1', status: 'pending' }]) }],
+        total: 1,
+      })
+      // users batch
+      .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' }], total: 1 })
+      // contracts batch — two contracts, one project in the snapshot, one not
       .mockResolvedValueOnce({
         documents: [
-          { $id: 'c1', project_id: 'proj1' },
-          { $id: 'c2', project_id: 'missing' },
+          { $id: 'c1', project_id: 'proj1', freelancer_id: 'u1' },
+          { $id: 'c2', project_id: 'missing', freelancer_id: 'u1' },
         ],
         total: 2,
       })
-      // top projects
+      // messages batch
       .mockResolvedValueOnce({ documents: [], total: 0 });
-
-    mockDatabases.getDocument
-      // user info
-      .mockResolvedValueOnce({ $id: 'u1', email: 'u1@test.com', full_name: 'User 1' })
-      // proj1 — one pending milestone
-      .mockResolvedValueOnce({
-        $id: 'proj1',
-        milestones: JSON.stringify([{ title: 'M1', status: 'pending' }]),
-      })
-      // missing project — throws, contributes 0
-      .mockRejectedValueOnce(new Error('Project not found'));
 
     if (callback) {
       callback();
@@ -790,14 +873,17 @@ describe('Scheduler Service - Uncovered Lines', () => {
 
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      // projects snapshot
       .mockResolvedValueOnce({ documents: [], total: 0 })
+      // users batch — full_name missing, name present
+      .mockResolvedValueOnce({
+        documents: [{ $id: 'u1', email: 'u1@test.com', name: 'Fallback Name' }],
+        total: 1,
+      })
+      // contracts batch
       .mockResolvedValueOnce({ documents: [], total: 0 })
-      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // messages batch
       .mockResolvedValueOnce({ documents: [], total: 0 });
-
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'u1', email: 'u1@test.com', name: 'Fallback Name',
-    });
 
     if (callback) {
       callback();
@@ -937,15 +1023,14 @@ describe('Scheduler Service - Integration Coverage', () => {
 
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [{ $id: 'ep1', user_id: 'u1' }], total: 1 })
+      // projects snapshot
       .mockResolvedValueOnce({ documents: [], total: 0 })
+      // users batch — neither full_name nor name
+      .mockResolvedValueOnce({ documents: [{ $id: 'u1', email: 'u1@test.com' }], total: 1 })
+      // contracts batch
       .mockResolvedValueOnce({ documents: [], total: 0 })
-      .mockResolvedValueOnce({ documents: [], total: 0 })
+      // messages batch
       .mockResolvedValueOnce({ documents: [], total: 0 });
-
-    // User with neither full_name nor name
-    mockDatabases.getDocument.mockResolvedValueOnce({
-      $id: 'u1', email: 'u1@test.com',
-    });
 
     if (callback) {
       callback();

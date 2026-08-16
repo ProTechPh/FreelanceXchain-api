@@ -141,10 +141,10 @@ describe('Email Preference Routes', () => {
       expect(res.body.error.code).toBe('AUTH_UNAUTHORIZED');
     });
 
-    it('should return 400 when service returns failure', async () => {
+    it('should return 400 with INVALID_PREFERENCES for unknown keys', async () => {
       mockUpdateEmailPreferences.mockResolvedValue({
         success: false,
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid preference key' },
+        error: { code: 'INVALID_PREFERENCES', message: 'Unknown preference fields: invalidKey' },
       });
 
       const res = await request(app)
@@ -152,7 +152,7 @@ describe('Email Preference Routes', () => {
         .send({ invalidKey: true });
 
       expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.code).toBe('INVALID_PREFERENCES');
     });
   });
 

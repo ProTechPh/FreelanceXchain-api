@@ -42,21 +42,43 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
   }));
 
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-  isValidUUID: jest.fn(() => true),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  // Run the real validation middleware; only the UUID helpers are mocked so
+  // non-UUID test ids pass.
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    isValidUUID: jest.fn(() => true),
+  };
+});
+
+// Multipart form fields for the mocked upload middleware to read. The route
+// module captures this mock at import time, so the fields must live at module
+// scope (a per-test re-registration never reaches the captured mock).
+let formFields: Record<string, string> = {};
 
 jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
-  uploadProposalAttachments: [(_req: any, _res: any, next: any) => next()],
+  // Only the multipart branch runs this middleware. Supertest's .field() calls
+  // set a multipart Content-Type but don't populate req.body — the real multer
+  // middleware parses the body. Mirror that: copy the test-provided form fields
+  // (which arrive as strings) and move the uploaded file into req.files.
+  uploadProposalAttachments: [
+    (req: any, _res: any, next: any) => {
+      req.body = { ...formFields };
+      req.files = [{ originalname: 'proposal.pdf' }];
+      next();
+    },
+  ],
 }));
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'test-request-id',
 }));
 
+const mockUploadMultipleFiles = jest.fn<any>();
 jest.unstable_mockModule(resolveModule('src/utils/storage-uploader.ts'), () => ({
-  uploadMultipleFiles: jest.fn(),
+  uploadMultipleFiles: mockUploadMultipleFiles,
   cleanupUploadedFiles: jest.fn(),
 }));
 
@@ -121,6 +143,41 @@ describe('Proposal Routes', () => {
           estimatedDuration: 30,
         });
       expect(res.status).toBe(409);
+    });
+
+    describe('POST / multipart form-data', () => {
+      it('submits with string fields coerced to numbers', async () => {
+        formFields = {
+          projectId: '550e8400-e29b-41d4-a716-446655440000',
+          proposedRate: '50',
+          estimatedDuration: '30',
+        };
+        mockUploadMultipleFiles.mockResolvedValue([{ success: true, metadata: { id: 'f1', name: 'proposal.pdf' } }]);
+        mockSubmitProposal.mockResolvedValue({ success: true, data: { proposal: { id: 'prop-1', status: 'pending' } } });
+        const res = await request(app)
+          .post('/api/proposals')
+          .field('projectId', formFields.projectId)
+          .field('proposedRate', formFields.proposedRate)
+          .field('estimatedDuration', formFields.estimatedDuration);
+        expect(res.status).toBe(201);
+        expect(mockSubmitProposal).toHaveBeenCalledWith('user-1', expect.objectContaining({ proposedRate: 50, estimatedDuration: 30 }));
+      });
+
+      it('rejects a non-numeric proposedRate with 400', async () => {
+        formFields = {
+          projectId: '550e8400-e29b-41d4-a716-446655440000',
+          proposedRate: 'abc',
+          estimatedDuration: '30',
+        };
+        const res = await request(app)
+          .post('/api/proposals')
+          .field('projectId', formFields.projectId)
+          .field('proposedRate', formFields.proposedRate)
+          .field('estimatedDuration', formFields.estimatedDuration);
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+        expect(mockSubmitProposal).not.toHaveBeenCalled();
+      });
     });
   });
 

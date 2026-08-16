@@ -150,18 +150,18 @@ router.post(
 
       /* istanbul ignore next */
   if (!userId) {
-        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
         return;
       }
 
       if (!contractId) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId query parameter is required', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId query parameter is required', { requestId: getRequestId(req) });
         return;
       }
 
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!UUID_RE.test(contractId)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', { requestId: getRequestId(req) });
         return;
       }
 
@@ -174,7 +174,7 @@ router.post(
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                           result.error.code === 'UNAUTHORIZED' ? 403 : 400;
-        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 
@@ -238,18 +238,18 @@ router.post(
 
       /* istanbul ignore next */
   if (!userId) {
-        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
         return;
       }
 
       if (!contractId) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId query parameter is required', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId query parameter is required', { requestId: getRequestId(req) });
         return;
       }
 
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!UUID_RE.test(contractId)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', { requestId: getRequestId(req) });
         return;
       }
 
@@ -262,7 +262,7 @@ router.post(
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                           result.error.code === 'UNAUTHORIZED' ? 403 : 400;
-        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 
@@ -333,23 +333,23 @@ router.post(
 
       /* istanbul ignore next */
   if (!userId) {
-        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
         return;
       }
 
       if (!contractId) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId query parameter is required', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId query parameter is required', { requestId: getRequestId(req) });
         return;
       }
 
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!UUID_RE.test(contractId)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', { requestId: getRequestId(req) });
         return;
       }
 
       if (!reason || typeof reason !== 'string') {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'reason is required in request body', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'reason is required in request body', { requestId: getRequestId(req) });
         return;
       }
 
@@ -363,7 +363,7 @@ router.post(
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                           result.error.code === 'UNAUTHORIZED' ? 403 : 400;
-        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 
@@ -422,7 +422,7 @@ router.get(
 
       /* istanbul ignore next */
   if (!userId) {
-        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
         return;
       }
 
@@ -431,7 +431,7 @@ router.get(
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                           result.error.code === 'UNAUTHORIZED' ? 403 : 400;
-        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 

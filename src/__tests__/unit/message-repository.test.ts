@@ -234,6 +234,30 @@ describe('MessageRepository', () => {
       expect(result).toBe(0);
     });
   });
+
+  describe('getUnreadMessageCountsForUsers', () => {
+    it('should count unread messages per receiver in one query', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'm1', receiver_id: 'u1', is_read: false },
+          { $id: 'm2', receiver_id: 'u1', is_read: false },
+          { $id: 'm3', receiver_id: 'u2', is_read: false },
+        ],
+        total: 3,
+      });
+
+      const result = await messageRepository.getUnreadMessageCountsForUsers(['u1', 'u2']);
+      expect(result.get('u1')).toBe(2);
+      expect(result.get('u2')).toBe(1);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    });
+
+    it('should return an empty map when no receiver ids are given', async () => {
+      const result = await messageRepository.getUnreadMessageCountsForUsers([]);
+      expect(result.size).toBe(0);
+      expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+    });
+  });
 });
 
 

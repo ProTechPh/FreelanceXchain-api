@@ -1,6 +1,11 @@
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import multer from 'multer';
 import { fileTypeFromBuffer } from 'file-type';
+import {
+  createProjectWithAttachmentsSchema,
+  submitProposalMultipartSchema,
+} from './validation-middleware.js';
+import type { RequestSchema, SchemaFiles } from './validation-middleware.js';
 import { logger } from '../config/logger.js';
 import { getRequestId, sendErrorResponse } from '../utils/response-helpers.js';
 
@@ -83,7 +88,7 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
 
     // Use file-type for magic number detection
     const detectedType = await fileTypeFromBuffer(buffer);
-    
+
     if (!detectedType) {
       // If no magic number detected, might be a text file or unsupported format
       return { valid: false, error: 'Could not detect file type' };
@@ -91,10 +96,10 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
 
     // Check if detected MIME type is allowed
     if (!(detectedType.mime in ALLOWED_MIME_TYPES)) {
-      return { 
-        valid: false, 
+      return {
+        valid: false,
         detectedType: detectedType.mime,
-        error: `File type ${detectedType.mime} is not allowed` 
+        error: `File type ${detectedType.mime} is not allowed`
       };
     }
 
@@ -113,7 +118,7 @@ const fileFilter: multer.Options['fileFilter'] = (req, file, cb) => {
     (error as Error & { code?: string }).code = 'INVALID_FILE_TYPE';
     return cb(error);
   }
-  
+
   cb(null, true);
 };
 
@@ -125,6 +130,174 @@ const upload = multer({
     files: MAX_FILE_COUNT,
   },
 });
+
+/**
+ * Middleware that runs multer and translates upload errors into HTTP responses.
+ */
+function handleMulterUpload(fieldName: string, maxFiles: number): RequestHandler {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    upload.array(fieldName, maxFiles)(req, res, (err: unknown) => {
+      if (!err) return next();
+
+      // Multer and our fileFilter attach a `code` to the error (Error | MulterError).
+      const uploadError = err as { code?: string; message: string };
+      if (uploadError.code === 'LIMIT_FILE_SIZE') {
+        sendErrorResponse(res, 400, 'FILE_TOO_LARGE', `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`, { requestId: getRequestId(req) });
+        return;
+      }
+
+      if (uploadError.code === 'LIMIT_FILE_COUNT') {
+        sendErrorResponse(res, 400, 'TOO_MANY_FILES', `Maximum ${maxFiles} files allowed`, { requestId: getRequestId(req) });
+        return;
+      }
+
+      if (uploadError.code === 'INVALID_FILE_TYPE') {
+        sendErrorResponse(res, 400, 'INVALID_FILE_TYPE', uploadError.message, { requestId: getRequestId(req) });
+        return;
+      }
+
+      next(err);
+    });
+  };
+}
+
+type UploadValidationOptions = {
+  minFiles: number;
+  maxFiles: number;
+  validateMagicNumbers: boolean;
+};
+
+/**
+ * Respond with a "no files" error when the minimum file count requires files.
+ * Returns true when a response was sent (caller should stop).
+ */
+function rejectMissingFiles(req: Request, res: Response, minFiles: number): boolean {
+  if (minFiles <= 0) return false;
+  sendErrorResponse(res, 400, 'NO_FILES_UPLOADED', `At least ${minFiles} file(s) required`, { requestId: getRequestId(req) });
+  return true;
+}
+
+/**
+ * Validate one file's MIME type (magic numbers) and run the antivirus scan.
+ * Responds with an error and returns false when the file is rejected.
+ */
+async function validateAndScanFile(
+  req: Request,
+  res: Response,
+  file: Express.Multer.File,
+): Promise<boolean> {
+  const validation = await validateFileMimeType(file.buffer, file.originalname);
+
+  if (!validation.valid) {
+    logger.warn('File upload rejected - invalid MIME type', {
+      filename: file.originalname,
+      detectedType: validation.detectedType,
+      error: validation.error,
+    });
+
+    sendErrorResponse(res, 400, 'INVALID_FILE_TYPE', validation.error || 'Invalid file type detected', {
+      requestId: getRequestId(req),
+      details: {
+        filename: file.originalname,
+        detectedType: validation.detectedType,
+      },
+    });
+    return false;
+  }
+
+  // Store detected MIME type for later use
+  (file as Express.Multer.File & { detectedMimeType?: string | undefined }).detectedMimeType = validation.detectedType;
+
+  const scanResult = await scanFileForViruses(file.buffer, file.originalname);
+  if (!scanResult.clean) {
+    logger.warn('File upload rejected - malware/threat detected', {
+      filename: file.originalname,
+      threat: scanResult.threat,
+    });
+
+    sendErrorResponse(res, 400, 'MALICIOUS_FILE_DETECTED', 'File failed antivirus security scan', {
+      requestId: getRequestId(req),
+      details: {
+        filename: file.originalname,
+        threat: scanResult.threat,
+      },
+    });
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Validate and scan the uploaded files: count, total size, magic numbers,
+ * and antivirus signature scan. Sanitizes filenames on success.
+ */
+async function validateUploadedFiles(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+  options: UploadValidationOptions,
+): Promise<void> {
+  const { minFiles, maxFiles, validateMagicNumbers } = options;
+
+  try {
+    // Type guard: ensure files is an array, not a dictionary or other type
+    const files = req.files;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      if (rejectMissingFiles(req, res, minFiles)) return;
+      // minFiles === 0: files are optional, proceed
+      next();
+      return;
+    }
+
+    if (files.length < minFiles) {
+      sendErrorResponse(res, 400, 'INSUFFICIENT_FILES', `At least ${minFiles} file(s) required, received ${String(files.length)}`, { requestId: getRequestId(req) });
+      return;
+    }
+
+    if (files.length > maxFiles) {
+      sendErrorResponse(res, 400, 'TOO_MANY_FILES', `Maximum ${maxFiles} file(s) allowed, received ${String(files.length)}`, { requestId: getRequestId(req) });
+      return;
+    }
+
+    // Calculate total size
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    if (totalSize > MAX_TOTAL_SIZE) {
+      sendErrorResponse(res, 400, 'TOTAL_SIZE_EXCEEDED', `Total file size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`, { requestId: getRequestId(req) });
+      return;
+    }
+
+    // Validate each file using magic numbers
+    if (validateMagicNumbers) {
+      for (const file of files) {
+        const accepted = await validateAndScanFile(req, res, file);
+        if (!accepted) return;
+      }
+    }
+
+    // Sanitize filenames
+    files.forEach(file => {
+      file.originalname = sanitizeFilename(file.originalname);
+    });
+
+    // Log successful upload
+    logger.info('Files uploaded successfully', {
+      count: Number(files.length),
+      totalSize,
+      filenames: files.map(f => f.originalname),
+    });
+
+    next();
+  } catch (error) {
+    // Log unexpected errors
+    const message = error instanceof Error ? error.message : String(error);
+    const stack = error instanceof Error ? error.stack : undefined;
+    logger.error('File upload error', { error: message, stack });
+
+    sendErrorResponse(res, 500, 'FILE_UPLOAD_ERROR', 'An error occurred during file upload', { requestId: getRequestId(req) });
+  }
+}
 
 export function createFileUploadMiddleware(
   fieldName: string = 'files',
@@ -141,169 +314,46 @@ export function createFileUploadMiddleware(
   } = options;
 
   return [
-    (req: Request, res: Response, next: NextFunction): void => {
-      upload.array(fieldName, maxFiles)(req, res, (err: unknown) => {
-        if (!err) return next();
-
-        // Multer and our fileFilter attach a `code` to the error (Error | MulterError).
-        const uploadError = err as { code?: string; message: string };
-        if (uploadError.code === 'LIMIT_FILE_SIZE') {
-          sendErrorResponse(res, 400, 'FILE_TOO_LARGE', `File size exceeds ${MAX_FILE_SIZE / (1024 * 1024)}MB limit`, getRequestId(req));
-          return;
-        }
-
-        if (uploadError.code === 'LIMIT_FILE_COUNT') {
-          sendErrorResponse(res, 400, 'TOO_MANY_FILES', `Maximum ${maxFiles} files allowed`, getRequestId(req));
-          return;
-        }
-
-        if (uploadError.code === 'INVALID_FILE_TYPE') {
-          sendErrorResponse(res, 400, 'INVALID_FILE_TYPE', uploadError.message, getRequestId(req));
-          return;
-        }
-
-        next(err);
-      });
-    },
-
-    async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-      try {
-        // Sanitize and validate the type of req.files
-        const files = req.files;
-
-        // Type guard: ensure files is an array, not a dictionary or other type
-        if (!files || !Array.isArray(files)) {
-          if (minFiles > 0) {
-            sendErrorResponse(res, 400, 'NO_FILES_UPLOADED', `At least ${minFiles} file(s) required`, getRequestId(req));
-            return;
-          }
-          // minFiles === 0: files are optional, proceed
-          next();
-          return;
-        }
-
-        // Check if files were uploaded
-        if (files.length === 0) {
-          if (minFiles > 0) {
-            sendErrorResponse(res, 400, 'NO_FILES_UPLOADED', `At least ${minFiles} file(s) required`, getRequestId(req));
-            return;
-          }
-          // minFiles === 0: no files is fine
-          next();
-          return;
-        }
-
-        // Check minimum file count
-        if (files.length < minFiles) {
-          sendErrorResponse(res, 400, 'INSUFFICIENT_FILES', `At least ${minFiles} file(s) required, received ${String(files.length)}`, getRequestId(req));
-          return;
-        }
-
-        // Check maximum file count
-        if (files.length > maxFiles) {
-          sendErrorResponse(res, 400, 'TOO_MANY_FILES', `Maximum ${maxFiles} file(s) allowed, received ${String(files.length)}`, getRequestId(req));
-          return;
-        }
-
-        // Calculate total size
-        const totalSize = files.reduce((sum, file) => sum + file.size, 0);
-        if (totalSize > MAX_TOTAL_SIZE) {
-          sendErrorResponse(res, 400, 'TOTAL_SIZE_EXCEEDED', `Total file size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`, getRequestId(req));
-          return;
-        }
-
-        // Validate each file using magic numbers
-        if (validateMagicNumbers) {
-          for (const file of files) {
-            const validation = await validateFileMimeType(file.buffer, file.originalname);
-            
-            if (!validation.valid) {
-              logger.warn('File upload rejected - invalid MIME type', {
-                filename: file.originalname,
-                detectedType: validation.detectedType,
-                error: validation.error,
-              });
-              
-              sendErrorResponse(
-                res,
-                400,
-                'INVALID_FILE_TYPE',
-                validation.error || 'Invalid file type detected',
-                getRequestId(req),
-                {
-                  filename: file.originalname,
-                  detectedType: validation.detectedType,
-                }
-              );
-              return;
-            }
-
-            // Store detected MIME type for later use
-            (file as Express.Multer.File & { detectedMimeType?: string | undefined }).detectedMimeType = validation.detectedType;
-
-            const scanResult = await scanFileForViruses(file.buffer, file.originalname);
-            if (!scanResult.clean) {
-              logger.warn('File upload rejected - malware/threat detected', {
-                filename: file.originalname,
-                threat: scanResult.threat,
-              });
-
-              sendErrorResponse(
-                res,
-                400,
-                'MALICIOUS_FILE_DETECTED',
-                'File failed antivirus security scan',
-                getRequestId(req),
-                {
-                  filename: file.originalname,
-                  threat: scanResult.threat,
-                }
-              );
-              return;
-            }
-          }
-        }
-
-        // Sanitize filenames
-        files.forEach(file => {
-          file.originalname = sanitizeFilename(file.originalname);
-        });
-
-        // Log successful upload
-        logger.info('Files uploaded successfully', {
-          count: Number(files.length),
-          totalSize,
-          filenames: files.map(f => f.originalname),
-        });
-
-        next();
-      } catch (error) {
-        // Log unexpected errors
-        const message = error instanceof Error ? error.message : String(error);
-        const stack = error instanceof Error ? error.stack : undefined;
-        logger.error('File upload error', { error: message, stack });
-
-        sendErrorResponse(res, 500, 'FILE_UPLOAD_ERROR', 'An error occurred during file upload', getRequestId(req));
-      }
-    },
+    handleMulterUpload(fieldName, maxFiles),
+    (req: Request, res: Response, next: NextFunction): Promise<void> =>
+      validateUploadedFiles(req, res, next, { minFiles, maxFiles, validateMagicNumbers }),
   ];
 }
 
 /**
- * Middleware for proposal attachments (1-5 files)
+ * Read the file-upload limits from a multipart request schema's `files`
+ * metadata, keeping the upload middleware and the schema in lockstep: change
+ * `minItems`/`maxItems`/`fieldName` in the schema and both the spec and the
+ * runtime enforcement follow. Fails loudly at module load if the metadata is
+ * missing, rather than silently accepting an unconstrained upload.
  */
-export const uploadProposalAttachments = createFileUploadMiddleware('files', {
-  minFiles: 1,
-  maxFiles: 5,
+function fileLimitsFromSchema(schema: RequestSchema): SchemaFiles {
+  const files = schema.body?.files;
+  if (!files) {
+    throw new Error('Multipart request schema must declare `files` metadata');
+  }
+  return files;
+}
+
+const proposalFileLimits = fileLimitsFromSchema(submitProposalMultipartSchema);
+
+/**
+ * Middleware for proposal attachments (1-5 files per submitProposalMultipartSchema.files)
+ */
+export const uploadProposalAttachments = createFileUploadMiddleware(proposalFileLimits.fieldName, {
+  minFiles: proposalFileLimits.minItems,
+  maxFiles: proposalFileLimits.maxItems,
   validateMagicNumbers: true,
 });
 
+const projectFileLimits = fileLimitsFromSchema(createProjectWithAttachmentsSchema);
+
 /**
- * Middleware for project attachments (0-10 files, optional reference materials)
+ * Middleware for project attachments (0-10 files per createProjectWithAttachmentsSchema.files)
  */
-export const uploadProjectAttachments = createFileUploadMiddleware('files', {
-  minFiles: 0,
-  maxFiles: 10,
+export const uploadProjectAttachments = createFileUploadMiddleware(projectFileLimits.fieldName, {
+  minFiles: projectFileLimits.minItems,
+  maxFiles: projectFileLimits.maxItems,
   validateMagicNumbers: true,
 });
 

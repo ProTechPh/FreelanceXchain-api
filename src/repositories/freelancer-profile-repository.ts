@@ -214,6 +214,30 @@ export class FreelancerProfileRepository extends BaseRepository<FreelancerProfil
     const result = await this.queryPaginated(options, 'created_at', false);
     return { ...result, items: result.items.map(normalizeProfileEntity) };
   }
+
+  /**
+   * Filtered profile search for saved-search notifications.
+   * Only query-able primitive values are passed to Appwrite's Query.equal.
+   * Errors propagate to the caller.
+   */
+  async findByFilters(filters: Record<string, unknown>, limit: number): Promise<FreelancerProfileEntity[]> {
+    const queries: string[] = [Query.limit(limit)];
+    const ALLOWED_COLUMNS = new Set(['status', 'budget', 'category', 'title']);
+
+    for (const [key, value] of Object.entries(filters)) {
+      if (!ALLOWED_COLUMNS.has(key)) continue;
+      if (
+        value !== undefined &&
+        value !== null &&
+        (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean' || Array.isArray(value))
+      ) {
+        queries.push(Query.equal(key, value));
+      }
+    }
+
+    const response = await databases.listDocuments(DATABASE_ID, COLLECTION_ID, queries);
+    return response.documents.map(mapProfile);
+  }
 }
 
 export const freelancerProfileRepository = new FreelancerProfileRepository();

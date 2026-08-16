@@ -209,47 +209,46 @@ function cleanupProcessedEvents(): void {
   }
 }
 
+type WebhookProfileData = {
+  firstName: string | null;
+  lastName: string | null;
+  nationality: string | null;
+};
+
 /**
- * Process webhook from Didit
+ * Deduplicate webhook events — Didit uses at-least-once delivery.
+ * Returns an already-processed result when the event was seen before,
+ * or null when processing should continue.
+ *
+ * NOTE: processedWebhookEvents is per-process (single-instance safe). Multi-instance
+ * deployments should back this with a shared store (e.g. Redis). The status updates
+ * and autoCreateProfile below are themselves idempotent (overwrite / existence-check),
+ * so cross-instance re-delivery cannot corrupt KYC state, only re-emit notifications.
  */
-export async function processWebhook(payload: DiditWebhookPayload): Promise<ServiceResult<KycVerification>> {
-  // L4: Deduplicate webhook events — Didit uses at-least-once delivery. The event
-  // map is a per-process fast path; the per-session lock below makes the
-  // read-modify-write of status atomic within an instance, and the final-state
-  // guard makes cross-instance re-delivery safe (no regression out of a final
-  // state, so a stale duplicate cannot flip approved back to pending).
-  return withLock(`kyc-webhook:${payload.session_id}`, async () => {
-  if (payload.event_id && processedWebhookEvents.has(payload.event_id)) {
-    logger.info('Duplicate webhook event ignored', { eventId: payload.event_id, sessionId: payload.session_id });
-    // Return success since the event was already processed
-    const existingVerification = await getKycVerificationBySessionId(payload.session_id);
-    if (existingVerification) {
-      return successResult(existingVerification);
+async function handleDuplicateWebhookEvent(payload: DiditWebhookPayload): Promise<ServiceResult<KycVerification> | null> {
+  if (!payload.event_id) return null;
+
+  if (!processedWebhookEvents.has(payload.event_id)) {
+    processedWebhookEvents.set(payload.event_id, Date.now());
+    // Periodic cleanup
+    if (processedWebhookEvents.size > 1000) {
+      cleanupProcessedEvents();
     }
+    return null;
   }
 
-  const verification = await getKycVerificationBySessionId(payload.session_id);
-  if (!verification) {
-    return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found for session');
-  }
+  logger.info('Duplicate webhook event ignored', { eventId: payload.event_id, sessionId: payload.session_id });
+  // Return success since the event was already processed
+  const existingVerification = await getKycVerificationBySessionId(payload.session_id);
+  return existingVerification ? successResult(existingVerification) : null;
+}
 
+/**
+ * Map a Didit webhook payload to the verification updates it implies,
+ * also extracting the profile data needed when KYC is approved.
+ */
+function buildWebhookUpdates(payload: DiditWebhookPayload): { updates: Partial<KycVerification> } & WebhookProfileData {
   const status = mapDiditStatusToKycStatus(payload.status);
-
-  // L4.1: Never regress a final KYC state (approved/rejected/expired) via a stale
-  // or out-of-order webhook delivery — that would corrupt verification integrity.
-  const FINAL_KYC_STATES: KycStatus[] = ['approved', 'rejected', 'expired'];
-  if (FINAL_KYC_STATES.includes(verification.status)) {
-    if (verification.status === status) {
-      // Same final state re-delivered — idempotent no-op.
-      return successResult(verification);
-    }
-    logger.warn('KYC webhook ignored: refusing to regress final state', {
-      sessionId: payload.session_id,
-      currentStatus: verification.status,
-      incomingStatus: status,
-    });
-    return successResult(verification);
-  }
 
   const updates: Partial<KycVerification> = { status };
 
@@ -261,7 +260,7 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
   // Handle final statuses with decision data
   if (['Approved', 'Declined', 'In Review'].includes(payload.status)) {
     updates.completed_at = payload.timestamp ? new Date(payload.timestamp * 1000).toISOString() : new Date().toISOString();
-    
+
     // Map Didit status to our decision field
     if (payload.status === 'Approved') {
       updates.decision = 'approved';
@@ -282,7 +281,7 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
         firstName = idVerification.first_name ?? null;
         lastName = idVerification.last_name ?? null;
         nationality = idVerification.nationality ?? idVerification.issuing_state_name ?? null;
-        
+
         updates.first_name = firstName;
         updates.last_name = lastName;
         updates.date_of_birth = idVerification.date_of_birth ?? null;
@@ -317,6 +316,46 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
       }
     }
   }
+
+  return { updates, firstName, lastName, nationality };
+}
+
+/**
+ * Process webhook from Didit
+ */
+export async function processWebhook(payload: DiditWebhookPayload): Promise<ServiceResult<KycVerification>> {
+  // L4: Deduplicate webhook events — Didit uses at-least-once delivery. The event
+  // map is a per-process fast path; the per-session lock below makes the
+  // read-modify-write of status atomic within an instance, and the final-state
+  // guard makes cross-instance re-delivery safe (no regression out of a final
+  // state, so a stale duplicate cannot flip approved back to pending).
+  return withLock(`kyc-webhook:${payload.session_id}`, async () => {
+  const duplicateResult = await handleDuplicateWebhookEvent(payload);
+  if (duplicateResult) return duplicateResult;
+
+  const verification = await getKycVerificationBySessionId(payload.session_id);
+  if (!verification) {
+    return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found for session');
+  }
+
+  // L4.1: Never regress a final KYC state (approved/rejected/expired) via a stale
+  // or out-of-order webhook delivery — that would corrupt verification integrity.
+  const FINAL_KYC_STATES: KycStatus[] = ['approved', 'rejected', 'expired'];
+  if (FINAL_KYC_STATES.includes(verification.status)) {
+    const status = mapDiditStatusToKycStatus(payload.status);
+    if (verification.status === status) {
+      // Same final state re-delivered — idempotent no-op.
+      return successResult(verification);
+    }
+    logger.warn('KYC webhook ignored: refusing to regress final state', {
+      sessionId: payload.session_id,
+      currentStatus: verification.status,
+      incomingStatus: status,
+    });
+    return successResult(verification);
+  }
+
+  const { updates, firstName, lastName, nationality } = buildWebhookUpdates(payload);
 
   const updated = await updateKycVerification(verification.id, updates);
   if (!updated) {
@@ -669,17 +708,182 @@ function mapDiditStatusToKycStatus(diditStatus: string): KycStatus {
   }
 }
 
-/**
- * Manual KYC Verification - Admin uploads documents for a user
- */
-export async function manualKycVerification(params: {
+type ManualKycParams = {
   userId: string;
   adminUserId: string;
   idFrontImage: Buffer;
   idBackImage?: Buffer;
   selfieImage: Buffer;
-}): Promise<ServiceResult<KycVerification>> {
-  const { userId, adminUserId, idFrontImage, idBackImage, selfieImage } = params;
+};
+
+type ManualIdData = {
+  status: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  nationality?: string | null;
+  date_of_birth?: string | null;
+  document_number?: string | null;
+  document_type?: string | null;
+  issuing_state?: string | null;
+};
+
+type ManualKycChecks = {
+  idData: ManualIdData;
+  livenessScore: number | undefined;
+  faceMatchScore: number | undefined;
+};
+
+/**
+ * Run the ID document, liveness, and face-match checks against Didit.
+ * Returns the verified data or a ServiceResult error on the first failure.
+ */
+async function runManualKycChecks(params: ManualKycParams): Promise<
+  | { error: ServiceResult<KycVerification> }
+  | ManualKycChecks
+> {
+  const { userId, idFrontImage, idBackImage, selfieImage } = params;
+
+  // Step 1: Verify ID document
+  logger.info('Manual KYC: Verifying ID document', { userId });
+  const idResult = await verifyIdDocument(idFrontImage, idBackImage, userId);
+  if (!idResult.success) {
+    return { error: errorResult('ID_VERIFICATION_FAILED', 'ID verification failed') };
+  }
+
+  const idData = idResult.data.id_verification as ManualIdData;
+  if (idData.status !== 'Approved') {
+    return { error: errorResult('ID_DECLINED', 'ID document was declined by Didit') };
+  }
+
+  // Step 2: Check liveness
+  logger.info('Manual KYC: Checking liveness', { userId });
+  const livenessResult = await checkPassiveLiveness(selfieImage, userId);
+  if (!livenessResult.success) {
+    return { error: errorResult('LIVENESS_CHECK_FAILED', 'Liveness check failed') };
+  }
+
+  const livenessData = livenessResult.data.passive_liveness as { status: string; score?: number | null };
+  if (livenessData.status !== 'Approved') {
+    return { error: errorResult('LIVENESS_DECLINED', 'Liveness check declined - possible spoof detected') };
+  }
+
+  // Step 3: Face match (compare selfie with ID photo)
+  logger.info('Manual KYC: Matching faces', { userId });
+  const faceMatchResult = await matchFaces(selfieImage, idFrontImage, userId);
+  if (!faceMatchResult.success) {
+    return { error: errorResult('FACE_MATCH_FAILED', 'Face match failed') };
+  }
+
+  const faceMatchData = faceMatchResult.data.face_match as { status: string; score?: number | null };
+  if (faceMatchData.status !== 'Approved') {
+    return { error: errorResult('FACE_MISMATCH', 'Face does not match ID photo') };
+  }
+
+  return {
+    idData,
+    livenessScore: livenessData.score ?? undefined,
+    faceMatchScore: faceMatchData.score ?? undefined,
+  };
+}
+
+/**
+ * Run the optional AML screening when the ID provides a full name.
+ * Returns true when no AML hits were found (or screening was skipped).
+ */
+async function runManualKycAmlScreening(idData: ManualIdData, userId: string): Promise<boolean> {
+  if (!idData.first_name || !idData.last_name) return true;
+
+  logger.info('Manual KYC: Running AML screening', { userId });
+  const amlParams: {
+    full_name: string;
+    entity_type: 'person' | 'company';
+    date_of_birth?: string;
+    nationality?: string;
+    document_number?: string;
+    vendor_data?: string;
+  } = {
+    full_name: `${idData.first_name} ${idData.last_name}`,
+    entity_type: 'person',
+    vendor_data: userId,
+  };
+
+  if (idData.date_of_birth) amlParams.date_of_birth = idData.date_of_birth;
+  if (idData.nationality) amlParams.nationality = idData.nationality;
+  if (idData.document_number) amlParams.document_number = idData.document_number;
+
+  const amlResult = await screenAml(amlParams);
+
+  if (amlResult.success && amlResult.data.aml.status === 'Declined') {
+    logger.warn('Manual KYC: AML screening found hits', {
+      userId,
+      hits: amlResult.data.aml.total_hits
+    });
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Build the verification record for a successful manual KYC flow.
+ */
+function buildManualVerificationData(
+  params: ManualKycParams,
+  checks: ManualKycChecks,
+  amlClean: boolean,
+): Partial<KycVerification> {
+  const { userId, adminUserId } = params;
+  const { idData, livenessScore, faceMatchScore } = checks;
+
+  return {
+    user_id: userId,
+    status: amlClean ? 'approved' : 'completed', // Auto-approve if AML clean, otherwise needs review
+    didit_session_id: `manual-${generateId()}`,
+    didit_session_token: null,
+    didit_session_url: null,
+    didit_workflow_id: 'manual-verification',
+    decision: amlClean ? 'approved' : 'review',
+    document_type: idData.document_type || null,
+    document_number: idData.document_number || null,
+    issuing_country: idData.issuing_state || null,
+    first_name: idData.first_name || null,
+    last_name: idData.last_name || null,
+    date_of_birth: idData.date_of_birth || null,
+    nationality: idData.nationality || null,
+    document_verified: true,
+    liveness_passed: true,
+    liveness_confidence_score: livenessScore?.toString() || '100',
+    face_matched: true,
+    face_similarity_score: faceMatchScore?.toString() || '100',
+    reviewed_by: amlClean ? adminUserId : null,
+    reviewed_at: amlClean ? new Date().toISOString() : null,
+    admin_notes: amlClean ? 'Manual verification - all checks passed' : 'Manual verification - AML review required',
+    completed_at: new Date().toISOString(),
+    expires_at: amlClean ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : null, // 1 year
+  };
+}
+
+/**
+ * Create or update the KYC verification record.
+ */
+async function persistManualVerification(
+  existingVerification: KycVerification | null,
+  verificationData: Partial<KycVerification>,
+): Promise<KycVerification | null> {
+  if (existingVerification) {
+    return updateKycVerification(existingVerification.id, verificationData);
+  }
+  return createKycVerification({
+    ...verificationData,
+    id: generateId(),
+  } as Omit<KycVerification, 'created_at' | 'updated_at'>);
+}
+
+/**
+ * Manual KYC Verification - Admin uploads documents for a user
+ */
+export async function manualKycVerification(params: ManualKycParams): Promise<ServiceResult<KycVerification>> {
+  const { userId } = params;
 
   // BLF-12.3: serialize manual verifications per target user so two concurrent
   // admin submissions cannot both pass the ALREADY_VERIFIED gate, create duplicate
@@ -698,116 +902,14 @@ export async function manualKycVerification(params: {
         return errorResult('ALREADY_VERIFIED', 'User is already verified');
       }
 
-      // Step 1: Verify ID document
-      logger.info('Manual KYC: Verifying ID document', { userId });
-      const idResult = await verifyIdDocument(idFrontImage, idBackImage, userId);
+      const checks = await runManualKycChecks(params);
+      if ('error' in checks) return checks.error;
 
-      if (!idResult.success) {
-        return errorResult('ID_VERIFICATION_FAILED', 'ID verification failed');
-      }
+      const amlClean = await runManualKycAmlScreening(checks.idData, userId);
 
-      const idData = idResult.data.id_verification;
-      if (idData.status !== 'Approved') {
-        return errorResult('ID_DECLINED', 'ID document was declined by Didit');
-      }
+      const verificationData = buildManualVerificationData(params, checks, amlClean);
 
-      // Step 2: Check liveness
-      logger.info('Manual KYC: Checking liveness', { userId });
-      const livenessResult = await checkPassiveLiveness(selfieImage, userId);
-
-      if (!livenessResult.success) {
-        return errorResult('LIVENESS_CHECK_FAILED', 'Liveness check failed');
-      }
-
-      const livenessData = livenessResult.data.passive_liveness;
-      if (livenessData.status !== 'Approved') {
-        return errorResult('LIVENESS_DECLINED', 'Liveness check declined - possible spoof detected');
-      }
-
-      // Step 3: Face match (compare selfie with ID photo)
-      logger.info('Manual KYC: Matching faces', { userId });
-      const faceMatchResult = await matchFaces(selfieImage, idFrontImage, userId);
-
-      if (!faceMatchResult.success) {
-        return errorResult('FACE_MATCH_FAILED', 'Face match failed');
-      }
-
-      const faceMatchData = faceMatchResult.data.face_match;
-      if (faceMatchData.status !== 'Approved') {
-        return errorResult('FACE_MISMATCH', 'Face does not match ID photo');
-      }
-
-      // Step 4: Optional AML screening
-      let amlClean = true;
-      if (idData.first_name && idData.last_name) {
-        logger.info('Manual KYC: Running AML screening', { userId });
-        const amlParams: {
-          full_name: string;
-          entity_type: 'person' | 'company';
-          date_of_birth?: string;
-          nationality?: string;
-          document_number?: string;
-          vendor_data?: string;
-        } = {
-          full_name: `${idData.first_name} ${idData.last_name}`,
-          entity_type: 'person',
-          vendor_data: userId,
-        };
-
-        if (idData.date_of_birth) amlParams.date_of_birth = idData.date_of_birth;
-        if (idData.nationality) amlParams.nationality = idData.nationality;
-        if (idData.document_number) amlParams.document_number = idData.document_number;
-
-        const amlResult = await screenAml(amlParams);
-
-        if (amlResult.success && amlResult.data.aml.status === 'Declined') {
-          amlClean = false;
-          logger.warn('Manual KYC: AML screening found hits', {
-            userId,
-            hits: amlResult.data.aml.total_hits
-          });
-        }
-      }
-
-      // Create or update KYC verification record
-      const verificationData: Partial<KycVerification> = {
-        user_id: userId,
-        status: amlClean ? 'approved' : 'completed', // Auto-approve if AML clean, otherwise needs review
-        didit_session_id: `manual-${generateId()}`,
-        didit_session_token: null,
-        didit_session_url: null,
-        didit_workflow_id: 'manual-verification',
-        decision: amlClean ? 'approved' : 'review',
-        document_type: idData.document_type || null,
-        document_number: idData.document_number || null,
-        issuing_country: idData.issuing_state || null,
-        first_name: idData.first_name || null,
-        last_name: idData.last_name || null,
-        date_of_birth: idData.date_of_birth || null,
-        nationality: idData.nationality || null,
-        document_verified: true,
-        liveness_passed: true,
-        liveness_confidence_score: livenessData.score?.toString() || '100',
-        face_matched: true,
-        face_similarity_score: faceMatchData.score?.toString() || '100',
-        reviewed_by: amlClean ? adminUserId : null,
-        reviewed_at: amlClean ? new Date().toISOString() : null,
-        admin_notes: amlClean ? 'Manual verification - all checks passed' : 'Manual verification - AML review required',
-        completed_at: new Date().toISOString(),
-        expires_at: amlClean ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() : null, // 1 year
-      };
-
-      let verification: KycVerification | null;
-
-      if (existingVerification) {
-        verification = await updateKycVerification(existingVerification.id, verificationData);
-      } else {
-        verification = await createKycVerification({
-          ...verificationData,
-          id: generateId(),
-        } as Omit<KycVerification, 'created_at' | 'updated_at'>);
-      }
-
+      const verification = await persistManualVerification(existingVerification, verificationData);
       if (!verification) {
         /* istanbul ignore next */
         return errorResult('DATABASE_ERROR', 'Failed to save verification');
@@ -817,9 +919,9 @@ export async function manualKycVerification(params: {
       if (amlClean) {
         await syncKycNameToUserAndProfiles(
           userId,
-          idData.first_name || null,
-          idData.last_name || null,
-          idData.nationality || null
+          checks.idData.first_name || null,
+          checks.idData.last_name || null,
+          checks.idData.nationality || null
         );
 
         // Transactional email gated by the user's email preferences. Best-effort.
@@ -839,7 +941,7 @@ export async function manualKycVerification(params: {
       // verification, including whether AML screening passed or needs review.
       await persistAuditEntry({
         user_id: userId,
-        actor_id: adminUserId,
+        actor_id: params.adminUserId,
         action: 'kyc.manual_verified',
         resource_type: 'kyc_verification',
         resource_id: verification.id,

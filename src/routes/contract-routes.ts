@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID } from '../middleware/validation-middleware.js';
+import { validateUUID, validate, emptyBodySchema } from '../middleware/validation-middleware.js';
 import { apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
 import { clampLimit, clampOffset } from '../utils/index.js';
@@ -17,6 +17,7 @@ import {
 import { initializeContractEscrow } from '../services/payment-service.js';
 import { getProjectById } from '../services/project-service.js';
 import { getDisputesByContract } from '../services/dispute-service.js';
+import type { Contract } from '../utils/entity-mapper.js';
 
 const router = Router();
 
@@ -100,7 +101,7 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
   const offset = clampOffset(req.query['offset'] ? Number(req.query['offset']) : undefined);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -109,7 +110,7 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
   const result = await getUserContracts(userId, options);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -157,7 +158,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
   const result = await getContractById(id);
 
   if (!result.success) {
-    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 404, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -165,7 +166,7 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
   if (userId && contract.freelancerId !== userId && contract.employerId !== userId) {
     // Check if user is admin (admins can view all contracts)
     if (req.user?.role !== 'admin') {
-      sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', requestId);
+      sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', { requestId });
       return;
     }
   }
@@ -202,20 +203,58 @@ router.get('/:id', authMiddleware, apiRateLimiter, validateUUID(), asyncHandler(
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+type EnsureEscrowResult = { escrowAddress: string } | { error: { statusCode: number; code: string; message: string } };
+
+/**
+ * Deploy the escrow server-side for a contract that has none yet.
+ * H1: Only use server-side escrow deployment. Do NOT accept arbitrary escrow
+ * addresses from the frontend, as an attacker could submit a fake address to
+ * bypass fund verification.
+ */
+async function ensureContractEscrow(contract: Contract): Promise<EnsureEscrowResult> {
+  const projectResult = await getProjectById(contract.projectId);
+  if (!projectResult.success) {
+    return { error: { statusCode: 400, code: 'PROJECT_NOT_FOUND', message: 'Associated project not found' } };
+  }
+
+  const walletResult = await getContractWalletAddresses(contract.id);
+  if (!walletResult.success) {
+    return { error: { statusCode: 400, code: walletResult.error.code, message: walletResult.error.message } };
+  }
+
+  const { employerWallet, freelancerWallet } = walletResult.data;
+  const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
+  const project = mapProjectFromEntity(projectResult.data);
+
+  const escrowResult = await initializeContractEscrow(
+    contract,
+    project,
+    employerWallet,
+    freelancerWallet
+  );
+
+  if (!escrowResult.success) {
+    const statusCode = escrowResult.error?.code === 'AMOUNT_MISMATCH' ? 400 : 500;
+    return { error: { statusCode, code: 'ESCROW_FAILED', message: escrowResult.error?.message || 'Failed to initialize escrow' } };
+  }
+
+  return { escrowAddress: escrowResult.data.escrowAddress };
+}
+
+router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(emptyBodySchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   // Get contract
   const contractResult = await getContractById(contractId);
   if (!contractResult.success) {
-    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId });
     return;
   }
 
@@ -223,7 +262,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
 
   // Only employer can fund
   if (contract.employerId !== userId) {
-    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can fund the escrow', requestId);
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can fund the escrow', { requestId });
     return;
   }
 
@@ -238,46 +277,20 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
   }
 
   if (contract.status !== 'pending') {
-    sendErrorResponse(res, 400, 'INVALID_STATUS', `Contract is already '${contract.status}', cannot fund`, requestId);
+    sendErrorResponse(res, 400, 'INVALID_STATUS', `Contract is already '${contract.status}', cannot fund`, { requestId });
     return;
   }
 
-  // H1: Only use server-side escrow deployment. Do NOT accept arbitrary escrow addresses
-  // from the frontend, as an attacker could submit a fake address to bypass fund verification.
   let escrowAddress = contract.escrowAddress;
 
   if (!escrowAddress) {
     // No escrow yet — deploy server-side
-    const projectResult = await getProjectById(contract.projectId);
-    if (!projectResult.success) {
-      sendErrorResponse(res, 400, 'PROJECT_NOT_FOUND', 'Associated project not found', requestId);
+    const escrowResult = await ensureContractEscrow(contract);
+    if ('error' in escrowResult) {
+      sendErrorResponse(res, escrowResult.error.statusCode, escrowResult.error.code, escrowResult.error.message, { requestId });
       return;
     }
-
-    const walletResult = await getContractWalletAddresses(contractId);
-    if (!walletResult.success) {
-      sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, requestId);
-      return;
-    }
-
-    const { employerWallet, freelancerWallet } = walletResult.data;
-    const { mapProjectFromEntity } = await import('../utils/entity-mapper.js');
-    const project = mapProjectFromEntity(projectResult.data);
-
-    const escrowResult = await initializeContractEscrow(
-      contract,
-      project,
-      employerWallet,
-      freelancerWallet
-    );
-
-    if (!escrowResult.success) {
-      const statusCode = escrowResult.error?.code === 'AMOUNT_MISMATCH' ? 400 : 500;
-      sendErrorResponse(res, statusCode, 'ESCROW_FAILED', escrowResult.error?.message || 'Failed to initialize escrow', requestId);
-      return;
-    }
-
-    escrowAddress = escrowResult.data.escrowAddress;
+    escrowAddress = escrowResult.escrowAddress;
   }
 
   // Save escrow address on the contract record
@@ -286,7 +299,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
 
   // BLF-12.1: Pass userId and role to enforce authorization
   // Non-null assertions are safe here: authMiddleware guarantees req.user is populated,
-  // and the guard at line 223 already returned 401 if userId was missing.
+  // and the guard above already returned 401 if userId was missing.
   const statusResult = await updateContractStatus(contractId, 'active', req.user!.userId, req.user!.role);
   if (!statusResult.success) {
     if (statusResult.error.code === 'INVALID_STATUS_TRANSITION') {
@@ -301,7 +314,7 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
       }
     }
 
-    sendErrorResponse(res, 500, 'ACTIVATION_FAILED', 'Escrow funded but contract activation failed', requestId);
+    sendErrorResponse(res, 500, 'ACTIVATION_FAILED', 'Escrow funded but contract activation failed', { requestId });
     return;
   }
 
@@ -319,31 +332,31 @@ router.get('/:id/fund-info', authMiddleware, validateUUID(), asyncHandler(async 
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const contractResult = await getContractById(contractId);
   if (!contractResult.success) {
-    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId });
     return;
   }
 
   const contract = contractResult.data;
   if (contract.employerId !== userId) {
-    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can view fund info', requestId);
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'Only the employer can view fund info', { requestId });
     return;
   }
 
   const walletResult = await getContractWalletAddresses(contractId);
   if (!walletResult.success) {
-    sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, requestId);
+    sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, { requestId });
     return;
   }
 
   const projectResult = await getProjectById(contract.projectId);
   if (!projectResult.success) {
-    sendErrorResponse(res, 400, 'PROJECT_NOT_FOUND', 'Associated project not found', requestId);
+    sendErrorResponse(res, 400, 'PROJECT_NOT_FOUND', 'Associated project not found', { requestId });
     return;
   }
 
@@ -403,31 +416,31 @@ router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateU
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const contractResult = await getContractById(contractId);
   if (!contractResult.success) {
-    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId });
     return;
   }
 
   const contract = contractResult.data;
   if (contract.freelancerId !== userId && contract.employerId !== userId && req.user?.role !== 'admin') {
-    sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', requestId);
+    sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this contract', { requestId });
     return;
   }
 
   const { getBlockchainMode } = await import('../services/blockchain/factory.js');
   const { isWeb3Available } = await import('../services/web3-client.js');
   if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
-    sendErrorResponse(res, 422, 'ESCROW_WITHDRAW_UNAVAILABLE', 'Escrow withdrawals are only available in real blockchain mode', requestId);
+    sendErrorResponse(res, 422, 'ESCROW_WITHDRAW_UNAVAILABLE', 'Escrow withdrawals are only available in real blockchain mode', { requestId });
     return;
   }
 
   if (!contract.escrowAddress) {
-    sendErrorResponse(res, 400, 'ESCROW_NOT_FOUND', 'Contract has no escrow address', requestId);
+    sendErrorResponse(res, 400, 'ESCROW_NOT_FOUND', 'Contract has no escrow address', { requestId });
     return;
   }
 
@@ -440,12 +453,12 @@ router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateU
     const platformWallet = getWallet().address;
     const walletResult = await getContractWalletAddresses(contractId);
     if (!walletResult.success) {
-      sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, requestId);
+      sendErrorResponse(res, 400, walletResult.error.code, walletResult.error.message, { requestId });
       return;
     }
 
     if (!walletResult.data.freelancerWallet) {
-      sendErrorResponse(res, 400, 'WALLET_NOT_FOUND', 'Freelancer has no wallet address on file', requestId);
+      sendErrorResponse(res, 400, 'WALLET_NOT_FOUND', 'Freelancer has no wallet address on file', { requestId });
       return;
     }
 
@@ -466,7 +479,7 @@ router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateU
     });
   } catch (error) {
     logger.error('Error fetching pending escrow withdrawals', error);
-    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch pending escrow withdrawals', requestId);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch pending escrow withdrawals', { requestId });
   }
 }));
 
@@ -497,37 +510,37 @@ router.get('/:id/escrow/withdrawable', authMiddleware, apiRateLimiter, validateU
  *       422:
  *         description: Only available in real blockchain mode
  */
-router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(emptyBodySchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const contractResult = await getContractById(contractId);
   if (!contractResult.success) {
-    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', requestId);
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId });
     return;
   }
 
   const contract = contractResult.data;
   if (contract.employerId !== userId && req.user?.role !== 'admin') {
-    sendErrorResponse(res, 403, 'UNAUTHORIZED', 'Only the employer (or an admin) can trigger the platform withdrawal. Freelancers must claim their allocation from their own wallet.', requestId);
+    sendErrorResponse(res, 403, 'UNAUTHORIZED', 'Only the employer (or an admin) can trigger the platform withdrawal. Freelancers must claim their allocation from their own wallet.', { requestId });
     return;
   }
 
   const { getBlockchainMode } = await import('../services/blockchain/factory.js');
   const { isWeb3Available } = await import('../services/web3-client.js');
   if (getBlockchainMode() !== 'real' || !isWeb3Available()) {
-    sendErrorResponse(res, 422, 'ESCROW_WITHDRAW_UNAVAILABLE', 'Escrow withdrawals are only available in real blockchain mode', requestId);
+    sendErrorResponse(res, 422, 'ESCROW_WITHDRAW_UNAVAILABLE', 'Escrow withdrawals are only available in real blockchain mode', { requestId });
     return;
   }
 
   if (!contract.escrowAddress) {
-    sendErrorResponse(res, 400, 'ESCROW_NOT_FOUND', 'Contract has no escrow address', requestId);
+    sendErrorResponse(res, 400, 'ESCROW_NOT_FOUND', 'Contract has no escrow address', { requestId });
     return;
   }
 
@@ -540,7 +553,7 @@ router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateL
     }, requestId);
   } catch (error) {
     logger.error('Error withdrawing from escrow', error);
-    sendErrorResponse(res, 500, 'WITHDRAW_FAILED', 'Failed to withdraw from escrow', requestId);
+    sendErrorResponse(res, 500, 'WITHDRAW_FAILED', 'Failed to withdraw from escrow', { requestId });
   }
 }));
 
@@ -571,13 +584,13 @@ router.post('/:id/escrow/withdraw', authMiddleware, requireVerifiedKyc, apiRateL
  *       404:
  *         description: Contract not found
  */
-router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(emptyBodySchema), asyncHandler(async (req: Request, res: Response) => {
   const contractId = req.params['id'] ?? '';
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -587,7 +600,7 @@ router.post('/:id/cancel', authMiddleware, requireVerifiedKyc, apiRateLimiter, v
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404
       : result.error?.code === 'UNAUTHORIZED' ? 403
       : 400;
-    sendErrorResponse(res, statusCode, result.error?.code || 'CANCEL_FAILED', result.error?.message || 'Failed to cancel contract', requestId);
+    sendErrorResponse(res, statusCode, result.error?.code || 'CANCEL_FAILED', result.error?.message || 'Failed to cancel contract', { requestId });
     return;
   }
 
@@ -627,7 +640,7 @@ router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -637,14 +650,14 @@ router.get('/:contractId/disputes', authMiddleware, apiRateLimiter, validateUUID
     if (!result.success) {
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                         result.error.code === 'UNAUTHORIZED' ? 403 : 400;
-      sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
       return;
     }
 
     res.json(result.data);
   } catch (error) {
     logger.error('Error fetching contract disputes', error);
-    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch disputes', requestId);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Failed to fetch disputes', { requestId });
   }
 }));
 

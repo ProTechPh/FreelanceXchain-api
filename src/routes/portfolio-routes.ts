@@ -51,7 +51,7 @@ async function handleMultipartPortfolio(req: Request, res: Response) {
   } catch {
     if (res.headersSent) return;
     const requestId = getRequestId(req);
-    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An error occurred processing the upload', requestId);
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An error occurred processing the upload', { requestId });
   }
 }
 
@@ -62,11 +62,11 @@ async function processMultipartPortfolio(req: Request, res: Response) {
   const { title, description, projectUrl, skills, completedAt } = req.body;
 
   if (!userId) {
-    return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
   }
 
   if (!files || files.length === 0) {
-    return sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 image is required', requestId);
+    return sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 image is required', { requestId });
   }
 
   const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PORTFOLIO_IMAGES, userId);
@@ -77,7 +77,7 @@ async function processMultipartPortfolio(req: Request, res: Response) {
     if (successfulUploads.length > 0) {
       await cleanupUploadedFiles(successfulUploads.map(r => r.metadata!), STORAGE_BUCKETS.PORTFOLIO_IMAGES);
     }
-    return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', requestId);
+    return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId });
   }
 
   const images = uploadResults.map(r => r.metadata!);
@@ -94,7 +94,7 @@ async function processMultipartPortfolio(req: Request, res: Response) {
 
   if (!result.success) {
     await cleanupUploadedFiles(images, STORAGE_BUCKETS.PORTFOLIO_IMAGES);
-    return sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
   }
 
   return res.status(201).json(result.data);
@@ -106,7 +106,7 @@ async function handleJsonPortfolio(req: Request, res: Response) {
   const { title, description, projectUrl, images, skills, completedAt } = req.body;
 
   if (!userId) {
-    return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
   }
 
   const result = await createPortfolioItem(userId, {
@@ -119,7 +119,7 @@ async function handleJsonPortfolio(req: Request, res: Response) {
   });
 
   if (!result.success) {
-    return sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    return sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
   }
 
   return res.status(201).json(result.data);
@@ -132,7 +132,7 @@ router.get('/freelancer/:freelancerId', apiRateLimiter, validateUUID(['freelance
   const result = await getFreelancerPortfolio(freelancerId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -147,7 +147,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Requ
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -161,7 +161,7 @@ router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, 
   const updates = req.body;
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -169,7 +169,7 @@ router.patch('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter, 
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -182,7 +182,7 @@ router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter,
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -190,7 +190,7 @@ router.delete('/:id', authMiddleware, requireRole('freelancer'), apiRateLimiter,
 
   if (!result.success) {
     const statusCode = result.error?.code === 'NOT_FOUND' ? 404 : result.error?.code === 'UNAUTHORIZED' ? 403 : 400;
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 

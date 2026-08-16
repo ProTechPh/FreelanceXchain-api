@@ -61,6 +61,41 @@ describe('UserRepository', () => {
     });
   });
 
+  describe('getUsersByIds', () => {
+    it('should return an array of users by id', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [
+          { $id: 'u1', email: 'u1@test.com' },
+          { $id: 'u2', email: 'u2@test.com' },
+        ],
+        total: 2,
+      });
+
+      const result = await repo.getUsersByIds(['u1', 'u2']);
+      expect(result).toHaveLength(2);
+      expect(result[0].email).toBe('u1@test.com');
+      expect(result[1].email).toBe('u2@test.com');
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    });
+
+    it('should chunk ids into batches of 100 for Appwrite equal cap', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'u1', email: 'u1@test.com' }],
+        total: 1,
+      });
+
+      const ids = Array.from({ length: 150 }, (_, i) => `u${i}`);
+      await repo.getUsersByIds(ids);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return an empty array when no ids are given', async () => {
+      const result = await repo.getUsersByIds([]);
+      expect(result).toHaveLength(0);
+      expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+    });
+  });
+
   describe('getUserByEmail', () => {
     it('should return a user by email', async () => {
       const doc = { $id: 'u1', email: 'test@example.com', role: 'freelancer' };

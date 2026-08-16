@@ -51,10 +51,16 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
   }));
 
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-  isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  // Run the real validation middleware (schemas + validate); only the UUID
+  // helpers are mocked so non-UUID test ids pass through.
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
+  };
+});
 
 jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
   uploadProjectAttachments: [(_req: any, _res: any, next: any) => next()],
@@ -261,6 +267,27 @@ describe('Project Routes', () => {
         .post('/api/projects/p-1/milestones')
         .send({ milestones: [] });
       expect(res.status).toBe(400);
+    });
+
+    it('should return 400 when a milestone is missing a required field', async () => {
+      const res = await request(app)
+        .post('/api/projects/p-1/milestones')
+        .send({ milestones: [{ title: 'Phase 1', description: 'First phase', amount: 2500 }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'milestones[0].dueDate' })])
+      );
+    });
+
+    it('should return 400 when a milestone amount is not positive', async () => {
+      const res = await request(app)
+        .post('/api/projects/p-1/milestones')
+        .send({ milestones: [{ title: 'Phase 1', description: 'First phase', amount: 0, dueDate: '2025-06-01' }] });
+      expect(res.status).toBe(400);
+      expect(res.body.error.details).toEqual(
+        expect.arrayContaining([expect.objectContaining({ field: 'milestones[0].amount' })])
+      );
     });
   });
 
@@ -856,10 +883,14 @@ describe('project-routes - additional line coverage', () => {
         mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
       }));
 
-      jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-        isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
-      }));
+      jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+        const real = await import('../../middleware/validation-core.js');
+        return {
+          ...real,
+          validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+          isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
+        };
+      });
 
       jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts'), () => ({
         uploadProjectAttachments: (req: any, _res: any, next: any) => {
@@ -1117,6 +1148,21 @@ describe('project-routes - additional line coverage', () => {
       });
       expect(res.status).toBe(201);
       expect(mockCreateProjectWA).toHaveBeenCalledWith('user-1', expect.objectContaining({ isRush: true, rushFeePercentage: 15 }));
+    });
+
+    it('coerces string form fields (multipart) into typed values', async () => {
+      mockCreateProjectWA.mockResolvedValue({ success: true, data: { id: 'p-1' } });
+      const res = await request(app).post('/api/projects/with-attachments').send({
+        title: 'Valid Title Here',
+        description: 'A valid description that is long enough for the project',
+        requiredSkills: JSON.stringify([{ skillId: '00000000-0000-0000-0000-000000000001' }]),
+        budget: '100',
+        deadline: '2026-12-31',
+        isRush: 'true',
+        rushFeePercentage: '15',
+      });
+      expect(res.status).toBe(201);
+      expect(mockCreateProjectWA).toHaveBeenCalledWith('user-1', expect.objectContaining({ budget: 100, isRush: true, rushFeePercentage: 15 }));
     });
 
     it('creates project with files', async () => {

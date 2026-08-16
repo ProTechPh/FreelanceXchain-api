@@ -60,6 +60,8 @@ jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'
     next();
   }),
   isValidUUID: jest.fn().mockReturnValue(true),
+  validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  submitRatingSchema: {},
   isValidAppwriteDocumentId: jest.fn().mockReturnValue(true),
 }));
 

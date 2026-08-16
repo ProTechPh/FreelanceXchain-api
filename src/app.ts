@@ -20,6 +20,87 @@ import { config } from './config/env.js';
 import routes from './routes/index.js';
 import rootRoutes from './routes/root-routes.js';
 
+/**
+ * Enable CORS with a restricted origin allowlist.
+ */
+function configureCors(app: Express): void {
+  const allowedOrigins = getAllowedOrigins();
+  app.use(cors({
+    origin: (origin, callback) => {
+      // No Origin header = not a cross-origin browser request; skip CORS headers
+      // (non-browser clients like curl/mobile don't need them)
+      if (!origin) {
+        callback(null, false);
+        return;
+      }
+
+      if (validateCorsOrigin(origin, allowedOrigins)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'Cache-Control'],
+    credentials: true,
+  }));
+}
+
+/**
+ * Read the generated OpenAPI spec, failing loudly when it is missing.
+ */
+async function loadOpenApiSpec(): Promise<Record<string, unknown>> {
+  const openApiSpecPath = resolve(process.cwd(), 'openapi.json');
+  try {
+    const openApiSpecRaw = await readFile(openApiSpecPath, 'utf8');
+    return JSON.parse(openApiSpecRaw) as Record<string, unknown>;
+  } catch (error) {
+    throw new Error(
+      `Failed to load OpenAPI spec from ${openApiSpecPath}. Run "npm run openapi:generate" before enabling API docs.`,
+      { cause: error }
+    );
+  }
+}
+
+/**
+ * Mount the Swagger UI and JSON spec endpoints.
+ */
+function configureSwaggerDocs(app: Express, openApiSpec: Record<string, unknown>): void {
+  const configuredSwaggerSpec = {
+    ...openApiSpec,
+    servers: [
+      {
+        url: config.server.baseUrl,
+        description: 'Configured server',
+      },
+    ],
+  };
+
+  app.use('/api-docs',
+    (_req: Request, res: Response, next: NextFunction) => {
+      res.setHeader(
+        'Content-Security-Policy',
+        "default-src 'self';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline';img-src 'self' data: https:;font-src 'self' https:;connect-src 'self';object-src 'none';frame-src 'none';base-uri 'self';form-action 'self';frame-ancestors 'none'"
+      );
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      next();
+    },
+    swaggerUi.serve,
+    (req: Request, res: Response, next: NextFunction) => {
+      swaggerUi.setup(configuredSwaggerSpec, {
+        explorer: true,
+        customSiteTitle: 'Freelance Marketplace API',
+      })(req, res, next);
+    }
+  );
+
+  // Swagger JSON endpoint
+  app.get('/api-docs.json', (_req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(configuredSwaggerSpec);
+  });
+}
+
 export async function createApp(): Promise<Express> {
   const app = express();
 
@@ -52,26 +133,7 @@ export async function createApp(): Promise<Express> {
   app.use(cookieParser());
 
   // CORS middleware with restricted origins
-  const allowedOrigins = getAllowedOrigins();
-  app.use(cors({
-    origin: (origin, callback) => {
-      // No Origin header = not a cross-origin browser request; skip CORS headers
-      // (non-browser clients like curl/mobile don't need them)
-      if (!origin) {
-        callback(null, false);
-        return;
-      }
-
-      if (validateCorsOrigin(origin, allowedOrigins)) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID', 'X-CSRF-Token', 'Cache-Control'],
-    credentials: true,
-  }));
+  configureCors(app);
 
   // Request logging middleware
   app.use(requestLogger);
@@ -81,52 +143,8 @@ export async function createApp(): Promise<Express> {
 
   const apiDocsEnabled = config.server.enableApiDocs;
   if (apiDocsEnabled) {
-    const openApiSpecPath = resolve(process.cwd(), 'openapi.json');
-    let openApiSpec: Record<string, unknown>;
-
-    try {
-      const openApiSpecRaw = await readFile(openApiSpecPath, 'utf8');
-      openApiSpec = JSON.parse(openApiSpecRaw) as Record<string, unknown>;
-    } catch (error) {
-      throw new Error(
-        `Failed to load OpenAPI spec from ${openApiSpecPath}. The openapi.json file must exist before enabling API docs.`,
-        { cause: error }
-      );
-    }
-
-    const configuredSwaggerSpec = {
-      ...openApiSpec,
-      servers: [
-        {
-          url: config.server.baseUrl,
-          description: 'Configured server',
-        },
-      ],
-    };
-
-    app.use('/api-docs',
-      (_req: Request, res: Response, next: NextFunction) => {
-        res.setHeader(
-          'Content-Security-Policy',
-          "default-src 'self';script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net;script-src-attr 'unsafe-inline';style-src 'self' 'unsafe-inline';img-src 'self' data: https:;font-src 'self' https:;connect-src 'self';object-src 'none';frame-src 'none';base-uri 'self';form-action 'self';frame-ancestors 'none'"
-        );
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        next();
-      },
-      swaggerUi.serve,
-      (req: Request, res: Response, next: NextFunction) => {
-        swaggerUi.setup(configuredSwaggerSpec, {
-          explorer: true,
-          customSiteTitle: 'Freelance Marketplace API',
-        })(req, res, next);
-      }
-    );
-
-    // Swagger JSON endpoint
-    app.get('/api-docs.json', (_req, res) => {
-      res.setHeader('Content-Type', 'application/json');
-      res.send(configuredSwaggerSpec);
-    });
+    const openApiSpec = await loadOpenApiSpec();
+    configureSwaggerDocs(app, openApiSpec);
   }
 
   // Root routes (health check, robots.txt, sitemap.xml, reset-password redirect)
@@ -144,7 +162,7 @@ export async function createApp(): Promise<Express> {
   // Catch-all 404 handler — prevents Express finalhandler from overriding security headers
   app.use((req: Request, res: Response) => {
     res.setHeader('Cache-Control', 'no-store');
-    sendErrorResponse(res, 404, 'NOT_FOUND', 'Route not found', getRequestId(req));
+    sendErrorResponse(res, 404, 'NOT_FOUND', 'Route not found', { requestId: getRequestId(req) });
   });
 
   // Error handling middleware (must be last)

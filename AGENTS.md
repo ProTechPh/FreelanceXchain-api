@@ -21,6 +21,8 @@ Node.js/Express/TypeScript backend (ESM, `"type": "module"`) for a decentralized
 | Compile contracts | `pnpm run compile` |
 | Deploy (Ganache) | `pnpm run deploy:contracts:dev` |
 | Deploy (Polygon Amoy) | `pnpm run deploy:contracts:prod` |
+| OpenAPI spec (regenerate from base) | `pnpm run openapi:generate` |
+| OpenAPI spec (drift check, runs in CI) | `pnpm run openapi:check` |
 | Deploy local Hardhat | `pnpm run deploy:local` |
 
 Test invocations must always use `node --experimental-vm-modules` (it's in the npm script, but not in `jest` directly).

@@ -122,6 +122,100 @@ describe('ReviewRepository', () => {
     });
   });
 
+  describe('findAllByRevieweeId', () => {
+    it('returns all reviews for a reviewee, newest first', async () => {
+      const reviews = [
+        { $id: 'r1', reviewee_id: 'u1', rating: 5, created_at: '2025-01-02' },
+        { $id: 'r2', reviewee_id: 'u1', rating: 4, created_at: '2025-01-01' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 2 });
+      const result = await ReviewRepository.findAllByRevieweeId('u1');
+      expect(result).toHaveLength(2);
+      expect(result[0]!.id).toBe('r1');
+      expect(result[0]!.rating).toBe(5);
+    });
+
+    it('paginates past 100 reviews with cursorAfter (no silent 1000-doc cap)', async () => {
+      const pageOne = Array.from({ length: 100 }, (_, i) => ({
+        $id: `r${i}`, reviewee_id: 'u1', rating: 5,
+      }));
+      const pageTwo = [
+        { $id: 'r100', reviewee_id: 'u1', rating: 4 },
+        { $id: 'r101', reviewee_id: 'u1', rating: 3 },
+        { $id: 'r102', reviewee_id: 'u1', rating: 2 },
+      ];
+      mockDatabases.listDocuments
+        .mockResolvedValueOnce({ documents: pageOne, total: 103 })
+        .mockResolvedValueOnce({ documents: pageTwo, total: 103 });
+
+      const result = await ReviewRepository.findAllByRevieweeId('u1');
+      expect(result).toHaveLength(103);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(2);
+      expect(result[100]!.id).toBe('r100');
+      expect(result[102]!.rating).toBe(2);
+    });
+
+    it('returns empty array when no reviews exist', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await ReviewRepository.findAllByRevieweeId('u-nope');
+      expect(result).toEqual([]);
+    });
+
+    it('propagates errors', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB down'));
+      await expect(ReviewRepository.findAllByRevieweeId('u1')).rejects.toThrow('DB down');
+    });
+  });
+
+  describe('findAllByProjectId', () => {
+    it('returns all reviews for a project, newest first', async () => {
+      const reviews = [
+        { $id: 'r1', project_id: 'p1', rating: 5, created_at: '2025-01-02' },
+        { $id: 'r2', project_id: 'p1', rating: 4, created_at: '2025-01-01' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 2 });
+      const result = await ReviewRepository.findAllByProjectId('p1');
+      expect(result).toHaveLength(2);
+      expect(result[0]!.id).toBe('r1');
+      expect(result[1]!.rating).toBe(4);
+    });
+
+    it('returns empty array when no reviews exist', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await ReviewRepository.findAllByProjectId('p-nope');
+      expect(result).toEqual([]);
+    });
+
+    it('propagates errors', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB down'));
+      await expect(ReviewRepository.findAllByProjectId('p1')).rejects.toThrow('DB down');
+    });
+  });
+
+  describe('listAll', () => {
+    it('returns every review in the collection', async () => {
+      const reviews = [
+        { $id: 'r1', reviewee_id: 'u1', rating: 5 },
+        { $id: 'r2', reviewee_id: 'u2', rating: 4 },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: reviews, total: 2 });
+      const result = await ReviewRepository.listAll();
+      expect(result).toHaveLength(2);
+      expect(result[0]!.id).toBe('r1');
+    });
+
+    it('returns empty array when the collection is empty', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+      const result = await ReviewRepository.listAll();
+      expect(result).toEqual([]);
+    });
+
+    it('propagates errors', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB down'));
+      await expect(ReviewRepository.listAll()).rejects.toThrow('DB down');
+    });
+  });
+
   describe('getAllReviews', () => {
     it('returns all reviews', async () => {
       const reviews = [

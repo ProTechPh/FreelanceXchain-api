@@ -4,7 +4,12 @@ import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
 import { sendWeeklyDigestEmail } from './email-delivery-service.js';
 import { filterProjectsBySavedSearch, filterFreelancersBySavedSearch } from './saved-search-service.js';
-import type { ProjectEntity } from '../repositories/project-repository.js';
+import { projectRepository, type ProjectEntity, type ProjectStatus } from '../repositories/project-repository.js';
+import { contractRepository, type ContractEntity } from '../repositories/contract-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
+import { messageRepository } from '../repositories/message-repository.js';
+import { notificationRepository } from '../repositories/notification-repository.js';
+import { emailPreferenceRepository } from '../repositories/email-preference-repository.js';
 import type { FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { fromAppwriteDoc } from '../repositories/base-repository.js';
 import { parseField } from '../utils/index.js';
@@ -14,33 +19,19 @@ import { parseField } from '../utils/index.js';
  */
 async function autoCloseExpiredProjects(): Promise<void> {
   try {
-    // Fetch open projects and filter by deadline in memory
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.PROJECTS,
-      [
-        Query.equal('status', 'open'),
-        Query.limit(1000),
-      ]
-    );
+    const openProjects = await projectRepository.listOpenProjects(1000);
 
     const now = new Date();
-    const expiredProjects = response.documents.filter(
+    const expiredProjects = openProjects.filter(
       p => p.deadline && new Date(p.deadline) < now
     );
 
     if (expiredProjects.length > 0) {
       await Promise.all(
         expiredProjects.map((project) =>
-          databases.updateDocument(
-            DATABASE_ID,
-            COLLECTIONS.PROJECTS,
-            project.$id,
-            {
-              status: 'closed',
-              updated_at: new Date().toISOString(),
-            }
-          )
+          // 'closed' is the legacy terminal status this job writes; ProjectStatus
+          // does not model it for the rest of the app.
+          projectRepository.updateProject(project.id, { status: 'closed' as ProjectStatus })
         )
       );
 
@@ -51,116 +42,123 @@ async function autoCloseExpiredProjects(): Promise<void> {
   }
 }
 
+type WeeklyDigestData = {
+  userEmail: string;
+  userFullName: string;
+  newProjectsCount: number;
+  newMessagesCount: number;
+  pendingMilestonesCount: number;
+  topProjects: Array<{ title: string; budget: string; url: string }>;
+};
+
+type StuckMilestone = { status?: string; updated_at?: string };
+
+function parseMilestones(project: ProjectEntity): StuckMilestone[] {
+  return project.milestones as StuckMilestone[];
+}
+
+/**
+ * Count pending milestones across a user's contracts, using the projects
+ * snapshot already loaded for the digest run. Projects missing from the
+ * snapshot contribute 0.
+ */
+function countPendingMilestones(
+  contracts: ContractEntity[],
+  projectsById: Map<string, ProjectEntity>
+): number {
+  let total = 0;
+
+  for (const contract of contracts) {
+    const project = projectsById.get(contract.project_id);
+    if (!project) continue;
+    total += parseMilestones(project).filter(m => m.status === 'pending').length;
+  }
+
+  return total;
+}
+
+type WeeklyDigestSnapshot = {
+  newProjectsCount: number;
+  topProjects: WeeklyDigestData['topProjects'];
+  projectsById: Map<string, ProjectEntity>;
+};
+
+/**
+ * Scan the projects collection once for the whole digest run instead of once
+ * per recipient. Yields the shared stats (new-project count, top projects)
+ * plus an id → project map so per-user milestone counts need no extra reads.
+ */
+async function loadWeeklyDigestSnapshot(): Promise<WeeklyDigestSnapshot> {
+  const allProjects = await projectRepository.listAllProjects(1000);
+
+  const weekAgo = new Date();
+  weekAgo.setDate(weekAgo.getDate() - 7);
+
+  const newProjectsCount = allProjects.filter(
+    p => new Date(p.created_at) >= weekAgo
+  ).length;
+
+  const frontendUrl = process.env['FRONTEND_URL'] || 'http://localhost:3000';
+  const topProjects = allProjects
+    .filter(p => p.status === 'open')
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(0, 5)
+    .map(p => ({
+      title: p.title,
+      budget: `$${p.budget}`,
+      url: `${frontendUrl}/projects/${p.id}`,
+    }));
+
+  return {
+    newProjectsCount,
+    topProjects,
+    projectsById: new Map(allProjects.map(p => [p.id, p])),
+  };
+}
+
 /**
  * Send weekly digest emails
  */
 async function sendWeeklyDigests(): Promise<void> {
   try {
-    // Get users with weekly digest enabled
-    const emailPrefsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.EMAIL_PREFERENCES,
-      [
-        Query.equal('weekly_digest', true),
-        Query.limit(1000),
-      ]
-    );
+    const preferences = await emailPreferenceRepository.findAllWithWeeklyDigestEnabled();
 
-    if (emailPrefsResponse.documents.length === 0) {
+    if (preferences.length === 0) {
       logger.info('No users with weekly digest enabled');
       return;
     }
 
-    for (const pref of emailPrefsResponse.documents) {
+    const userIds = preferences.map(pref => pref.user_id);
+
+    // Batch the per-user reads: one project scan, then one query each for
+    // users, contracts, and unread counts across every recipient.
+    const [snapshot, users, contractsByFreelancer, unreadCountsByUser] = await Promise.all([
+      loadWeeklyDigestSnapshot(),
+      userRepository.getUsersByIds(userIds),
+      contractRepository.findAllByFreelancers(userIds),
+      messageRepository.getUnreadMessageCountsForUsers(userIds),
+    ]);
+    const usersById = new Map(users.map(user => [user.id, user]));
+
+    for (const pref of preferences) {
       try {
-        const userId = pref.user_id;
+        const user = usersById.get(pref.user_id);
+        if (!user) continue;
 
-        // Fetch user info
-        const userDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, userId).catch(() => null);
-        if (!userDoc) continue;
-
-        const userEmail = userDoc.email;
-        const userFullName = userDoc.full_name || userDoc.name || 'User';
-
-        // Get user stats for the week
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-
-        // Count new projects (filter by created_at in memory)
-        const projectsResponse = await databases.listDocuments(
-          DATABASE_ID,
-          COLLECTIONS.PROJECTS,
-          [Query.limit(1000)]
-        );
-        const newProjectsCount = projectsResponse.documents.filter(
-          p => new Date(p.created_at) >= weekAgo
-        ).length;
-
-        // Count new messages
-        const messagesResponse = await databases.listDocuments(
-          DATABASE_ID,
-          COLLECTIONS.MESSAGES,
-          [
-            Query.equal('receiver_id', userId),
-            Query.equal('is_read', false),
-            Query.limit(1000),
-          ]
-        );
-        const newMessagesCount = messagesResponse.total;
-
-        // Count pending milestones (from project entities)
-        const contractsResponse = await databases.listDocuments(
-          DATABASE_ID,
-          COLLECTIONS.CONTRACTS,
-          [
-            Query.equal('freelancer_id', userId),
-            Query.limit(1000),
-          ]
+        const pendingMilestonesCount = countPendingMilestones(
+          contractsByFreelancer.get(pref.user_id) ?? [],
+          snapshot.projectsById
         );
 
-        const milestoneCounts = await Promise.all(
-          contractsResponse.documents.map(async (contract) => {
-            try {
-              const projectDoc = await databases.getDocument(
-                DATABASE_ID,
-                COLLECTIONS.PROJECTS,
-                contract.project_id
-              );
-              const milestones = typeof projectDoc.milestones === 'string'
-                ? JSON.parse(projectDoc.milestones)
-                : projectDoc.milestones || [];
-              return (milestones as Array<{ status?: string }>).filter(m => m.status === 'pending').length;
-            } catch {
-              return 0;
-            }
-          })
-        );
-        const pendingMilestonesCount = milestoneCounts.reduce((sum, n) => sum + n, 0);
-
-        // Get top projects
-        const topProjectsResponse = await databases.listDocuments(
-          DATABASE_ID,
-          COLLECTIONS.PROJECTS,
-          [
-            Query.equal('status', 'open'),
-            Query.orderDesc('created_at'),
-            Query.limit(5),
-          ]
-        );
-
-        await sendWeeklyDigestEmail(userEmail, {
-          userName: userFullName,
-          newProjects: newProjectsCount,
-          newMessages: newMessagesCount,
+        await sendWeeklyDigestEmail(user.email, {
+          userName: user.full_name || user.name || 'User',
+          newProjects: snapshot.newProjectsCount,
+          newMessages: unreadCountsByUser.get(pref.user_id) ?? 0,
           pendingMilestones: pendingMilestonesCount,
-          topProjects: topProjectsResponse.documents.map(p => ({
-            title: p.title,
-            budget: `$${p.budget}`,
-            url: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/projects/${p.$id}`,
-          })),
+          topProjects: snapshot.topProjects,
         });
 
-        logger.info(`Weekly digest sent to user ${userId}`);
+        logger.info(`Weekly digest sent to user ${pref.user_id}`);
       } catch (error) {
         logger.error(`Failed to send weekly digest to user:`, error);
       }
@@ -181,6 +179,7 @@ async function sendWeeklyDigests(): Promise<void> {
  * trigger a notification, so a saved search is not re-notified every 6 hours
  * about the same results. `last_notified_at` acts as the dedup watermark.
  */
+/* eslint-disable max-lines-per-function -- batch saved-search matcher; refactor follow-up */
 async function executeSavedSearches(): Promise<void> {
   try {
     // Get saved searches with notifications enabled
@@ -203,6 +202,7 @@ async function executeSavedSearches(): Promise<void> {
     const allProfiles = await fetchAllProfileDocs();
 
     for (const search of searchesResponse.documents) {
+
       try {
         const filters: Record<string, unknown> = typeof search.filters === 'string'
           ? JSON.parse(search.filters)
@@ -358,35 +358,7 @@ async function cleanupOldNotifications(): Promise<void> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Fetch read notifications older than 30 days and delete in batches
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.NOTIFICATIONS,
-      [
-        Query.equal('is_read', true),
-        Query.limit(1000),
-      ]
-    );
-
-    const oldNotifications = response.documents.filter(
-      n => new Date(n.created_at) < thirtyDaysAgo
-    );
-
-    const deleteResults = await Promise.all(
-      oldNotifications.map(async (notification) => {
-        try {
-          await databases.deleteDocument(
-            DATABASE_ID,
-            COLLECTIONS.NOTIFICATIONS,
-            notification.$id
-          );
-          return 1;
-        } catch {
-          return 0;
-        }
-      })
-    );
-    const deletedTotal = deleteResults.reduce<number>((sum, n) => sum + n, 0);
+    const deletedTotal = await notificationRepository.deleteReadBefore(thirtyDaysAgo);
 
     logger.info('Cleaned up old notifications', { deletedTotal });
   } catch (error) {
@@ -408,24 +380,24 @@ const RELEASING_STUCK_GRACE_MS = 15 * 60 * 1000; // 15 minutes
 async function recoverStuckReleasingMilestones(): Promise<void> {
   try {
     const now = Date.now();
-    const contractsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [Query.equal('status', 'active'), Query.limit(1000)]
-    );
+    const activeContracts = await contractRepository.findActiveContracts();
 
     await Promise.all(
-      contractsResponse.documents.map(async (contract) => {
+      activeContracts.map(async (contract) => {
         try {
           const projectId = contract.project_id;
           if (!projectId) return;
 
-          const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId);
-          const milestones = typeof projectDoc.milestones === 'string'
-            ? JSON.parse(projectDoc.milestones)
-            : (projectDoc.milestones || []);
+          const project = await projectRepository.getProjectById(projectId);
+          if (!project) {
+            logger.error('Failed to recover stuck releasing milestone for a contract', {
+              contractId: contract.id,
+            });
+            return;
+          }
 
-          const stuckIndexes = (milestones as Array<{ status?: string; updated_at?: string }>).reduce<number[]>((acc, m, i) => {
+          const milestones = parseMilestones(project);
+          const stuckIndexes = milestones.reduce<number[]>((acc, m, i) => {
             if (m.status === 'releasing') {
               const updated = m.updated_at ? new Date(m.updated_at).getTime() : 0;
               if (updated > 0 && now - updated > RELEASING_STUCK_GRACE_MS) acc.push(i);
@@ -436,21 +408,23 @@ async function recoverStuckReleasingMilestones(): Promise<void> {
           if (stuckIndexes.length === 0) return;
 
           const stuckIndexSet = new Set(stuckIndexes);
-          const recovered = (milestones as Array<{ status?: string; updated_at?: string }>).map((m, i) =>
+          const recovered = milestones.map((m, i) =>
             stuckIndexSet.has(i) ? { ...m, status: 'submitted' } : m
           );
 
-          await databases.updateDocument(DATABASE_ID, COLLECTIONS.PROJECTS, projectId, {
-            milestones: JSON.stringify(recovered),
-            updated_at: new Date().toISOString(),
+          await projectRepository.updateProject(projectId, {
+            milestones: recovered as unknown as ProjectEntity['milestones'],
           });
 
           logger.warn('Recovered stuck "releasing" milestones back to "submitted"', {
-            contractId: contract.$id,
+            contractId: contract.id,
             recoveredMilestoneIndexes: stuckIndexes,
           });
         } catch (err) {
-          logger.error('Failed to recover stuck releasing milestone for a contract', { contractId: contract.$id, error: err });
+          logger.error('Failed to recover stuck releasing milestone for a contract', {
+            contractId: contract.id,
+            error: err,
+          });
         }
       })
     );

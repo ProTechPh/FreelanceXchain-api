@@ -91,7 +91,7 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -108,7 +108,7 @@ router.get('/', authMiddleware, apiRateLimiter, asyncHandler(async (req: Request
   const result = await getNotificationsByUser(userId, options);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -144,14 +144,14 @@ router.get('/unread-count', authMiddleware, apiRateLimiter, asyncHandler(async (
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await getUnreadCount(userId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -197,7 +197,7 @@ router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), asyncH
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -208,7 +208,7 @@ router.patch('/:id/read', authMiddleware, apiRateLimiter, validateUUID(), asyncH
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'UNAUTHORIZED') statusCode = 403;
 
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -245,14 +245,14 @@ router.patch('/read-all', authMiddleware, apiRateLimiter, asyncHandler(async (re
   const requestId = getRequestId(req);
 
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await markAllNotificationsAsRead(userId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -283,14 +283,14 @@ router.get('/stream', authMiddleware, (req: Request, res: Response) => {
   const userId = req.user?.userId ?? '';
   
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
     return;
   }
 
   const result = initializeSSEConnection(userId, res);
   
   if (!result.success) {
-    sendErrorResponse(res, 500, result.error.code, result.error.message, getRequestId(req));
+    sendErrorResponse(res, 500, result.error.code, result.error.message, { requestId: getRequestId(req) });
   }
 });
 
@@ -312,7 +312,7 @@ router.get('/sse-stats', authMiddleware, requireRole('admin'), apiRateLimiter, a
   const result = getSSEStats();
   
   if (!result.success) {
-    return sendErrorResponse(res, 500, result.error.code, result.error.message, getRequestId(req));
+    return sendErrorResponse(res, 500, result.error.code, result.error.message, { requestId: getRequestId(req) });
   }
   
   return res.json(result.data);

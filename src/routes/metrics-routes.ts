@@ -44,7 +44,7 @@ router.get('/sli', authMiddleware, requireRole('admin'), apiRateLimiter, asyncHa
   const requestedClass = req.query['class'] as SliRouteClass | undefined;
 
   if (requestedClass !== undefined && !VALID_CLASSES.includes(requestedClass)) {
-    sendErrorResponse(res, 400, 'INVALID_CLASS', 'class must be dashboard, contracts, or global', requestId);
+    sendErrorResponse(res, 400, 'INVALID_CLASS', 'class must be dashboard, contracts, or global', { requestId });
     return;
   }
 

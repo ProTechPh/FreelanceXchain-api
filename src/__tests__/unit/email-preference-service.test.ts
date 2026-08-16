@@ -109,7 +109,7 @@ describe('Email Preference Service', () => {
   });
 
   describe('updateEmailPreferences', () => {
-    it('should update preferences successfully', async () => {
+    it('should update preferences successfully with camelCase keys', async () => {
       const doc = toAppwriteDoc({
         id: 'pref-1',
         user_id: 'user-1',
@@ -127,6 +127,66 @@ describe('Email Preference Service', () => {
       const result = await updateEmailPreferences('user-1', { marketingEmails: true } as any);
 
       expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.marketingEmails).toBe(true);
+      }
+      // The camelCase key must be written to the snake_case column
+      expect(mockDatabases.updateDocument).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(String),
+        expect.any(String),
+        expect.objectContaining({ marketing_emails: true }),
+      );
+    });
+
+    it('should reject unknown keys with INVALID_PREFERENCES', async () => {
+      const result = await updateEmailPreferences('user-1', { not_a_preference: true } as any);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_PREFERENCES');
+        expect(result.error.message).toContain('not_a_preference');
+      }
+      // No lookup or write happens
+      expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+      expect(mockDatabases.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('should reject the whole request when any key is unknown', async () => {
+      const result = await updateEmailPreferences('user-1', { weeklyDigest: false, unknownField: true } as any);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_PREFERENCES');
+      }
+      expect(mockDatabases.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('should reject non-boolean preference values', async () => {
+      const result = await updateEmailPreferences('user-1', { weeklyDigest: 'yes' } as any);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_PREFERENCES');
+        expect(result.error.message).toContain('weeklyDigest');
+      }
+      // No lookup or write happens
+      expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
+      expect(mockDatabases.updateDocument).not.toHaveBeenCalled();
+    });
+
+    it('should reject the whole request when any value is not a boolean', async () => {
+      const result = await updateEmailPreferences('user-1', {
+        weeklyDigest: true,
+        marketingEmails: null,
+      } as any);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INVALID_PREFERENCES');
+        expect(result.error.message).toContain('marketingEmails');
+      }
+      expect(mockDatabases.updateDocument).not.toHaveBeenCalled();
     });
 
     it('should return NOT_FOUND when user preferences not found', async () => {
@@ -149,6 +209,22 @@ describe('Email Preference Service', () => {
       if (!result.success) {
         expect(result.error.code).toBe('INTERNAL_ERROR');
       }
+    });
+
+    it('should return INTERNAL_ERROR when the preference lookup fails during update', async () => {
+      // Valid (snake_case) update keys so we hit the lookup before the write
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('Network failure'));
+
+      const result = await updateEmailPreferences('user-1', { marketing_emails: true } as any);
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.code).toBe('INTERNAL_ERROR');
+      }
+      expect(mockLoggerError).toHaveBeenCalledWith(
+        'Failed to update email preferences',
+        expect.objectContaining({ userId: 'user-1' }),
+      );
     });
   });
 
@@ -431,10 +507,9 @@ describe('Email Preference Service - Direct Branch Coverage', () => {
     expect(result.success).toBe(true);
   });
 
-    it('should handle updateEmailPreferences with no matching keys', async () => {
+    it('should handle updateEmailPreferences with an empty body', async () => {
     const { updateEmailPreferences } = await importModule();
-    // proposalReceived is camelCase, but ALLOWED_COLUMNS uses snake_case
-    // So updateData will be empty, falling through to getEmailPreferences
+    // No preference keys to apply, so it falls through to getEmailPreferences
     mockDatabases.listDocuments.mockResolvedValueOnce({
       documents: [{
         $id: 'ep-1', user_id: 'user-1', proposal_received: true,
@@ -443,7 +518,7 @@ describe('Email Preference Service - Direct Branch Coverage', () => {
       total: 1,
     });
 
-    const result = await updateEmailPreferences('user-1', { proposalReceived: false } as any);
+    const result = await updateEmailPreferences('user-1', {});
     // Falls through to getEmailPreferences which returns existing prefs
     expect(result.success).toBe(true);
   });

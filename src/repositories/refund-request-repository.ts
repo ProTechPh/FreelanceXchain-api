@@ -2,7 +2,7 @@ import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 import type { ContractEntity } from './contract-repository.js';
 
-type RefundRequestEntity = {
+export type RefundRequestEntity = {
   id: string;
   contract_id: string;
   requested_by: string;

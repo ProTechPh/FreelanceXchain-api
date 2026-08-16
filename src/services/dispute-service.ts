@@ -59,6 +59,250 @@ export type ResolveDisputeInput = {
   freelancerBps?: number;
 };
 
+type CreateDisputeValidation = {
+  contract: Contract;
+  contractEntity: ContractEntity;
+  project: Project;
+  projectEntity: ProjectEntity;
+  milestone: NonNullable<Project['milestones'][number]>;
+  milestoneEntity: MilestoneEntity;
+};
+
+/**
+ * Validate that a dispute can be created for the given contract and milestone.
+ * Returns the resolved entities or a ServiceResult error.
+ */
+async function validateCreateDispute(input: CreateDisputeInput): Promise<
+  | { error: DisputeServiceResult<Dispute> }
+  | CreateDisputeValidation
+> {
+  const { contractId, milestoneId, initiatorId } = input;
+
+  const contractEntity = await contractRepository.getContractById(contractId);
+  if (!contractEntity) {
+    return { error: errorResult('NOT_FOUND', 'Contract not found') };
+  }
+  const contract = mapContractFromEntity(contractEntity);
+
+  if (contract.status !== 'active') {
+    return { error: errorResult('INVALID_CONTRACT_STATUS', `Cannot create disputes on a ${contract.status} contract. Only active contracts can be disputed.`) };
+  }
+
+  if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
+    return { error: errorResult('UNAUTHORIZED', 'Only contract parties can create disputes') };
+  }
+
+  const projectEntity = await projectRepository.findProjectById(contract.projectId);
+  if (!projectEntity) {
+    return { error: errorResult('NOT_FOUND', 'Project not found') };
+  }
+  const project = mapProjectFromEntity(projectEntity);
+
+  const milestoneEntity = projectEntity.milestones.find(m => m.id === milestoneId);
+  if (!milestoneEntity) {
+    return { error: errorResult('NOT_FOUND', 'Milestone not found') };
+  }
+  const milestone = mapMilestoneFromEntity(milestoneEntity);
+
+  if (milestone.status === 'disputed') {
+    return { error: errorResult('ALREADY_DISPUTED', 'Milestone is already under dispute') };
+  }
+
+  if (milestone.status !== 'submitted') {
+    const message = milestone.status === 'approved'
+      ? 'Cannot dispute an approved milestone'
+      : `Milestone must be submitted before it can be disputed (current status: ${milestone.status})`;
+
+    return { error: errorResult('INVALID_STATUS', message) };
+  }
+
+  // Check for existing active dispute on this milestone. Serialized under the
+  // milestone-approve lock acquired at the top of createDispute, so the
+  // check-then-insert cannot race a concurrent dispute or approval.
+  const existingDispute = await disputeRepository.getDisputeByMilestone(milestoneId);
+  if (existingDispute) {
+    return { error: errorResult('DUPLICATE_DISPUTE', 'An active dispute already exists for this milestone') };
+  }
+
+  return { contract, contractEntity, project, projectEntity, milestone, milestoneEntity };
+}
+
+function buildDisputeEntity(input: CreateDisputeInput): Omit<DisputeEntity, 'created_at' | 'updated_at'> {
+  return {
+    id: generateId(),
+    contract_id: input.contractId,
+    milestone_id: input.milestoneId,
+    initiator_id: input.initiatorId,
+    reason: input.reason,
+    evidence: [],
+    status: 'open',
+    resolution: null,
+  };
+}
+
+/**
+ * Record the dispute and mark the agreement disputed on-chain. Best-effort.
+ */
+async function recordDisputeOnBlockchain(input: {
+  dispute: Dispute;
+  contract: Contract;
+  milestone: NonNullable<Project['milestones'][number]>;
+  milestoneId: string;
+  contractId: string;
+}): Promise<void> {
+  const { dispute, contract, milestone, milestoneId, contractId } = input;
+  try {
+    const [initiator, freelancer, employer] = await Promise.all([
+      userRepository.getUserById(dispute.initiatorId),
+      userRepository.getUserById(contract.freelancerId),
+      userRepository.getUserById(contract.employerId),
+    ]);
+
+    if (initiator?.wallet_address && freelancer?.wallet_address && employer?.wallet_address) {
+      await createDisputeOnBlockchain({
+        disputeId: dispute.id,
+        contractId,
+        milestoneId,
+        initiatorWallet: initiator.wallet_address,
+        freelancerWallet: freelancer.wallet_address,
+        employerWallet: employer.wallet_address,
+        amount: milestone.amount,
+      });
+
+      // Mark agreement as disputed on blockchain
+      await disputeAgreement(dispute.contractId, initiator.wallet_address);
+    }
+  } catch (error) {
+    logger.error('Failed to record dispute on blockchain', error as Error, {
+      disputeId: dispute.id,
+      contractId: dispute.contractId,
+    });
+  }
+}
+
+/**
+ * Real-mode: mark the milestone Disputed on the escrow contract so the arbiter
+ * can later resolve it on-chain (FreelanceEscrow.resolveDispute requires the
+ * milestone to be Disputed). The server wallet acts as the on-chain employer.
+ * Best-effort — the simulated adapter treats this as a no-op.
+ */
+async function markMilestoneDisputedOnEscrow(input: {
+  contractEntity: ContractEntity;
+  projectEntity: ProjectEntity;
+  milestoneId: string;
+  disputeId: string;
+  contractId: string;
+}): Promise<void> {
+  const { contractEntity, projectEntity, milestoneId, disputeId, contractId } = input;
+  try {
+    const escrowAddress = contractEntity.escrow_address;
+    if (escrowAddress) {
+      const milestoneIndex = projectEntity.milestones.findIndex((m) => m.id === milestoneId);
+      if (milestoneIndex !== -1) {
+        await getBlockchainAdapter().disputeMilestone(escrowAddress, milestoneIndex);
+      }
+    }
+  } catch (error) {
+    logger.error('Failed to mark milestone disputed on blockchain escrow', error as Error, {
+      disputeId,
+      contractId,
+      milestoneId,
+    });
+  }
+}
+
+type MarkDisputeStatesInput = {
+  contractId: string;
+  project: Project;
+  projectEntity: ProjectEntity;
+  milestoneEntity: MilestoneEntity;
+};
+
+async function markDisputeStates(input: MarkDisputeStatesInput): Promise<void> {
+  const { contractId, project, projectEntity, milestoneEntity } = input;
+
+  milestoneEntity.status = 'disputed';
+  await projectRepository.updateProject(project.id, {
+    milestones: projectEntity.milestones,
+  });
+
+  await contractRepository.updateContract(contractId, { status: 'disputed' });
+}
+
+type NotifyDisputePartiesInput = {
+  contract: Contract;
+  disputeId: string;
+  milestoneId: string;
+  milestone: NonNullable<Project['milestones'][number]>;
+  project: Project;
+  contractId: string;
+  reason: string;
+};
+
+async function notifyDisputeParties(input: NotifyDisputePartiesInput): Promise<void> {
+  const { contract, disputeId, milestoneId, milestone, project, contractId } = input;
+
+  await notifyDisputeCreated({
+    userId: contract.freelancerId,
+    disputeId,
+    milestoneId,
+    milestoneTitle: milestone.title,
+    projectId: project.id,
+    projectTitle: project.title,
+    contractId,
+  });
+
+  await notifyDisputeCreated({
+    userId: contract.employerId,
+    disputeId,
+    milestoneId,
+    milestoneTitle: milestone.title,
+    projectId: project.id,
+    projectTitle: project.title,
+    contractId,
+  });
+
+  // Transactional emails gated by each party's email preferences.
+  // Best-effort: a preference lookup or send failure must not break dispute creation.
+  await sendGatedEmail(contract.freelancerId, 'dispute_notifications', (recipient) =>
+    sendDisputeCreatedEmail(recipient.email, {
+      arbiterName: recipient.name,
+      contractTitle: project.title,
+      disputeReason: input.reason,
+      disputeUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/disputes/${disputeId}`,
+    })
+  );
+  await sendGatedEmail(contract.employerId, 'dispute_notifications', (recipient) =>
+    sendDisputeCreatedEmail(recipient.email, {
+      arbiterName: recipient.name,
+      contractTitle: project.title,
+      disputeReason: input.reason,
+      disputeUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/disputes/${disputeId}`,
+    })
+  );
+
+  // Notify all admin users about the new dispute
+  try {
+    const adminUsers = await userRepository.getUsersByRole('admin');
+    await Promise.all(
+      adminUsers.map(admin =>
+        notifyDisputeCreated({
+          userId: admin.id,
+          disputeId,
+          milestoneId,
+          milestoneTitle: milestone.title,
+          projectId: project.id,
+          projectTitle: project.title,
+          contractId,
+        })
+      )
+    );
+  } catch (error) {
+    logger.error('Failed to notify admin users about dispute', error as Error, {
+      disputeId,
+    });
+  }
+}
 
 /**
  * Create a new dispute
@@ -72,194 +316,18 @@ export async function createDispute(
   // being opened — this prevents the pay + dispute double-commit (the duplicate
   // dispute check below and the milestone status write both happen under the lock).
   return withLock(milestoneLockKey(input.milestoneId), async () => {
-  const { contractId, milestoneId, initiatorId, reason } = input;
+  const validated = await validateCreateDispute(input);
+  if ('error' in validated) return validated.error;
 
-  // Validate contract exists
-  const contractEntity = await contractRepository.getContractById(contractId);
-  if (!contractEntity) {
-    return errorResult('NOT_FOUND', 'Contract not found');
-  }
-  const contract = mapContractFromEntity(contractEntity);
+  const { contract, contractEntity, project, projectEntity, milestone, milestoneEntity } = validated;
 
-  // Cannot dispute milestones on completed, cancelled, or pending contracts
-  if (contract.status !== 'active') {
-    return errorResult('INVALID_CONTRACT_STATUS', `Cannot create disputes on a ${contract.status} contract. Only active contracts can be disputed.`);
-  }
-
-  // Verify initiator is part of this contract
-  if (contract.employerId !== initiatorId && contract.freelancerId !== initiatorId) {
-    return errorResult('UNAUTHORIZED', 'Only contract parties can create disputes');
-  }
-
-  // Get project to validate milestone
-  const projectEntity = await projectRepository.findProjectById(contract.projectId);
-  if (!projectEntity) {
-    return errorResult('NOT_FOUND', 'Project not found');
-  }
-  const project = mapProjectFromEntity(projectEntity);
-
-  // Validate milestone exists
-  const milestoneEntity = projectEntity.milestones.find(m => m.id === milestoneId);
-  if (!milestoneEntity) {
-    return errorResult('NOT_FOUND', 'Milestone not found');
-  }
-  const milestone = mapMilestoneFromEntity(milestoneEntity);
-
-  // Only submitted milestones can be disputed
-  if (milestone.status === 'disputed') {
-    return errorResult('ALREADY_DISPUTED', 'Milestone is already under dispute');
-  }
-
-  if (milestone.status !== 'submitted') {
-    const message = milestone.status === 'approved'
-      ? 'Cannot dispute an approved milestone'
-      : `Milestone must be submitted before it can be disputed (current status: ${milestone.status})`;
-
-    return errorResult('INVALID_STATUS', message);
-  }
-
-  // Check for existing active dispute on this milestone. Serialized under the
-  // milestone-approve lock acquired at the top of createDispute, so the
-  // check-then-insert cannot race a concurrent dispute or approval.
-  const existingDispute = await disputeRepository.getDisputeByMilestone(milestoneId);
-  if (existingDispute) {
-    return errorResult('DUPLICATE_DISPUTE', 'An active dispute already exists for this milestone');
-  }
-
-  // Create dispute entity
-  const disputeEntity: Omit<DisputeEntity, 'created_at' | 'updated_at'> = {
-    id: generateId(),
-    contract_id: contractId,
-    milestone_id: milestoneId,
-    initiator_id: initiatorId,
-    reason,
-    evidence: [],
-    status: 'open',
-    resolution: null,
-  };
-
-  // Save dispute to database
-  const createdDisputeEntity = await disputeRepository.createDispute(disputeEntity);
+  const createdDisputeEntity = await disputeRepository.createDispute(buildDisputeEntity(input));
   const createdDispute = mapDisputeFromEntity(createdDisputeEntity);
 
-  // Record dispute on blockchain
-  try {
-    const [initiator, freelancer, employer] = await Promise.all([
-      userRepository.getUserById(initiatorId),
-      userRepository.getUserById(contract.freelancerId),
-      userRepository.getUserById(contract.employerId),
-    ]);
-
-    if (initiator?.wallet_address && freelancer?.wallet_address && employer?.wallet_address) {
-      await createDisputeOnBlockchain({
-        disputeId: createdDispute.id,
-        contractId,
-        milestoneId,
-        initiatorWallet: initiator.wallet_address,
-        freelancerWallet: freelancer.wallet_address,
-        employerWallet: employer.wallet_address,
-        amount: milestone.amount,
-      });
-
-      // Mark agreement as disputed on blockchain
-      await disputeAgreement(createdDispute.contractId, initiator.wallet_address);
-    }
-  } catch (error) {
-    logger.error('Failed to record dispute on blockchain', error as Error, {
-      disputeId: createdDispute.id,
-      contractId: createdDispute.contractId,
-    });
-  }
-
-  // Real-mode: mark the milestone Disputed on the escrow contract so the arbiter
-  // can later resolve it on-chain (FreelanceEscrow.resolveDispute requires the
-  // milestone to be Disputed). The server wallet acts as the on-chain employer.
-  // Best-effort — the simulated adapter treats this as a no-op.
-  try {
-    const escrowAddress = contractEntity.escrow_address;
-    if (escrowAddress) {
-      const milestoneIndex = projectEntity.milestones.findIndex((m) => m.id === milestoneId);
-      if (milestoneIndex !== -1) {
-        await getBlockchainAdapter().disputeMilestone(escrowAddress, milestoneIndex);
-      }
-    }
-  } catch (error) {
-    logger.error('Failed to mark milestone disputed on blockchain escrow', error as Error, {
-      disputeId: createdDispute.id,
-      contractId,
-      milestoneId,
-    });
-  }
-
-  // Update milestone status to disputed
-  milestoneEntity.status = 'disputed';
-  await projectRepository.updateProject(project.id, {
-    milestones: projectEntity.milestones,
-  });
-
-  // Update contract status to disputed
-  await contractRepository.updateContract(contractId, { status: 'disputed' });
-
-  await notifyDisputeCreated(
-    contract.freelancerId,
-    createdDispute.id,
-    milestoneId,
-    milestone.title,
-    project.id,
-    project.title,
-    contractId
-  );
-
-  await notifyDisputeCreated(
-    contract.employerId,
-    createdDispute.id,
-    milestoneId,
-    milestone.title,
-    project.id,
-    project.title,
-    contractId
-  );
-
-  // Transactional emails gated by each party's email preferences.
-  // Best-effort: a preference lookup or send failure must not break dispute creation.
-  await sendGatedEmail(contract.freelancerId, 'dispute_notifications', (recipient) =>
-    sendDisputeCreatedEmail(recipient.email, {
-      arbiterName: recipient.name,
-      contractTitle: project.title,
-      disputeReason: reason,
-      disputeUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/disputes/${createdDispute.id}`,
-    })
-  );
-  await sendGatedEmail(contract.employerId, 'dispute_notifications', (recipient) =>
-    sendDisputeCreatedEmail(recipient.email, {
-      arbiterName: recipient.name,
-      contractTitle: project.title,
-      disputeReason: reason,
-      disputeUrl: `${process.env['FRONTEND_URL'] || 'http://localhost:3000'}/disputes/${createdDispute.id}`,
-    })
-  );
-
-  // Notify all admin users about the new dispute
-  try {
-    const adminUsers = await userRepository.getUsersByRole('admin');
-    await Promise.all(
-      adminUsers.map(admin =>
-        notifyDisputeCreated(
-          admin.id,
-          createdDispute.id,
-          milestoneId,
-          milestone.title,
-          project.id,
-          project.title,
-          contractId
-        )
-      )
-    );
-  } catch (error) {
-    logger.error('Failed to notify admin users about dispute', error as Error, {
-      disputeId: createdDispute.id,
-    });
-  }
+  await recordDisputeOnBlockchain({ dispute: createdDispute, contract, milestone, milestoneId: input.milestoneId, contractId: input.contractId });
+  await markMilestoneDisputedOnEscrow({ contractEntity, projectEntity, milestoneId: input.milestoneId, disputeId: createdDispute.id, contractId: input.contractId });
+  await markDisputeStates({ contractId: input.contractId, project, projectEntity, milestoneEntity });
+  await notifyDisputeParties({ contract, disputeId: createdDispute.id, milestoneId: input.milestoneId, milestone, project, contractId: input.contractId, reason: input.reason });
 
   return successResult(createdDispute);
   }); // M9: end withLock
@@ -402,6 +470,16 @@ async function validateDisputeResolution(
   return { disputeEntity, contract, contractEntity, project, projectEntity, milestone, milestoneEntity, milestoneIndex };
 }
 
+type ProcessDisputeEscrowPaymentInput = {
+  disputeId: string;
+  disputeEntity: DisputeEntity;
+  decision: 'freelancer_favor' | 'employer_favor' | 'split';
+  milestoneEntity: MilestoneEntity;
+  escrowAddress: string;
+  milestoneIndex: number;
+  freelancerBps?: number;
+};
+
 /**
  * Process escrow payment for dispute resolution (release or refund).
  * Routes through the blockchain adapter so real mode resolves the on-chain
@@ -410,17 +488,13 @@ async function validateDisputeResolution(
  * Returns success or a ServiceResult error.
  */
 async function processDisputeEscrowPayment(
-  disputeId: string,
-  disputeEntity: DisputeEntity,
-  decision: 'freelancer_favor' | 'employer_favor' | 'split',
-  milestoneEntity: MilestoneEntity,
-  escrowAddress: string,
-  milestoneIndex: number,
-  freelancerBps?: number,
+  input: ProcessDisputeEscrowPaymentInput
 ): Promise<
   | { error: DisputeServiceResult<Dispute> }
   | { success: true }
 > {
+  const { disputeId, disputeEntity, decision, milestoneEntity, escrowAddress, milestoneIndex, freelancerBps } = input;
+
   // BLF-10.1: Do NOT bypass payment when the escrow address is missing — return an error
   // instead. Bypassing would mark the dispute resolved without moving funds, causing financial loss.
   if (!escrowAddress) {
@@ -472,25 +546,31 @@ async function processDisputeEscrowPayment(
   return { success: true };
 }
 
+type UpdateDisputeStatusesInput = {
+  disputeId: string;
+  disputeEntity: DisputeEntity;
+  decision: 'freelancer_favor' | 'employer_favor' | 'split';
+  reasoning: string;
+  resolvedBy: string;
+  contract: Contract;
+  project: Project;
+  projectEntity: ProjectEntity;
+  milestone: NonNullable<Project['milestones'][number]>;
+  resolutionEntity: DisputeResolutionEntity;
+};
+
 /**
  * Update dispute, milestone, and contract statuses after successful payment.
  * Also handles blockchain recording and notifications.
  */
 async function updateDisputeStatuses(
-  disputeId: string,
-  disputeEntity: DisputeEntity,
-  decision: 'freelancer_favor' | 'employer_favor' | 'split',
-  reasoning: string,
-  resolvedBy: string,
-  contract: Contract,
-  project: Project,
-  projectEntity: ProjectEntity,
-  milestone: NonNullable<Project['milestones'][number]>,
-  resolutionEntity: DisputeResolutionEntity,
+  input: UpdateDisputeStatusesInput
 ): Promise<
   | { error: DisputeServiceResult<Dispute> }
   | { dispute: Dispute }
 > {
+  const { disputeId, disputeEntity, decision, reasoning, resolvedBy, contract, project, projectEntity, milestone, resolutionEntity } = input;
+
   // Update milestone status in project
   await projectRepository.updateProject(project.id, {
     milestones: projectEntity.milestones,
@@ -545,27 +625,21 @@ async function updateDisputeStatuses(
   }
 
   // Send notifications to both parties
-  await notifyDisputeResolved(
-    contract.freelancerId,
-    disputeId,
-    decision,
-    disputeEntity.milestone_id,
-    milestone.title,
-    project.id,
-    project.title,
-    disputeEntity.contract_id
-  );
+  const notifyParties = async (userId: string): Promise<void> => {
+    await notifyDisputeResolved({
+      userId,
+      disputeId,
+      resolution: decision,
+      milestoneId: disputeEntity.milestone_id,
+      milestoneTitle: milestone.title,
+      projectId: project.id,
+      projectTitle: project.title,
+      contractId: disputeEntity.contract_id,
+    });
+  };
 
-  await notifyDisputeResolved(
-    contract.employerId,
-    disputeId,
-    decision,
-    disputeEntity.milestone_id,
-    milestone.title,
-    project.id,
-    project.title,
-    disputeEntity.contract_id
-  );
+  await notifyParties(contract.freelancerId);
+  await notifyParties(contract.employerId);
 
   return { dispute: updatedDispute };
 }
@@ -593,15 +667,29 @@ export async function resolveDispute(
       resolved_at: new Date().toISOString(),
     };
 
-    const paymentResult = await processDisputeEscrowPayment(
-      disputeId, disputeEntity, decision, milestoneEntity, contractEntity.escrow_address, milestoneIndex, input.freelancerBps,
-    );
+    const paymentResult = await processDisputeEscrowPayment({
+      disputeId,
+      disputeEntity,
+      decision,
+      milestoneEntity,
+      escrowAddress: contractEntity.escrow_address,
+      milestoneIndex,
+      ...(input.freelancerBps !== undefined ? { freelancerBps: input.freelancerBps } : {}),
+    });
     if ('error' in paymentResult) return paymentResult.error;
 
-    const statusResult = await updateDisputeStatuses(
-      disputeId, disputeEntity, decision, reasoning, resolvedBy,
-      contract, project, projectEntity, milestone, resolutionEntity,
-    );
+    const statusResult = await updateDisputeStatuses({
+      disputeId,
+      disputeEntity,
+      decision,
+      reasoning,
+      resolvedBy,
+      contract,
+      project,
+      projectEntity,
+      milestone,
+      resolutionEntity,
+    });
     if ('error' in statusResult) return statusResult.error;
 
     // BLF-12.2: durable audit trail — every admin dispute-resolution decision is
@@ -707,7 +795,7 @@ export async function getAllDisputes(
     if (status) queryOptions.status = status;
 
     let result;
-    
+
     if (userRole === 'admin') {
       result = await disputeRepository.getAllDisputes(queryOptions);
     } else {
@@ -721,7 +809,7 @@ export async function getAllDisputes(
       items: disputes,
       continuationToken: hasMore ? String(offset + limit) : null,
     });
-      } catch (error) {
-      return errorResult('FETCH_FAILED', error instanceof Error ? error.message : 'Failed to fetch disputes');
-    }
+  } catch (error) {
+    return errorResult('FETCH_FAILED', error instanceof Error ? error.message : 'Failed to fetch disputes');
+  }
 }

@@ -63,6 +63,11 @@ jobs:
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
 
+      - name: OpenAPI spec drift check
+        run: pnpm run openapi:check
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
+
   test:
     runs-on: ubuntu-latest
     permissions:

@@ -1,6 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { authMiddleware, requireRole, requireVerifiedKyc } from '../middleware/auth-middleware.js';
-import { validateUUID, isValidUUID } from '../middleware/validation-middleware.js';
+import {
+  validateUUID,
+  isValidUUID,
+  validate,
+  createProjectSchema,
+  createProjectWithAttachmentsSchema,
+  updateProjectSchema,
+  addMilestonesSchema,
+} from '../middleware/validation-middleware.js';
 import { uploadProjectAttachments } from '../middleware/file-upload-middleware.js';
 import { fileUploadRateLimiter, apiRateLimiter } from '../middleware/rate-limiter.js';
 import { getRequestId } from '../utils/route-helpers.js';
@@ -187,7 +195,7 @@ router.get('/', apiRateLimiter, asyncHandler(async (req: Request, res: Response)
   }
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req));
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req) });
     return;
   }
 
@@ -249,7 +257,7 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
@@ -258,7 +266,7 @@ router.get('/my-projects', authMiddleware, requireRole('employer'), apiRateLimit
   const result = await listProjectsByEmployer(userId, options);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -317,7 +325,7 @@ router.get('/stats/categories', apiRateLimiter, asyncHandler(async (req: Request
   const result = await getProjectCategoryStats(limit);
 
   if (!result.success) {
-    sendErrorResponse(res, 500, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 500, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -359,7 +367,7 @@ router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Requ
   const result = await getProjectById(id);
 
   if (!result.success) {
-    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 404, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -423,51 +431,25 @@ router.get('/:id', apiRateLimiter, validateUUID(), asyncHandler(async (req: Requ
  *       401:
  *         description: Unauthorized
  */
-router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, asyncHandler(async (req: Request, res: Response) => {
+router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validate(createProjectSchema), asyncHandler(async (req: Request, res: Response) => {
   const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
   const requestId = getRequestId(req);
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
-  // Validate input
+  // Deep check the middleware cannot express: per-item skillId UUIDs.
   const errors: { field: string; message: string }[] = [];
-  if (!title || typeof title !== 'string' || title.trim().length < 5) {
-    errors.push({ field: 'title', message: 'Title must be at least 5 characters' });
-  }
-  if (!description || typeof description !== 'string' || description.trim().length < 20) {
-    errors.push({ field: 'description', message: 'Description must be at least 20 characters' });
-  }
-  if (!requiredSkills || !Array.isArray(requiredSkills) || requiredSkills.length === 0) {
-    errors.push({ field: 'requiredSkills', message: 'At least one skill is required' });
-  } else {
-    // Validate skillId UUIDs in requiredSkills array
+  if (Array.isArray(requiredSkills)) {
     for (let i = 0; i < requiredSkills.length; i++) {
       const skill = requiredSkills[i];
       if (skill.skillId && !isValidUUID(skill.skillId)) {
         errors.push({ field: `requiredSkills[${i}].skillId`, message: 'skillId must be a valid UUID' });
       }
-    }
-  }
-  if (!budget || typeof budget !== 'number' || budget <= 0) {
-    errors.push({ field: 'budget', message: 'Budget must be greater than 0' });
-  }
-  if (!deadline || typeof deadline !== 'string') {
-    errors.push({ field: 'deadline', message: 'Deadline is required' });
-  }
-  
-  // Validate tags
-  if (tags !== undefined) {
-    if (!Array.isArray(tags)) {
-      errors.push({ field: 'tags', message: 'Tags must be an array' });
-    } else if (tags.some(tag => typeof tag !== 'string')) {
-      errors.push({ field: 'tags', message: 'All tags must be strings' });
-    } else if (tags.length > 10) {
-      errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
     }
   }
 
@@ -492,7 +474,7 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
   });
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -560,38 +542,34 @@ router.post('/', authMiddleware, requireRole('employer'), requireVerifiedKyc, ap
  *       401:
  *         description: Unauthorized
  */
-router.post('/with-attachments', authMiddleware, requireRole('employer'), requireVerifiedKyc, fileUploadRateLimiter, uploadProjectAttachments, asyncHandler(async (req: Request, res: Response) => {
-  const { title, description, requiredSkills, budget, deadline, tags, isRush, rushFeePercentage } = req.body;
-  const files = req.files as Express.Multer.File[];
-  const userId = req.user?.userId;
-  const requestId = getRequestId(req);
+type WithAttachmentsValidation = {
+  errors: { field: string; message: string }[];
+  parsedRequiredSkills: Array<{ skillId: string }> | undefined;
+  parsedTags?: string[];
+};
 
-  /* istanbul ignore next */
-  if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
-    return;
-  }
-
-  // Validate input
+/**
+ * Validate and parse the project-with-attachments request body.
+ * Returns any validation errors along with the parsed skills and tags.
+ */
+function validateProjectWithAttachments(body: Record<string, unknown>): WithAttachmentsValidation {
+  // title/description/budget/deadline shape is validated by the middleware
+  // (createProjectWithAttachmentsSchema); this parses the JSON-string fields
+  // and runs the deep checks (skillId UUIDs).
+  const { requiredSkills, tags } = body;
   const errors: { field: string; message: string }[] = [];
-  if (!title || typeof title !== 'string' || title.trim().length < 5) {
-    errors.push({ field: 'title', message: 'Title must be at least 5 characters' });
-  }
-  if (!description || typeof description !== 'string' || description.trim().length < 20) {
-    errors.push({ field: 'description', message: 'Description must be at least 20 characters' });
-  }
 
   // Parse requiredSkills from JSON string
-  let parsedRequiredSkills;
+  let parsedRequiredSkills: Array<{ skillId: string }> | undefined;
   try {
-    parsedRequiredSkills = JSON.parse(requiredSkills);
+    parsedRequiredSkills = JSON.parse(requiredSkills as string) as Array<{ skillId: string }>;
     if (!Array.isArray(parsedRequiredSkills) || parsedRequiredSkills.length === 0) {
       errors.push({ field: 'requiredSkills', message: 'At least one skill is required' });
     } else {
       // Validate skillId UUIDs in requiredSkills array
       for (let i = 0; i < parsedRequiredSkills.length; i++) {
         const skill = parsedRequiredSkills[i];
-        if (skill.skillId && !isValidUUID(skill.skillId)) {
+        if (skill?.skillId && !isValidUUID(skill.skillId)) {
           errors.push({ field: `requiredSkills[${i}].skillId`, message: 'skillId must be a valid UUID' });
         }
       }
@@ -600,83 +578,104 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
     errors.push({ field: 'requiredSkills', message: 'requiredSkills must be a valid JSON array' });
   }
 
-  if (!budget || isNaN(Number(budget)) || Number(budget) <= 0) {
-    errors.push({ field: 'budget', message: 'Budget must be greater than 0' });
-  }
-  if (!deadline || typeof deadline !== 'string') {
-    errors.push({ field: 'deadline', message: 'Deadline is required' });
-  }
-  
   // Parse tags from JSON string if provided
-  let parsedTags;
+  let parsedTags: string[] | undefined;
   if (tags) {
     try {
-      parsedTags = JSON.parse(tags);
-      if (!Array.isArray(parsedTags)) {
+      const parsed = JSON.parse(tags as string);
+      if (!Array.isArray(parsed)) {
         errors.push({ field: 'tags', message: 'Tags must be an array' });
-      } else if (parsedTags.some(tag => typeof tag !== 'string')) {
+      } else if (parsed.some(tag => typeof tag !== 'string')) {
         errors.push({ field: 'tags', message: 'All tags must be strings' });
-      } else if (parsedTags.length > 10) {
+      } else if (parsed.length > 10) {
         errors.push({ field: 'tags', message: 'Maximum 10 tags allowed' });
+      } else {
+        parsedTags = Array.from(new Set((parsed as string[]).reduce<string[]>((acc, tag) => { const t = tag.trim(); if (t.length > 0) acc.push(t); return acc; }, [])));
       }
     } catch {
       errors.push({ field: 'tags', message: 'Tags must be a valid JSON array' });
     }
   }
 
+  return {
+    errors,
+    parsedRequiredSkills,
+    ...(parsedTags !== undefined ? { parsedTags } : {}),
+  };
+}
+
+/**
+ * Upload project attachments, throwing when any file fails to upload.
+ */
+async function uploadProjectFiles(files: Express.Multer.File[]): Promise<FileMetadata[]> {
+  const uploadResults = await uploadMultipleFiles(
+    files,
+    STORAGE_BUCKETS.PROJECT_ATTACHMENTS
+  );
+
+  const failedUploads = uploadResults.filter(result => !result.success);
+  if (failedUploads.length > 0) {
+    const uploadErrors = failedUploads.map(result => result.error).join(', ');
+    throw new Error(`Upload failed: ${uploadErrors}`);
+  }
+
+  return uploadResults.reduce<FileMetadata[]>((acc, result) => {
+    if (result.success && result.metadata) acc.push(result.metadata!);
+    return acc;
+  }, []);
+}
+
+router.post('/with-attachments', authMiddleware, requireRole('employer'), requireVerifiedKyc, fileUploadRateLimiter, uploadProjectAttachments, validate(createProjectWithAttachmentsSchema), async (req: Request, res: Response) => {
+  const files = req.files as Express.Multer.File[];
+  const userId = req.user?.userId;
+  const requestId = getRequestId(req);
+
+  /* istanbul ignore next */
+  if (!userId) {
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
+    return;
+  }
+
+  const { errors, parsedRequiredSkills, parsedTags } = validateProjectWithAttachments(req.body);
+
+  /* istanbul ignore next -- validation guarantees requiredSkills parses successfully */
+  const skills = parsedRequiredSkills!;
   if (errors.length > 0) {
     sendValidationError(res, errors, requestId);
     return;
   }
 
   let attachments: FileMetadata[] = [];
-  
+
   // Upload files if provided
   if (files && files.length > 0) {
     try {
-      const uploadResults = await uploadMultipleFiles(
-        files,
-        STORAGE_BUCKETS.PROJECT_ATTACHMENTS
-      );
-
-      // Check for upload failures
-      const failedUploads = uploadResults.filter(result => !result.success);
-      if (failedUploads.length > 0) {
-        const errors = failedUploads.map(result => result.error).join(', ');
-        throw new Error(`Upload failed: ${errors}`);
-      }
-
-      attachments = uploadResults.reduce<typeof attachments>((acc, result) => {
-        if (result.success && result.metadata) acc.push(result.metadata!);
-        return acc;
-      }, []);
+      attachments = await uploadProjectFiles(files);
     } catch (uploadError) {
       // Clean up any partially uploaded files
       /* istanbul ignore next */
       if (attachments.length > 0) {
         await cleanupUploadedFiles(attachments, STORAGE_BUCKETS.PROJECT_ATTACHMENTS);
       }
-      
+
       /* istanbul ignore next */
-      sendErrorResponse(res, 500, 'FILE_UPLOAD_ERROR', 'Failed to upload attachments', requestId, uploadError instanceof Error ? uploadError.message : 'Failed to upload attachments');
+      sendErrorResponse(res, 500, 'FILE_UPLOAD_ERROR', 'Failed to upload attachments', { requestId, details: uploadError instanceof Error ? uploadError.message : 'Failed to upload attachments' });
       /* istanbul ignore next */
       return;
     }
   }
 
-  const processedTags: string[] | undefined = parsedTags 
-    ? Array.from(new Set((parsedTags as string[]).reduce<string[]>((acc, tag) => { const t = tag.trim(); if (t.length > 0) acc.push(t); return acc; }, []))) as string[]
-    : undefined;
-  
-  const result = await createProject(userId, { 
-    title, 
-    description, 
-    requiredSkills: parsedRequiredSkills, 
-    budget: Number(budget), 
+  const { title, description, budget, deadline, isRush, rushFeePercentage } = req.body;
+
+  const result = await createProject(userId, {
+    title,
+    description,
+    requiredSkills: skills,
+    budget: Number(budget),
     deadline,
     ...(isRush !== undefined && { isRush }),
     ...(rushFeePercentage !== undefined && { rushFeePercentage }),
-    ...(processedTags && { tags: processedTags }),
+    ...(parsedTags && { tags: parsedTags }),
     ...(attachments.length > 0 && { attachments })
   });
 
@@ -685,13 +684,13 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
     if (attachments.length > 0) {
       await cleanupUploadedFiles(attachments, STORAGE_BUCKETS.PROJECT_ATTACHMENTS);
     }
-    
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId, result.error.details);
+
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
   res.status(201).json(result.data);
-}));
+});
 
 
 /**
@@ -754,7 +753,7 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(updateProjectSchema), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { title, description, requiredSkills, budget, deadline, status, isRush, rushFeePercentage } = req.body;
   const userId = req.user?.userId;
@@ -762,27 +761,12 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
-  // Validate input
-  const errors: { field: string; message: string }[] = [];
-  if (title !== undefined && (typeof title !== 'string' || title.trim().length < 5)) {
-    errors.push({ field: 'title', message: 'Title must be at least 5 characters' });
-  }
-  if (description !== undefined && (typeof description !== 'string' || description.trim().length < 20)) {
-    errors.push({ field: 'description', message: 'Description must be at least 20 characters' });
-  }
-  if (budget !== undefined && (typeof budget !== 'number' || budget <= 0)) {
-    errors.push({ field: 'budget', message: 'Budget must be greater than 0' });
-  }
-
-  if (errors.length > 0) {
-    sendValidationError(res, errors, requestId);
-    return;
-  }
-
+  // Shape validation is handled by the middleware; status transitions and rush
+  // fee bounds are enforced by the service.
   const result = await updateProject(projectId, userId, { 
     title, description, requiredSkills, budget, deadline, status,
     ...(isRush !== undefined && { isRush }),
@@ -794,7 +778,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'PROJECT_LOCKED') statusCode = 409;
     
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId, result.error.details);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId, details: result.error.details });
     return;
   }
 
@@ -864,7 +848,7 @@ router.patch('/:id', authMiddleware, requireRole('employer'), requireVerifiedKyc
  *       409:
  *         description: Project locked (has accepted proposals)
  */
-router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), asyncHandler(async (req: Request, res: Response) => {
+router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireVerifiedKyc, apiRateLimiter, validateUUID(), validate(addMilestonesSchema), asyncHandler(async (req: Request, res: Response) => {
   const projectId = req.params['id'] ?? '';
   const { milestones } = req.body;
   const userId = req.user?.userId;
@@ -872,36 +856,12 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
-  // Validate input
-  const errors: { field: string; message: string }[] = [];
-  if (!milestones || !Array.isArray(milestones) || milestones.length === 0) {
-    errors.push({ field: 'milestones', message: 'At least one milestone is required' });
-  } else {
-    milestones.forEach((m, i) => {
-      if (!m.title || typeof m.title !== 'string') {
-        errors.push({ field: `milestones[${i}].title`, message: 'Title is required' });
-      }
-      if (!m.description || typeof m.description !== 'string') {
-        errors.push({ field: `milestones[${i}].description`, message: 'Description is required' });
-      }
-      if (typeof m.amount !== 'number' || m.amount <= 0) {
-        errors.push({ field: `milestones[${i}].amount`, message: 'Amount must be a positive number' });
-      }
-      if (!m.dueDate || typeof m.dueDate !== 'string') {
-        errors.push({ field: `milestones[${i}].dueDate`, message: 'Due date is required' });
-      }
-    });
-  }
-
-  if (errors.length > 0) {
-    sendValidationError(res, errors, requestId);
-    return;
-  }
-
+  // Per-item fields are validated by the middleware (addMilestonesSchema); the
+  // service enforces the business rules (amounts sum to budget, project state).
   const result = await setMilestones(projectId, userId, milestones);
 
   if (!result.success) {
@@ -909,7 +869,7 @@ router.post('/:id/milestones', authMiddleware, requireRole('employer'), requireV
     if (result.error.code === 'NOT_FOUND') statusCode = 404;
     if (result.error.code === 'PROJECT_LOCKED') statusCode = 409;
     
-    sendErrorResponse(res, statusCode, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -978,19 +938,19 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
 
   /* istanbul ignore next */
   if (!userId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   // Verify employer owns this project
   const projectResult = await getProjectById(projectId);
   if (!projectResult.success) {
-    sendErrorResponse(res, 404, projectResult.error.code, projectResult.error.message, requestId);
+    sendErrorResponse(res, 404, projectResult.error.code, projectResult.error.message, { requestId });
     return;
   }
 
   if (projectResult.data.employer_id !== userId) {
-    sendErrorResponse(res, 403, 'FORBIDDEN', 'You can only view proposals for your own projects', requestId);
+    sendErrorResponse(res, 403, 'FORBIDDEN', 'You can only view proposals for your own projects', { requestId });
     return;
   }
 
@@ -999,7 +959,7 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
   const result = await getProposalsByProject(projectId, options);
 
   if (!result.success) {
-    sendErrorResponse(res, 404, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 404, result.error.code, result.error.message, { requestId });
     return;
   }
 

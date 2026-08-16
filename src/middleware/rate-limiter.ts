@@ -27,7 +27,7 @@ type RateLimitConfig = {
  */
 function sendRateLimitError(res: Response, req: Request, message: string | undefined, retryAfter: number): void {
   res.set('Retry-After', String(retryAfter));
-  sendErrorResponse(res, 429, 'RATE_LIMIT_EXCEEDED', message ?? 'Too many requests, please try again later', getRequestId(req), undefined, undefined, retryAfter);
+  sendErrorResponse(res, 429, 'RATE_LIMIT_EXCEEDED', message ?? 'Too many requests, please try again later', { requestId: getRequestId(req), retryAfter });
 }
 
 export function rateLimiter(name: string, rateLimitConfig: RateLimitConfig) {

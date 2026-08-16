@@ -1,6 +1,8 @@
-import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
-import { COLLECTIONS } from '../config/collections.js';
 import { logger } from '../config/logger.js';
+import { reviewRepository } from '../repositories/review-repository.js';
+import { contractRepository } from '../repositories/contract-repository.js';
+import { projectRepository } from '../repositories/project-repository.js';
+import { userRepository } from '../repositories/user-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
@@ -31,133 +33,128 @@ type ReputationBreakdown = {
   }>;
 };
 
+type ReviewDoc = Record<string, any>;
+
+/**
+ * Fetch all reviews received by a user (Appwrite caps at 1000 documents).
+ */
+async function fetchReviewsForUser(userId: string): Promise<ReviewDoc[]> {
+  return reviewRepository.findAllByRevieweeId(userId);
+}
+
+type RatingAverages = {
+  averageRating: number;
+  workQuality: number;
+  communication: number;
+  professionalism: number;
+  wouldWorkAgainPercentage: number;
+};
+
+function averageOf(reviews: ReviewDoc[], field: string): number {
+  const rated = reviews.filter(r => r[field] != null);
+  return rated.length > 0
+    ? rated.reduce((sum, r) => sum + r[field], 0) / rated.length
+    : 0;
+}
+
+/**
+ * Compute in-memory rating averages from the user's reviews.
+ */
+function computeRatingAverages(reviews: ReviewDoc[], totalRatings: number): RatingAverages {
+  const averageRating = reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / totalRatings;
+  const wouldWorkAgainCount = reviews.filter(r => r.would_work_again === true).length;
+
+  return {
+    averageRating,
+    workQuality: averageOf(reviews, 'work_quality'),
+    communication: averageOf(reviews, 'communication'),
+    professionalism: averageOf(reviews, 'professionalism'),
+    wouldWorkAgainPercentage: (wouldWorkAgainCount / totalRatings) * 100,
+  };
+}
+
+/**
+ * Count the user's completed contracts (as freelancer).
+ */
+async function countCompletedContracts(userId: string): Promise<number> {
+  return contractRepository.countCompletedByFreelancer(userId);
+}
+
+/**
+ * Compute the on-time delivery rate from project milestones.
+ * Milestones are stored as JSONB in the projects table.
+ */
+async function computeOnTimeDeliveryRate(userId: string): Promise<number> {
+  const contracts = await contractRepository.findAllByFreelancer(userId);
+
+  const contractResults = await Promise.all(contracts.map(async (contract) => {
+    const project = await projectRepository.getProjectById(contract.project_id);
+    if (!project) return { approved: 0, onTime: 0 };
+
+    let approved = 0;
+    let onTime = 0;
+    for (const m of project.milestones) {
+      if (m.status === 'approved') {
+        approved++;
+        if (m.approved_at && m.due_date && new Date(m.approved_at) <= new Date(m.due_date)) {
+          onTime++;
+        }
+      }
+    }
+    return { approved, onTime };
+  }));
+
+  const totalApproved = contractResults.reduce((sum, result) => sum + result.approved, 0);
+  const onTimeCount = contractResults.reduce((sum, result) => sum + result.onTime, 0);
+
+  return totalApproved > 0 ? (onTimeCount / totalApproved) * 100 : 0;
+}
+
+function emptyScore(userId: string): ReputationScore {
+  return {
+    userId,
+    averageRating: 0,
+    totalRatings: 0,
+    workQuality: 0,
+    communication: 0,
+    professionalism: 0,
+    wouldWorkAgainPercentage: 0,
+    completedContracts: 0,
+    onTimeDeliveryRate: 0,
+  };
+}
+
 /**
  * Get aggregated reputation score for user
  */
 export async function getAggregatedScore(userId: string): Promise<ServiceResult<ReputationScore>> {
   try {
-    // Fetch all reviews for this user
-    const reviewsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('reviewee_id', userId),
-        Query.limit(1000),
-      ]
-    );
-
-    const totalRatings = reviewsResponse.total;
+    const reviews = await fetchReviewsForUser(userId);
+    const totalRatings = reviews.length;
 
     if (totalRatings === 0) {
-      return successResult({
-        userId,
-        averageRating: 0,
-        totalRatings: 0,
-        workQuality: 0,
-        communication: 0,
-        professionalism: 0,
-        wouldWorkAgainPercentage: 0,
-        completedContracts: 0,
-        onTimeDeliveryRate: 0,
-      });
-      }
-
-    // Compute review aggregations in memory
-    const reviews = reviewsResponse.documents;
-    const avgRating = reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / totalRatings;
-    const avgWorkQuality = reviews
-      .filter(r => r.work_quality != null)
-      .reduce((sum, r) => sum + r.work_quality, 0) /
-      (reviews.filter(r => r.work_quality != null).length || 1);
-    const avgCommunication = reviews
-      .filter(r => r.communication != null)
-      .reduce((sum, r) => sum + r.communication, 0) /
-      (reviews.filter(r => r.communication != null).length || 1);
-    const avgProfessionalism = reviews
-      .filter(r => r.professionalism != null)
-      .reduce((sum, r) => sum + r.professionalism, 0) /
-      (reviews.filter(r => r.professionalism != null).length || 1);
-    const wouldWorkAgainCount = reviews.filter(r => r.would_work_again === true).length;
-    const wouldWorkAgainPercentage = (wouldWorkAgainCount / totalRatings) * 100;
-
-    // Fetch completed contracts count
-    const contractsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [
-        Query.equal('freelancer_id', userId),
-        Query.equal('status', 'completed'),
-        Query.limit(1),
-      ]
-    );
-    const completedContracts = contractsResponse.total;
-
-    // Compute on-time delivery rate from project milestones
-    // Milestones are stored as JSONB in the projects table
-    let totalApproved = 0;
-    let onTimeCount = 0;
-
-    // Fetch all contracts for this freelancer to find milestones
-    const allContractsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.CONTRACTS,
-      [
-        Query.equal('freelancer_id', userId),
-        Query.limit(1000),
-      ]
-    );
-
-    const contractResults = await Promise.all(allContractsResponse.documents.map(async (contract) => {
-      try {
-        const projectDoc = await databases.getDocument(
-          DATABASE_ID,
-          COLLECTIONS.PROJECTS,
-          contract.project_id
-        );
-        const milestones = typeof projectDoc.milestones === 'string'
-          ? JSON.parse(projectDoc.milestones)
-          : projectDoc.milestones || [];
-
-        let approved = 0;
-        let onTime = 0;
-        for (const m of milestones) {
-          if (m.status === 'approved') {
-            approved++;
-            if (m.approved_at && m.due_date && new Date(m.approved_at) <= new Date(m.due_date)) {
-              onTime++;
-            }
-          }
-        }
-        return { approved, onTime };
-      } catch {
-        return { approved: 0, onTime: 0 };
-      }
-    }));
-
-    for (const result of contractResults) {
-      totalApproved += result.approved;
-      onTimeCount += result.onTime;
+      return successResult(emptyScore(userId));
     }
 
-    const onTimeDeliveryRate = totalApproved > 0
-      ? (onTimeCount / totalApproved) * 100
-      : 0;
+    const averages = computeRatingAverages(reviews, totalRatings);
+    const completedContracts = await countCompletedContracts(userId);
+    const onTimeDeliveryRate = await computeOnTimeDeliveryRate(userId);
 
     return successResult({
       userId,
-      averageRating: Math.round(avgRating * 10) / 10,
+      averageRating: Math.round(averages.averageRating * 10) / 10,
       totalRatings,
-      workQuality: Math.round(avgWorkQuality * 10) / 10,
-      communication: Math.round(avgCommunication * 10) / 10,
-      professionalism: Math.round(avgProfessionalism * 10) / 10,
-      wouldWorkAgainPercentage: Math.round(wouldWorkAgainPercentage),
+      workQuality: Math.round(averages.workQuality * 10) / 10,
+      communication: Math.round(averages.communication * 10) / 10,
+      professionalism: Math.round(averages.professionalism * 10) / 10,
+      wouldWorkAgainPercentage: Math.round(averages.wouldWorkAgainPercentage),
       completedContracts,
       onTimeDeliveryRate: Math.round(onTimeDeliveryRate),
     });
-      } catch (error) {
-      logger.error('Failed to get aggregated score:', error);
-      return errorResult('AGGREGATION_FAILED', error instanceof Error ? error.message : 'Failed to aggregate reputation score');
-    }
+  } catch (error) {
+    logger.error('Failed to get aggregated score:', error);
+    return errorResult('AGGREGATION_FAILED', error instanceof Error ? error.message : 'Failed to aggregate reputation score');
+  }
 }
 
 /**
@@ -165,17 +162,7 @@ export async function getAggregatedScore(userId: string): Promise<ServiceResult<
  */
 export async function getReputationBreakdown(userId: string): Promise<ServiceResult<ReputationBreakdown>> {
   try {
-    // Fetch all reviews for this user
-    const reviewsResponse = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('reviewee_id', userId),
-        Query.limit(1000),
-      ]
-    );
-
-    const reviews = reviewsResponse.documents;
+    const reviews = await fetchReviewsForUser(userId);
 
     if (reviews.length === 0) {
       return successResult({
@@ -186,7 +173,7 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
         oneStar: 0,
         recentRatings: [],
       });
-      }
+    }
 
     // Compute star distribution in memory
     const fiveStars = reviews.filter(r => r.rating === 5).length;
@@ -206,16 +193,16 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
         let reviewerName = 'Anonymous';
         let projectTitle = 'Unknown Project';
 
-        try {
-          const reviewerDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, r.reviewer_id);
-          reviewerName = reviewerDoc.name || 'Anonymous';
-        } catch { /* ignore */ }
+        const reviewer = await userRepository.getUserById(r.reviewer_id);
+        if (reviewer?.name) {
+          reviewerName = reviewer.name;
+        }
 
         if (r.project_id) {
-          try {
-            const projectDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.PROJECTS, r.project_id);
-            projectTitle = projectDoc.title || 'Unknown Project';
-          } catch { /* ignore */ }
+          const project = await projectRepository.getProjectById(r.project_id);
+          if (project?.title) {
+            projectTitle = project.title;
+          }
         }
 
         return {
@@ -236,10 +223,10 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
       oneStar,
       recentRatings,
     });
-      } catch (error) {
-      logger.error('Failed to get reputation breakdown:', error);
-      return errorResult('BREAKDOWN_FAILED', error instanceof Error ? error.message : 'Failed to get reputation breakdown');
-    }
+  } catch (error) {
+    logger.error('Failed to get reputation breakdown:', error);
+    return errorResult('BREAKDOWN_FAILED', error instanceof Error ? error.message : 'Failed to get reputation breakdown');
+  }
 }
 
 /**
@@ -254,17 +241,9 @@ export async function getReputationHistory(
     startDate.setMonth(startDate.getMonth() - months);
 
     // Fetch reviews (Appwrite doesn't support date range queries directly, filter in memory)
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [
-        Query.equal('reviewee_id', userId),
-        Query.orderAsc('created_at'),
-        Query.limit(1000),
-      ]
-    );
+    const allReviews = await reviewRepository.findAllByRevieweeId(userId);
 
-    const reviews = response.documents.filter(
+    const reviews = allReviews.filter(
       r => new Date(r.created_at) >= startDate
     );
 
@@ -278,7 +257,7 @@ export async function getReputationHistory(
     reviews.forEach(review => {
       const date = new Date(review.created_at);
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-      
+
       const existing = monthlyData.get(monthKey) || { sum: 0, count: 0 };
       existing.sum += review.rating;
       existing.count += 1;
@@ -308,15 +287,11 @@ export async function getReputationLeaderboard(
   try {
     // Fetch all reviews and aggregate in memory
     // (Appwrite doesn't support GROUP BY queries)
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.REVIEWS,
-      [Query.limit(1000)]
-    );
+    const allReviews = await reviewRepository.listAll();
 
     // Group by reviewee_id
     const userStats = new Map<string, { sum: number; count: number }>();
-    for (const review of response.documents) {
+    for (const review of allReviews) {
       const revieweeId = review.reviewee_id;
       const existing = userStats.get(revieweeId) || { sum: 0, count: 0 };
       existing.sum += review.rating;
@@ -341,12 +316,8 @@ export async function getReputationLeaderboard(
     // Fetch user names
     const leaderboard = await Promise.all(
       candidates.map(async (entry) => {
-        let userName = 'Unknown';
-        try {
-          const userDoc = await databases.getDocument(DATABASE_ID, COLLECTIONS.USERS, entry.userId);
-          userName = userDoc.name || 'Unknown';
-        } catch { /* ignore */ }
-        return { ...entry, userName };
+        const user = await userRepository.getUserById(entry.userId);
+        return { ...entry, userName: user?.name || 'Unknown' };
       })
     );
 

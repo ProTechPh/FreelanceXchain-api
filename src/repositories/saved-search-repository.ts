@@ -1,5 +1,5 @@
 import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
-import { Query } from '../config/appwrite.js';
+import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
 
 type SavedSearchType = 'project' | 'freelancer';
 
@@ -41,6 +41,21 @@ export class SavedSearchRepository extends BaseRepository<SavedSearchEntity> {
   async findOwnerById(id: string): Promise<string | null> {
     const doc = await this.getById(id);
     return doc ? doc.user_id ?? null : null;
+  }
+
+  /**
+   * Saved searches that should notify on new matches. Errors propagate to the caller.
+   */
+  async findAllWithNotifyEnabled(): Promise<SavedSearchEntity[]> {
+    const response = await databases.listDocuments(
+      DATABASE_ID,
+      COLLECTION_ID,
+      [
+        Query.equal('notify_on_new', true),
+        Query.limit(100),
+      ]
+    );
+    return response.documents.map(doc => fromAppwriteDoc<SavedSearchEntity>(doc));
   }
 }
 

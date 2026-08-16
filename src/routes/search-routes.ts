@@ -118,18 +118,18 @@ router.get('/projects', apiRateLimiter, asyncHandler(async (req: Request, res: R
 
   // Validate budget parameters
   if (minBudgetParam && isNaN(minBudget!)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'minBudget must be a valid number', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'minBudget must be a valid number', { requestId });
     return;
   }
   if (maxBudgetParam && isNaN(maxBudget!)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'maxBudget must be a valid number', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'maxBudget must be a valid number', { requestId });
     return;
   }
 
   // Parse page size
   const pageSize = pageSizeParam ? Number(pageSizeParam) : undefined;
   if (pageSizeParam && (isNaN(pageSize!) || pageSize! < 1)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'pageSize must be a positive integer', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'pageSize must be a positive integer', { requestId });
     return;
   }
 
@@ -150,7 +150,7 @@ router.get('/projects', apiRateLimiter, asyncHandler(async (req: Request, res: R
   const result = await searchProjects(filters, pagination);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 
@@ -217,7 +217,7 @@ router.get('/freelancers', apiRateLimiter, asyncHandler(async (req: Request, res
   // Parse page size
   const pageSize = pageSizeParam ? Number(pageSizeParam) : undefined;
   if (pageSizeParam && (isNaN(pageSize!) || pageSize! < 1)) {
-    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'pageSize must be a positive integer', requestId);
+    sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'pageSize must be a positive integer', { requestId });
     return;
   }
 
@@ -236,7 +236,7 @@ router.get('/freelancers', apiRateLimiter, asyncHandler(async (req: Request, res
   const result = await searchFreelancers(filters, pagination);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code, result.error.message, requestId);
+    sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId });
     return;
   }
 

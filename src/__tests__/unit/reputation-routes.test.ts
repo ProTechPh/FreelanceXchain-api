@@ -42,12 +42,15 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
   }));
 
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-  isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
-  isValidAppwriteDocumentId: jest.fn((value: string) => /^[A-Za-z0-9][A-Za-z0-9._-]{0,35}$/.test(value)),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  // Run the real validation middleware; only the UUID helpers are mocked so non-UUID ids pass.
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+    isValidUUID: jest.fn((value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)),
+  };
+});
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'test-request-id',
@@ -305,25 +308,25 @@ describe('reputation-routes branch coverage', () => {
 
   it('POST /rate service NOT_FOUND returns 404', async () => {
     mockReputationService.submitRating.mockResolvedValue(fail('NOT_FOUND', 'No'));
-    const res = await request(app).post('/api/reputation/rate').send({ contractId: '00000000-0000-0000-0000-000000000001', rateeId: '00000000-0000-0000-0000-000000000002', rating: 5 });
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: '550e8400-e29b-41d4-a716-446655440000', rateeId: '550e8400-e29b-41d4-a716-446655440001', rating: 5 });
     expect(res.status).toBe(404);
   });
 
   it('POST /rate service UNAUTHORIZED returns 403', async () => {
     mockReputationService.submitRating.mockResolvedValue(fail('UNAUTHORIZED', 'No'));
-    const res = await request(app).post('/api/reputation/rate').send({ contractId: '00000000-0000-0000-0000-000000000001', rateeId: '00000000-0000-0000-0000-000000000002', rating: 5 });
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: '550e8400-e29b-41d4-a716-446655440000', rateeId: '550e8400-e29b-41d4-a716-446655440001', rating: 5 });
     expect(res.status).toBe(403);
   });
 
   it('POST /rate service DUPLICATE_RATING returns 409', async () => {
     mockReputationService.submitRating.mockResolvedValue(fail('DUPLICATE_RATING', 'No'));
-    const res = await request(app).post('/api/reputation/rate').send({ contractId: '00000000-0000-0000-0000-000000000001', rateeId: '00000000-0000-0000-0000-000000000002', rating: 5 });
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: '550e8400-e29b-41d4-a716-446655440000', rateeId: '550e8400-e29b-41d4-a716-446655440001', rating: 5 });
     expect(res.status).toBe(409);
   });
 
   it('POST /rate with comment', async () => {
     mockReputationService.submitRating.mockResolvedValue(ok({ id: 'r1' }));
-    const res = await request(app).post('/api/reputation/rate').send({ contractId: '00000000-0000-0000-0000-000000000001', rateeId: '00000000-0000-0000-0000-000000000002', rating: 5, comment: 'Great!' });
+    const res = await request(app).post('/api/reputation/rate').send({ contractId: '550e8400-e29b-41d4-a716-446655440000', rateeId: '550e8400-e29b-41d4-a716-446655440001', rating: 5, comment: 'Great!' });
     expect(res.status).toBe(201);
   });
 

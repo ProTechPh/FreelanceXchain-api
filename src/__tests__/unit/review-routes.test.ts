@@ -37,11 +37,14 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
   }));
 
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-  validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-  validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  // Run the real validation middleware; only validateUUID is mocked so non-UUID ids pass.
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  };
+});
 
 const reviewRouter = (await import('../../routes/review-routes.js')).default;
 

@@ -136,7 +136,7 @@ describe('storage-uploader', () => {
     it('uploads a file and returns success with metadata', async () => {
       mockCreateFile.mockResolvedValue({ $id: 'file-id-123' });
 
-      const result = await uploadFileToStorage(mockBuffer, 'document.pdf', 'application/pdf');
+      const result = await uploadFileToStorage({ buffer: mockBuffer, originalFilename: 'document.pdf', mimeType: 'application/pdf' });
 
       expect(result.success).toBe(true);
       expect(result.metadata).toEqual(expect.objectContaining({
@@ -155,7 +155,7 @@ describe('storage-uploader', () => {
     it('returns error on unexpected exception', async () => {
       mockCreateFile.mockRejectedValue(new Error('Network failure'));
 
-      const result = await uploadFileToStorage(mockBuffer, 'document.pdf', 'application/pdf');
+      const result = await uploadFileToStorage({ buffer: mockBuffer, originalFilename: 'document.pdf', mimeType: 'application/pdf' });
 
       expect(result.success).toBe(false);
       expect(result.error).toContain('Network failure');
@@ -168,7 +168,7 @@ describe('storage-uploader', () => {
     it('uses default bucket when bucket parameter is omitted', async () => {
       mockCreateFile.mockResolvedValue({ $id: 'file-id' });
 
-      await uploadFileToStorage(mockBuffer, 'file.pdf', 'application/pdf');
+      await uploadFileToStorage({ buffer: mockBuffer, originalFilename: 'file.pdf', mimeType: 'application/pdf' });
 
       expect(mockCreateFile).toHaveBeenCalledWith(
         'proposal-attachments',
@@ -181,7 +181,7 @@ describe('storage-uploader', () => {
     it('uses custom bucket when provided', async () => {
       mockCreateFile.mockResolvedValue({ $id: 'file-id' });
 
-      await uploadFileToStorage(mockBuffer, 'file.pdf', 'application/pdf', 'dispute-evidence');
+      await uploadFileToStorage({ buffer: mockBuffer, originalFilename: 'file.pdf', mimeType: 'application/pdf', bucket: 'dispute-evidence' });
 
       expect(mockCreateFile).toHaveBeenCalledWith(
         'dispute-evidence',
@@ -194,13 +194,13 @@ describe('storage-uploader', () => {
     it('uses user-scoped permissions for sensitive buckets with userId (line 77)', async () => {
       mockCreateFile.mockResolvedValue({ $id: 'file-id' });
 
-      await uploadFileToStorage(
-        mockBuffer,
-        'evidence.pdf',
-        'application/pdf',
-        'dispute-evidence',
-        'user-123'
-      );
+      await uploadFileToStorage({
+        buffer: mockBuffer,
+        originalFilename: 'evidence.pdf',
+        mimeType: 'application/pdf',
+        bucket: 'dispute-evidence',
+        userId: 'user-123',
+      });
 
       expect(mockCreateFile).toHaveBeenCalledWith(
         'dispute-evidence',
@@ -213,13 +213,13 @@ describe('storage-uploader', () => {
     it('uses user-scoped permissions for milestone-deliverables bucket with userId', async () => {
       mockCreateFile.mockResolvedValue({ $id: 'file-id' });
 
-      await uploadFileToStorage(
-        mockBuffer,
-        'deliverable.pdf',
-        'application/pdf',
-        'milestone-deliverables',
-        'user-456'
-      );
+      await uploadFileToStorage({
+        buffer: mockBuffer,
+        originalFilename: 'deliverable.pdf',
+        mimeType: 'application/pdf',
+        bucket: 'milestone-deliverables',
+        userId: 'user-456',
+      });
 
       expect(mockCreateFile).toHaveBeenCalledWith(
         'milestone-deliverables',
@@ -232,7 +232,7 @@ describe('storage-uploader', () => {
     it('generates unique filename with uuid prefix', async () => {
       mockCreateFile.mockResolvedValue({ $id: 'file-id' });
 
-      await uploadFileToStorage(mockBuffer, 'document.pdf', 'application/pdf');
+      await uploadFileToStorage({ buffer: mockBuffer, originalFilename: 'document.pdf', mimeType: 'application/pdf' });
 
       expect(sanitizeFilename).toHaveBeenCalledWith('document.pdf');
       expect(uuidv4).toHaveBeenCalled();
@@ -241,7 +241,7 @@ describe('storage-uploader', () => {
     it('preserves original filename in metadata', async () => {
       mockCreateFile.mockResolvedValue({ $id: 'file-id' });
 
-      const result = await uploadFileToStorage(mockBuffer, 'My Document.pdf', 'application/pdf');
+      const result = await uploadFileToStorage({ buffer: mockBuffer, originalFilename: 'My Document.pdf', mimeType: 'application/pdf' });
 
       expect(result.metadata!.filename).toBe('My Document.pdf');
     });
@@ -770,13 +770,13 @@ describe('Storage Uploader - generateUniqueFilename edge case', () => {
   it('should prefix the stored filename with the userId for ownership verification', async () => {
     mockCreateFile.mockResolvedValue({ $id: 'file-owner-prefix' });
 
-    await uploadFileToStorage(
-      Buffer.from('data'),
-      'document.pdf',
-      'application/pdf',
-      'proposal-attachments',
-      'user-123'
-    );
+    await uploadFileToStorage({
+      buffer: Buffer.from('data'),
+      originalFilename: 'document.pdf',
+      mimeType: 'application/pdf',
+      bucket: 'proposal-attachments',
+      userId: 'user-123',
+    });
 
     // storage.createFile(bucket, fileId, inputFile, permissions) — the stored
     // name lives on the InputFile (third argument).
@@ -788,7 +788,7 @@ describe('Storage Uploader - generateUniqueFilename edge case', () => {
     mockCreateFile.mockResolvedValue({ $id: 'file-noext' });
 
     // sanitizeFilename mock returns the input for simple names
-    const result = await uploadFileToStorage(Buffer.from('data'), 'README', 'text/plain');
+    const result = await uploadFileToStorage({ buffer: Buffer.from('data'), originalFilename: 'README', mimeType: 'text/plain' });
 
     expect(result.success).toBe(true);
     expect(result.metadata?.filename).toBe('README');

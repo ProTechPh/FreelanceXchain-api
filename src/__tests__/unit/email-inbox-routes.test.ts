@@ -164,28 +164,28 @@ describe('Email Inbox Routes', () => {
       mockListEmails.mockResolvedValueOnce({ success: true, data: { data: [], total: 0 } });
       const res = await request(app).get('/api/emails');
       expect(res.status).toBe(200);
-      expect(mockListEmails).toHaveBeenCalledWith('test-user-id', 'inbox', 20, 0, undefined);
+      expect(mockListEmails).toHaveBeenCalledWith('test-user-id', { folder: 'inbox', limit: 20, offset: 0 });
     });
 
     it('should pass query params', async () => {
       mockListEmails.mockResolvedValueOnce({ success: true, data: { data: [], total: 0 } });
       const res = await request(app).get('/api/emails?folder=sent&limit=10&offset=5&isRead=true');
       expect(res.status).toBe(200);
-      expect(mockListEmails).toHaveBeenCalledWith('test-user-id', 'sent', 10, 5, true);
+      expect(mockListEmails).toHaveBeenCalledWith('test-user-id', { folder: 'sent', limit: 10, offset: 5, isRead: true });
     });
 
     it('should cap limit at 100', async () => {
       mockListEmails.mockResolvedValueOnce({ success: true, data: { data: [], total: 0 } });
       const res = await request(app).get('/api/emails?limit=500');
       expect(res.status).toBe(200);
-      expect(mockListEmails).toHaveBeenCalledWith('test-user-id', 'inbox', 100, 0, undefined);
+      expect(mockListEmails).toHaveBeenCalledWith('test-user-id', { folder: 'inbox', limit: 100, offset: 0 });
     });
 
     it('should parse isRead=false', async () => {
       mockListEmails.mockResolvedValueOnce({ success: true, data: { data: [], total: 0 } });
       const res = await request(app).get('/api/emails?isRead=false');
       expect(res.status).toBe(200);
-      expect(mockListEmails).toHaveBeenCalledWith('test-user-id', 'inbox', 20, 0, false);
+      expect(mockListEmails).toHaveBeenCalledWith('test-user-id', { folder: 'inbox', limit: 20, offset: 0, isRead: false });
     });
 
     it('should return 400 on service failure', async () => {
@@ -311,14 +311,14 @@ describe('Email Inbox Routes', () => {
       mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-1' } });
       const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Hi', text: 'Hello' });
       expect(res.status).toBe(201);
-      expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Hi', 'Hello', 'Hello');
+      expect(mockSendNewEmail).toHaveBeenCalledWith({ userId: 'test-user-id', to: 'a@b.com', subject: 'Hi', textBody: 'Hello', htmlBody: 'Hello' });
     });
 
     it('should use empty string when text is missing', async () => {
       mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-1' } });
       const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Hi', html: '<p>Hi</p>' });
       expect(res.status).toBe(201);
-      expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Hi', '', '<p>Hi</p>');
+      expect(mockSendNewEmail).toHaveBeenCalledWith({ userId: 'test-user-id', to: 'a@b.com', subject: 'Hi', textBody: '', htmlBody: '<p>Hi</p>' });
     });
 
     it('should return 400 on service failure', async () => {
@@ -402,14 +402,14 @@ describe('email-inbox-routes - send and reply service calls', () => {
     mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-2' } });
     const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Sub', text: 'Body text' });
     expect(res.status).toBe(201);
-    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Sub', 'Body text', 'Body text');
+    expect(mockSendNewEmail).toHaveBeenCalledWith({ userId: 'test-user-id', to: 'a@b.com', subject: 'Sub', textBody: 'Body text', htmlBody: 'Body text' });
   });
 
   it('L204: POST /send calls sendNewEmail with empty text when neither text nor html provided', async () => {
     mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-3' } });
     const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Sub', html: '<p>Hi</p>' });
     expect(res.status).toBe(201);
-    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Sub', '', '<p>Hi</p>');
+    expect(mockSendNewEmail).toHaveBeenCalledWith({ userId: 'test-user-id', to: 'a@b.com', subject: 'Sub', textBody: '', htmlBody: '<p>Hi</p>' });
   });
 
   it('L234: POST /:id/reply calls replyToEmail with correct args', async () => {
@@ -430,7 +430,7 @@ describe('email-inbox-routes - send and reply service calls', () => {
     mockSendNewEmail.mockResolvedValueOnce({ success: true, data: { emailId: 'sent-4' } });
     const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Sub' });
     expect(res.status).toBe(201);
-    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Sub', '', '');
+    expect(mockSendNewEmail).toHaveBeenCalledWith({ userId: 'test-user-id', to: 'a@b.com', subject: 'Sub', textBody: '', htmlBody: '' });
   });
 
   it('L234: POST /:id/reply with both text and html passes both directly', async () => {
@@ -462,7 +462,7 @@ describe('email-inbox-routes - additional branch coverage for || operators', () 
     const res = await request(app).post('/api/emails/send').send({ to: 'a@b.com', subject: 'Hi', text: '', html: '<p>Hi</p>' });
     expect(res.status).toBe(201);
     // text is '' (falsy) so text || '' => '', html is truthy so html || text || '' => '<p>Hi</p>'
-    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Hi', '', '<p>Hi</p>');
+    expect(mockSendNewEmail).toHaveBeenCalledWith({ userId: 'test-user-id', to: 'a@b.com', subject: 'Hi', textBody: '', htmlBody: '<p>Hi</p>' });
   });
 
   it('POST /:id/reply with text as empty string and html provided (text || \'\' branch)', async () => {
@@ -487,6 +487,6 @@ describe('email-inbox-routes - additional branch coverage for || operators', () 
     expect(res.status).toBe(201);
     // text is '' (falsy) so text || '' => ''
     // html is undefined (falsy), text is '' (falsy), so html || text || '' => ''
-    expect(mockSendNewEmail).toHaveBeenCalledWith('test-user-id', 'a@b.com', 'Hi', '', '');
+    expect(mockSendNewEmail).toHaveBeenCalledWith({ userId: 'test-user-id', to: 'a@b.com', subject: 'Hi', textBody: '', htmlBody: '' });
   });
 });

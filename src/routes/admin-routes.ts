@@ -54,7 +54,7 @@ router.get('/stats', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const result = await getPlatformStats();
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -76,7 +76,7 @@ router.get('/analytics', authMiddleware, requireRole('admin'), apiRateLimiter, a
   const result = await getAdminAnalytics();
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -103,7 +103,7 @@ router.get('/users', authMiddleware, requireRole('admin'), apiRateLimiter, async
   const result = await getUserManagement(filters);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -130,20 +130,20 @@ router.patch('/users/:userId', authMiddleware, requireRole('admin'), apiRateLimi
   const requestId = getRequestId(req);
 
   if (!adminUserId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const validRoles = ['freelancer', 'employer'];
   if (role !== undefined && !validRoles.includes(role)) {
-    sendErrorResponse(res, 400, 'INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`, requestId);
+    sendErrorResponse(res, 400, 'INVALID_ROLE', `Invalid role. Must be one of: ${validRoles.join(', ')}`, { requestId });
     return;
   }
 
   const result = await updateUser(userId, { name, role, isActive }, adminUserId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -167,14 +167,14 @@ router.post('/users/:userId/suspend', authMiddleware, requireRole('admin'), apiR
   const requestId = getRequestId(req);
 
   if (!adminUserId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await suspendUser(userId, reason, adminUserId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -196,14 +196,14 @@ router.post('/users/:userId/unsuspend', authMiddleware, requireRole('admin'), ap
   const requestId = getRequestId(req);
 
   if (!adminUserId) {
-    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', requestId);
+    sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
     return;
   }
 
   const result = await unsuspendUser(userId, adminUserId);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -250,7 +250,7 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
     submittedReason !== undefined &&
     (typeof submittedReason !== 'string' || submittedReason.trim().length < 10 || submittedReason.trim().length > 500)
   ) {
-    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must be between 10 and 500 characters', requestId);
+    sendErrorResponse(res, 400, 'INVALID_REASON', 'Reason must be between 10 and 500 characters', { requestId });
     return;
   }
 
@@ -268,7 +268,7 @@ router.post('/users/:userId/verify', authMiddleware, requireRole('admin'), apiRa
         : ['DATABASE_ERROR', 'INTERNAL_ERROR'].includes(result.error?.code ?? '')
           ? 500
           : 400;
-    sendErrorResponse(res, statusCode, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, statusCode, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -293,7 +293,7 @@ router.get('/disputes', authMiddleware, requireRole('admin'), apiRateLimiter, as
   const result = await getDisputeManagement(filters);
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -315,7 +315,7 @@ router.get('/system/health', authMiddleware, requireRole('admin'), apiRateLimite
   const result = await getSystemHealth();
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error?.code ?? 'UNKNOWN', result.error?.message ?? 'An error occurred', { requestId });
     return;
   }
 
@@ -336,7 +336,7 @@ router.get('/platform-stats', authMiddleware, requireRole('admin'), apiRateLimit
   const result = await getPlatformStats();
 
   if (!result.success) {
-    sendErrorResponse(res, 400, result.error.code ?? 'UNKNOWN', result.error.message ?? 'An error occurred', requestId);
+    sendErrorResponse(res, 400, result.error.code ?? 'UNKNOWN', result.error.message ?? 'An error occurred', { requestId });
     return;
   }
 

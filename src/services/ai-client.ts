@@ -119,6 +119,50 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Convert the internal AIRequest to the OpenAI-compatible payload.
+ */
+function buildOpenAIRequest(request: AIRequest): Record<string, unknown> {
+  /* istanbul ignore next -- generateContent always supplies generationConfig; defaults are fallback only */
+  const temperature = request.generationConfig?.temperature != null ? request.generationConfig.temperature : 0.7;
+  /* istanbul ignore next */
+  const maxTokens = request.generationConfig?.maxOutputTokens != null ? request.generationConfig.maxOutputTokens : 2048;
+
+  return {
+    model: config.llm.model,
+    messages: request.contents.map(content => ({
+      role: 'user',
+      content: content.parts.map(part => part.text).join('\n')
+    })),
+    stream: false,
+    temperature,
+    max_tokens: maxTokens,
+  };
+}
+
+/**
+ * Convert the OpenAI-compatible completion response to the internal AIResponse format.
+ */
+function parseOpenAIResponse(openAIResponse: OpenAICompletionResponse): AIResponse {
+  return {
+    candidates: openAIResponse.choices?.map((choice, index) => ({
+      content: {
+        parts: [{ text: choice.message?.content || '' }],
+        role: choice.message?.role || 'assistant',
+      },
+      finishReason: choice.finish_reason || 'stop',
+      index: index,
+    })) || [],
+    ...(openAIResponse.usage && {
+      usageMetadata: {
+        promptTokenCount: openAIResponse.usage.prompt_tokens || 0,
+        candidatesTokenCount: openAIResponse.usage.completion_tokens || 0,
+        totalTokenCount: openAIResponse.usage.total_tokens || 0,
+      }
+    }),
+  };
+}
+
+/**
  * Make HTTP request to AI API with retry logic (OpenAI-compatible format)
  */
 async function makeAIRequest(
@@ -137,29 +181,13 @@ async function makeAIRequest(
   const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
   try {
-    // Convert to OpenAI-compatible format
-    /* istanbul ignore next -- generateContent always supplies generationConfig; defaults are fallback only */
-    const temperature = request.generationConfig?.temperature != null ? request.generationConfig.temperature : 0.7;
-    /* istanbul ignore next */
-    const maxTokens = request.generationConfig?.maxOutputTokens != null ? request.generationConfig.maxOutputTokens : 2048;
-    const openAIRequest = {
-      model: config.llm.model,
-      messages: request.contents.map(content => ({
-        role: 'user',
-        content: content.parts.map(part => part.text).join('\n')
-      })),
-      stream: false,
-      temperature,
-      max_tokens: maxTokens,
-    };
-
     const response = await fetch(buildApiUrl(), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.llm.apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(openAIRequest),
+      body: JSON.stringify(buildOpenAIRequest(request)),
       signal: controller.signal,
     });
 
@@ -168,7 +196,7 @@ async function makeAIRequest(
     if (!response.ok) {
       const errorText = await response.text();
       const isRetryable = response.status >= 500 || response.status === 429;
-      
+
       if (isRetryable && retryCount < MAX_RETRIES) {
         const delay = INITIAL_RETRY_DELAY_MS * Math.pow(2, retryCount);
         await sleep(delay);
@@ -182,32 +210,11 @@ async function makeAIRequest(
       };
     }
 
-    // Parse OpenAI-compatible response and convert to internal format
     const openAIResponse: OpenAICompletionResponse = await response.json();
-    
-    // Convert OpenAI format to internal AIResponse format
-    const data: AIResponse = {
-      candidates: openAIResponse.choices?.map((choice, index) => ({
-        content: {
-          parts: [{ text: choice.message?.content || '' }],
-          role: choice.message?.role || 'assistant',
-        },
-        finishReason: choice.finish_reason || 'stop',
-        index: index,
-      })) || [],
-      ...(openAIResponse.usage && {
-        usageMetadata: {
-          promptTokenCount: openAIResponse.usage.prompt_tokens || 0,
-          candidatesTokenCount: openAIResponse.usage.completion_tokens || 0,
-          totalTokenCount: openAIResponse.usage.total_tokens || 0,
-        }
-      }),
-    };
-
-    return data;
+    return parseOpenAIResponse(openAIResponse);
   } catch (error) {
     clearTimeout(timeoutId);
-    
+
     const isAbortError = error instanceof Error && error.name === 'AbortError';
     const isNetworkError = error instanceof TypeError;
     const isRetryable = isAbortError || isNetworkError;

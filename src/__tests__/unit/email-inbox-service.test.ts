@@ -160,7 +160,7 @@ describe('Email Inbox Service', () => {
     it('should return paginated emails', async () => {
       const data = { data: [{ id: 'e1' }], total: 1 };
       mockEmailInboxRepository.listByUserFolder.mockResolvedValueOnce(data);
-      const result = await listEmails('u1', 'inbox', 20, 0);
+      const result = await listEmails('u1', { folder: 'inbox', limit: 20, offset: 0 });
       expect(result.success).toBe(true);
       expect(result.data).toEqual(data);
     });
@@ -175,9 +175,9 @@ describe('Email Inbox Service', () => {
     it('should pass isRead filter', async () => {
       const data = { data: [], total: 0 };
       mockEmailInboxRepository.listByUserFolder.mockResolvedValueOnce(data);
-      const result = await listEmails('u1', 'inbox', 20, 0, false);
+      const result = await listEmails('u1', { folder: 'inbox', limit: 20, offset: 0, isRead: false });
       expect(result.success).toBe(true);
-      expect(mockEmailInboxRepository.listByUserFolder).toHaveBeenCalledWith('u1', 'inbox', 20, 0, false);
+      expect(mockEmailInboxRepository.listByUserFolder).toHaveBeenCalledWith('u1', { folder: 'inbox', limit: 20, offset: 0, isRead: false });
     });
 
     it('should handle errors', async () => {

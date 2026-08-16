@@ -245,5 +245,65 @@ describe('File Upload Middleware', () => {
       const { uploadPortfolioImages } = await importModule();
       expect(Array.isArray(uploadPortfolioImages)).toBe(true);
     });
+
+    it('should enforce proposal limits read from submitProposalMultipartSchema.files (1-5 files)', async () => {
+      const { uploadProposalAttachments } = await importModule();
+
+      // No files: schema minItems is 1, so the upload must be rejected.
+      req.files = undefined;
+      await uploadProposalAttachments[1]!(req as Request, res as Response, next as NextFunction);
+      expect(statusMock).toHaveBeenCalledWith(400);
+      expect(jsonMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'NO_FILES_UPLOADED' }),
+        })
+      );
+    });
+
+    it('should allow zero files for project attachments per createProjectWithAttachmentsSchema.files (minItems 0)', async () => {
+      const { uploadProjectAttachments } = await importModule();
+
+      // No files: schema minItems is 0 (optional reference materials).
+      req.files = undefined;
+      await uploadProjectAttachments[1]!(req as Request, res as Response, next as NextFunction);
+      expect(next).toHaveBeenCalled();
+    });
+
+    it('should reject more than the schema maxItems for proposal attachments', async () => {
+      const { uploadProposalAttachments } = await importModule();
+
+      req.files = [
+        { originalname: 'a.pdf', size: 100, buffer: Buffer.from('a') } as any,
+        { originalname: 'b.pdf', size: 100, buffer: Buffer.from('b') } as any,
+        { originalname: 'c.pdf', size: 100, buffer: Buffer.from('c') } as any,
+        { originalname: 'd.pdf', size: 100, buffer: Buffer.from('d') } as any,
+        { originalname: 'e.pdf', size: 100, buffer: Buffer.from('e') } as any,
+        { originalname: 'f.pdf', size: 100, buffer: Buffer.from('f') } as any,
+      ];
+      await uploadProposalAttachments[1]!(req as Request, res as Response, next as NextFunction);
+
+      expect(statusMock).toHaveBeenCalledWith(400);
+      expect(jsonMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          error: expect.objectContaining({ code: 'TOO_MANY_FILES' }),
+        })
+      );
+    });
+  });
+
+  describe('fileLimitsFromSchema', () => {
+    it('should throw when the multipart schema declares no files metadata', async () => {
+      jest.resetModules();
+      jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
+        // A multipart schema without `files`: the preset must fail loudly
+        // instead of silently accepting unconstrained uploads.
+        submitProposalMultipartSchema: { coerceBody: true, body: { type: 'object', properties: {} } },
+        createProjectWithAttachmentsSchema: { coerceBody: true, body: { type: 'object', properties: {} } },
+      }));
+
+      await expect(import('../../middleware/file-upload-middleware.js')).rejects.toThrow('files` metadata');
+
+      jest.resetModules();
+    });
   });
 });

@@ -1,7 +1,9 @@
-import { databases, DATABASE_ID, Query, ID } from '../config/appwrite.js';
 import { logger } from '../config/logger.js';
 import { EmailPreference, EmailType } from '../models/email-preference.js';
-import { COLLECTIONS } from '../config/collections.js';
+import {
+  emailPreferenceRepository,
+  type EmailPreferenceEntity,
+} from '../repositories/email-preference-repository.js';
 import type { ServiceResult } from '../types/service-result.js';
 import { errorResult, successResult } from '../types/service-result.js';
 
@@ -19,49 +21,76 @@ const CRITICAL_EMAIL_TYPES: EmailType[] = [
  */
 export async function getEmailPreferences(userId: string): Promise<ServiceResult<EmailPreference>> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.EMAIL_PREFERENCES,
-      [Query.equal('user_id', userId), Query.limit(1)]
-    );
+    const existing = await emailPreferenceRepository.findByUserId(userId);
 
-    if (response.documents.length === 0) {
-      const defaultPreferences = {
-        user_id: userId,
-        proposal_received: true,
-        proposal_accepted: true,
-        milestone_updates: true,
-        payment_notifications: true,
-        dispute_notifications: true,
-        contract_notifications: true,
-        message_notifications: true,
-        review_notifications: true,
-        kyc_notifications: true,
-        marketing_emails: false,
-        weekly_digest: true,
-      };
-
-      const doc = await databases.createDocument(
-        DATABASE_ID,
-        COLLECTIONS.EMAIL_PREFERENCES,
-        ID.unique(),
-        {
-          ...defaultPreferences,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-      );
-
-      return successResult(mapEmailPreference(doc));
+    if (!existing) {
+      const created = await emailPreferenceRepository.createDefault(userId);
+      return successResult(mapEmailPreference(created));
     }
 
-    return successResult(mapEmailPreference(response.documents[0]!));
+    return successResult(mapEmailPreference(existing));
   } catch (error) {
-    /* istanbul ignore next */
     logger.error('Unexpected error in getEmailPreferences', { error, userId });
-    /* istanbul ignore next */
     return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
   }
+}
+
+const PREFERENCE_COLUMNS = [
+  'proposal_received', 'proposal_accepted', 'milestone_updates',
+  'payment_notifications', 'dispute_notifications',
+  'contract_notifications', 'message_notifications', 'review_notifications', 'kyc_notifications',
+  'marketing_emails', 'weekly_digest',
+] as const;
+
+const CAMEL_CASE_TO_COLUMN: Record<string, keyof EmailPreferenceEntity> = {
+  proposalReceived: 'proposal_received',
+  proposalAccepted: 'proposal_accepted',
+  milestoneUpdates: 'milestone_updates',
+  paymentNotifications: 'payment_notifications',
+  disputeNotifications: 'dispute_notifications',
+  contractNotifications: 'contract_notifications',
+  messageNotifications: 'message_notifications',
+  reviewNotifications: 'review_notifications',
+  kycNotifications: 'kyc_notifications',
+  marketingEmails: 'marketing_emails',
+  weeklyDigest: 'weekly_digest',
+};
+
+/** Keys the PATCH body may carry: camelCase model keys and their snake_case columns. */
+const VALID_PREFERENCE_KEYS = new Set<string>([
+  ...PREFERENCE_COLUMNS,
+  ...Object.keys(CAMEL_CASE_TO_COLUMN),
+]);
+
+/**
+ * Request-body fields that are not updatable preferences.
+ */
+function findUnknownKeys(preferences: Partial<EmailPreference>): string[] {
+  return Object.keys(preferences).filter(key => !VALID_PREFERENCE_KEYS.has(key));
+}
+
+/**
+ * Preference fields whose value is not a boolean.
+ */
+function findNonBooleanPreferenceKeys(preferences: Partial<EmailPreference>): string[] {
+  return Object.entries(preferences)
+    .filter(([, value]) => typeof value !== 'boolean')
+    .map(([key]) => key);
+}
+
+/**
+ * Map an API payload onto the preference columns.
+ * Accepts both the camelCase model keys and the snake_case column names.
+ */
+function extractAllowedUpdates(
+  preferences: Partial<EmailPreference>
+): Partial<EmailPreferenceEntity> {
+  const updateData: Partial<EmailPreferenceEntity> = {};
+  for (const [key, value] of Object.entries(preferences)) {
+    const column = CAMEL_CASE_TO_COLUMN[key] ?? key;
+    (updateData as Record<string, unknown>)[column] = value;
+  }
+  return updateData;
 }
 
 /**
@@ -72,44 +101,36 @@ export async function updateEmailPreferences(
   preferences: Partial<EmailPreference>
 ): Promise<ServiceResult<EmailPreference>> {
   try {
-    const ALLOWED_COLUMNS = new Set([
-      'proposal_received', 'proposal_accepted', 'milestone_updates',
-      'payment_notifications', 'dispute_notifications',
-      'contract_notifications', 'message_notifications', 'review_notifications', 'kyc_notifications',
-      'marketing_emails', 'weekly_digest',
-    ]);
-
-    const updateData: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(preferences)) {
-      if (ALLOWED_COLUMNS.has(key)) {
-        updateData[key] = value;
-      }
+    const unknownKeys = findUnknownKeys(preferences);
+    if (unknownKeys.length > 0) {
+      return errorResult('INVALID_PREFERENCES', `Unknown preference fields: ${unknownKeys.join(', ')}`);
     }
+
+    const nonBooleanKeys = findNonBooleanPreferenceKeys(preferences);
+    if (nonBooleanKeys.length > 0) {
+      return errorResult('INVALID_PREFERENCES', `Preference fields must be booleans: ${nonBooleanKeys.join(', ')}`);
+    }
+
+    const updateData = extractAllowedUpdates(preferences);
 
     if (Object.keys(updateData).length === 0) {
       return await getEmailPreferences(userId);
     }
 
-    updateData.updated_at = new Date().toISOString();
-
-    // Find existing preference document
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.EMAIL_PREFERENCES,
-      [Query.equal('user_id', userId), Query.limit(1)]
-    );
-
-    if (response.documents.length === 0) {
+    const existing = await emailPreferenceRepository.findByUserId(userId);
+    if (!existing) {
       return errorResult('NOT_FOUND', 'Preferences not found');
     }
 
-    const doc = response.documents[0]!;
-    const updated = await databases.updateDocument(
-      DATABASE_ID,
-      COLLECTIONS.EMAIL_PREFERENCES,
-      doc.$id,
-      updateData
-    );
+    const updated = await emailPreferenceRepository.update(existing.id, updateData);
+    if (!updated) {
+      logger.error('Failed to update email preferences', {
+        error: new Error('Preference update failed'),
+        userId,
+        preferences,
+      });
+      return errorResult('INTERNAL_ERROR', 'An unexpected error occurred');
+    }
 
     return successResult(mapEmailPreference(updated));
   } catch (error) {
@@ -123,32 +144,22 @@ export async function updateEmailPreferences(
  */
 export async function unsubscribeAll(userId: string): Promise<ServiceResult<void>> {
   try {
-    const response = await databases.listDocuments(
-      DATABASE_ID,
-      COLLECTIONS.EMAIL_PREFERENCES,
-      [Query.equal('user_id', userId), Query.limit(1)]
-    );
+    const existing = await emailPreferenceRepository.findByUserId(userId);
 
-    if (response.documents.length > 0) {
-      await databases.updateDocument(
-        DATABASE_ID,
-        COLLECTIONS.EMAIL_PREFERENCES,
-        response.documents[0]!.$id,
-        {
-          proposal_received: false,
-          proposal_accepted: true,
-          milestone_updates: true,
-          payment_notifications: true,
-          dispute_notifications: true,
-          contract_notifications: true,
-          message_notifications: true,
-          review_notifications: true,
-          kyc_notifications: true,
-          marketing_emails: false,
-          weekly_digest: false,
-          updated_at: new Date().toISOString(),
-        }
-      );
+    if (existing) {
+      await emailPreferenceRepository.update(existing.id, {
+        proposal_received: false,
+        proposal_accepted: true,
+        milestone_updates: true,
+        payment_notifications: true,
+        dispute_notifications: true,
+        contract_notifications: true,
+        message_notifications: true,
+        review_notifications: true,
+        kyc_notifications: true,
+        marketing_emails: false,
+        weekly_digest: false,
+      });
     }
 
     return successResult(undefined as unknown as void);
@@ -190,30 +201,29 @@ export async function shouldSendEmail(userId: string, emailType: EmailType): Pro
     const preferenceKey = preferenceMap[emailType];
     return preferences[preferenceKey] ?? true;
   } catch (error) {
-    /* istanbul ignore next */
+    /* istanbul ignore next -- getEmailPreferences never throws past its own catch */
     logger.error('Error checking email preference', { error, userId, emailType });
     /* istanbul ignore next */
     return CRITICAL_EMAIL_TYPES.includes(emailType);
   }
 }
 
-function mapEmailPreference(doc: Record<string, any>): EmailPreference {
-  const { $id, $collectionId: _cid, $databaseId: _did, $createdAt, $updatedAt, ...attrs } = doc;
+function mapEmailPreference(entity: EmailPreferenceEntity): EmailPreference {
   return {
-    id: $id,
-    userId: attrs.user_id,
-    proposalReceived: attrs.proposal_received,
-    proposalAccepted: attrs.proposal_accepted,
-    milestoneUpdates: attrs.milestone_updates,
-    paymentNotifications: attrs.payment_notifications,
-    disputeNotifications: attrs.dispute_notifications,
-    contractNotifications: attrs.contract_notifications,
-    messageNotifications: attrs.message_notifications,
-    reviewNotifications: attrs.review_notifications,
-    kycNotifications: attrs.kyc_notifications,
-    marketingEmails: attrs.marketing_emails,
-    weeklyDigest: attrs.weekly_digest,
-    createdAt: attrs.created_at ?? $createdAt,
-    updatedAt: attrs.updated_at ?? $updatedAt,
-  } as EmailPreference;
+    id: entity.id,
+    userId: entity.user_id,
+    proposalReceived: entity.proposal_received,
+    proposalAccepted: entity.proposal_accepted,
+    milestoneUpdates: entity.milestone_updates,
+    paymentNotifications: entity.payment_notifications,
+    disputeNotifications: entity.dispute_notifications,
+    contractNotifications: entity.contract_notifications,
+    messageNotifications: entity.message_notifications,
+    reviewNotifications: entity.review_notifications,
+    kycNotifications: entity.kyc_notifications,
+    marketingEmails: entity.marketing_emails,
+    weeklyDigest: entity.weekly_digest,
+    createdAt: entity.created_at,
+    updatedAt: entity.updated_at,
+  };
 }

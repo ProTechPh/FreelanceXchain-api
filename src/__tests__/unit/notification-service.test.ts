@@ -241,7 +241,7 @@ describe('Notification Service - Property-Based Tests', () => {
     const projectTitle = 'Test Project';
     const freelancerId = 'freelancer-id';
 
-    const result = await notifyProposalReceived(employerId, proposalId, projectId, projectTitle, freelancerId);
+    const result = await notifyProposalReceived({ employerId, proposalId, projectId, projectTitle, freelancerId });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -291,7 +291,7 @@ describe('Notification Service - Unit Tests', () => {
     const projectTitle = 'Test Project';
     const contractId = 'contract-id';
 
-    const result = await notifyProposalAccepted(freelancerId, proposalId, projectId, projectTitle, contractId);
+    const result = await notifyProposalAccepted({ freelancerId, proposalId, projectId, projectTitle, contractId });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -310,7 +310,7 @@ describe('Notification Service - Unit Tests', () => {
     const proposalId = 'proposal-id';
     const projectTitle = 'Test Project';
 
-    const result = await notifyProposalRejected(freelancerId, proposalId, projectId, projectTitle);
+    const result = await notifyProposalRejected({ freelancerId, proposalId, projectId, projectTitle });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -331,7 +331,7 @@ describe('Notification Service - Unit Tests', () => {
     const projectId = 'project-id';
     const projectTitle = 'Test Project';
 
-    const result = await notifyMilestoneSubmitted(employerId, milestoneId, milestoneTitle, projectId, projectTitle, contractId);
+    const result = await notifyMilestoneSubmitted({ employerId, milestoneId, milestoneTitle, projectId, projectTitle, contractId });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -353,7 +353,7 @@ describe('Notification Service - Unit Tests', () => {
     const projectId = 'project-id';
     const projectTitle = 'Test Project';
 
-    const result = await notifyPaymentReleased(freelancerId, amount, milestoneId, milestoneTitle, projectId, projectTitle, contractId);
+    const result = await notifyPaymentReleased({ userId: freelancerId, amount, milestoneId, milestoneTitle, projectId, projectTitle, contractId });
 
     expect(result.success).toBe(true);
     if (result.success) {
@@ -484,7 +484,7 @@ describe('Notification Service - Unit Tests', () => {
     const contractId = 'contract-123';
     const projectTitle = 'Great Project';
 
-    const result = await notifyRatingReceived(userId, rating, contractId, projectTitle);
+    const result = await notifyRatingReceived({ userId, rating, contractId, projectTitle });
 
     expect(result.success).toBe(true);
     if (result.success) {

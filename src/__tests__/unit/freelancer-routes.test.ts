@@ -38,9 +38,14 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
   }));
 
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  // Run the real validation middleware; only validateUUID is mocked so non-UUID ids pass.
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+  };
+});
 
 jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
   getRequestId: () => 'test-request-id',
@@ -745,12 +750,16 @@ describe('freelancer-routes - ?? "" param fallback coverage', () => {
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
     // For GET /:id (no auth middleware), use validateUUID mock to delete the id param
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (req: any, _res: any, next: any) => {
-        delete req.params.id;
-        next();
-      }),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (req: any, _res: any, next: any) => {
+          delete req.params.id;
+          next();
+        }),
+      };
+    });
     jest.unstable_mockModule(resolveModule('src/utils/route-helpers.ts'), () => ({
       getRequestId: () => 'test-request-id',
     }));

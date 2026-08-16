@@ -122,6 +122,7 @@ export async function getMilestoneById(
  * Serialized with approveMilestone via the shared `milestone-approve:{id}` lock
  * so a concurrent reject cannot race an approval on the same milestone state.
  */
+/* eslint-disable max-lines-per-function -- reject SAGA; refactor follow-up */
 export async function rejectMilestone(
   input: RejectMilestoneInput
 ): Promise<ServiceResult<MilestoneWithContract['milestone']>> {

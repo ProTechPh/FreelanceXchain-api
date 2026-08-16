@@ -39,11 +39,16 @@ jest.unstable_mockModule(resolveModule('src/middleware/rate-limiter.ts'), () => 
     mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
   }));
 
-jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-  validateUUID: jest.fn(() => mockValidateUUIDMiddleware),
-  validateAppwriteDocumentId: jest.fn(() => mockValidateAppwriteDocumentIdMiddleware),
-  validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-}));
+jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+  // Run the real validation middleware; only the UUID helpers are mocked so
+  // non-UUID test ids pass through.
+  const real = await import('../../middleware/validation-core.js');
+  return {
+    ...real,
+    validateUUID: jest.fn(() => mockValidateUUIDMiddleware),
+    validateAppwriteDocumentId: jest.fn(() => mockValidateAppwriteDocumentIdMiddleware),
+  };
+});
 
 const messageRouter = (await import('../../routes/message-routes.js')).default;
 
@@ -655,11 +660,14 @@ describe('message-routes - ?? "" param fallback coverage', () => {
       fileUploadRateLimiter: (_req: any, _res: any, next: any) => next(),
       mfaVerifyRateLimiter: (_req: any, _res: any, next: any) => next(),
     }));
-    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), () => ({
-      validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-      validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-      validate: jest.fn(() => (_req: any, _res: any, next: any) => next()),
-    }));
+    jest.unstable_mockModule(resolveModule('src/middleware/validation-middleware.ts'), async () => {
+      const real = await import('../../middleware/validation-core.js');
+      return {
+        ...real,
+        validateUUID: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+        validateAppwriteDocumentId: jest.fn(() => (_req: any, _res: any, next: any) => next()),
+      };
+    });
 
     const express = (await import('express')).default;
     const router = (await import('../../routes/message-routes.js')).default;

@@ -7,14 +7,95 @@ import type {
   ApproveRefundInput,
   RejectRefundInput,
 } from '../models/escrow-refund.js';
+import type { ContractEntity } from '../repositories/contract-repository.js';
 import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
-import { refundRequestRepository } from '../repositories/refund-request-repository.js';
+import { refundRequestRepository, type RefundRequestEntity } from '../repositories/refund-request-repository.js';
 import { contractRepository } from '../repositories/contract-repository.js';
 import { projectRepository, type MilestoneEntity } from '../repositories/project-repository.js';
 import { getBlockchainAdapter } from './blockchain/factory.js';
 import { withLock, milestoneLockKey } from '../utils/async-lock.js';
 import { persistAuditEntry } from '../utils/admin-audit.js';
+
+/**
+ * Compute the escrow balance still available for refund: the contract total
+ * minus milestones already approved and released. Non-critical fetch — on
+ * failure we conservatively use the full contract amount as the ceiling
+ * (safe: prevents under-refund, not over-refund).
+ */
+async function computeRemainingEscrow(projectId: string, totalAmount: number): Promise<number> {
+  let releasedAmount = 0;
+  try {
+    // Milestone state lives in the project document (single source of truth), so
+    // read it from there. On failure we conservatively use the full contract
+    // amount as the ceiling (safe: prevents under-refund, not over-refund).
+    const project = await projectRepository.findProjectById(projectId);
+    const contractMilestones = project?.milestones ?? [];
+    releasedAmount = ((contractMilestones ?? []) as Array<{ status: string; amount?: number }>)
+      .filter(m => m.status === 'approved')
+      .reduce((sum, m) => sum + (m.amount ?? 0), 0);
+  } catch {
+    // Non-critical — proceed with full contract amount as ceiling
+  }
+  return Math.max(0, totalAmount - releasedAmount);
+}
+
+type RefundRequestCreation = {
+  contract: NonNullable<Awaited<ReturnType<typeof contractRepository.getContractById>>>;
+  requestedAmount: number;
+  isPartial: boolean;
+};
+
+/**
+ * Validate that a refund request can be created for the contract.
+ * Returns the resolved amounts or a ServiceResult error.
+ */
+async function validateRefundRequestCreation(input: CreateRefundRequestInput): Promise<
+  | { error: ServiceResult<RefundRequest> }
+  | RefundRequestCreation
+> {
+  const contract = await contractRepository.getContractById(input.contractId);
+  if (!contract) {
+    return { error: errorResult('CONTRACT_NOT_FOUND', 'Contract not found') };
+  }
+
+  // Only allow refund on active contracts
+  if (contract.status !== 'active') {
+    return { error: errorResult('INVALID_STATUS', `Cannot request refund on a ${contract.status} contract`) };
+  }
+
+  // Verify requester is involved
+  const isInvolved =
+    contract.freelancer_id === input.requestedBy ||
+    contract.employer_id === input.requestedBy;
+
+  if (!isInvolved) {
+    return { error: errorResult('UNAUTHORIZED', 'You are not involved in this contract') };
+  }
+
+  // Check for existing pending refund request
+  const existingRefund = await refundRequestRepository.findPendingByContract(input.contractId);
+  if (existingRefund) {
+    return { error: errorResult('DUPLICATE_REQUEST', 'There is already a pending refund request for this contract') };
+  }
+
+  const remainingEscrow = await computeRemainingEscrow(contract.project_id, contract.total_amount);
+
+  // Validate requested amount: must be positive and cannot exceed remaining escrow
+  if (input.amount !== undefined) {
+    if (typeof input.amount !== 'number' || !isFinite(input.amount) || input.amount <= 0) {
+      return { error: errorResult('VALIDATION_ERROR', 'Refund amount must be a positive number') };
+    }
+    if (input.amount > remainingEscrow) {
+      return { error: errorResult('VALIDATION_ERROR', `Refund amount (${input.amount}) exceeds remaining escrow balance (${remainingEscrow})`) };
+    }
+  }
+
+  const requestedAmount = input.amount ?? remainingEscrow;
+  const isPartial = requestedAmount < contract.total_amount;
+
+  return { contract, requestedAmount, isPartial };
+}
 
 /**
  * Create refund request
@@ -24,108 +105,100 @@ export async function createRefundRequest(
 ): Promise<ServiceResult<RefundRequest>> {
   // BLF-3.1: Serialize refund creation per contract to prevent duplicate pending requests
   return withLock(`refund-create:${input.contractId}`, async () => {
-  try {
-    // Get contract details
-    const contract = await contractRepository.getContractById(input.contractId);
-
-    if (!contract) {
-      return errorResult('CONTRACT_NOT_FOUND', 'Contract not found');
-    }
-
-    // Only allow refund on active contracts
-    if (contract.status !== 'active') {
-      return errorResult('INVALID_STATUS', `Cannot request refund on a ${contract.status} contract`);
-    }
-
-    // Verify requester is involved
-    const isInvolved =
-      contract.freelancer_id === input.requestedBy ||
-      contract.employer_id === input.requestedBy;
-
-    if (!isInvolved) {
-      return errorResult('UNAUTHORIZED', 'You are not involved in this contract');
-    }
-
-    // Check for existing pending refund request
-    const existingRefund = await refundRequestRepository.findPendingByContract(input.contractId);
-
-    if (existingRefund) {
-      return errorResult('DUPLICATE_REQUEST', 'There is already a pending refund request for this contract');
-    }
-
-    // Calculate remaining escrow: total minus milestones already approved and released.
-    // Single source of truth: milestone state lives in the project document.
-    // Wrapped in try/catch — milestone fetch is non-critical; on failure we conservatively
-    // use the full contract amount as the ceiling (safe: prevents under-refund, not over-refund).
-    let releasedAmount = 0;
     try {
-      const project = await projectRepository.findProjectById(contract.project_id);
-      const contractMilestones = project?.milestones ?? [];
-      releasedAmount = contractMilestones
-        .filter(m => m.status === 'approved')
-        .reduce((sum, m) => sum + (m.amount ?? 0), 0);
-    } catch {
-      // Non-critical — proceed with full contract amount as ceiling
-    }
-    const remainingEscrow = Math.max(0, contract.total_amount - releasedAmount);
+      const validated = await validateRefundRequestCreation(input);
+      if ('error' in validated) return validated.error;
 
-    // Validate requested amount: must be positive and cannot exceed remaining escrow
-    if (input.amount !== undefined) {
-      if (typeof input.amount !== 'number' || !isFinite(input.amount) || input.amount <= 0) {
-        return errorResult('VALIDATION_ERROR', 'Refund amount must be a positive number');
+      const { contract, requestedAmount, isPartial } = validated;
+
+      const refund = await refundRequestRepository.create({
+        id: '',
+        contract_id: input.contractId,
+        requested_by: input.requestedBy,
+        amount: requestedAmount,
+        is_partial: isPartial,
+        reason: input.reason,
+        status: 'pending',
+      });
+
+      if (!refund) {
+        throw new Error('Failed to create refund request');
       }
-      if (input.amount > remainingEscrow) {
-        return errorResult('VALIDATION_ERROR', `Refund amount (${input.amount}) exceeds remaining escrow balance (${remainingEscrow})`);
+
+      // Notify other party
+      const otherPartyId = contract.freelancer_id === input.requestedBy
+        ? contract.employer_id
+        : contract.freelancer_id;
+
+      const notificationResult = await createNotification({
+        userId: otherPartyId,
+        type: 'refund_requested',
+        title: 'Refund Requested',
+        message: `A refund has been requested for contract. Reason: ${input.reason}`,
+        data: {
+          relatedId: input.contractId,
+          relatedType: 'contract',
+        },
+      });
+
+      if (notificationResult.success) {
+        await sendNotificationToUser(otherPartyId, notificationResult.data);
       }
+
+      logger.info(`Refund request created for contract ${input.contractId}`);
+
+      return successResult(refund as unknown as RefundRequest);
+    } catch (error) {
+      logger.error('Failed to create refund request:', error);
+      return errorResult('CREATE_FAILED', error instanceof Error ? error.message : 'Failed to create refund request');
     }
-
-    const requestedAmount = input.amount ?? remainingEscrow;
-    const isPartial = requestedAmount < contract.total_amount;
-
-    // Create refund request
-    const refund = await refundRequestRepository.create({
-      id: '',
-      contract_id: input.contractId,
-      requested_by: input.requestedBy,
-      amount: requestedAmount,
-      is_partial: isPartial,
-      reason: input.reason,
-      status: 'pending',
-    });
-
-    if (!refund) {
-      throw new Error('Failed to create refund request');
-    }
-
-    // Notify other party
-    const otherPartyId = contract.freelancer_id === input.requestedBy
-      ? contract.employer_id
-      : contract.freelancer_id;
-
-    const notificationResult = await createNotification({
-      userId: otherPartyId,
-      type: 'refund_requested',
-      title: 'Refund Requested',
-      message: `A refund has been requested for contract. Reason: ${input.reason}`,
-      data: {
-        relatedId: input.contractId,
-        relatedType: 'contract',
-      },
-    });
-
-    if (notificationResult.success) {
-      await sendNotificationToUser(otherPartyId, notificationResult.data);
-    }
-
-    logger.info(`Refund request created for contract ${input.contractId}`);
-
-    return successResult(refund as unknown as RefundRequest);
-  } catch (error) {
-    logger.error('Failed to create refund request:', error);
-    return errorResult('CREATE_FAILED', error instanceof Error ? error.message : 'Failed to create refund request');
-  }
-  }); // BLF-3.1: end withLock
+  });
 }
+
+type RefundApprovalContext = {
+  refund: RefundRequestEntity;
+  contract: ContractEntity;
+};
+
+/**
+ * Validate that a refund can be approved by the other party.
+ * Re-reads the refund immediately before writing to narrow the
+ * concurrent-approval race window (Appwrite lacks atomic compare-and-set).
+ */
+async function validateRefundApproval(input: ApproveRefundInput): Promise<
+  | { error: ServiceResult<RefundRequest> }
+  | RefundApprovalContext
+> {
+  const refundData = await refundRequestRepository.findWithContract(input.refundId);
+  if (!refundData || !refundData.contract) {
+    return { error: errorResult('REFUND_NOT_FOUND', 'Refund request not found') };
+  }
+
+  // Verify approver is the other party
+  const otherPartyId = refundData.contract.freelancer_id === refundData.requested_by
+    ? refundData.contract.employer_id
+    : refundData.contract.freelancer_id;
+
+  if (otherPartyId !== input.approvedBy) {
+    return { error: errorResult('UNAUTHORIZED', 'Only the other party can approve refund') };
+  }
+
+  // Check status
+  if (refundData.status !== 'pending') {
+    return { error: errorResult('INVALID_STATUS', 'Refund request is not pending') };
+  }
+
+  // Re-read immediately before writing to narrow the concurrent-approval race window.
+  // Appwrite lacks atomic compare-and-set; this second read catches most races.
+  const freshRefund = await refundRequestRepository.findWithContract(input.refundId);
+  if (!freshRefund || freshRefund.status !== 'pending') {
+    return { error: errorResult('INVALID_STATUS', 'Refund request status changed concurrently') };
+  }
+
+  return { refund: refundData, contract: refundData.contract };
+}
+
+type FailedMilestone = { index: number; id: string; error: unknown };
 
 /**
  * Acquire the shared milestone-approve locks for multiple milestones in sorted
@@ -147,6 +220,7 @@ async function withMilestoneLocks<T>(
   return run();
 }
 
+/* eslint-disable max-lines-per-function -- milestone-granular refund flow (BLF-3.x); refactor follow-up */
 /**
  * Approve refund request
  */
@@ -156,35 +230,10 @@ export async function approveRefund(
   // Serialize concurrent refund approval attempts to prevent double-refund
   return withLock(`refund-approve:${input.refundId}`, async () => {
     try {
-      // Get refund request with contract data
-      const refundData = await refundRequestRepository.findWithContract(input.refundId);
+      const validated = await validateRefundApproval(input);
+      if ('error' in validated) return validated.error;
 
-      if (!refundData || !refundData.contract) {
-        return errorResult('REFUND_NOT_FOUND', 'Refund request not found');
-      }
-
-      const { contract, ...refund } = refundData;
-
-      // Verify approver is the other party
-      const otherPartyId = contract.freelancer_id === refund.requested_by
-        ? contract.employer_id
-        : contract.freelancer_id;
-
-      if (otherPartyId !== input.approvedBy) {
-        return errorResult('UNAUTHORIZED', 'Only the other party can approve refund');
-      }
-
-      // Check status
-      if (refund.status !== 'pending') {
-        return errorResult('INVALID_STATUS', 'Refund request is not pending');
-      }
-
-      // Re-read immediately before writing to narrow the concurrent-approval race window.
-      // Appwrite lacks atomic compare-and-set; this second read catches most races.
-      const freshRefund = await refundRequestRepository.findWithContract(input.refundId);
-      if (!freshRefund || freshRefund.status !== 'pending') {
-        return errorResult('INVALID_STATUS', 'Refund request status changed concurrently');
-      }
+      const { refund, contract } = validated;
 
       // First read of the project document determines WHICH milestone locks to
       // acquire. The project document is the single source of truth for milestone
@@ -457,95 +506,93 @@ export async function rejectRefund(
 ): Promise<ServiceResult<RefundRequest>> {
   // BLF-3.2: Serialize with approveRefund using same lock key to prevent concurrent approve+reject
   return withLock(`refund-approve:${input.refundId}`, async () => {
-  try {
-    // Get refund request with contract data
-    const refundData = await refundRequestRepository.findWithContract(input.refundId);
+    try {
+      // Get refund request with contract data
+      const refundData = await refundRequestRepository.findWithContract(input.refundId);
 
-    if (!refundData || !refundData.contract) {
-      return errorResult('REFUND_NOT_FOUND', 'Refund request not found');
+      if (!refundData || !refundData.contract) {
+        return errorResult('REFUND_NOT_FOUND', 'Refund request not found');
+      }
+
+      // Verify rejector is the other party
+      const otherPartyId = refundData.contract.freelancer_id === refundData.requested_by
+        ? refundData.contract.employer_id
+        : refundData.contract.freelancer_id;
+
+      if (otherPartyId !== input.rejectedBy) {
+        return errorResult('UNAUTHORIZED', 'Only the other party can reject refund');
+      }
+
+      // Check status
+      if (refundData.status !== 'pending') {
+        return errorResult('INVALID_STATUS', 'Refund request is not pending');
+      }
+
+      // Re-read immediately before writing to narrow the concurrent-rejection race window,
+      // matching the same double-read guard used in approveRefund.
+      // Appwrite lacks atomic compare-and-set; this second read catches most races and
+      // prevents duplicate rejection notifications being sent to the requester.
+      const freshRefund = await refundRequestRepository.findWithContract(input.refundId);
+      if (!freshRefund || freshRefund.status !== 'pending') {
+        return errorResult('INVALID_STATUS', 'Refund request status changed concurrently');
+      }
+
+      // Update refund request
+      const updated = await refundRequestRepository.update(input.refundId, {
+        status: 'rejected',
+        rejected_by: input.rejectedBy,
+        rejection_reason: input.reason,
+        rejected_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      if (!updated) {
+        throw new Error('Failed to reject refund');
+      }
+
+      // Notify requester
+      const notificationResult = await createNotification({
+        userId: refundData.requested_by,
+        type: 'refund_rejected',
+        title: 'Refund Rejected',
+        message: `Your refund request was rejected. Reason: ${input.reason}`,
+        data: {
+          relatedId: refundData.contract_id,
+          relatedType: 'contract',
+        },
+      });
+
+      if (notificationResult.success) {
+        await sendNotificationToUser(refundData.requested_by, notificationResult.data);
+      }
+
+      // BLF-12.2: durable audit trail — rejected refunds are recorded with the
+      // requester, contract, and rejection reason. Best-effort by design.
+      await persistAuditEntry({
+        user_id: refundData.requested_by,
+        actor_id: input.rejectedBy,
+        action: 'refund.rejected',
+        resource_type: 'refund_request',
+        resource_id: input.refundId,
+        payload: {
+          contractId: refundData.contract_id,
+          amount: refundData.amount ?? null,
+          isPartial: refundData.is_partial ?? false,
+          reason: input.reason,
+        },
+        ip_address: null,
+        user_agent: null,
+        status: 'success',
+        error_message: null,
+      });
+
+      logger.info(`Refund ${input.refundId} rejected by ${input.rejectedBy}`);
+
+      return successResult(updated as unknown as RefundRequest);
+    } catch (error) {
+      logger.error('Failed to reject refund:', error);
+      return errorResult('REJECT_FAILED', error instanceof Error ? error.message : 'Failed to reject refund');
     }
-
-    const { contract, ...refund } = refundData;
-
-    // Verify rejector is the other party
-    const otherPartyId = contract.freelancer_id === refund.requested_by
-      ? contract.employer_id
-      : contract.freelancer_id;
-
-    if (otherPartyId !== input.rejectedBy) {
-      return errorResult('UNAUTHORIZED', 'Only the other party can reject refund');
-    }
-
-    // Check status
-    if (refund.status !== 'pending') {
-      return errorResult('INVALID_STATUS', 'Refund request is not pending');
-    }
-
-    // Re-read immediately before writing to narrow the concurrent-rejection race window,
-    // matching the same double-read guard used in approveRefund (lines 187-195).
-    // Appwrite lacks atomic compare-and-set; this second read catches most races and
-    // prevents duplicate rejection notifications being sent to the requester.
-    const freshRefund = await refundRequestRepository.findWithContract(input.refundId);
-    if (!freshRefund || freshRefund.status !== 'pending') {
-      return errorResult('INVALID_STATUS', 'Refund request status changed concurrently');
-    }
-
-    // Update refund request
-    const updated = await refundRequestRepository.update(input.refundId, {
-      status: 'rejected',
-      rejected_by: input.rejectedBy,
-      rejection_reason: input.reason,
-      rejected_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-
-    if (!updated) {
-      throw new Error('Failed to reject refund');
-    }
-
-    // Notify requester
-    const notificationResult = await createNotification({
-      userId: refund.requested_by,
-      type: 'refund_rejected',
-      title: 'Refund Rejected',
-      message: `Your refund request was rejected. Reason: ${input.reason}`,
-      data: {
-        relatedId: refund.contract_id,
-        relatedType: 'contract',
-      },
-    });
-
-    if (notificationResult.success) {
-      await sendNotificationToUser(refund.requested_by, notificationResult.data);
-    }
-
-    // BLF-12.2: durable audit trail — rejected refunds are recorded with the
-    // requester, contract, and rejection reason. Best-effort by design.
-    await persistAuditEntry({
-      user_id: refund.requested_by,
-      actor_id: input.rejectedBy,
-      action: 'refund.rejected',
-      resource_type: 'refund_request',
-      resource_id: input.refundId,
-      payload: {
-        contractId: refund.contract_id,
-        amount: refund.amount ?? null,
-        isPartial: refund.is_partial ?? false,
-        reason: input.reason,
-      },
-      ip_address: null,
-      user_agent: null,
-      status: 'success',
-      error_message: null,
-    });
-
-    logger.info(`Refund ${input.refundId} rejected by ${input.rejectedBy}`);
-
-    return successResult(updated as unknown as RefundRequest);
-  } catch (error) {
-    logger.error('Failed to reject refund:', error);
-    return errorResult('REJECT_FAILED', error instanceof Error ? error.message : 'Failed to reject refund');
-  }
   }); // BLF-3.2: end withLock
 }
 

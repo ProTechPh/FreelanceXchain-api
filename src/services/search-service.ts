@@ -105,10 +105,22 @@ export async function searchProjects(
     // causing missing results, wrong hasMore, and inconsistent page sizes.
     // Now we apply all filters in a single DB query before pagination.
     
-    // Start with a large limit to get all matching items, then paginate manually
-    // This is a compromise until Appwrite supports complex compound queries
-    const allMatchingOptions = { limit: SEARCH_FALLBACK_LIMIT, offset: 0 };
-    entityResult = await projectRepository.getAllOpenProjects(allMatchingOptions);
+    // Appwrite can't combine a fulltext/contains search with range/array filters
+    // in one query, so apply the first filter at the database level (narrowing
+    // the candidate set via the indexes) and the rest in memory on that bounded
+    // result. The first filter is the one with the highest-cardinality index.
+    const firstFilterOptions = { limit: SEARCH_FALLBACK_LIMIT, offset: 0 };
+    if (hasKeyword) {
+      entityResult = await projectRepository.searchProjects(filters.keyword!, firstFilterOptions);
+    } else if (hasSkills) {
+      entityResult = await projectRepository.getProjectsBySkills(filters.skillIds!, firstFilterOptions);
+    } else {
+      entityResult = await projectRepository.getProjectsByBudgetRange(
+        filters.minBudget ?? 0,
+        filters.maxBudget ?? Number.MAX_SAFE_INTEGER,
+        firstFilterOptions
+      );
+    }
 
     if (entityResult.items.length >= SEARCH_FALLBACK_LIMIT) {
       logger.warn('Search fallback limit reached, results may be incomplete', { limit: SEARCH_FALLBACK_LIMIT });

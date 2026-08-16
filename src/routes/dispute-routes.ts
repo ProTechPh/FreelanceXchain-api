@@ -178,7 +178,7 @@ router.get(
       const limit = clampLimit(req.query['limit'] ? parseInt(req.query['limit'] as string) : undefined);
 
       if (!userId || !userRole) {
-        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
         return;
       }
 
@@ -188,7 +188,7 @@ router.get(
       });
 
       if (!result.success) {
-        sendErrorResponse(res, 400, result.error.code, result.error.message, getRequestId(req), result.error.details);
+        sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 
@@ -245,32 +245,32 @@ router.post(
       };
 
       if (!userId) {
-        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
         return;
       }
 
       if (!contractId || typeof contractId !== 'string') {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId is required', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId is required', { requestId: getRequestId(req) });
         return;
       }
 
       if (!isValidUUID(contractId)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'contractId must be a valid UUID', { requestId: getRequestId(req) });
         return;
       }
 
       if (!milestoneId || typeof milestoneId !== 'string') {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'milestoneId is required', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'milestoneId is required', { requestId: getRequestId(req) });
         return;
       }
 
       if (!isValidUUID(milestoneId)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'milestoneId must be a valid UUID', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'milestoneId must be a valid UUID', { requestId: getRequestId(req) });
         return;
       }
 
       if (!reason || typeof reason !== 'string') {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'reason is required', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'reason is required', { requestId: getRequestId(req) });
         return;
       }
 
@@ -286,7 +286,7 @@ router.post(
                           result.error.code === 'UNAUTHORIZED' ? 403 :
                           result.error.code === 'ALREADY_DISPUTED' ? 409 :
                           result.error.code === 'DUPLICATE_DISPUTE' ? 409 : 400;
-        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 
@@ -341,7 +341,7 @@ router.get(
       const disputeId = req.params['disputeId'] ?? '';
 
       if (!userId) {
-        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
         return;
       }
 
@@ -349,7 +349,7 @@ router.get(
 
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 : 400;
-        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 
@@ -361,12 +361,12 @@ router.get(
         if (contractResult.success) {
           const contract = contractResult.data;
           if (contract.freelancerId !== userId && contract.employerId !== userId) {
-            sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this dispute', getRequestId(req));
+            sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this dispute', { requestId: getRequestId(req) });
             return;
           }
         } else {
           // Contract not found — deny access as a precaution
-          sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this dispute', getRequestId(req));
+          sendErrorResponse(res, 403, 'UNAUTHORIZED', 'You are not authorized to view this dispute', { requestId: getRequestId(req) });
           return;
         }
       }
@@ -494,7 +494,7 @@ async function handleMultipartEvidenceSubmission(req: Request, res: Response, ne
     if (res.headersSent) return;
     
     // Handle unexpected errors
-    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An error occurred processing the upload', getRequestId(req));
+    sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'An error occurred processing the upload', { requestId: getRequestId(req) });
   }
   });
 }
@@ -510,34 +510,34 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
     const { _type } = req.body;
 
     if (!userId) {
-      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
       return;
     }
 
     if (!files || files.length === 0) {
-      sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 file is required', getRequestId(req));
+      sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 file is required', { requestId: getRequestId(req) });
       return;
     }
 
     // For evidence, we typically upload one file at a time
     const file = files[0];
     if (!file) {
-      sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 file is required', getRequestId(req));
+      sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 file is required', { requestId: getRequestId(req) });
       return;
     }
     const mimeType = (file as Express.Multer.File & { detectedMimeType?: string }).detectedMimeType || file.mimetype;
     
     // Upload file to Appwrite Storage
-    const uploadResult = await uploadFileToStorage(
-      file.buffer,
-      file.originalname,
+    const uploadResult = await uploadFileToStorage({
+      buffer: file.buffer,
+      originalFilename: file.originalname,
       mimeType,
-      STORAGE_BUCKETS.DISPUTE_EVIDENCE,
-      userId
-    );
+      bucket: STORAGE_BUCKETS.DISPUTE_EVIDENCE,
+      userId,
+    });
     
     if (!uploadResult.success) {
-      sendErrorResponse(res, 500, 'UPLOAD_FAILED', uploadResult.error || 'Failed to upload file', getRequestId(req));
+      sendErrorResponse(res, 500, 'UPLOAD_FAILED', uploadResult.error || 'Failed to upload file', { requestId: getRequestId(req) });
       return;
     }
     
@@ -558,7 +558,7 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                         result.error.code === 'UNAUTHORIZED' ? 403 :
                         result.error.code === 'INVALID_STATUS' ? 400 : 400;
-      sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
       return;
     }
 
@@ -581,17 +581,17 @@ async function handleJsonEvidenceSubmission(req: Request, res: Response, next: N
     };
 
     if (!userId) {
-      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+      sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
       return;
     }
 
     if (!type || !['text', 'file', 'link'].includes(type)) {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'type must be one of: text, file, link', getRequestId(req));
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'type must be one of: text, file, link', { requestId: getRequestId(req) });
       return;
     }
 
     if (!content || typeof content !== 'string') {
-      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'content is required', getRequestId(req));
+      sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'content is required', { requestId: getRequestId(req) });
       return;
     }
 
@@ -606,7 +606,7 @@ async function handleJsonEvidenceSubmission(req: Request, res: Response, next: N
       const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                         result.error.code === 'UNAUTHORIZED' ? 403 :
                         result.error.code === 'INVALID_STATUS' ? 400 : 400;
-      sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+      sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
       return;
     }
 
@@ -674,18 +674,18 @@ router.post(
       };
 
       if (!userId) {
-        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', getRequestId(req));
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
         return;
       }
 
       // Only admins can resolve disputes
       if (userRole !== 'admin') {
-        sendErrorResponse(res, 403, 'AUTH_UNAUTHORIZED', 'Only administrators can resolve disputes', getRequestId(req));
+        sendErrorResponse(res, 403, 'AUTH_UNAUTHORIZED', 'Only administrators can resolve disputes', { requestId: getRequestId(req) });
         return;
       }
 
       if (!decision || !['freelancer_favor', 'employer_favor', 'split'].includes(decision)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'decision must be one of: freelancer_favor, employer_favor, split', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'decision must be one of: freelancer_favor, employer_favor, split', { requestId: getRequestId(req) });
         return;
       }
 
@@ -695,7 +695,7 @@ router.post(
         freelancerBps < 0 ||
         freelancerBps > 10000
       )) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps must be an integer between 0 and 10000', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps must be an integer between 0 and 10000', { requestId: getRequestId(req) });
         return;
       }
 
@@ -703,17 +703,17 @@ router.post(
       // employer_favor = 0 are computed in the service. Reject an explicit bps that would
       // contradict the chosen decision to avoid ambiguous resolutions.
       if (decision !== 'split' && freelancerBps !== undefined) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps can only be provided when decision is split', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps can only be provided when decision is split', { requestId: getRequestId(req) });
         return;
       }
 
       if (decision === 'split' && (freelancerBps === 0 || freelancerBps === 10000)) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps must be between 1 and 9999 for a split decision', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'freelancerBps must be between 1 and 9999 for a split decision', { requestId: getRequestId(req) });
         return;
       }
 
       if (!reasoning || typeof reasoning !== 'string') {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'reasoning is required', getRequestId(req));
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'reasoning is required', { requestId: getRequestId(req) });
         return;
       }
 
@@ -729,7 +729,7 @@ router.post(
       if (!result.success) {
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                           result.error.code === 'ALREADY_RESOLVED' ? 400 : 400;
-        sendErrorResponse(res, statusCode, result.error.code, result.error.message, getRequestId(req), result.error.details);
+        sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 

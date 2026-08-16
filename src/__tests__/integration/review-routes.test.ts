@@ -112,6 +112,24 @@ describe('Review Routes Integration Tests', () => {
       expect(response.status).toBe(400);
     });
 
+    it('should reject undeclared fields', async () => {
+      const response = await request(app)
+        .post('/api/reviews')
+        .set('Authorization', 'Bearer mock-token')
+        .send({
+          contractId: '123e4567-e89b-12d3-a456-426614174000',
+          rating: 5,
+          comment: 'Excellent work!',
+          extraField: 'not allowed',
+        });
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('VALIDATION_ERROR');
+      expect(response.body.error.details).toEqual([
+        { field: 'extraField', message: '"extraField" is not an allowed field' },
+      ]);
+    });
+
     it('should require authentication', async () => {
       const response = await request(app)
         .post('/api/reviews')
