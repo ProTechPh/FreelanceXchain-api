@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Deployments
+
+- **1.0.3+build.9e68f31** (2026-08-16) - commit `9e68f31`: Merge pull request #240 from ProTechPh/fix/deploy-gh-token
+
 ## [Unreleased]
 
 ### Changed
