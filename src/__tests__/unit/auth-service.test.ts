@@ -202,18 +202,14 @@ describe('Auth Service - Registration Properties', () => {
       fc.asyncProperty(
         validRegistrationDataArbitrary(),
         async (registrationData: RegisterInput) => {
-          // Clear store for each test case
           userStore.clear();
           passwordStore.clear();
           const result = await register(registrationData);
-          // Should not be an error
           expect(isAuthError(result)).toBe(false);
           if (!isAuthError(result)) {
             const authResult = result as AuthResult;
-            // Verify user data matches input
             expect(authResult.user.email).toBe(registrationData.email.toLowerCase());
             expect(authResult.user.role).toBe(registrationData.role);
-            // Verify tokens are present
             expect(authResult.accessToken).toBeDefined();
             expect(authResult.refreshToken).toBeDefined();
             // Verify access token contains claims (email comes from mock Appwrite session)
@@ -225,9 +221,7 @@ describe('Auth Service - Registration Properties', () => {
             };
             expect(decoded.type).toBe('access');
             expect(decoded.role).toBeDefined();
-            // Verify exactly one user was created
             expect(userStore.size).toBe(1);
-            // Verify user exists in store with correct data
             const storedUser = userStore.get(authResult.user.id);
             expect(storedUser).toBeDefined();
             expect(storedUser?.email).toBe(registrationData.email.toLowerCase());
@@ -256,7 +250,6 @@ describe('Auth Service - Registration Properties', () => {
         validPasswordArbitrary(),
         validRoleArbitrary(),
         async (firstRegistration: RegisterInput, secondPassword: string, secondRole: UserRole) => {
-          // Clear store for each test case
           userStore.clear();
           passwordStore.clear();
           // First registration should succeed
@@ -271,7 +264,6 @@ describe('Auth Service - Registration Properties', () => {
             role: secondRole,
           };
           const secondResult = await register(secondRegistration);
-          // Should be a duplicate email error
           expect(isAuthError(secondResult)).toBe(true);
           if (isAuthError(secondResult)) {
             const error = secondResult as AuthError;
@@ -293,7 +285,6 @@ describe('Auth Service - Registration Properties', () => {
       fc.asyncProperty(
         validRegistrationDataArbitrary(),
         async (registrationData: RegisterInput) => {
-          // Clear store for each test case
           userStore.clear();
           passwordStore.clear();
           // First registration with lowercase email
@@ -367,7 +358,6 @@ describe('Auth Service - Authentication Properties', () => {
           passwordStore.clear();
           const loginInput: LoginInput = { email, password };
           const result = await login(loginInput);
-          // Should be an error
           expect(isAuthError(result)).toBe(true);
           if (isAuthError(result)) {
             const error = result as AuthError;
@@ -390,23 +380,19 @@ describe('Auth Service - Authentication Properties', () => {
         validRegistrationDataArbitrary(),
         validPasswordArbitrary(),
         async (registrationData: RegisterInput, wrongPassword: string) => {
-          // Clear store for each test case
           userStore.clear();
           passwordStore.clear();
-          // Register a user first
           const registerResult = await register(registrationData);
           expect(isAuthError(registerResult)).toBe(false);
           // Ensure wrong password is different from correct password
           if (wrongPassword === registrationData.password) {
             return; // Skip this test case
           }
-          // Try to login with wrong password
           const loginInput: LoginInput = {
             email: registrationData.email,
             password: wrongPassword,
           };
           const loginResult = await login(loginInput);
-          // Should be an error
           expect(isAuthError(loginResult)).toBe(true);
           if (isAuthError(loginResult)) {
             const error = loginResult as AuthError;
@@ -426,19 +412,15 @@ describe('Auth Service - Authentication Properties', () => {
       fc.asyncProperty(
         validRegistrationDataArbitrary(),
         async (registrationData: RegisterInput) => {
-          // Clear store for each test case
           userStore.clear();
           passwordStore.clear();
-          // Register a user first
           const registerResult = await register(registrationData);
           expect(isAuthError(registerResult)).toBe(false);
-          // Login with correct credentials
           const loginInput: LoginInput = {
             email: registrationData.email,
             password: registrationData.password,
           };
           const loginResult = await login(loginInput);
-          // Should succeed
           expect(isAuthError(loginResult)).toBe(false);
           if (!isAuthError(loginResult)) {
             const authResult = loginResult as AuthResult;
@@ -484,7 +466,6 @@ describe('auth-service comprehensive coverage', () => {
     maa.createMagicURLToken.mockReset().mockResolvedValue({ userId: 'test-user-id' });
     maa.createSession.mockReset().mockResolvedValue({ secret: 'new-session-secret' });
 
-    // Reset repository mocks
     userRepository.emailExists.mockReset().mockResolvedValue(false);
     userRepository.createUser.mockReset().mockImplementation(async (user) => ({
       ...user,
@@ -498,7 +479,6 @@ describe('auth-service comprehensive coverage', () => {
     // Reset KYC mock
     getKycVerificationByUserId.mockReset().mockResolvedValue(null);
 
-    // Reset users mock
     users.create.mockReset().mockResolvedValue({ $id: 'test-appwrite-user-id' });
     users.delete.mockReset().mockResolvedValue({});
 
@@ -1526,10 +1506,7 @@ describe('auth-service comprehensive coverage', () => {
   // ----------------------------------------------------------
   describe('verifyAuthToken', () => {
     it('should verify token and return AuthResult via loginWithAppwrite', async () => {
-      // Step 1: createSession succeeds
       global.mockAppwriteAccount.createSession.mockResolvedValueOnce({ secret: 'verified-session-secret' });
-      // Step 2: loginWithAppwrite -> account.get() returns user (default mock)
-      // Step 3: loginWithAppwrite -> userRepository.getUserById returns user
       userRepository.getUserById.mockResolvedValueOnce(defaultUser);
 
       const result = await verifyAuthToken('user-id', 'otp-code');

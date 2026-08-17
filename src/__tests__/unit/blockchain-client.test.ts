@@ -65,7 +65,6 @@ jest.unstable_mockModule(resolveModule('src/config/env.ts'), () => ({
   },
 }));
 
-// Import blockchain client functions
 const {
   submitTransaction,
   getTransaction,

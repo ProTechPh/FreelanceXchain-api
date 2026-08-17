@@ -18,7 +18,6 @@ import {
 import { assertHasTimestamps, assertIsValidId } from '../helpers/test-assertions.js';
 import { generateId } from '../../utils/id.js';
 
-// Create stores and mocks
 const disputeStore = createInMemoryStore();
 const contractStore = createInMemoryStore();
 const projectStore = createInMemoryStore();
@@ -176,7 +175,6 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendDisputeCreatedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
-// Import after mocking
 const {
   createDispute,
   getDisputeById,
@@ -344,7 +342,6 @@ describe('Dispute Service - Property-Based Tests', () => {
       expect(resolved.resolution?.resolvedBy).toBe(resolution.resolvedBy);
     }
     
-    // Verify notifications were sent
     const notifications = Array.from(notificationStore.values());
     expect(notifications.length).toBeGreaterThan(0);
   });

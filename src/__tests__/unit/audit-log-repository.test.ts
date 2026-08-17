@@ -13,6 +13,72 @@ describe('AuditLogRepository', () => {
     mockDatabases = (globalThis as any).__mockDatabases;
   });
 
+  describe('create', () => {
+    it('should persist an entry and return the mapped audit log', async () => {
+      mockDatabases.createDocument.mockResolvedValueOnce({
+        $id: 'a1',
+        $createdAt: '2025-03-01',
+        $updatedAt: '2025-03-01',
+        user_id: 'u1',
+        action: 'login',
+        status: 'success',
+        payload: '{"ip":"1.2.3.4"}',
+      });
+
+      const result = await repo.create({
+        user_id: 'u1',
+        action: 'login',
+        status: 'success',
+        payload: { ip: '1.2.3.4' },
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('a1');
+      expect(result!.payload).toEqual({ ip: '1.2.3.4' });
+      const attributes = mockDatabases.createDocument.mock.calls[0][3] as Record<string, unknown>;
+      expect(attributes.payload).toBe('{"ip":"1.2.3.4"}');
+      expect(attributes.created_at).toBeDefined();
+    });
+
+    it('should pass string payloads through untouched', async () => {
+      mockDatabases.createDocument.mockResolvedValueOnce({
+        $id: 'a2',
+        $createdAt: '2025-03-01',
+        $updatedAt: '2025-03-01',
+        action: 'delete',
+        status: 'success',
+        payload: 'raw-string',
+      });
+
+      await repo.create({ action: 'delete', status: 'success', payload: 'raw-string' });
+
+      const attributes = mockDatabases.createDocument.mock.calls[0][3] as Record<string, unknown>;
+      expect(attributes.payload).toBe('raw-string');
+    });
+
+    it('should default missing payload to an empty object', async () => {
+      mockDatabases.createDocument.mockResolvedValueOnce({
+        $id: 'a3',
+        $createdAt: '2025-03-01',
+        $updatedAt: '2025-03-01',
+        action: 'read',
+        status: 'success',
+      });
+
+      await repo.create({ action: 'read', status: 'success' });
+
+      const attributes = mockDatabases.createDocument.mock.calls[0][3] as Record<string, unknown>;
+      expect(attributes.payload).toBe('{}');
+    });
+
+    it('should return null when the write fails (never throws)', async () => {
+      mockDatabases.createDocument.mockRejectedValueOnce(new Error('insert failed'));
+
+      const result = await repo.create({ action: 'delete', status: 'success' });
+      expect(result).toBeNull();
+    });
+  });
+
   describe('getById', () => {
     it('should return an entry', async () => {
       const entry = { $id: 'a1', $createdAt: '2025-01-01', $updatedAt: '2025-01-01' };
@@ -171,6 +237,30 @@ describe('AuditLogRepository', () => {
       expect(queries).toContain('cursorAfter(a-42)');
     });
 
+    it('should work with no filters at all (defaults)', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'a1', $createdAt: '2025-06-01', $updatedAt: '2025-06-01' }],
+        total: 1,
+      });
+
+      const result = await repo.search();
+      expect(result.items).toHaveLength(1);
+      expect(result.hasMore).toBe(false);
+    });
+
+    it('should return null cursor when the page boundary doc has no id', async () => {
+      const entries = [
+        { $id: 'a1', $createdAt: '2025-06-01', $updatedAt: '2025-06-01' },
+        { $createdAt: '2025-06-02', $updatedAt: '2025-06-02' },
+        { $id: 'a3', $createdAt: '2025-06-03', $updatedAt: '2025-06-03' },
+      ];
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: entries, total: 7 });
+
+      const result = await repo.search({ limit: 2 });
+      expect(result.hasMore).toBe(true);
+      expect(result.nextCursor).toBeNull();
+    });
+
     it('should return empty result on database error', async () => {
       mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
       const result = await repo.search({ action: 'login' });
@@ -179,6 +269,19 @@ describe('AuditLogRepository', () => {
   });
 
   describe('listForRange', () => {
+    it('should stop paging when a full page lacks a usable id', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({
+        documents: [{ $id: 'a1', $createdAt: '2025-06-01', $updatedAt: '2025-06-01' }, { $createdAt: '2025-06-02', $updatedAt: '2025-06-02' }],
+        total: 2,
+      });
+
+      const result = await repo.listForRange(new Date('2025-01-01'), new Date('2025-12-31'), 2);
+      expect(result).toHaveLength(2);
+      expect(mockDatabases.listDocuments).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('listForRange - existing', () => {
     it('should collect all entries across pages in a date range', async () => {
       const page1 = [
         { $id: 'a1', actor_id: 'admin-1', action: 'kyc.approved', $createdAt: '2025-06-01', $updatedAt: '2025-06-01' },

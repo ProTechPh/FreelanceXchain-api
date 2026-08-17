@@ -85,7 +85,6 @@ export function sanitizeString(input: string): string {
 
   let sanitized = input;
 
-  // Apply all pattern-based redactions
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.jwt, 'Bearer [REDACTED_JWT]');
   sanitized = sanitized.replace(SENSITIVE_PATTERNS.apiKey, (match, group1) => 
     match.replace(group1, REDACTED)
@@ -114,24 +113,20 @@ export function sanitizeObject<T>(obj: T): T {
     return obj;
   }
 
-  // Handle arrays
   if (Array.isArray(obj)) {
     return obj.map(item => sanitizeObject(item)) as T;
   }
 
-  // Handle objects
   const sanitized: Record<string, unknown> = {};
   
   for (const [key, value] of Object.entries(obj)) {
     const lowerKey = key.toLowerCase();
     
-    // Check if field name is sensitive
     if (SENSITIVE_FIELDS.has(key) || SENSITIVE_FIELDS.has(lowerKey)) {
       sanitized[key] = REDACTED;
       continue;
     }
 
-    // Recursively sanitize nested objects
     if (typeof value === 'object' && value !== null) {
       sanitized[key] = sanitizeObject(value);
     } else if (typeof value === 'string') {
@@ -169,17 +164,14 @@ export function sanitizeError(error: Error): Record<string, unknown> {
     message: sanitizeString(error.message),
   };
 
-  // Include stack trace but sanitize it
   if (error.stack) {
     sanitized.stack = sanitizeString(error.stack);
   }
 
-  // Include any additional properties
   for (const [key, value] of Object.entries(error)) {
     if (key !== 'name' && key !== 'message' && key !== 'stack') {
       const lowerKey = key.toLowerCase();
       
-      // Check if field name is sensitive
       if (SENSITIVE_FIELDS.has(key) || SENSITIVE_FIELDS.has(lowerKey)) {
         sanitized[key] = REDACTED;
       } else {

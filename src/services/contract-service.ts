@@ -189,7 +189,6 @@ export async function cancelPendingContract(contractId: string, userId: string):
     return errorResult('UNAUTHORIZED', 'Only the employer or freelancer can cancel this contract');
   }
 
-  // Update contract status to cancelled
   const updated = await contractRepository.updateContract(contractId, { status: 'cancelled' });
 
   if (!updated) {

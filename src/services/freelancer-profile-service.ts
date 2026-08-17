@@ -39,7 +39,6 @@ type AddExperienceInput = {
 
 
 
-// Validation helpers
 
 function isValidDateString(dateStr: string): boolean {
   const date = new Date(dateStr);
@@ -67,7 +66,6 @@ function validateDateRange(startDate: string, endDate: string | null | undefined
   return { valid: true };
 }
 
-// Profile Operations
 
 export async function createProfile(
   userId: string,
@@ -102,13 +100,11 @@ export async function createProfileFromKyc(
   userId: string,
   input: CreateProfileFromKycInput = {}
 ): Promise<ServiceResult<FreelancerProfile>> {
-  // Check if profile already exists
   const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
   if (existingProfile) {
     return errorResult('PROFILE_EXISTS', 'Freelancer profile already exists for this user');
   }
 
-  // Get KYC data
   const kycResult = await getProfileDataFromKyc(userId);
   if (!kycResult.success) {
     return errorResult('KYC_NOT_APPROVED', kycResult.error.message || 'KYC verification must be approved before creating profile');
@@ -119,7 +115,6 @@ export async function createProfileFromKyc(
     return errorResult('KYC_NOT_APPROVED', 'No KYC data available');
   }
 
-  // Build bio from KYC data if not provided
   const defaultBio = kycData.name 
     ? `Hi, I'm ${kycData.name}. I'm a verified freelancer ready to work on your projects.`
     : 'Verified freelancer ready to work on your projects.';
@@ -171,7 +166,6 @@ export async function updateProfile(
 }
 
 
-// Skill Operations
 
 export async function addSkillsToProfile(
   userId: string,
@@ -199,19 +193,16 @@ export async function addSkillsToProfile(
     );
     
     if (existingSkillIndex === -1 && newSkillIndex === -1) {
-      // Add new skill
       newSkills.push({
         name: trimmedName,
         years_of_experience: skillInput.yearsOfExperience,
       });
     } else if (existingSkillIndex !== -1) {
-      // Update years of experience for existing skill in profile
       const existingSkill = existingProfile.skills[existingSkillIndex];
       if (existingSkill) {
         existingSkill.years_of_experience = skillInput.yearsOfExperience;
       }
     } else if (newSkillIndex !== -1) {
-      // Update years of experience for skill being added in this batch
       const newSkill = newSkills[newSkillIndex];
       if (newSkill) {
         newSkill.years_of_experience = skillInput.yearsOfExperience;
@@ -258,7 +249,6 @@ export async function removeSkillFromProfile(
 }
 
 
-// Work Experience Operations
 
 export async function addExperience(
   userId: string,

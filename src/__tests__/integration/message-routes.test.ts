@@ -11,7 +11,6 @@ describe('Message Routes Integration Tests', () => {
   beforeAll(async () => {
     app = await createApp();
     
-    // Login to get auth token
     const loginResponse = await request(app)
       .post('/api/auth/login')
       .send({

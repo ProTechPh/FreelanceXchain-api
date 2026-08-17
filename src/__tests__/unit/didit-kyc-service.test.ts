@@ -806,20 +806,17 @@ describe('didit-kyc-service', () => {
       mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
       mockGetUserById.mockResolvedValue({ id: 'user-1', name: 'User', role: 'freelancer' });
 
-      // First call with event_id
       await processWebhook({
         session_id: 'session-abc', status: 'Approved', timestamp: Date.now() / 1000,
         event_id: 'evt-dedup-1',
       } as any);
 
-      // Second call with same event_id - should be deduplicated
       const result = await processWebhook({
         session_id: 'session-abc', status: 'Declined', timestamp: Date.now() / 1000,
         event_id: 'evt-dedup-1',
       } as any);
 
       expect(result.success).toBe(true);
-      // updateKyc should only have been called once (for the first call)
       expect(mockUpdateKyc).toHaveBeenCalledTimes(1);
     });
   });
@@ -909,8 +906,6 @@ describe('didit-kyc-service - Coverage Gaps', () => {
         } as any);
       }
 
-      // The cleanup should have been triggered on the 1001st event
-      // Verify the function still works correctly after cleanup
       const result = await processWebhook({
         session_id: 'session-abc',
         status: 'Approved',
@@ -982,7 +977,6 @@ describe('didit-kyc-service - Coverage Gaps', () => {
 
   describe('processWebhook dedup - verification not found on duplicate (L243-250)', () => {
     it('L243-250: should fall through when duplicate event has no existing verification', async () => {
-      // First call with event_id — stores it in the map
       mockGetKycBySessionId.mockResolvedValue(makeKyc());
       mockUpdateKyc.mockResolvedValue(makeKyc({ status: 'approved' }));
       mockGetUserById.mockResolvedValue({ id: 'user-1', name: 'User', role: 'freelancer' });
@@ -1006,7 +1000,6 @@ describe('didit-kyc-service - Coverage Gaps', () => {
         event_id: 'evt-dup-no-ver',
       } as any);
 
-      // Should return VERIFICATION_NOT_FOUND since the verification lookup returns null
       expect(result.success).toBe(false);
       if (!result.success) expect(result.error.code).toBe('VERIFICATION_NOT_FOUND');
     });

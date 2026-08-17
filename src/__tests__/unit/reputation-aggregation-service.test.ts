@@ -192,7 +192,6 @@ describe('Reputation Aggregation Service', () => {
       expect(result.data.twoStars).toBe(0);
       expect(result.data.oneStar).toBe(1);
       expect(result.data.recentRatings).toHaveLength(5);
-      // Check null handling
       expect(result.data.recentRatings[3].reviewerName).toBe('Anonymous');
       expect(result.data.recentRatings[3].projectTitle).toBe('Unknown Project');
     });

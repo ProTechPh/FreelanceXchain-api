@@ -1,8 +1,3 @@
-/**
- * Authentication Service
- * Handles user authentication, registration, and session management
- */
-
 import { ID, Account, OAuthProvider, AuthenticatorType, AuthenticationFactor } from 'node-appwrite';
 import type { Models } from 'node-appwrite';
 import { userRepository, UserEntity } from '../repositories/user-repository.js';
@@ -92,7 +87,6 @@ export function validatePasswordStrength(password: string): PasswordValidationRe
 }
 
 export async function createAuthResult(user: UserEntity, accessToken: string, refreshToken: string): Promise<AuthResult | AuthError> {
-  // Check if user is suspended
   if (user.is_suspended) {
     return {
       code: 'USER_SUSPENDED',
@@ -100,7 +94,6 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
     };
   }
 
-  // Get KYC status
   const { getKycVerificationByUserId } = await import('../repositories/didit-kyc-repository.js');
   const kycVerification = await getKycVerificationByUserId(user.id);
 
@@ -118,13 +111,9 @@ export async function createAuthResult(user: UserEntity, accessToken: string, re
   };
 }
 
-/**
- * Register a new user with Appwrite Auth
- */
 export async function register(input: RegisterInput): Promise<AuthResult | AuthError> {
   const normalizedEmail = input.email.toLowerCase().trim();
 
-  // Check for duplicate email in database
   const emailExists = await userRepository.emailExists(normalizedEmail);
   if (emailExists) {
     return {
@@ -135,7 +124,6 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
 
   let appwriteUser: Models.User<Models.Preferences> | undefined;
   try {
-    // Create user in Appwrite
     appwriteUser = await users.create(
       ID.unique(),
       normalizedEmail,
@@ -144,7 +132,6 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       input.email.split('@')[0] // name from email
     );
 
-    // Create user record in database
     const publicUser = await userRepository.createUser({
       id: appwriteUser.$id,
       email: normalizedEmail,
@@ -157,7 +144,6 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
       mfa_enabled: false,
     });
 
-    // Create session for the user
     const session = await adminAccount.createEmailPasswordSession({
       email: normalizedEmail,
       password: input.password,
@@ -216,9 +202,6 @@ export async function register(input: RegisterInput): Promise<AuthResult | AuthE
   }
 }
 
-/**
- * Login with Appwrite Auth (email/password)
- */
 export async function login(input: LoginInput): Promise<AuthResponse> {
   const normalizedEmail = input.email.toLowerCase().trim();
 
@@ -253,7 +236,6 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
       throw mfaError;
     }
 
-    // Get user from database
     const publicUser = await userRepository.getUserByEmail(normalizedEmail);
 
     if (!publicUser) {
@@ -274,18 +256,13 @@ export async function login(input: LoginInput): Promise<AuthResponse> {
   }
 }
 
-/**
- * Refresh tokens using Appwrite session
- */
 export async function refreshTokens(refreshToken: string): Promise<AuthResult | AuthError> {
   try {
     const userClient = createUserClient(refreshToken);
     const account = new Account(userClient);
 
-    // Get current user
     const appwriteUser = await account.get();
 
-    // Get user from database
     const publicUser = await userRepository.getUserById(appwriteUser.$id);
 
     if (!publicUser) {
@@ -308,9 +285,6 @@ export async function refreshTokens(refreshToken: string): Promise<AuthResult | 
   }
 }
 
-/**
- * Validate Appwrite JWT token
- */
 export async function validateToken(accessToken: string): Promise<{ id: string; userId: string; email: string; role: UserRole } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
@@ -318,7 +292,6 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
 
     const appwriteUser = await account.get();
 
-    // Get user from database
     const publicUser = await userRepository.getUserById(appwriteUser.$id);
 
     if (!publicUser) {
@@ -328,7 +301,6 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
       };
     }
 
-    // Check if user is suspended
     if (publicUser.is_suspended) {
       return {
         code: 'USER_SUSPENDED',
@@ -352,9 +324,6 @@ export async function validateToken(accessToken: string): Promise<{ id: string; 
   }
 }
 
-/**
- * Validate token and get full user with AuthResult
- */
 export async function validateTokenAndGetUser(accessToken: string): Promise<AuthResult | AuthError> {
   const tokenResult = await validateToken(accessToken);
   
@@ -374,9 +343,6 @@ export async function validateTokenAndGetUser(accessToken: string): Promise<Auth
   return createAuthResult(userEntity, accessToken, accessToken);
 }
 
-/**
- * Request password reset email
- */
 export async function requestPasswordReset(email: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient('');
@@ -404,15 +370,11 @@ export async function requestPasswordReset(email: string): Promise<{ success: bo
   }
 }
 
-/**
- * Update password (after reset)
- */
 export async function updatePassword(accessToken: string, newPassword: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Update password using Appwrite
     await account.updatePassword({
       password: newPassword
     });
@@ -439,9 +401,6 @@ export async function updatePassword(accessToken: string, newPassword: string): 
   }
 }
 
-/**
- * Logout user and invalidate session
- */
 export async function logout(accessToken?: string): Promise<{ success: boolean } | AuthError> {
   if (!accessToken) {
     return { success: true };
@@ -451,7 +410,6 @@ export async function logout(accessToken?: string): Promise<{ success: boolean }
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
 
-    // Delete current session
     await account.deleteSession({
       sessionId: 'current'
     });
@@ -467,9 +425,6 @@ export async function logout(accessToken?: string): Promise<{ success: boolean }
   }
 }
 
-/**
- * Get current user with KYC status
- */
 export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult['user'] | AuthError> {
   const user = await userRepository.getUserById(userId);
   
@@ -498,7 +453,6 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
     };
   }
 
-  // Get KYC status for non-admin users
   const { getKycVerificationByUserId } = await import('../repositories/didit-kyc-repository.js');
   const kycVerification = await getKycVerificationByUserId(userId);
   
@@ -513,9 +467,6 @@ export async function getCurrentUserWithKyc(userId: string): Promise<AuthResult[
   };
 }
 
-/**
- * Update the authenticated user's wallet address
- */
 export async function updateUserWallet(
   userId: string,
   walletAddress: string
@@ -565,9 +516,6 @@ export async function updateUserWallet(
   }
 }
 
-/**
- * Get OAuth login URL for Appwrite
- */
 export async function getOAuthUrl(provider: string): Promise<string> {
   const userClient = createUserClient('');
   const account = new Account(userClient);
@@ -589,9 +537,6 @@ export async function getOAuthUrl(provider: string): Promise<string> {
   );
 }
 
-/**
- * Exchange OAuth session for local tokens
- */
 export async function exchangeCodeForSession(accessToken: string): Promise<{ accessToken: string; refreshToken: string } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
@@ -668,9 +613,6 @@ export async function enrollMFA(accessToken: string, factorType: 'totp' | 'email
   }
 }
 
-/**
- * Verify MFA enrollment and enable MFA on the account
- */
 export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp' | 'email', code: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
@@ -687,7 +629,6 @@ export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp
     // Enable MFA on the account (Appwrite official step)
     await account.updateMFA(true);
     
-    // Update DB status
     const appwriteUser = await account.get();
     await userRepository.update(appwriteUser.$id, { mfa_enabled: true });
 
@@ -701,9 +642,6 @@ export async function verifyMFAEnrollment(accessToken: string, factorType: 'totp
   }
 }
 
-/**
- * Challenge MFA (for login/sensitive operations)
- */
 export async function challengeMFA(accessToken: string, factorId: string): Promise<{ challengeId: string } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
@@ -722,9 +660,6 @@ export async function challengeMFA(accessToken: string, factorId: string): Promi
   }
 }
 
-/**
- * Verify MFA Challenge
- */
 export async function verifyMFAChallenge(accessToken: string, factorId: string, challengeId: string, code: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
@@ -746,9 +681,6 @@ export async function verifyMFAChallenge(accessToken: string, factorId: string, 
   }
 }
 
-/**
- * Get enrolled MFA factors
- */
 export async function getMFAFactors(accessToken: string): Promise<{ factors: { id: string; type: string }[] } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
@@ -769,9 +701,6 @@ export async function getMFAFactors(accessToken: string): Promise<{ factors: { i
   }
 }
 
-/**
- * Disable MFA
- */
 export async function disableMFA(accessToken: string, factorType: 'totp' | 'email', otpCode?: string): Promise<{ success: boolean } | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
@@ -785,7 +714,6 @@ export async function disableMFA(accessToken: string, factorType: 'totp' | 'emai
       };
     }
 
-    // Create a challenge and verify the OTP code for the specified factor
     const challenge = await account.createMFAChallenge({
       factor: factorType as AuthenticationFactor,
     });
@@ -874,18 +802,13 @@ export async function resendConfirmationEmail(email: string): Promise<{ success:
   }
 }
 
-/**
- * OAuth/JWT Login: Validates token and returns local auth session
- */
 export async function loginWithAppwrite(accessToken: string): Promise<AuthResult | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
     
-    // Validate session/token with Appwrite
     const appwriteUser = await account.get();
     
-    // Check if user exists in database
     const publicUser = await userRepository.getUserById(appwriteUser.$id);
     
     if (!publicUser) {
@@ -905,18 +828,13 @@ export async function loginWithAppwrite(accessToken: string): Promise<AuthResult
   }
 }
 
-/**
- * OAuth/Token Registration: Create DB user after OAuth or Magic URL
- */
 export async function registerWithAppwrite(accessToken: string, role: UserRole): Promise<AuthResult | AuthError> {
   try {
     const userClient = createUserClient(accessToken);
     const account = new Account(userClient);
     
-    // Validate token and get user details from Appwrite
     const appwriteUser = await account.get();
     
-    // Check if user already exists
     const existingUser = await userRepository.getUserById(appwriteUser.$id);
     if (existingUser) {
       return {
@@ -925,7 +843,6 @@ export async function registerWithAppwrite(accessToken: string, role: UserRole):
       };
     }
     
-    // Create the user in local database
     const publicUser = await userRepository.createUser({
       id: appwriteUser.$id,
       email: appwriteUser.email,
@@ -948,9 +865,6 @@ export async function registerWithAppwrite(accessToken: string, role: UserRole):
   }
 }
 
-/**
- * Request Email OTP
- */
 export async function requestEmailOtp(email: string): Promise<{ userId: string } | AuthError> {
   try {
     const userClient = createUserClient('');
@@ -964,9 +878,6 @@ export async function requestEmailOtp(email: string): Promise<{ userId: string }
   }
 }
 
-/**
- * Request Magic URL
- */
 export async function requestMagicUrl(email: string): Promise<{ userId: string } | AuthError> {
   try {
     const userClient = createUserClient('');

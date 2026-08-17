@@ -199,7 +199,6 @@ describe('Notification Delivery Service', () => {
     it('should stop heartbeat without error', async () => {
       const { stopHeartbeat } = await importModule();
 
-      // Should not throw
       stopHeartbeat();
       stopHeartbeat(); // Calling twice should be safe
     });

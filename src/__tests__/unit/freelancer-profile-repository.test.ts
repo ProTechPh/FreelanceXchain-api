@@ -60,6 +60,9 @@ describe('FreelancerProfileRepository', () => {
           { skill_name: 'Node.js', years_of_experience: 2 },
           'Rust',
           { years_of_experience: 8 },
+          '   ',
+          42,
+          { name: 'Go', years_of_experience: -5 },
         ],
       });
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
@@ -71,6 +74,7 @@ describe('FreelancerProfileRepository', () => {
         { name: 'TypeScript', years_of_experience: 3 },
         { name: 'Node.js', years_of_experience: 2 },
         { name: 'Rust', years_of_experience: 0 },
+        { name: 'Go', years_of_experience: 0 },
       ]);
     });
 
@@ -84,6 +88,7 @@ describe('FreelancerProfileRepository', () => {
           { id: 'experience-1', title: 'Developer', company: 'Duplicate Co', description: 'Duplicate persisted id', startDate: '2022-01-01', endDate: '2023-12-31' },
           { experience_id: 'experience-3', title: 'Consultant', company: 'Legacy Co', description: 'Legacy identifier', start_date: '2020-01-01', end_date: null },
           { title: 'Intern', company: 'Old Co', description: 'Missing persisted id', startDate: '2019-01-01', endDate: '2019-12-31' },
+          'not an object',
         ],
       });
       mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
@@ -95,6 +100,28 @@ describe('FreelancerProfileRepository', () => {
         { id: 'legacy-experience-1', title: 'Developer', company: 'Duplicate Co', description: 'Duplicate persisted id', start_date: '2022-01-01', end_date: '2023-12-31' },
         { id: 'experience-3', title: 'Consultant', company: 'Legacy Co', description: 'Legacy identifier', start_date: '2020-01-01', end_date: null },
         { id: 'legacy-experience-3', title: 'Intern', company: 'Old Co', description: 'Missing persisted id', start_date: '2019-01-01', end_date: '2019-12-31' },
+      ]);
+    });
+
+    it('should fall back to null for missing end dates and de-duplicate legacy ids', async () => {
+      const doc = toAppwriteDoc({
+        id: 'fp1',
+        user_id: 'u1',
+        bio: 'Developer',
+        experience: [
+          { id: 'legacy-experience-1', title: 'First', company: 'A', start_date: '2020-01-01', end_date: '2020-12-31' },
+          { title: 'Second', company: 'B', start_date: '2021-01-01' },
+          { title: 'Third', company: 'C', startDate: '2022-01-01' },
+        ],
+      });
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [doc], total: 1 });
+
+      const result = await repo.getProfileByUserId('u1');
+
+      expect(result!.experience).toEqual([
+        { id: 'legacy-experience-1', title: 'First', company: 'A', description: '', start_date: '2020-01-01', end_date: '2020-12-31' },
+        { id: 'legacy-experience-1-1', title: 'Second', company: 'B', description: '', start_date: '2021-01-01', end_date: null },
+        { id: 'legacy-experience-2', title: 'Third', company: 'C', description: '', start_date: '2022-01-01', end_date: null },
       ]);
     });
 
@@ -260,6 +287,31 @@ describe('FreelancerProfileRepository', () => {
       expect(result.items).toEqual([]);
       expect(result.hasMore).toBe(false);
       expect(result.total).toBe(0);
+    });
+  });
+
+  describe('findByFilters', () => {
+    it('should query only allowed primitive filters', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await repo.findByFilters(
+        { status: 'open', budget: 100, category: 'dev', title: 'Build', notAllowed: 'x', weird: { nested: 1 } },
+        20
+      );
+      expect(result).toEqual([]);
+      const queries = mockDatabases.listDocuments.mock.calls[0][2] as any[];
+      const equals = queries.filter(q => q.startsWith('equal('));
+      expect(equals.map(q => q.slice(6, q.indexOf(','))).sort()).toEqual(['budget', 'category', 'status', 'title']);
+    });
+
+    it('should accept boolean and array values on allowed columns and skip nulls', async () => {
+      mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await repo.findByFilters({ status: true, category: ['dev', 'design'], budget: null }, 10);
+      expect(result).toEqual([]);
+      const queries = mockDatabases.listDocuments.mock.calls[0][2] as any[];
+      const equals = queries.filter(q => q.startsWith('equal('));
+      expect(equals.map(q => q.slice(6, q.indexOf(','))).sort()).toEqual(['category', 'status']);
     });
   });
 });

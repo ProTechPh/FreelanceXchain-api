@@ -56,7 +56,6 @@ describe('Project Repository - Category Filtering Tests', () => {
       const webDevCategoryId = 'web-dev-category';
       const mobileCategoryId = 'mobile-category';
 
-      // Create test projects
       const project1 = createTestProject({
         id: generateId(),
         status: 'open',
@@ -96,7 +95,6 @@ describe('Project Repository - Category Filtering Tests', () => {
     it('should handle pagination correctly', async () => {
       const categoryId = 'test-category';
 
-      // Create 5 projects with the same category
       for (let i = 0; i < 5; i++) {
         const project = createTestProject({
           id: generateId(),
@@ -108,18 +106,15 @@ describe('Project Repository - Category Filtering Tests', () => {
         mockProjects.push(project);
       }
 
-      // Test first page
       const firstPage = await repository.getProjectsByCategory(categoryId, { limit: 2, offset: 0 });
       expect(firstPage.items.length).toBe(2);
       expect(firstPage.hasMore).toBe(true);
       expect(firstPage.total).toBe(5);
 
-      // Test second page
       const secondPage = await repository.getProjectsByCategory(categoryId, { limit: 2, offset: 2 });
       expect(secondPage.items.length).toBe(2);
       expect(secondPage.hasMore).toBe(true);
 
-      // Test last page
       const lastPage = await repository.getProjectsByCategory(categoryId, { limit: 2, offset: 4 });
       expect(lastPage.items.length).toBe(1);
       expect(lastPage.hasMore).toBe(false);
@@ -306,7 +301,6 @@ describe('Project Repository - Category Filtering Tests', () => {
       const categoryId1 = 'category-1';
       const categoryId2 = 'category-2';
 
-      // Create projects for both categories
       for (let i = 0; i < 3; i++) {
         const project1 = createTestProject({
           id: generateId(),
@@ -337,14 +331,12 @@ describe('Project Repository - Category Filtering Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle database errors gracefully', async () => {
-      // Reset the mock to throw an error
       jest.spyOn(repository, 'getProjectsByCategory').mockRejectedValue(new Error('Failed to get projects by category: Database connection failed'));
 
       await expect(repository.getProjectsByCategory('test-category')).rejects.toThrow('Failed to get projects by category');
     });
 
     it('should handle null data from database', async () => {
-      // Reset the mock to return empty results
       jest.spyOn(repository, 'getProjectsByCategory').mockResolvedValue({
         items: [],
         hasMore: false,
@@ -363,7 +355,6 @@ describe('Project Repository - Category Filtering Tests', () => {
     it('should handle large datasets efficiently', async () => {
       const categoryId = 'test-category';
 
-      // Create a large number of projects
       for (let i = 0; i < 1000; i++) {
         const project = createTestProject({
           id: generateId(),

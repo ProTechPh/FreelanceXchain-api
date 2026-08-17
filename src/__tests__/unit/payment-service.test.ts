@@ -17,7 +17,6 @@ import {
 import { assertHasTimestamps, assertIsValidId } from '../helpers/test-assertions.js';
 import { generateId } from '../../utils/id.js';
 
-// Create stores and mocks
 const contractStore = createInMemoryStore();
 const projectStore = createInMemoryStore();
 const userStore = createInMemoryStore();
@@ -129,7 +128,6 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendPaymentReleasedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
-// Import after mocking
 const {
   getDisputeById,
   requestMilestoneCompletion,

@@ -251,7 +251,6 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     return;
   }
 
-  // Get contract
   const contractResult = await getContractById(contractId);
   if (!contractResult.success) {
     sendErrorResponse(res, 404, 'NOT_FOUND', 'Contract not found', { requestId });
@@ -293,7 +292,6 @@ router.post('/:id/fund', authMiddleware, requireVerifiedKyc, apiRateLimiter, val
     escrowAddress = escrowResult.escrowAddress;
   }
 
-  // Save escrow address on the contract record
   const { contractRepository } = await import('../repositories/contract-repository.js');
   await contractRepository.updateContract(contractId, { escrow_address: escrowAddress });
 

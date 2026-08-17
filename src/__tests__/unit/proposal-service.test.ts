@@ -22,7 +22,6 @@ import {
 } from '../helpers/test-data-factory.js';
 import { assertHasTimestamps, assertIsValidId } from '../helpers/test-assertions.js';
 
-// Create stores and mocks using shared utilities
 const proposalStore = createInMemoryStore();
 const projectStore = createInMemoryStore();
 const contractStore = createInMemoryStore();
@@ -114,7 +113,6 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendContractCreatedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
-// Import after mocking
 const {
   submitProposal,
   getProposalById,
@@ -202,7 +200,6 @@ describe('Proposal Service - Property-Based Tests', () => {
       createTestMilestone({ id: 'milestone-2', title: 'M2', amount: 500, status: 'pending' }),
     ];
 
-    // Create project with milestones
     const project = createTestProject({ 
       id: projectId, 
       employer_id: employerId,
@@ -211,14 +208,12 @@ describe('Proposal Service - Property-Based Tests', () => {
     });
     projectStore.set(project.id, project);
 
-    // Create employer user
     const employer = createTestUser({ 
       id: employerId,
       wallet_address: '0x1234567890123456789012345678901234567890'
     });
     userStore.set(employer.id, employer);
 
-    // Create proposal to accept with matching rate
     const proposal = createTestProposal({ 
       id: 'proposal-1',
       project_id: projectId, 
@@ -228,7 +223,6 @@ describe('Proposal Service - Property-Based Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    // Create other proposals for same project
     const otherProposal1 = createTestProposal({ 
       id: 'proposal-2',
       project_id: projectId, 
@@ -248,10 +242,8 @@ describe('Proposal Service - Property-Based Tests', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      // Verify proposal was accepted
       expect(result.data.proposal.status).toBe('accepted');
       
-      // Verify contract was created
       expect(result.data.contract).toBeDefined();
       assertIsValidId(result.data.contract.id);
       expect(result.data.contract.proposalId).toBe(proposal.id);
@@ -259,11 +251,9 @@ describe('Proposal Service - Property-Based Tests', () => {
       expect(result.data.contract.employerId).toBe(employerId);
     }
     
-    // Verify project status updated
     const updatedProject = projectStore.get(projectId) as any;
     expect(updatedProject?.status).toBe('in_progress');
     
-    // Verify other proposals were rejected
     const otherProposal1Updated = proposalStore.get(otherProposal1.id) as any;
     const otherProposal2Updated = proposalStore.get(otherProposal2.id) as any;
     expect(otherProposal1Updated?.status).toBe('rejected');
@@ -300,7 +290,6 @@ describe('Proposal Service - Property-Based Tests', () => {
       expect(result.data.proposal.status).toBe('rejected');
     }
     
-    // Verify notification was created
     const notifications = Array.from(notificationStore.values());
     expect(notifications.length).toBeGreaterThan(0);
     expect(notifications.some((n: any) => 
@@ -345,7 +334,6 @@ describe('Proposal Service - Property-Based Tests', () => {
     const project = createTestProject({ id: projectId, status: 'open' });
     projectStore.set(project.id, project);
 
-    // Create first proposal
     const existingProposal = createTestProposal({ 
       project_id: projectId, 
       freelancer_id: freelancerId,
@@ -353,7 +341,6 @@ describe('Proposal Service - Property-Based Tests', () => {
     });
     proposalStore.set(existingProposal.id, existingProposal);
 
-    // Attempt to create duplicate proposal
     const result = await submitProposal(freelancerId, {
       projectId,
       proposedRate: 50,
@@ -426,7 +413,6 @@ describe('Proposal Service - Unit Tests', () => {
   it('should get proposals by project', async () => {
     const projectId = 'project-123';
     
-    // Create project first
     const project = createTestProject({ id: projectId, status: 'open' });
     projectStore.set(project.id, project);
     
@@ -491,7 +477,6 @@ describe('Proposal Service - Unit Tests', () => {
       expect(result.data.proposal.id).toBe(proposal.id);
     }
     
-    // Verify notification
     const notifications = Array.from(notificationStore.values());
     expect(notifications.length).toBeGreaterThan(0);
   });
@@ -585,7 +570,6 @@ describe('Proposal Service - Unit Tests', () => {
 
     const result = await acceptProposal(proposal.id, employerId);
 
-    // Verify proposal was accepted and contract created with active status
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.proposal.status).toBe('accepted');
@@ -1297,14 +1281,12 @@ describe('Proposal Service - Coverage Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    // Add a completed contract for the employer
     const contract = createTestContract({
       employer_id: employerId,
       status: 'completed',
     });
     contractStore.set(contract.id, contract);
 
-    // Add a review for the employer
     mockReviewRepo.create({
       id: 'review-1',
       reviewee_id: employerId,

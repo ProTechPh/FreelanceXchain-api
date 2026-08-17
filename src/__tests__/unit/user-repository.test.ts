@@ -94,6 +94,11 @@ describe('UserRepository', () => {
       expect(result).toHaveLength(0);
       expect(mockDatabases.listDocuments).not.toHaveBeenCalled();
     });
+
+    it('should throw when the batch query fails', async () => {
+      mockDatabases.listDocuments.mockRejectedValueOnce(new Error('select failed'));
+      await expect(repo.getUsersByIds(['u1'])).rejects.toThrow('Failed to get users by ids');
+    });
   });
 
   describe('getUserByEmail', () => {

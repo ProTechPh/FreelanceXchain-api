@@ -121,7 +121,6 @@ export function validateAttachments(attachments: unknown, options?: ValidationOp
   const minFiles = options?.minFiles ?? MIN_FILE_COUNT;
   const maxTotalSize = options?.maxTotalSize ?? MAX_TOTAL_SIZE;
 
-  // Check if attachments is an array
   if (!Array.isArray(attachments)) {
     errors.push({
       field: 'attachments',
@@ -130,7 +129,6 @@ export function validateAttachments(attachments: unknown, options?: ValidationOp
     return errors;
   }
 
-  // Check file count
   if (attachments.length < minFiles) {
     errors.push({
       field: 'attachments',
@@ -145,19 +143,16 @@ export function validateAttachments(attachments: unknown, options?: ValidationOp
     });
   }
 
-  // Validate each attachment
   let totalSize = 0;
   attachments.forEach((attachment, index) => {
     const attachmentErrors = validateSingleAttachment(attachment, index);
     errors.push(...attachmentErrors);
 
-    // Calculate total size if attachment is valid
     if (typeof attachment === 'object' && attachment !== null && 'size' in attachment) {
       totalSize += (attachment as FileAttachment).size;
     }
   });
 
-  // Check total size
   if (totalSize > maxTotalSize) {
     errors.push({
       field: 'attachments',
@@ -178,7 +173,6 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
   const errors: FileValidationError[] = [];
   const field = `attachments[${index}]`;
 
-  // Check if attachment is an object
   if (typeof attachment !== 'object' || attachment === null) {
     errors.push({
       field,
@@ -189,14 +183,12 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
 
   const att = attachment as Record<string, unknown>;
 
-  // Validate required fields
   if (!att.url || typeof att.url !== 'string') {
     errors.push({
       field: `${field}.url`,
       message: 'URL is required and must be a string',
     });
   } else {
-    // Validate URL format and domain
     const urlErrors = validateFileUrl(att.url as string);
     if (urlErrors.length > 0) {
       errors.push({
@@ -212,7 +204,6 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
       message: 'Filename is required and must be a string',
     });
   } else {
-    // Validate filename extension
     const filename = att.filename as string;
     const hasValidExtension = ALLOWED_EXTENSIONS.some(ext => 
       filename.toLowerCase().endsWith(ext)
@@ -243,7 +234,6 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
       message: 'MIME type is required and must be a string',
     });
   } else {
-    // Validate MIME type
     const mimeType = att.mimeType as string;
     if (!(ALLOWED_MIME_TYPES as readonly string[]).includes(mimeType)) {
       errors.push({
@@ -264,11 +254,9 @@ function validateSingleAttachment(attachment: unknown, index: number): FileValid
 function validateFileUrl(url: string): string[] {
   const errors: string[] = [];
 
-  // Check if URL is valid
   try {
     const parsedUrl = new URL(url);
 
-    // Check if URL is HTTP/HTTPS
     if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
       errors.push('File URL must use HTTP or HTTPS protocol');
     }

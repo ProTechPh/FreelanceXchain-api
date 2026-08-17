@@ -14,20 +14,15 @@ import { sendNotificationToUser } from './notification-delivery-service.js';
 import { createNotification } from './notification-service.js';
 import { generateId } from '../utils/id.js';
 
-/**
- * Submit evidence for dispute
- */
 export async function submitEvidence(
   input: SubmitEvidenceInput
 ): Promise<ServiceResult<DisputeEvidence>> {
   try {
-    // Verify dispute exists
     const disputeEntity = await disputeRepository.getDisputeById(input.disputeId);
     if (!disputeEntity) {
       return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
     }
 
-    // Get contract to check involvement
     const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
     if (!contractEntity) {
       return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
@@ -41,7 +36,6 @@ export async function submitEvidence(
       return errorResult('UNAUTHORIZED', 'You are not involved in this dispute');
     }
 
-    // Create evidence entity
     const now = new Date().toISOString();
     const evidenceEntity: DisputeEvidenceEntity = {
       id: generateId(),
@@ -71,7 +65,6 @@ export async function submitEvidence(
       ...(createdEvidence.verified_at ? { verifiedAt: new Date(createdEvidence.verified_at) } : {}),
     };
 
-    // Notify arbiter if assigned
     if (disputeEntity.resolution?.resolved_by) {
       const notificationResult = await createNotification({
         userId: disputeEntity.resolution.resolved_by,
@@ -89,7 +82,6 @@ export async function submitEvidence(
       }
     }
 
-    // Notify the other party
     const otherPartyId = contractEntity.freelancer_id === input.submittedBy 
       ? contractEntity.employer_id 
       : contractEntity.freelancer_id;
@@ -118,21 +110,16 @@ export async function submitEvidence(
   }
 }
 
-/**
- * Get all evidence for dispute
- */
 export async function getDisputeEvidence(
   disputeId: string,
   userId: string
 ): Promise<ServiceResult<DisputeEvidence[]>> {
   try {
-    // Verify dispute exists
     const disputeEntity = await disputeRepository.getDisputeById(disputeId);
     if (!disputeEntity) {
       return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
     }
 
-    // Get contract to check authorization
     const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
     if (!contractEntity) {
       return errorResult('DISPUTE_NOT_FOUND', 'Dispute not found');
@@ -147,7 +134,6 @@ export async function getDisputeEvidence(
       return errorResult('UNAUTHORIZED', 'You are not authorized to view this evidence');
     }
 
-    // Get all evidence
     const evidenceEntities = await disputeEvidenceRepository.findByDispute(disputeId);
 
     const evidence: DisputeEvidence[] = evidenceEntities.map(e => ({
@@ -170,32 +156,25 @@ export async function getDisputeEvidence(
   }
 }
 
-/**
- * Delete evidence (only by submitter before verification)
- */
 export async function deleteEvidence(
   evidenceId: string,
   userId: string
 ): Promise<ServiceResult<void>> {
   try {
-    // Get evidence
     const evidenceEntity = await disputeEvidenceRepository.getEvidenceById(evidenceId);
 
     if (!evidenceEntity) {
       return errorResult('EVIDENCE_NOT_FOUND', 'Evidence not found');
     }
 
-    // Check ownership
     if (evidenceEntity.submitted_by !== userId) {
       return errorResult('UNAUTHORIZED', 'You can only delete your own evidence');
     }
 
-    // Check if already verified
     if (evidenceEntity.verified_at) {
       return errorResult('ALREADY_VERIFIED', 'Cannot delete verified evidence');
     }
 
-    // Delete evidence
     await disputeEvidenceRepository.deleteEvidence(evidenceId);
 
     logger.info(`Evidence ${evidenceId} deleted by user ${userId}`);
@@ -207,21 +186,16 @@ export async function deleteEvidence(
   }
 }
 
-/**
- * Verify evidence (arbiter only)
- */
 export async function verifyEvidence(
   input: VerifyEvidenceInput
 ): Promise<ServiceResult<DisputeEvidence>> {
   try {
-    // Get evidence
     const evidenceEntity = await disputeEvidenceRepository.getEvidenceById(input.evidenceId);
 
     if (!evidenceEntity) {
       return errorResult('EVIDENCE_NOT_FOUND', 'Evidence not found');
     }
 
-    // Get dispute to check arbiter
     const disputeEntity = await disputeRepository.getDisputeById(evidenceEntity.dispute_id);
     if (!disputeEntity) {
       return errorResult('EVIDENCE_NOT_FOUND', 'Evidence not found');
@@ -238,7 +212,6 @@ export async function verifyEvidence(
       return errorResult('UNAUTHORIZED', 'Only admins or the assigned arbiter can verify evidence');
     }
 
-    // Update evidence
     const now = new Date().toISOString();
     const updatedEntity = await disputeEvidenceRepository.updateEvidence(input.evidenceId, {
       verified_by: input.verifiedBy,

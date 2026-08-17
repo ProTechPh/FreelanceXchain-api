@@ -15,14 +15,12 @@ export async function addFavorite(
   targetId: string
 ): Promise<ServiceResult<Favorite>> {
   try {
-    // Check if already favorited
     const existing = await favoriteRepository.findByUserAndTarget(userId, targetType, targetId);
 
     if (existing) {
       return errorResult('ALREADY_FAVORITED', 'This item is already in your favorites');
     }
 
-    // Verify target exists
     const target =
       targetType === 'project'
         ? await projectRepository.getById(targetId)

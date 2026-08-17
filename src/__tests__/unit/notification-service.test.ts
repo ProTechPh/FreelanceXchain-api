@@ -6,7 +6,6 @@ import { createInMemoryStore, createMockNotificationRepository } from '../helper
 import { createTestNotification } from '../helpers/test-data-factory.js';
 import { assertHasTimestamps, assertIsValidId } from '../helpers/test-assertions.js';
 
-// Create stores and mocks using shared utilities
 const notificationStore = createInMemoryStore();
 const mockNotificationRepo = {
   ...createMockNotificationRepository(notificationStore),
@@ -30,7 +29,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/notification-repository
   NotificationRepository: jest.fn(),
 }));
 
-// Import after mocking
 const {
   createNotification,
   createNotifications,
@@ -152,7 +150,6 @@ describe('Notification Service - Property-Based Tests', () => {
     const userId = 'test-user-id';
     const otherUserId = 'other-user-id';
 
-    // Create notifications for test user
     const notif1 = createTestNotification({ 
       user_id: userId, 
       created_at: new Date('2024-01-01').toISOString() 
@@ -162,7 +159,6 @@ describe('Notification Service - Property-Based Tests', () => {
       created_at: new Date('2024-01-02').toISOString() 
     });
     
-    // Create notification for other user
     const notif3 = createTestNotification({ 
       user_id: otherUserId, 
       created_at: new Date('2024-01-03').toISOString() 
@@ -180,7 +176,6 @@ describe('Notification Service - Property-Based Tests', () => {
       expect(userNotifications).toHaveLength(2);
       expect(userNotifications[0]?.userId).toBe(userId);
       expect(userNotifications[1]?.userId).toBe(userId);
-      // Should be in reverse chronological order
       if (userNotifications[0] && userNotifications[1]) {
         expect(new Date(userNotifications[0].createdAt).getTime())
           .toBeGreaterThan(new Date(userNotifications[1].createdAt).getTime());
@@ -199,11 +194,9 @@ describe('Notification Service - Property-Based Tests', () => {
     const userId = 'test-user-id';
     const otherUserId = 'other-user-id';
 
-    // Create unread notifications for test user
     const notif1 = createTestNotification({ user_id: userId, is_read: false });
     const notif2 = createTestNotification({ user_id: userId, is_read: false });
     
-    // Create unread notification for other user
     const notif3 = createTestNotification({ user_id: otherUserId, is_read: false });
 
     notificationStore.set(notif1.id, notif1);
@@ -216,13 +209,11 @@ describe('Notification Service - Property-Based Tests', () => {
     if (result.success) {
       expect(result.data.count).toBe(2);
       
-      // Verify test user's notifications are read
       const userNotif1 = notificationStore.get(notif1.id) as any;
       const userNotif2 = notificationStore.get(notif2.id) as any;
       expect(userNotif1?.is_read).toBe(true);
       expect(userNotif2?.is_read).toBe(true);
       
-      // Verify other user's notification is still unread
       const otherNotif = notificationStore.get(notif3.id) as any;
       expect(otherNotif?.is_read).toBe(false);
     }
@@ -457,7 +448,6 @@ describe('Notification Service - Unit Tests', () => {
       expect(result.error.code).toBe('UPDATE_FAILED');
     }
 
-    // Restore original
     mockNotificationRepo.markAsRead = originalMarkAsRead;
   });
 

@@ -26,7 +26,6 @@ type UpdateEmployerProfileInput = {
 type EmployerProfileServiceResult<T> = ServiceResult<T>;
 
 
-// Profile Operations
 
 export async function createEmployerProfile(
   userId: string,
@@ -59,13 +58,11 @@ export async function createEmployerProfileFromKyc(
   userId: string,
   input: CreateEmployerProfileFromKycInput = {}
 ): Promise<EmployerProfileServiceResult<EmployerProfile>> {
-  // Check if profile already exists
   const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
   if (existingProfile) {
     return errorResult('PROFILE_EXISTS', 'Employer profile already exists for this user');
   }
 
-  // Get KYC data
   const kycResult = await getProfileDataFromKyc(userId);
   if (!kycResult.success) {
     return errorResult('KYC_NOT_APPROVED', kycResult.error.message || 'KYC verification must be approved before creating profile');
@@ -76,7 +73,6 @@ export async function createEmployerProfileFromKyc(
     return errorResult('KYC_NOT_APPROVED', 'No KYC data available');
   }
 
-  // Build default description from KYC data if not provided
   const defaultDescription = kycData.name 
     ? `Verified employer: ${kycData.name}. Looking for talented freelancers.`
     : 'Verified employer looking for talented freelancers.';

@@ -13,7 +13,6 @@ import {
 import { generateId } from '../../utils/id.js';
 import { ProposalEntity } from '../../repositories/proposal-repository.js';
 
-// Create stores and mocks
 const projectStore = createInMemoryStore();
 const proposalStore = createInMemoryStore();
 const skillStore = createInMemoryStore();
@@ -84,7 +83,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), 
   skillRepository: mockSkillRepo,
 }));
 
-// Import after mocking
 const { createProject, getProjectById, updateProject, setMilestones, listOpenProjects, listProjectsBySkills, listProjectsByBudgetRange } = await import('../../services/project-service.js');
 
 // Helper to add accepted proposal
@@ -165,7 +163,6 @@ describe('Project Service - Property-Based Tests', () => {
     proposalStore.clear();
     skillStore.clear();
 
-    // Set up test skills
     const skill1 = createTestSkill({ id: 'skill-1', name: 'JavaScript', category_id: 'cat-1' });
     const skill2 = createTestSkill({ id: 'skill-2', name: 'TypeScript', category_id: 'cat-1' });
     const skill3 = createTestSkill({ id: 'skill-3', name: 'React', category_id: 'cat-2' });
@@ -665,7 +662,6 @@ describe('Project Service - Category Filtering Tests', () => {
   const mockListProjectsByMultipleCategories = jest.fn<any>();
 
   beforeEach(() => {
-    // Add category filtering methods to mock repository
     mockProjectRepo.getProjectsByCategory = jest.fn<any>(async (categoryId: string, options?: any) => {
       const items = Array.from(projectStore.values()).filter((p: any) => 
         p.status === 'open' && 
@@ -698,10 +694,8 @@ describe('Project Service - Category Filtering Tests', () => {
   });
 
   it('should filter projects by single category', async () => {
-    // Import the new functions
     const { listProjectsByCategory } = await import('../../services/project-service.js');
 
-    // Create test projects with different categories
     const webDevCategoryId = 'web-dev-category';
     const mobileCategoryId = 'mobile-category';
 
@@ -791,7 +785,6 @@ describe('Project Service - Category Filtering Tests', () => {
 
     const categoryId = 'test-category';
 
-    // Create 5 projects with the same category
     for (let i = 0; i < 5; i++) {
       const project = createTestProject({
         status: 'open',
@@ -802,7 +795,6 @@ describe('Project Service - Category Filtering Tests', () => {
       projectStore.set(project.id, project);
     }
 
-    // Test first page
     const firstPage = await listProjectsByCategory(categoryId, { limit: 2, offset: 0 });
     expect(firstPage.success).toBe(true);
     if (firstPage.success) {
@@ -811,7 +803,6 @@ describe('Project Service - Category Filtering Tests', () => {
       expect(firstPage.data.total).toBe(5);
     }
 
-    // Test second page
     const secondPage = await listProjectsByCategory(categoryId, { limit: 2, offset: 2 });
     expect(secondPage.success).toBe(true);
     if (secondPage.success) {
@@ -819,7 +810,6 @@ describe('Project Service - Category Filtering Tests', () => {
       expect(secondPage.data.hasMore).toBe(true);
     }
 
-    // Test last page
     const lastPage = await listProjectsByCategory(categoryId, { limit: 2, offset: 4 });
     expect(lastPage.success).toBe(true);
     if (lastPage.success) {

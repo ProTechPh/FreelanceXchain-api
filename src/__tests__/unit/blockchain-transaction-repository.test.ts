@@ -137,6 +137,12 @@ describe('BlockchainTransactionRepository', () => {
       const result = await repository.findConfirmable('nonexistent');
       expect(result).toBeNull();
     });
+
+    it('returns an empty object when the transaction has no confirm_at', async () => {
+      mockDatabases.getDocument.mockResolvedValueOnce({ $id: 'tx-2' });
+      const result = await repository.findConfirmable('tx-2');
+      expect(result).toEqual({});
+    });
   });
 
   describe('getTransactionsByType', () => {

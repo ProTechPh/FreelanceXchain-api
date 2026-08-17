@@ -1,9 +1,3 @@
-/**
- * Contract Agreement Blockchain Service
- * Stores contract agreements and signatures on-chain
- * Creates immutable proof that both parties agreed to terms
- */
-
 import {
   submitTransaction,
   confirmTransaction,
@@ -13,10 +7,8 @@ import { TransactionReceipt } from './blockchain-types.js';
 import { createHash } from 'crypto';
 import { blockchainAgreementRepository, type BlockchainAgreementEntity } from '../repositories/blockchain-agreement-repository.js';
 
-// Agreement status on blockchain
 type BlockchainAgreementStatus = 'pending' | 'signed' | 'completed' | 'disputed' | 'cancelled';
 
-// On-chain agreement record
 type BlockchainAgreement = {
   contractIdHash: string;
   termsHash: string;
@@ -32,7 +24,6 @@ type BlockchainAgreement = {
   blockNumber: number;
 };
 
-// Input for creating agreement
 type CreateAgreementInput = {
   contractId: string;
   employerWallet: string;
@@ -53,16 +44,10 @@ type CreateAgreementInput = {
 // Contract address (simulated)
 const AGREEMENT_CONTRACT_ADDRESS = generateWalletAddress();
 
-/**
- * Generate hash of contract ID
- */
 export function generateContractIdHash(contractId: string): string {
   return '0x' + createHash('sha256').update(contractId).digest('hex');
 }
 
-/**
- * Generate hash of contract terms for on-chain storage
- */
 export function generateTermsHash(terms: CreateAgreementInput['terms']): string {
   const termsString = JSON.stringify({
     projectTitle: terms.projectTitle,
@@ -73,9 +58,6 @@ export function generateTermsHash(terms: CreateAgreementInput['terms']): string 
   return '0x' + createHash('sha256').update(termsString).digest('hex');
 }
 
-/**
- * Map a persisted agreement entity to the public BlockchainAgreement shape.
- */
 function mapAgreementFromEntity(entity: BlockchainAgreementEntity): BlockchainAgreement {
   return {
     contractIdHash: entity.contract_id_hash,
@@ -93,16 +75,12 @@ function mapAgreementFromEntity(entity: BlockchainAgreementEntity): BlockchainAg
   };
 }
 
-/**
- * Create agreement on blockchain
- */
 export async function createAgreementOnBlockchain(
   input: CreateAgreementInput
 ): Promise<{ agreement: BlockchainAgreement; receipt: TransactionReceipt }> {
   const contractIdHash = generateContractIdHash(input.contractId);
   const termsHash = generateTermsHash(input.terms);
 
-  // Check if already exists
   const existing = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
 
   if (existing) {
@@ -144,7 +122,6 @@ export async function createAgreementOnBlockchain(
     blockNumber: confirmed.blockNumber!,
   };
 
-  // Persist to DB
   const createData: Omit<BlockchainAgreementEntity, 'created_at' | 'updated_at'> = {
     id: contractIdHash,
     contract_id_hash: agreement.contractIdHash,
@@ -216,7 +193,6 @@ export async function signAgreement(
     freelancerSignedAt = now;
   }
 
-  // Both signed = fully signed
   if (employerSignedAt && freelancerSignedAt) {
     status = 'signed';
   }
@@ -251,9 +227,6 @@ export async function signAgreement(
   };
 }
 
-/**
- * Complete agreement on blockchain
- */
 export async function completeAgreement(
   contractId: string,
   callerWallet: string
@@ -283,7 +256,6 @@ export async function completeAgreement(
 
   const now = Date.now();
 
-  // Update in DB
   await blockchainAgreementRepository.updateAgreement(entity.id, {
     status: 'completed',
     transaction_hash: confirmed.hash!,
@@ -309,9 +281,6 @@ export async function completeAgreement(
   };
 }
 
-/**
- * Mark agreement as disputed
- */
 export async function disputeAgreement(
   contractId: string,
   callerWallet: string
@@ -341,7 +310,6 @@ export async function disputeAgreement(
 
   const now = Date.now();
 
-  // Update in DB
   await blockchainAgreementRepository.updateAgreement(entity.id, {
     status: 'disputed',
     transaction_hash: confirmed.hash!,
@@ -367,9 +335,6 @@ export async function disputeAgreement(
   };
 }
 
-/**
- * Get agreement from blockchain
- */
 export async function getAgreementFromBlockchain(contractId: string): Promise<BlockchainAgreement | null> {
   const contractIdHash = generateContractIdHash(contractId);
   const entity = await blockchainAgreementRepository.findByContractIdHash(contractIdHash);
@@ -378,9 +343,6 @@ export async function getAgreementFromBlockchain(contractId: string): Promise<Bl
   return mapAgreementFromEntity(entity);
 }
 
-/**
- * Verify terms hash matches on-chain record
- */
 export async function verifyAgreementTerms(
   contractId: string,
   terms: CreateAgreementInput['terms']
@@ -392,18 +354,12 @@ export async function verifyAgreementTerms(
   return agreement.termsHash === computedHash;
 }
 
-/**
- * Check if agreement is fully signed
- */
 export async function isAgreementFullySigned(contractId: string): Promise<boolean> {
   const agreement = await getAgreementFromBlockchain(contractId);
   if (!agreement) return false;
   return agreement.employerSignedAt !== null && agreement.freelancerSignedAt !== null;
 }
 
-/**
- * Get user's agreements
- */
 export async function getUserAgreements(walletAddress: string): Promise<BlockchainAgreement[]> {
   try {
     const entities = await blockchainAgreementRepository.findByWallet(walletAddress);
@@ -413,9 +369,6 @@ export async function getUserAgreements(walletAddress: string): Promise<Blockcha
   }
 }
 
-/**
- * Clear all agreements (for testing)
- */
 export async function clearBlockchainAgreements(): Promise<void> {
   if (process.env['NODE_ENV'] !== 'test') return;
   const all = await blockchainAgreementRepository.queryAll('created_at_ts');

@@ -49,9 +49,7 @@ describe('Validation Middleware - Property Tests', () => {
           (invalidEmail, password, role) => {
             const data = { email: invalidEmail, password, role };
             const result = validateRequest(data, getBodySchema(registerSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have field-specific error for email
             const emailError = result.errors.find(e => e.field === 'email');
             expect(emailError).toBeDefined();
             expect(emailError?.message).toContain('email');
@@ -70,9 +68,7 @@ describe('Validation Middleware - Property Tests', () => {
           (email, shortPassword, role) => {
             const data = { email, password: shortPassword, role };
             const result = validateRequest(data, getBodySchema(registerSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have field-specific error for password
             const passwordError = result.errors.find(e => e.field === 'password');
             expect(passwordError).toBeDefined();
             expect(passwordError?.message).toContain('password');
@@ -92,9 +88,7 @@ describe('Validation Middleware - Property Tests', () => {
           (email, password, invalidRole) => {
             const data = { email, password, role: invalidRole };
             const result = validateRequest(data, getBodySchema(registerSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have field-specific error for role
             const roleError = result.errors.find(e => e.field === 'role');
             expect(roleError).toBeDefined();
             expect(roleError?.message).toContain('role');
@@ -113,9 +107,7 @@ describe('Validation Middleware - Property Tests', () => {
           (bio, invalidRate) => {
             const data = { bio, hourlyRate: invalidRate };
             const result = validateRequest(data, getBodySchema(createFreelancerProfileSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have field-specific error for hourlyRate
             const rateError = result.errors.find(e => e.field === 'hourlyRate');
             expect(rateError).toBeDefined();
             expect(rateError?.message).toContain('hourlyRate');
@@ -133,9 +125,7 @@ describe('Validation Middleware - Property Tests', () => {
           (bio, invalidRate) => {
             const data = { bio, hourlyRate: invalidRate };
             const result = validateRequest(data, getBodySchema(createFreelancerProfileSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have field-specific error for hourlyRate
             const rateError = result.errors.find(e => e.field === 'hourlyRate');
             expect(rateError).toBeDefined();
             expect(rateError?.message).toContain('hourlyRate');
@@ -158,9 +148,7 @@ describe('Validation Middleware - Property Tests', () => {
           (contractId, rateeId, invalidRating) => {
             const data = { contractId, rateeId, rating: invalidRating };
             const result = validateRequest(data, getBodySchema(submitRatingSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have field-specific error for rating
             const ratingError = result.errors.find(e => e.field === 'rating');
             expect(ratingError).toBeDefined();
             expect(ratingError?.message).toContain('rating');
@@ -180,9 +168,7 @@ describe('Validation Middleware - Property Tests', () => {
           (projectId, emptyAttachments, proposedRate, estimatedDuration) => {
             const data = { projectId, attachments: emptyAttachments, proposedRate, estimatedDuration };
             const result = validateRequest(data, getBodySchema(submitProposalSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have field-specific error for attachments
             const attachmentsError = result.errors.find(e => e.field === 'attachments');
             expect(attachmentsError).toBeDefined();
             expect(attachmentsError?.message).toContain('attachments');
@@ -194,18 +180,13 @@ describe('Validation Middleware - Property Tests', () => {
     it('should return multiple field-specific errors when multiple fields are invalid', () => {
       fc.assert(
         fc.property(
-          // Invalid email
           fc.string().filter(s => !s.includes('@')),
-          // Invalid password (too short)
           fc.string({ minLength: 1, maxLength: 7 }),
-          // Invalid role
           fc.string().filter(s => s !== 'freelancer' && s !== 'employer'),
           (invalidEmail, shortPassword, invalidRole) => {
             const data = { email: invalidEmail, password: shortPassword, role: invalidRole };
             const result = validateRequest(data, getBodySchema(registerSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have errors for all three fields
             expect(result.errors.length).toBeGreaterThanOrEqual(3);
             const fields = result.errors.map(e => e.field);
             expect(fields).toContain('email');
@@ -244,13 +225,10 @@ describe('Validation Middleware - Property Tests', () => {
               }
             }
             const result = validateRequest(data, getBodySchema(registerSchema));
-            // Should have validation errors
             expect(result.valid).toBe(false);
-            // Should have errors for all omitted fields
             const errorFields = result.errors.map(e => e.field);
             for (const omittedField of fieldsToOmit) {
               expect(errorFields).toContain(omittedField);
-              // Error message should indicate the field is required
               const fieldError = result.errors.find(e => e.field === omittedField);
               expect(fieldError?.message).toContain('required');
             }
@@ -399,7 +377,6 @@ describe('Validation Middleware - Property Tests', () => {
           (email, password, role) => {
             const data = { email, password, role };
             const result = validateRequest(data, getBodySchema(registerSchema));
-            // Should be valid with no errors
             expect(result.valid).toBe(true);
             expect(result.errors).toHaveLength(0);
           }
@@ -414,7 +391,6 @@ describe('Validation Middleware - Property Tests', () => {
       expect(errorFields).toContain('email');
       expect(errorFields).toContain('password');
       expect(errorFields).toContain('role');
-      // All errors should mention "required"
       for (const error of result.errors) {
         expect(error.message).toContain('required');
       }

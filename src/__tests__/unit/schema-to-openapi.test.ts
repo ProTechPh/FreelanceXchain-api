@@ -25,7 +25,7 @@ describe('validationSchemaToOpenApi', () => {
       properties: {
         id: { type: 'string', minLength: 1, maxLength: 36, pattern: '^[a-z]+$', format: 'uuid' },
         count: { type: 'integer', minimum: 0, maximum: 10 },
-        ratio: { type: 'number', minimum: 0, maximum: 1 },
+        ratio: { type: 'number', minimum: 0, maximum: 1, exclusiveMinimum: 0, exclusiveMaximum: 1 },
         active: { type: 'boolean' },
         tags: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string' } },
         state: { type: 'string', enum: ['open', 'closed'] },
@@ -39,7 +39,7 @@ describe('validationSchemaToOpenApi', () => {
       properties: {
         id: { type: 'string', minLength: 1, maxLength: 36, pattern: '^[a-z]+$', format: 'uuid' },
         count: { type: 'integer', minimum: 0, maximum: 10 },
-        ratio: { type: 'number', minimum: 0, maximum: 1 },
+        ratio: { type: 'number', minimum: 0, maximum: 1, exclusiveMinimum: 0, exclusiveMaximum: 1 },
         active: { type: 'boolean' },
         tags: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string' } },
         state: { type: 'string', enum: ['open', 'closed'] },

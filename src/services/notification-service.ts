@@ -13,11 +13,8 @@ type CreateNotificationInput = {
   data?: Record<string, unknown>;
 };
 
-// Create a notification
-export async function createNotification(
-  input: CreateNotificationInput
-): Promise<ServiceResult<Notification>> {
-  const notificationEntity: Omit<NotificationEntity, 'created_at' | 'updated_at'> = {
+function buildNotificationEntity(input: CreateNotificationInput): Omit<NotificationEntity, 'created_at' | 'updated_at'> {
+  return {
     id: generateId(),
     user_id: input.userId,
     type: input.type,
@@ -26,35 +23,24 @@ export async function createNotification(
     data: input.data ?? {},
     is_read: false,
   };
+}
 
-  const createdEntity = await notificationRepository.createNotification(notificationEntity);
+export async function createNotification(
+  input: CreateNotificationInput
+): Promise<ServiceResult<Notification>> {
+  const createdEntity = await notificationRepository.createNotification(buildNotificationEntity(input));
   return successResult(mapNotificationFromEntity(createdEntity));
 }
 
-// Create multiple notifications at once
 export async function createNotifications(
   inputs: CreateNotificationInput[]
 ): Promise<ServiceResult<Notification[]>> {
   const createdEntities = await Promise.all(
-    inputs.map(async (input) => {
-      const notificationEntity: Omit<NotificationEntity, 'created_at' | 'updated_at'> = {
-        id: generateId(),
-        user_id: input.userId,
-        type: input.type,
-        title: input.title,
-        message: input.message,
-        data: input.data ?? {},
-        is_read: false,
-      };
-      return notificationRepository.createNotification(notificationEntity);
-    })
+    inputs.map((input) => notificationRepository.createNotification(buildNotificationEntity(input)))
   );
-  const notifications = createdEntities.map(mapNotificationFromEntity);
-
-  return successResult(notifications);
+  return successResult(createdEntities.map(mapNotificationFromEntity));
 }
 
-// Get notification by ID
 export async function getNotificationById(
   notificationId: string,
   userId: string
@@ -64,7 +50,6 @@ export async function getNotificationById(
     return errorResult('NOT_FOUND', 'Notification not found');
   }
 
-  // Verify the notification belongs to the requesting user
   if (notificationEntity.user_id !== userId) {
     return errorResult('UNAUTHORIZED', 'You do not have access to this notification');
   }
@@ -72,7 +57,6 @@ export async function getNotificationById(
   return successResult(mapNotificationFromEntity(notificationEntity));
 }
 
-// Get notifications for a user with pagination
 export async function getNotificationsByUser(
   userId: string,
   options?: QueryOptions
@@ -85,7 +69,6 @@ export async function getNotificationsByUser(
   });
   }
 
-// Get all notifications for a user (sorted by creation time descending)
 export async function getAllNotificationsByUser(
   userId: string
 ): Promise<ServiceResult<Notification[]>> {
@@ -94,7 +77,6 @@ export async function getAllNotificationsByUser(
 }
 
 
-// Get unread notifications for a user
 export async function getUnreadNotificationsByUser(
   userId: string
 ): Promise<ServiceResult<Notification[]>> {
@@ -102,7 +84,6 @@ export async function getUnreadNotificationsByUser(
   return successResult(notificationEntities.map(mapNotificationFromEntity));
 }
 
-// Mark a notification as read
 export async function markNotificationAsRead(
   notificationId: string,
   userId: string
@@ -112,7 +93,6 @@ export async function markNotificationAsRead(
     return errorResult('NOT_FOUND', 'Notification not found');
   }
 
-  // Verify the notification belongs to the user
   if (notificationEntity.user_id !== userId) {
     return errorResult('UNAUTHORIZED', 'You are not authorized to update this notification');
   }
@@ -125,7 +105,6 @@ export async function markNotificationAsRead(
   return successResult(mapNotificationFromEntity(updatedEntity));
 }
 
-// Mark all notifications as read for a user
 export async function markAllNotificationsAsRead(
   userId: string
 ): Promise<ServiceResult<{ count: number }>> {
@@ -133,7 +112,6 @@ export async function markAllNotificationsAsRead(
   return successResult({ count });
 }
 
-// Get unread notification count for a user
 export async function getUnreadCount(
   userId: string
 ): Promise<ServiceResult<number>> {
@@ -141,8 +119,6 @@ export async function getUnreadCount(
   return successResult(count);
 }
 
-
-// Helper functions for creating specific notification types
 
 export type NotifyProposalReceivedInput = {
   employerId: string;

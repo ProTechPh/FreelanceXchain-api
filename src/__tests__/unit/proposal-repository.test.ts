@@ -1529,7 +1529,6 @@ describe('Message Service — employer profile branch & getConversations', () =>
   it('should resolve receiver from employer profile (L46-47)', async () => {
     const { sendMessage } = await import('../../services/message-service.js');
 
-    // User not found
     mockUserRepo.getUserById.mockResolvedValueOnce(null);
     // Freelancer profile not found
     mockFreelancerProfileRepo.getById.mockResolvedValueOnce(null);

@@ -7,7 +7,6 @@ import { createTestUser } from '../helpers/test-data-factory.js';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Create mocks using shared factories
 const profileStore = createInMemoryStore();
 const mockProfileRepo = createMockEmployerProfileRepository(profileStore as any);
 
@@ -48,7 +47,6 @@ jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () 
   getProfileDataFromKyc: mockKycService.getProfileDataFromKyc,
 }));
 
-// Import after mocking
 const {
   createEmployerProfile,
   createEmployerProfileFromKyc,
@@ -108,10 +106,8 @@ describe('Employer Profile Service', () => {
         industry: 'Technology',
       };
 
-      // Create first profile
       await createEmployerProfile(userId, input);
 
-      // Try to create second profile for same user
       const result = await createEmployerProfile(userId, input);
 
       expect(result.success).toBe(false);
@@ -215,10 +211,8 @@ describe('Employer Profile Service', () => {
     it('should fail when profile already exists', async () => {
       const userId = 'user-with-kyc';
 
-      // Create first profile
       await createEmployerProfileFromKyc(userId, {});
 
-      // Try to create second profile
       const result = await createEmployerProfileFromKyc(userId, {});
 
       expect(result.success).toBe(false);
@@ -254,10 +248,8 @@ describe('Employer Profile Service', () => {
         industry: 'Technology',
       };
 
-      // Create profile first
       await createEmployerProfile(userId, input);
 
-      // Retrieve it
       const result = await getEmployerProfileByUserId(userId);
 
       expect(result.success).toBe(true);
@@ -311,14 +303,12 @@ describe('Employer Profile Service', () => {
     it('should update profile successfully', async () => {
       const userId = createTestUser().id;
 
-      // Create profile
       await createEmployerProfile(userId, {
         companyName: 'Old Company',
         description: 'Old description',
         industry: 'Technology',
       });
 
-      // Update profile
       const result = await updateEmployerProfile(userId, {
         companyName: 'New Company',
         description: 'New description',
@@ -341,7 +331,6 @@ describe('Employer Profile Service', () => {
         industry: 'Technology',
       });
 
-      // Update only company name
       const result = await updateEmployerProfile(userId, {
         companyName: 'New Tech Corp',
       });
@@ -508,14 +497,12 @@ describe('Employer Profile Service', () => {
     it('L143-147: should return UPDATE_FAILED when repository update returns null', async () => {
       const userId = createTestUser().id;
 
-      // Create profile first
       await createEmployerProfile(userId, {
         companyName: 'Tech Corp',
         description: 'A technology company',
         industry: 'Technology',
       });
 
-      // Override the mock to return null for this call
       const originalUpdate = mockProfileRepo.updateProfile;
       mockProfileRepo.updateProfile = jest.fn(async () => null) as any;
 
@@ -529,7 +516,6 @@ describe('Employer Profile Service', () => {
         expect(result.error.message).toBe('Failed to update profile');
       }
 
-      // Restore original mock
       mockProfileRepo.updateProfile = originalUpdate;
     });
   });

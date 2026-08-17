@@ -8,15 +8,16 @@ const resolveModule = (modulePath: string) => path.resolve(process.cwd(), module
 process.env['ASYNC_LOCK_TTL_MS'] = '500';
 process.env['ASYNC_LOCK_ACQUIRE_TIMEOUT_MS'] = '200';
 process.env['ASYNC_LOCK_RETRY_INTERVAL_MS'] = '10';
-process.env['ASYNC_LOCK_REFRESH_INTERVAL_MS'] = '100';
+process.env['ASYNC_LOCK_REFRESH_INTERVAL_MS'] = '20';
 
 // In-memory Redis stand-in: SET NX PX semantics + tokenized release.
 const store = new Map<string, string>();
-const mockSet = jest.fn(async (key: string, value: string, _px: string, _ttl: number, _nx: string) => {
+const defaultSetImpl = async (key: string, value: string, _px: string, _ttl: number, _nx: string) => {
   if (store.has(key)) return null;
   store.set(key, value);
   return 'OK';
-});
+};
+const mockSet = jest.fn(defaultSetImpl);
 const mockPexpire = jest.fn(async () => 1);
 const mockEval = jest.fn(async (_script: string, _numKeys: number, key: string, token: string) => {
   if (store.get(key) === token) {
@@ -35,8 +36,10 @@ jest.unstable_mockModule(resolveModule('src/config/redis.ts'), () => ({
   },
 }));
 
+const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() };
+
 jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  logger: mockLogger,
 }));
 
 const importWithLock = async (): Promise<{ withLock: any }> => {
@@ -61,6 +64,9 @@ describe('async-lock — Redis-backed distributed lock', () => {
   beforeEach(() => {
     store.clear();
     jest.clearAllMocks();
+    // Restore the default SET NX behavior — a previous test may have
+    // replaced it with mockRejectedValue, which clearAllMocks does NOT reset.
+    mockSet.mockImplementation(defaultSetImpl);
   });
 
   it('should serialize concurrent operations on the same key via Redis', async () => {
@@ -162,5 +168,45 @@ describe('async-lock — Redis-backed distributed lock', () => {
     await Promise.all([p1, p2]);
     // Both fell back to the local chain after the short acquire timeout and serialized.
     expect(order).toEqual([1, 2]);
+    // The acquire-timeout fallback warns and hands off to the in-process lock.
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('timed out'), expect.any(Object));
+  });
+
+  it('should warn and fall back when the redis.status getter throws', async () => {
+    const moduleRedis = (await import(resolveModule('src/config/redis.ts'))).redis;
+    const original = Object.getOwnPropertyDescriptor(moduleRedis, 'status');
+    Object.defineProperty(moduleRedis, 'status', {
+      get() {
+        throw new Error('status unavailable');
+      },
+      configurable: true,
+    });
+    try {
+      const result = await withLock('status-throw-key', async () => 'local');
+      expect(result).toBe('local');
+      expect(mockSet).not.toHaveBeenCalled();
+    } finally {
+      if (original) Object.defineProperty(moduleRedis, 'status', original);
+      else delete (moduleRedis as any).status;
+    }
+  });
+
+  it('should warn when releasing the distributed lock fails', async () => {
+    mockEval.mockRejectedValue(new Error('eval failed'));
+    const result = await withLock('release-fail-key', async () => 'done');
+    expect(result).toBe('done');
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('failed to release'), expect.any(Object));
+  });
+
+  it('should refresh the TTL while the lock is held (and tolerate refresh failures)', async () => {
+    // Hold the lock past the refresh interval so the refresher fires pexpire.
+    mockPexpire.mockRejectedValueOnce(new Error('pexpire failed'));
+    const result = await withLock('refresh-key', async () => {
+      await new Promise((r) => setTimeout(r, 50));
+      return 'held';
+    });
+    expect(result).toBe('held');
+    // At least one refresh fired while the lock was held (best-effort, even though it rejected).
+    expect(mockPexpire).toHaveBeenCalled();
   });
 });

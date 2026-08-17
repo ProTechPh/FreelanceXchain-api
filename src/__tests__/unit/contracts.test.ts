@@ -25,7 +25,6 @@ describe('Contracts Config', () => {
   beforeEach(() => {
     jest.resetModules();
     jest.clearAllMocks();
-    // Clear all contract address env vars
     const networks = ['HARDHAT', 'GANACHE', 'SEPOLIA', 'POLYGON', 'AMOY', 'MAINNET'];
     const contracts = ['REPUTATION', 'ESCROW', 'AGREEMENT', 'DISPUTE', 'MILESTONE'];
     for (const network of networks) {

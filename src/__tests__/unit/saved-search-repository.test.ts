@@ -169,4 +169,20 @@ describe('SavedSearchRepository', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('findAllWithNotifyEnabled', () => {
+    it('should return all saved searches with notifications enabled', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [toAppwriteDoc({ id: 'ss1', notify_on_new: true }), toAppwriteDoc({ id: 'ss2', notify_on_new: true })],
+        total: 2,
+      });
+
+      const result = await repo.findAllWithNotifyEnabled();
+      expect(result).toHaveLength(2);
+      expect(result[0].id).toBe('ss1');
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[1] === true)).toBe(true);
+      expect(queries.some(q => q.type === 'limit' && q.args[0] === 100)).toBe(true);
+    });
+  });
 });

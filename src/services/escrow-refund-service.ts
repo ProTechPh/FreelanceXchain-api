@@ -59,12 +59,10 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
     return { error: errorResult('CONTRACT_NOT_FOUND', 'Contract not found') };
   }
 
-  // Only allow refund on active contracts
   if (contract.status !== 'active') {
     return { error: errorResult('INVALID_STATUS', `Cannot request refund on a ${contract.status} contract`) };
   }
 
-  // Verify requester is involved
   const isInvolved =
     contract.freelancer_id === input.requestedBy ||
     contract.employer_id === input.requestedBy;
@@ -73,7 +71,6 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
     return { error: errorResult('UNAUTHORIZED', 'You are not involved in this contract') };
   }
 
-  // Check for existing pending refund request
   const existingRefund = await refundRequestRepository.findPendingByContract(input.contractId);
   if (existingRefund) {
     return { error: errorResult('DUPLICATE_REQUEST', 'There is already a pending refund request for this contract') };
@@ -81,7 +78,6 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
 
   const remainingEscrow = await computeRemainingEscrow(contract.project_id, contract.total_amount);
 
-  // Validate requested amount: must be positive and cannot exceed remaining escrow
   if (input.amount !== undefined) {
     if (typeof input.amount !== 'number' || !isFinite(input.amount) || input.amount <= 0) {
       return { error: errorResult('VALIDATION_ERROR', 'Refund amount must be a positive number') };
@@ -97,9 +93,6 @@ async function validateRefundRequestCreation(input: CreateRefundRequestInput): P
   return { contract, requestedAmount, isPartial };
 }
 
-/**
- * Create refund request
- */
 export async function createRefundRequest(
   input: CreateRefundRequestInput
 ): Promise<ServiceResult<RefundRequest>> {
@@ -125,7 +118,6 @@ export async function createRefundRequest(
         throw new Error('Failed to create refund request');
       }
 
-      // Notify other party
       const otherPartyId = contract.freelancer_id === input.requestedBy
         ? contract.employer_id
         : contract.freelancer_id;
@@ -174,7 +166,6 @@ async function validateRefundApproval(input: ApproveRefundInput): Promise<
     return { error: errorResult('REFUND_NOT_FOUND', 'Refund request not found') };
   }
 
-  // Verify approver is the other party
   const otherPartyId = refundData.contract.freelancer_id === refundData.requested_by
     ? refundData.contract.employer_id
     : refundData.contract.freelancer_id;
@@ -183,7 +174,6 @@ async function validateRefundApproval(input: ApproveRefundInput): Promise<
     return { error: errorResult('UNAUTHORIZED', 'Only the other party can approve refund') };
   }
 
-  // Check status
   if (refundData.status !== 'pending') {
     return { error: errorResult('INVALID_STATUS', 'Refund request is not pending') };
   }
@@ -221,9 +211,6 @@ async function withMilestoneLocks<T>(
 }
 
 /* eslint-disable max-lines-per-function -- milestone-granular refund flow (BLF-3.x); refactor follow-up */
-/**
- * Approve refund request
- */
 export async function approveRefund(
   input: ApproveRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
@@ -305,7 +292,6 @@ export async function approveRefund(
           return errorResult('ESCROW_NOT_FOUND', 'Contract has no escrow address. Refund cannot be processed.');
         }
 
-        // Update refund request
         const updated = await refundRequestRepository.update(input.refundId, {
           status: 'approved',
           approved_by: input.approvedBy,
@@ -439,7 +425,6 @@ export async function approveRefund(
           });
         }
 
-        // Cancel any other pending refund requests for this contract
         const otherRefunds = await refundRequestRepository.findByContract(refund.contract_id);
         const toCancel = otherRefunds.filter(r => r.status === 'pending' && r.id !== input.refundId);
         await Promise.all(toCancel.map(r =>
@@ -449,7 +434,6 @@ export async function approveRefund(
           })
         ));
 
-        // Notify requester
         const notificationResult = await createNotification({
           userId: refund.requested_by,
           type: 'refund_approved',
@@ -498,23 +482,18 @@ export async function approveRefund(
   });
 }
 
-/**
- * Reject refund request
- */
 export async function rejectRefund(
   input: RejectRefundInput
 ): Promise<ServiceResult<RefundRequest>> {
   // BLF-3.2: Serialize with approveRefund using same lock key to prevent concurrent approve+reject
   return withLock(`refund-approve:${input.refundId}`, async () => {
     try {
-      // Get refund request with contract data
       const refundData = await refundRequestRepository.findWithContract(input.refundId);
 
       if (!refundData || !refundData.contract) {
         return errorResult('REFUND_NOT_FOUND', 'Refund request not found');
       }
 
-      // Verify rejector is the other party
       const otherPartyId = refundData.contract.freelancer_id === refundData.requested_by
         ? refundData.contract.employer_id
         : refundData.contract.freelancer_id;
@@ -523,7 +502,6 @@ export async function rejectRefund(
         return errorResult('UNAUTHORIZED', 'Only the other party can reject refund');
       }
 
-      // Check status
       if (refundData.status !== 'pending') {
         return errorResult('INVALID_STATUS', 'Refund request is not pending');
       }
@@ -537,7 +515,6 @@ export async function rejectRefund(
         return errorResult('INVALID_STATUS', 'Refund request status changed concurrently');
       }
 
-      // Update refund request
       const updated = await refundRequestRepository.update(input.refundId, {
         status: 'rejected',
         rejected_by: input.rejectedBy,
@@ -550,7 +527,6 @@ export async function rejectRefund(
         throw new Error('Failed to reject refund');
       }
 
-      // Notify requester
       const notificationResult = await createNotification({
         userId: refundData.requested_by,
         type: 'refund_rejected',
@@ -596,15 +572,11 @@ export async function rejectRefund(
   }); // BLF-3.2: end withLock
 }
 
-/**
- * Get refund requests for contract
- */
 export async function getContractRefunds(
   contractId: string,
   userId: string
 ): Promise<ServiceResult<RefundRequest[]>> {
   try {
-    // Verify user is involved
     const contract = await contractRepository.getContractById(contractId);
 
     if (!contract) {
@@ -619,7 +591,6 @@ export async function getContractRefunds(
       return errorResult('UNAUTHORIZED', 'You are not involved in this contract');
     }
 
-    // Get refund requests
     const refunds = await refundRequestRepository.findByContract(contractId);
 
     return successResult(refunds as unknown as RefundRequest[]);

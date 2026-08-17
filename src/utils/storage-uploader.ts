@@ -40,7 +40,6 @@ function generateUniqueFilename(originalFilename: string, userId?: string): stri
   const uuid = uuidv4();
   const ownerPrefix = userId ? `${userId}_` : '';
   
-  // Extract extension
   const lastDotIndex = sanitized.lastIndexOf('.');
   if (lastDotIndex === -1) {
     return `${ownerPrefix}${uuid}_${sanitized}`;
@@ -70,7 +69,6 @@ export async function uploadFileToStorage(options: UploadFileOptions): Promise<U
     // Generate unique filename (userId prefix enables ownership verification)
     const uniqueFilename = generateUniqueFilename(originalFilename, userId);
 
-    // Create InputFile from buffer
     const inputFile = InputFile.fromBuffer(buffer, uniqueFilename);
 
     // Sensitive buckets use user-scoped read permissions; public buckets use public read.
@@ -82,7 +80,6 @@ export async function uploadFileToStorage(options: UploadFileOptions): Promise<U
         ? ['read("any")', `write("user:${userId}")`]
         : ['read("any")'];
 
-    // Upload to Appwrite Storage
     const file = await storage.createFile(
       bucket,
       ID.unique(),
@@ -90,10 +87,8 @@ export async function uploadFileToStorage(options: UploadFileOptions): Promise<U
       permissions
     );
     
-    // Get file view URL (public URL)
     const url = `${process.env.APPWRITE_ENDPOINT}/storage/buckets/${bucket}/files/${file.$id}/view?project=${process.env.APPWRITE_PROJECT_ID}`;
     
-    // Construct file metadata
     const metadata: FileMetadata = {
       url,
       filename: originalFilename, // Keep original filename for display
@@ -407,7 +402,7 @@ export async function getFileQuota(userId: string): Promise<{
       limit: DEFAULT_QUOTA_BYTES,
       percentage: 0,
       files: 0,
-      error: failed.error ?? 'Failed to list files',
+      error: failed.error || 'Failed to list files',
     };
   }
 

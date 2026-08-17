@@ -1,8 +1,3 @@
-/**
- * AI Matching Service
- * Provides AI-powered skill matching between freelancers and projects
- */
-
 import {
   analyzeSkillMatch,
   extractSkills,
@@ -32,7 +27,6 @@ import type { ServiceResult, ServiceError } from '../types/service-result.js';
 import { successResult, errorResult } from '../types/service-result.js';
 
 
-// Constants
 const DEFAULT_RECOMMENDATION_LIMIT = 10;
 const REPUTATION_WEIGHT = 0.3;
 const SKILL_MATCH_WEIGHT = 0.7;
@@ -43,9 +37,6 @@ type FreelancerSkillEntity = { name: string; years_of_experience: number };
 // Helper type for project skill entity (keeps original structure for backward compatibility)
 type ProjectSkillEntity = { skill_id: string; skill_name: string; category_id: string; years_of_experience?: number };
 
-/**
- * Convert freelancer skill entity to SkillInfo for matching
- */
 function freelancerSkillToInfo(entity: FreelancerSkillEntity): SkillInfo {
   return {
     skillId: '', // No longer using skill IDs for freelancers
@@ -55,9 +46,6 @@ function freelancerSkillToInfo(entity: FreelancerSkillEntity): SkillInfo {
   };
 }
 
-/**
- * Convert project skill entity to SkillInfo for matching
- */
 function projectSkillToInfo(entity: ProjectSkillEntity): SkillInfo {
   return {
     skillId: entity.skill_id,
@@ -67,21 +55,15 @@ function projectSkillToInfo(entity: ProjectSkillEntity): SkillInfo {
   };
 }
 
-/**
- * Get project recommendations for a freelancer
- * Projects are ranked by AI-computed match score in descending order
- */
 export async function getProjectRecommendations(
   freelancerId: string,
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
 ): Promise<ServiceResult<ProjectRecommendation[]>> {
-  // Get freelancer profile
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
     return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
   }
 
-  // Get open projects
   const projectsResult = await projectRepository.getAllOpenProjects({ limit: 100 });
   const projectEntities = projectsResult.items;
 
@@ -89,10 +71,8 @@ export async function getProjectRecommendations(
     return successResult([]);
   }
 
-  // Convert freelancer skills to SkillInfo
   const freelancerSkills = profileEntity.skills.map(freelancerSkillToInfo);
 
-  // Calculate match scores for each project
   const recommendations: ProjectRecommendation[] = await Promise.all(
     projectEntities.map(async (projectEntity) => {
       const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
@@ -125,44 +105,33 @@ export async function getProjectRecommendations(
     })
   );
 
-  // Sort by match score descending
   recommendations.sort((a, b) => b.matchScore - a.matchScore);
 
-  // Return top N recommendations
   return successResult(recommendations.slice(0, limit));
 }
 
-/**
- * Get freelancer recommendations for a project
- * Freelancers are ranked by combined skill relevance and reputation score
- */
 export async function getFreelancerRecommendations(
   projectId: string,
   limit: number = DEFAULT_RECOMMENDATION_LIMIT
 ): Promise<ServiceResult<FreelancerRecommendation[]>> {
-  // Get project
   const projectEntity = await projectRepository.findProjectById(projectId);
   if (!projectEntity) {
     return errorResult('PROJECT_NOT_FOUND', 'Project not found');
   }
 
-  // Get available freelancers
   const freelancerEntities = await freelancerProfileRepository.getAvailableProfiles();
 
   if (freelancerEntities.length === 0) {
     return successResult([]);
   }
 
-  // Convert project requirements to SkillInfo
   const projectRequirements = projectEntity.required_skills.map(projectSkillToInfo);
 
-  // Calculate match scores for each freelancer
   const recommendations: FreelancerRecommendation[] = [];
 
   for (const freelancerEntity of freelancerEntities) {
     const freelancerSkills = freelancerEntity.skills.map(freelancerSkillToInfo);
     
-    // Get actual reputation score from reputation service
     let reputationScore = 50; // Default if lookup fails
     try {
       const repResult = await getReputation(freelancerEntity.user_id);
@@ -191,7 +160,6 @@ export async function getFreelancerRecommendations(
       matchResult = keywordMatchSkills(freelancerSkills, projectRequirements);
     }
 
-    // Calculate combined score with reputation weighting
     const combinedScore = Math.round(
       matchResult.matchScore * SKILL_MATCH_WEIGHT + 
       reputationScore * REPUTATION_WEIGHT
@@ -207,16 +175,11 @@ export async function getFreelancerRecommendations(
     });
   }
 
-  // Sort by combined score descending
   recommendations.sort((a, b) => b.combinedScore - a.combinedScore);
 
-  // Return top N recommendations
   return successResult(recommendations.slice(0, limit));
 }
 
-/**
- * Extract skills from text and map to taxonomy
- */
 export async function extractSkillsFromText(
   text: string
 ): Promise<ServiceResult<ExtractedSkill[]>> {
@@ -224,7 +187,6 @@ export async function extractSkillsFromText(
     return errorResult('INVALID_INPUT', 'Text cannot be empty');
   }
 
-  // Get available skills from taxonomy
   const activeSkills = await getActiveSkills();
   const availableSkills: SkillInfo[] = activeSkills.map(skill => ({
     skillId: skill.id,
@@ -252,24 +214,18 @@ export async function extractSkillsFromText(
       extractedSkills = aiResult;
     }
   } else {
-    // Use keyword extraction fallback
     extractedSkills = keywordExtractSkills(text, availableSkills);
   }
 
-  // Map extracted skills to taxonomy (validate skill IDs exist)
   const validSkillIds = new Set(availableSkills.map(s => s.skillId));
   const mappedSkills = extractedSkills.filter(skill => validSkillIds.has(skill.skillId));
 
   return successResult(mappedSkills);
 }
 
-/**
- * Analyze skill gaps for a freelancer
- */
 export async function analyzeSkillGaps(
   freelancerId: string
 ): Promise<ServiceResult<SkillGapAnalysis>> {
-  // Get freelancer profile
   const profileEntity = await freelancerProfileRepository.getProfileByUserId(freelancerId);
   if (!profileEntity) {
     return errorResult('PROFILE_NOT_FOUND', 'Freelancer profile not found');
@@ -287,7 +243,6 @@ export async function analyzeSkillGaps(
     });
     }
 
-  // Build prompt for skill gap analysis
   const prompt = SKILL_GAP_PROMPT.replace('{currentSkills}', JSON.stringify(currentSkills));
 
   const response = await generateContent(prompt);
@@ -305,7 +260,6 @@ export async function analyzeSkillGaps(
     });
     }
 
-  // Parse response using shared robust parser
   try {
     const parsedAnalysis = parseJsonResponse<SkillGapAnalysis>(response, 'SkillGap');
     if (!parsedAnalysis) {
@@ -389,9 +343,6 @@ export function sortFreelancerRecommendationsByCombinedScore(
   return [...recommendations].sort((a, b) => b.combinedScore - a.combinedScore);
 }
 
-/**
- * Check if matching service result is an error
- */
 export function isMatchingError<T>(
   result: ServiceResult<T>
 ): result is { success: false; error: ServiceError } {

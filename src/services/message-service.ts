@@ -31,7 +31,6 @@ interface ConversationWithDetails extends ConversationEntity {
  */
 async function resolveReceiverUserId(receiverId: string): Promise<string | null> {
   try {
-    // Check if receiverId exists in users table
     const user = await userRepository.getUserById(receiverId);
 
     if (user) {
@@ -63,7 +62,6 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
   try {
     const { senderId, receiverId, content, attachments } = data;
 
-    // Validate input
     if (!content || content.trim().length === 0) {
       return errorResult('VALIDATION_ERROR', 'Message content is required');
     }
@@ -73,14 +71,12 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
       return errorResult('RECEIVER_NOT_FOUND', 'Unable to resolve receiver user. This contract/conversation has inconsistent participant data.');
     }
 
-    // Find or create conversation
     let conversation = await messageRepository.findConversation(senderId, resolvedReceiverId);
     
     if (!conversation) {
       conversation = await messageRepository.createConversation(senderId, resolvedReceiverId);
     }
 
-    // Create message
     const message = await messageRepository.createMessage({
       conversation_id: conversation.id,
       sender_id: senderId,
@@ -90,14 +86,12 @@ export async function sendMessage(data: SendMessageInput): Promise<ServiceResult
       ...(attachments !== undefined ? { attachments } : {}),
     });
 
-    // Update conversation metadata
     const isParticipant1 = conversation.participant1_id === senderId;
     const updates: Partial<ConversationEntity> = {
       last_message_at: new Date().toISOString(),
       last_message_preview: content.substring(0, 100),
     };
 
-    // Increment unread count for receiver
     if (isParticipant1) {
       updates.unread_count_2 = (conversation.unread_count_2 || 0) + 1;
     } else {
@@ -218,7 +212,6 @@ export async function getConversationMessages(
   options: PaginationOptions = {}
 ): Promise<ServiceResult<PaginatedResult<MessageEntity>>> {
   try {
-    // Verify user is participant via messageRepository
     const _conversation = await messageRepository.findConversation(
       userId,
       // We need the other participant; findConversation requires both IDs
@@ -263,7 +256,6 @@ export async function markConversationAsRead(
   userId: string
 ): Promise<ServiceResult<void>> {
   try {
-    // Verify user is participant
     const { items: userConversations } = await messageRepository.getUserConversations(userId, 1000, 0);
     const conv = userConversations.find(c => c.id === conversationId);
 
@@ -275,10 +267,8 @@ export async function markConversationAsRead(
       return errorResult('UNAUTHORIZED', 'You are not a participant in this conversation');
     }
 
-    // Mark messages as read
     await messageRepository.markMessagesAsRead(conversationId, userId);
 
-    // Reset unread count
     const isParticipant1 = conv.participant1_id === userId;
     const updates = isParticipant1
       ? { unread_count_1: 0 }

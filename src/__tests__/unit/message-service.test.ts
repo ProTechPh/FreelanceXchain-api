@@ -93,15 +93,11 @@ describe('Message Service', () => {
     it('should send message to existing conversation', async () => {
       const { sendMessage } = await importModule();
 
-      // resolveReceiverUserId - user exists
       mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'receiver-1' });
-      // findConversation
       const conversation = { id: 'conv-1', participant1_id: 'sender-1', participant2_id: 'receiver-1', unread_count_2: 0 };
       mockFindConversation.mockResolvedValueOnce(conversation);
-      // createMessage
       const message = { id: 'msg-1', conversation_id: 'conv-1', sender_id: 'sender-1', receiver_id: 'receiver-1', content: 'Hello' };
       mockCreateMessage.mockResolvedValueOnce(message);
-      // updateConversation
       mockUpdateConversation.mockResolvedValueOnce(undefined);
 
       const result = await sendMessage({
@@ -253,7 +249,6 @@ describe('Message Service', () => {
         { id: 'conv-1', participant1_id: 'user-1', participant2_id: 'user-2', last_message_at: '2025-01-01' },
       ];
       mockGetUserConversations.mockResolvedValueOnce({ items: conversations, total: 1 });
-      // Enrich with user details
       mockUserRepo.getUserById.mockResolvedValueOnce({ id: 'user-2', name: 'Bob', email: 'bob@test.com' });
 
       const result = await getConversations('user-1');
@@ -523,7 +518,6 @@ describe('Message Service - Branch Coverage (last_message_at)', () => {
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.items).toHaveLength(3);
-      // Verify the conversation with last_message_at is present
       expect(result.data.items.some((c: any) => c.id === 'conv-2')).toBe(true);
     }
   });

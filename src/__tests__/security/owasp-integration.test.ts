@@ -297,7 +297,6 @@ describe('OWASP Top 10 2021 - Integration Tests', () => {
       const isAuthorized = userRole === requiredRole;
       expect(isAuthorized).toBe(false);
       
-      // Should log security event
       const securityLog = {
         event: 'AUTHORIZATION_FAILURE',
         requestId,
@@ -315,7 +314,6 @@ describe('OWASP Top 10 2021 - Integration Tests', () => {
       const urlResult = validateUrl(maliciousUrl);
       expect(urlResult.valid).toBe(false);
       
-      // Should log security event
       const securityLog = {
         event: 'SSRF_ATTEMPT',
         requestId,

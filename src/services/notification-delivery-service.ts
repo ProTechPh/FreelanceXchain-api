@@ -23,7 +23,6 @@ class NotificationEmitter extends EventEmitter {
   subscribeToUser(userId: string, callback: (notification: Notification) => void): () => void {
     this.on(`user:${userId}`, callback);
     
-    // Return unsubscribe function
     return () => {
       this.off(`user:${userId}`, callback);
     };
@@ -93,7 +92,6 @@ class SSEConnectionManager {
       }
     });
 
-    // Clean up dead connections
     deadConnections.forEach(res => {
       this.removeConnection(userId, res);
     });
@@ -141,16 +139,13 @@ const sseConnectionManager = new SSEConnectionManager();
  */
 export function initializeSSEConnection(userId: string, res: Response): ServiceResult<void> {
   try {
-    // Set SSE headers
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
 
-    // Send initial connection message
     res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: new Date().toISOString() })}\n\n`);
 
-    // Add connection to manager
     sseConnectionManager.addConnection(userId, res);
 
     // Start heartbeat on first connection (lazy init)
@@ -158,12 +153,10 @@ export function initializeSSEConnection(userId: string, res: Response): ServiceR
       startHeartbeat();
     }
 
-    // Subscribe to notification events
     const unsubscribe = notificationEmitter.subscribeToUser(userId, (notification) => {
       sseConnectionManager.sendToUser(userId, notification);
     });
 
-    // Handle client disconnect
     res.on('close', () => {
       unsubscribe();
       sseConnectionManager.removeConnection(userId, res);
@@ -182,7 +175,6 @@ export function initializeSSEConnection(userId: string, res: Response): ServiceR
  */
 export function sendNotificationToUser(userId: string, notification: Notification): ServiceResult<void> {
   try {
-    // Emit to event emitter (for SSE connections)
     notificationEmitter.emitToUser(userId, notification);
 
     return successResult(undefined);

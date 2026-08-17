@@ -13,7 +13,6 @@ import {
 } from '../helpers/test-data-factory.js';
 import { generateId } from '../../utils/id.js';
 
-// Create stores and mocks
 const contractStore = createInMemoryStore();
 const projectStore = createInMemoryStore();
 
@@ -53,7 +52,6 @@ jest.unstable_mockModule(resolveModule('src/services/email-delivery-service.ts')
   sendReviewReceivedEmail: jest.fn<any>().mockResolvedValue({ success: true, data: { messageId: 'x' } }),
 }));
 
-// Import after mocking
 const {
   submitRating,
   canUserRate,

@@ -110,7 +110,6 @@ export async function createProject(
   employerId: string,
   input: CreateProjectInput
 ): Promise<ServiceResult<ProjectEntity>> {
-  // Validate attachments if provided
   if (input.attachments && input.attachments.length > 0) {
     const attachmentErrors = validateAttachments(input.attachments, { maxFiles: 10 });
     if (attachmentErrors.length > 0) {
@@ -129,14 +128,12 @@ export async function createProject(
 
   const skillRefs = await buildSkillReferences(skillIds, activeSkills);
 
-  // Validate rush fee percentage if provided
   if (input.isRush && input.rushFeePercentage !== undefined) {
     if (input.rushFeePercentage <= 0 || input.rushFeePercentage > 100) {
       return errorResult('VALIDATION_ERROR', 'Rush fee percentage must be between 0.01 and 100');
     }
   }
 
-  // Validate freelancer limit
   if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
     return errorResult('VALIDATION_ERROR', 'Freelancer limit must be a positive integer (minimum 1)');
   }
@@ -211,7 +208,6 @@ export async function updateProject(
     }
   }
 
-  // Validate project status transitions
   if (input.status) {
     const validTransitions: Record<string, string[]> = {
       draft: ['open', 'cancelled'],
@@ -228,14 +224,12 @@ export async function updateProject(
     }
   }
 
-  // Validate rush fee percentage if provided
   if (input.isRush && input.rushFeePercentage !== undefined) {
     if (input.rushFeePercentage <= 0 || input.rushFeePercentage > 100) {
       return errorResult('VALIDATION_ERROR', 'Rush fee percentage must be between 0.01 and 100');
     }
   }
 
-  // Validate freelancer limit if provided
   if (input.freelancerLimit !== undefined && (input.freelancerLimit < 1 || !Number.isInteger(input.freelancerLimit))) {
     return errorResult('VALIDATION_ERROR', 'Freelancer limit must be a positive integer (minimum 1)');
   }

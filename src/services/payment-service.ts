@@ -1,8 +1,3 @@
-/**
- * Payment Service
- * Handles milestone completion, approval, disputes, and contract completion
- */
-
 import { Contract, MilestoneStatus, Project, Dispute, mapContractFromEntity, mapProjectFromEntity, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import { logger } from '../config/logger.js';
 import { contractRepository } from '../repositories/contract-repository.js';
@@ -68,7 +63,6 @@ async function createPaymentRecord(params: {
   txHash: string | null;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 }): Promise<void> {
-  // Validate amount to prevent negative/zero/NaN payments
   if (typeof params.amount !== 'number' || !isFinite(params.amount) || params.amount <= 0) {
     logger.error('Invalid payment amount rejected', { amount: params.amount, contractId: params.contractId });
     throw new Error(`Invalid payment amount: ${params.amount}`);
@@ -268,10 +262,6 @@ function buildSubmittedMilestones(
   });
 }
 
-/**
- * Request milestone completion
- * Called by freelancer when they complete a milestone
- */
 export async function requestMilestoneCompletion(
   contractId: string,
   milestoneId: string,
@@ -798,8 +788,6 @@ async function validateMilestoneDispute(
     return { error: errorResult('NOT_FOUND', 'Milestone not found') };
   }
 
-  // Only milestones with status 'submitted' can be disputed
-  // You can't dispute work that hasn't been submitted
   if (milestone.status !== 'submitted') {
     return { error: errorResult('INVALID_STATUS', milestone.status === 'approved'
              ? 'Cannot dispute an already approved milestone'
@@ -871,7 +859,6 @@ export async function disputeMilestone(
     const { contract, project, milestone } = validated;
     const disputeId = await createMilestoneDispute(validated, { contractId, milestoneId, initiatorId, reason });
 
-    // Send notifications to both parties
     await notifyDisputeCreated({
       userId: contract.freelancerId,
       disputeId,
@@ -902,16 +889,11 @@ export async function disputeMilestone(
 }
 
 
-/**
- * Get contract payment status
- * Returns detailed payment status for a contract
- */
 export async function getContractPaymentStatus(
   contractId: string,
   userId: string,
   role?: string
 ): Promise<ServiceResult<ContractPaymentStatus>> {
-  // Get contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
     return errorResult('NOT_FOUND', 'Contract not found');
@@ -926,14 +908,12 @@ export async function getContractPaymentStatus(
     // admin is allowed through — no early return
   }
 
-  // Get project to access milestones
   const projectEntity = await projectRepository.findProjectById(contract.projectId);
   if (!projectEntity) {
     return errorResult('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
-  // Calculate amounts
   const totalAmount = contract.totalAmount;
   const releasedAmount = project.milestones
     .filter(m => m.status === 'approved')
@@ -959,9 +939,6 @@ export async function getContractPaymentStatus(
   });
   }
 
-/**
- * Check if contract is complete (all milestones approved or refunded)
- */
 export async function isContractComplete(contractId: string): Promise<boolean> {
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
@@ -976,18 +953,12 @@ export async function isContractComplete(contractId: string): Promise<boolean> {
   return projectEntity.milestones.every(m => m.status === 'approved' || m.status === 'refunded');
 }
 
-/**
- * Get dispute by ID
- */
 export async function getDisputeById(disputeId: string): Promise<Dispute | null> {
   const entity = await disputeRepository.getDisputeById(disputeId);
   if (!entity) return null;
   return mapDisputeFromEntity(entity);
 }
 
-/**
- * Get disputes by contract ID
- */
 export async function getDisputesByContract(contractId: string): Promise<Dispute[]> {
   const entities = await disputeRepository.getAllDisputesByContract(contractId);
   return entities.map(mapDisputeFromEntity);
@@ -1014,9 +985,6 @@ type EscrowDeploymentInput = {
   freelancerWalletAddress: string;
 };
 
-/**
- * Build the on-chain milestone list for a contract's project.
- */
 function buildEscrowMilestones(project: Project): EscrowMilestone[] {
   return project.milestones.map(m => ({
     id: m.id,
@@ -1087,9 +1055,6 @@ async function deployRealEscrowIfAvailable(input: EscrowDeploymentInput): Promis
   return realDeployment.escrowAddress;
 }
 
-/**
- * Deploy the escrow in the simulated (Appwrite) ledger.
- */
 async function deploySimulatedEscrow(input: EscrowDeploymentInput): Promise<string> {
   const { contract, escrowMilestones, contractTotalAmount, employerWalletAddress, freelancerWalletAddress } = input;
 
@@ -1110,9 +1075,6 @@ async function deploySimulatedEscrow(input: EscrowDeploymentInput): Promise<stri
   return deployment.escrowAddress;
 }
 
-/**
- * Persist the escrow address on the contract.
- */
 async function persistEscrowAddress(contract: Contract, escrowAddress: string): Promise<void> {
   const updatedContract = await contractRepository.updateContract(contract.id, {
     escrow_address: escrowAddress,
@@ -1123,10 +1085,6 @@ async function persistEscrowAddress(contract: Contract, escrowAddress: string): 
   }
 }
 
-/**
- * Initialize escrow for a contract
- * Called when a contract is created
- */
 export async function initializeContractEscrow(
   contract: Contract,
   project: Project,

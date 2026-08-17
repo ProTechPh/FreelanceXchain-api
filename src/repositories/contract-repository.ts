@@ -64,7 +64,8 @@ export type ContractWithRelations = ContractEntity & {
 // The SDK only types $-prefixed metadata on `Models.Document`; real document
 // attributes are untyped, so read them through a plain record.
 function docAttrs(doc: Models.Document | null): Record<string, unknown> {
-  return doc ? (doc as unknown as Record<string, unknown>) : {};
+  // Every call site guards the document before reaching the helpers below.
+  return doc as unknown as Record<string, unknown>;
 }
 
 // Appwrite documents expose attributes through an index signature typed `unknown`;

@@ -6,7 +6,6 @@ import { createInMemoryStore, createMockContractRepository } from '../helpers/mo
 import { createTestContract } from '../helpers/test-data-factory.js';
 import { assertHasTimestamps, assertIsValidId } from '../helpers/test-assertions.js';
 
-// Create stores and mocks using shared utilities
 const contractStore = createInMemoryStore();
 const mockContractRepo = createMockContractRepository(contractStore);
 
@@ -53,7 +52,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/audit-log-repository.ts
   auditLogRepository: mockAuditLogRepo,
 }));
 
-// Import after mocking
 const {
   getContractById,
   getUserContracts,
@@ -123,11 +121,8 @@ describe('Contract Service - Property-Based Tests', () => {
     const userId = 'test-user-id';
     const otherUserId = 'other-user-id';
 
-    // Create contracts for test user (as freelancer)
     const contract1 = createTestContract({ freelancer_id: userId, employer_id: otherUserId });
-    // Create contracts for test user (as employer)
     const contract2 = createTestContract({ freelancer_id: otherUserId, employer_id: userId });
-    // Create contract for other user
     const contract3 = createTestContract({ freelancer_id: otherUserId, employer_id: 'another-user' });
 
     contractStore.set(contract1.id, contract1);
@@ -162,7 +157,6 @@ describe('Contract Service - Property-Based Tests', () => {
       expect(updated.data.status).toBe('active');
     }
     
-    // Verify persistence
     const retrieved = await getContractById(contract.id);
     expect(retrieved.success).toBe(true);
     if (retrieved.success) {
@@ -188,7 +182,6 @@ describe('Contract Service - Property-Based Tests', () => {
       expect(updated.data.escrowAddress).toBe(escrowAddress);
     }
     
-    // Verify persistence
     const retrieved = await getContractById(contract.id);
     expect(retrieved.success).toBe(true);
     if (retrieved.success) {
@@ -319,7 +312,6 @@ describe('Contract Service - Unit Tests', () => {
   it('should handle pagination for user contracts', async () => {
     const userId = 'user-123';
 
-    // Create 10 contracts for the user
     for (let i = 0; i < 10; i++) {
       const contract = createTestContract({
         freelancer_id: userId,
@@ -343,7 +335,6 @@ describe('Contract Service - Unit Tests', () => {
       expect(page2.data.hasMore).toBe(false);
       expect(page2.data.total).toBe(10);
 
-      // Verify no overlap
       const page1Ids = page1.data.items.map(c => c.id);
       const page2Ids = page2.data.items.map(c => c.id);
       expect(page1Ids.some(id => page2Ids.includes(id))).toBe(false);

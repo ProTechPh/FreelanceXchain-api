@@ -1,8 +1,3 @@
-/**
- * Dispute Service
- * Handles dispute creation, evidence submission, and resolution
- */
-
 import { Dispute, Contract, Project, mapDisputeFromEntity } from '../utils/entity-mapper.js';
 import { disputeRepository, DisputeEntity, EvidenceEntity, DisputeResolutionEntity } from '../repositories/dispute-repository.js';
 import { disputeEvidenceRepository } from '../repositories/dispute-evidence-repository.js';
@@ -169,7 +164,6 @@ async function recordDisputeOnBlockchain(input: {
         amount: milestone.amount,
       });
 
-      // Mark agreement as disputed on blockchain
       await disputeAgreement(dispute.contractId, initiator.wallet_address);
     }
   } catch (error) {
@@ -281,7 +275,6 @@ async function notifyDisputeParties(input: NotifyDisputePartiesInput): Promise<v
     })
   );
 
-  // Notify all admin users about the new dispute
   try {
     const adminUsers = await userRepository.getUsersByRole('admin');
     await Promise.all(
@@ -304,9 +297,6 @@ async function notifyDisputeParties(input: NotifyDisputePartiesInput): Promise<v
   }
 }
 
-/**
- * Create a new dispute
- */
 export async function createDispute(
   input: CreateDisputeInput
 ): Promise<DisputeServiceResult<Dispute>> {
@@ -334,26 +324,20 @@ export async function createDispute(
 }
 
 
-/**
- * Submit evidence for a dispute
- */
 export async function submitEvidence(
   input: SubmitEvidenceInput
 ): Promise<DisputeServiceResult<Dispute>> {
   const { disputeId, submitterId, type, content } = input;
 
-  // Find dispute
   const disputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!disputeEntity) {
     return errorResult('NOT_FOUND', 'Dispute not found');
   }
 
-  // Check dispute status - can only submit evidence for open or under_review disputes
   if (disputeEntity.status === 'resolved') {
     return errorResult('INVALID_STATUS', 'Cannot submit evidence for resolved disputes');
   }
 
-  // Verify submitter is part of the contract
   const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
   if (!contractEntity) {
     return errorResult('NOT_FOUND', 'Contract not found');
@@ -363,7 +347,6 @@ export async function submitEvidence(
     return errorResult('UNAUTHORIZED', 'Only contract parties can submit evidence');
   }
 
-  // Create evidence entity
   const evidenceId = generateId();
   const evidenceEntity: Omit<EvidenceEntity, 'submitted_at'> = {
     id: evidenceId,
@@ -372,7 +355,6 @@ export async function submitEvidence(
     content,
   };
 
-  // Add evidence to dispute via repository
   await disputeEvidenceRepository.createEvidence({
     id: evidenceId,
     dispute_id: disputeId,
@@ -381,17 +363,14 @@ export async function submitEvidence(
     description: content,
   });
 
-  // Append evidence to dispute's evidence array
   const updatedEvidence = [...disputeEntity.evidence, { ...evidenceEntity, submitted_at: new Date().toISOString() }];
   await disputeRepository.updateDispute(disputeId, { evidence: updatedEvidence });
 
-  // Get the fully updated entity
   const updatedDisputeEntity = await disputeRepository.getDisputeById(disputeId);
   if (!updatedDisputeEntity) {
     return errorResult('UPDATE_FAILED', 'Failed to retrieve updated dispute');
   }
 
-  // Update evidence hash on blockchain
   try {
     const submitter = await userRepository.getUserById(submitterId);
     if (submitter?.wallet_address) {
@@ -441,19 +420,16 @@ async function validateDisputeResolution(
     return { error: errorResult('NOT_FOUND', 'Dispute not found') };
   }
 
-  // Check dispute status
   if (disputeEntity.status === 'resolved') {
     return { error: errorResult('ALREADY_RESOLVED', 'Dispute is already resolved') };
   }
 
-  // Get contract
   const contractEntity = await contractRepository.getContractById(disputeEntity.contract_id);
   if (!contractEntity) {
     return { error: errorResult('NOT_FOUND', 'Contract not found') };
   }
   const contract = mapContractFromEntity(contractEntity);
 
-  // Get project for milestone info
   const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
   if (!projectEntity) {
     return { error: errorResult('NOT_FOUND', 'Project not found') };
@@ -576,12 +552,10 @@ async function updateDisputeStatuses(
     milestones: projectEntity.milestones,
   });
 
-  // Check if contract should be updated
   const hasOtherDisputes = projectEntity.milestones.some(
     (m) => m.status === 'disputed' && m.id !== disputeEntity.milestone_id
   );
   if (!hasOtherDisputes) {
-    // Check if all milestones are now completed (approved or refunded)
     const allMilestonesDone = projectEntity.milestones.every(
       (m) => m.status === 'approved' || m.status === 'refunded'
     );
@@ -606,7 +580,6 @@ async function updateDisputeStatuses(
 
   const updatedDispute = mapDisputeFromEntity(updatedDisputeEntity);
 
-  // Record resolution on blockchain
   try {
     const resolver = await userRepository.getUserById(resolvedBy);
     if (resolver?.wallet_address) {
@@ -624,7 +597,6 @@ async function updateDisputeStatuses(
     });
   }
 
-  // Send notifications to both parties
   const notifyParties = async (userId: string): Promise<void> => {
     await notifyDisputeResolved({
       userId,
@@ -644,9 +616,6 @@ async function updateDisputeStatuses(
   return { dispute: updatedDispute };
 }
 
-/**
- * Resolve a dispute
- */
 export async function resolveDispute(
   input: ResolveDisputeInput
 ): Promise<DisputeServiceResult<Dispute>> {
@@ -659,7 +628,6 @@ export async function resolveDispute(
 
     const { disputeEntity, contractEntity, contract, project, projectEntity, milestone, milestoneEntity, milestoneIndex } = validated;
 
-    // Create resolution entity
     const resolutionEntity: DisputeResolutionEntity = {
       decision,
       reasoning,
@@ -719,9 +687,6 @@ export async function resolveDispute(
 }
 
 
-/**
- * Get dispute by ID
- */
 export async function getDisputeById(
   disputeId: string
 ): Promise<DisputeServiceResult<Dispute>> {
@@ -732,14 +697,10 @@ export async function getDisputeById(
   return successResult(mapDisputeFromEntity(disputeEntity));
 }
 
-/**
- * Get disputes by contract ID
- */
 export async function getDisputesByContract(
   contractId: string,
   userId: string
 ): Promise<DisputeServiceResult<Dispute[]>> {
-  // Verify user is part of the contract
   const contractEntity = await contractRepository.getContractById(contractId);
   if (!contractEntity) {
     return errorResult('NOT_FOUND', 'Contract not found');
@@ -768,9 +729,6 @@ export async function getOpenDisputes(): Promise<DisputeServiceResult<Dispute[]>
   return successResult(allActive);
 }
 
-/**
- * Get disputes initiated by a user
- */
 export async function getDisputesByInitiator(
   initiatorId: string
 ): Promise<DisputeServiceResult<Dispute[]>> {

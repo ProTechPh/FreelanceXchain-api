@@ -225,7 +225,6 @@ let lastSubmittedNotes: string | undefined;
 // Mock project repository
 const mockProjectRepository = {
   findProjectById: jest.fn(async (projectId: string) => {
-    // Get the current test's milestone ID from the test context
     const testMilestoneId = (global as any).currentTestMilestoneId || 'default-milestone-id';
     return {
       id: projectId,
@@ -284,7 +283,6 @@ jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () =>
   setEscrowOpsForTesting: jest.fn(),
 }));
 
-// Dynamically import everything after the mock is set up
 let request: any, createApp: any, generateId: any, fs: any;
 
 beforeAll(async () => {
@@ -310,13 +308,11 @@ describe('Milestone Attachments API', () => {
     milestoneId = generateId();
     authToken = 'Bearer test-token-' + freelancerId;
     
-    // Set the milestone ID for the mock to use
     (global as any).currentTestMilestoneId = milestoneId;
   });
 
   describe('POST /api/milestones/:id/upload-deliverables', () => {
     it('should upload deliverable files for milestone', async () => {
-      // Create test file
       const testFilePath = path.join(__dirname, 'test-deliverable.pdf');
       const testFileContent = Buffer.from('JVBERi0xLjQKJcOkw7zDtsO8CjIgMCBvYmoKPDwKL0xlbmd0aCAzIDAgUgo+PgpzdHJlYW0KQNC4xOTk5Cg==', 'base64');
       fs.writeFileSync(testFilePath, testFileContent);
@@ -339,14 +335,12 @@ describe('Milestone Attachments API', () => {
       });
       expect(response.body.files[0].url).toContain('milestone-deliverables');
 
-      // Clean up test file
       if (fs.existsSync(testFilePath)) {
         fs.unlinkSync(testFilePath);
       }
     });
 
     it('should upload multiple deliverable files', async () => {
-      // Create test files
       const testPdfPath = path.join(__dirname, 'test-document.pdf');
       const testImagePath = path.join(__dirname, 'test-screenshot.png');
       
@@ -378,7 +372,6 @@ describe('Milestone Attachments API', () => {
         mimeType: 'image/png',
       });
 
-      // Clean up test files
       if (fs.existsSync(testPdfPath)) {
         fs.unlinkSync(testPdfPath);
       }
@@ -404,7 +397,6 @@ describe('Milestone Attachments API', () => {
 
   describe('POST /api/milestones/:id/submit-with-files', () => {
     it('should submit milestone with file uploads', async () => {
-      // Create test file
       const testFilePath = path.join(__dirname, 'final-deliverable.zip');
       const testFileContent = Buffer.from('UEsDBAoAAAAAAGxvbVAAAAAAAAAAAAAAAAAJAAAAdGVzdC50eHRQSwECFAAKAAAAAABsb21QAAAAAAAAAAAAAAAACQAAAAAAAAAAAAAAAAAAAAAAAAB0ZXN0LnR4dFBLBQYAAAAAAQABADcAAAAfAAAAAAA=', 'base64');
       fs.writeFileSync(testFilePath, testFileContent);
@@ -429,14 +421,12 @@ describe('Milestone Attachments API', () => {
         mimeType: 'application/zip',
       });
 
-      // Clean up test file
       if (fs.existsSync(testFilePath)) {
         fs.unlinkSync(testFilePath);
       }
     });
 
     it('should submit milestone with existing and new files', async () => {
-      // Create test file
       const testFilePath = path.join(__dirname, 'additional-file.txt');
       const testFileContent = 'Additional deliverable content';
       fs.writeFileSync(testFilePath, testFileContent);
@@ -467,7 +457,6 @@ describe('Milestone Attachments API', () => {
 
       expect(response.body.deliverableFiles).toHaveLength(2);
 
-      // Clean up test file
       if (fs.existsSync(testFilePath)) {
         fs.unlinkSync(testFilePath);
       }
