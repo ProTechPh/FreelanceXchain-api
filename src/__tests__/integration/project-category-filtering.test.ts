@@ -10,7 +10,6 @@ describe('Project Routes - Category Filtering Integration Tests', () => {
   let employerId: string;
 
   beforeAll(async () => {
-    // Setup test app
     app = await createApp();
     employerId = generateId();
     // Mock JWT token for testing
@@ -18,13 +17,11 @@ describe('Project Routes - Category Filtering Integration Tests', () => {
   });
 
   beforeEach(() => {
-    // Clear any mocks between tests
     jest.clearAllMocks();
   });
 
   describe('Category Filtering Logic Tests', () => {
     it('should have category filtering methods available', async () => {
-      // Import the service functions to verify they exist
       const { listProjectsByCategory, listProjectsByMultipleCategories } = await import('../../services/project-service.js');
       
       expect(typeof listProjectsByCategory).toBe('function');
@@ -32,7 +29,6 @@ describe('Project Routes - Category Filtering Integration Tests', () => {
     });
 
     it('should validate category filtering parameters', async () => {
-      // Test parameter validation logic
       const categoryId = 'web-development';
       const categoryIds = ['web-development', 'mobile-development'];
       

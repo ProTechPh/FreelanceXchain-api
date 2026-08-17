@@ -17,22 +17,18 @@ global.fetch = mockFetch as any;
 
 describe('Didit Client - Refactored', () => {
   beforeEach(() => {
-    // Reset environment variables
     process.env = { ...originalEnv };
     process.env['DIDIT_API_KEY'] = 'test-api-key';
     process.env['DIDIT_API_URL'] = 'https://test.didit.me';
     process.env['DIDIT_WEBHOOK_SECRET'] = 'test-webhook-secret';
 
-    // Clear mock
     mockFetch.mockClear();
   });
 
   afterEach(() => {
-    // Restore original environment
     process.env = originalEnv;
   });
 
-  // Import after environment setup
   const importModule = async () => {
     return await import('../../services/didit-client.js');
   };

@@ -559,7 +559,6 @@ function validateProjectWithAttachments(body: Record<string, unknown>): WithAtta
   const { requiredSkills, tags } = body;
   const errors: { field: string; message: string }[] = [];
 
-  // Parse requiredSkills from JSON string
   let parsedRequiredSkills: Array<{ skillId: string }> | undefined;
   try {
     parsedRequiredSkills = JSON.parse(requiredSkills as string) as Array<{ skillId: string }>;
@@ -578,7 +577,6 @@ function validateProjectWithAttachments(body: Record<string, unknown>): WithAtta
     errors.push({ field: 'requiredSkills', message: 'requiredSkills must be a valid JSON array' });
   }
 
-  // Parse tags from JSON string if provided
   let parsedTags: string[] | undefined;
   if (tags) {
     try {
@@ -647,7 +645,6 @@ router.post('/with-attachments', authMiddleware, requireRole('employer'), requir
 
   let attachments: FileMetadata[] = [];
 
-  // Upload files if provided
   if (files && files.length > 0) {
     try {
       attachments = await uploadProjectFiles(files);
@@ -942,7 +939,6 @@ router.get('/:id/proposals', authMiddleware, requireRole('employer'), apiRateLim
     return;
   }
 
-  // Verify employer owns this project
   const projectResult = await getProjectById(projectId);
   if (!projectResult.success) {
     sendErrorResponse(res, 404, projectResult.error.code, projectResult.error.message, { requestId });

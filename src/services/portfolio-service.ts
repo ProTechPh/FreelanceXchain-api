@@ -67,15 +67,11 @@ async function resolvePortfolioSkills(skills: string[]): Promise<{
   return { valid: invalidSkills.length === 0, invalidSkills, resolved };
 }
 
-/**
- * Create a new portfolio item
- */
 export async function createPortfolioItem(
   freelancerId: string,
   input: PortfolioItemInput
 ): Promise<ServiceResult<PortfolioItem>> {
   try {
-    // Validate images array
     if (!input.images || input.images.length === 0) {
       return errorResult('VALIDATION_ERROR', 'At least one image is required');
     }
@@ -107,16 +103,12 @@ export async function createPortfolioItem(
   }
 }
 
-/**
- * Update a portfolio item
- */
 export async function updatePortfolioItem(
   portfolioId: string,
   userId: string,
   updates: Partial<PortfolioItemInput>
 ): Promise<ServiceResult<PortfolioItem>> {
   try {
-    // Verify ownership
     const ownerId = await portfolioRepository.findOwnerById(portfolioId);
 
     if (ownerId === null) {
@@ -127,7 +119,6 @@ export async function updatePortfolioItem(
       return errorResult('UNAUTHORIZED', 'You can only update your own portfolio items');
     }
 
-    // Build update data
     const updateData: Record<string, any> = {};
     if (updates.title) updateData.title = updates.title;
     if (updates.description) updateData.description = updates.description;
@@ -166,7 +157,6 @@ export async function deletePortfolioItem(
   userId: string
 ): Promise<ServiceResult<void>> {
   try {
-    // Verify ownership
     const ownerId = await portfolioRepository.findOwnerById(portfolioId);
 
     if (ownerId === null) {
@@ -180,7 +170,6 @@ export async function deletePortfolioItem(
     // Get existing item for image cleanup
     const existing = await portfolioRepository.getById(portfolioId);
 
-    // Delete from database
     await portfolioRepository.delete(portfolioId);
 
     // Clean up images from storage (best effort)

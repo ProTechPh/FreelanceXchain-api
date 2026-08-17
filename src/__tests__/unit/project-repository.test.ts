@@ -65,6 +65,16 @@ describe('ProjectRepository', () => {
       expect(createAttributes).not.toHaveProperty('created_at');
       expect(createAttributes).not.toHaveProperty('updated_at');
     });
+
+    it('should default skill ids to an empty array when no skills provided', async () => {
+      const project = { id: 'p1', title: 'No Skills' };
+      mockCreateDocument.mockResolvedValueOnce(toAppwriteDoc(project));
+
+      await repo.createProject(project as any);
+
+      const createAttributes = mockCreateDocument.mock.calls[0][3] as Record<string, unknown>;
+      expect(createAttributes.required_skill_ids).toEqual('[]');
+    });
   });
 
   describe('getProjectById', () => {
@@ -166,6 +176,12 @@ describe('ProjectRepository', () => {
       mockUpdateDocument.mockResolvedValueOnce(toAppwriteDoc(project));
       const result = await repo.updateProject('p1', { title: 'Updated' } as any);
       expect(result).not.toBeNull();
+    });
+
+    it('should return null when the update does not return a document', async () => {
+      mockUpdateDocument.mockResolvedValueOnce(null);
+      const result = await repo.updateProject('p1', { title: 'Updated' } as any);
+      expect(result).toBeNull();
     });
   });
 
@@ -642,6 +658,110 @@ describe('ProjectRepository - deleteProject, getProjectsByStatus, searchProjects
       expect(result.items).toEqual([]);
       expect(result.hasMore).toBe(false);
       expect(result.total).toBe(0);
+    });
+  });
+
+  describe('getProjectsByIds', () => {
+    const repo = new ProjectRepository();
+
+    it('should return empty array when no ids given', async () => {
+      const result = await repo.getProjectsByIds([]);
+      expect(result).toEqual([]);
+      expect(mockListDocuments).not.toHaveBeenCalled();
+    });
+
+    it('should batch-fetch projects by ids', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [toAppwriteDoc({ id: 'p1', title: 'A' }), toAppwriteDoc({ id: 'p2', title: 'B' })],
+      });
+
+      const result = await repo.getProjectsByIds(['p1', 'p2']);
+      expect(result).toHaveLength(2);
+      expect(result.map(p => p.id).sort()).toEqual(['p1', 'p2']);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[0] === '$id')).toBe(true);
+    });
+
+    it('should throw when the batch query fails', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('boom'));
+      await expect(repo.getProjectsByIds(['p1'])).rejects.toThrow('Failed to get projects by ids');
+    });
+  });
+
+  describe('project listing methods', () => {
+    const repo = new ProjectRepository();
+
+    it('listOpenProjects should return mapped open projects', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [toAppwriteDoc({ id: 'p1', title: 'Open', status: 'open' })],
+      });
+
+      const result = await repo.listOpenProjects(10);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('p1');
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[1] === 'open')).toBe(true);
+    });
+
+    it('listAllProjects should return all projects', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [toAppwriteDoc({ id: 'p1', title: 'All' })],
+      });
+
+      const result = await repo.listAllProjects(50);
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('p1');
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'limit' && q.args[0] === 50)).toBe(true);
+    });
+
+    it('listRecentOpenProjects should order by creation date', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [toAppwriteDoc({ id: 'p1', title: 'Recent', status: 'open' })],
+      });
+
+      const result = await repo.listRecentOpenProjects(5);
+      expect(result).toHaveLength(1);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'orderDesc' && q.args[0] === 'created_at')).toBe(true);
+    });
+  });
+
+  describe('findByFilters', () => {
+    const repo = new ProjectRepository();
+
+    it('should query only allowed primitive filters', async () => {
+      mockListDocuments.mockResolvedValueOnce({ documents: [] });
+
+      const result = await repo.findByFilters(
+        { status: 'open', budget: 100, category: 'dev', title: 'Build', notAllowed: 'x', weird: { nested: 1 } },
+        20
+      );
+      expect(result).toEqual([]);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      const equals = queries.filter(q => q.type === 'equal');
+      expect(equals.map(q => q.args[0]).sort()).toEqual(['budget', 'category', 'status', 'title']);
+      expect(queries.some(q => q.type === 'limit' && q.args[0] === 20)).toBe(true);
+    });
+
+    it('should skip null and undefined filter values', async () => {
+      mockListDocuments.mockResolvedValueOnce({ documents: [] });
+
+      const result = await repo.findByFilters({ status: 'open', budget: null, category: undefined }, 10);
+      expect(result).toEqual([]);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      const equals = queries.filter(q => q.type === 'equal');
+      expect(equals.map(q => q.args[0])).toEqual(['status']);
+    });
+
+    it('should accept boolean and array filter values on allowed columns', async () => {
+      mockListDocuments.mockResolvedValueOnce({ documents: [] });
+
+      const result = await repo.findByFilters({ status: true, category: ['dev', 'design'] }, 10);
+      expect(result).toEqual([]);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      const equals = queries.filter(q => q.type === 'equal');
+      expect(equals.map(q => q.args[0]).sort()).toEqual(['category', 'status']);
     });
   });
 });

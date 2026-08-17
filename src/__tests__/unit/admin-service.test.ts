@@ -1100,7 +1100,6 @@ describe('Admin Service - Coverage Gaps', () => {
 
       const result = await getSystemHealth();
 
-      // Restore
       (process as any).uptime = originalUptime;
 
       expect(result.success).toBe(false);

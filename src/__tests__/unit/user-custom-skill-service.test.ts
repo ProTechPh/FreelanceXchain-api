@@ -550,7 +550,6 @@ describe('User Custom Skill Service', () => {
     it('should handle update failure from repository', async () => {
       const { updateUserCustomSkill } = await importModule();
 
-      // Clear and set up fresh mocks
       mockGetUserCustomSkillById.mockReset();
       mockUpdateUserCustomSkillRepo.mockReset();
       mockGetUserCustomSkills.mockReset();

@@ -99,19 +99,16 @@ export async function submitRatingToBlockchain(
     throw new Error('Web3 is not configured. Please set BLOCKCHAIN_RPC_URL and BLOCKCHAIN_PRIVATE_KEY');
   }
 
-  // Validate rating
   if (params.rating < 1 || params.rating > 5 || !Number.isInteger(params.rating)) {
     throw new Error('Rating must be an integer between 1 and 5');
   }
 
-  // Validate ratee address
   if (!params.rateeAddress || params.rateeAddress === '0x0000000000000000000000000000000000000000') {
     throw new Error('Invalid ratee address');
   }
 
   const contract = getReputationContractWithSigner();
 
-  // Submit rating transaction
   // Contract signature: submitRating(address ratee, uint8 score, string comment, bytes32 contractIdHash)
   // isEmployerRating is derived on-chain from msg.sender and must not be passed.
   const tx = await contract.submitRating(
@@ -121,13 +118,11 @@ export async function submitRatingToBlockchain(
     params.contractId
   );
 
-  // Wait for transaction confirmation
   const receipt = await tx.wait();
   if (!receipt) {
     throw new Error('Transaction was replaced or dropped');
   }
 
-  // Extract rating index from event
   const event = receipt.logs.find(log => {
     try {
       const parsed = contract.interface.parseLog(log);
@@ -163,7 +158,6 @@ export async function getRatingsFromBlockchain(userAddress: string): Promise<Blo
   // Get rating indices for user (with pagination - contract requires offset and limit)
   const indices = await contract.getUserRatingIndices(userAddress, 0, 100);
 
-  // Fetch all ratings
   return fetchRatings(contract, indices);
 }
 
@@ -180,7 +174,6 @@ export async function getRatingsGivenByUser(userAddress: string): Promise<Blockc
   // Get rating indices given by user (with pagination - contract requires offset and limit)
   const indices = await contract.getGivenRatingIndices(userAddress, 0, 100);
 
-  // Fetch all ratings
   return fetchRatings(contract, indices);
 }
 

@@ -133,11 +133,8 @@ describe('Escrow Refund Service', () => {
     it('should create refund request successfully', async () => {
       const { createRefundRequest } = await importModule();
 
-      // Get contract
       mockContractRepository.getContractById.mockResolvedValueOnce({ id: 'c-1', project_id: 'p-1', freelancer_id: 'freelancer-1', employer_id: 'employer-1', status: 'active', total_amount: 1000 });
-      // Check existing pending refunds
       mockRefundRequestRepository.findPendingByContract.mockResolvedValueOnce(null);
-      // Insert refund request
       const refund = { id: 'ref-1', contract_id: 'c-1', requested_by: 'freelancer-1', amount: 1000, status: 'pending' };
       mockRefundRequestRepository.create.mockResolvedValueOnce(refund);
 
@@ -822,7 +819,6 @@ describe('Escrow Refund Service', () => {
 
       setupHappyPath();
       mockAdapterIsAvailable.mockReturnValueOnce(false);
-      // Rollback update
       mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
 
       const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
@@ -985,7 +981,6 @@ describe('Escrow Refund Service', () => {
 
       setupHappyPath();
       mockRefundEscrow.mockRejectedValueOnce(new Error('On-chain revert'));
-      // Rollback update
       mockRefundRequestRepository.update.mockResolvedValueOnce({ id: 'ref-1', status: 'pending' });
 
       const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });
@@ -1001,7 +996,6 @@ describe('Escrow Refund Service', () => {
 
       setupHappyPath();
       mockRefundEscrow.mockRejectedValueOnce(new Error('On-chain revert'));
-      // Rollback also fails
       mockRefundRequestRepository.update.mockRejectedValueOnce(new Error('Rollback failed'));
 
       const result = await approveRefund({ refundId: 'ref-1', approvedBy: 'employer-1' });

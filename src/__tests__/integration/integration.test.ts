@@ -40,7 +40,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
     getUserById: jest.fn(async (id: string) => {
       const user = userStore.get(id);
       if (!user) return null;
-      // Return entity format
       return {
         id: user.id,
         email: user.email,
@@ -91,7 +90,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/user-repository.ts'), (
 jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repository.ts'), () => ({
   freelancerProfileRepository: {
     createProfile: jest.fn(async (profile: any) => {
-      // Convert to entity format if needed
       const entity = {
         id: profile.id,
         user_id: profile.user_id || profile.userId,
@@ -109,7 +107,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
     findProfileByUserId: jest.fn(async (userId: string) => {
       const profile = freelancerProfileStore.get(userId);
       if (!profile) return null;
-      // Return entity format
       return {
         id: profile.id,
         user_id: (profile as any).user_id || profile.userId,
@@ -125,7 +122,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
     getProfileByUserId: jest.fn(async (userId: string) => {
       const profile = freelancerProfileStore.get(userId);
       if (!profile) return null;
-      // Return entity format
       return {
         id: profile.id,
         user_id: (profile as any).user_id || profile.userId,
@@ -139,7 +135,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
       };
     }),
     updateProfile: jest.fn(async (id: string, updates: any) => {
-      // Find by id in all profiles
       for (const [userId, profile] of freelancerProfileStore.entries()) {
         if (profile.id === id) {
           const updated = {
@@ -177,7 +172,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/employer-profile-reposi
 jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts'), () => ({
   projectRepository: {
     createProject: jest.fn(async (project: any) => {
-      // Convert to entity format if needed
       const entity = {
         id: project.id,
         employer_id: project.employer_id || project.employerId,
@@ -197,7 +191,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
     findProjectById: jest.fn(async (id: string) => {
       const project = projectStore.get(id);
       if (!project) return null;
-      // Return entity format
       return {
         id: project.id,
         employer_id: (project as any).employer_id || project.employerId,
@@ -272,7 +265,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/project-repository.ts')
 jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'), () => ({
   proposalRepository: {
     createProposal: jest.fn(async (proposal: any) => {
-      // Convert to entity format
       const entity = {
         id: proposal.id,
         project_id: proposal.project_id || proposal.projectId,
@@ -291,7 +283,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/proposal-repository.ts'
     findProposalById: jest.fn(async (id: string) => {
       const proposal = proposalStore.get(id);
       if (!proposal) return null;
-      // Return entity format
       return {
         id: proposal.id,
         project_id: (proposal as any).project_id || proposal.projectId,
@@ -391,7 +382,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
     getContractById: jest.fn(async (id: string) => {
       const contract = contractStore.get(id);
       if (!contract) return null;
-      // Return entity format
       return {
         id: contract.id,
         project_id: (contract as any).project_id || contract.projectId,
@@ -472,7 +462,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/contract-repository.ts'
 jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts'), () => ({
   disputeRepository: {
     createDispute: jest.fn(async (dispute: any) => {
-      // Convert to entity format
       const entity = {
         id: dispute.id,
         contract_id: dispute.contract_id || dispute.contractId,
@@ -491,7 +480,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/dispute-repository.ts')
     findDisputeById: jest.fn(async (id: string) => {
       const dispute = disputeStore.get(id);
       if (!dispute) return null;
-      // Return entity format
       return {
         id: dispute.id,
         contract_id: (dispute as any).contract_id || dispute.contractId,
@@ -602,7 +590,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), 
     findSkillById: jest.fn(async (id: string) => {
       const skill = skillStore.get(id);
       if (!skill) return null;
-      // Return entity type with snake_case
       return {
         id: skill.id,
         category_id: skill.categoryId,
@@ -665,7 +652,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-category-reposito
     findCategoryById: jest.fn(async (id: string) => {
       const category = skillCategoryStore.get(id);
       if (!category) return null;
-      // Return entity type with snake_case
       return {
         id: category.id,
         name: category.name,
@@ -810,7 +796,6 @@ jest.unstable_mockModule(resolveModule('src/services/milestone-registry.ts'), ()
   submitMilestoneToRegistry: jest.fn(),
 }));
 // Mock Appwrite client to prevent real network calls
-// Import services after mocking
 const { register } = await import('../../services/auth-service.js');
 const { createProfile: createFreelancerProfile, addSkillsToProfile } = await import('../../services/freelancer-profile-service.js');
 const { createEmployerProfile } = await import('../../services/employer-profile-service.js');
@@ -818,7 +803,6 @@ const { createProject, addMilestones } = await import('../../services/project-se
 const { submitProposal, acceptProposal } = await import('../../services/proposal-service.js');
 const { requestMilestoneCompletion, approveMilestone } = await import('../../services/payment-service.js');
 const { createDispute, submitEvidence, resolveDispute } = await import('../../services/dispute-service.js');
-// Helper to clear all stores
 function clearAllStores(): void {
   userStore.clear();
   freelancerProfileStore.clear();
@@ -831,7 +815,6 @@ function clearAllStores(): void {
   skillStore.clear();
   skillCategoryStore.clear();
 }
-// Helper to create test skill
 function createTestSkill(categoryId: string): Skill {
   const now = new Date().toISOString();
   const skill: Skill = {
@@ -846,7 +829,6 @@ function createTestSkill(categoryId: string): Skill {
   skillStore.set(skill.id, skill);
   return skill;
 }
-// Helper to create test skill category
 function createTestSkillCategory(): SkillCategory {
   const now = new Date().toISOString();
   const category: SkillCategory = {
@@ -870,7 +852,6 @@ describe('Integration Tests - Critical Flows', () => {
    */
   describe('Flow 1: Registration → Profile → Project → Proposal → Contract', () => {
     it('should complete the full freelancer-employer workflow', async () => {
-      // Step 1: Register a freelancer
       const freelancerRegResult = await register({
         email: 'freelancer@test.com',
         password: 'SecurePass123!',
@@ -881,7 +862,6 @@ describe('Integration Tests - Critical Flows', () => {
       expect(freelancerRegResult.user.role).toBe('freelancer');
       expect(freelancerRegResult.accessToken).toBeDefined();
       const freelancerId = freelancerRegResult.user.id;
-      // Step 2: Register an employer
       const employerRegResult = await register({
         email: 'employer@test.com',
         password: 'SecurePass456!',
@@ -891,7 +871,6 @@ describe('Integration Tests - Critical Flows', () => {
       if ('code' in employerRegResult) return;
       expect(employerRegResult.user.role).toBe('employer');
       const employerId = employerRegResult.user.id;
-      // Step 3: Create freelancer profile
       const category = createTestSkillCategory();
       const skill = createTestSkill(category.id);
       const freelancerProfileResult = await createFreelancerProfile(freelancerId, {
@@ -902,12 +881,10 @@ describe('Integration Tests - Critical Flows', () => {
       expect(freelancerProfileResult.success).toBe(true);
       if (!freelancerProfileResult.success) return;
       expect(freelancerProfileResult.data.userId).toBe(freelancerId);
-      // Add skills to profile
       const addSkillsResult = await addSkillsToProfile(freelancerId, [
         { name: skill.name, yearsOfExperience: 5 },
       ]);
       expect(addSkillsResult.success).toBe(true);
-      // Step 4: Create employer profile
       const employerProfileResult = await createEmployerProfile(employerId, {
         companyName: 'Tech Corp',
         description: 'A technology company',
@@ -917,7 +894,6 @@ describe('Integration Tests - Critical Flows', () => {
       if (!employerProfileResult.success) return;
       expect(employerProfileResult.data.userId).toBe(employerId);
       expect(employerProfileResult.data.companyName).toBe('Tech Corp');
-      // Step 5: Create a project
       const projectResult = await createProject(employerId, {
         title: 'Build a REST API',
         description: 'Need a TypeScript REST API built',
@@ -930,7 +906,6 @@ describe('Integration Tests - Critical Flows', () => {
       const project = projectResult.data;
       expect((project as any).employer_id || (project as any).employerId).toBe(employerId);
       expect(project.status).toBe('open');
-      // Step 6: Add milestones to project
       const milestoneInputs = [
         { title: 'API Design', description: 'Design the API', amount: 1500, dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString() },
         { title: 'Implementation', description: 'Implement the API', amount: 2500, dueDate: new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString() },
@@ -941,7 +916,6 @@ describe('Integration Tests - Critical Flows', () => {
       if (milestonesResult.success) {
         expect(milestonesResult.data.milestones.length).toBe(3);
       }
-      // Step 7: Freelancer submits a proposal
       const milestoneTotal = milestoneInputs.reduce((sum, milestone) => sum + milestone.amount, 0);
       const proposalResult = await submitProposal(freelancerId, {
         projectId: project.id,
@@ -962,22 +936,17 @@ describe('Integration Tests - Critical Flows', () => {
       expect(proposal.freelancerId).toBe(freelancerId);
       expect(proposal.projectId).toBe(project.id);
       expect(proposal.status).toBe('pending');
-      // Verify notification was sent to employer
       expect(proposalResult.data.notification.userId).toBe(employerId);
       expect(proposalResult.data.notification.type).toBe('proposal_received');
-      // Step 8: Employer accepts the proposal
       const acceptResult = await acceptProposal(proposal.id, employerId);
       expect(acceptResult.success).toBe(true);
       if (!acceptResult.success) return;
-      // Verify proposal status updated
       expect(acceptResult.data.proposal.status).toBe('accepted');
-      // Verify contract was created
       const contract = acceptResult.data.contract;
       expect(contract.freelancerId).toBe(freelancerId);
       expect(contract.employerId).toBe(employerId);
       expect(contract.projectId).toBe(project.id);
       expect(contract.status).toBe('pending');
-      // Verify contract exists in store
       expect(contractStore.has(contract.id)).toBe(true);
     });
   });
@@ -987,10 +956,8 @@ describe('Integration Tests - Critical Flows', () => {
    */
   describe('Flow 2: Milestone Completion → Approval → Payment', () => {
     it('should complete the full milestone payment workflow', async () => {
-      // Setup: Create users, project, proposal, and contract
       const freelancerId = generateId();
       const employerId = generateId();
-      // Create users in store
       const freelancerUser: User = {
         id: freelancerId,
         email: 'freelancer@test.com',
@@ -1011,7 +978,6 @@ describe('Integration Tests - Critical Flows', () => {
         updatedAt: new Date().toISOString(),
       };
       userStore.set(employerId, employerUser);
-      // Create project with milestones
       const milestone1: Milestone = {
         id: generateId(),
         title: 'Phase 1',
@@ -1047,7 +1013,6 @@ describe('Integration Tests - Critical Flows', () => {
         updatedAt: new Date().toISOString(),
       };
       projectStore.set(project.id, project);
-      // Create contract
       const contract: Contract = {
         id: generateId(),
         projectId: project.id,
@@ -1063,7 +1028,6 @@ describe('Integration Tests - Critical Flows', () => {
         updatedAt: new Date().toISOString(),
       };
       contractStore.set(contract.id, contract);
-      // Step 1: Freelancer marks milestone 1 as complete
       const completionResult = await requestMilestoneCompletion(
         contract.id,
         milestone1.id,
@@ -1074,11 +1038,9 @@ describe('Integration Tests - Critical Flows', () => {
         expect(completionResult.data.status).toBe('submitted');
         expect(completionResult.data.notificationSent).toBe(true);
       }
-      // Verify milestone status updated
       const updatedProject1 = projectStore.get(project.id);
       const updatedMilestone1 = updatedProject1?.milestones.find((m: Milestone) => m.id === milestone1.id);
       expect(updatedMilestone1?.status).toBe('submitted');
-      // Step 2: Employer approves milestone 1
       const approvalResult1 = await approveMilestone(
         contract.id,
         milestone1.id,
@@ -1090,18 +1052,15 @@ describe('Integration Tests - Critical Flows', () => {
         expect(approvalResult1.data.paymentReleased).toBe(true);
         expect(approvalResult1.data.contractCompleted).toBe(false); // Still have milestone 2
       }
-      // Verify milestone status updated
       const updatedProject2 = projectStore.get(project.id);
       const approvedMilestone1 = updatedProject2?.milestones.find((m: Milestone) => m.id === milestone1.id);
       expect(approvedMilestone1?.status).toBe('approved');
-      // Step 3: Freelancer marks milestone 2 as complete
       const completionResult2 = await requestMilestoneCompletion(
         contract.id,
         milestone2.id,
         freelancerId
       );
       expect(completionResult2.success).toBe(true);
-      // Step 4: Employer approves milestone 2 (final milestone)
       const approvalResult2 = await approveMilestone(
         contract.id,
         milestone2.id,
@@ -1113,10 +1072,8 @@ describe('Integration Tests - Critical Flows', () => {
         expect(approvalResult2.data.paymentReleased).toBe(true);
         expect(approvalResult2.data.contractCompleted).toBe(true); // All milestones done
       }
-      // Verify contract is completed
       const finalContract = contractStore.get(contract.id);
       expect(finalContract?.status).toBe('completed');
-      // Verify project is completed
       const finalProject = projectStore.get(project.id);
       expect(finalProject?.status).toBe('completed');
     });
@@ -1128,11 +1085,9 @@ describe('Integration Tests - Critical Flows', () => {
   describe('Flow 3: Dispute Creation → Evidence → Resolution', () => {
     it('should complete the full dispute resolution workflow', async () => {
 
-      // Setup: Create users, project, and contract
       const freelancerId = generateId();
       const employerId = generateId();
       const adminId = generateId();
-      // Create users in store
       const freelancerUser: User = {
         id: freelancerId,
         email: 'freelancer@test.com',
@@ -1162,7 +1117,6 @@ describe('Integration Tests - Critical Flows', () => {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
-      // Create project with milestone
       const milestone: Milestone = {
         id: generateId(),
         title: 'Disputed Milestone',
@@ -1190,7 +1144,6 @@ describe('Integration Tests - Critical Flows', () => {
         updatedAt: new Date().toISOString(),
       };
       projectStore.set(project.id, project);
-      // Create contract
       const contract: Contract = {
         id: generateId(),
         projectId: project.id,
@@ -1206,7 +1159,6 @@ describe('Integration Tests - Critical Flows', () => {
         updatedAt: new Date().toISOString(),
       };
       contractStore.set(contract.id, contract);
-      // Step 1: Employer creates a dispute
       const disputeResult = await createDispute({
         contractId: contract.id,
         milestoneId: milestone.id,
@@ -1221,14 +1173,11 @@ describe('Integration Tests - Critical Flows', () => {
       expect(dispute.initiatorId).toBe(employerId);
       expect(dispute.status).toBe('open');
       expect(dispute.evidence).toEqual([]);
-      // Verify milestone status updated to disputed
       const updatedProject1 = projectStore.get(project.id);
       const disputedMilestone = updatedProject1?.milestones.find((m: Milestone) => m.id === milestone.id);
       expect(disputedMilestone?.status).toBe('disputed');
-      // Verify contract status updated to disputed
       const updatedContract1 = contractStore.get(contract.id);
       expect(updatedContract1?.status).toBe('disputed');
-      // Step 2: Employer submits evidence
       const employerEvidenceResult = await submitEvidence({
         disputeId: dispute.id,
         submitterId: employerId,
@@ -1241,7 +1190,6 @@ describe('Integration Tests - Critical Flows', () => {
         expect(employerEvidenceResult.data.evidence[0]?.submitterId).toBe(employerId);
         expect(employerEvidenceResult.data.status).toBe('open');
       }
-      // Step 3: Freelancer submits counter-evidence
       const freelancerEvidenceResult = await submitEvidence({
         disputeId: dispute.id,
         submitterId: freelancerId,
@@ -1253,7 +1201,6 @@ describe('Integration Tests - Critical Flows', () => {
         expect(freelancerEvidenceResult.data.evidence.length).toBe(2);
         expect(freelancerEvidenceResult.data.evidence[1]?.submitterId).toBe(freelancerId);
       }
-      // Step 4: Admin resolves the dispute in favor of freelancer
       const resolveResult = await resolveDispute({
         disputeId: dispute.id,
         decision: 'freelancer_favor',
@@ -1270,14 +1217,12 @@ describe('Integration Tests - Critical Flows', () => {
         expect(resolvedDispute.resolution?.resolvedBy).toBe(adminId);
         expect(resolvedDispute.resolution?.reasoning).toContain('freelancer has met all requirements');
       }
-      // Verify dispute is stored correctly
       const finalDispute = disputeStore.get(dispute.id);
       expect(finalDispute?.status).toBe('resolved');
       expect(finalDispute?.resolution?.decision).toBe('freelancer_favor');
     });
     it('should handle dispute resolution in favor of employer', async () => {
 
-      // Setup
       const freelancerId = generateId();
       const employerId = generateId();
       const adminId = generateId();
@@ -1341,7 +1286,6 @@ describe('Integration Tests - Critical Flows', () => {
         updatedAt: new Date().toISOString(),
       };
       contractStore.set(contract.id, contract);
-      // Create dispute
       const disputeResult = await createDispute({
         contractId: contract.id,
         milestoneId: milestone.id,
@@ -1350,7 +1294,6 @@ describe('Integration Tests - Critical Flows', () => {
       });
       expect(disputeResult.success).toBe(true);
       if (!disputeResult.success) return;
-      // Resolve in favor of employer
       const resolveResult = await resolveDispute({
         disputeId: disputeResult.data.id,
         decision: 'employer_favor',

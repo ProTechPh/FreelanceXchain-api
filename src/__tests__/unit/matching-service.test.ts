@@ -106,10 +106,8 @@ describe('Matching Service - Recommendation Properties', () => {
         fc.property(
           fc.array(projectRecommendationArbitrary(), { minLength: 0, maxLength: 20 }),
           (recommendations: ProjectRecommendation[]) => {
-            // Sort recommendations
             const sorted = sortRecommendationsByScore(recommendations);
 
-            // Verify descending order
             for (let i = 0; i < sorted.length - 1; i++) {
               const current = sorted[i];
               const next = sorted[i + 1];
@@ -130,10 +128,8 @@ describe('Matching Service - Recommendation Properties', () => {
           (recommendations: ProjectRecommendation[]) => {
             const sorted = sortRecommendationsByScore(recommendations);
 
-            // Same length
             expect(sorted.length).toBe(recommendations.length);
 
-            // All original items present
             const originalIds = new Set(recommendations.map(r => r.projectId));
             const sortedIds = new Set(sorted.map(r => r.projectId));
             expect(sortedIds).toEqual(originalIds);
@@ -151,7 +147,6 @@ describe('Matching Service - Recommendation Properties', () => {
             const originalOrder = recommendations.map(r => r.projectId);
             sortRecommendationsByScore(recommendations);
 
-            // Original array unchanged
             const afterOrder = recommendations.map(r => r.projectId);
             expect(afterOrder).toEqual(originalOrder);
           }
@@ -175,10 +170,8 @@ describe('Matching Service - Recommendation Properties', () => {
         fc.property(
           fc.array(freelancerRecommendationArbitrary(), { minLength: 0, maxLength: 20 }),
           (recommendations: FreelancerRecommendation[]) => {
-            // Sort recommendations
             const sorted = sortFreelancerRecommendationsByCombinedScore(recommendations);
 
-            // Verify descending order by combined score
             for (let i = 0; i < sorted.length - 1; i++) {
               const current = sorted[i];
               const next = sorted[i + 1];
@@ -199,10 +192,8 @@ describe('Matching Service - Recommendation Properties', () => {
           (recommendations: FreelancerRecommendation[]) => {
             const sorted = sortFreelancerRecommendationsByCombinedScore(recommendations);
 
-            // Same length
             expect(sorted.length).toBe(recommendations.length);
 
-            // All original items present
             const originalIds = new Set(recommendations.map(r => r.freelancerId));
             const sortedIds = new Set(sorted.map(r => r.freelancerId));
             expect(sortedIds).toEqual(originalIds);
@@ -220,7 +211,6 @@ describe('Matching Service - Recommendation Properties', () => {
             const originalOrder = recommendations.map(r => r.freelancerId);
             sortFreelancerRecommendationsByCombinedScore(recommendations);
 
-            // Original array unchanged
             const afterOrder = recommendations.map(r => r.freelancerId);
             expect(afterOrder).toEqual(originalOrder);
           }

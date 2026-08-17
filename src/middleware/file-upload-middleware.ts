@@ -77,7 +77,6 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
   try {
     // Special handling for text files (no magic number)
     if (filename.toLowerCase().endsWith('.txt')) {
-      // Check if buffer contains mostly text characters
       const isText = buffer.slice(0, 1024).every(byte =>
         (byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13
       );
@@ -86,7 +85,6 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
       }
     }
 
-    // Use file-type for magic number detection
     const detectedType = await fileTypeFromBuffer(buffer);
 
     if (!detectedType) {
@@ -94,7 +92,6 @@ async function validateFileMimeType(buffer: Buffer, filename: string): Promise<{
       return { valid: false, error: 'Could not detect file type' };
     }
 
-    // Check if detected MIME type is allowed
     if (!(detectedType.mime in ALLOWED_MIME_TYPES)) {
       return {
         valid: false,
@@ -205,7 +202,6 @@ async function validateAndScanFile(
     return false;
   }
 
-  // Store detected MIME type for later use
   (file as Express.Multer.File & { detectedMimeType?: string | undefined }).detectedMimeType = validation.detectedType;
 
   const scanResult = await scanFileForViruses(file.buffer, file.originalname);
@@ -261,14 +257,12 @@ async function validateUploadedFiles(
       return;
     }
 
-    // Calculate total size
     const totalSize = files.reduce((sum, file) => sum + file.size, 0);
     if (totalSize > MAX_TOTAL_SIZE) {
       sendErrorResponse(res, 400, 'TOTAL_SIZE_EXCEEDED', `Total file size exceeds ${MAX_TOTAL_SIZE / (1024 * 1024)}MB limit`, { requestId: getRequestId(req) });
       return;
     }
 
-    // Validate each file using magic numbers
     if (validateMagicNumbers) {
       for (const file of files) {
         const accepted = await validateAndScanFile(req, res, file);
@@ -276,12 +270,10 @@ async function validateUploadedFiles(
       }
     }
 
-    // Sanitize filenames
     files.forEach(file => {
       file.originalname = sanitizeFilename(file.originalname);
     });
 
-    // Log successful upload
     logger.info('Files uploaded successfully', {
       count: Number(files.length),
       totalSize,
@@ -290,7 +282,6 @@ async function validateUploadedFiles(
 
     next();
   } catch (error) {
-    // Log unexpected errors
     const message = error instanceof Error ? error.message : String(error);
     const stack = error instanceof Error ? error.stack : undefined;
     logger.error('File upload error', { error: message, stack });

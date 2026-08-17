@@ -527,7 +527,6 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
     }
     const mimeType = (file as Express.Multer.File & { detectedMimeType?: string }).detectedMimeType || file.mimetype;
     
-    // Upload file to Appwrite Storage
     const uploadResult = await uploadFileToStorage({
       buffer: file.buffer,
       originalFilename: file.originalname,
@@ -541,7 +540,6 @@ async function processMultipartEvidence(req: Request, res: Response, next: NextF
       return;
     }
     
-    // Submit evidence with file URL as content
     const result = await submitEvidence({
       disputeId,
       submitterId: userId,

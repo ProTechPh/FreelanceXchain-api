@@ -91,7 +91,6 @@ describe('SLI Metrics Service', () => {
     });
 
     it('sorts latencies before computing percentiles', () => {
-      // Insert out of order
       recordSliSample('contracts', 200, 300);
       recordSliSample('contracts', 200, 100);
       recordSliSample('contracts', 200, 200);

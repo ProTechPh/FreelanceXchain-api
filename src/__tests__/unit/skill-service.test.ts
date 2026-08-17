@@ -113,7 +113,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/skill-category-reposito
 jest.unstable_mockModule(resolveModule('src/repositories/skill-repository.ts'), () => ({
   skillRepository: mockSkillRepository,
 }));
-// Import after mocking
 const {
   createCategory,
   getCategoryById,
@@ -155,25 +154,20 @@ describe('Skill Taxonomy Service - Category Properties', () => {
       fc.asyncProperty(
         validCategoryInputArbitrary(),
         async (categoryInput) => {
-          // Clear store for each test case
           categoryStore.clear();
-          // Create category
           const createResult = await createCategory(categoryInput);
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
           const createdCategory = createResult.data;
-          // Verify created data matches input
           expect(createdCategory.name).toBe(categoryInput.name);
           expect(createdCategory.description).toBe(categoryInput.description);
           expect(createdCategory.isActive).toBe(true);
           expect(createdCategory.id).toBeDefined();
           expect(createdCategory.createdAt).toBeDefined();
-          // Retrieve and verify
           const getResult = await getCategoryById(createdCategory.id);
           expect(getResult.success).toBe(true);
           if (!getResult.success) return;
           const retrievedCategory = getResult.data;
-          // Verify retrieved data matches created data
           expect(retrievedCategory.id).toBe(createdCategory.id);
           expect(retrievedCategory.name).toBe(categoryInput.name);
           expect(retrievedCategory.description).toBe(categoryInput.description);
@@ -203,15 +197,12 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
         validSkillNameArbitrary(),
         validDescriptionArbitrary(),
         async (categoryInput, skillName, skillDescription) => {
-          // Clear stores for each test case
           categoryStore.clear();
           skillStore.clear();
-          // First create a category
           const categoryResult = await createCategory(categoryInput);
           expect(categoryResult.success).toBe(true);
           if (!categoryResult.success) return;
           const category = categoryResult.data;
-          // Create a skill in that category
           const skillInput = {
             categoryId: category.id,
             name: skillName,
@@ -221,9 +212,7 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
           expect(skillResult.success).toBe(true);
           if (!skillResult.success) return;
           const createdSkill = skillResult.data;
-          // Verify skill has correct category association
           expect(createdSkill.categoryId).toBe(category.id);
-          // Retrieve skill and verify association persists
           const getResult = await getSkillById(createdSkill.id);
           expect(getResult.success).toBe(true);
           if (!getResult.success) return;
@@ -249,7 +238,6 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
         fc.array(validCategoryInputArbitrary(), { minLength: 1, maxLength: 5 }),
         fc.array(validSkillNameArbitrary(), { minLength: 1, maxLength: 10 }),
         async (categoryInputs, skillNames) => {
-          // Clear stores for each test case
           categoryStore.clear();
           skillStore.clear();
           // Create unique categories (filter duplicates by name)
@@ -280,21 +268,16 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
               createdSkills.push(result.data);
             }
           }
-          // Get full taxonomy
           const taxonomy = await getFullTaxonomy();
-          // Verify all active categories are present
           expect(taxonomy.categories.length).toBe(createdCategories.length);
-          // Verify each category has its associated skills
           for (const category of taxonomy.categories) {
             const expectedSkills = createdSkills.filter(s => s.categoryId === category.id);
             expect(category.skills.length).toBe(expectedSkills.length);
-            // Verify each skill in category
             for (const skill of category.skills) {
               expect(skill.categoryId).toBe(category.id);
               expect(skill.isActive).toBe(true);
             }
           }
-          // Verify total skill count
           const totalSkillsInTaxonomy = taxonomy.categories.reduce(
             (sum, cat) => sum + cat.skills.length, 0
           );
@@ -318,15 +301,12 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
         fc.array(validSkillNameArbitrary(), { minLength: 2, maxLength: 5 }),
         fc.integer({ min: 0 }),
         async (categoryInput, skillNames, deprecateIndex) => {
-          // Clear stores for each test case
           categoryStore.clear();
           skillStore.clear();
-          // Create a category
           const categoryResult = await createCategory(categoryInput);
           expect(categoryResult.success).toBe(true);
           if (!categoryResult.success) return;
           const category = categoryResult.data;
-          // Create unique skills
           const uniqueSkillNames = [...new Set(skillNames.map(n => n.toLowerCase()))];
           if (uniqueSkillNames.length < 2) return;
           const createdSkills: Skill[] = [];
@@ -341,25 +321,19 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
             }
           }
           if (createdSkills.length < 2) return;
-          // Deprecate one skill
           const skillToDeprecate = createdSkills[deprecateIndex % createdSkills.length]!;
           const deprecateResult = await deprecateSkill(skillToDeprecate.id);
           expect(deprecateResult.success).toBe(true);
-          // Get full taxonomy (should only include active skills)
           const taxonomy = await getFullTaxonomy();
-          // Find the category in taxonomy
           const taxonomyCategory = taxonomy.categories.find(c => c.id === category.id);
           expect(taxonomyCategory).toBeDefined();
           if (!taxonomyCategory) return;
-          // Verify deprecated skill is NOT in the taxonomy
           const deprecatedSkillInTaxonomy = taxonomyCategory.skills.find(
             s => s.id === skillToDeprecate.id
           );
           expect(deprecatedSkillInTaxonomy).toBeUndefined();
-          // Verify other skills ARE in the taxonomy
           const activeSkillCount = createdSkills.length - 1;
           expect(taxonomyCategory.skills.length).toBe(activeSkillCount);
-          // Verify all skills in taxonomy are active
           for (const skill of taxonomyCategory.skills) {
             expect(skill.isActive).toBe(true);
           }
@@ -387,15 +361,12 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
           { minLength: 3, maxLength: 8 }
         ),
         async (categoryInput, skillInputs) => {
-          // Clear stores for each test case
           categoryStore.clear();
           skillStore.clear();
-          // Create a category
           const categoryResult = await createCategory(categoryInput);
           expect(categoryResult.success).toBe(true);
           if (!categoryResult.success) return;
           const category = categoryResult.data;
-          // Create unique skills
           const seenNames = new Set<string>();
           const createdSkills: Skill[] = [];
           for (const input of skillInputs) {
@@ -415,14 +386,11 @@ describe('Skill Taxonomy Service - Skill Properties', () => {
           // Pick a keyword from one of the skill names (first 3 chars)
           const targetSkill = createdSkills[0]!;
           const keyword = targetSkill.name.substring(0, Math.min(3, targetSkill.name.length)).toLowerCase();
-          // Search for skills
           const searchResults = await searchSkills(keyword);
-          // Verify all results contain the keyword in name or description
           for (const result of searchResults) {
             const nameContains = result.name.toLowerCase().includes(keyword);
             const descContains = result.description.toLowerCase().includes(keyword);
             expect(nameContains || descContains).toBe(true);
-            // Verify category name is included
             expect(result.categoryName).toBeDefined();
             expect(result.categoryName).toBe(category.name);
           }
@@ -512,10 +480,8 @@ describe('Skill Service - searchSkillsByKeyword branch coverage (line 165)', () 
     expect(skillResult.success).toBe(true);
     if (!skillResult.success) return;
 
-    // Deprecate the skill
     await deprecateSkill(skillResult.data.id);
 
-    // Search should not return the deprecated skill
     const results = await searchSkills('Tensor');
     expect(results.length).toBe(0);
   });

@@ -135,11 +135,8 @@ export class SkillRepository extends BaseRepository<SkillEntity> {
    */
   async findSkillsByIds(ids: string[]): Promise<SkillEntity[]> {
     if (ids.length === 0) return [];
-    try {
-      return await this.listWithQueries([Query.equal('$id', ids)]);
-    } catch {
-      return [];
-    }
+    // listWithQueries already swallows database errors and returns [].
+    return this.listWithQueries([Query.equal('$id', ids)]);
   }
 }
 

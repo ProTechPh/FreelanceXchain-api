@@ -43,7 +43,6 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
     const minFiles = options?.minFiles || 0;
     
     return [
-      // First middleware: multer upload handler
       (req: any, res: any, next: any) => {
         const uploadHandler = upload.array(fieldName, maxFiles);
         uploadHandler(req, res, (err: any) => {
@@ -59,12 +58,10 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
           next();
         });
       },
-      // Second middleware: file validation
       async (req: any, res: any, next: any) => {
         try {
           const files = req.files as Express.Multer.File[];
           
-          // Check if files are required
           if (!files || files.length === 0) {
             if (minFiles > 0) {
               return res.status(400).json({ error: { code: 'NO_FILES_UPLOADED', message: `At least ${minFiles} file(s) required` } });
@@ -72,20 +69,16 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
             return next();
           }
           
-          // Validate file types and content
           for (const file of files) {
-            // Check for executable files
             if (file.originalname.endsWith('.exe') || file.mimetype === 'application/x-msdownload') {
               return res.status(400).json({ error: { code: 'INVALID_FILE_TYPE', message: 'Executable files are not allowed' } });
             }
             
-            // Check for malicious content (EICAR signature)
             const fileContent = file.buffer.toString();
             if (fileContent.includes('EICAR-STANDARD-ANTIVIRUS-TEST-FILE')) {
               return res.status(400).json({ error: { code: 'MALICIOUS_FILE_DETECTED', message: 'Malicious file detected' } });
             }
             
-            // Check for PE executable magic numbers
             if (file.buffer.length >= 2 && file.buffer[0] === 0x4d && file.buffer[1] === 0x5a) {
               return res.status(400).json({ error: { code: 'INVALID_FILE_TYPE', message: 'Executable files are not allowed' } });
             }
@@ -114,22 +107,18 @@ jest.unstable_mockModule(resolveModule('src/middleware/file-upload-middleware.ts
           return res.status(400).json({ error: { code: 'UPLOAD_ERROR', message: err.message } });
         }
         
-        // Validate files
         const files = req.files as Express.Multer.File[];
         if (files && files.length > 0) {
           for (const file of files) {
-            // Check for executable files
             if (file.originalname.endsWith('.exe') || file.mimetype === 'application/x-msdownload') {
               return res.status(400).json({ error: { code: 'INVALID_FILE_TYPE', message: 'Executable files are not allowed' } });
             }
             
-            // Check for malicious content (EICAR signature)
             const fileContent = file.buffer.toString();
             if (fileContent.includes('EICAR-STANDARD-ANTIVIRUS-TEST-FILE')) {
               return res.status(400).json({ error: { code: 'MALICIOUS_FILE_DETECTED', message: 'Malicious file detected' } });
             }
             
-            // Check for PE executable magic numbers
             if (file.buffer.length >= 2 && file.buffer[0] === 0x4d && file.buffer[1] === 0x5a) {
               return res.status(400).json({ error: { code: 'INVALID_FILE_TYPE', message: 'Executable files are not allowed' } });
             }
@@ -327,7 +316,6 @@ let lastSubmittedNotes: string | undefined;
 // Mock project repository
 const mockProjectRepository = {
   findProjectById: jest.fn(async (projectId: string) => {
-    // Get the current test's milestone ID from the test context
     const testMilestoneId = (global as any).currentTestMilestoneId || 'default-milestone-id';
     return {
       id: projectId,
@@ -386,7 +374,6 @@ jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () =>
   setEscrowOpsForTesting: jest.fn(),
 }));
 
-// Dynamically import everything after the mock is set up
 let request: any, createApp: any, generateId: any;
 
 beforeAll(async () => {
@@ -407,7 +394,6 @@ describe('Milestone Attachments API', () => {
     milestoneId = generateId();
     authToken = 'Bearer test-token-' + freelancerId;
     
-    // Set the milestone ID for the mock to use
     (global as any).currentTestMilestoneId = milestoneId;
   });
 

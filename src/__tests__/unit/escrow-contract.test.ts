@@ -166,7 +166,6 @@ describe('Escrow Contract - Appwrite', () => {
 
   describe('depositToEscrow', () => {
     it('should deposit funds to escrow', async () => {
-      // Setup escrow first
       await deployEscrow({
         contractId: 'c-1',
         employerAddress: EMPLOYER,
@@ -443,7 +442,6 @@ describe('Escrow Contract - Appwrite', () => {
 
   describe('loadEscrow catch block', () => {
     it('should return null when database throws during load', async () => {
-      // Deploy escrow first
       await deployEscrow({
         contractId: 'c-1',
         employerAddress: EMPLOYER,
@@ -461,7 +459,6 @@ describe('Escrow Contract - Appwrite', () => {
       // loadEscrow returns null (catch block), so getEscrowBalance throws
       await expect(getEscrowBalance(ESCROW_ADDR)).rejects.toThrow('Escrow contract not found');
 
-      // Restore
       mockDatabases.listDocuments.mockImplementation(originalList!);
     });
   });
@@ -718,7 +715,6 @@ describe('Escrow Contract - Coverage Gaps', () => {
       // getEscrowBalance calls loadEscrow internally, which should catch and return null
       await expect(getEscrowBalance(ESCROW_ADDR)).rejects.toThrow('Escrow contract not found');
 
-      // Restore for subsequent tests
       mockDatabases.listDocuments.mockImplementation(originalImpl!);
     });
   });

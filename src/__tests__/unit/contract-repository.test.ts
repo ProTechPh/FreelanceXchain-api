@@ -47,6 +47,11 @@ describe('ContractRepository', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockGetDocument.mockReset();
+    mockListDocuments.mockReset();
+    mockCreateDocument.mockReset();
+    mockUpdateDocument.mockReset();
+    mockDeleteDocument.mockReset();
     repo = new ContractRepository();
   });
 
@@ -380,5 +385,88 @@ describe('ContractRepository', () => {
       expect(result).not.toBeNull();
     });
 
+  });
+
+  describe('findContractByProposalId - error path', () => {
+    it('should return null when the query fails', async () => {
+      mockListDocuments.mockRejectedValueOnce(new Error('query failed'));
+      const result = await repo.findContractByProposalId('p1');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('countCompletedByFreelancer', () => {
+    it('should return the total number of completed contracts', async () => {
+      mockListDocuments.mockResolvedValueOnce({ documents: [], total: 3 });
+
+      const result = await repo.countCompletedByFreelancer('f1');
+      expect(result).toBe(3);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[1] === 'completed')).toBe(true);
+    });
+  });
+
+  describe('findActiveContracts', () => {
+    it('should return all active contracts', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [toAppwriteDoc({ id: 'c1', status: 'active' }), toAppwriteDoc({ id: 'c2', status: 'active' })],
+        total: 2,
+      });
+
+      const result = await repo.findActiveContracts();
+      expect(result).toHaveLength(2);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[1] === 'active')).toBe(true);
+    });
+  });
+
+  describe('findAllByFreelancer', () => {
+    it('should return all contracts for a freelancer', async () => {
+      mockListDocuments.mockResolvedValueOnce({
+        documents: [toAppwriteDoc({ id: 'c1', freelancer_id: 'f1' })],
+        total: 1,
+      });
+
+      const result = await repo.findAllByFreelancer('f1');
+      expect(result).toHaveLength(1);
+      expect(result[0].id).toBe('c1');
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[1] === 'f1')).toBe(true);
+    });
+  });
+
+  describe('getContractByIdWithRelations - profile field narrowing', () => {
+    const baseMocks = () => {
+      const contract = { id: 'c1', project_id: 'p1', freelancer_id: 'f1', employer_id: 'e1', status: 'active' };
+      mockGetDocument
+        .mockResolvedValueOnce(toAppwriteDoc(contract))
+        .mockResolvedValueOnce(toAppwriteDoc({ id: 'p1', title: 'Project' }))
+        .mockResolvedValueOnce(toAppwriteDoc({ id: 'f1', name: 'Freelancer', email: 'f@test.com' }))
+        .mockResolvedValueOnce(toAppwriteDoc({ id: 'e1', name: 'Employer', email: 'e@test.com' }));
+    };
+
+    it('should read a numeric hourly_rate from the freelancer profile', async () => {
+      baseMocks();
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: [toAppwriteDoc({ id: 'fp1', user_id: 'f1', hourly_rate: 50 })], total: 1 })
+        .mockResolvedValueOnce({ documents: [toAppwriteDoc({ id: 'ep1', user_id: 'e1', company_name: 'Acme', industry: 'dev' })], total: 1 });
+
+      const result = await repo.getContractByIdWithRelations('c1');
+      expect(result).not.toBeNull();
+      expect(result.freelancer.profile).toMatchObject({ id: 'fp1', hourly_rate: 50 });
+      expect(result.employer.profile).toMatchObject({ id: 'ep1', company_name: 'Acme', industry: 'dev' });
+    });
+
+    it('should leave hourly_rate undefined when the profile value is not a number', async () => {
+      baseMocks();
+      mockListDocuments
+        .mockResolvedValueOnce({ documents: [toAppwriteDoc({ id: 'fp1', user_id: 'f1', hourly_rate: 'fifty' })], total: 1 })
+        .mockResolvedValueOnce({ documents: [], total: 0 });
+
+      const result = await repo.getContractByIdWithRelations('c1');
+      expect(result).not.toBeNull();
+      expect(result.freelancer.profile).toMatchObject({ id: 'fp1' });
+      expect(result.freelancer.profile.hourly_rate).toBeUndefined();
+    });
   });
 });

@@ -76,19 +76,16 @@ async function applyRushFeeToMilestones(projectId: string, baseAmount: number, r
   await projectRepository.updateProject(projectId, { milestones });
 }
 
-// Employer requests a rush upgrade on an active contract
 export async function requestRushUpgrade(
   employerId: string,
   input: RequestRushUpgradeInput
 ): Promise<ServiceResult<RushUpgradeRequest>> {
   // M18: Lock per contract to prevent duplicate rush upgrade requests
   return withLock(`rush-upgrade:${input.contractId}`, async () => {
-    // Validate percentage
     if (input.proposedPercentage <= 0 || input.proposedPercentage > 100) {
       return errorResult('VALIDATION_ERROR', 'Proposed percentage must be between 0.01 and 100');
     }
 
-    // Check if contract exists and is active
     const contractEntity = await contractRepository.getContractById(input.contractId);
     if (!contractEntity) {
       return errorResult('NOT_FOUND', 'Contract not found');
@@ -102,7 +99,6 @@ export async function requestRushUpgrade(
     return errorResult('INVALID_STATUS', 'Contract must be active to request a rush upgrade');
   }
 
-  // Check if contract already has rush fee applied
   if (contractEntity.rush_fee > 0) {
     return errorResult('ALREADY_RUSH', 'This contract already has a rush fee applied');
   }
@@ -131,7 +127,6 @@ export async function requestRushUpgrade(
   const createdEntity = await rushUpgradeRequestRepository.createRequest(requestEntity);
   const created = mapRushUpgradeRequestFromEntity(createdEntity);
 
-  // Notify freelancer
   const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
   await sendNotificationSafe({
     user_id: contractEntity.freelancer_id,
@@ -170,13 +165,11 @@ async function validateRushUpgradeResponse(
     return { error: errorResult('NOT_FOUND', 'Rush upgrade request not found') };
   }
 
-  // Verify the freelancer is the one on the contract
   const contractEntity = await contractRepository.getContractById(requestEntity.contract_id);
   if (!contractEntity || contractEntity.freelancer_id !== freelancerId) {
     return { error: errorResult('UNAUTHORIZED', 'Only the contract freelancer can respond to this request') };
   }
 
-  // Check request is in a valid state for response
   if (requestEntity.status !== 'pending' && requestEntity.status !== 'counter_offered') {
     return { error: errorResult('INVALID_STATUS', `Cannot respond to a request with status "${requestEntity.status}"`) };
   }
@@ -206,7 +199,6 @@ async function acceptRushUpgrade(
     return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
   }
 
-  // Apply rush upgrade: calculate new fees and update contract
   const agreedPercentage = requestEntity.counter_percentage ?? requestEntity.proposed_percentage;
   const newRushFee = Math.round(contractEntity.base_amount * agreedPercentage / 100 * 100) / 100;
   const newTotalAmount = contractEntity.base_amount + newRushFee;
@@ -226,7 +218,6 @@ async function acceptRushUpgrade(
   const updatedContract = mapContractFromEntity(updatedContractEntity);
   const updatedRequest = mapRushUpgradeRequestFromEntity(updatedEntity);
 
-  // Notify employer
   const projectEntity = await projectRepository.findProjectById(contractEntity.project_id);
   await sendNotificationSafe({
     user_id: contractEntity.employer_id,
@@ -262,7 +253,6 @@ async function declineRushUpgrade(
     return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
   }
 
-  // Notify employer
   await sendNotificationSafe({
     user_id: contractEntity.employer_id,
     type: 'rush_upgrade_declined',
@@ -300,7 +290,6 @@ async function counterOfferRushUpgrade(
     return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
   }
 
-  // Notify employer about counter-offer
   await sendNotificationSafe({
     user_id: contractEntity.employer_id,
     type: 'rush_upgrade_counter_offered',
@@ -316,7 +305,6 @@ async function counterOfferRushUpgrade(
   return successResult(mapRushUpgradeRequestFromEntity(updatedEntity));
 }
 
-// Freelancer responds to a rush upgrade request
 export async function respondToRushUpgrade(
   freelancerId: string,
   input: RespondToRushUpgradeInput
@@ -350,7 +338,6 @@ export async function respondToRushUpgrade(
   }); // M19: end withLock
 }
 
-// Employer accepts freelancer's counter-offer
 export async function acceptCounterOffer(
   employerId: string,
   requestId: string
@@ -369,7 +356,6 @@ export async function acceptCounterOffer(
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
 
-  // Verify employer owns the contract
   const contractEntity = await contractRepository.getContractById(requestEntity.contract_id);
   if (!contractEntity || contractEntity.employer_id !== employerId) {
     return errorResult('UNAUTHORIZED', 'Only the employer can accept a counter-offer');
@@ -394,7 +380,6 @@ export async function acceptCounterOffer(
     return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
   }
 
-  // Apply rush upgrade with the counter percentage
   const newRushFee = Math.round(contractEntity.base_amount * requestEntity.counter_percentage / 100 * 100) / 100;
   const newTotalAmount = contractEntity.base_amount + newRushFee;
 
@@ -413,7 +398,6 @@ export async function acceptCounterOffer(
   const updatedContract = mapContractFromEntity(updatedContractEntity);
   const updatedRequest = mapRushUpgradeRequestFromEntity(updatedEntity);
 
-  // Notify freelancer
   await sendNotificationSafe({
     user_id: contractEntity.freelancer_id,
     type: 'rush_upgrade_accepted',
@@ -431,7 +415,6 @@ export async function acceptCounterOffer(
   }); // M19: end withLock
 }
 
-// Employer declines freelancer's counter-offer
 export async function declineCounterOffer(
   employerId: string,
   requestId: string
@@ -448,7 +431,6 @@ export async function declineCounterOffer(
     return errorResult('NOT_FOUND', 'Rush upgrade request not found');
   }
 
-  // Verify employer owns the contract
   const contractEntity = await contractRepository.getContractById(requestEntity.contract_id);
   if (!contractEntity || contractEntity.employer_id !== employerId) {
     return errorResult('UNAUTHORIZED', 'Only the employer can decline a counter-offer');
@@ -468,7 +450,6 @@ export async function declineCounterOffer(
     return errorResult('UPDATE_FAILED', 'Failed to update rush upgrade request');
   }
 
-  // Notify freelancer
   await sendNotificationSafe({
     user_id: contractEntity.freelancer_id,
     type: 'rush_upgrade_declined',
@@ -484,7 +465,6 @@ export async function declineCounterOffer(
   }); // M19: end withLock
 }
 
-// Get rush upgrade requests for a contract
 export async function getRushUpgradeRequestsByContract(
   contractId: string
 ): Promise<ServiceResult<RushUpgradeRequest[]>> {
@@ -512,7 +492,6 @@ export async function getRushUpgradeRequestsForContract(
   return successResult(entities.map(mapRushUpgradeRequestFromEntity));
 }
 
-// Get a single rush upgrade request
 export async function getRushUpgradeRequestById(
   requestId: string
 ): Promise<ServiceResult<RushUpgradeRequest>> {

@@ -15,7 +15,6 @@ import {
   createTestUser,
 } from '../helpers/test-data-factory.js';
 
-// Create stores and mocks
 const rushUpgradeStore = createInMemoryStore();
 const contractStore = createInMemoryStore();
 const projectStore = createInMemoryStore();
@@ -64,7 +63,6 @@ jest.unstable_mockModule(resolveModule('src/config/logger.ts'), () => ({
   logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn() },
 }));
 
-// Import after mocking
 const {
   requestRushUpgrade,
   respondToRushUpgrade,
@@ -603,20 +601,17 @@ describe('Full rush upgrade negotiation flow', () => {
     const contract = seedContract({ employer_id: employer.id, freelancer_id: freelancer.id, base_amount: 1000, rush_fee: 0, total_amount: 1000 });
     seedProject({ id: contract.project_id });
 
-    // 1. Employer requests rush upgrade
     const reqResult = await requestRushUpgrade(employer.id, { contractId: contract.id, proposedPercentage: 30 });
     expect(reqResult.success).toBe(true);
     if (!reqResult.success) return;
     const requestId = reqResult.data.id;
 
-    // 2. Freelancer counter-offers
     const counterResult = await respondToRushUpgrade(freelancer.id, { requestId, action: 'counter_offer', counterPercentage: 20 });
     expect(counterResult.success).toBe(true);
     if (!counterResult.success) return;
     expect((counterResult.data as any).status).toBe('counter_offered');
     expect((counterResult.data as any).counterPercentage).toBe(20);
 
-    // 3. Employer accepts counter-offer
     mockContractRepo.updateContract.mockResolvedValueOnce({ id: contract.id, rush_fee: 200, total_amount: 1200 });
     const acceptResult = await acceptCounterOffer(employer.id, requestId);
     expect(acceptResult.success).toBe(true);
@@ -724,7 +719,6 @@ describe('rush-upgrade-service - additional coverage', () => {
     const result = await requestRushUpgrade(employer.id, {
       contractId: contract.id, proposedPercentage: 25,
     });
-    // Should still succeed despite notification failure
     expect(result.success).toBe(true);
   });
 
@@ -811,7 +805,6 @@ describe('rush-upgrade-service - Coverage Gaps', () => {
       const result = await requestRushUpgrade(employer.id, {
         contractId: contract.id, proposedPercentage: 25,
       });
-      // Should still succeed despite notification failure
       expect(result.success).toBe(true);
     });
   });

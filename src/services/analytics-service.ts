@@ -68,7 +68,6 @@ export async function getFreelancerAnalytics(
   try {
     const { startDate, endDate } = options;
 
-    // Get completed contracts for this freelancer
     const contractsResponse = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.CONTRACTS,
@@ -79,7 +78,6 @@ export async function getFreelancerAnalytics(
       ]
     );
 
-    // Filter by date range in memory
     let contracts = contractsResponse.documents;
     if (startDate) {
       contracts = contracts.filter(c => new Date(c.created_at) >= new Date(startDate));
@@ -88,11 +86,9 @@ export async function getFreelancerAnalytics(
       contracts = contracts.filter(c => new Date(c.created_at) <= new Date(endDate));
     }
 
-    // Calculate total earnings
     const totalEarnings = contracts.reduce((sum, c) => sum + Number(c.total_amount || 0), 0);
     const projectsCompleted = contracts.length;
 
-    // Get average rating
     const reviewsResponse = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.REVIEWS,
@@ -107,7 +103,6 @@ export async function getFreelancerAnalytics(
       ? reviews.reduce((sum, r) => sum + (r.rating || 0), 0) / reviews.length
       : 0;
 
-    // Get proposal acceptance rate
     const proposalsResponse = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.PROPOSALS,
@@ -148,7 +143,6 @@ export async function getEmployerAnalytics(
   try {
     const { startDate, endDate } = options;
 
-    // Projects posted
     const postedResponse = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.PROJECTS,
@@ -171,7 +165,6 @@ export async function getEmployerAnalytics(
     /* istanbul ignore next -- tested via getEmployerAnalytics with zero projects */
     const averageProjectBudget = projectsPosted > 0 ? totalBudget / projectsPosted : 0;
 
-    // Completed contracts (spending)
     const contractsResponse = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.CONTRACTS,
@@ -214,7 +207,6 @@ export async function getEmployerAnalytics(
  * Get platform metrics
  */
 export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetrics>> {
-  // Check cache first
   const cached = platformMetricsCache.get('platform_metrics');
   if (cached) {
     return successResult(cached);
@@ -245,7 +237,6 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
     const totalContracts = contractsResponse.total;
     const completedContracts = completedContractsResponse.total;
 
-    // Calculate total transaction volume from completed contracts
     const completedDocs = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.CONTRACTS,
@@ -280,7 +271,6 @@ export async function getPlatformMetrics(): Promise<ServiceResult<PlatformMetric
       completionRate: Math.round(completionRate * 10) / 10,
     };
 
-    // Cache the result
     platformMetricsCache.set('platform_metrics', data);
 
     return successResult(data);
@@ -322,7 +312,6 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
       (sum, c) => sum + Number(c.total_amount || 0) * 0.05, 0
     );
 
-    // Calculate user growth (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
@@ -375,14 +364,12 @@ export async function getAdminAnalytics(): Promise<ServiceResult<AdminAnalytics>
  * Get skill trends
  */
 export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
-  // Check cache first
   const cached = skillTrendsCache.get('skill_trends');
   if (cached) {
     return successResult(cached);
   }
 
   try {
-    // Fetch all open projects and compute skill trends in memory
     const response = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.PROJECTS,
@@ -395,7 +382,6 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // Extract skill usage from projects
     const skillMap = new Map<string, {
       projectCount: number;
       totalBudget: number;
@@ -428,7 +414,6 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
       }
     }
 
-    // Convert to SkillTrend array
     const data: SkillTrend[] = Array.from(skillMap.entries())
       .map(([skillName, stats]) => {
         /* istanbul ignore next -- skill in skillMap always has projectCount>0; :0 is structurally unreachable */
@@ -459,7 +444,6 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
       .sort((a, b) => b.projectCount - a.projectCount)
       .slice(0, 20);
 
-    // Cache the result
     skillTrendsCache.set('skill_trends', data);
 
     return successResult(data);
@@ -469,7 +453,6 @@ export async function getSkillTrends(): Promise<ServiceResult<SkillTrend[]>> {
   }
 }
 
-// Helper functions
 
 function calculateEarningsByMonth(contracts: Models.DefaultDocument[]): { month: string; amount: number }[] {
   const monthMap = new Map<string, number>();
@@ -505,7 +488,6 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
   try {
     const idField = userType === 'freelancer' ? 'freelancer_id' : 'employer_id';
 
-    // Fetch completed contracts for this user
     const contractsResponse = await databases.listDocuments(
       DATABASE_ID,
       COLLECTIONS.CONTRACTS,
@@ -520,7 +502,6 @@ async function calculateTopSkills(userId: string, userType: 'freelancer' | 'empl
       return [];
     }
 
-    // Fetch projects for these contracts
     const projectIds = contractsResponse.documents.map(c => c.project_id);
     const skillMap = new Map<string, number>();
 

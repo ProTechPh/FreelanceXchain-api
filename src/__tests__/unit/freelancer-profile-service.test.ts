@@ -9,7 +9,6 @@ import { createTestUser } from '../helpers/test-data-factory.js';
 
 const resolveModule = (modulePath: string) => path.resolve(process.cwd(), modulePath);
 
-// Create mocks using shared factories
 const profileStore = createInMemoryStore();
 const skillStore = createInMemoryStore();
 const mockProfileRepo = createMockFreelancerProfileRepository(profileStore as any);
@@ -35,7 +34,6 @@ jest.unstable_mockModule(resolveModule('src/services/didit-kyc-service.ts'), () 
   getProfileDataFromKyc: mockGetProfileDataFromKyc,
 }));
 
-// Import after mocking
 const {
   createProfile,
   getProfileByUserId,
@@ -128,17 +126,14 @@ describe('Freelancer Profile Service - Profile Properties', () => {
         async (userId, profileInput) => {
           mockProfileRepo.clear();
 
-          // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
           if (!createResult.success) return;
 
-          // Retrieve profile
           const getResult = await getProfileByUserId(userId);
           expect(getResult.success).toBe(true);
           if (!getResult.success) return;
 
-          // Verify data persistence
           expect(getResult.data.userId).toBe(userId);
           expect(getResult.data.bio).toBe(profileInput.bio);
           expect(getResult.data.hourlyRate).toBe(profileInput.hourlyRate);
@@ -166,11 +161,9 @@ describe('Freelancer Profile Service - Profile Properties', () => {
         async (userId, initialInput, updateInput) => {
           mockProfileRepo.clear();
 
-          // Create profile
           const createResult = await createProfile(userId, initialInput);
           expect(createResult.success).toBe(true);
 
-          // Update profile
           const updateResult = await updateProfile(userId, {
             bio: updateInput.bio,
             hourlyRate: updateInput.hourlyRate,
@@ -179,7 +172,6 @@ describe('Freelancer Profile Service - Profile Properties', () => {
           expect(updateResult.success).toBe(true);
           if (!updateResult.success) return;
 
-          // Retrieve and verify
           const getResult = await getProfileByUserId(userId);
           expect(getResult.success).toBe(true);
           if (!getResult.success) return;
@@ -222,11 +214,9 @@ describe('Freelancer Profile Service - Skill Properties', () => {
         async (userId, profileInput, skillInputs) => {
           mockProfileRepo.clear();
 
-          // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
 
-          // Add skills
           const addResult = await addSkillsToProfile(userId, skillInputs);
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
@@ -238,7 +228,6 @@ describe('Freelancer Profile Service - Skill Properties', () => {
             ).values()
           );
 
-          // Verify all unique skills were added
           expect(addResult.data.skills.length).toBe(uniqueSkills.length);
           for (const input of uniqueSkills) {
             const found = addResult.data.skills.find(
@@ -267,19 +256,15 @@ describe('Freelancer Profile Service - Skill Properties', () => {
         async (userId, profileInput, skillName, yearsExp1, yearsExp2) => {
           mockProfileRepo.clear();
 
-          // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
 
-          // Add skill first time
           await addSkillsToProfile(userId, [{ name: skillName, yearsOfExperience: yearsExp1 }]);
 
-          // Add same skill again with different years (exact same name)
           const addResult = await addSkillsToProfile(userId, [{ name: skillName, yearsOfExperience: yearsExp2 }]);
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
 
-          // Should only have one skill (updated)
           expect(addResult.data.skills.length).toBe(1);
           expect(addResult.data.skills[0]?.yearsOfExperience).toBe(yearsExp2);
         }
@@ -313,11 +298,9 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
         async (userId, profileInput, expInput, dateRange) => {
           mockProfileRepo.clear();
 
-          // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
 
-          // Add experience with valid date range
           const addResult = await addExperience(userId, {
             ...expInput,
             startDate: dateRange.startDate,
@@ -326,7 +309,6 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
           expect(addResult.success).toBe(true);
           if (!addResult.success) return;
 
-          // Verify experience was added
           expect(addResult.data.experience.length).toBe(1);
           const exp = addResult.data.experience[0];
           expect(exp?.title).toBe(expInput.title);
@@ -352,11 +334,9 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
         async (userId, profileInput, expInput, dateRange) => {
           mockProfileRepo.clear();
 
-          // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
 
-          // Try to add experience with invalid date range (start > end)
           const addResult = await addExperience(userId, {
             ...expInput,
             startDate: dateRange.startDate,
@@ -385,7 +365,6 @@ describe('Freelancer Profile Service - Work Experience Properties', () => {
         async (userId, profileInput, expInput, startDate) => {
           mockProfileRepo.clear();
 
-          // Create profile
           const createResult = await createProfile(userId, profileInput);
           expect(createResult.success).toBe(true);
 
@@ -506,7 +485,6 @@ describe('freelancer-profile-service – branch coverage', () => {
     });
 
     const { updateExperience } = await import(resolveModule('src/services/freelancer-profile-service.ts'));
-    // Set start_date after end_date
     const result = await updateExperience('u1', 'exp1', { startDate: '2026-01-01' });
     expect(result.success).toBe(false);
     if (!result.success) {

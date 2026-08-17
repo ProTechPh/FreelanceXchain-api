@@ -1,9 +1,3 @@
-/**
- * Milestone Registry Blockchain Service
- * Records milestone completions on-chain for verifiable work history
- *
- * for persistent storage instead of in-memory Maps.
- */
 
 import {
   submitTransaction,
@@ -74,9 +68,6 @@ export function generateWorkHash(deliverables: string): string {
   return '0x' + createHash('sha256').update(deliverables).digest('hex');
 }
 
-/**
- * Submit milestone to blockchain registry
- */
 export async function submitMilestoneToRegistry(
   input: SubmitMilestoneInput
 ): Promise<{ record: BlockchainMilestoneRecord; receipt: TransactionReceipt }> {
@@ -84,7 +75,6 @@ export async function submitMilestoneToRegistry(
   const contractIdHash = '0x' + createHash('sha256').update(input.contractId).digest('hex');
   const workHash = generateWorkHash(input.deliverables);
 
-  // Check if already exists
   const existing = await blockchainMilestoneRecordRepository.findByMilestoneIdHash(milestoneIdHash);
 
   if (existing) {
@@ -127,7 +117,6 @@ export async function submitMilestoneToRegistry(
     blockNumber: confirmed.blockNumber!,
   };
 
-  // Persist to DB
   await blockchainMilestoneRecordRepository.createMilestoneRecord({
     id: milestoneIdHash,
     milestone_id_hash: record.milestoneIdHash,
@@ -155,9 +144,6 @@ export async function submitMilestoneToRegistry(
   };
 }
 
-/**
- * Approve milestone on blockchain
- */
 export async function approveMilestoneOnRegistry(
   milestoneId: string,
   approverWallet: string
@@ -186,7 +172,6 @@ export async function approveMilestoneOnRegistry(
 
   const now = Date.now();
 
-  // Update in DB
   await blockchainMilestoneRecordRepository.updateMilestoneRecord(entity.id, {
     status: 'approved',
     completed_at: now,
@@ -211,9 +196,6 @@ export async function approveMilestoneOnRegistry(
   };
 }
 
-/**
- * Reject milestone on blockchain
- */
 export async function rejectMilestoneOnRegistry(
   milestoneId: string,
   rejecterWallet: string,
@@ -239,7 +221,6 @@ export async function rejectMilestoneOnRegistry(
   const confirmed = await confirmTransaction(tx.id);
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
-  // Update in DB
   await blockchainMilestoneRecordRepository.updateMilestoneRecord(entity.id, {
     status: 'rejected',
     transaction_hash: confirmed.hash!,
@@ -262,9 +243,6 @@ export async function rejectMilestoneOnRegistry(
   };
 }
 
-/**
- * Get milestone record from blockchain
- */
 export async function getMilestoneFromRegistry(milestoneId: string): Promise<BlockchainMilestoneRecord | null> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
   const entity = await blockchainMilestoneRecordRepository.findByMilestoneIdHash(milestoneIdHash);
@@ -273,9 +251,6 @@ export async function getMilestoneFromRegistry(milestoneId: string): Promise<Blo
   return entityToRecord(entity);
 }
 
-/**
- * Get freelancer stats from blockchain (derived via in-memory computation)
- */
 export async function getFreelancerStatsFromRegistry(walletAddress: string): Promise<FreelancerStats> {
   const allMilestones = await blockchainMilestoneRecordRepository.findByWallet(walletAddress);
 
@@ -293,9 +268,6 @@ export async function getFreelancerStatsFromRegistry(walletAddress: string): Pro
   };
 }
 
-/**
- * Get freelancer's completed milestones (portfolio)
- */
 export async function getFreelancerPortfolio(walletAddress: string): Promise<BlockchainMilestoneRecord[]> {
   const allMilestones = await blockchainMilestoneRecordRepository.findByWallet(walletAddress);
   return allMilestones
@@ -304,9 +276,6 @@ export async function getFreelancerPortfolio(walletAddress: string): Promise<Blo
     .map(entityToRecord);
 }
 
-/**
- * Verify work hash matches on-chain record
- */
 export async function verifyMilestoneWork(milestoneId: string, deliverables: string): Promise<boolean> {
   const milestoneIdHash = generateMilestoneIdHash(milestoneId);
   

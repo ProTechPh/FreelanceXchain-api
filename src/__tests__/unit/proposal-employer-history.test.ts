@@ -14,7 +14,6 @@ import {
   createTestEmployerProfile
 } from '../helpers/test-data-factory.js';
 
-// Create stores and mocks
 const proposalStore = createInMemoryStore();
 const projectStore = createInMemoryStore();
 const contractStore = createInMemoryStore();
@@ -55,7 +54,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/review-repository.ts'),
   reviewRepository: mockReviewRepo,
 }));
 
-// Import after mocking
 const { getProposalWithEmployerHistory } = await import('../../services/proposal-service.js');
 
 describe('Proposal Employer History - Unit Tests', () => {
@@ -82,7 +80,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     employerProfileStore.set(employerId, employerProfile); // Store by user_id
 
-    // Create project
     const project = createTestProject({
       id: projectId,
       employer_id: employerId,
@@ -91,7 +88,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     projectStore.set(project.id, project);
 
-    // Create proposal
     const proposal = createTestProposal({
       id: proposalId,
       project_id: projectId,
@@ -101,7 +97,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    // Create completed contracts for employer
     const completedContract1 = createTestContract({
       id: 'contract-1',
       employer_id: employerId,
@@ -121,7 +116,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     contractStore.set(completedContract2.id, completedContract2);
     contractStore.set(activeContract.id, activeContract);
 
-    // Mock review rating
     mockReviewRepo.getAverageRating.mockResolvedValue({
       average: 4.7,
       count: 12,
@@ -131,15 +125,12 @@ describe('Proposal Employer History - Unit Tests', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      // Verify proposal data
       expect(result.data.proposal.id).toBe(proposalId);
       expect(result.data.proposal.freelancerId).toBe(freelancerId);
 
-      // Verify project data
       expect(result.data.project.id).toBe(projectId);
       expect(result.data.project.title).toBe('E-commerce Website');
 
-      // Verify employer history
       expect(result.data.employerHistory).toBeDefined();
       expect(result.data.employerHistory.completedProjectsCount).toBe(2);
       expect(result.data.employerHistory.averageRating).toBe(4.7);
@@ -148,7 +139,6 @@ describe('Proposal Employer History - Unit Tests', () => {
       expect(result.data.employerHistory.industry).toBe('Technology');
     }
 
-    // Verify getAverageRating was called with correct employer ID
     expect(mockReviewRepo.getAverageRating).toHaveBeenCalledWith(employerId);
   });
 
@@ -166,7 +156,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     employerProfileStore.set(employerId, employerProfile); // Store by user_id
 
-    // Create project
     const project = createTestProject({
       id: projectId,
       employer_id: employerId,
@@ -174,7 +163,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     projectStore.set(project.id, project);
 
-    // Create proposal
     const proposal = createTestProposal({
       id: proposalId,
       project_id: projectId,
@@ -208,13 +196,11 @@ describe('Proposal Employer History - Unit Tests', () => {
     const projectId = 'project-789';
     const proposalId = 'proposal-001';
 
-    // Create employer profile
     const employerProfile = createTestEmployerProfile({
       user_id: employerId,
     });
     employerProfileStore.set(employerProfile.id, employerProfile);
 
-    // Create project
     const project = createTestProject({
       id: projectId,
       employer_id: employerId,
@@ -222,7 +208,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     projectStore.set(project.id, project);
 
-    // Create proposal
     const proposal = createTestProposal({
       id: proposalId,
       project_id: projectId,
@@ -231,7 +216,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    // Create various contract statuses
     const completedContract = createTestContract({
       id: 'contract-completed',
       employer_id: employerId,
@@ -258,7 +242,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     contractStore.set(disputedContract.id, disputedContract);
     contractStore.set(cancelledContract.id, cancelledContract);
 
-    // Mock review rating
     mockReviewRepo.getAverageRating.mockResolvedValue({
       average: 4.5,
       count: 5,
@@ -279,13 +262,11 @@ describe('Proposal Employer History - Unit Tests', () => {
     const projectId = 'project-789';
     const proposalId = 'proposal-001';
 
-    // Create employer profile
     const employerProfile = createTestEmployerProfile({
       user_id: employerId,
     });
     employerProfileStore.set(employerProfile.id, employerProfile);
 
-    // Create project
     const project = createTestProject({
       id: projectId,
       employer_id: employerId,
@@ -293,7 +274,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     projectStore.set(project.id, project);
 
-    // Create proposal
     const proposal = createTestProposal({
       id: proposalId,
       project_id: projectId,
@@ -302,7 +282,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    // Mock review rating with many decimal places
     mockReviewRepo.getAverageRating.mockResolvedValue({
       average: 4.666666666666667,
       count: 3,
@@ -312,7 +291,6 @@ describe('Proposal Employer History - Unit Tests', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      // Should be rounded to 1 decimal place
       expect(result.data.employerHistory.averageRating).toBe(4.7);
     }
   });
@@ -330,7 +308,6 @@ describe('Proposal Employer History - Unit Tests', () => {
   it('should return error if project not found', async () => {
     const proposalId = 'proposal-001';
 
-    // Create proposal without project
     const proposal = createTestProposal({
       id: proposalId,
       project_id: 'non-existent-project',
@@ -362,7 +339,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     employerProfileStore.set(employerId, employerProfile); // Store by user_id
 
-    // Create project
     const project = createTestProject({
       id: projectId,
       employer_id: employerId,
@@ -370,7 +346,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     projectStore.set(project.id, project);
 
-    // Create proposal
     const proposal = createTestProposal({
       id: proposalId,
       project_id: projectId,
@@ -389,7 +364,6 @@ describe('Proposal Employer History - Unit Tests', () => {
       contractStore.set(contract.id, contract);
     }
 
-    // Mock high rating
     mockReviewRepo.getAverageRating.mockResolvedValue({
       average: 4.9,
       count: 20,
@@ -412,7 +386,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     const projectId = 'project-789';
     const proposalId = 'proposal-001';
 
-    // Create employer profile
     const employerProfile = createTestEmployerProfile({
       user_id: employerId,
       company_name: 'Problematic Inc.',
@@ -420,7 +393,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     employerProfileStore.set(employerProfile.id, employerProfile);
 
-    // Create project
     const project = createTestProject({
       id: projectId,
       employer_id: employerId,
@@ -428,7 +400,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     projectStore.set(project.id, project);
 
-    // Create proposal
     const proposal = createTestProposal({
       id: proposalId,
       project_id: projectId,
@@ -437,7 +408,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    // Create some completed contracts
     const contract1 = createTestContract({
       id: 'contract-1',
       employer_id: employerId,
@@ -451,7 +421,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     contractStore.set(contract1.id, contract1);
     contractStore.set(contract2.id, contract2);
 
-    // Mock low rating
     mockReviewRepo.getAverageRating.mockResolvedValue({
       average: 2.3,
       count: 8,
@@ -476,7 +445,6 @@ describe('Proposal Employer History - Unit Tests', () => {
 
     // No employer profile created
 
-    // Create project
     const project = createTestProject({
       id: projectId,
       employer_id: employerId,
@@ -484,7 +452,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     projectStore.set(project.id, project);
 
-    // Create proposal
     const proposal = createTestProposal({
       id: proposalId,
       project_id: projectId,
@@ -493,7 +460,6 @@ describe('Proposal Employer History - Unit Tests', () => {
     });
     proposalStore.set(proposal.id, proposal);
 
-    // Mock review rating
     mockReviewRepo.getAverageRating.mockResolvedValue({
       average: 4.0,
       count: 2,
@@ -503,10 +469,8 @@ describe('Proposal Employer History - Unit Tests', () => {
 
     expect(result.success).toBe(true);
     if (result.success) {
-      // Should handle missing profile gracefully
       expect(result.data.employerHistory.companyName).toBeUndefined();
       expect(result.data.employerHistory.industry).toBeUndefined();
-      // But other data should still be present
       expect(result.data.employerHistory.averageRating).toBe(4.0);
       expect(result.data.employerHistory.reviewCount).toBe(2);
     }

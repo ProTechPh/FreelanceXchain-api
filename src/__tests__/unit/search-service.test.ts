@@ -11,7 +11,6 @@ import {
   createTestFreelancerProfile
 } from '../helpers/test-data-factory.js';
 
-// Create stores and mocks using shared utilities
 const projectStore = createInMemoryStore();
 const freelancerStore = createInMemoryStore();
 
@@ -30,7 +29,6 @@ jest.unstable_mockModule(resolveModule('src/repositories/freelancer-profile-repo
   freelancerProfileRepository: mockFreelancerRepo,
 }));
 
-// Import after mocking
 const {
   searchProjects,
   searchFreelancers,
@@ -234,7 +232,6 @@ describe('Search Service - Unit Tests', () => {
 
   describe('pagination', () => {
     it('should paginate search results', async () => {
-      // Create 15 projects
       for (let i = 0; i < 15; i++) {
         const project = createTestProject({ 
           title: `Project ${i}`,
@@ -261,7 +258,6 @@ describe('Search Service - Unit Tests', () => {
       expect(page2.data.metadata.hasMore).toBe(true);
       expect(page3.data.metadata.hasMore).toBe(false);
 
-      // Verify no overlap
       const page1Ids = page1.data.items.map(p => p.id);
       const page2Ids = page2.data.items.map(p => p.id);
       const page3Ids = page3.data.items.map(p => p.id);
@@ -271,7 +267,6 @@ describe('Search Service - Unit Tests', () => {
     });
 
     it('should use default page size when not specified', async () => {
-      // Create 25 projects
       for (let i = 0; i < 25; i++) {
         const project = createTestProject({ 
           title: `Test Project ${i}`

@@ -353,6 +353,12 @@ describe('MessageRepository - mapMessage attachments parsing', () => {
 describe('MessageRepository - Additional Branch Coverage', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  it('getUnreadMessageCountForUser returns the unread total', async () => {
+    mockDatabases.listDocuments.mockResolvedValueOnce({ documents: [], total: 4 });
+    const result = await messageRepository.getUnreadMessageCountForUser('u1');
+    expect(result).toBe(4);
+  });
+
   it('findConversation returns conversation from second query (reversed participants)', async () => {
     mockDatabases.listDocuments
       .mockResolvedValueOnce({ documents: [], total: 0 })

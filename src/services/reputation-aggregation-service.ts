@@ -175,19 +175,16 @@ export async function getReputationBreakdown(userId: string): Promise<ServiceRes
       });
     }
 
-    // Compute star distribution in memory
     const fiveStars = reviews.filter(r => r.rating === 5).length;
     const fourStars = reviews.filter(r => r.rating === 4).length;
     const threeStars = reviews.filter(r => r.rating === 3).length;
     const twoStars = reviews.filter(r => r.rating === 2).length;
     const oneStar = reviews.filter(r => r.rating === 1).length;
 
-    // Get 10 most recent reviews with user/project info
     const recentReviews = [...reviews]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 10);
 
-    // Fetch reviewer names and project titles for recent reviews
     const recentRatings = await Promise.all(
       recentReviews.map(async r => {
         let reviewerName = 'Anonymous';
@@ -251,7 +248,6 @@ export async function getReputationHistory(
       return successResult([]);
     }
 
-    // Group by month
     const monthlyData = new Map<string, { sum: number; count: number }>();
 
     reviews.forEach(review => {
@@ -264,7 +260,6 @@ export async function getReputationHistory(
       monthlyData.set(monthKey, existing);
     });
 
-    // Convert to array
     const history = Array.from(monthlyData.entries()).map(([month, data]) => ({
       month,
       averageRating: Math.round((data.sum / data.count) * 10) / 10,
@@ -285,11 +280,9 @@ export async function getReputationLeaderboard(
   limit: number = 10
 ): Promise<ServiceResult<Array<{ userId: string; userName: string; averageRating: number; totalRatings: number }>>> {
   try {
-    // Fetch all reviews and aggregate in memory
     // (Appwrite doesn't support GROUP BY queries)
     const allReviews = await reviewRepository.listAll();
 
-    // Group by reviewee_id
     const userStats = new Map<string, { sum: number; count: number }>();
     for (const review of allReviews) {
       const revieweeId = review.reviewee_id;
@@ -313,7 +306,6 @@ export async function getReputationLeaderboard(
       .sort((a, b) => b.averageRating - a.averageRating || b.totalRatings - a.totalRatings)
       .slice(0, limit);
 
-    // Fetch user names
     const leaderboard = await Promise.all(
       candidates.map(async (entry) => {
         const user = await userRepository.getUserById(entry.userId);

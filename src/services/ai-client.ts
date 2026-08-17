@@ -19,12 +19,10 @@ import {
 } from './ai-types.js';
 import { generateId } from '../utils/id.js';
 
-// Constants
 const MAX_RETRIES = 3;
 const INITIAL_RETRY_DELAY_MS = 1000;
 const REQUEST_TIMEOUT_MS = 300000; // 300 seconds (5 minutes) for LLM responses (can be slow)
 
-// Prompt templates
 export const SKILL_MATCH_PROMPT = `
 You are a skill matching assistant. Given a freelancer's skills and a project's required skills, identify which of the freelancer's skills match the project requirements.
 
@@ -318,7 +316,6 @@ export function parseJsonResponse<T>(text: string, label = 'AI'): T | null {
       }
     }
 
-    // First try direct parse
     try {
       const result = JSON.parse(cleanText) as T;
       return result;
@@ -420,7 +417,6 @@ export async function analyzeSkillMatch(
     };
   }
 
-  // Validate and normalize the result
   const freelancerSkillNames = request.freelancerSkills.reduce<string[]>((acc, s) => {
     if (s.skillName) acc.push(s.skillName.toLowerCase());
     return acc;
@@ -444,7 +440,6 @@ export async function analyzeSkillMatch(
     return acc;
   }, []);
 
-  // Recalculate score from validated data
   const calculatedScore = requiredSkillNames.length > 0
     ? Math.round((validatedMatchedSkills.length / requiredSkillNames.length) * 100)
     : 0;
@@ -487,7 +482,6 @@ export async function extractSkills(
     };
   }
 
-  // Validate and normalize results
   return result.reduce<ExtractedSkill[]>((acc, skill) => {
     if (skill.skillId && skill.skillName) {
       acc.push({
@@ -552,7 +546,6 @@ export function keywordExtractSkills(
   for (const skill of availableSkills) {
     const skillNameLower = skill.skillName.toLowerCase();
     if (lowerText.includes(skillNameLower)) {
-      // Calculate confidence based on exact match vs partial
       const exactMatch = new RegExp(`\\b${skillNameLower}\\b`, 'i').test(text);
       extracted.push({
         skillId: skill.skillId,
@@ -566,7 +559,6 @@ export function keywordExtractSkills(
 }
 
 
-// Serialization functions for round-trip testing
 
 /**
  * Serialize AI request to JSON string

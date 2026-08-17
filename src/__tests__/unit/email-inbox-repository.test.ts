@@ -142,8 +142,10 @@ describe('EmailInboxRepository', () => {
 
     it('should filter by isRead when provided', async () => {
       mockListDocuments.mockResolvedValueOnce({ documents: [], total: 0 });
-      const result = await repo.listByUserFolder('u1', 'inbox', 20, 0, false);
+      const result = await repo.listByUserFolder('u1', { folder: 'inbox', isRead: false });
       expect(result.items).toHaveLength(0);
+      const queries = mockListDocuments.mock.calls[0][2] as any[];
+      expect(queries.some(q => q.type === 'equal' && q.args[1] === false)).toBe(true);
     });
 
     it('should use default limit and offset', async () => {

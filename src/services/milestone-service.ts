@@ -140,7 +140,6 @@ export async function rejectMilestone(
         return errorResult('UNAUTHORIZED', 'Only the contract employer can reject this milestone');
       }
 
-      // Check if milestone can be rejected
       if (milestone.status !== 'submitted') {
         return errorResult('INVALID_STATUS', `Cannot reject milestone with status "${milestone.status}"`);
       }
@@ -188,7 +187,6 @@ export async function rejectMilestone(
         logger.info(`Dispute record created for rejected milestone ${input.milestoneId}`, { disputeId });
       }
 
-      // Create notification for freelancer
       const notificationResult = await createNotification({
         userId: contract.freelancer_id,
         type: 'milestone_rejected',

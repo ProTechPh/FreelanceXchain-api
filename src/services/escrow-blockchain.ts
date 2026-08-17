@@ -48,7 +48,6 @@ export async function deployEscrowContract(
   const wallet = getWallet();
   const factory = new ContractFactory(FreelanceEscrowABI, FreelanceEscrowBytecode, wallet);
 
-  // Deploy contract with constructor parameters and send funds
   const contract = await factory.deploy(
     params.freelancerAddress,
     params.arbiterAddress,

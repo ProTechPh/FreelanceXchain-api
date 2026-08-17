@@ -21,7 +21,6 @@ if (!DIDIT_API_KEY) {
   logger.warn('DIDIT_API_KEY not configured. KYC verification will not work.');
 }
 
-// Validate the Didit API URL on startup
 const urlValidation = validateUrl(DIDIT_API_URL);
 /* istanbul ignore if */
 if (!urlValidation.valid) {
@@ -180,7 +179,6 @@ export async function getVerificationSession(sessionId: string): Promise<DiditCl
       return { success: false, error: errorData };
     }
 
-    // Check if response is JSON
     const contentType = response.headers.get('content-type');
     if (!contentType || !contentType.includes('application/json')) {
       const responseText = await response.text();

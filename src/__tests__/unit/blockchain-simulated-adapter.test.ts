@@ -232,6 +232,34 @@ describe('SimulatedBlockchainAdapter', () => {
     });
   });
 
+  describe('refundMilestone', () => {
+    it('should refund a single milestone by index', async () => {
+      mockGetEscrowState.mockResolvedValue(makeEscrowState());
+      mockRefundMilestone.mockResolvedValue(makeTxReceipt('refund-ms-tx'));
+
+      const result = await adapter.refundMilestone(ESCROW_ADDR, 0);
+      expect(mockRefundMilestone).toHaveBeenCalledWith(ESCROW_ADDR, 'ms-0', '0xEmployer');
+      expect(result.transactionHash).toBe('refund-ms-tx');
+    });
+
+    it('should throw when escrow not found', async () => {
+      mockGetEscrowState.mockResolvedValue(null);
+      await expect(adapter.refundMilestone(ESCROW_ADDR, 0)).rejects.toThrow('Escrow not found');
+    });
+
+    it('should throw when milestone index out of bounds', async () => {
+      mockGetEscrowState.mockResolvedValue(makeEscrowState());
+      await expect(adapter.refundMilestone(ESCROW_ADDR, 99)).rejects.toThrow('Milestone index out of bounds');
+    });
+
+    it('should throw when milestone at index is falsy', async () => {
+      mockGetEscrowState.mockResolvedValue(
+        makeEscrowState({ milestones: [null, { id: 'ms-1', amount: BigInt(500), status: 'pending' }] })
+      );
+      await expect(adapter.refundMilestone(ESCROW_ADDR, 0)).rejects.toThrow('Milestone not found');
+    });
+  });
+
   describe('getMilestone', () => {
     it('should return milestone info by index', async () => {
       mockGetEscrowState.mockResolvedValue(makeEscrowState());

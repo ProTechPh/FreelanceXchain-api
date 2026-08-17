@@ -20,11 +20,9 @@ import { databases, DATABASE_ID } from '../config/appwrite.js';
 import { ID, Query } from '../config/appwrite.js';
 import { withLock } from '../utils/async-lock.js';
 
-// Collection IDs for escrow storage
 const ESCROW_COLLECTION = 'blockchain_escrows';
 const MILESTONE_COLLECTION = 'blockchain_escrow_milestones';
 
-// Escrow state type
 type EscrowState = {
   address: string;
   contractId: string;
@@ -37,7 +35,6 @@ type EscrowState = {
   deploymentTxHash: string;
 };
 
-// Appwrite document types
 type EscrowDoc = {
   $id: string;
   address: string;
@@ -97,7 +94,6 @@ async function loadEscrow(address: string): Promise<EscrowState | null> {
 }
 
 async function saveEscrow(escrow: EscrowState): Promise<void> {
-  // Upsert escrow document
   const existing = await databases.listDocuments(
     DATABASE_ID,
     ESCROW_COLLECTION,
@@ -134,7 +130,6 @@ async function saveEscrow(escrow: EscrowState): Promise<void> {
     );
   }
 
-  // Save milestones
   await Promise.all(escrow.milestones.map(async (m) => {
     const existingMilestone = await databases.listDocuments(
       DATABASE_ID,
@@ -175,10 +170,8 @@ async function saveEscrow(escrow: EscrowState): Promise<void> {
  * Creates a smart contract to hold funds for a project
  */
 export async function deployEscrow(params: EscrowParams): Promise<EscrowDeployment> {
-  // Generate escrow contract address
   const escrowAddress = generateWalletAddress();
 
-  // Submit deployment transaction
   const tx = await submitTransaction({
     type: 'escrow_deploy',
     from: params.employerAddress,
@@ -195,7 +188,6 @@ export async function deployEscrow(params: EscrowParams): Promise<EscrowDeployme
   // Confirm the transaction (in production, would wait for blockchain confirmation)
   await confirmTransaction(tx.id);
 
-  // Store escrow state in Appwrite
   const escrowState: EscrowState = {
     address: escrowAddress,
     contractId: params.contractId,
@@ -242,7 +234,6 @@ export async function depositToEscrow(
       throw new Error('Only employer can deposit to escrow');
     }
 
-    // Submit deposit transaction
     const tx = await submitTransaction({
       type: 'escrow_deposit',
       from: fromAddress,
@@ -253,13 +244,11 @@ export async function depositToEscrow(
       },
     });
 
-    // Confirm the transaction
     const confirmed = await confirmTransaction(tx.id);
     if (!confirmed) {
       throw new Error('Failed to confirm deposit transaction');
     }
 
-    // Update escrow balance in Appwrite
     escrow.balance += amount;
     await saveEscrow(escrow);
 
@@ -310,7 +299,6 @@ export async function releaseMilestone(
       throw new Error('Insufficient escrow balance');
     }
 
-    // Submit release transaction
     const tx = await submitTransaction({
       type: 'milestone_release',
       from: escrowAddress,
@@ -322,13 +310,11 @@ export async function releaseMilestone(
       },
     });
 
-    // Confirm the transaction
     const confirmed = await confirmTransaction(tx.id);
     if (!confirmed) {
       throw new Error('Failed to confirm release transaction');
     }
 
-    // Update escrow state in Appwrite
     milestone.status = 'released';
     escrow.balance -= milestone.amount;
     await saveEscrow(escrow);
@@ -401,7 +387,6 @@ export async function resolveDisputeSplit(
     const freelancerAmt = (milestone.amount * BigInt(freelancerBps)) / BigInt(10000);
     const employerAmt = milestone.amount - freelancerAmt;
 
-    // Submit release transaction to freelancer
     const releaseTx = await submitTransaction({
       type: 'milestone_release',
       from: escrowAddress,
@@ -415,13 +400,11 @@ export async function resolveDisputeSplit(
       },
     });
 
-    // Confirm the transaction
     const releaseConfirmed = await confirmTransaction(releaseTx.id);
     if (!releaseConfirmed) {
       throw new Error('Failed to confirm release transaction');
     }
 
-    // Submit refund transaction to employer
     const refundTx = await submitTransaction({
       type: 'refund',
       from: escrowAddress,
@@ -435,7 +418,6 @@ export async function resolveDisputeSplit(
       },
     });
 
-    // Confirm the transaction
     const refundConfirmed = await confirmTransaction(refundTx.id);
     if (!refundConfirmed) {
       throw new Error('Failed to confirm refund transaction');
@@ -494,7 +476,6 @@ export async function refundMilestone(
       throw new Error('Insufficient escrow balance');
     }
 
-    // Submit refund transaction
     const tx = await submitTransaction({
       type: 'refund',
       from: escrowAddress,
@@ -507,13 +488,11 @@ export async function refundMilestone(
       },
     });
 
-    // Confirm the transaction
     const confirmed = await confirmTransaction(tx.id);
     if (!confirmed) {
       throw new Error('Failed to confirm refund transaction');
     }
 
-    // Update escrow state in Appwrite
     milestone.status = 'refunded';
     escrow.balance -= milestone.amount;
     await saveEscrow(escrow);

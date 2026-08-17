@@ -1,7 +1,4 @@
 /**
- * Didit KYC Service
- * Business logic for KYC verification using Didit API
- * 
  * Note: Didit handles all verification data (documents, liveness, face match, IP analysis).
  * We only store session info and final decision locally.
  */
@@ -50,27 +47,20 @@ if (!DIDIT_WORKFLOW_ID) {
   logger.warn('DIDIT_WORKFLOW_ID not configured. Using default workflow.');
 }
 
-/**
- * Initiate KYC verification for a user
- */
 export async function initiateKycVerification(
   input: CreateKycVerificationInput
 ): Promise<ServiceResult<KycVerification>> {
-  // Check if user exists
   const user = await userRepository.getUserById(input.user_id);
   if (!user) {
     return errorResult('USER_NOT_FOUND', 'User not found');
   }
 
-  // Check if user already has a verification
   const existingKyc = await getKycVerificationByUserId(input.user_id);
 
-  // If already approved, don't allow retry
   if (existingKyc && existingKyc.status === 'approved') {
     return errorResult('ALREADY_VERIFIED', 'User is already verified');
   }
 
-  // Check cooldown for pending/in_progress/rejected/expired verifications
   if (existingKyc && ['pending', 'in_progress', 'rejected', 'expired'].includes(existingKyc.status)) {
     const createdAt = new Date(existingKyc.created_at);
     const now = new Date();
@@ -86,7 +76,6 @@ export async function initiateKycVerification(
       };
     }
 
-    // Cooldown passed, allow retry by creating new session
     logger.info('KYC retry allowed after cooldown', {
       userId: input.user_id,
       previousStatus: existingKyc.status,
@@ -94,7 +83,6 @@ export async function initiateKycVerification(
     });
   }
 
-  // Create Didit session
   const sessionResult = await createVerificationSession({
     workflow_id: DIDIT_WORKFLOW_ID ?? '',
     vendor_data: input.user_id,
@@ -109,7 +97,6 @@ export async function initiateKycVerification(
 
   let verification: KycVerification | null;
 
-  // Update existing record or create new one
   if (existingKyc) {
     verification = await updateKycVerification(existingKyc.id, {
       status: 'pending',
@@ -120,7 +107,6 @@ export async function initiateKycVerification(
       updated_at: new Date().toISOString(),
     });
   } else {
-    // Create new KYC verification record
     verification = await createKycVerification({
       id: generateId(),
       user_id: input.user_id,
@@ -139,9 +125,6 @@ export async function initiateKycVerification(
   return successResult(verification);
 }
 
-/**
- * Get KYC verification status for a user
- */
 export async function getKycStatus(userId: string): Promise<ServiceResult<KycVerification | null>> {
   try {
     const verification = await getKycVerificationByUserId(userId);
@@ -152,17 +135,11 @@ export async function getKycStatus(userId: string): Promise<ServiceResult<KycVer
   }
 }
 
-/**
- * Get KYC verification by ID
- */
 export async function getKycById(id: string): Promise<ServiceResult<KycVerification | null>> {
   const verification = await getKycVerificationById(id);
   return successResult(verification);
 }
 
-/**
- * Refresh verification status from Didit
- */
 export async function refreshVerificationStatus(
   verificationId: string
 ): Promise<ServiceResult<KycVerification>> {
@@ -171,7 +148,6 @@ export async function refreshVerificationStatus(
     return errorResult('VERIFICATION_NOT_FOUND', 'Verification not found');
   }
 
-  // Get latest status from Didit
   const sessionResult = await getVerificationSession(verification.didit_session_id);
   if (!sessionResult.success) {
     logger.error('Failed to get session details', { error: sessionResult.error });
@@ -181,7 +157,6 @@ export async function refreshVerificationStatus(
   const session = sessionResult.data;
   const status = mapDiditStatusToKycStatus(session.status);
 
-  // Update status if completed
   const updates: Partial<KycVerification> = { status };
   
   if (session.status === 'Completed') {
@@ -230,7 +205,6 @@ async function handleDuplicateWebhookEvent(payload: DiditWebhookPayload): Promis
 
   if (!processedWebhookEvents.has(payload.event_id)) {
     processedWebhookEvents.set(payload.event_id, Date.now());
-    // Periodic cleanup
     if (processedWebhookEvents.size > 1000) {
       cleanupProcessedEvents();
     }
@@ -252,19 +226,15 @@ function buildWebhookUpdates(payload: DiditWebhookPayload): { updates: Partial<K
 
   const updates: Partial<KycVerification> = { status };
 
-  // Variables to store KYC data for profile creation
   let firstName: string | null = null;
   let lastName: string | null = null;
   let nationality: string | null = null;
 
-  // Handle final statuses with decision data
   if (['Approved', 'Declined', 'In Review'].includes(payload.status)) {
     updates.completed_at = payload.timestamp ? new Date(payload.timestamp * 1000).toISOString() : new Date().toISOString();
 
-    // Map Didit status to our decision field
     if (payload.status === 'Approved') {
       updates.decision = 'approved';
-      // Set expiry date (1 year from completion)
       const expiryDate = new Date();
       expiryDate.setFullYear(expiryDate.getFullYear() + 1);
       updates.expires_at = expiryDate.toISOString();
@@ -274,7 +244,6 @@ function buildWebhookUpdates(payload: DiditWebhookPayload): { updates: Partial<K
       updates.decision = 'review';
     }
 
-    // Extract basic info from decision data
     if (payload.decision) {
       const idVerification = payload.decision.id_verifications?.[0];
       if (idVerification) {
@@ -292,21 +261,18 @@ function buildWebhookUpdates(payload: DiditWebhookPayload): { updates: Partial<K
         updates.document_verified = idVerification.status === 'Approved';
       }
 
-      // Extract liveness data
       const livenessCheck = payload.decision.liveness_checks?.[0];
       if (livenessCheck) {
         updates.liveness_passed = livenessCheck.status === 'Approved';
         updates.liveness_confidence_score = livenessCheck.score?.toString() ?? null;
       }
 
-      // Extract face match data
       const faceMatch = payload.decision.face_matches?.[0];
       if (faceMatch) {
         updates.face_matched = faceMatch.status === 'Approved';
         updates.face_similarity_score = faceMatch.score?.toString() ?? null;
       }
 
-      // Extract IP analysis data
       const ipAnalysis = payload.decision.ip_analyses?.[0];
       if (ipAnalysis) {
         updates.ip_address = ipAnalysis.ip_address ?? null;
@@ -320,9 +286,6 @@ function buildWebhookUpdates(payload: DiditWebhookPayload): { updates: Partial<K
   return { updates, firstName, lastName, nationality };
 }
 
-/**
- * Process webhook from Didit
- */
 export async function processWebhook(payload: DiditWebhookPayload): Promise<ServiceResult<KycVerification>> {
   // L4: Deduplicate webhook events — Didit uses at-least-once delivery. The event
   // map is a per-process fast path; the per-session lock below makes the
@@ -362,7 +325,6 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
     return errorResult('UPDATE_FAILED', 'Failed to update verification');
   }
 
-  // Auto-create profile when KYC is approved
   if (payload.status === 'Approved') {
     await autoCreateProfile(verification.user_id, firstName, lastName, nationality);
   }
@@ -387,7 +349,6 @@ export async function processWebhook(payload: DiditWebhookPayload): Promise<Serv
   // at-least-once delivery, so a retry must be able to complete the work.
   if (payload.event_id) {
     processedWebhookEvents.set(payload.event_id, Date.now());
-    // Periodic cleanup
     if (processedWebhookEvents.size > 1000) {
       cleanupProcessedEvents();
     }
@@ -431,18 +392,15 @@ async function syncKycNameToUserAndProfiles(
 
     const fullName = [firstName, lastName].filter(Boolean).join(' ') || user.name || 'User';
 
-    // Sync name to users table (KYC is source of truth)
     if (fullName && fullName !== 'User') {
       await userRepository.updateUserName(userId, fullName);
       logger.info('Synced KYC name to users table', { userId });
     }
 
     if (user.role === 'freelancer') {
-      // Check if profile already exists
       const existingProfile = await freelancerProfileRepository.getProfileByUserId(userId);
       if (existingProfile) {
         logger.info('Freelancer profile already exists', { userId });
-        // Update existing profile with KYC name
         await freelancerProfileRepository.updateProfile(existingProfile.id, {
           name: fullName,
           nationality: nationality,
@@ -451,7 +409,6 @@ async function syncKycNameToUserAndProfiles(
         return;
       }
 
-      // Create freelancer profile
       const bio = `Hi, I'm ${fullName}. I'm a verified freelancer ready to work on your projects.`;
       
       await freelancerProfileRepository.createProfile({
@@ -469,12 +426,10 @@ async function syncKycNameToUserAndProfiles(
       logger.info('Auto-created freelancer profile', { userId });
       
     } else if (user.role === 'employer') {
-      // Check if profile already exists
       const existingProfile = await employerProfileRepository.getProfileByUserId(userId);
       if (existingProfile) {
         /* istanbul ignore next */
         logger.info('Employer profile already exists', { userId });
-        // Update existing profile with KYC name
         await employerProfileRepository.updateProfile(existingProfile.id, {
           name: fullName,
           nationality: nationality,
@@ -485,7 +440,6 @@ async function syncKycNameToUserAndProfiles(
         return;
       }
 
-      // Create employer profile
       const description = `Verified employer: ${fullName}. Looking for talented freelancers.`;
       
       await employerProfileRepository.createProfile({
@@ -507,10 +461,6 @@ async function syncKycNameToUserAndProfiles(
   }
 }
 
-/**
- * Get KYC data formatted for profile creation
- * Returns basic info that can be used to pre-populate profile
- */
 export async function getProfileDataFromKyc(userId: string): Promise<ServiceResult<ProfileDataFromKyc | null>> {
   const verification = await getKycVerificationByUserId(userId);
   
@@ -543,9 +493,6 @@ type ProfileDataFromKyc = {
   kyc_verified_at: string | null;
 };
 
-/**
- * Admin review and approve/reject verification
- */
 export async function adminReviewVerification(
   verificationId: string,
   adminUserId: string,
@@ -577,7 +524,6 @@ export async function adminReviewVerification(
     ...(notes && { admin_notes: notes }),
   };
 
-  // Set expiry for approved verifications
   if (decision === 'approved' && !verification.expires_at) {
     const expiryDate = new Date();
     expiryDate.setFullYear(expiryDate.getFullYear() + 1);
@@ -589,7 +535,6 @@ export async function adminReviewVerification(
     return errorResult('UPDATE_FAILED', 'Failed to update verification');
   }
 
-  // Sync name to users table and profiles when admin approves
   if (decision === 'approved') {
     await syncKycNameToUserAndProfiles(
       verification.user_id,
@@ -629,17 +574,11 @@ export async function adminReviewVerification(
   }); // BLF-12.3: end withLock
 }
 
-/**
- * Get all verifications pending admin review
- */
 export async function getPendingAdminReviews(): Promise<ServiceResult<KycVerification[]>> {
   const verifications = await getPendingReviews();
   return successResult(verifications);
 }
 
-/**
- * Get verifications by status
- */
 export async function getVerificationsByStatus(
   status: KycStatus
 ): Promise<ServiceResult<KycVerification[]>> {
@@ -647,9 +586,6 @@ export async function getVerificationsByStatus(
   return successResult(verifications);
 }
 
-/**
- * Get user's verification history
- */
 export async function getUserVerificationHistory(
   userId: string
 ): Promise<ServiceResult<KycVerification[]>> {
@@ -657,16 +593,12 @@ export async function getUserVerificationHistory(
   return successResult(verifications);
 }
 
-/**
- * Check if user is verified
- */
 export async function isUserVerified(userId: string): Promise<boolean> {
   const verification = await getKycVerificationByUserId(userId);
   if (!verification) return false;
   
   if (verification.status !== 'approved') return false;
   
-  // Check expiry
   if (verification.expires_at) {
     const expiryDate = new Date(verification.expires_at);
     if (expiryDate < new Date()) return false;
@@ -743,7 +675,6 @@ async function runManualKycChecks(params: ManualKycParams): Promise<
 > {
   const { userId, idFrontImage, idBackImage, selfieImage } = params;
 
-  // Step 1: Verify ID document
   logger.info('Manual KYC: Verifying ID document', { userId });
   const idResult = await verifyIdDocument(idFrontImage, idBackImage, userId);
   if (!idResult.success) {
@@ -755,7 +686,6 @@ async function runManualKycChecks(params: ManualKycParams): Promise<
     return { error: errorResult('ID_DECLINED', 'ID document was declined by Didit') };
   }
 
-  // Step 2: Check liveness
   logger.info('Manual KYC: Checking liveness', { userId });
   const livenessResult = await checkPassiveLiveness(selfieImage, userId);
   if (!livenessResult.success) {
@@ -767,7 +697,6 @@ async function runManualKycChecks(params: ManualKycParams): Promise<
     return { error: errorResult('LIVENESS_DECLINED', 'Liveness check declined - possible spoof detected') };
   }
 
-  // Step 3: Face match (compare selfie with ID photo)
   logger.info('Manual KYC: Matching faces', { userId });
   const faceMatchResult = await matchFaces(selfieImage, idFrontImage, userId);
   if (!faceMatchResult.success) {
@@ -824,9 +753,6 @@ async function runManualKycAmlScreening(idData: ManualIdData, userId: string): P
   return true;
 }
 
-/**
- * Build the verification record for a successful manual KYC flow.
- */
 function buildManualVerificationData(
   params: ManualKycParams,
   checks: ManualKycChecks,
@@ -863,9 +789,6 @@ function buildManualVerificationData(
   };
 }
 
-/**
- * Create or update the KYC verification record.
- */
 async function persistManualVerification(
   existingVerification: KycVerification | null,
   verificationData: Partial<KycVerification>,
@@ -879,9 +802,6 @@ async function persistManualVerification(
   } as Omit<KycVerification, 'created_at' | 'updated_at'>);
 }
 
-/**
- * Manual KYC Verification - Admin uploads documents for a user
- */
 export async function manualKycVerification(params: ManualKycParams): Promise<ServiceResult<KycVerification>> {
   const { userId } = params;
 
@@ -890,13 +810,11 @@ export async function manualKycVerification(params: ManualKycParams): Promise<Se
   // verification records, or write duplicate audit entries.
   return withLock(`kyc-manual:${userId}`, async () => {
     try {
-      // Check if user exists
       const user = await userRepository.getUserById(userId);
       if (!user) {
         return errorResult('USER_NOT_FOUND', 'User not found');
       }
 
-      // Check if user already has an active verification
       const existingVerification = await getKycVerificationByUserId(userId);
       if (existingVerification && existingVerification.status === 'approved') {
         return errorResult('ALREADY_VERIFIED', 'User is already verified');
@@ -915,7 +833,6 @@ export async function manualKycVerification(params: ManualKycParams): Promise<Se
         return errorResult('DATABASE_ERROR', 'Failed to save verification');
       }
 
-      // Sync name to user and profiles if approved
       if (amlClean) {
         await syncKycNameToUserAndProfiles(
           userId,

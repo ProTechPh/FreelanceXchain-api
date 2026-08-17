@@ -124,7 +124,6 @@ export async function createSavedSearch(
   input: SavedSearchInput
 ): Promise<ServiceResult<SavedSearch>> {
   try {
-    // Validate filters
     if (!input.filters || Object.keys(input.filters).length === 0) {
       return errorResult('VALIDATION_ERROR', 'Search filters are required');
     }
@@ -170,7 +169,6 @@ export async function updateSavedSearch(
   updates: Partial<SavedSearchInput>
 ): Promise<ServiceResult<SavedSearch>> {
   try {
-    // Verify ownership
     const ownerId = await savedSearchRepository.findOwnerById(searchId);
 
     if (ownerId === null) {
@@ -181,7 +179,6 @@ export async function updateSavedSearch(
       return errorResult('UNAUTHORIZED', 'You can only update your own saved searches');
     }
 
-    // Build update data
     const updateData: Partial<SavedSearchEntity> = {};
     if (updates.name) updateData.name = updates.name;
     if (updates.filters) updateData.filters = JSON.stringify(updates.filters);
@@ -213,7 +210,6 @@ export async function deleteSavedSearch(
   userId: string
 ): Promise<ServiceResult<void>> {
   try {
-    // Verify ownership
     const ownerId = await savedSearchRepository.findOwnerById(searchId);
 
     if (ownerId === null) {
@@ -241,14 +237,12 @@ export async function executeSavedSearch(
   userId: string
 ): Promise<ServiceResult<{ results: ProjectEntity[] | FreelancerProfileEntity[]; count: number }>> {
   try {
-    // Get saved search
     const savedSearchDoc = await savedSearchRepository.getById(searchId);
 
     if (!savedSearchDoc) {
       return errorResult('NOT_FOUND', 'Saved search not found');
     }
 
-    // Verify ownership
     if (savedSearchDoc.user_id !== userId) {
       return errorResult('UNAUTHORIZED', 'You can only execute your own saved searches');
     }
@@ -263,7 +257,6 @@ export async function executeSavedSearch(
       const allProjects = await fetchAllOpenProjects();
       const filtered = filterProjectsBySavedSearch(allProjects, filters);
 
-      // Sort and limit
       filtered.sort((a, b) => b.created_at.localeCompare(a.created_at));
       const results = filtered.slice(0, 50);
 
@@ -276,7 +269,6 @@ export async function executeSavedSearch(
     const allProfiles = await fetchAllProfiles();
     const filtered = filterFreelancersBySavedSearch(allProfiles, filters);
 
-    // Sort and limit
     filtered.sort((a, b) => b.created_at.localeCompare(a.created_at));
     const results = filtered.slice(0, 50);
 

@@ -1,9 +1,3 @@
-/**
- * Dispute Resolution Blockchain Service
- * Records dispute outcomes on-chain for transparency
- *
- * for persistent storage instead of in-memory Maps.
- */
 
 import {
   submitTransaction,
@@ -77,9 +71,6 @@ function entityToRecord(entity: BlockchainDisputeRecordEntity): BlockchainDisput
   };
 }
 
-/**
- * Create dispute record on blockchain
- */
 export async function createDisputeOnBlockchain(
   input: CreateDisputeInput
 ): Promise<{ record: BlockchainDisputeRecord; receipt: TransactionReceipt }> {
@@ -87,7 +78,6 @@ export async function createDisputeOnBlockchain(
   const contractIdHash = generateHash(input.contractId);
   const milestoneIdHash = generateHash(input.milestoneId);
 
-  // Check if already exists
   const existing = await blockchainDisputeRecordRepository.findByDisputeIdHash(disputeIdHash);
 
   if (existing) {
@@ -133,7 +123,6 @@ export async function createDisputeOnBlockchain(
     blockNumber: confirmed.blockNumber!,
   };
 
-  // Persist to DB
   await blockchainDisputeRecordRepository.createDisputeRecord({
     id: disputeIdHash,
     dispute_id_hash: record.disputeIdHash,
@@ -161,9 +150,6 @@ export async function createDisputeOnBlockchain(
   };
 }
 
-/**
- * Update evidence hash on blockchain
- */
 export async function updateDisputeEvidence(
   disputeId: string,
   evidenceData: string,
@@ -190,7 +176,6 @@ export async function updateDisputeEvidence(
   const confirmed = await confirmTransaction(tx.id);
   if (!confirmed) throw new Error('Failed to confirm transaction');
 
-  // Update in DB
   await blockchainDisputeRecordRepository.updateDisputeRecord(entity.id, {
     evidence_hash: evidenceHash,
     transaction_hash: confirmed.hash!,
@@ -213,9 +198,6 @@ export async function updateDisputeEvidence(
   };
 }
 
-/**
- * Resolve dispute on blockchain
- */
 export async function resolveDisputeOnBlockchain(
   input: ResolveDisputeInput
 ): Promise<{ record: BlockchainDisputeRecord; receipt: TransactionReceipt }> {
@@ -245,7 +227,6 @@ export async function resolveDisputeOnBlockchain(
 
   const now = Date.now();
 
-  // Update in DB
   await blockchainDisputeRecordRepository.updateDisputeRecord(entity.id, {
     outcome: input.outcome,
     reasoning: input.reasoning,

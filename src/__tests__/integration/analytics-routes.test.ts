@@ -11,7 +11,6 @@ describe('Analytics Routes Integration Tests', () => {
   beforeAll(async () => {
     app = await createApp();
     
-    // Login as freelancer
     const freelancerLogin = await request(app)
       .post('/api/auth/login')
       .send({
@@ -23,7 +22,6 @@ describe('Analytics Routes Integration Tests', () => {
       freelancerToken = freelancerLogin.body.accessToken;
     }
 
-    // Login as employer
     const employerLogin = await request(app)
       .post('/api/auth/login')
       .send({

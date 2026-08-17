@@ -91,25 +91,19 @@ describe('AI Client - AI Serialization Properties', () => {
         fc.property(
           skillMatchRequestArbitrary(),
           (payload: SkillMatchRequest) => {
-            // Serialize
             const serialized = serializeAIRequest('skill_match', payload);
 
-            // Deserialize
             const deserialized = deserializeAIRequest(serialized);
 
-            // Should not be null
             expect(deserialized).not.toBeNull();
             if (deserialized) {
-              // Type should match
               expect(deserialized.type).toBe('skill_match');
 
-              // Payload should be equivalent
               const deserializedPayload = deserialized.payload as SkillMatchRequest;
               expect(deserializedPayload.freelancerSkills).toEqual(payload.freelancerSkills);
               expect(deserializedPayload.projectRequirements).toEqual(payload.projectRequirements);
               expect(deserializedPayload.reputationScore).toEqual(payload.reputationScore);
 
-              // Timestamp and requestId should be present
               expect(deserialized.timestamp).toBeDefined();
               expect(deserialized.requestId).toBeDefined();
             }
@@ -124,19 +118,14 @@ describe('AI Client - AI Serialization Properties', () => {
         fc.property(
           skillExtractionRequestArbitrary(),
           (payload: SkillExtractionRequest) => {
-            // Serialize
             const serialized = serializeAIRequest('skill_extraction', payload);
 
-            // Deserialize
             const deserialized = deserializeAIRequest(serialized);
 
-            // Should not be null
             expect(deserialized).not.toBeNull();
             if (deserialized) {
-              // Type should match
               expect(deserialized.type).toBe('skill_extraction');
 
-              // Payload should be equivalent
               const deserializedPayload = deserialized.payload as SkillExtractionRequest;
               expect(deserializedPayload.text).toEqual(payload.text);
               expect(deserializedPayload.availableSkills).toEqual(payload.availableSkills);
@@ -152,19 +141,14 @@ describe('AI Client - AI Serialization Properties', () => {
         fc.property(
           skillGapPayloadArbitrary(),
           (payload) => {
-            // Serialize
             const serialized = serializeAIRequest('skill_gap', payload);
 
-            // Deserialize
             const deserialized = deserializeAIRequest(serialized);
 
-            // Should not be null
             expect(deserialized).not.toBeNull();
             if (deserialized) {
-              // Type should match
               expect(deserialized.type).toBe('skill_gap');
 
-              // Payload should be equivalent
               expect(deserialized.payload).toEqual(payload);
             }
           }
@@ -179,26 +163,20 @@ describe('AI Client - AI Serialization Properties', () => {
           skillMatchResultArbitrary(),
           fc.integer({ min: 0, max: 10000 }),
           (payload: SkillMatchResult, processingTimeMs: number) => {
-            // Serialize
             const serialized = serializeAIResponse('skill_match', payload, processingTimeMs);
 
-            // Deserialize
             const deserialized = deserializeAIResponse(serialized);
 
-            // Should not be null
             expect(deserialized).not.toBeNull();
             if (deserialized) {
-              // Type should match
               expect(deserialized.type).toBe('skill_match');
 
-              // Payload should be equivalent
               const deserializedPayload = deserialized.payload as SkillMatchResult;
               expect(deserializedPayload.matchScore).toEqual(payload.matchScore);
               expect(deserializedPayload.matchedSkills).toEqual(payload.matchedSkills);
               expect(deserializedPayload.missingSkills).toEqual(payload.missingSkills);
               expect(deserializedPayload.reasoning).toEqual(payload.reasoning);
 
-              // Processing time should match
               expect(deserialized.processingTimeMs).toBe(processingTimeMs);
             }
           }
@@ -213,19 +191,14 @@ describe('AI Client - AI Serialization Properties', () => {
           fc.array(extractedSkillArbitrary(), { minLength: 0, maxLength: 10 }),
           fc.integer({ min: 0, max: 10000 }),
           (payload: ExtractedSkill[], processingTimeMs: number) => {
-            // Serialize
             const serialized = serializeAIResponse('skill_extraction', payload, processingTimeMs);
 
-            // Deserialize
             const deserialized = deserializeAIResponse(serialized);
 
-            // Should not be null
             expect(deserialized).not.toBeNull();
             if (deserialized) {
-              // Type should match
               expect(deserialized.type).toBe('skill_extraction');
 
-              // Payload should be equivalent
               expect(deserialized.payload).toEqual(payload);
             }
           }
@@ -240,19 +213,14 @@ describe('AI Client - AI Serialization Properties', () => {
           skillGapAnalysisArbitrary(),
           fc.integer({ min: 0, max: 10000 }),
           (payload: SkillGapAnalysis, processingTimeMs: number) => {
-            // Serialize
             const serialized = serializeAIResponse('skill_gap', payload, processingTimeMs);
 
-            // Deserialize
             const deserialized = deserializeAIResponse(serialized);
 
-            // Should not be null
             expect(deserialized).not.toBeNull();
             if (deserialized) {
-              // Type should match
               expect(deserialized.type).toBe('skill_gap');
 
-              // Payload should be equivalent
               expect(deserialized.payload).toEqual(payload);
             }
           }

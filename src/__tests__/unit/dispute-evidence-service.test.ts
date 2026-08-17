@@ -127,7 +127,6 @@ describe('Dispute Evidence Service', () => {
       }));
       // Mock contract
       mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
-      // Mock evidence creation
       mockDisputeEvidenceRepository.createEvidence.mockResolvedValueOnce(makeEvidenceEntity());
 
       const result = await submitEvidence({
@@ -146,7 +145,6 @@ describe('Dispute Evidence Service', () => {
       expect(result.data.evidenceType).toBe('document');
       expect(result.data.fileUrl).toBe('https://file.com/doc.pdf');
       expect(result.data.description).toBe('Work proof');
-      // Should notify arbiter and other party
       expect(mockCreateNotification).toHaveBeenCalledTimes(2);
     });
 
@@ -159,7 +157,6 @@ describe('Dispute Evidence Service', () => {
       }));
       // Mock contract
       mockContractRepository.getContractById.mockResolvedValueOnce(makeContractEntity());
-      // Mock evidence creation
       mockDisputeEvidenceRepository.createEvidence.mockResolvedValueOnce(makeEvidenceEntity());
 
       const result = await submitEvidence({
@@ -405,7 +402,6 @@ describe('Dispute Evidence Service', () => {
         resolution: { decision: 'freelancer_favor', reasoning: '', resolved_by: 'arbiter-1', resolved_at: new Date().toISOString() },
       }));
 
-      // Mock update
       const updated = {
         id: 'ev-1',
         dispute_id: 'dispute-1',

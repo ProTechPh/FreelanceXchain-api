@@ -322,6 +322,20 @@ describe('storage-uploader', () => {
       );
     });
 
+    it('passes userId through for ownership prefixing', async () => {
+      mockCreateFile.mockResolvedValue({ $id: 'file-id' });
+
+      const file = createMockFile({ originalname: 'evidence.pdf', mimetype: 'application/pdf' });
+      await uploadMultipleFiles([file], 'dispute-evidence', 'user-1');
+
+      expect(mockCreateFile).toHaveBeenCalledWith(
+        'dispute-evidence',
+        expect.any(String),
+        expect.anything(),
+        expect.arrayContaining([])
+      );
+    });
+
     it('handles mixed success and failure results', async () => {
       mockCreateFile
         .mockResolvedValueOnce({ $id: 'file-id-1' })
@@ -826,6 +840,21 @@ describe('Storage Uploader - getFileQuota', () => {
     expect(mockListFiles).toHaveBeenCalledTimes(2);
   });
 
+  it('should fall back to the generic message when the failure carries an empty error', async () => {
+    mockListFiles
+      .mockRejectedValueOnce('')
+      .mockResolvedValueOnce({
+        files: [],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error).toBe('Failed to list files');
+    }
+  });
+
   it('should ignore files that are not owned by the user', async () => {
     mockListFiles
       .mockResolvedValueOnce({
@@ -874,5 +903,89 @@ describe('Storage Uploader - getFileQuota', () => {
     if (!result.success) {
       expect(result.error).toBe('storage down');
     }
+  });
+
+
+  it('should treat missing sizeOriginal as 0 bytes when summing quota', async () => {
+    mockListFiles
+      .mockResolvedValueOnce({
+        files: [{ name: 'user-1_a.png', $id: 'f1' }],
+      })
+      .mockResolvedValueOnce({
+        files: [],
+      });
+
+    const result = await getFileQuota('user-1');
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.used).toBe(0);
+      expect(result.files).toBe(1);
+    }
+  });
+
+  describe('error and pagination branch coverage', () => {
+    it('handles a non-Error rejection in uploadFileToStorage', async () => {
+      mockCreateFile.mockRejectedValue('raw string failure');
+
+      const result = await uploadFileToStorage({
+        buffer: Buffer.from('x'),
+        originalFilename: 'fail.txt',
+        mimeType: 'text/plain',
+        bucket: 'proposal-attachments',
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('raw string failure');
+    });
+
+    it('handles a non-Error rejection in deleteFileFromStorage', async () => {
+      mockDeleteFile.mockRejectedValue('delete exploded');
+
+      const result = await deleteFileFromStorage('file-1', 'proposal-attachments');
+
+      expect(result.success).toBe(false);
+    });
+
+    it('handles a non-Error rejection in listUserFiles', async () => {
+      mockListFiles.mockRejectedValue('list exploded');
+
+      const result = await listUserFiles('proposal-attachments', 'user-1');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('list exploded');
+    });
+
+    it('breaks the pagination loop when the last page has no usable id', async () => {
+      const pageWithNoIds = Array.from({ length: 100 }, (_, i) => ({
+        name: `user-1_no_id_${i}.pdf`,
+      }));
+      mockListFiles.mockResolvedValueOnce({ files: pageWithNoIds });
+
+      const result = await listUserFiles('proposal-attachments', 'user-1');
+
+      expect(result.success).toBe(true);
+      expect(result.files).toHaveLength(100);
+      // No cursorAfter follow-up call because no $id was available.
+      expect(mockListFiles).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('omits userId from the upload options when not provided', async () => {
+    mockCreateFile.mockResolvedValue({ $id: 'new-file', name: 'nofile.txt' });
+
+    const results = await uploadMultipleFiles(
+      [{ buffer: Buffer.from('x'), originalname: 'nofile.txt', mimetype: 'text/plain' }],
+      'proposal-attachments'
+    );
+
+    expect(results[0].success).toBe(true);
+    // The userId spread must be absent so the caller argument is exactly (bucket, name).
+    expect(mockCreateFile).toHaveBeenCalledWith(
+      'proposal-attachments',
+      expect.any(String),
+      expect.any(Object),
+      expect.arrayContaining([])
+    );
   });
 });

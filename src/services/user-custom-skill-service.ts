@@ -21,7 +21,6 @@ import { successResult, errorResult } from '../types/service-result.js';
 // suggestion queue cannot be flooded by one account.
 const MAX_USER_CUSTOM_SKILLS = 50;
 
-// Entity mapping functions
 function mapUserCustomSkillFromEntity(entity: UserCustomSkillEntity): UserCustomSkill {
   return {
     id: entity.id,
@@ -53,7 +52,6 @@ function mapSkillSuggestionFromEntity(entity: SkillSuggestionEntity): SkillSugge
   };
 }
 
-// User Custom Skill Operations
 
 export async function createUserCustomSkill(
   userId: string,
@@ -79,7 +77,6 @@ export async function createUserCustomSkill(
     return errorResult('SKILL_EXISTS_GLOBALLY', `Skill "${trimmedName}" already exists in the global skill taxonomy. Use the existing skill instead.`, [`Existing skill ID: ${globalMatch.id}`]);
   }
 
-  // Check if user already has this custom skill (canonical comparison)
   let existingUserSkills: UserCustomSkillEntity[];
   try {
     existingUserSkills = await userCustomSkillRepository.getUserCustomSkills(userId);
@@ -110,7 +107,6 @@ export async function createUserCustomSkill(
     suggested_for_global: input.suggestForGlobal ?? false,
   };
 
-  // Only add category_name if it exists
   if (input.categoryName?.trim()) {
     skillEntity.category_name = input.categoryName.trim();
   }
@@ -242,7 +238,6 @@ export async function searchUserCustomSkills(
   return entities.map(mapUserCustomSkillFromEntity);
 }
 
-// Skill Suggestion Operations
 
 async function handleSkillSuggestion(
   userId: string,
@@ -260,7 +255,6 @@ async function handleSkillSuggestion(
     // the same skill cannot inflate the suggestion's popularity.
     await skillSuggestionRepository.recordSuggestionRequest(existingSuggestion.id, userId);
   } else {
-    // Create new suggestion
     const suggestionEntity: Omit<SkillSuggestionEntity, 'created_at' | 'updated_at'> = {
       id: generateId(),
       user_id: userId,
@@ -272,7 +266,6 @@ async function handleSkillSuggestion(
       status: 'pending',
     };
 
-    // Only add category_name if it exists
     if (skillInput.categoryName?.trim()) {
       suggestionEntity.category_name = skillInput.categoryName.trim();
     }

@@ -43,30 +43,25 @@ type RejectProposalResult = {
 };
 
 
-// Submit a proposal for a project
 export async function submitProposal(
   freelancerId: string,
   input: CreateProposalInput
 ): Promise<ServiceResult<ProposalWithNotification>> {
-  // Validate attachments
   const attachmentErrors = validateAttachments(input.attachments);
   if (attachmentErrors.length > 0) {
     return errorResult('VALIDATION_ERROR', 'Invalid attachments', attachmentErrors.map(e => e.message));
   }
 
-  // Check if project exists
   const projectEntity = await projectRepository.findProjectById(input.projectId);
   if (!projectEntity) {
     return errorResult('NOT_FOUND', 'Project not found');
   }
   const project = mapProjectFromEntity(projectEntity);
 
-  // Check if project is open for proposals
   if (project.status !== 'open') {
     return errorResult('PROJECT_NOT_OPEN', 'Project is not accepting proposals');
   }
 
-  // Check for duplicate proposal
   const existingProposal = await proposalRepository.getExistingProposal(input.projectId, freelancerId);
   if (existingProposal) {
     return errorResult('DUPLICATE_PROPOSAL', 'You have already submitted a proposal for this project');

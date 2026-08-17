@@ -240,10 +240,8 @@ async function processMultipartProposal(req: Request, res: Response) {
     return sendErrorResponse(res, 400, 'NO_FILES', 'At least 1 file is required', { requestId });
   }
   
-  // Upload files to Appwrite Storage
   const uploadResults = await uploadMultipleFiles(files, STORAGE_BUCKETS.PROPOSAL_ATTACHMENTS, userId);
   
-  // Check for upload failures
   const failedUploads = uploadResults.filter(r => !r.success);
   if (failedUploads.length > 0) {
     // Cleanup any successfully uploaded files
@@ -258,10 +256,8 @@ async function processMultipartProposal(req: Request, res: Response) {
     return sendErrorResponse(res, 500, 'UPLOAD_FAILED', 'Failed to upload one or more files', { requestId, details: failedUploads.map(r => r.error) });
   }
   
-  // Extract file metadata
   const attachments = uploadResults.map(r => r.metadata!);
   
-  // Submit proposal with file metadata
   const result = await submitProposal(userId, { 
     projectId, 
     attachments, 
@@ -295,7 +291,6 @@ async function handleJsonProposalSubmission(req: Request, res: Response) {
     return sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId });
   }
 
-  // Validate input
   const errors: { field: string; message: string }[] = [];
   if (!projectId || typeof projectId !== 'string') {
     errors.push({ field: 'projectId', message: 'Project ID is required' });
