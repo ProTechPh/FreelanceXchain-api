@@ -1,6 +1,6 @@
 import { BaseRepository, fromAppwriteDoc } from './base-repository.js';
 import { databases, DATABASE_ID, Query } from '../config/appwrite.js';
-import { getErrorMessageOr } from '../utils/index.js';
+import { getErrorMessageOr, toEthUnits } from '../utils/index.js';
 
 type PaymentStatus = 'pending' | 'processing' | 'completed' | 'failed' | 'refunded';
 export type PaymentType = 'escrow_deposit' | 'milestone_release' | 'refund' | 'dispute_resolution' | 'rush_fee';
@@ -104,27 +104,53 @@ class PaymentRepositoryClass extends BaseRepository<PaymentEntity> {
     return this.update(id, { status });
   }
 
-  async getTotalEarnings(userId: string): Promise<number> {
+  /**
+   * Total completed payments received (payee side), in ETH units. Counts every
+   * record type that moves money between the parties — milestone releases,
+   * refunds returned to the user, dispute-resolution legs, and rush fees.
+   * escrow_deposit records are excluded: the deposit is the escrow-funding trace
+   * (the payee never actually receives it), and its disposition is captured by
+   * the release/refund/dispute legs — counting it would double-count releases
+   * for the freelancer and funding-plus-refunds for the employer. Amounts are
+   * normalized via toEthUnits so milestone_release records (stored as
+   * wei-as-Number) count correctly. Returns `null` when the query fails so a
+   * caller can distinguish "unavailable" from a genuine zero.
+   */
+  async getTotalEarnings(userId: string): Promise<number | null> {
     try {
       const payments = await this.fetchAll([
         Query.equal('payee_id', userId),
         Query.equal('status', 'completed'),
       ]);
-      return payments.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+      return payments
+        .filter(p => p.payment_type !== 'escrow_deposit')
+        .reduce((sum, p) => sum + toEthUnits(Number(p.amount ?? 0), p.payment_type), 0);
     } catch {
-      return 0;
+      return null;
     }
   }
 
-  async getTotalSpent(userId: string): Promise<number> {
+  /**
+   * Total completed payments made (payer side), in ETH units. Counts every
+   * record type that moves money between the parties — milestone releases paid
+   * out on the user's behalf, refunds returned, dispute-resolution legs, and
+   * rush fees. escrow_deposit records are excluded (see getTotalEarnings for
+   * the rationale — the funding trace is not a payment between parties).
+   * Amounts are normalized via toEthUnits so milestone_release records (stored
+   * as wei-as-Number) count correctly. Returns `null` when the query fails so a
+   * caller can distinguish "unavailable" from a genuine zero.
+   */
+  async getTotalSpent(userId: string): Promise<number | null> {
     try {
       const payments = await this.fetchAll([
         Query.equal('payer_id', userId),
         Query.equal('status', 'completed'),
       ]);
-      return payments.reduce((sum, p) => sum + Number(p.amount ?? 0), 0);
+      return payments
+        .filter(p => p.payment_type !== 'escrow_deposit')
+        .reduce((sum, p) => sum + toEthUnits(Number(p.amount ?? 0), p.payment_type), 0);
     } catch {
-      return 0;
+      return null;
     }
   }
 }

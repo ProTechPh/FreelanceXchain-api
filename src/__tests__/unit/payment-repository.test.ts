@@ -185,20 +185,20 @@ describe('merged branch coverage', () => {
 });
 
 describe('PaymentRepository - Additional Branch Coverage', () => {
-  it('getTotalSpent returns 0 on database error', async () => {
+  it('getTotalSpent returns null on database error', async () => {
     const mockDb = (globalThis as any).__mockDatabases;
     mockDb.listDocuments.mockReset();
     mockDb.listDocuments.mockRejectedValueOnce(new Error('db down'));
     const result = await PaymentRepository.getTotalSpent('user-1');
-    expect(result).toBe(0);
+    expect(result).toBeNull();
   });
 
-  it('getTotalEarnings returns 0 on database error', async () => {
+  it('getTotalEarnings returns null on database error', async () => {
     const mockDb = (globalThis as any).__mockDatabases;
     mockDb.listDocuments.mockReset();
     mockDb.listDocuments.mockRejectedValueOnce(new Error('db down'));
     const result = await PaymentRepository.getTotalEarnings('user-1');
-    expect(result).toBe(0);
+    expect(result).toBeNull();
   });
 
   it('getTotalSpent with documents containing null amounts', async () => {
@@ -221,5 +221,95 @@ describe('PaymentRepository - Additional Branch Coverage', () => {
     });
     const result = await PaymentRepository.getTotalEarnings('user-1');
     expect(result).toBe(50);
+  });
+});
+
+describe('PaymentRepository - amount unit normalization', () => {
+  // milestone_release records store escrow amounts as wei-as-Number; the totals
+  // must normalize them to ETH units so surfaced totals are not 1e18x too large.
+  it('getTotalEarnings normalizes wei milestone_release records to ETH', async () => {
+    const mockDb = (globalThis as any).__mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { amount: 5e20, payment_type: 'milestone_release' }, // 500 ETH in wei
+        { amount: 250, payment_type: 'rush_fee' },
+      ],
+      total: 2,
+    });
+    const result = await PaymentRepository.getTotalEarnings('user-1');
+    expect(result).toBe(750);
+  });
+
+  it('getTotalSpent normalizes wei milestone_release records to ETH', async () => {
+    const mockDb = (globalThis as any).__mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [{ amount: 5e20, payment_type: 'milestone_release' }],
+      total: 1,
+    });
+    const result = await PaymentRepository.getTotalSpent('user-1');
+    expect(result).toBe(500);
+  });
+
+  it('getTotalEarnings leaves non-milestone_release amounts untouched even when large', async () => {
+    const mockDb = (globalThis as any).__mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [{ amount: 5e20, payment_type: 'dispute_resolution' }],
+      total: 1,
+    });
+    const result = await PaymentRepository.getTotalEarnings('user-1');
+    expect(result).toBe(5e20);
+  });
+});
+
+describe('PaymentRepository - totals semantics', () => {
+  // Pinned definition: totalEarnings/totalSpent count every completed
+  // record type that moves money between parties — milestone_release, refund,
+  // dispute_resolution (each leg), rush_fee — and EXCLUDE escrow_deposit, the
+  // funding trace whose disposition is already captured by the other legs.
+  it('getTotalEarnings counts rush_fee and dispute legs but excludes escrow_deposit', async () => {
+    const mockDb = (globalThis as any).__mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { amount: 5e20, payment_type: 'milestone_release' }, // 500 ETH, wei-normalized
+        { amount: 250, payment_type: 'rush_fee' },
+        { amount: 100, payment_type: 'dispute_resolution' },
+        { amount: 50, payment_type: 'refund' },
+        { amount: 1000, payment_type: 'escrow_deposit' }, // excluded
+      ],
+      total: 5,
+    });
+    const result = await PaymentRepository.getTotalEarnings('user-1');
+    expect(result).toBe(900); // 500 + 250 + 100 + 50, deposit not counted
+  });
+
+  it('getTotalSpent counts rush_fee and dispute legs but excludes escrow_deposit', async () => {
+    const mockDb = (globalThis as any).__mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [
+        { amount: 300, payment_type: 'milestone_release' },
+        { amount: 250, payment_type: 'rush_fee' },
+        { amount: 50, payment_type: 'dispute_resolution' },
+        { amount: 1000, payment_type: 'escrow_deposit' }, // excluded
+      ],
+      total: 4,
+    });
+    const result = await PaymentRepository.getTotalSpent('user-1');
+    expect(result).toBe(600); // 300 + 250 + 50, deposit not counted
+  });
+
+  it('getTotalEarnings returns 0 when only escrow_deposit records exist', async () => {
+    const mockDb = (globalThis as any).__mockDatabases;
+    mockDb.listDocuments.mockReset();
+    mockDb.listDocuments.mockResolvedValueOnce({
+      documents: [{ amount: 1000, payment_type: 'escrow_deposit' }],
+      total: 1,
+    });
+    const result = await PaymentRepository.getTotalEarnings('user-1');
+    expect(result).toBe(0);
   });
 });

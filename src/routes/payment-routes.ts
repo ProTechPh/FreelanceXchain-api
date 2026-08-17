@@ -9,6 +9,8 @@ import {
   approveMilestone,
   getContractPaymentStatus,
   getContractPaymentHistory,
+  getMyPayments,
+  getPaymentSummary,
 } from '../services/payment-service.js';
 import { createDispute } from '../services/dispute-service.js';
 import { authMiddleware, requireVerifiedKyc } from '../middleware/auth-middleware.js';
@@ -131,6 +133,44 @@ const router = Router();
  *           type: array
  *           items:
  *             $ref: '#/components/schemas/PaymentHistoryRecord'
+ *     MyPaymentsResponse:
+ *       type: object
+ *       properties:
+ *         items:
+ *           type: array
+ *           items:
+ *             allOf:
+ *               - $ref: '#/components/schemas/PaymentHistoryRecord'
+ *               - type: object
+ *                 properties:
+ *                   contractId:
+ *                     type: string
+ *         total:
+ *           type: number
+ *         hasMore:
+ *           type: boolean
+ *         totalEarnings:
+ *           type: number
+ *           nullable: true
+ *           description: Lifetime completed payments received (ETH units); null when the totals query failed
+ *         totalSpent:
+ *           type: number
+ *           nullable: true
+ *           description: Lifetime completed payments made (ETH units); null when the totals query failed
+ *     PaymentSummaryResponse:
+ *       type: object
+ *       properties:
+ *         totalEarnings:
+ *           type: number
+ *           nullable: true
+ *           description: Lifetime completed payments received (ETH units); null when the totals query failed
+ *         totalSpent:
+ *           type: number
+ *           nullable: true
+ *           description: Lifetime completed payments made (ETH units); null when the totals query failed
+ *         available:
+ *           type: boolean
+ *           description: false when either totals query failed — show an unavailable state instead of a misleading zero
  */
 
 
@@ -538,6 +578,136 @@ router.get(
         const statusCode = result.error.code === 'NOT_FOUND' ? 404 :
                           result.error.code === 'UNAUTHORIZED' ? 403 : 400;
         sendErrorResponse(res, statusCode, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
+        return;
+      }
+
+      res.json(result.data);
+    } catch (error) {
+      next(error);
+    }
+  })
+);
+
+
+/**
+ * @swagger
+ * /api/payments/me:
+ *   get:
+ *     summary: Get my payments
+ *     description: Get all payments where the authenticated user is the payer or payee, across every contract, newest first
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: limit
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 20
+ *           maximum: 100
+ *         description: Maximum number of records to return
+ *       - in: query
+ *         name: offset
+ *         required: false
+ *         schema:
+ *           type: integer
+ *           default: 0
+ *         description: Number of records to skip for pagination
+ *     responses:
+ *       200:
+ *         description: The authenticated user's payments
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/MyPaymentsResponse'
+ *       400:
+ *         description: Invalid limit or offset
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/me',
+  authMiddleware,
+  apiRateLimiter,
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.userId;
+
+      /* istanbul ignore next */
+      if (!userId) {
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
+        return;
+      }
+
+      const rawLimit = req.query['limit'];
+      const rawOffset = req.query['offset'];
+      const limit = rawLimit === undefined ? 20 : Number(rawLimit);
+      const offset = rawOffset === undefined ? 0 : Number(rawOffset);
+
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'limit must be an integer between 1 and 100', { requestId: getRequestId(req) });
+        return;
+      }
+      if (!Number.isInteger(offset) || offset < 0) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'offset must be a non-negative integer', { requestId: getRequestId(req) });
+        return;
+      }
+
+      const result = await getMyPayments(userId, { limit, offset });
+
+      if (!result.success) {
+        sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
+        return;
+      }
+
+      res.json(result.data);
+    } catch (error) {
+      next(error);
+    }
+  })
+);
+
+
+/**
+ * @swagger
+ * /api/payments/summary:
+ *   get:
+ *     summary: Get payment summary
+ *     description: Lifetime totalEarnings/totalSpent for the authenticated user. available is false when a totals query failed, so a dashboard widget can show an unavailable state instead of a misleading zero.
+ *     tags: [Payments]
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Payment summary
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/PaymentSummaryResponse'
+ *       400:
+ *         description: Summary fetch failed
+ *       401:
+ *         description: Unauthorized
+ */
+router.get(
+  '/summary',
+  authMiddleware,
+  apiRateLimiter,
+  asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const userId = req.user?.userId;
+
+      /* istanbul ignore next */
+      if (!userId) {
+        sendErrorResponse(res, 401, 'AUTH_UNAUTHORIZED', 'User not authenticated', { requestId: getRequestId(req) });
+        return;
+      }
+
+      const result = await getPaymentSummary(userId);
+
+      if (!result.success) {
+        sendErrorResponse(res, 400, result.error.code, result.error.message, { requestId: getRequestId(req), details: result.error.details });
         return;
       }
 

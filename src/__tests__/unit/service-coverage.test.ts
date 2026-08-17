@@ -25,6 +25,13 @@ const mockConfig = {
     endpoint: 'https://mock.appwrite.io/v1',
     projectId: 'mock-project',
   },
+  // scheduler-service imports escrow-reconciliation-service → escrow-contract →
+  // blockchain-client, which reads config.blockchain at module load
+  blockchain: {
+    rpcUrl: '',
+    privateKey: '',
+    mode: 'simulated',
+  },
   redis: {
     host: 'localhost',
     port: 6379,

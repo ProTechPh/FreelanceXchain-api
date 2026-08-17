@@ -10,6 +10,8 @@ const mockRequestMilestoneCompletion = jest.fn<any>();
 const mockApproveMilestone = jest.fn<any>();
 const mockGetContractPaymentStatus = jest.fn<any>();
 const mockGetContractPaymentHistory = jest.fn<any>();
+const mockGetMyPayments = jest.fn<any>();
+const mockGetPaymentSummary = jest.fn<any>();
 const mockDisputeMilestone = jest.fn<any>();
 
 jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () => ({
@@ -17,6 +19,8 @@ jest.unstable_mockModule(resolveModule('src/services/payment-service.ts'), () =>
   approveMilestone: mockApproveMilestone,
   getContractPaymentStatus: mockGetContractPaymentStatus,
   getContractPaymentHistory: mockGetContractPaymentHistory,
+  getMyPayments: mockGetMyPayments,
+  getPaymentSummary: mockGetPaymentSummary,
   disputeMilestone: mockDisputeMilestone,
 }));
 
@@ -47,7 +51,7 @@ const paymentRouter = router;
 function makeApp(basePath: string, r: any) { const a = express(); a.use(express.json()); a.use(basePath, r); return a; }
 const ok = (data: any) => ({ success: true, data });
 const fail = (code: string, message: string) => ({ success: false, error: { code, message } });
-const mockPaymentService = { requestMilestoneCompletion: mockRequestMilestoneCompletion, approveMilestone: mockApproveMilestone, getContractPaymentStatus: mockGetContractPaymentStatus, getContractPaymentHistory: mockGetContractPaymentHistory, disputeMilestone: mockDisputeMilestone };
+const mockPaymentService = { requestMilestoneCompletion: mockRequestMilestoneCompletion, approveMilestone: mockApproveMilestone, getContractPaymentStatus: mockGetContractPaymentStatus, getContractPaymentHistory: mockGetContractPaymentHistory, getMyPayments: mockGetMyPayments, getPaymentSummary: mockGetPaymentSummary, disputeMilestone: mockDisputeMilestone };
 const mockDisputeService = { createDispute: mockCreateDispute };
 
 describe('Payment Routes', () => {
@@ -319,6 +323,112 @@ describe('payment-routes branch coverage', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('GET /me', () => {
+    it('returns the user\'s payments across contracts with pagination', async () => {
+      mockGetMyPayments.mockResolvedValue({
+        success: true,
+        data: {
+          items: [
+            {
+              id: 'p-1', contractId: 'c-1', milestoneId: 'ms-1', payerId: 'emp-1', payeeId: 'user-1',
+              amount: 500, currency: 'ETH', txHash: '0xrelease', status: 'completed',
+              paymentType: 'milestone_release', createdAt: '2026-01-01T00:00:00.000Z',
+            },
+            {
+              id: 'p-2', contractId: 'c-2', milestoneId: null, payerId: 'user-1', payeeId: 'free-2',
+              amount: 250, currency: 'ETH', txHash: null, status: 'completed',
+              paymentType: 'rush_fee', createdAt: '2026-01-02T00:00:00.000Z',
+            },
+          ],
+          total: 2,
+          hasMore: false,
+          totalEarnings: 750,
+          totalSpent: 250,
+        },
+      });
+      const res = await request(app).get('/api/payments/me?limit=10&offset=0');
+      expect(res.status).toBe(200);
+      expect(res.body.items).toHaveLength(2);
+      expect(res.body.total).toBe(2);
+      expect(res.body.hasMore).toBe(false);
+      expect(res.body.totalEarnings).toBe(750);
+      expect(res.body.totalSpent).toBe(250);
+      expect(res.body.items[0].contractId).toBe('c-1');
+      expect(res.body.items[0].paymentType).toBe('milestone_release');
+      expect(res.body.items[1].contractId).toBe('c-2');
+      expect(mockGetMyPayments).toHaveBeenCalledWith('user-1', { limit: 10, offset: 0 });
+    });
+
+    it('uses default pagination when limit and offset are omitted', async () => {
+      mockGetMyPayments.mockResolvedValue(ok({ items: [], total: 0, hasMore: false, totalEarnings: 0, totalSpent: 0 }));
+      const res = await request(app).get('/api/payments/me');
+      expect(res.status).toBe(200);
+      expect(mockGetMyPayments).toHaveBeenCalledWith('user-1', { limit: 20, offset: 0 });
+    });
+
+    it('passes through null totals so the UI can show unavailable', async () => {
+      mockGetMyPayments.mockResolvedValue(ok({ items: [], total: 0, hasMore: false, totalEarnings: null, totalSpent: null }));
+      const res = await request(app).get('/api/payments/me');
+      expect(res.status).toBe(200);
+      expect(res.body.totalEarnings).toBeNull();
+      expect(res.body.totalSpent).toBeNull();
+    });
+
+    it('returns 400 when limit is invalid', async () => {
+      const res = await request(app).get('/api/payments/me?limit=abc');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(mockGetMyPayments).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when limit exceeds the max', async () => {
+      const res = await request(app).get('/api/payments/me?limit=101');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('returns 400 when offset is negative', async () => {
+      const res = await request(app).get('/api/payments/me?offset=-1');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('returns 400 on fetch failures', async () => {
+      mockGetMyPayments.mockResolvedValue(fail('FETCH_FAILED', 'Failed to fetch payments'));
+      const res = await request(app).get('/api/payments/me');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('FETCH_FAILED');
+    });
+  });
+
+  describe('GET /summary', () => {
+    it('returns the payment summary with available totals', async () => {
+      mockGetPaymentSummary.mockResolvedValue(ok({ totalEarnings: 7500, totalSpent: 2500, available: true }));
+      const res = await request(app).get('/api/payments/summary');
+      expect(res.status).toBe(200);
+      expect(res.body.totalEarnings).toBe(7500);
+      expect(res.body.totalSpent).toBe(2500);
+      expect(res.body.available).toBe(true);
+      expect(mockGetPaymentSummary).toHaveBeenCalledWith('user-1');
+    });
+
+    it('surfaces the unavailable state when totals queries failed', async () => {
+      mockGetPaymentSummary.mockResolvedValue(ok({ totalEarnings: null, totalSpent: null, available: false }));
+      const res = await request(app).get('/api/payments/summary');
+      expect(res.status).toBe(200);
+      expect(res.body.available).toBe(false);
+      expect(res.body.totalEarnings).toBeNull();
+      expect(res.body.totalSpent).toBeNull();
+    });
+
+    it('returns 400 on summary fetch failures', async () => {
+      mockGetPaymentSummary.mockResolvedValue(fail('FETCH_FAILED', 'Failed to fetch payment summary'));
+      const res = await request(app).get('/api/payments/summary');
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('FETCH_FAILED');
+    });
+  });
 });
 
 describe('payment-routes.ts - Branch Coverage', () => {
@@ -328,6 +438,8 @@ describe('payment-routes.ts - Branch Coverage', () => {
   const mockCreateDispute = jest.fn<any>();
   const mockGetContractPaymentStatus = jest.fn<any>();
   const mockGetContractPaymentHistory = jest.fn<any>();
+  const mockGetMyPayments = jest.fn<any>();
+  const mockGetPaymentSummary = jest.fn<any>();
   const mockDisputeMilestone = jest.fn<any>();
 
   beforeEach(async () => {
@@ -337,6 +449,8 @@ describe('payment-routes.ts - Branch Coverage', () => {
       approveMilestone: mockApproveMilestone,
       getContractPaymentStatus: mockGetContractPaymentStatus,
       getContractPaymentHistory: mockGetContractPaymentHistory,
+      getMyPayments: mockGetMyPayments,
+      getPaymentSummary: mockGetPaymentSummary,
       disputeMilestone: mockDisputeMilestone,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -391,6 +505,8 @@ describe('payment-routes - UUID validation for contractId query param', () => {
   const mockCreateDispute = jest.fn<any>();
   const mockGetContractPaymentStatus = jest.fn<any>();
   const mockGetContractPaymentHistory = jest.fn<any>();
+  const mockGetMyPayments = jest.fn<any>();
+  const mockGetPaymentSummary = jest.fn<any>();
   const mockDisputeMilestone = jest.fn<any>();
 
   beforeEach(async () => {
@@ -400,6 +516,8 @@ describe('payment-routes - UUID validation for contractId query param', () => {
       approveMilestone: mockApproveMilestone,
       getContractPaymentStatus: mockGetContractPaymentStatus,
       getContractPaymentHistory: mockGetContractPaymentHistory,
+      getMyPayments: mockGetMyPayments,
+      getPaymentSummary: mockGetPaymentSummary,
       disputeMilestone: mockDisputeMilestone,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -469,6 +587,8 @@ describe('payment-routes - ?? nullish fallback branches', () => {
   const mockCreateDispute = jest.fn<any>();
   const mockGetContractPaymentStatus = jest.fn<any>();
   const mockGetContractPaymentHistory = jest.fn<any>();
+  const mockGetMyPayments = jest.fn<any>();
+  const mockGetPaymentSummary = jest.fn<any>();
   const mockDisputeMilestone = jest.fn<any>();
 
   beforeEach(async () => {
@@ -487,6 +607,8 @@ describe('payment-routes - ?? nullish fallback branches', () => {
       approveMilestone: mockApproveMilestone,
       getContractPaymentStatus: mockGetContractPaymentStatus,
       getContractPaymentHistory: mockGetContractPaymentHistory,
+      getMyPayments: mockGetMyPayments,
+      getPaymentSummary: mockGetPaymentSummary,
       disputeMilestone: mockDisputeMilestone,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({
@@ -543,6 +665,8 @@ describe('payment-routes - generic error code 400 branches', () => {
   const mockCreateDispute = jest.fn<any>();
   const mockGetContractPaymentStatus = jest.fn<any>();
   const mockGetContractPaymentHistory = jest.fn<any>();
+  const mockGetMyPayments = jest.fn<any>();
+  const mockGetPaymentSummary = jest.fn<any>();
   const mockDisputeMilestone = jest.fn<any>();
 
   beforeEach(async () => {
@@ -557,6 +681,8 @@ describe('payment-routes - generic error code 400 branches', () => {
       approveMilestone: mockApproveMilestone,
       getContractPaymentStatus: mockGetContractPaymentStatus,
       getContractPaymentHistory: mockGetContractPaymentHistory,
+      getMyPayments: mockGetMyPayments,
+      getPaymentSummary: mockGetPaymentSummary,
       disputeMilestone: mockDisputeMilestone,
     }));
     jest.unstable_mockModule(resolveModule('src/services/dispute-service.ts'), () => ({

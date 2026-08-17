@@ -1122,7 +1122,7 @@ describe('Payment Repository — branch coverage', () => {
     mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
     const result = await PaymentRepository.getTotalEarnings('u1');
-    expect(result).toBe(0);
+    expect(result).toBeNull();
   });
 
   it('should handle getTotalSpent with error', async () => {
@@ -1131,7 +1131,7 @@ describe('Payment Repository — branch coverage', () => {
     mockDatabases.listDocuments.mockRejectedValueOnce(new Error('DB error'));
 
     const result = await PaymentRepository.getTotalSpent('u1');
-    expect(result).toBe(0);
+    expect(result).toBeNull();
   });
 
   it('should handle findByUserId with hasMore=true', async () => {

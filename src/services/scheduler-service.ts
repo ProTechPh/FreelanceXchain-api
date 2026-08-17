@@ -14,6 +14,7 @@ import { emailPreferenceRepository } from '../repositories/email-preference-repo
 import type { FreelancerProfileEntity } from '../repositories/freelancer-profile-repository.js';
 import { fromAppwriteDoc } from '../repositories/base-repository.js';
 import { parseField } from '../utils/index.js';
+import { reconcileContractPayments } from './escrow-reconciliation-service.js';
 
 /**
  * Auto-close expired projects
@@ -474,6 +475,13 @@ export function initializeScheduler(): void {
   cron.schedule('*/10 * * * *', () => {
     logger.info('Running scheduled job: Recover stuck releasing milestones');
     recoverStuckReleasingMilestones();
+  });
+
+  // Reconcile contract payment status against the on-chain escrow ledger -
+  // Every hour. Read-only: divergences are reported via error/warn logs.
+  cron.schedule('0 * * * *', () => {
+    logger.info('Running scheduled job: Reconcile contract payments with escrow ledger');
+    reconcileContractPayments();
   });
 
   logger.info('Scheduler service initialized successfully');
